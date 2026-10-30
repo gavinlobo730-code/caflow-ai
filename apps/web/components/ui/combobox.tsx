@@ -545,7 +545,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                 onClick={() => void doCreate()}
                 className={cn(
                   "flex cursor-pointer items-center gap-1.5 border-b border-ps-border px-3 py-1.5 text-xs text-blue-600",
-                  highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
+                  highlighted === createIdx ? "bg-brand-surface" : "hover:bg-ps-bg",
                 )}
               >
                 <Plus size={13} className="flex-shrink-0" />
@@ -610,7 +610,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                       className={cn(
                         "flex cursor-pointer items-center justify-between gap-2",
                         panelDensity === "spacious" ? "px-3.5 py-2.5" : "px-3 py-1.5",
-                        active ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
+                        active ? "bg-brand-surface" : "hover:bg-ps-bg",
                       )}
                     >
                       {renderOption ? (
@@ -641,7 +641,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
                     onClick={() => void doCreate()}
                     className={cn(
                       "flex cursor-pointer items-center gap-1.5 border-t border-ps-border px-3 py-1.5 text-xs text-blue-600",
-                      highlighted === createIdx ? "bg-[#EFF6FF]" : "hover:bg-ps-bg",
+                      highlighted === createIdx ? "bg-brand-surface" : "hover:bg-ps-bg",
                     )}
                   >
                     <Plus size={13} className="flex-shrink-0" />

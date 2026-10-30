@@ -298,8 +298,8 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
                           key={item.id}
                           className={`w-full text-left px-4 py-2.5 transition-colors ${
                             idx === selectedIndex
-                              ? "bg-[#DBEAFE]"
-                              : "hover:bg-[#DBEAFE]"
+                              ? "bg-brand-surface"
+                              : "hover:bg-brand-surface"
                           }`}
                           onClick={() => { router.push(item.href); onClose(); }}
                         >

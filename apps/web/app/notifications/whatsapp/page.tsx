@@ -592,7 +592,7 @@ export default function WhatsAppPage() {
               <label className="block text-xs font-semibold text-ps-body mb-2">
                 Message Preview
               </label>
-              <div className="bg-[#e8f8e8] rounded-xl p-4 min-h-[200px] border border-green-200">
+              <div className="bg-state-ready-surface rounded-xl p-4 min-h-[200px] border border-green-200">
                 <pre className="text-sm text-ps-ink whitespace-pre-wrap font-sans leading-relaxed">
                   {composedMessage}
                 </pre>

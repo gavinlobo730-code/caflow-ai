@@ -112,11 +112,11 @@ export function UtilityCluster({
               className={cn(
                 "absolute z-30 w-48 rounded-xl p-1.5",
                 isRail ? "left-full bottom-0 ml-2" : "right-0 top-full mt-2",
-                // One literal for both dark orientations, not two — the raw
-                // hex this guard's own history warns about fixing site by
-                // site (#94A3B8, 1,567 of them) is written here exactly once.
+                // One class for both dark orientations, not two: the brand navy
+                // the rails themselves are drawn in (it was a raw #1e2d5e until
+                // POST-A-145, a second navy nothing else used).
                 isDark
-                  ? "bg-[#1e2d5e] border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+                  ? "bg-brand border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
                   : "bg-white border border-ps-border shadow-lg"
               )}
             >

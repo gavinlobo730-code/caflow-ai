@@ -318,7 +318,7 @@ export default function CopilotPage() {
                   onClick={() => openConversation(conv.id)}
                   className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
                     activeConv === conv.id
-                      ? "bg-[#EFF6FF] text-brand"
+                      ? "bg-brand-surface text-brand"
                       : "hover:bg-ps-bg text-ps-body"
                   }`}
                 >
@@ -366,7 +366,7 @@ export default function CopilotPage() {
                         <Button variant="plain" size="none" disabled={actionInFlight}
                           key={i}
                           onClick={() => sendMessage(q)}
-                          className="text-left text-xs px-3 py-2.5 rounded-xl border border-ps-border bg-white hover:border-brand-light hover:bg-[#EFF6FF] text-ps-label transition-colors"
+                          className="text-left text-xs px-3 py-2.5 rounded-xl border border-ps-border bg-white hover:border-brand-light hover:bg-brand-surface text-ps-label transition-colors"
                         >
                           {q}
                         </Button>
@@ -407,7 +407,7 @@ export default function CopilotPage() {
                       <Button variant="plain" size="none" disabled={actionInFlight}
                         key={i}
                         onClick={() => sendMessage(q)}
-                        className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-ps-border bg-ps-bg hover:bg-[#EFF6FF] hover:border-brand-light text-ps-label transition-colors whitespace-nowrap"
+                        className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-ps-border bg-ps-bg hover:bg-brand-surface hover:border-brand-light text-ps-label transition-colors whitespace-nowrap"
                       >
                         {q}
                       </Button>

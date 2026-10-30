@@ -643,7 +643,7 @@ export default function GSTR3BPage() {
               </tbody>
             </table>
             {w.itc_reversal.reasons.length > 0 && (
-              <div className="px-5 py-3 border-t border-ps-border bg-[#FCFCFD]">
+              <div className="px-5 py-3 border-t border-ps-border bg-ps-bg">
                 <p className="text-xs font-medium text-ps-label mb-1.5">What is in 4(B)</p>
                 <ul className="space-y-1">
                   {w.itc_reversal.reasons.map((x, i) => (
@@ -711,7 +711,7 @@ export default function GSTR3BPage() {
                   </p>
                 </div>
               ) : (
-                <div className="px-5 py-4 bg-[#F0FDF4] border-b border-emerald-100">
+                <div className="px-5 py-4 bg-state-ready-surface border-b border-emerald-100">
                   <p className="text-sm text-emerald-900 font-medium">
                     Books agree with GSTR-2B — no credit withheld.
                   </p>
@@ -760,7 +760,7 @@ export default function GSTR3BPage() {
                   {(w.rule_36_4.self_assessed_igst_paise > 0 ||
                     w.rule_36_4.self_assessed_cgst_paise > 0 ||
                     w.rule_36_4.self_assessed_sgst_paise > 0) && (
-                    <tr className="hover:bg-ps-bg bg-[#FCFDFE]">
+                    <tr className="hover:bg-ps-bg bg-ps-surface">
                       <td className="px-5 py-3 text-ps-label text-xs">
                         Of which self-assessed — not capped
                         <span className="block text-ps-hint">
@@ -916,7 +916,7 @@ export default function GSTR3BPage() {
             {/* A total of zero says nothing about whether credit was exhausted
                 or barely touched. Apex, April 2026: nil payable over
                 Rs 36,54,961.65 of unused credit. */}
-            <div className="px-5 py-3 border-t border-ps-border bg-[#FCFDFE] grid grid-cols-3 gap-3 text-center">
+            <div className="px-5 py-3 border-t border-ps-border bg-ps-bg grid grid-cols-3 gap-3 text-center">
               {[
                 { label: "Credit available (opening + 4C)", value: w.itc_utilisation.available_paise },
                 { label: "Set off against tax", value: w.itc_utilisation.consumed_paise },
@@ -1014,7 +1014,7 @@ export default function GSTR3BPage() {
                   ) : null}
 
                   {rule37a.gaps.map((g) => (
-                    <p key={g} className="text-xs text-[#92400E]">{g}</p>
+                    <p key={g} className="text-xs text-state-attention">{g}</p>
                   ))}
                   {rule37a.caveats.map((c) => (
                     <p key={c} className="text-xs text-ps-label">{c}</p>

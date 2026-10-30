@@ -222,7 +222,7 @@ function TriggersTab() {
             <Button variant="plain" size="none"
               onClick={() => acknowledge(t.id)}
               disabled={acting === t.id}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark transition-colors disabled:opacity-50"
             >
               {acting === t.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
               Acknowledge
@@ -514,7 +514,7 @@ function AnomaliesTab() {
               <Button variant="plain" size="none"
                 onClick={() => markReviewed(a.id)}
                 disabled={acting === a.id}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 {acting === a.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
                 Mark Reviewed
@@ -582,7 +582,7 @@ export default function MemoryPage() {
             <Button variant="plain" size="none"
               onClick={runPipeline}
               disabled={running}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-[#1e2e6a] transition-colors disabled:opacity-60"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-dark transition-colors disabled:opacity-60"
             >
               {running ? (
                 <Loader2 size={15} className="animate-spin" />
