@@ -410,6 +410,60 @@ def bucket_amounts(pl: dict, bs: dict) -> tuple[dict[str, int], dict[str, int]]:
     return bs_buckets, pl_buckets
 
 
+def residual_balances(pl: dict, bs: dict) -> dict:
+    """How many balances sit on an "Other" line because nobody decided, and how much money (POST-A-097).
+
+    `classify` says WHICH decided for every account: `"mapping"` (the CA mapped it), `"subtype"` (a keyword in its subtype matched) or
+    `"residual"` (nothing matched and it landed on a caption in `RESIDUAL_CAPTIONS`). The builders put that on every statement line as
+    `schedule_iii_basis`, and nothing counted it, so the mapping screen's green "N of M accounts mapped" measured the chart and not the
+    books: an account with no balance counted the same as the one holding the year's deposits. This counts the other thing, over the
+    lines the statements actually present (an account with no balance is not a line), so the number is a fact about this client's year.
+
+    `absolute_paise` is the sum of the absolute balances, because a debit and a credit balance both sit on a line nobody chose and a
+    plain sum would let them cancel. `by_caption` names which line each landed on. A line with NO basis (a statement built elsewhere,
+    which predates the key), and one that `classify` could place on no caption at all, is not counted and not guessed at;
+    `unjudged_lines` says how many there were, so a count of zero is never a claim about lines this could not read.
+    """
+    accounts = 0
+    absolute = 0
+    unjudged = 0
+    by_caption: dict[str, dict[str, int]] = {}
+
+    def take(line: dict, amount_key: str) -> None:
+        nonlocal accounts, absolute, unjudged
+        basis = line.get("schedule_iii_basis")
+        caption = line.get("schedule_iii_caption")
+        if basis is None:
+            unjudged += 1
+            return
+        if basis != "residual":
+            return
+        if caption not in RESIDUAL_CAPTIONS:
+            # `classify` also answers (None, "residual") for an account whose type is on neither statement: it sits on no
+            # "Other" line, it sits on none, and saying it did would be a second wrong answer about it.
+            unjudged += 1
+            return
+        amount = abs(int(line.get(amount_key) or 0))
+        accounts += 1
+        absolute += amount
+        row = by_caption.setdefault(caption, {"accounts": 0, "absolute_paise": 0})
+        row["accounts"] += 1
+        row["absolute_paise"] += amount
+
+    for section in (*bs.get("assets", []), *bs.get("liabilities", []), *bs.get("equity", [])):
+        for ln in section.get("lines", []):
+            take(ln, "balance_paise")
+    for group in _PL_GROUPS:
+        for ln in pl.get(group, {}).get("lines", []):
+            take(ln, "amount_paise")
+    return {
+        "accounts": accounts,
+        "absolute_paise": absolute,
+        "by_caption": dict(sorted(by_caption.items())),
+        "unjudged_lines": unjudged,
+    }
+
+
 def _caption_of(line: dict, fallback_bucket) -> str | None:
     """The caption the BUILDER already put on this line, or the bucket scan if
     the line predates it.
@@ -539,6 +593,9 @@ def build_schedule_iii(pl: dict, bs: dict, fy_start: str, fy_end: str,
     `prior_pl` / `prior_bs` are the same two things for the preceding period.
     """
     doc = _build_one_year(pl, bs, fy_start, fy_end)
+    # Of the reporting period only: the comparative column is a presentation of the year before, and the mapping decision
+    # it would be counted against is today's (POST-A-097).
+    doc["residual_balances"] = residual_balances(pl, bs)
     if prior_pl is not None and prior_bs is not None:
         _attach_comparatives(doc, _build_one_year(
             prior_pl, prior_bs, prior_fy_start or "", prior_fy_end or ""))
