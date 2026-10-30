@@ -109,3 +109,27 @@ def sales_invoice_is_the_clients(db, firm_id: str, client_id: str, invoice_id) -
             .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("invoice")
+
+
+def client_document_is_the_clients(db, firm_id: str, client_id: str, document_id) -> None:
+    """404 "That document was not found." unless the stored file (`client_documents`) is this client's."""
+    named = _named(document_id)
+    if db is None or named is None:
+        return
+    # The document tables are read with the privileged client, after the caller's firm and client are asserted (POST-A-339, the same
+    # reasoning as the bank account above): the filter is the assertion.
+    rows = _find(privileged_for(db).table("client_documents").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    if not rows:
+        raise _not_found("document")
+
+
+def journal_entry_is_the_clients(db, firm_id: str, client_id: str, journal_entry_id) -> None:
+    """404 "That journal entry was not found." unless the ledger entry is this client's."""
+    named = _named(journal_entry_id)
+    if db is None or named is None:
+        return
+    rows = _find(db.table("journal_entries").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    if not rows:
+        raise _not_found("journal entry")

@@ -17,6 +17,7 @@ from core.ist_clock import assessment_year_for
 from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client
 from models.common import api_response
+from services import named_row_ownership
 from services.timeline_service import timeline_service
 from models.fy import AYLabel, FYLabel, OptionalAYLabel
 from core import db_provider
@@ -832,6 +833,11 @@ def create_disallowance(
     All amounts in paise — never float.
     """
     assert_client_access(current_user, req.client_id)
+    # The evidence file and the ledger entry the disallowance names have to be this client's (POST-A-353); asked before the try, whose
+    # handler would turn the 404 into a 500.
+    db = db_provider.request_db_or_none()
+    named_row_ownership.client_document_is_the_clients(db, current_user["firm_id"], req.client_id, req.evidence_document_id)
+    named_row_ownership.journal_entry_is_the_clients(db, current_user["firm_id"], req.client_id, req.journal_entry_id)
     from domain.income_tax.computation_workspace import create_disallowance as _create
     try:
         result = _create(
@@ -900,6 +906,9 @@ def create_deduction(
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
     assert_client_access(current_user, req.client_id)
+    # The evidence file the claim names has to be this client's (POST-A-353).
+    named_row_ownership.client_document_is_the_clients(
+        db_provider.request_db_or_none(), current_user["firm_id"], req.client_id, req.evidence_document_id)
     from domain.income_tax.computation_workspace import create_deduction_claim
     try:
         result = create_deduction_claim(

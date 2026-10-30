@@ -24,6 +24,11 @@ WHAT IS ASSERTED
       door is on the reviewed list with what the dict carries. The first run of it found one real gap, the statement inspector, which
       looked a saved column layout up by a bank account id and the firm alone: another client's account answered with that client's
       layout. It asks whose the account is now, before it reads the file.
+    * THE SECOND FAMILY (POST-A-353, the stored-file half). Seven more kinds: a stored file (`*document_id`), a ledger entry
+      (`*journal_entry_id`), a payroll employee, a vendor payment and the three stock places (godown, batch, cost centre). The run found
+      three real doors that stored another client's row under this one: the 26AS upload named any client's stored file, and the ITR
+      workspace's deduction claim and disallowance named any client's evidence file (the disallowance also any client's ledger entry).
+      The payroll, stock and ledger doors the survey listed were already asked, by helpers the rule now knows by name.
     * THE SCAN IS NOT BLIND. It finds more than forty doors and all seven kinds, it flags a synthetic route that writes without asking, it
       accepts one that asks in the route and one that asks two calls down, and it flags one whose check sits in a function nothing calls.
     * EACH DOOR THE RULE FOUND. A sibling client's row named under this client is answered in the words a missing row gets and nothing is
@@ -43,6 +48,8 @@ from fastapi.testclient import TestClient
 import routers.credit_notes as credit_notes_router
 import routers.debit_notes as debit_notes_router
 import routers.eway_bill as eway_router
+import routers.form_26as as form26as_router
+import routers.itr_workspace as itr_router
 import routers.purchase_credit_notes as pcn_router
 import routers.purchase_payments as pp_router
 import routers.receipts as receipts_router
@@ -67,6 +74,14 @@ KINDS: dict[str, tuple[re.Pattern, set[str], set[str]]] = {
     "bank": (re.compile(r"(^|_)bank_account_id$"), {"bank_account_is_the_clients", "_validate_bank_account"}, {"bank_accounts"}),
     "order": (re.compile(r"(^|_)order_id$"), {"order_of_client", "row_of_client"}, {"purchase_orders", "sales_orders"}),
     "quotation": (re.compile(r"(^|_)quotation_id$"), {"row_of_client"}, {"sales_quotations"}),
+    # THE SECOND FAMILY (POST-A-353): a stored file, a ledger entry, a payroll employee and the three stock places.
+    "document": (re.compile(r"(^|_)document_id$"), {"client_document_is_the_clients", "_assert_document_in_firm"}, {"client_documents"}),
+    "journal": (re.compile(r"(^|_)journal_entry_id$"), {"journal_entry_is_the_clients"}, {"journal_entries"}),
+    "employee": (re.compile(r"(^|_)employee_id$"), {"_employee_of_client"}, {"payroll_employees"}),
+    "vendor_payment": (re.compile(r"(^|_)purchase_payment_id$"), set(), {"purchase_payments"}),
+    "godown": (re.compile(r"(^|_)godown_id$"), set(), {"godowns"}),
+    "batch": (re.compile(r"(^|_)batch_id$"), set(), {"inventory_batches"}),
+    "cost_centre": (re.compile(r"(^|_)cost_centre_id$"), set(), {"cost_centres"}),
 }
 DICT_BODY = re.compile(r"(Optional\[)?(dict|Dict)(\[[^\]]*\])?\]?")
 SCAN_DIRS = ("services", "domain", "repositories", "routers", "models", "core")      # not jobs: nothing a route calls lives there
@@ -93,6 +108,13 @@ REVIEWED: dict[tuple[str, str, str], str] = {
         "the payload's client_id is asserted for the caller before the run starts and the run is created for that client; the other keys "
         "are the trigger's data, compared with the template's conditions and stored on the run. The one step that reads a client takes the "
         "instance's asserted client before the payload's, and checks it belongs to the firm.",
+    # THE SECOND FAMILY (POST-A-353).
+    ("banking", "remove_transaction_attachment", "document"):
+        "the id only selects an entry to take out of the attachment list of THIS bank line (a comparison in domain/banking/attachments), and "
+        "no row is written that names the document; adding an attachment, which does name one, asks the document under the line's client.",
+    ("payroll", "put_leave_balance", "employee"):
+        "the body names no client at all; the employee is resolved by the firm and the caller's assignment to the employee's OWN client is "
+        "asked (_assert_employee_scope) before anything is read or written, a stranger answering in the words a missing employee gets.",
     # A NAMED ROW THE REQUEST CARRIES OUTSIDE THE BODY MODEL.
     ("payments", "create_payment_link", "invoice"):
         "the request names no client; the service reads the invoice by firm and asks can_access_client of the invoice's OWN client before "
@@ -265,7 +287,9 @@ def test_the_scan_sees_the_doors_it_is_meant_to(real):
     handlers = {(r, h) for r, h, _n, _m in real}
     for expected in (("receipts", "create_receipt"), ("purchase_payments", "create_purchase_payment"), ("eway_bill", "create_eway_bill"),
                      ("recurring_invoices", "create_recurring"), ("recurring_purchase_bills", "create_recurring_bill"),
-                     ("debit_notes", "create_debit_note"), ("fixed_assets", "create_asset"), ("bills_of_entry", "create_bill_of_entry")):
+                     ("debit_notes", "create_debit_note"), ("fixed_assets", "create_asset"), ("bills_of_entry", "create_bill_of_entry"),
+                     ("form_26as", "create_upload"), ("itr_workspace", "create_disallowance"), ("itr_workspace", "create_deduction"),
+                     ("payroll", "put_attendance"), ("inventory", "transfer_stock")):
         assert expected in handlers, f"{expected} is no longer found as a door"
 
 
@@ -428,6 +452,10 @@ def test_the_names_that_the_ledger_listed_are_recognised():
                        ("purchase_bill_id", "bill"), ("exclude_bill_id", "bill")):
         assert KINDS[kind][0].search(name), name
     assert not KINDS["invoice"][0].search("fee_invoice_number")
+    for name, kind in (("evidence_document_id", "document"), ("journal_entry_id", "journal"), ("employee_id", "employee"),
+                       ("from_godown_id", "godown"), ("batch_id", "batch"), ("cost_centre_id", "cost_centre"),
+                       ("purchase_payment_id", "vendor_payment")):
+        assert KINDS[kind][0].search(name), name
 
 
 # ── each door the rule found ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -600,3 +628,57 @@ def test_the_statement_inspector_names_a_bank_account_of_its_own_client_only(wor
     assert looked_up == [], "the sibling's saved layout was looked up before the account was asked about"
     own = call("bank-a")
     assert own["success"] is True and looked_up == ["bank-a"], own
+
+
+# ── the second family: each door the rule found ────────────────────────────────────────────────────────────────────────────
+@pytest.fixture()
+def filed(world, monkeypatch):
+    """The world, with a stored file and a ledger entry for each client, and the three workspaces' mock stores emptied."""
+    import domain.income_tax.computation_workspace as workspace
+    import domain.income_tax.form26as_service as form26as
+    for client, tag in ((A, "a"), (B, "b")):
+        world.seed("client_documents", {"id": f"doc-{tag}", "firm_id": FIRM, "client_id": client, "file_name": f"{tag}.pdf"})
+        world.seed("journal_entries", {"id": f"je-{tag}", "firm_id": FIRM, "client_id": client, "entry_date": "2026-05-01"})
+    for store in ("_MOCK_UPLOADS", "_MOCK_RECORDS"):
+        monkeypatch.setattr(form26as, store, {})
+    for store in ("_MOCK_DISALLOWANCES", "_MOCK_DEDUCTIONS"):
+        monkeypatch.setattr(workspace, store, {})
+    return world
+
+
+def test_a_26as_upload_names_a_stored_file_of_its_own_client_only(filed):
+    import domain.income_tax.form26as_service as form26as
+    client = _client(form26as_router)
+    body = {"client_id": A, "financial_year": "2025-26"}
+    _refused(client.post("/api/form-26as/uploads", json={**body, "document_id": "doc-b"}), "That document was not found.")
+    assert form26as._MOCK_UPLOADS == {}, "the sibling's file was stored as the upload's"
+    own = client.post("/api/form-26as/uploads", json={**body, "document_id": "doc-a"})
+    assert own.status_code == 200 and own.json()["data"]["document_id"] == "doc-a", own.text
+    nothing_named = client.post("/api/form-26as/uploads", json=body)
+    assert nothing_named.status_code == 200, "an upload that names no file is not stopped by the question"
+
+
+def test_a_deduction_claim_names_an_evidence_file_of_its_own_client_only(filed):
+    import domain.income_tax.computation_workspace as workspace
+    client = _client(itr_router)
+    body = {"client_id": A, "financial_year": "2025-26", "section": "80C", "claimed_amount_paise": 150_000_00}
+    _refused(client.post("/api/itr/deductions", json={**body, "evidence_document_id": "doc-b"}), "That document was not found.")
+    assert workspace._MOCK_DEDUCTIONS == {}
+    own = client.post("/api/itr/deductions", json={**body, "evidence_document_id": "doc-a"})
+    assert own.status_code == 200 and own.json()["data"]["evidence_document_id"] == "doc-a", own.text
+
+
+@pytest.mark.parametrize("field,sibling,words", [
+    ("evidence_document_id", "doc-b", "That document was not found."),
+    ("journal_entry_id", "je-b", "That journal entry was not found."),
+])
+def test_a_disallowance_names_an_evidence_file_and_a_ledger_entry_of_its_own_client_only(filed, field, sibling, words):
+    import domain.income_tax.computation_workspace as workspace
+    client = _client(itr_router)
+    body = {"client_id": A, "financial_year": "2025-26", "section": "40A(3)", "description": "Cash payment", "amount_paise": 20_000_00}
+    own_ids = {"evidence_document_id": "doc-a", "journal_entry_id": "je-a"}
+    _refused(client.post("/api/itr/disallowances", json={**body, **own_ids, field: sibling}), words)
+    assert workspace._MOCK_DISALLOWANCES == {}, "the sibling's row was stored on the disallowance"
+    own = client.post("/api/itr/disallowances", json={**body, **own_ids})
+    assert own.status_code == 200, own.text
+    assert (own.json()["data"]["evidence_document_id"], own.json()["data"]["journal_entry_id"]) == ("doc-a", "je-a")
