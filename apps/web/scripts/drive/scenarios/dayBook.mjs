@@ -9,6 +9,7 @@
  * where an empty list would say "nothing posted".
  */
 import assert from "node:assert/strict";
+import { until } from "../kit.mjs";
 import { ok } from "../stub.mjs";
 import { CLIENT_ID } from "../fixtures.mjs";
 
@@ -31,16 +32,6 @@ function page(limit, { hasMore = true } = {}) {
               { source_type: null, entries: 1 }],
     newest_first: true, limit, offset: 0, returned: ENTRIES.length, has_more: hasMore, max_limit: 1000,
   };
-}
-
-/** `waitForLoadState("networkidle")` resolves at once for a document that has already been idle, so it cannot wait for a read a
- *  click starts afterwards: a scenario waits for the request itself, and then for the screen to have drawn the answer. */
-async function until(condition, what) {
-  for (let i = 0; i < 100; i += 1) {
-    if (condition()) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  assert.fail(`timed out waiting for ${what}`);
 }
 
 /** Answer the Day Book and remember every request, so a scenario can read what the screen asked for. */

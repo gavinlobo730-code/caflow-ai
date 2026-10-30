@@ -8,7 +8,7 @@
  * read is said in words and Retry asks again, and that nothing on the screen writes.
  */
 import assert from "node:assert/strict";
-import { pick } from "../kit.mjs";
+import { pick, until } from "../kit.mjs";
 import { ok } from "../stub.mjs";
 import { CLIENT_ID } from "../fixtures.mjs";
 
@@ -132,9 +132,10 @@ export const scenarios = [
       assert.match(body, /Showing the latest 3 e-invoice records\. More exist that are not shown here\./,
         "a list the server said was cut short was not reported as cut short");
       await page.getByRole("button", { name: "Show more" }).click();
-      await page.waitForLoadState("networkidle");
+      await until(() => asked.length >= 2, "the second read");
       assert.equal(asked.length, 2, `Show more should read once more, saw ${asked.length} reads`);
       assert.match(asked[1], /limit=200/, "the next window is not one step larger");
+      await page.getByText("More exist that are not shown here").waitFor({ state: "detached" });
       assert.equal(await page.getByText("More exist that are not shown here").count(), 0,
         "the server said nothing more exists, so the notice goes away");
     },

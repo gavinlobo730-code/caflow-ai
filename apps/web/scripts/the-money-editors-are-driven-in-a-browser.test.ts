@@ -345,3 +345,56 @@ test("a scenario fails on an uncaught exception, a console error, a CSP violatio
   assert.match(src, /No scenarios were found/);
   assert.ok(existsSync(join(DRIVE_DIR, "kit.mjs")));
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 8. A SCENARIO NEVER WAITS FOR "QUIET" RIGHT AFTER A CLICK (the nightly walk was red from 18-10-2026 because two did)
+// ═════════════════════════════════════════════════════════════════════════════
+// `waitForLoadState("networkidle")` resolves AT ONCE for a document that has already been idle, so a read a click starts
+// afterwards is not waited for. On the machine the scenario was written on the read had landed by the next line; on the
+// runner it had not, and "Show more should read once more, saw 1 reads" and "the notice goes away" failed every night while
+// the same scenarios passed locally. The wait that works is `until(...)` in `drive/kit.mjs`, for the request itself or for the
+// page to show the answer. The one `networkidle` that stays follows a typed date's Tab (it waits for a derived field the blur
+// causes, and the line after it waits a further 150 ms), which is not a click.
+
+function withoutComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+}
+
+/** Every `.click(...)` followed, with nothing but whitespace between, by a `waitForLoadState("networkidle")`. */
+export function quietAfterAClick(src: string): number[] {
+  const text = withoutComments(src);
+  const found: number[] = [];
+  const rx = /\.click\((?:[^()]|\([^()]*\))*\);\s*\n\s*(?:await\s+)?[\w.()]*waitForLoadState\(\s*["']networkidle["']\s*\)/g;
+  for (let m = rx.exec(text); m; m = rx.exec(text)) found.push(text.slice(0, m.index).split("\n").length);
+  return found;
+}
+
+test("no scenario waits for the network to be quiet straight after a click", () => {
+  const files = readdirSync(SCENARIO_DIR).filter((f) => f.endsWith(".mjs"));
+  assert.ok(files.length >= 10, `only ${files.length} scenario files found: the rule has stopped seeing them`);
+  const bad: string[] = [];
+  let clicks = 0;
+  for (const f of files) {
+    const src = read(join(SCENARIO_DIR, f));
+    clicks += (withoutComments(src).match(/\.click\(/g) ?? []).length;
+    for (const line of quietAfterAClick(src)) bad.push(`${f}:${line}`);
+  }
+  assert.ok(clicks >= 30, `only ${clicks} clicks found in the scenarios: the rule has stopped seeing them`);
+  assert.deepEqual(bad, [], `these wait for "quiet" right after a click, which returns at once and races the read the click starts; wait with until(): ${bad.join(", ")}`);
+});
+
+test("the click-then-quiet reader finds the shape that failed, and not a wait that follows something else", () => {
+  const racy = `await page.getByRole("button", { name: "Show more" }).click();\n      await page.waitForLoadState("networkidle");`;
+  assert.deepEqual(quietAfterAClick(racy), [1]);
+  assert.deepEqual(quietAfterAClick(`await box.press("Tab");\n  await box.page().waitForLoadState("networkidle");`), []);
+  assert.deepEqual(quietAfterAClick(`await page.goto(url, { waitUntil: "networkidle" });`), []);
+  assert.deepEqual(quietAfterAClick(`// await x.click();\n// await page.waitForLoadState("networkidle");`), []);
+});
+
+test("the shared wait lives in the kit once, and the day book does not keep a copy", () => {
+  assert.match(read(join(DRIVE_DIR, "kit.mjs")), /export async function until\(/);
+  assert.doesNotMatch(read(join(SCENARIO_DIR, "dayBook.mjs")), /async function until\(/, "dayBook keeps its own copy of until()");
+  for (const f of ["dayBook.mjs", "listWindows.mjs", "einvoiceRecords.mjs"]) {
+    assert.match(read(join(SCENARIO_DIR, f)), /import \{[^}]*\buntil\b[^}]*\} from "\.\.\/kit\.mjs"/, `${f} does not import until from the kit`);
+  }
+});
