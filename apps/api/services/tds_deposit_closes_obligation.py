@@ -109,7 +109,7 @@ def decide_month(*, today: date, due: date, month_end: date, what: str, month_na
       6. EVERY payment was made on or before the month's due date (Rule 30(2)). The register matches a challan to a deduction
          by order within the quarter and not by month (a challan carries a quarter and no month), so a challan paid after the
          due date may be the deposit for a later month and not for this one; closing on it would date the month late, or
-         close the wrong month, and an obligation once Filed cannot be reopened. A month covered only by a late challan is
+         close the wrong month, and a wrong closure is a wrong statement on the calendar until somebody notices and reopens it. A month covered only by a late challan is
          left for a person to mark, with the date it really went.
     A sentence is returned only when the recorded challan paid some of the month (`touched`): a month it did not touch that
     stays open is not its business. What the rule CANNOT settle, and says so in the design record: two challans that are both

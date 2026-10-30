@@ -8,6 +8,7 @@ from typing import Optional
 
 from core.exceptions import ValidationError, NotFoundError
 from core.ist_clock import ist_now, ist_today
+from core.observability import capture_soft_failure
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
 from core import db_provider
@@ -24,6 +25,37 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
     "Filed": ["Completed"],
     "Completed": [],
     "Overdue": ["In Progress", "Awaiting Documents"],
+}
+
+
+#: The obligations that can be reopened after they were recorded as filed (POST-A-267, item 3): the statutory DEPOSITS. A deposit
+#: closes no period and has no filing record behind it (a payment register entry at most, and that entry stays where it is), so
+#: taking the calendar line back contradicts nothing. Every other obligation that can reach Filed has a record behind it (a GST
+#: return's `filings` row is what locks the period, an ITR's acknowledgement, a TDS statement, an MCA filing), and reopening only
+#: the calendar line would leave the two disagreeing, so those are refused in words.
+REOPENABLE_OBLIGATION_TYPES = frozenset({
+    "ESI_DEPOSIT", "EPF_DEPOSIT", "TDS_SALARY_DEPOSIT", "TDS_NON_SALARY_DEPOSIT", "ADVANCE_TAX",
+})
+
+#: A reopened obligation goes back to the step before Filed, from which the ordinary mark-filed move records it again.
+REOPENED_STATUS = "Ready To File"
+
+MAX_REOPEN_REASON_CHARS = 500
+
+#: What a person is told after a reopen about the payment record that closed the obligation, which a reopen never touches. Per type,
+#: because the truth differs: some closers re-close from a record that still stands, and a TDS challan cannot yet be retracted.
+#: A type without an entry here cannot be added to `REOPENABLE_OBLIGATION_TYPES` (a test).
+REOPEN_AFTERMATH: dict[str, str] = {
+    "ESI_DEPOSIT": "A payment record that closed it, if there was one, is still there: retract it on the payroll hand-off if it was "
+                   "wrong. Nothing closes it again by itself.",
+    "EPF_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
+    "TDS_SALARY_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
+    "TDS_NON_SALARY_DEPOSIT": "The challan that closed it is still in the TDS register, and a recorded challan cannot be retracted "
+                              "from the product yet, so the next time a challan is recorded for that quarter the register can close "
+                              "this month again from it. Check which month the register matched that challan to before relying on "
+                              "the reopen.",
+    "ADVANCE_TAX": "The tax that closed it is still in the advance-tax register, and the next save of that register closes the "
+                   "instalment again if the tax recorded there still covers it, so correct the register entry first.",
 }
 
 
@@ -442,6 +474,68 @@ class ComplianceRecordService:
             # to see about whether the period closed.
             out["filing_lock"] = filing_lock
         return out
+
+    def reopen_record(self, record_id: str, reason: str, firm_id: Optional[str] = None,
+                      actor: Optional[dict] = None) -> dict:
+        """Take back a recorded filing on a DEPOSIT obligation (POST-A-267, item 3).
+
+        Filed went only to Completed and Completed nowhere, so a closure made from a wrong payment record, or by a person who
+        picked the wrong month, could never be corrected: the calendar kept saying a deposit was made that was not. This moves
+        a Filed or Completed deposit obligation back to `REOPENED_STATUS`, clears the filing date, the acknowledgement number
+        and the completion time, keeps the reason on the row's notes and in the audit log, and leaves everything else alone:
+        a payment register entry that closed it is still there, and the answer says so, because reopening the calendar line
+        does not retract a payment record and must not be mistaken for it. Refused in words for an obligation that is not
+        filed, for a reason that is empty, and for a type with a filing record behind it (`REOPENABLE_OBLIGATION_TYPES`)."""
+        record = self.get_record(record_id, firm_id=firm_id)
+        why = (reason or "").strip()
+        if not why:
+            raise ValidationError("reason", "Say why this obligation is being reopened. The reason is kept on the obligation "
+                                            "and in the audit log.")
+        if len(why) > MAX_REOPEN_REASON_CHARS:
+            raise ValidationError("reason", f"The reason is too long: keep it to {MAX_REOPEN_REASON_CHARS} characters.")
+        if record["status"] not in ("Filed", "Completed"):
+            raise ValidationError("status", f"This obligation is {record['status']}, not filed, so there is nothing to reopen.")
+        otype = str(record.get("obligation_type") or "")
+        if otype not in REOPENABLE_OBLIGATION_TYPES:
+            raise ValidationError(
+                "obligation_type",
+                f"{record.get('period_label') or otype or 'This obligation'} cannot be reopened from here. Only the statutory "
+                "deposits (PF, ESI, tax deducted at source and advance tax) can be: a return or a filing is kept as it was "
+                "recorded, because reopening only the calendar line would leave it saying something else.")
+        old = {"status": record["status"], "filed_date": record.get("filed_date"),
+               "acknowledgement_no": record.get("acknowledgement_no"), "completed_at": record.get("completed_at"),
+               "last_escalated_tier": record.get("last_escalated_tier"), "last_escalated_on": record.get("last_escalated_on")}
+        actor = actor or {}
+        stamp = ist_today().isoformat()
+        note = f"Reopened on {stamp} by {actor.get('email') or 'a team member'}: {why}"
+        notes = f"{record['notes']}\n{note}" if record.get("notes") else note
+        updated = compliance_records_repo.update_clearing(
+            record_id, firm_id or record["firm_id"], {"status": REOPENED_STATUS, "notes": notes},
+            clear=compliance_records_repo.CLEARABLE, only_if_status=("Filed", "Completed"))
+        if not updated:
+            # The row was read as filed a moment ago, so it is gone, or somebody changed it in between (reopened it, or recorded
+            # it as filed again with a new date). Writing over that would erase their change.
+            if not compliance_records_repo.find_by_id(record_id):
+                raise NotFoundError("ComplianceRecord", record_id)
+            raise ValidationError("status", "This obligation is no longer recorded as filed: somebody changed it just now. "
+                                            "Look at it again before reopening.")
+        try:
+            from services.audit_service import log_event
+            log_event(firm_id or record.get("firm_id") or "", "compliance_record", record["id"], "reopened",
+                      actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
+                      old_data=old, new_data={"status": REOPENED_STATUS, "reason": why},
+                      metadata={"compliance_type": record.get("compliance_type"), "obligation_type": otype})
+        except Exception as exc:  # audit is non-fatal and the note on the row is the durable copy, but a lost entry is reported
+            capture_soft_failure(exc, operation="compliance.reopen.audit", record_id=record_id)
+        try:
+            from services.timeline_service import timeline_service
+            timeline_service.log(record.get("client_id", ""), "compliance", "Compliance reopened",
+                                 f"{record.get('period_label', '')}: {old['status']} → {REOPENED_STATUS} ({why})", "warning",
+                                 firm_id=firm_id or record.get("firm_id", ""), entity_type="compliance_record",
+                                 entity_id=record["id"])
+        except Exception as exc:
+            capture_soft_failure(exc, operation="compliance.reopen.timeline", record_id=record_id)
+        return {**updated, "risk_score": _compute_risk_score(updated)}
 
     # Deterministic path from any open status to Filed, skipping the
     # documents-waiting branch (not applicable when a CA is asserting the

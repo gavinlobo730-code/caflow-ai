@@ -128,6 +128,39 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         result = _get_db().table("compliance_records").update(payload).eq("id", id).execute()
         return result.data[0] if result.data else None
 
+    #: The columns `update_clearing` may blank. `update` drops a None on purpose (a PATCH that omits a field must not wipe it), so
+    #: taking a filing back needs its own way to write a NULL, and it is limited to the three columns a filing sets and the two
+    #: that remember the last escalation (a reopened obligation that is overdue again must not wait out the old notice's week).
+    CLEARABLE = ("filed_date", "acknowledgement_no", "completed_at", "last_escalated_tier", "last_escalated_on")
+
+    def update_clearing(self, id: str, firm_id: str, data: dict, clear: tuple,
+                        only_if_status: Optional[tuple] = None) -> Optional[dict]:
+        """`update` plus an explicit NULL for each column named in `clear`, which must be among `CLEARABLE`. It names the firm, so
+        the write is confined to that firm's row whatever the caller checked before (the rows of two firms never share an id, and
+        this does not rely on that). With `only_if_status` it acts only on a row still in one of those statuses, the state the
+        caller saw: a row somebody changed in between is not written, and None comes back."""
+        bad = [c for c in clear if c not in self.CLEARABLE]
+        if bad:
+            raise ValueError(f"update_clearing may only clear {self.CLEARABLE}, not {bad}")
+        if not firm_id:
+            raise ValueError("update_clearing needs the firm")
+        if _USE_MOCK:
+            record = self.find_by_id(id)
+            if not record or str(record.get("firm_id")) != str(firm_id):
+                return None
+            if only_if_status is not None and record.get("status") not in only_if_status:
+                return None
+            record.update({**data, **{c: None for c in clear}, "updated_at": self.now_iso()})
+            return record
+        payload = {k: v for k, v in data.items() if v is not None}
+        payload.update({c: None for c in clear})
+        payload["updated_at"] = self.now_iso()
+        query = _get_db().table("compliance_records").update(payload).eq("id", id).eq("firm_id", firm_id)
+        if only_if_status is not None:
+            query = query.in_("status", list(only_if_status))
+        result = query.execute()
+        return result.data[0] if result.data else None
+
     def soft_delete(self, id: str) -> bool:
         """Mark one obligation deleted without erasing it — the row the audit
         trail and any reconciliation gap still name stays readable by id, it

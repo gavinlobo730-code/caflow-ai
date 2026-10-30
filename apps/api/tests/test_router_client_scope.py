@@ -1556,6 +1556,10 @@ EXEMPT: dict[str, str] = {
         "as /due-dates/calculate above, and exempt for the same reason. It "
         "exists because the two payroll calendars in apps/web were computing "
         "these in the browser and getting them wrong (PAY-19).",
+    "/api/compliance/reopenable-types":
+        "no parameters at all — the fixed list of obligation types the reopen door accepts and the limit on a reason, a property "
+        "of the SOFTWARE, identical for every firm and client. It names no assessee and reads no row; the door it describes "
+        "(POST /obligations/{id}/reopen) resolves the row and asserts its client.",
     "/api/compliance/tax-audit-due-dates":
         "a financial-year label and nothing else — IT Act §44AB Explanation "
         "(ii) arithmetic (the specified date is one month before the §139(1) "

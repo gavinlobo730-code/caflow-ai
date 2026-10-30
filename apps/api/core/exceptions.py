@@ -23,6 +23,8 @@ class ValidationError(CAflowError):
     def __init__(self, field: str, message: str):
         super().__init__(f"Validation error on {field}: {message}")
         self.field = field
+        #: The sentence alone, for a route that shows it to a person as written.
+        self.message = message
 
 
 def postgres_message(exc: Exception) -> str:

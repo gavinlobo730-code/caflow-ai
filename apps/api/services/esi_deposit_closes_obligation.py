@@ -46,8 +46,9 @@ What it deliberately does not do:
       * it does not read payroll on behalf of a caller the Team screen has blocked from READING payroll: the route asks only
         payroll:write, the closer reads the run and its slips with the privileged client, and the sentence names the computed
         figures, so without payroll:read the answer says it was not checked and names no figure (`may_read_payroll`);
-      * a retracted remittance does not reopen an obligation it closed (a Filed obligation can only go to Completed), so the
-        retraction answers a sentence saying the calendar still reads filed (`note_after_retraction`).
+      * a retracted remittance does not reopen an obligation it closed (reopening is its own door, `POST /api/compliance/obligations/{id}/reopen`,
+        with a reason), so the retraction answers a sentence saying the calendar still reads filed and who can reopen it
+        (`note_after_retraction`).
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a deposit the CA has already made at the portal. It transmits
     nothing.
 """
@@ -219,9 +220,9 @@ def close_for_recorded_remittance(
 
 def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict) -> Optional[str]:
     """The sentence to answer a retraction with when the remittance retracted was an ESI one whose wage month's obligation reads
-    Filed on the calendar, or None. A Filed obligation can only go to Completed, so the retraction cannot reopen it, and a person
+    Filed on the calendar, or None. A retraction does not reopen the obligation (reopening is its own door, with a reason), and a person
     who retracts a wrong entry must not be left believing the calendar was corrected too. It says what the calendar holds and
-    that nothing in the product can reopen it (POST-A-267), and does not guess whether this remittance is what closed it."""
+    that a Manager or Partner can reopen it (POST-A-267, item 3), and does not guess whether this remittance is what closed it."""
     if remittance.get("scheme") != "esic" or not firm_id or not client_id:
         return None
     wage_month = str(remittance.get("wage_month") or "")
@@ -237,5 +238,6 @@ def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict)
     filed_on = str(record.get("filed_date") or "")[:10]
     return (f"The compliance calendar still shows the {_what(wage_month)} as filed"
             + (f" on {filed_on}" if filed_on else "")
-            + ". This product cannot reopen a filed obligation yet, so the calendar keeps saying it was filed even though the entry "
-              "is gone; check the payment against the challan before relying on it.")
+            + ". Retracting the entry does not reopen it, so the calendar keeps saying it was filed even though the entry is gone. "
+              "If the entry was wrong, a Manager or Partner can reopen the obligation, with a reason, from Deadlines or the "
+              "client's Compliance tab; check the payment against the challan before relying on it.")

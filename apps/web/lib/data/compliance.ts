@@ -199,6 +199,37 @@ export async function seedComplianceCalendar(clientId: string): Promise<void> {
   await api.complianceOps.generate({ client_id: clientId });
 }
 
+/** What the server says it will reopen. A rule that could not be read is "none": the screen then offers no Reopen, which is the
+ *  cautious answer. The read is tried three times, because the first request after the API has been asleep can time out and a
+ *  Manager would otherwise see no Reopen button on a screen that was open all day with nothing to say why. */
+export interface ReopenRule { types: string[]; maxReasonChars: number }
+
+const REOPEN_RULE_ATTEMPTS = 3;
+const REOPEN_RULE_PAUSE_MS = 2500;
+
+export async function getReopenRule(): Promise<ReopenRule> {
+  for (let attempt = 1; attempt <= REOPEN_RULE_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await api.complianceOps.reopenableTypes();
+      const d = objectOrNull<Record<string, unknown>>(res?.data) ?? {};
+      const max = typeof d.max_reason_chars === "number" ? d.max_reason_chars : 500;
+      return { types: arrayOrEmpty<string>(d.obligation_types).filter((t) => typeof t === "string"), maxReasonChars: max };
+    } catch {
+      if (attempt < REOPEN_RULE_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, REOPEN_RULE_PAUSE_MS));
+    }
+  }
+  return { types: [], maxReasonChars: 500 };
+}
+
+/** Takes back a recorded filing on a statutory deposit (POST-A-267, item 3). Returns the server's sentence, which says what the
+ *  reopen did not touch: the payment record that closed the obligation is still there, and for some deposits the next save of that
+ *  register can close it again. A refusal is thrown as an Error carrying the server's sentence: the caller shows it as written. */
+export async function reopenObligation(id: string, reason: string): Promise<string> {
+  const res = await api.complianceOps.reopen(id, reason);
+  if (!res?.success) throw new Error(res?.error ?? "The obligation could not be reopened.");
+  return typeof res.data?.message === "string" ? res.data.message : "Reopened.";
+}
+
 /** Marks an obligation filed, walking the canonical workflow's remaining
  * steps server-side. Optionally records an ARN/acknowledgement number.
  *
