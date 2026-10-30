@@ -14,9 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
+from core import db_provider
 from models.common import api_response
 from services.timeline_service import timeline_service
 from models.fy import FYLabel, OptionalFYLabel
+from services import named_row_ownership
 
 router = APIRouter(prefix="/api/form-26as", tags=["form_26as"])
 _logger = logging.getLogger("caflow.form26as.router")
@@ -63,6 +65,10 @@ def create_upload(
 ):
     """Create 26AS upload record."""
     assert_client_access(current_user, req.client_id)
+    # The stored file the upload names has to be this client's (POST-A-353): the foreign key on the column is not client-aware, so the
+    # id of a sibling client's file was stored as this upload's. Asked before the try, whose handler would turn the 404 into a 500.
+    named_row_ownership.client_document_is_the_clients(
+        db_provider.request_db_or_none(), current_user["firm_id"], req.client_id, req.document_id)
     from domain.income_tax.form26as_service import create_upload
     try:
         upload = create_upload(
