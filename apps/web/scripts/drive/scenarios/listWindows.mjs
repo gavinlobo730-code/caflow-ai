@@ -8,6 +8,7 @@
  * library's Archived tab asks the server for retired codes rather than filtering a window of everything.
  */
 import assert from "node:assert/strict";
+import { until } from "../kit.mjs";
 import { ok } from "../stub.mjs";
 
 export const group = "windows";
@@ -57,9 +58,10 @@ export const scenarios = [
       assert.match(body, /Showing the latest 3 login events\. More exist that are not shown here\./);
       assert.match(body, /3\+ events/, "the count does not say it is a lower bound");
       await page.getByRole("button", { name: "Show more" }).click();
-      await page.waitForLoadState("networkidle");
+      await until(() => asked.length >= 2, "the second read");
       assert.equal(asked.length, 2, `Show more should read once more, saw ${asked.length} reads`);
       assert.equal(asked[1].limit, "300", "the next window is one step larger");
+      await page.getByText("More exist that are not shown here").waitFor({ state: "detached" });
       body = await page.locator("body").innerText();
       assert.doesNotMatch(body, /More exist that are not shown here/, "the server said nothing more exists");
       assert.match(body, /3 events/);

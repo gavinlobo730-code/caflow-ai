@@ -83,6 +83,20 @@ export async function pick(page, trigger, optionText) {
   await page.locator("[role=listbox] [role=option]", { hasText: optionText }).first().click();
 }
 
+/** Wait for a fact a click causes, by polling it. `waitForLoadState("networkidle")` resolves AT ONCE for a document that has
+ *  already been idle, so it cannot wait for a read a click starts afterwards: on a fast machine the read has landed by the time the
+ *  next line looks, on a slower runner it has not, and a scenario written that way passes in one place and fails in the other
+ *  (POST-A-262's and POST-A-263's window scenarios did exactly that, and the nightly walk was red from the night they merged).
+ *  A scenario waits for the request itself, or for the page to show the answer, never for "quiet". 10 seconds, polled every 50 ms. */
+export async function until(condition, what, timeoutMs = 10_000) {
+  const stop = Date.now() + timeoutMs;
+  while (Date.now() < stop) {
+    if (await condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.fail(`timed out waiting for ${what}`);
+}
+
 /** Assert `re` was written exactly `n` times. The message names what WAS written, because "expected 1, got 2"
  *  does not say which two. */
 export async function expectWrites(stub, re, n, what, method) {

@@ -152,16 +152,6 @@
       "nodes": 1
     },
     {
-      "route": "/payroll/attendance",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/payroll/attendance",
-      "rule": "select-name",
-      "nodes": 2
-    },
-    {
       "route": "/payroll/declarations",
       "rule": "select-name",
       "nodes": 1

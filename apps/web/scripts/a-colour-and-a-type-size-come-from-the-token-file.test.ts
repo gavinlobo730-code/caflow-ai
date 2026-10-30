@@ -1107,3 +1107,24 @@ test("the four rules above are not vacuous", () => {
       "the mixed-vocabulary test is inert");
   }
 });
+
+// ── THE SHARED ERROR STATE (found by the nightly walk, 18–30-10-2026) ─────────────────────────────────────────────
+// `ErrorState` is what every screen shows when a read fails. It painted its message `text-red-600` (#DC2626) on its own
+// `bg-state-problem-surface` (#FEF2F2): 4.41:1, below WCAG 1.4.3's 4.5:1, so axe called /documents a NEW serious
+// colour-contrast failure on the night the walk met it, and the walk has been red since. The `role="alert"` rule above did
+// not see it because it reads only `role="alert"` and the three lines under it, and the message is nine lines down; widening
+// the window to twelve lines flags twenty-four places, most of them legitimate (red on white, a button beside a band), so the
+// rule stays a judgement and this component, the one that renders on every failed read, is pinned by name.
+test("the shared error state words its failure in the problem token on the problem surface, never a raw status colour", () => {
+  const states = BODIES.find((b) => b.file.endsWith("components/ui/states.tsx"));
+  assert.ok(states, "components/ui/states.tsx is no longer scanned");
+  const code = states.body.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const start = code.indexOf("export function ErrorState");
+  assert.ok(start >= 0, "ErrorState moved");
+  const next = code.indexOf("\nexport ", start + 10);
+  const fn = code.slice(start, next < 0 ? undefined : next);
+  assert.match(fn, /bg-state-problem-surface/, "ErrorState is no longer painted on the problem surface");
+  const raw = fn.match(/\b(text|bg|border)-(red|amber|green|emerald|rose)-\d{2,3}\b/g) ?? [];
+  assert.deepEqual(raw, [], "ErrorState uses a raw status colour; text on state.problem-surface is text-state-problem (5.3:1 and up)");
+  assert.ok((fn.match(/text-state-problem/g) ?? []).length >= 3, "ErrorState's icon, title and message are not all in the problem token");
+});

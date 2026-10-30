@@ -59,8 +59,8 @@ export function ErrorState({
       )}
     >
       <AlertCircle size={28} className="mb-3 text-state-problem" />
-      <p className="text-sm font-semibold text-red-800">{title}</p>
-      {message && <p className="mt-1 max-w-md text-xs text-red-600">{message}</p>}
+      <p className="text-sm font-semibold text-state-problem">{title}</p>
+      {message && <p className="mt-1 max-w-md text-xs text-state-problem">{message}</p>}
       {onRetry && (
         <button
           onClick={onRetry}
