@@ -187,7 +187,18 @@ function count(re: RegExp): { total: number; byFile: Map<string, number> } {
 // "ready". Mapped by ROLE — the accent to `brand`, its hover step to
 // `brand-dark`, a white chip under the cursor to `ps-hover`, which is what
 // that token means — never by nearest value.
-const HEX_BUDGET = 44;
+// 44 → 0 on 30-10-2026 (POST-A-145). The last 44 sat in 16 files and were mapped BY ROLE, never by nearest value: the powder-blue
+// `#EFF6FF` that is a highlighted option, a role chip or a quiet panel is `brand-surface` (8 sites, and the SearchModal's darker
+// `#DBEAFE` highlight, which is the same role as the combobox's); three different navies that were the hover step of a `bg-brand`
+// button are `brand-dark`, and the one that was a dark menu panel on the navy rails is `brand`; the amber and red INK of a note is
+// `state-attention` / `state-problem` (`#92400E`, `#78350F` and `#991B1B` were each a darker private shade of them, all still above
+// 4.5:1 on the surfaces they sit on); the pale green, red and amber fills and borders of the executive dashboard's tiles and rows are the
+// `state-*-surface` / `-border` steps; the near-white panel fills of the GSTR-3B page are `ps-bg` / `ps-surface`; and the leftover
+// indigo (the bulk-selection bar of the HSN library, a code chip, a note in the invoice editor) is the brand selection affordance the
+// DataTable already uses (`border-brand-light bg-brand-surface`, text `brand-dark`). Two honest costs: the executive dashboard's two
+// stat tiles are now the lighter `-surface` fills where they were the `-hover` steps, and the SearchModal's highlight is lighter.
+// THE BUDGET IS NOW ZERO, so a new `bg-[#...]` fails here and is not a number to raise.
+const HEX_BUDGET = 0;
 // ── The named-palette budget ────────────────────────────────────────────────
 //
 // 4,373 on 24-09-2026, measured on `e7b5e9ed`. It was 5,993 before G0 and has

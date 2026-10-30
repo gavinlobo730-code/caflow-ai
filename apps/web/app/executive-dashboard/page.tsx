@@ -375,11 +375,11 @@ export default function ExecutiveDashboardPage() {
               </p>
             )}
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-[#FEF3C7] rounded-lg p-2.5 text-center">
+              <div className="bg-state-attention-surface rounded-lg p-2.5 text-center">
                 <p className="text-lg font-bold text-state-attention">{health ? health.pending_approvals : NO_DATA}</p>
                 <p className="text-3xs text-amber-600">Pending Approvals</p>
               </div>
-              <div className="bg-[#FEE2E2] rounded-lg p-2.5 text-center">
+              <div className="bg-state-problem-surface rounded-lg p-2.5 text-center">
                 <p className="text-lg font-bold text-state-problem">{health ? health.critical_actions : NO_DATA}</p>
                 <p className="text-3xs text-red-600">Critical Actions</p>
               </div>
@@ -468,7 +468,7 @@ export default function ExecutiveDashboardPage() {
             ) : (
               <div className="space-y-3">
                 {churn_signals.map((sig: { client_name: string; signal: string; risk: string }, i: number) => (
-                  <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#FFF7F7] border border-[#FEE2E2]">
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-state-problem-surface border border-state-problem-border">
                     <AlertTriangle size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-sm font-medium text-brand">{sig.client_name}</p>
@@ -499,7 +499,7 @@ export default function ExecutiveDashboardPage() {
             ) : (
               <div className="space-y-3">
                 {growth_opportunities.map((opp: { type: string; description: string; count?: number; basis?: string }, i: number) => (
-                  <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[#F0FDF4] border border-[#BBF7D0]">
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-state-ready-surface border border-state-ready-border">
                     <Star size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
                       <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">{opp.type}</p>

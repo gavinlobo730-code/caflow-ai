@@ -169,7 +169,7 @@ export default function DeclarationsPage() {
       {outstanding > 0 && (
         <div className="flex gap-2.5 text-sm bg-state-attention-surface border border-state-attention-border rounded-lg p-3.5">
           <AlertCircle className="w-4 h-4 text-state-attention shrink-0 mt-0.5" />
-          <p className="text-[#78350F]">
+          <p className="text-state-attention">
             <strong>{outstanding}</strong> declaration{outstanding === 1 ? " has" : "s have"} no
             verified proofs. Declared figures stop reducing tax from January, because §192(1)
             makes the employer answerable for a correct deduction — an unproved claim left in
@@ -285,7 +285,7 @@ function DeclarationCard({ row, employeeName, onVerify }: {
         {row.problems.length > 0 && (
           <div className="border-t border-ps-border pt-3 space-y-2">
             {row.problems.map((n, idx) => (
-              <div key={idx} className="flex gap-2 text-xs text-[#991B1B]">
+              <div key={idx} className="flex gap-2 text-xs text-state-problem">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>{n}</span>
               </div>
@@ -560,7 +560,7 @@ function ProofRow({ label, declared, value, onChange }: {
           onChange={(e) => onChange(e.target.value)}
           aria-label={`${label} — amount proved`}
           className={`w-full border rounded-lg px-3 py-2 text-sm text-right tabular-nums ${
-            over ? "border-[#DC2626] bg-state-problem-surface" : "border-ps-border"}`}
+            over ? "border-state-problem bg-state-problem-surface" : "border-ps-border"}`}
         />
         {over && <p className="text-2xs text-state-problem mt-1">above what was declared</p>}
       </div>

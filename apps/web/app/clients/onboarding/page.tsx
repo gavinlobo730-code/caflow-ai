@@ -389,7 +389,7 @@ export default function OnboardingChecklistPage() {
               <Button variant="plain" size="none"
                 onClick={handleGoLive}
                 disabled={goLiveLoading || !allMandatoryDone}
-                className="flex items-center gap-2 rounded-lg bg-brand text-white px-5 py-2.5 text-sm font-semibold hover:bg-[#0f1a3d] disabled:opacity-40 transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-brand text-white px-5 py-2.5 text-sm font-semibold hover:bg-brand-dark disabled:opacity-40 transition-colors"
               >
                 {goLiveLoading ? (
                   <Loader2 size={15} className="animate-spin" />

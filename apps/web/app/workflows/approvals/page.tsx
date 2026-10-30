@@ -201,7 +201,7 @@ export default function ApprovalsPage() {
                             <AlertTriangle size={10} /> Overdue
                           </span>
                         )}
-                        <span className="text-xs bg-[#EFF6FF] text-brand px-2 py-0.5 rounded-full font-medium">
+                        <span className="text-xs bg-brand-surface text-brand px-2 py-0.5 rounded-full font-medium">
                           {approval.approver_role}
                         </span>
                         {approval.template_name && (

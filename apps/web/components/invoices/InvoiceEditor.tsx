@@ -1284,7 +1284,7 @@ export function InvoiceEditor({
               before issuing — these are the invoices that get filed in the wrong
               GSTR-1 table when nobody looks. Presentational only. */}
           {!isLocked && isNonStandard({ supplyType, invoiceType, isReverseCharge }) && (
-            <p className="mt-3 text-2xs text-[#92400E] bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
+            <p className="mt-3 text-2xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2">
               This invoice is not an ordinary domestic taxable sale, so it will be reported
               in a different part of GSTR-1. Check the classification before issuing —
               it cannot be changed afterwards without a credit note.
@@ -1316,7 +1316,7 @@ export function InvoiceEditor({
             </div>
           )}
           {mode.currencyIsFrozen && isForeign && (
-            <div className="mt-3 bg-[#EEF2FF] border border-[#C7D2FE] rounded-lg px-3 py-2 text-2xs text-[#4338CA]">
+            <div className="mt-3 bg-brand-surface border border-brand-light rounded-lg px-3 py-2 text-2xs text-brand">
               Foreign-currency invoice ({currency}, rate {exchangeRate || "—"}) — currency and rate are frozen after creation.
             </div>
           )}

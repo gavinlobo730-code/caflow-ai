@@ -1579,7 +1579,7 @@ export default function TaxComputationPage() {
                         <p key={i} className="text-3xs text-ps-label">{w}</p>
                       ))}
                       {presResult.reasons.map((r, i) => (
-                        <p key={i} className="text-3xs text-[#92400E]">{r}</p>
+                        <p key={i} className="text-3xs text-state-attention">{r}</p>
                       ))}
                     </div>
                   )}
@@ -2564,7 +2564,7 @@ export default function TaxComputationPage() {
                 {lossNotModelled.length > 0 && (
                   <ul className="space-y-0.5">
                     {lossNotModelled.map(n => (
-                      <li key={n.what} className="text-3xs text-[#92400E] bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
+                      <li key={n.what} className="text-3xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
                         <span className="font-medium">{n.what}</span> — {n.why}
                       </li>
                     ))}

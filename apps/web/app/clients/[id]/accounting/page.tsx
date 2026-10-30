@@ -2024,7 +2024,7 @@ interface FXAuditData {
 }
 
 function CcyBadge({ code }: { code: string }) {
-  return <span className="inline-flex items-center rounded-full bg-[#EEF2FF] px-2 py-0.5 text-3xs font-semibold text-[#4338CA]">{code}</span>;
+  return <span className="inline-flex items-center rounded-full bg-brand-surface px-2 py-0.5 text-3xs font-semibold text-brand">{code}</span>;
 }
 
 /** Signed base amount with gain(green)/loss(red) colour — a realized/unrealized delta. */
