@@ -46,17 +46,30 @@ def read_items(path: Path):
             yield line, ITEM.match(line)
 
 
+#: Marks a line lettered A (Claude alone) that cannot be built until the owner answers a question that is theirs to supply
+#: (a statutory reading, a document). It is the header token `UNSURE` and `live session` are: the question is written in
+#: owner-list.md and the line stays lettered A, because ids are never renumbered.
+WAITS_ON_OWNER = " · waits on owner"
+
+
 def render_block(ledger: Path = LEDGER) -> str:
     rows, total, pre, high, unsure = [], 0, 0, 0, 0
+    by_letter = {"A": 0, "B": 0, "C": 0}
+    waiting_a = 0
     for name, desc in SECTIONS:
         n = 0
+        letter = re.search(r"-([ABC])-", name)[1]
         for line, m in read_items(ledger / name):
             n += 1
             if m and m["prio"] == "high" and name.startswith("post-"):
                 high += 1
-            if " · UNSURE" in line.split(" — **", 1)[0]:
+            head = line.split(" — **", 1)[0]
+            if " · UNSURE" in head:
                 unsure += 1
+            if letter == "A" and WAITS_ON_OWNER in head:
+                waiting_a += 1
         total += n
+        by_letter[letter] += n
         pre += n if name.startswith("pre-") else 0
         rows.append(f"| [{name}]({name}) | {n} | {desc} |")
     parked = sum(1 for _ in read_items(ledger / PARKED[0]))
@@ -66,6 +79,11 @@ def render_block(ledger: Path = LEDGER) -> str:
     lines = [START, "", "| file | items | what it holds |", "|---|---|---|", *rows, "",
              f"**{total} open items** ({pre} before the demo, {total - pre} after); {high} after-demo items are `high` priority; {unsure} are UNSURE. "
              f"A further **{parked} items are parked** (not counted above).",
+             "",
+             f"**Who must act.** {by_letter['A']} items are Claude's alone to build, but {waiting_a} of them are marked `waits on owner` "
+             f"(a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so "
+             f"{by_letter['A'] - waiting_a} can be built now. {by_letter['B']} need the owner to decide first and {by_letter['C']} only the owner "
+             f"or someone outside this container can do. In all **{by_letter['B'] + by_letter['C'] + waiting_a} of the {total} wait on the owner.**",
              "", END]
     return "\n".join(lines)
 

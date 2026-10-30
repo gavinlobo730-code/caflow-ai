@@ -1,8 +1,10 @@
-# The owner's list — one place (refreshed 15 October 2026, IST; S14 confirmed again and S15 added on 27 October 2026; S16 to S20 added on 29 October 2026)
+# The owner's list — one place (refreshed 15 October 2026, IST; S14 confirmed again and S15 added on 27 October 2026; S16 to S20 added on 29 October 2026; the count of items waiting on you added on 30 October 2026)
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
 **At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (20, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
+
+**How many ledger items wait on you:** the ledger README's "Who must act" line counts them and is generated from the ledger itself. It is every item lettered B (you decide first) or C (only you or someone outside can do), plus the items lettered A that carry the `waits on owner` marker. Those marked items are the ones whose question is in section 4 below: S14 (POST-A-343), S15 (POST-A-348), S16 (POST-A-055), S17 (POST-A-059 and POST-A-064), S18 (POST-A-067), S19 (POST-A-114) and S20 (POST-A-063). Answering a question removes the marker and Claude builds the item.
 
 ## 1. The single most useful thing: let me read the primary texts
 
@@ -60,6 +62,7 @@ None of these is decided by me. Prices are what the repository's own notes say, 
 | 7 | Documents only you can supply: a real Tally export for the voucher import; a real e-invoice response file for the bulk import; Protean's current specification for the TDS statement file; the Income-tax Act 2025 return forms and schemas once published (the annual hand-off). | They come from outside this environment. | POST-B-175, POST-B-298, POST-B-117, POST-B-132, POST-B-133, POST-B-119 |
 | 8 | GitHub settings: a dedicated least-privilege login for the automated smoke test (and its secret); optionally you as required approver for production migrations (see section 6). | Settings and secrets in your GitHub account. | POST-B-022, POST-B-063 |
 | 9 | Optional: send the drafted purpose-code enquiry to Sahamati/ReBIT. It is free and is the primary source for the bank-feed question in section 4. | An outward message in your name. | POST-B-243, POST-B-245 |
+| 10 | One of two things for the spreadsheet reader that imports user files: allow this environment to reach `cdn.sheetjs.com` (so the fixed build of the reader can be fetched and checked), or tell me to move the importer to another library. The old reader carries two known advisories (prototype pollution and a slow-pattern attack) and the fix is only published there. Separate from this, moving the web app from Next 14 to 15 is a major upgrade I can do alone, and overlaps the Dependabot Next 16 question. | It is your network setting, or a choice of library for a screen that reads your clients' uploads. | POST-A-174 |
 
 ## 4. Statutory and legal points I will not assume
 
@@ -112,7 +115,7 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Needed:** The notifications and sections named; the Finance Acts; the Income-tax Act 2025 and its Rules; TRACES documentation. Appendix I to the Income-tax Rules as notified for the year, and the section 32 provisos.
 - **Who can supply it:** Claude once the government sites are reachable (section 1) for texts; a practising CA for the readings in (b), (c) and (f).
 - **Stays unbuilt meanwhile:** The e-verification clock and queue; Form 16 delivery; any deduction or limit calculation (the write-off and partnership builds contain none); any transfer-pricing flag or count; the cash-basis warning; the starter workflows are not installed until a practising CA has read them. The section 32 block register has no rates seeded, so the book-to-tax bridge of a client with fixed assets stays incomplete and the demo's companies, LLP and firm have no computed return.
-- **Ledger:** POST-B-120, D14, POST-B-147, POST-B-172, POST-B-173, POST-B-187, POST-B-126, CKPT-9, POST-C-204, POST-C-205
+- **Ledger:** POST-B-120, D14, POST-B-147, POST-B-172, POST-B-173, POST-B-187, CKPT-9, POST-C-204, POST-C-205 (POST-B-126, the foreign-company rate, was decided on 14 October 2026 and is no longer in the ledger; see `decisions-taken-2026-10-14.md`)
 
 ### S7. TDS statement file and payment codes
 

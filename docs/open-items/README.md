@@ -7,6 +7,7 @@
 1. Read this file, then **only the section file for the work in hand**. The section files are large (about 900 KB in all) and are meant to be searched, not read end to end: `grep -n "POST-B-" docs/open-items/post-demo-B-ours.md`, or grep a theme name, a roadmap id such as `rm/ops-01`, a finding id such as `TDS-16`, or a word.
 2. Before building an item, check it is still true: open the code it names. Every line was checked against `main` by its extractor on 2 Oct 2026, and **on 8 Oct 2026 sixty-four of the 788 were checked a second time by reading the code and the CI history yourself: all 39 before-demo items, all 17 high-priority after-demo items and 8 other after-demo items** (corrections from that pass are already in the lines: PRE-A-004 and POST-B-193; the others it corrected have since closed). The other 724 have not been re-checked since 2 Oct, so an item older than a few weeks is suspect.
 3. Items marked **UNSURE** depend on a dashboard or production state the repository cannot show (Render, Supabase, Resend, Sentry, GitHub settings). Reading that state is part of the item.
+   Items marked **waits on owner** are lettered A but cannot be built until the owner supplies a statutory reading or a document; the question is written in `owner-list.md` section 4 and the line stays lettered A because ids are never renumbered. Remove the marker in the commit that builds the item, and the counts block above says how many carry it.
 4. When you close an item, **delete its line in the same commit** as the work, say which ID in the commit message, and remove the ID from the lists in this README and in `decisions-and-strategy.md` (the test fails on a dangling ID). If closing it creates follow-up work, add a new line at the next free number. Never renumber: IDs are quoted in commits and conversations. If you find something new that is open, add it to the right file.
 5. `apps/api/tests/test_the_open_items_ledger_is_well_formed.py` enforces the format (unique IDs, one line per item, an allowed theme and priority on every line, no dangling ID in the lists below, counts true). After closing or adding an item run `python3 scripts/open_items_counts.py` to refresh the counts block.
 6. `coming-soon.md` is the register of everything the product tells a person is not there yet (planned, coming, not built, not switched on): one `COMING-NNN` row per statement with where it appears, its exact words, the gate, who acts and the ledger id. It is not a ledger and its rows are not counted. Add, edit or delete its row in the same commit as the wording, the feature or the switch; `apps/api/tests/test_the_coming_soon_register_is_well_formed.py` holds every row to the code and to this ledger.
@@ -26,7 +27,7 @@
 - **B — Ours** (`…-B-…`): the owner decides (or approves a spend) first and Claude builds afterwards; or it needs a live session together (rehearsals, single-use email links). The decision question, the options and Claude's recommendation are in the item.
 - **C — Yours alone** (`…-C-…`): only the owner or someone outside this container can do it: dashboards, accounts, secrets, payments, registrations, statutory documents a person has to fetch or read (this container's egress to `.gov.in` is blocked), per-client facts.
 
-Line format: `ID · theme · priority · effort [· UNSURE] [· live session] — **Title.** Detail. _When: reason._ — _Sources:_ where it came from — _Refs:_ ids`. Priority is `high` (wrong number, false claim, security or legal exposure, data loss, or gates many items), `normal` or `low`. Effort is Claude's estimate: hours, days, weeks, months.
+Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [· waits on owner] — **Title.** Detail. _When: reason._ — _Sources:_ where it came from — _Refs:_ ids`. Priority is `high` (wrong number, false claim, security or legal exposure, data loss, or gates many items), `normal` or `low`. Effort is Claude's estimate: hours, days, weeks, months.
 
 **Id namespaces — they collide, so read carefully.** Lowercase `area-NN` ids (`gst-18`, `ops-08`) belong to the 30 Sep 2026 roadmap and are written `rm/gst-18` here. UPPERCASE ids (`GST-18`, `TDS-16`, `PAY-27`) belong to the earlier September audit and its status file. `D<n>` are decisions in `docs/plan/THE-PLAN.md`. `COMING-NNN` are rows of the coming-soon register, a fifth namespace; a row cites the ledger ids that hold its work. The same number means different things in the two audit namespaces: `rm/gst-18` is not `GST-18`.
 
@@ -39,7 +40,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 109 | after the demo: Claude can do alone |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 110 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 167 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 197 | after the demo: only the owner or outsiders can do |
 | [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
@@ -48,7 +49,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] �
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**496 open items** (23 before the demo, 473 after); 12 after-demo items are `high` priority; 29 are UNSURE. A further **150 items are parked** (not counted above).
+**497 open items** (23 before the demo, 474 after); 12 after-demo items are `high` priority; 29 are UNSURE. A further **150 items are parked** (not counted above).
+
+**Who must act.** 113 items are Claude's alone to build, but 8 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 105 can be built now. 181 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **392 of the 497 wait on the owner.**
 
 <!-- counts:end -->
 
