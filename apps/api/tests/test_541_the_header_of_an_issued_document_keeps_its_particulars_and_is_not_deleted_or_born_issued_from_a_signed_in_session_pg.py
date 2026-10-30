@@ -746,7 +746,9 @@ def test_no_trigger_function_writes_the_six_tables_and_the_functions_that_do_are
     triggers = _rows(world.dsn, "SELECT tgrelid::regclass::text, tgname FROM pg_trigger WHERE NOT tgisinternal AND tgrelid::regclass::text = ANY(ARRAY["
                                 + ", ".join(f"'{t}'" for t in TABLES) + "]) ORDER BY 1, 2")
     # the audit trigger is AFTER ROW and writes audit_log only; migration 544's trigger reads OLD and NEW and writes nothing
-    others = [(t, n) for t, n in triggers if n not in (TRIGGER, "trg_audit_capture", "a_documents_settlement_is_written_by_the_api_only")]
+    # and migration 565's six client-in-firm / customer-in-client / vendor-in-client triggers, which read `clients`, `customers` and `vendors` and write nothing
+    others = [(t, n) for t, n in triggers if n not in (TRIGGER, "trg_audit_capture", "a_documents_settlement_is_written_by_the_api_only")
+              and not re.fullmatch(r"row_(client_in_firm|customer_in_client|vendor_in_client)_(ins|upd)", n)]
     assert others == [], others
 
 

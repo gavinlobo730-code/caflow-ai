@@ -36,6 +36,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -95,7 +96,8 @@ def _psql(dsn: str, sql: str, tuples: bool = False) -> subprocess.CompletedProce
 
 
 def _seed_sql(movements: list) -> str:
-    out = [f"""
+        # Plants a row migration 565 refuses (a row naming another firm's client): LEGACY_ROWS_ALLOWED switches its six triggers off in this throwaway database; see tests/_cross_tenant_rows.py.
+    out = [LEGACY_ROWS_ALLOWED + f"""
 INSERT INTO firms (id, name, email) VALUES
   ('{FIRM}', 'Stock Parity', 'a@parity.in'),
   ('{OTHER_FIRM}', 'Someone Else', 'b@parity.in');

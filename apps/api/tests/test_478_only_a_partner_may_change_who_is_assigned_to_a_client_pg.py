@@ -244,7 +244,9 @@ def test_a_partner_can_still_update_a_row_and_cannot_move_it_to_another_firm(db)
     assert _rows(db, f"client_id = '{CLIENT_B}'") == 1
     moved = as_partner(f"UPDATE user_client_assignments SET firm_id = '{OTHER_FIRM}' "
                        f"WHERE id = 'dddddddd-0000-0000-0000-000000000478';")
-    assert moved.returncode != 0 and "row-level security" in moved.stderr, moved.stderr
+    # Two defences refuse this: migration 565's trigger (the row would name a client of another firm) runs first, row security would
+    # have refused it next. Either is the refusal this test is about.
+    assert moved.returncode != 0 and ("another firm" in moved.stderr or "row-level security" in moved.stderr), moved.stderr
     assert _rows(db, f"firm_id = '{OTHER_FIRM}'") == 0
 
 

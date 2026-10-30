@@ -37,6 +37,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import TRIGGERS_DROPPED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = API_ROOT / "migrations" / "293_reconcile_column_types_with_production.sql"
@@ -80,7 +81,8 @@ EXPECTED_TYPES = [
 # meets in production. The FK on client_id has to go too: production does not
 # have client_timeline_events_client_id_fkey at all, and a uuid FK cannot
 # survive its column becoming text.
-_TO_PRODUCTION_SHAPE = """
+# Migration 565's triggers name client_id, and Postgres refuses to change the type of a column a trigger names.
+_TO_PRODUCTION_SHAPE = TRIGGERS_DROPPED + """
 ALTER TABLE public.client_timeline_events DROP CONSTRAINT IF EXISTS client_timeline_events_client_id_fkey;
 DROP POLICY IF EXISTS client_timeline_events_assignment_scope ON public.client_timeline_events;
 DROP POLICY IF EXISTS client_timeline_events_internal_partner_only ON public.client_timeline_events;

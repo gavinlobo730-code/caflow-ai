@@ -48,6 +48,7 @@ from pathlib import Path
 
 import pytest
 
+from tests._cross_tenant_rows import allow_legacy_rows
 from tests._signed_in_document_writes import give_the_signed_in_writes_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -258,6 +259,10 @@ def world(seeded):
     if _psql(admin_dsn, f'CREATE DATABASE "{name}" TEMPLATE "{template}";').returncode != 0:
         pytest.skip("could not create throwaway db")
     try:
+        # This module measures the internal-practice guard on its own. The seed (and the inserts the tests make) put a customer or a vendor
+        # of one client on a document of another, which migration 565 refuses, and a refusal by 565 would pass the "must be refused"
+        # assertions for the wrong reason. 565 has its own test; here its triggers are off, in this throwaway database only.
+        allow_legacy_rows(f"{admin} dbname={name}")
         w = World(f"{admin} dbname={name}")
         w.ids = {table: dict(rows) for table, rows in ids.items()}
         yield w

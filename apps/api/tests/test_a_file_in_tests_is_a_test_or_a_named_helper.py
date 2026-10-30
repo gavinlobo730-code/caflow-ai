@@ -109,6 +109,11 @@ HELPERS = {
     # gives the privilege back in its own throwaway database through this one helper, which applies 499's rollback file
     # and so cannot drift from what the migration took away.
     "_signed_in_payroll_writes.py",
+    # POST-A-304, migration 565. The database now refuses a row that names a client of another firm (and a customer or vendor of another
+    # client). The real-Postgres modules that measure the OTHER defences against exactly that shape of row plant it in a throwaway
+    # database with the six triggers off, through this one helper, and two modules that roll a table back to an older column shape drop
+    # them first. It names only the six trigger names 565 creates; the triggers themselves are measured by test_565_*_pg.py.
+    "_cross_tenant_rows.py",
     # POST-A-339, migration 550. The same device for the bank tables and the two bank reports: 550 takes every signed-in privilege
     # on the eight `bank_` tables and EXECUTE on `bank_register` and `bank_reconciling_items`, and the modules that measure the
     # row policies of those tables as a signed-in member give the privilege back in their own throwaway database through this one

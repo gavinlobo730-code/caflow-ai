@@ -35,6 +35,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -246,7 +247,8 @@ def _comparable(book: dict) -> dict:
 @pytest.mark.parametrize("name,entries", SCENARIOS, ids=[s[0] for s in SCENARIOS])
 def test_sql_matches_python(db, name, entries):
     stamped = _stamp(entries)
-    seed = _psql(db, _seed_sql(stamped))
+    # Plants a row migration 565 refuses (a row naming another firm's client): LEGACY_ROWS_ALLOWED switches its six triggers off in this throwaway database; see tests/_cross_tenant_rows.py.
+    seed = _psql(db, LEGACY_ROWS_ALLOWED + _seed_sql(stamped))
     assert seed.returncode == 0, f"seed failed: {seed.stderr}"
     for newest_first in (False, True):
         sql = _sql_book(db, newest_first=newest_first)
