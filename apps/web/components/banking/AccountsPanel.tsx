@@ -28,7 +28,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
 import { fmt, BankAccount } from "@/components/banking/shared";
-import { objectWithLists } from "@/lib/api/shape";
+import { objectWithLists, objectOrNull } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
@@ -844,7 +844,11 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       const form = baseForm();
       form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
       const res = (await api.banking.previewStatement(form)) as { success: boolean; data: StatementPreview };
-      setPreview(objectWithLists<StatementPreview>(res.data, "rows"));
+      const shaped = objectWithLists<StatementPreview>(res.data, "rows");
+      // The panel reads `balance_check.checked`, `.agrees` and `.reason` (POST-A-149): a preview without its balance check cannot say
+      // whether the file agrees with itself, so it is not shown as one that does.
+      if (!shaped || !objectOrNull(shaped.balance_check)) throw new Error("The statement check came back in a shape this screen cannot read.");
+      setPreview(shaped);
     } catch (err) {
       setPreview(null);
       askForPassword(err);

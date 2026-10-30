@@ -9,6 +9,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { apiGet, getAuthToken, type Customer, type InvoiceDetail } from "@/lib/invoices/shared";
+import { objectWithLists } from "@/lib/api/shape";
 
 export interface InvoiceEditorContext {
   customers: Customer[];
@@ -47,5 +48,6 @@ export async function loadInvoiceEditorContext(clientId: string): Promise<Invoic
 export async function loadInvoiceDetail(invoiceId: string): Promise<InvoiceDetail | null> {
   const token = await getAuthToken();
   const r = await apiGet(`/api/sales-invoices/${invoiceId}`, token);
-  return r.success && r.data ? (r.data as InvoiceDetail) : null;
+  // A detail that came back without its lines is no detail (POST-A-149): the editor reads `.lines.length` off it.
+  return r.success ? objectWithLists<InvoiceDetail>(r.data, "lines") : null;
 }

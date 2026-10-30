@@ -9,6 +9,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import type { VendorLike } from "@/components/lookups/VendorLookup";
 import type { PurchaseCreditNoteDetail } from "@/components/purchases/PurchaseCreditNoteEditor";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { objectWithLists } from "@/lib/api/shape";
 
 export interface PurchaseCreditNoteEditorContext {
   vendors: VendorLike[];
@@ -38,5 +39,6 @@ export async function loadPurchaseCreditNoteEditorContext(clientId: string): Pro
 export async function loadPurchaseCreditNoteDetail(pcnId: string): Promise<PurchaseCreditNoteDetail | null> {
   const token = await getAuthToken();
   const r = await apiGet(`/api/purchase-credit-notes/${pcnId}`, token);
-  return r.success && r.data ? (r.data as PurchaseCreditNoteDetail) : null;
+  // A detail that came back without its lines is no detail (POST-A-149): the editor reads `.lines.length` off it.
+  return r.success ? objectWithLists<PurchaseCreditNoteDetail>(r.data, "lines") : null;
 }

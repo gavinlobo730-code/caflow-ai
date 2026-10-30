@@ -13,6 +13,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import { TDS_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 import { readWindow } from "@/lib/lists/readWindow";
@@ -472,7 +473,10 @@ export async function previewTdsDeduction(body: {
     body: JSON.stringify(body),
   });
   if (!resp.success) throw new Error(resp.error ?? "Could not compute the deduction");
-  return resp.data;
+  // The screen reads `explain.applies` and `explain.fy_prior_tds_paise`: a preview without its explanation is no preview (POST-A-149).
+  const shaped = objectOrNull<typeof resp.data>(resp.data);
+  if (!shaped || !objectOrNull(shaped.explain)) throw new Error("The deduction preview came back in a shape this screen cannot read.");
+  return shaped;
 }
 
 /** Correct a hand-entered deduction; the engine re-runs on whatever changed.
@@ -687,7 +691,12 @@ export async function fetchTdsDepositState(clientId: string): Promise<TdsDeposit
   const resp = await authedFetch<TdsDepositState>(
     `/api/tds-workspace/deposit-state?client_id=${encodeURIComponent(clientId)}`);
   if (!resp.success) throw new Error(resp.error ?? "Could not read the deposit position");
-  return resp.data;
+  // The screen reads `warnings.length` and indexes `deductions` and `legend` by key (POST-A-149).
+  const shaped = objectWithLists<TdsDepositState>(resp.data, "warnings");
+  if (!shaped || !objectOrNull(shaped.deductions) || !objectOrNull(shaped.legend)) {
+    throw new Error("The deposit position came back in a shape this screen cannot read.");
+  }
+  return shaped;
 }
 
 // ── A client's register, as windows the server cuts and counts ─────────────────────────────────────────────────────────

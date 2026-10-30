@@ -13,6 +13,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import type { PurchaseVendor, PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import type { AccountLike } from "@/components/lookups/AccountLookup";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { objectWithLists } from "@/lib/api/shape";
 
 export interface PurchaseBillEditorContext {
   vendors: PurchaseVendor[];
@@ -63,5 +64,6 @@ export async function loadPurchaseBillEditorContext(clientId: string): Promise<P
 export async function loadPurchaseBillDetail(billId: string): Promise<PurchaseBillDetail | null> {
   const token = await getAuthToken();
   const r = await apiGet(`/api/purchase-bills/${billId}`, token);
-  return r.success && r.data ? (r.data as PurchaseBillDetail) : null;
+  // A detail that came back without its lines is no detail (POST-A-149): the editor reads `.lines.length` off it.
+  return r.success ? objectWithLists<PurchaseBillDetail>(r.data, "lines") : null;
 }

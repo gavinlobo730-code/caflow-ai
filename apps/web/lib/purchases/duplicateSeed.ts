@@ -11,6 +11,7 @@
  * CA types the new bill's number like any other manual entry.
  */
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
+import { objectWithLists } from "@/lib/api/shape";
 
 const KEY = "practicesync_purchase_bill_duplicate_seed_v1";
 
@@ -31,7 +32,7 @@ export function readAndClearPurchaseBillDuplicateSeed(): PurchaseBillDetail | nu
     const raw = window.sessionStorage.getItem(KEY);
     if (!raw) return null;
     window.sessionStorage.removeItem(KEY);
-    return JSON.parse(raw) as PurchaseBillDetail;
+    return objectWithLists<PurchaseBillDetail>(JSON.parse(raw), "lines");
   } catch {
     return null;
   }

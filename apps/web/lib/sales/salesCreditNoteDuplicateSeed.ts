@@ -10,6 +10,7 @@
  * invoice has no reason to default to the same invoice on a fresh note.
  */
 import type { SalesCreditNoteDetail } from "@/components/sales/SalesCreditNoteEditor";
+import { objectWithLists } from "@/lib/api/shape";
 
 const KEY = "practicesync_sales_credit_note_duplicate_seed_v1";
 
@@ -30,7 +31,7 @@ export function readAndClearSalesCreditNoteDuplicateSeed(): SalesCreditNoteDetai
     const raw = window.sessionStorage.getItem(KEY);
     if (!raw) return null;
     window.sessionStorage.removeItem(KEY);
-    return JSON.parse(raw) as SalesCreditNoteDetail;
+    return objectWithLists<SalesCreditNoteDetail>(JSON.parse(raw), "lines");
   } catch {
     return null;
   }

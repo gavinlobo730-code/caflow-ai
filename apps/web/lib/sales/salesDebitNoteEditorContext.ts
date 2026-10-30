@@ -10,6 +10,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import type { Customer } from "@/lib/invoices/gst";
 import type { SalesDebitNoteDetail } from "@/components/sales/SalesDebitNoteEditor";
 import { apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { objectWithLists } from "@/lib/api/shape";
 
 export interface SalesDebitNoteEditorContext {
   customers: Customer[];
@@ -39,5 +40,6 @@ export async function loadSalesDebitNoteEditorContext(clientId: string): Promise
 export async function loadSalesDebitNoteDetail(sdnId: string): Promise<SalesDebitNoteDetail | null> {
   const token = await getAuthToken();
   const r = await apiGet(`/api/sales-debit-notes/${sdnId}`, token);
-  return r.success && r.data ? (r.data as SalesDebitNoteDetail) : null;
+  // A detail that came back without its lines is no detail (POST-A-149): the editor reads `.lines.length` off it.
+  return r.success ? objectWithLists<SalesDebitNoteDetail>(r.data, "lines") : null;
 }

@@ -7,6 +7,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
+import { objectWithLists } from "@/lib/api/shape";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -485,7 +486,10 @@ export async function getCapitalGainExemption(recordId: string): Promise<Capital
     { headers: await _authHeaders() });
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load the exemption working: ${res.statusText}`);
-  return json.data as CapitalGainExemption;
+  // The screen maps `caveats` and `gaps` and counts `claims` (POST-A-149).
+  const shaped = objectWithLists<CapitalGainExemption>(json.data, "claims", "gaps", "caveats");
+  if (!shaped) throw new Error("The exemption working came back in a shape this screen cannot read.");
+  return shaped;
 }
 
 export async function addReinvestment(recordId: string, req: ReinvestmentInput): Promise<{ id: string }> {
