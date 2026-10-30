@@ -5550,6 +5550,18 @@ export const api = {
       const qs = q.toString();
       return request<ApiResp<unknown>>(`/api/compliance/obligations/calendar${qs ? `?${qs}` : ""}`);
     },
+    // The same obligations as an iCalendar file (one all-day event each) for Outlook, Google Calendar or a phone: overdue ones are
+    // always in it, filed ones only with include_completed, and with no window it covers today and a year ahead. The server builds
+    // the file; the browser only saves it.
+    exportCalendar: (params?: { client_id?: string; date_from?: string; date_to?: string; include_completed?: boolean }) => {
+      const q = new URLSearchParams();
+      if (params?.client_id) q.set("client_id", params.client_id);
+      if (params?.date_from) q.set("date_from", params.date_from);
+      if (params?.date_to) q.set("date_to", params.date_to);
+      if (params?.include_completed) q.set("include_completed", "true");
+      const qs = q.toString();
+      return downloadFile(`/api/compliance/obligations/calendar.ics${qs ? `?${qs}` : ""}`, "compliance-calendar.ics");
+    },
     generate: (params?: Record<string, string>) =>
       request(`/api/compliance/obligations/generate${params ? "?" + new URLSearchParams(params) : ""}`, { method: "POST" }),
     assign: (id: string, body: { preparer_id?: string; reviewer_id?: string; approver_id?: string }) =>

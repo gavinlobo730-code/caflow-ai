@@ -8,15 +8,17 @@ Thin surface over services/compliance_obligation_service.py + the existing
 compliance_record_service. Distinct paths from routers/compliance.py (which owns
 /tasks, /calendar, /seed). Never files anything; escalations are internal only.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from pydantic import BaseModel, field_validator
 
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access, effective_client_ids
 from core.exceptions import ValidationError, NotFoundError
+from core.ist_clock import ist_today
+from domain.practice import ical as ical_file
 from services import compliance_obligation_service as obligations
 from domain.compliance_record_service import clean_filed_date, compliance_record_service
 from models.fy import OptionalFYLabel
@@ -260,6 +262,15 @@ def obligations_calendar(client_id: Optional[str] = Query(None),
     than a year is refused rather than answered with something else — a calendar
     that quietly widened or narrowed the window would show a month that is not the
     one asked for."""
+    _assert_a_calendar_window(date_from, date_to)
+    cal = obligations.calendar(current_user["firm_id"], client_id=client_id,
+                               date_from=date_from, date_to=date_to)
+    cal = {bucket: filter_by_client(current_user, rows) for bucket, rows in cal.items()}
+    return api_response(True, cal)
+
+
+def _assert_a_calendar_window(date_from: Optional[date], date_to: Optional[date]) -> None:
+    """The window rules both calendar reads share: both dates or neither, in order, and no wider than the cap."""
     if (date_from is None) != (date_to is None):
         raise HTTPException(status_code=422,
                             detail="Give both date_from and date_to, or neither.")
@@ -270,10 +281,38 @@ def obligations_calendar(client_id: Optional[str] = Query(None),
             raise HTTPException(
                 status_code=422,
                 detail=f"A calendar window is at most {MAX_CALENDAR_WINDOW_DAYS} days.")
-    cal = obligations.calendar(current_user["firm_id"], client_id=client_id,
-                               date_from=date_from, date_to=date_to)
+
+
+#: With no window given, the file covers a year ahead of today, because a calendar a person imports is read going forward.
+DEFAULT_ICS_DAYS_AHEAD = 365
+
+
+@router.get("/obligations/calendar.ics")
+def obligations_calendar_ics(client_id: Optional[str] = Query(None),
+                             date_from: Annotated[Optional[date], Query()] = None,
+                             date_to: Annotated[Optional[date], Query()] = None,
+                             include_completed: Annotated[bool, Query()] = False,
+                             current_user: dict = Depends(rbac("compliance", "read"))):
+    """The obligation calendar as an iCalendar file (POST-A-142): one all-day event per obligation, for a calendar application.
+
+    The same rows, the same window rules and the same assignment scope as `obligations/calendar`, so the file never holds an
+    obligation the screen would not show this caller. Overdue obligations are always in it (an overdue obligation is overdue
+    whichever window is asked for, as on the screen). With no window the file covers today and a year ahead. FILED OBLIGATIONS ARE
+    LEFT OUT unless `include_completed` asks for them. An obligation with no due date cannot be placed on a calendar: it is not in
+    the file, and the file's own description says how many were left out (the column is NOT NULL, so this is a guard and not
+    something the data is expected to do), so a missing event is never read as nothing being due.
+    It transmits nothing and files nothing."""
+    _assert_a_calendar_window(date_from, date_to)
+    today = ist_today()
+    if date_from is None:
+        date_from, date_to = today, today + timedelta(days=DEFAULT_ICS_DAYS_AHEAD)
+    cal = obligations.calendar(current_user["firm_id"], client_id=client_id, date_from=date_from, date_to=date_to)
     cal = {bucket: filter_by_client(current_user, rows) for bucket, rows in cal.items()}
-    return api_response(True, cal)
+    rows = cal["overdue"] + cal["upcoming"] + (cal["completed"] if include_completed else [])
+    names = obligations.client_names(current_user["firm_id"], {str(r.get("client_id")) for r in rows if r.get("client_id")})
+    body = ical_file.from_rows(rows, names, now=datetime.now(timezone.utc))
+    return Response(content=body, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="compliance-calendar.ics"'})
 
 
 @router.post("/run-escalations")
