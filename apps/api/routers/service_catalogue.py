@@ -145,6 +145,21 @@ def _default_opening_balance_date(db, client_id: str) -> str:
     return _fy_start_or_april_default(fy_start)
 
 
+def _opening_stock_answer(db, firm_id: str, payloads: list) -> dict:
+    """What a bulk import did NOT do about the opening stock its file asked for (POST-A-092, the bulk-import half).
+
+    The seeding never raises, so the response says which of the items that came with an opening balance have no opening row in the
+    stock ledger. Asked of the ledger and not inferred from the seeding having returned, because it also returns when its insert
+    was refused. `domain/inventory/opening_stock_report` holds the states and the sentence."""
+    from domain.inventory import opening_stock_report
+    from domain.inventory_service import items_with_an_opening_row
+    asked = [{"id": p["id"], "name": p.get("name")} for p in payloads
+             if p.get("kind") == "good" and p.get("opening_balance_date")
+             and _has_seedable_opening_balance(p.get("opening_qty_units"), p.get("opening_cost_paise"))]
+    landed = items_with_an_opening_row(db, firm_id=firm_id, item_ids=[a["id"] for a in asked]) if asked else set()
+    return opening_stock_report.report(asked, landed)
+
+
 def _has_seedable_opening_balance(qty, cost) -> bool:
     """True iff (qty, cost) is an opening balance domain.inventory_service.
     seed_opening_balance would actually seed — both present, quantity > 0.
@@ -646,6 +661,8 @@ def bulk_create_services(
                 # default date — so the batch does not go back for it.
                 policies=policy_by_client,
             )
+            return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors,
+                                       "opening_stock": _opening_stock_answer(db, firm_id, [p for _, p in to_insert])})
 
         return api_response(True, {"created": created, "duplicates": duplicates, "errors": errors})
     except HTTPException:

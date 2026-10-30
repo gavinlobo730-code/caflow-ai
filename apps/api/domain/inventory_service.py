@@ -1182,8 +1182,8 @@ def post_inventory_trueup_journal_entry(
         return None
 
 
-def _opening_rows_that_landed(db, *, firm_id: str, item_ids: list) -> Optional[bool]:
-    """Did the batch's opening rows reach the stock ledger? True/False, or None when the ledger could not be asked (reported).
+def items_with_an_opening_row(db, *, firm_id: str, item_ids: list) -> Optional[set]:
+    """The ids, among `item_ids`, that have an opening row in the stock ledger, or None when the ledger could not be asked (reported).
     Read with the request's own client: the rows are the caller's clients' (the privileged client is used only to WRITE the
     ledger), and a brand-new item has no opening row of an earlier import to be mistaken for this one's."""
     from core.db_paging import fetch_all_in
@@ -1197,7 +1197,13 @@ def _opening_rows_that_landed(db, *, firm_id: str, item_ids: list) -> Optional[b
         capture_posting_failure(swallowed, operation="seed_opening_balances_batch.ledger_probe", firm_id=firm_id,
                                 row_count=len(item_ids))
         return None
-    return bool(rows)
+    return {str(r["service_catalogue_id"]) for r in rows}
+
+
+def _opening_rows_that_landed(db, *, firm_id: str, item_ids: list) -> Optional[bool]:
+    """Did the batch's opening rows reach the stock ledger? True/False, or None when the ledger could not be asked (reported)."""
+    landed = items_with_an_opening_row(db, firm_id=firm_id, item_ids=item_ids)
+    return None if landed is None else bool(landed)
 
 
 def _write_opening_cache(db, *, firm_id: str, cache_rows: list) -> None:
