@@ -430,6 +430,21 @@ def test_the_upload_insert_names_both_identity_columns(monkeypatch):
     assert row["source"] == svc.UPLOAD_SOURCE
 
 
+def test_the_upload_insert_names_the_status_the_migrations_default_and_production_lacks(monkeypatch):
+    """POST-A-356. Migration 052 declares `status NOT NULL DEFAULT 'uploaded'`; production's column (added by 291) is nullable with
+    no default, so an insert that leaves it out stored 'uploaded' in a migration-built database and NULL in production. The insert
+    names it, in both branches, so the row is the same in both."""
+    client = _CapturingClient()
+    monkeypatch.setattr(svc, "_USE_MOCK", False)
+    monkeypatch.setattr(svc, "_supabase", lambda: client)
+    svc.create_upload("f1", "c1", "2025-26", "user-1")
+    assert client.rows[0]["status"] == "uploaded" == svc.UPLOAD_ROW_STATUS
+
+
+def test_mock_mode_builds_the_same_status_as_production(seeded):
+    assert svc._MOCK_UPLOADS[seeded["id"]]["status"] == svc.UPLOAD_ROW_STATUS
+
+
 def test_mock_mode_builds_the_same_identity_columns_as_production(seeded):
     """Mock mode must not be the only place the row looks right."""
     row = svc._MOCK_UPLOADS[seeded["id"]]
