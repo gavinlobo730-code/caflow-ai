@@ -122,6 +122,7 @@ export default function CalendarPage() {
 
   const [marking, setMarking] = useState<{ entry: ComplianceEntry; label: string } | null>(null);
   const [filingBusy, setFilingBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [filingError, setFilingError] = useState<string | null>(null);
 
   // A response for a month the person has already navigated away from must not
@@ -247,6 +248,19 @@ export default function CalendarPage() {
     setSelectedDay(todayISO);
   }
 
+  /** The obligations as a calendar file. The server builds it (overdue ones are in it, filed ones are not, and with no window it is
+   *  today and a year ahead); this saves it, and says so in words if the server refused. */
+  async function downloadCalendarFile() {
+    setDownloading(true);
+    try {
+      await api.complianceOps.exportCalendar(clientId ? { client_id: clientId } : undefined);
+    } catch (e: unknown) {
+      toast({ title: "Could not download the calendar file", description: e instanceof Error ? e.message : "Try again." });
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function confirmFiled(v: { filedDate: string; arn: string }) {
     if (!marking) return;
     setFilingBusy(true);
@@ -323,6 +337,11 @@ export default function CalendarPage() {
             </span>
             <button onClick={nextMonth} className="p-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg" aria-label="Next month">
               <ChevronRight className="w-4 h-4" />
+            </button>
+            <button onClick={() => void downloadCalendarFile()} disabled={downloading}
+              title="Save these obligations as a calendar file for Outlook, Google Calendar or a phone. Overdue ones are included and filed ones are not; it covers today and the next twelve months."
+              className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg disabled:opacity-50">
+              {downloading ? "Preparing…" : "Download .ics"}
             </button>
           </div>
         }

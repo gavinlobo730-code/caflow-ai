@@ -1570,6 +1570,12 @@ def _dashboard_names(firm_id: str, client_ids: set, user_ids: set) -> tuple[dict
     return clients, staff
 
 
+def client_names(firm_id: str, client_ids: set) -> dict:
+    """id -> client name for the ids given, firm-scoped; an id with no name is absent and a failed read is logged and gives {} (the
+    same read the dashboard makes, under a name another module may import)."""
+    return _dashboard_names(firm_id, set(client_ids), set())[0]
+
+
 _DONE_STATUSES = ("Filed", "Completed")
 
 
