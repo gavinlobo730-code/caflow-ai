@@ -148,6 +148,9 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
       return;
     }
     setBusy(true);
+    // What the server said became of the compliance calendar's deposit obligation, shown as written (POST-A-267): the browser
+    // reads no state word and decides nothing about whether a month was paid in full.
+    let calendarNote = "";
     try {
       if (isEpf) {
         // EPF has its own record (migration 335) with EPFO's own sequencing —
@@ -177,9 +180,11 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           run_id: runId,
         });
         if (!res?.success) throw new Error(res?.error ?? "That did not save.");
+        calendarNote = (res.data?.compliance_obligations ?? []).map((a) => a.message).join(" ");
       }
       onDone("Recorded. Nothing was transmitted — this only tells PracticeSync "
-             + "what you did on the portal.");
+             + "what you did on the portal."
+             + (calendarNote ? ` ${calendarNote}` : ""));
     } catch (e) {
       onError(e instanceof Error ? e.message : "That did not save.");
     } finally { setBusy(false); }

@@ -6011,7 +6011,13 @@ export const api = {
       submitted_on?: string | null; paid_on?: string | null;
       challan_number?: string | null; challan_date?: string | null;
       amount_paise?: number; run_id?: string | null; notes?: string | null;
-    }) => request<ApiResp<{ client_id: string; remittance: Remittance }>>(
+    }) => request<ApiResp<{
+      client_id: string; remittance: Remittance;
+      /** What became of the wage month's ESI deposit obligation on the compliance calendar (POST-A-267): the server's sentence,
+       *  shown as written, and its own judgement of whether somebody has something to do about it. Empty when there is nothing
+       *  to say (a professional-tax remittance, one only submitted, or an obligation already filed). */
+      compliance_obligations?: { message: string; needs_action?: boolean; closed?: boolean; month?: string | null }[];
+    }>>(
       `/api/payroll/clients/${clientId}/remittances`,
       { method: "POST", body: JSON.stringify(body) }),
 

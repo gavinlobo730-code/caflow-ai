@@ -6124,6 +6124,26 @@ def list_remittances(
     })
 
 
+def _close_the_esi_deposit_obligation(db, current_user: dict, client_id: str, remittance: dict) -> list[dict]:
+    """Close the wage month's ESI deposit obligation when the remittance just recorded paid it on time and in full, and say what
+    became of it (POST-A-267). NEVER FAILS THE RECORDING: the remittance is stored. Whatever stops the obligation closing comes
+    back in the answer for the screen to show and goes to the error reporter."""
+    from core.observability import capture_soft_failure
+    from core.permissions import can_user
+    from services import esi_deposit_closes_obligation as closes
+    firm_id = current_user["firm_id"]
+    try:
+        return closes.close_for_recorded_remittance(
+            db=db, firm_id=firm_id, client_id=client_id, remittance=remittance, actor=current_user,
+            may_write_compliance=can_user(current_user, "compliance", "write"))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="payroll.close_the_esi_deposit_obligation", firm_id=firm_id, client_id=client_id)
+        return [{"state": "not_closed", "closed": False, "obligation_id": None, "month": remittance.get("wage_month"),
+                 "needs_action": True,
+                 "message": "The remittance is recorded, but the compliance calendar could not be updated just now. "
+                            "Mark the ESI deposit obligation filed from Compliance."}]
+
+
 @router.post("/clients/{client_id}/remittances")
 def record_remittance(
     client_id: str,
@@ -6156,7 +6176,8 @@ def record_remittance(
             recorded_by=current_user.get("id"))
     except remittances.RemittanceError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return api_response(True, {"client_id": client_id, "remittance": row})
+    return api_response(True, {"client_id": client_id, "remittance": row,
+                               "compliance_obligations": _close_the_esi_deposit_obligation(db, current_user, client_id, row)})
 
 
 @router.patch("/clients/{client_id}/remittances/{remittance_id}/payment")
