@@ -48,6 +48,8 @@ _MOCK_BOOK_CREDITS: dict[tuple[str, str, str], list[dict]] = {}
 # different kind of row (see migration 291). Every read and write here is
 # stamped and filtered so neither feature shows the other's rows.
 UPLOAD_SOURCE = "form_26as_pipeline"
+# What the migrations' own default gives `form_26as_uploads.status` (migration 052) and production lacks; the insert names it.
+UPLOAD_ROW_STATUS = "uploaded"
 # Mock mode's stand-in for the TDS Receivable control-account total.
 _MOCK_GL_CONTROL: dict[tuple[str, str, str], int] = {}
 
@@ -86,6 +88,7 @@ def create_upload(
             "total_records": 0,
             "parse_errors": [],
             "source": UPLOAD_SOURCE,
+            "status": UPLOAD_ROW_STATUS,
             # Both, mirroring the real insert below — see the comment there for
             # why this table needs two names for one person.
             "uploaded_by": uploaded_by,
@@ -113,6 +116,14 @@ def create_upload(
         "created_by": uploaded_by,
         "uploaded_by": uploaded_by,
         "source": UPLOAD_SOURCE,
+        # NAMED, because the two databases disagree about what an omitted one
+        # stores: migration 052 declares `status NOT NULL DEFAULT 'uploaded'`,
+        # and production (where 291 added the column) has it nullable with no
+        # default. Left out, the same upload was 'uploaded' in a migration-built
+        # database and NULL in production. Nothing reads this column on the
+        # pipeline's path (the page reads `parse_status`), so naming it changes
+        # no behaviour; it makes the row the same in both (POST-A-356).
+        "status": UPLOAD_ROW_STATUS,
     }
     res = sb.table("form_26as_uploads").insert(row).execute()
     return res.data[0] if res.data else row
