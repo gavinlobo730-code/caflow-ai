@@ -17,7 +17,11 @@ WHAT IS HELD
     * only the wage month's own ESI obligation moves, not another month's, type's, client's or a draft run's;
     * an obligation already Filed keeps its own date and is not answered; a professional-tax or EPF record answers nothing; a client
       with no such obligation is told so without being asked to act; a caller without compliance access is told, and nothing moves;
-    * a failure reading the calendar never fails the recording, and the route answers `compliance_obligations` beside the row.
+    * a failure reading the calendar never fails the recording, and the route answers `compliance_obligations` beside the row;
+    * (added after an independent review) a person blocked from READING payroll is not shown payroll's figures by the answer, the
+      slips are read in pages so a run past the gateway's row cap cannot be summed short, the sentences name only actions the
+      register and the screen can perform (a second entry for a month REPLACES the first), the screen's tone follows the server's
+      `needs_action`, and retracting an entry says that a closed obligation stays closed.
 """
 from __future__ import annotations
 
@@ -30,6 +34,7 @@ from mock_data import MOCK_COMPLIANCE_RECORDS
 from repositories.compliance_records_repository import compliance_records_repo
 from services import esi_deposit_closes_obligation as closes
 from services.esi_deposit_closes_obligation import Decision, decide
+from tests._capped_postgrest import CappedDB
 from tests.e2e_harness import FakeDB
 
 FIRM, CLIENT = "firm-1", "client-1"
@@ -82,10 +87,10 @@ def _remittance(*, amount=OWED, paid_on="2026-07-10", status="paid", challan="CH
             "challan_number": challan}
 
 
-def _close(remittance, db=None, *, may_write=True, client=CLIENT):
+def _close(remittance, db=None, *, may_write=True, client=CLIENT, may_read_payroll=True):
     return closes.close_for_recorded_remittance(
         db=db if db is not None else _db(), firm_id=FIRM, client_id=client, remittance=remittance, actor=USER,
-        may_write_compliance=may_write)
+        may_write_compliance=may_write, may_read_payroll=may_read_payroll)
 
 
 # ── the rule ────────────────────────────────────────────────────────────────
@@ -121,6 +126,19 @@ def test_one_paisa_short_closes_nothing_and_the_sentence_names_the_three_figures
 def test_an_amount_left_at_nil_is_not_recorded_rather_than_paid_nothing():
     got = _decide(paid_paise=0)
     assert got.filed_on is None and "not recorded" in got.sentence
+
+
+def test_no_sentence_asks_for_an_action_the_register_cannot_perform():
+    """The first draft said "record the remainder", but a second entry for the same month REPLACES the first, so the remainder would
+    have erased the first amount and could never reach the computed sum; and the screen offers the record form only while nothing is
+    recorded, so "record it again" needs the entry retracted first."""
+    short = _decide(paid_paise=OWED - 100).sentence
+    assert "remainder" not in short and "replaces the first" in short and "Retract" in short
+    nil = _decide(paid_paise=0).sentence
+    assert "Retract" in nil and "record it again" in nil
+    for sentence in (_decide(owed_paise=None).sentence, _decide(paid_on=None).sentence, _decide(paid_on=date(2026, 8, 5)).sentence,
+                     _decide(paid_on=date(2026, 5, 31)).sentence):
+        assert "retract" in sentence.lower()
 
 
 def test_no_finalised_run_is_said():
@@ -249,6 +267,51 @@ def test_the_amount_owed_is_summed_from_every_slip_of_the_months_run_and_only_th
     assert closes.esi_owed(db, FIRM, CLIENT, "2026-04") is None
 
 
+class _NoPayrollReads:
+    """A database that fails on any read: a closer that was told it may not read payroll must not touch it."""
+
+    def table(self, name):
+        raise AssertionError(f"payroll was read ({name}) for a caller who may not read payroll")
+
+
+def test_a_caller_who_may_not_read_payroll_is_told_it_was_not_checked_and_is_shown_no_figure(world):
+    rec = _obligation()
+    answers = _close(_remittance(amount=1), _NoPayrollReads(), may_read_payroll=False)
+    assert [a["state"] for a in answers] == ["not_allowed"] and answers[0]["needs_action"] is True
+    assert "payroll" in answers[0]["message"] and "₹" not in answers[0]["message"]
+    assert _now(rec)["status"] == "Not Started"
+
+
+def test_a_caller_who_may_not_read_payroll_but_has_nothing_to_close_is_still_told_nothing(world):
+    assert _close(_remittance(status="submitted"), _NoPayrollReads(), may_read_payroll=False) == []
+
+
+def test_a_run_past_the_gateways_row_cap_is_summed_whole_and_a_short_payment_does_not_close(world):
+    rec = _obligation()
+    slips = [{"id": f"s-{i:05d}", "run_id": "run-1", "esi_employee_paise": 100, "esi_employer_paise": 267} for i in range(1500)]
+    db = CappedDB({"payroll_runs": [{"id": "run-1", "firm_id": FIRM, "client_id": CLIENT, "month": MONTH, "status": "finalized"}],
+                   "payroll_slips": slips})
+    assert closes.esi_owed(db, FIRM, CLIENT, MONTH) == (1500 * 100, 1500 * 267)
+    first_page_only = 1000 * 367
+    answers = _close(_remittance(amount=first_page_only), db)
+    assert answers[0]["state"] == "not_closed" and "less than" in answers[0]["message"]
+    assert _now(rec)["status"] == "Not Started"
+    assert _close(_remittance(amount=1500 * 367), db)[0]["closed"] is True
+
+
+def test_retracting_says_a_closed_obligation_stays_closed_and_says_nothing_otherwise(world):
+    rec = _obligation()
+    db = _db()
+    row = _remittance()
+    assert closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=row) is None      # still open
+    assert _close(row, db)[0]["closed"] is True
+    note = closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=row)
+    assert note and "still shows" in note and "June 2026" in note and "2026-07-10" in note and "Compliance" in note
+    assert closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=_remittance(scheme="professional_tax")) is None
+    assert closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=_remittance(month="June 2026")) is None
+    assert _now(rec)["status"] == "Filed"
+
+
 def test_a_client_that_is_named_by_nobody_is_not_matched():
     out = closes.close_for_recorded_remittance(db=_db(), firm_id="", client_id="", remittance=_remittance(), actor=USER,
                                                may_write_compliance=True)
@@ -257,14 +320,21 @@ def test_a_client_that_is_named_by_nobody_is_not_matched():
 
 # ── the door ────────────────────────────────────────────────────────────────
 
+#: What the person at the door may do, per (resource, action). Flipped by the tests that are about the router's own wiring; the
+#: first draft replaced `can_user` with a function that was always True for the whole module, so none of them could fail.
+GRANTS: dict = {}
+
+
 @pytest.fixture
 def door(world, monkeypatch):
     db = _db()
+    GRANTS.clear()
+    GRANTS.update({("compliance", "write"): True, ("payroll", "read"): True})
     monkeypatch.setattr(payroll, "_db", lambda: db)
     monkeypatch.setattr(payroll, "assert_client_access", lambda user, client_id: None)
     monkeypatch.setattr(payroll.remittances, "record", lambda db, **kw: _remittance(
         amount=kw["amount_paise"], paid_on=kw["paid_on"], status=kw["status"], challan=kw["challan_number"], month=kw["wage_month"]))
-    monkeypatch.setattr("core.permissions.can_user", lambda user, resource, action: True)
+    monkeypatch.setattr("core.permissions.can_user", lambda user, resource, action: GRANTS.get((resource, action), False))
     return db
 
 
@@ -300,3 +370,44 @@ def test_recording_again_does_not_close_twice_or_change_the_filed_date(door):
     again = payroll.record_remittance(CLIENT, _body(paid_on="2026-07-12"), current_user=USER)
     assert again["data"]["compliance_obligations"] == []
     assert _now(rec)["filed_date"] == "2026-07-10"
+
+
+def test_the_door_asks_the_compliance_write_grant_of_the_person(door):
+    rec = _obligation()
+    GRANTS[("compliance", "write")] = False
+    answers = payroll.record_remittance(CLIENT, _body(), current_user=USER)["data"]["compliance_obligations"]
+    assert [a["state"] for a in answers] == ["not_allowed"] and "Compliance" in answers[0]["message"]
+    assert _now(rec)["status"] == "Not Started"
+
+
+def test_the_door_asks_the_payroll_read_grant_of_the_person_and_shows_no_payroll_figure(door):
+    """The route asks payroll:write; a Manager the Team screen blocked from reading payroll could otherwise POST one paisa and be
+    told what payroll computed and how it splits (found by the independent review, reproduced with this exact setup)."""
+    rec = _obligation()
+    GRANTS[("payroll", "read")] = False
+    out = payroll.record_remittance(CLIENT, _body(amount_paise=1), current_user=USER)
+    answers = out["data"]["compliance_obligations"]
+    assert [a["state"] for a in answers] == ["not_allowed"]
+    assert "₹" not in answers[0]["message"] and "5,500" not in answers[0]["message"] and "1,500" not in answers[0]["message"]
+    assert _now(rec)["status"] == "Not Started"
+
+
+def test_retracting_through_the_door_says_the_calendar_still_reads_filed(door, monkeypatch):
+    rec = _obligation()
+    out = payroll.record_remittance(CLIENT, _body(), current_user=USER)
+    assert out["data"]["compliance_obligations"][0]["closed"] is True
+    door.seed("statutory_remittances", {"id": "rem-1", "firm_id": FIRM, "client_id": CLIENT, "scheme": "esic", "wage_month": MONTH,
+                                        "status": "paid", "paid_on": "2026-07-10", "amount_paise": OWED, "challan_number": "CH-77",
+                                        "deleted_at": None})
+    gone = payroll.retract_remittance(CLIENT, "rem-1", current_user=USER)
+    assert gone["success"] is True and gone["data"]["retracted"] is True
+    assert "still shows" in gone["data"]["calendar_note"] and "Compliance" in gone["data"]["calendar_note"]
+    assert _now(rec)["status"] == "Filed"
+
+
+def test_retracting_an_entry_that_closed_nothing_has_no_calendar_note(door):
+    _obligation()
+    door.seed("statutory_remittances", {"id": "rem-2", "firm_id": FIRM, "client_id": CLIENT, "scheme": "esic", "wage_month": MONTH,
+                                        "status": "submitted", "amount_paise": 0, "deleted_at": None})
+    gone = payroll.retract_remittance(CLIENT, "rem-2", current_user=USER)
+    assert gone["data"]["retracted"] is True and gone["data"]["calendar_note"] is None

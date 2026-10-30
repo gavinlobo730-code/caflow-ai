@@ -6075,7 +6075,12 @@ export const api = {
     /** Retract one recorded in error — a SOFT delete. The challan number, the
      *  date and the amount that left the bank are held nowhere else. */
     retractRemittance: (clientId: string, remittanceId: string) =>
-      request<ApiResp<{ remittance_id: string; retracted: boolean }>>(
+      request<ApiResp<{
+        remittance_id: string; retracted: boolean;
+        /** Set when the wage month's ESI deposit obligation still reads Filed on the compliance calendar: a retraction cannot
+         *  reopen it, and the sentence says where to correct it. Null when there is nothing to say. */
+        calendar_note?: string | null;
+      }>>(
         `/api/payroll/clients/${clientId}/remittances/${remittanceId}`,
         { method: "DELETE" }),
 

@@ -121,7 +121,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   obligation: HandoffObligation;
   clientId: string;
   runId: string;
-  onDone: (text: string) => void;
+  onDone: (text: string, attention?: boolean) => void;
   onError: (text: string) => void;
 }) {
   const [reference, setReference] = useState("");
@@ -151,6 +151,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
     // What the server said became of the compliance calendar's deposit obligation, shown as written (POST-A-267): the browser
     // reads no state word and decides nothing about whether a month was paid in full.
     let calendarNote = "";
+    let attention = false;
     try {
       if (isEpf) {
         // EPF has its own record (migration 335) with EPFO's own sequencing —
@@ -180,11 +181,14 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           run_id: runId,
         });
         if (!res?.success) throw new Error(res?.error ?? "That did not save.");
-        calendarNote = (res.data?.compliance_obligations ?? []).map((a) => a.message).join(" ");
+        const answers = res.data?.compliance_obligations ?? [];
+        calendarNote = answers.map((a) => a.message).join(" ");
+        // The server's own judgement of whether somebody has something to do about it; the tone is its, not the browser's.
+        attention = answers.some((a) => a.needs_action === true);
       }
       onDone("Recorded. Nothing was transmitted — this only tells PracticeSync "
              + "what you did on the portal."
-             + (calendarNote ? ` ${calendarNote}` : ""));
+             + (calendarNote ? ` ${calendarNote}` : ""), attention);
     } catch (e) {
       onError(e instanceof Error ? e.message : "That did not save.");
     } finally { setBusy(false); }
@@ -579,13 +583,13 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
               different consequence and it has its own path. */}
           {o.scheme !== "epf" && recorded.id && (
             <Retract clientId={clientId} remittanceId={recorded.id}
-              onDone={(text) => { setNote({ kind: "ok", text }); onChanged(); }}
+              onDone={(text, attention) => { setNote({ kind: attention ? "warn" : "ok", text }); onChanged(); }}
               onError={(text) => setNote({ kind: "err", text })} />
           )}
         </div>
       ) : (
         <RecordBack obligation={o} clientId={clientId} runId={runId}
-          onDone={(text) => { setNote({ kind: "ok", text }); onChanged(); }}
+          onDone={(text, attention) => { setNote({ kind: attention ? "warn" : "ok", text }); onChanged(); }}
           onError={(text) => setNote({ kind: "err", text })} />
       )}
     </div>
@@ -603,7 +607,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
 
 function Retract({ clientId, remittanceId, onDone, onError }: {
   clientId: string; remittanceId: string;
-  onDone: (text: string) => void; onError: (text: string) => void;
+  onDone: (text: string, attention?: boolean) => void; onError: (text: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -613,8 +617,10 @@ function Retract({ clientId, remittanceId, onDone, onError }: {
     try {
       const res = await api.payroll.retractRemittance(clientId, remittanceId);
       if (!res.success) throw new Error(res.error ?? "That did not work.");
+      const calendarNote = res.data?.calendar_note ?? "";
       onDone("Retracted. The return is no longer recorded as filed — nothing "
-             + "was transmitted, at the time or now.");
+             + "was transmitted, at the time or now."
+             + (calendarNote ? ` ${calendarNote}` : ""), calendarNote !== "");
       setConfirming(false);
     } catch (e) {
       onError(e instanceof Error ? e.message : "That did not work.");
@@ -636,7 +642,10 @@ function Retract({ clientId, remittanceId, onDone, onError }: {
       <p className="text-2xs text-amber-900">
         This removes PracticeSync&apos;s record that the return was filed and the
         challan paid. It does not undo anything at the portal, and it does not
-        touch the ledger — if a bank entry paid this, that entry stays.
+        touch the ledger — if a bank entry paid this, that entry stays. It does not
+        change the compliance calendar either: if this entry closed an ESI deposit
+        obligation there, that obligation stays filed and can only be corrected from
+        Compliance.
       </p>
       <div className="flex items-center gap-2">
         <Button variant="plain" size="none" type="button" onClick={go} disabled={busy}

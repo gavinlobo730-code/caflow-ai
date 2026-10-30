@@ -6135,13 +6135,31 @@ def _close_the_esi_deposit_obligation(db, current_user: dict, client_id: str, re
     try:
         return closes.close_for_recorded_remittance(
             db=db, firm_id=firm_id, client_id=client_id, remittance=remittance, actor=current_user,
-            may_write_compliance=can_user(current_user, "compliance", "write"))
+            may_write_compliance=can_user(current_user, "compliance", "write"),
+            # The route asks payroll:write only, the closer reads payroll with the privileged client and its sentences name the
+            # figures it read, so a person blocked from READING payroll is not shown them (the write-without-read shape of
+            # POST-A-219).
+            may_read_payroll=can_user(current_user, "payroll", "read"))
     except Exception as exc:                                    # noqa: BLE001
         capture_soft_failure(exc, operation="payroll.close_the_esi_deposit_obligation", firm_id=firm_id, client_id=client_id)
         return [{"state": "not_closed", "closed": False, "obligation_id": None, "month": remittance.get("wage_month"),
                  "needs_action": True,
                  "message": "The remittance is recorded, but the compliance calendar could not be updated just now. "
                             "Mark the ESI deposit obligation filed from Compliance."}]
+
+
+def _calendar_note_after_retraction(db, firm_id: str, client_id: str, row: Optional[dict]) -> Optional[str]:
+    """Say that a retraction leaves a closed ESI deposit obligation closed (a Filed obligation can only go to Completed). NEVER FAILS
+    THE RETRACTION: the sentence is a courtesy and the entry is already gone."""
+    if not row:
+        return None
+    from core.observability import capture_soft_failure
+    from services import esi_deposit_closes_obligation as closes
+    try:
+        return closes.note_after_retraction(db=db, firm_id=firm_id, client_id=client_id, remittance=row)
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="payroll.calendar_note_after_retraction", firm_id=firm_id, client_id=client_id)
+        return None
 
 
 @router.post("/clients/{client_id}/remittances")
@@ -6225,10 +6243,13 @@ def retract_remittance(
     if not db:
         return api_response(True, {"remittance_id": remittance_id, "retracted": False})
     assert_client_access(current_user, client_id)
-    if not remittances.retract(db, firm_id=current_user["firm_id"],
-                               client_id=client_id, remittance_id=remittance_id):
+    firm_id = current_user["firm_id"]
+    # Read before it is retracted: the sentence below needs the wage month, and the row is gone from the live register afterwards.
+    row = next((r for r in remittances.read(db, firm_id=firm_id, client_id=client_id) if r.get("id") == remittance_id), None)
+    if not remittances.retract(db, firm_id=firm_id, client_id=client_id, remittance_id=remittance_id):
         raise HTTPException(status_code=404, detail="Remittance not found")
-    return api_response(True, {"remittance_id": remittance_id, "retracted": True})
+    return api_response(True, {"remittance_id": remittance_id, "retracted": True,
+                               "calendar_note": _calendar_note_after_retraction(db, firm_id, client_id, row)})
 
 
 @router.get("/clients/{client_id}/remittance-reconciliation")

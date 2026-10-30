@@ -36,12 +36,23 @@ test("recording a remittance is typed to carry the calendar answer", () => {
     "the remittance call does not type the calendar answer the server sends");
 });
 
-test("the screen shows the server's sentences as written and reads none of its state words", () => {
-  assert.ok(/calendarNote = \(res\.data\?\.compliance_obligations \?\? \[\]\)\.map\(\(a\) => a\.message\)\.join\(" "\)/.test(HANDOFF),
+test("the screen shows the server's sentences as written, takes its tone from needs_action and reads none of its state words", () => {
+  assert.ok(/calendarNote = answers\.map\(\(a\) => a\.message\)\.join\(" "\)/.test(HANDOFF),
     "the sentences the server answers are not collected as written");
-  assert.ok(/\(calendarNote \? ` \$\{calendarNote\}` : ""\)/.test(HANDOFF), "the sentences are not added to what the person is told");
+  assert.ok(/\(calendarNote \? ` \$\{calendarNote\}` : ""\), attention\)/.test(HANDOFF), "the sentences are not added to what the person is told");
+  // The first draft read needs_action nowhere and showed a "left open" sentence inside the green success note (found by the
+  // independent review). The tone is the SERVER's judgement of whether somebody has something to do.
+  assert.ok(/attention = answers\.some\(\(a\) => a\.needs_action === true\)/.test(HANDOFF), "the tone is not the server's needs_action");
+  assert.ok(/kind: attention \? "warn" : "ok"/.test(HANDOFF), "an answer that needs action is still drawn as plain success");
   assert.ok(!/\.state\s*(===|!==)/.test(HANDOFF), "the screen reads the answer's state words instead of showing its sentence");
-  assert.ok(!/needs_action/.test(HANDOFF), "the screen draws its own conclusion from needs_action; it only shows the sentence");
+});
+
+test("retracting shows the server's sentence that a closed obligation stays closed, and the confirmation says so before the click", () => {
+  assert.ok(/calendar_note\?: string \| null/.test(API), "the retract call does not type the calendar note");
+  assert.ok(/const calendarNote = res\.data\?\.calendar_note \?\? ""/.test(HANDOFF), "the retraction does not collect the server's sentence");
+  assert.ok(/calendarNote !== ""\)/.test(HANDOFF), "a retraction that leaves a filed obligation is drawn as plain success");
+  assert.ok(/It does not\s+change the compliance calendar either/.test(HANDOFF.replace(/&apos;/g, "'")),
+    "the confirmation still promises that retracting removes the record without saying the calendar is untouched");
 });
 
 test("the screen holds no rule for when a month is paid: no amount is compared and no due date is computed in the handoff's record step", () => {
