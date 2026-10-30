@@ -632,6 +632,26 @@ export interface SaveAdvanceTaxRequest extends ComputeAdvanceTaxRequest {
   client_id: string;
 }
 
+/** What became of one advance-tax obligation on the compliance calendar when the register was saved. The sentence in `message` is
+ *  the server's and is shown as written; `needs_action` is the server's judgement that somebody has something to do about it. */
+export interface AdvanceTaxObligationAnswer {
+  state: "closed" | "not_closed" | "not_allowed" | "already_filed" | string;
+  closed?: boolean;
+  /** The instalment (1 to 4) the answer is about; absent for an answer about the whole save. */
+  instalment?: number;
+  due_date?: string;
+  message: string;
+  needs_action?: boolean;
+  filed_on?: string;
+  reference?: string;
+}
+
+/** The answer to saving the register: the instalments as stored, and what became of the calendar's advance-tax obligations. */
+export interface SaveAdvanceTaxResult {
+  installments: AdvanceTaxRecord[];
+  compliance_obligations: AdvanceTaxObligationAnswer[];
+}
+
 /** Stateless Section 234C interest estimator — computes only, never persists. */
 export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): Promise<AdvanceTaxComputeResult> {
   const res = await fetch(`${API_BASE}/api/income-tax/advance-tax/compute`, {
@@ -752,14 +772,16 @@ export async function listAdvanceTaxPayments(clientId: string, fy: string): Prom
 /** Persists the recorded payment facts — due_date/required_percent are
  * always derived server-side from the FY's Section 208 schedule, never
  * sent by the caller. Interest is never stored (it's derived, not a
- * fact) — call computeAdvanceTaxInterest() for the current breakdown. */
-export async function saveAdvanceTaxPayments(req: SaveAdvanceTaxRequest): Promise<AdvanceTaxRecord[]> {
+ * fact) — call computeAdvanceTaxInterest() for the current breakdown.
+ * The answer also says what became of the client's advance-tax obligations
+ * on the compliance calendar (POST-A-267). */
+export async function saveAdvanceTaxPayments(req: SaveAdvanceTaxRequest): Promise<SaveAdvanceTaxResult> {
   const res = await fetch(`${API_BASE}/api/income-tax/advance-tax`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   });
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to save advance tax payments: ${res.statusText}`);
-  return json.data as AdvanceTaxRecord[];
+  return json.data as SaveAdvanceTaxResult;
 }
 
 // ── §140A self-assessment tax — the Challan 280 (IT-13) ─────────────────────

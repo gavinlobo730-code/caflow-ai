@@ -1948,6 +1948,25 @@ def list_advance_tax(
 _REQUIRED_PERCENT_BY_INSTALLMENT = {r.number: r.cumulative_required_percent for r in INSTALLMENT_RULES}
 
 
+def _close_the_instalment_obligations(current_user: dict, req, rows: list[dict]) -> list[dict]:
+    """Close the advance-tax obligations the register just saved shows paid, and say what became of each one that was not.
+    NEVER FAILS THE SAVING: the payments are stored. Whatever stops an obligation closing comes back in the answer for the screen
+    to show and goes to the error reporter (POST-A-267)."""
+    from core.observability import capture_soft_failure
+    from services import advance_tax_closes_obligation as closes
+    firm_id = current_user["firm_id"]
+    try:
+        return closes.close_for_saved_register(
+            firm_id=firm_id, client_id=req.client_id, financial_year=req.fy, rows=rows, actor=current_user,
+            may_write_compliance=can_user(current_user, "compliance", "write"))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="income_tax.close_the_instalment_obligations",
+                             firm_id=firm_id, client_id=req.client_id)
+        return [{"state": "not_closed", "closed": False, "obligation_id": None, "needs_action": True,
+                 "message": "The payments are recorded, but the compliance calendar could not be updated just now. "
+                            "Mark the advance-tax obligations filed from Compliance."}]
+
+
 class SaveAdvanceTaxRequest(ComputeAdvanceTaxRequest):
     client_id: str
 
@@ -2007,7 +2026,8 @@ def save_advance_tax(
             "challan_number": inst.challan_number if inst else None,
         })
     if not db:
-        return api_response(True, rows)
+        return api_response(True, {"installments": rows,
+                                   "compliance_obligations": _close_the_instalment_obligations(current_user, req, rows)})
     result = (db.table("advance_tax_payments")
               .upsert(rows, on_conflict="firm_id,client_id,financial_year,installment_number").execute())
     # Rows the schedule no longer has. Only ever non-empty when a client's basis
@@ -2017,7 +2037,8 @@ def save_advance_tax(
         (db.table("advance_tax_payments").delete()
          .eq("firm_id", current_user["firm_id"]).eq("client_id", req.client_id)
          .eq("financial_year", req.fy).in_("installment_number", stale).execute())
-    return api_response(True, result.data or rows)
+    return api_response(True, {"installments": result.data or rows,
+                               "compliance_obligations": _close_the_instalment_obligations(current_user, req, rows)})
 
 
 
