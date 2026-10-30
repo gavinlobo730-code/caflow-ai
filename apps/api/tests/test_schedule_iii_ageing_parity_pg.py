@@ -44,6 +44,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -631,7 +632,7 @@ def test_a_misposted_line_on_this_clients_account_stays_out(db):
     """
     sibling = "c3050000-0000-0000-0000-0000000000bb"
     stranger = "c3050000-0000-0000-0000-0000000000cc"
-    seed = _psql(db, _seed_sql([], []) + "\n" + _unbilled_seed_sql([
+    seed = _psql(db, LEGACY_ROWS_ALLOWED + _seed_sql([], []) + "\n" + _unbilled_seed_sql([
         Post(ACCT_AI, "2026-02-01", debit=3_00_000),
     ], "2026-04-02") + f"""
         INSERT INTO clients (id, firm_id, client_name, entity_type) VALUES
@@ -852,7 +853,8 @@ def test_a_vendor_belonging_to_another_client_does_not_classify_the_bill(db):
     other_client = "c3030000-0000-0000-0000-0000000000aa"
     stray_vendor = "d3030000-0000-0000-0000-0000000000aa"
     assert _psql(db, _seed_sql([], [])).returncode == 0
-    r = _psql(db, f"""
+    # A vendor of another client on this client's bill is a row migration 565 refuses; legacy data may hold one, so it is planted with the triggers off.
+    r = _psql(db, LEGACY_ROWS_ALLOWED + f"""
         INSERT INTO clients (id, firm_id, client_name, entity_type)
           VALUES ('{other_client}', '{FIRM}', 'Another Co', 'Private Limited');
         INSERT INTO vendors (id, firm_id, client_id, name, msme_status)

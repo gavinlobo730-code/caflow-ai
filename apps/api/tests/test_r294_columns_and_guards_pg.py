@@ -46,6 +46,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import TRIGGERS_DROPPED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = API_ROOT / "migrations" / "294_declare_the_columns_production_lacks_and_restore_the_guards.sql"
@@ -100,7 +101,8 @@ RESTRICTIVE_POLICIES = [
 
 # CASCADE because a policy or index may reference the column; production's shape
 # is "column absent", however it got that way.
-_TO_PRODUCTION_SHAPE = "\n".join(
+# Migration 565's statement trigger reads client_id, so a table that loses the column loses the trigger first.
+_TO_PRODUCTION_SHAPE = TRIGGERS_DROPPED + "\n".join(
     [f"DROP POLICY IF EXISTS {p} ON public.{t};" for t, p in RESTRICTIVE_POLICIES]
     + [f"ALTER TABLE public.{t} DROP COLUMN IF EXISTS {c} CASCADE;" for t, c in ADDED_COLUMNS]
 )

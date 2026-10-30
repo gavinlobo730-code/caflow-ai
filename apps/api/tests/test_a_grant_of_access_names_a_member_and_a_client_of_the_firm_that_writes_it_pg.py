@@ -46,6 +46,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED, allow_legacy_rows
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -226,7 +227,9 @@ def test_every_refusal_is_row_level_security_and_nothing_else(dsn):
 def _plant(dsn: str) -> None:
     """Rows as the hole wrote them: the other firm's id on the row, the victim's member and the victim's client; and the other
     firm's member on the victim's client. The admin writes them, because the policy no longer lets anyone else."""
-    done = _psql(dsn, f"{_insert(G, 'manager_f', CLIENT_F2)}; {_insert(G, 'manager_g', CLIENT_F1)}")
+    # Migration 565 refuses these two rows now (the other firm's id on the victim's client), and legacy data may still hold them:
+    # the assignment readers must go on ignoring them, so they are planted with 565's triggers off.
+    done = _psql(dsn, LEGACY_ROWS_ALLOWED + f"{_insert(G, 'manager_f', CLIENT_F2)}; {_insert(G, 'manager_g', CLIENT_F1)}")
     assert done.returncode == 0, done.stderr
 
 
@@ -247,7 +250,8 @@ def test_each_condition_of_the_readers_is_needed_on_its_own(dsn):
     """`_plant`'s rows are each excluded by BOTH conditions, so either one alone could be deleted without a test noticing.
     These two have one defect each: the client of another firm on a row of the member's own firm, and a client of the row's
     own firm on a row the member's firm did not write."""
-    done = _psql(dsn, f"{_insert(F, 'manager_f', CLIENT_G1)}; {_insert(G, 'manager_f', CLIENT_G2)}")
+    # Planted with migration 565's triggers off (it refuses the client of another firm on a row, and legacy data may hold one).
+    done = _psql(dsn, LEGACY_ROWS_ALLOWED + f"{_insert(F, 'manager_f', CLIENT_G1)}; {_insert(G, 'manager_f', CLIENT_G2)}")
     assert done.returncode == 0, done.stderr
     assert sorted(_lines_as(dsn, "manager_f", "SELECT my_assigned_client_ids();")) == [CLIENT_F1], "a row with one defect was counted"
     for client in (CLIENT_G1, CLIENT_G2, CLIENT_F2):
@@ -257,6 +261,7 @@ def test_each_condition_of_the_readers_is_needed_on_its_own(dsn):
 
 def test_the_rows_that_were_planted_would_have_granted_access_before_the_migration(dsn):
     """The negative control inside the file: with the migration rolled back, the same planted row opens the victim's client."""
+    allow_legacy_rows(dsn)   # migration 565 would refuse the planting before the rolled-back policy is asked; this is the control for 530
     assert _psql_file(dsn, ROLLBACK).returncode == 0
     assert _count_op(dsn, "partner_g", _insert(G, "manager_f", CLIENT_F2)) == "1", "the rolled-back policy no longer lets the planting through"
     _plant(dsn)
@@ -407,6 +412,7 @@ def test_the_rollback_restores_the_policies_and_the_functions_and_a_second_run_c
     assert _psql_file(dsn, MIGRATION).returncode == 0
     assert snapshot() == migrated, "a second run changed something"
 
+    allow_legacy_rows(dsn)   # the rolled-back policy is what is measured below; migration 565 would refuse the same insert first
     assert _psql_file(dsn, ROLLBACK).returncode == 0
     rolled = snapshot()
     assert not [r for r in rolled if r[1] in ("user_is_in_my_firm", "client_is_in_my_firm")], "the rollback left a helper"

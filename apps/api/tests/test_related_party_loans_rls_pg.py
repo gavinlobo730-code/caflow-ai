@@ -32,6 +32,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -178,7 +179,8 @@ def test_an_unassigned_client_is_not_visible(seeded_db):
 
 
 def test_another_firms_rows_are_not_visible(seeded_db):
-    r = _psql(seeded_db, f"""
+    # Plants a row migration 565 refuses (a row naming another firm's client): LEGACY_ROWS_ALLOWED switches its six triggers off in this throwaway database; see tests/_cross_tenant_rows.py.
+    r = _psql(seeded_db, LEGACY_ROWS_ALLOWED + f"""
         INSERT INTO related_party_loans
           (firm_id, client_id, entity_id, loan_type, principal_paise)
         SELECT '{OTHER_FIRM}', id, '{ENTITY}', 'to_director', 999

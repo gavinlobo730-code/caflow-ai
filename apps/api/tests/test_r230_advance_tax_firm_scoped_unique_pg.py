@@ -25,6 +25,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -110,7 +111,9 @@ def test_cross_firm_upsert_no_longer_collides_with_owning_firms_row(seeded):
     independent row instead — firm1's real data is untouched."""
     dsn = seeded["dsn"]
     new_id = str(uuid.uuid4())
-    upsert = _psql(dsn, f"""
+    # Migration 565 refuses this row too (firm2's id on firm1's client). The test measures the KEY, not that trigger, and legacy data
+    # may hold such a row, so it is planted with 565's triggers off.
+    upsert = _psql(dsn, LEGACY_ROWS_ALLOWED + f"""
         INSERT INTO advance_tax_payments
           (id, firm_id, client_id, financial_year, installment_number, due_date,
            required_percent, estimated_tax_paise, paid_amount_paise)

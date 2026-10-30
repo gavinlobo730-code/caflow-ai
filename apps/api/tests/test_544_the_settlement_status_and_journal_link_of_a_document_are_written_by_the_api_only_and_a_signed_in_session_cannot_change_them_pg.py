@@ -784,6 +784,7 @@ def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_
     assert {f["n"] for f in functions if named.search(f["s"] or "")} == {"settle_receipt_atomic__unguarded"}
     writes = re.compile(r"\b(insert|update)\b", re.I)
     assert {f["n"] for f in functions if dynamic.search(f["s"] or "") and writes.search(f["s"] or "")} == {
+        "guard_client_firm",                              # migration 565's installer: EXECUTE format of CREATE and DROP TRIGGER, writes no row
         "numbered_document_atomic__unguarded",            # INSERT of the four note tables: judged by the role setting, so not a bypass
         "post_journal_atomic__unguarded",                 # the journal tables only
         "refuse_a_signed_in_edit_of_lines_of_a_non_draft_document",   # migration 539's trigger: the line tables only

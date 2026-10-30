@@ -433,7 +433,9 @@ def test_exactly_these_triggers_guard_the_two_tables(db):
     got = _ok(db, """
         SELECT c.relname || ':' || t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
          WHERE NOT t.tgisinternal AND c.relname IN ('payroll_runs', 'payroll_slips')
-           AND t.tgname NOT LIKE 'trg_audit%' ORDER BY 1;""").splitlines()
+           AND t.tgname NOT LIKE 'trg_audit%'
+           AND t.tgname NOT LIKE 'row\\_%\\_in\\_%'  -- migration 565's client-in-firm triggers read `clients` and guard the client, not the release
+         ORDER BY 1;""").splitlines()
     assert got == ["payroll_runs:a_released_payroll_run_is_not_written_by_a_session",
                    "payroll_slips:a_released_runs_payslips_are_not_written_by_a_session"]
 

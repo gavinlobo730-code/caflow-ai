@@ -43,6 +43,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -321,7 +322,8 @@ def test_the_period_read_the_endpoint_makes_actually_returns_rows(seeded_db):
 # ── Isolation, which 287 also rewrites to the house shape ────────────────────
 
 def test_another_firms_reversals_are_not_visible(seeded_db):
-    r = _psql(seeded_db, f"""
+    # Plants a row migration 565 refuses (a row naming another firm's client): LEGACY_ROWS_ALLOWED switches its six triggers off in this throwaway database; see tests/_cross_tenant_rows.py.
+    r = _psql(seeded_db, LEGACY_ROWS_ALLOWED + f"""
         INSERT INTO journal_entries
           (id, firm_id, client_id, entry_date, narration, entry_type, is_posted, status)
         VALUES ('a7000000-0000-0000-0000-000000000003','{OTHER_FIRM}','{ASSIGNED}',
