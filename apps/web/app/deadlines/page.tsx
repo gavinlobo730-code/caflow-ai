@@ -10,13 +10,16 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
+import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
 import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { formatRangeLabel } from "@/lib/dates/periods";
-import { getComplianceCalendar, markFiled as markObligationFiled } from "@/lib/data/compliance";
+import { getComplianceCalendar, getReopenRule, markFiled as markObligationFiled, reopenObligation } from "@/lib/data/compliance";
+import type { ReopenRule } from "@/lib/data/compliance";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -114,6 +117,7 @@ function LoadingSpinner() {
 }
 
 interface MarkFiledForm { id: string; arn: string; label: string }
+interface ReopenForm { id: string; label: string }
 
 // ─── Inner component — reads search params ─────────────────────────────────
 function DeadlinesContent() {
@@ -132,6 +136,21 @@ function DeadlinesContent() {
   // prompt, because the old flow had no catch at all and a refusal vanished.
   const [filingError, setFilingError] = useState<string | null>(null);
   const { toast } = useToast();
+  // Reopening a recorded filing (POST-A-267, item 3): offered only to a person who holds compliance.approve and only on the
+  // obligation types the SERVER says it will reopen, so the browser holds no list of them.
+  const { can } = usePermissions();
+  const canReopen = can("compliance", "approve");
+  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500 });
+  const [reopen, setReopen] = useState<ReopenForm | null>(null);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canReopen) return;
+    let live = true;
+    getReopenRule().then((rule) => { if (live) setReopenRule(rule); });
+    return () => { live = false; };
+  }, [canReopen]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -175,6 +194,24 @@ function DeadlinesContent() {
       setFilingError(err instanceof Error ? err.message : "Couldn't mark this filed.");
     } finally {
       setFilingLoading(false);
+    }
+  }
+
+  async function handleReopen(reason: string) {
+    if (!reopen) return;
+    setReopening(true);
+    setReopenError(null);
+    try {
+      const message = await reopenObligation(reopen.id, reason);
+      setReopen(null);
+      // Reload rather than patch the row: how an open obligation reads (in progress, overdue) is derived from its status and
+      // due date in one place, and a reopened deposit past its date is overdue again.
+      await loadData();
+      toast({ title: "Reopened", description: message });
+    } catch (err) {
+      setReopenError(err instanceof Error ? err.message : "Couldn't reopen this.");
+    } finally {
+      setReopening(false);
     }
   }
 
@@ -476,6 +513,16 @@ function DeadlinesContent() {
           onClose={() => { setMarkFiled(null); setFilingError(null); }}
         />
       )}
+      {reopen && (
+        <ReopenObligationModal
+          intro={reopen.label}
+          maxReasonChars={reopenRule.maxReasonChars}
+          busy={reopening}
+          error={reopenError}
+          onConfirm={handleReopen}
+          onClose={() => { setReopen(null); setReopenError(null); }}
+        />
+      )}
       {bulkFiling && (
         <MarkFiledModal
           title={`Mark ${bulkFiling.length} filed`}
@@ -536,6 +583,14 @@ function DeadlinesContent() {
               <span className="text-xs text-green-600 flex items-center gap-1">
                 <CheckCircle size={12} /> {r.filed_date ? formatDate(r.filed_date) : "Filed"}
               </span>
+            )}
+            {r.filing_status === "filed" && canReopen && reopenRule.types.includes(r.compliance_type) && (
+              <button
+                onClick={() => { setReopenError(null); setReopen({ id: r.id, label: obligationLabel(r, clientMap) }); }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                Reopen
+              </button>
             )}
             <Link
               href={`/clients/${r.client_id}`}

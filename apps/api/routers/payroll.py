@@ -6149,7 +6149,7 @@ def _close_the_esi_deposit_obligation(db, current_user: dict, client_id: str, re
 
 
 def _calendar_note_after_retraction(db, firm_id: str, client_id: str, row: Optional[dict]) -> Optional[str]:
-    """Say that a retraction leaves a closed ESI deposit obligation closed (a Filed obligation can only go to Completed). NEVER FAILS
+    """Say that a retraction leaves a closed ESI deposit obligation closed (reopening is its own door, with a reason). NEVER FAILS
     THE RETRACTION: the sentence is a courtesy and the entry is already gone."""
     if not row:
         return None

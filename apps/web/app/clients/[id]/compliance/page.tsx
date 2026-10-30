@@ -9,14 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
-import { getComplianceCalendarDirect, markFiled as markObligationFiled, seedComplianceCalendar } from "@/lib/data/compliance";
-import type { ComplianceEntry } from "@/lib/data/compliance";
+import { getComplianceCalendarDirect, getReopenRule, markFiled as markObligationFiled, reopenObligation, seedComplianceCalendar } from "@/lib/data/compliance";
+import type { ComplianceEntry, ReopenRule } from "@/lib/data/compliance";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
+import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
 import { EditNoticeReadingModal } from "@/components/compliance/EditNoticeReadingModal";
 import type { NoticeReadingForm } from "@/lib/compliance/noticeReading";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
@@ -321,6 +323,20 @@ export default function CompliancePage() {
   // Whether the bulk prompt (ONE filing date for the selection) is open.
   const [bulkPromptOpen, setBulkPromptOpen] = useState(false);
   const { toast } = useToast();
+  // Reopening a recorded filing (POST-A-267, item 3): offered only to a person who holds compliance.approve and only on the
+  // obligation types the SERVER says it will reopen, so the browser holds no list of them.
+  const { can } = usePermissions();
+  const canReopen = can("compliance", "approve");
+  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500 });
+  const [reopenId, setReopenId] = useState<string | null>(null);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!canReopen) return;
+    let live = true;
+    getReopenRule().then((rule) => { if (live) setReopenRule(rule); });
+    return () => { live = false; };
+  }, [canReopen]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // A selection may only name rows still on screen (see lib/table/pruneSelection).
@@ -453,6 +469,24 @@ export default function CompliancePage() {
       setFilingError(e instanceof Error ? e.message : "Couldn't mark this filed.");
     } finally {
       setFilingLoading(false);
+    }
+  }
+
+  async function handleReopen(reason: string) {
+    if (!reopenId) return;
+    setReopening(true);
+    setReopenError(null);
+    try {
+      const message = await reopenObligation(reopenId, reason);
+      setReopenId(null);
+      // Reload rather than patch the row: how an open obligation reads (in progress, overdue) is derived from its status and due
+      // date in one place, and a reopened deposit past its date is overdue again.
+      await reloadCompliance();
+      toast({ title: "Reopened", description: message });
+    } catch (e) {
+      setReopenError(e instanceof Error ? e.message : "Couldn't reopen this.");
+    } finally {
+      setReopening(false);
     }
   }
 
@@ -630,6 +664,19 @@ export default function CompliancePage() {
           onClose={() => { setMarkFiled(null); setFilingError(null); }}
         />
       )}
+      {reopenId && (
+        <ReopenObligationModal
+          intro={(() => {
+            const e = compliance.find((c) => c.id === reopenId);
+            return e ? `${e.compliance_type}, ${formatRangeLabel(e.period_start, e.period_end)}` : undefined;
+          })()}
+          maxReasonChars={reopenRule.maxReasonChars}
+          busy={reopening}
+          error={reopenError}
+          onConfirm={handleReopen}
+          onClose={() => { setReopenId(null); setReopenError(null); }}
+        />
+      )}
       {bulkPromptOpen && (
         <MarkFiledModal
           title={`Mark ${selected.size} filed`}
@@ -739,6 +786,14 @@ export default function CompliancePage() {
                           className="text-xs text-blue-600 hover:underline flex items-center gap-1"
                         >
                           <CheckCircle size={12} /> Mark Filed
+                        </button>
+                      )}
+                      {c.filing_status === "filed" && canReopen && reopenRule.types.includes(c.compliance_type) && (
+                        <button
+                          onClick={() => { setReopenError(null); setReopenId(c.id); }}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          Reopen
                         </button>
                       )}
                     </td>

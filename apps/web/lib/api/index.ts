@@ -5581,6 +5581,16 @@ export const api = {
           filed_date: opts.filedDate ?? null,
         }),
       }),
+    /** Takes back a recorded filing on a statutory DEPOSIT (`POST /obligations/{id}/reopen`, `compliance.approve`). The reason is
+     *  required by the server. A refusal (422 for a type with a filing record behind it, 403 without the right) is thrown as an
+     *  Error carrying the server's sentence. */
+    reopen: (id: string, reason: string) =>
+      request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/reopen`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }),
+    /** Which obligation types the reopen door accepts, so the screen offers it only on those and holds no list of its own. */
+    reopenableTypes: () =>
+      request<ApiResp<{ obligation_types: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).

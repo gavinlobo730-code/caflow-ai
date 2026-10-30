@@ -20,7 +20,10 @@ from core.exceptions import ValidationError, NotFoundError
 from core.ist_clock import ist_today
 from domain.practice import ical as ical_file
 from services import compliance_obligation_service as obligations
-from domain.compliance_record_service import clean_filed_date, compliance_record_service
+from domain.compliance_record_service import (
+    MAX_REOPEN_REASON_CHARS, REOPEN_AFTERMATH, REOPENABLE_OBLIGATION_TYPES, REOPENED_STATUS, clean_filed_date,
+    compliance_record_service,
+)
 from models.fy import OptionalFYLabel
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance_ops"])
@@ -76,6 +79,11 @@ class MarkFiledBody(BaseModel):
     filed_date: Optional[str] = None
 
     _date = field_validator("filed_date")(lambda cls, v: _a_filing_date(v))
+
+
+class ReopenBody(BaseModel):
+    """Why a recorded filing is being taken back. Required: the reason is kept on the obligation and in the audit log."""
+    reason: str
 
 
 def _filing_fields(updated: dict) -> dict:
@@ -224,6 +232,40 @@ def mark_filed_obligation(record_id: str, body: MarkFiledBody,
         # own period has not ended yet cannot be walked to Filed here either).
         raise HTTPException(status_code=422, detail=str(e))
     return api_response(True, {"obligation": updated, **_filing_fields(updated)})
+
+
+@router.post("/obligations/{record_id}/reopen")
+def reopen_obligation(record_id: str, body: ReopenBody,
+                      current_user: dict = Depends(rbac("compliance", "approve"))):
+    """Take back a recorded filing on a statutory DEPOSIT (PF, ESI, tax deducted at source, advance tax), with a written reason.
+
+    A Filed obligation could only go to Completed, so a closure made from a wrong payment record or the wrong month could never be
+    corrected. This is `compliance.approve` (Manager and above, or a per-person grant), a step above marking filed, because it
+    undoes a statement the calendar made about the client's statutory position. It moves the obligation back to Ready To File,
+    clears the filing date and acknowledgement number and keeps the reason on the row and in the audit log. It does NOT retract a
+    payment record that closed it (that is retracted where it was recorded, and the answer says so), and it refuses in words an
+    obligation that has a filing record behind it. Nothing is filed anywhere by this: CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT."""
+    _assert_obligation_scope(current_user, record_id)
+    try:
+        updated = compliance_record_service.reopen_record(
+            record_id, body.reason, firm_id=current_user["firm_id"], actor=current_user)
+    except ValidationError as e:
+        # The sentence as written: this one is shown to a person as it stands, without the field name in front of it.
+        raise HTTPException(status_code=422, detail=e.message) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.") from e
+    aftermath = REOPEN_AFTERMATH.get(str(updated.get("obligation_type") or ""), "")
+    return api_response(True, {
+        "obligation": updated,
+        "message": f"Reopened. It is back at {REOPENED_STATUS} and can be recorded as filed again. {aftermath}".strip(),
+    })
+
+
+@router.get("/reopenable-types")
+def reopenable_obligation_types(current_user: dict = Depends(rbac("compliance", "read"))):
+    """Which obligation types the reopen door accepts, so a screen offers it only on those and holds no list of its own."""
+    return api_response(True, {"obligation_types": sorted(REOPENABLE_OBLIGATION_TYPES),
+                               "max_reason_chars": MAX_REOPEN_REASON_CHARS})
 
 
 @router.get("/dashboard")
