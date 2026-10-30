@@ -8,21 +8,31 @@ import { CopilotChat } from "./screens/CopilotChat";
 import { ClientOverview } from "./screens/ClientOverview";
 
 /**
- * The real product UI (brief §7 — "one of the most important additions after
- * the hero… Visitors should not only see a beautiful concept; they should see
- * the actual software").
+ * Four hand-drawn recreations of the product's screens (brief §7 — "one of the
+ * most important additions after the hero… Visitors should not only see a
+ * beautiful concept; they should see the actual software").
  *
  * WHY THESE ARE BUILT AND NOT PHOTOGRAPHED. An owner decision of 16-09-2026,
- * taken over supplying screenshots. Every screen below is rebuilt from the
- * product's own source, which makes it: crisp at any pixel ratio rather than
- * one; roughly 3 KB rather than 200; animatable between states, which §7 asks
- * for and an image cannot do; selectable, translatable and readable by a screen
- * reader; and honest, because a screenshot goes stale silently while a
- * recreation is code in the same repository as the thing it depicts.
+ * taken over supplying screenshots: crisp at any pixel ratio rather than one;
+ * roughly 3 KB rather than 200; animatable between states, which §7 asks for
+ * and an image cannot do; selectable, translatable and readable by a screen
+ * reader.
  *
- * Each screen's own file records which product file its strings came from. The
- * rule across all four is the same: the WORDS are the product's, the FIGURES
- * are invented, and the figures that are meant to add up do add up — the
+ * ⚠️ THE ARGUMENT THAT THEY ARE "HONEST BECAUSE A RECREATION IS CODE IN THE
+ * SAME REPOSITORY" WAS WRONG, AND THE PAGE SAID MORE THAN IT KNEW (POST-A-121,
+ * 30-10-2026). A recreation goes stale exactly as silently as a screenshot:
+ * nothing ties it to the product, and the client Overview here still draws the
+ * 17-item sidebar the product replaced on 25-09-2026 with its module grid. The
+ * page used to say the screens were made out of the product's own parts and
+ * spoke its own words, under a heading that denied they were any kind of
+ * impression. They are an impression, and the page now says so; a rule in
+ * `apps/api/tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`
+ * refuses the old sentences. Re-copying the four screens from the product, with
+ * a check that ties the module list here to the product's, is still open
+ * (POST-A-121).
+ *
+ * Each screen's own file records which product file its strings were first
+ * copied from. The FIGURES are invented, and the figures that are meant to add up do add up — the
  * §49(5) set-off in the GSTR-3B screen is worked properly, because the people
  * this page is for will check it.
  *
@@ -117,8 +127,8 @@ export function ProductShowcase() {
       </Reveal>
 
       <p className="mt-6 text-[12.5px] leading-relaxed text-white/40">
-        Rebuilt from the product&apos;s own components, so the words are the ones the
-        software uses. The client names and figures are illustrative — no real client
+        Redrawn by hand, not screenshots, so a label on one may differ from the live
+        software. The client names and figures are illustrative — no real client
         appears on this page.
       </p>
     </div>

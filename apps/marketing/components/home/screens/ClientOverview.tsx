@@ -3,10 +3,13 @@ import { Building, FileText, Landmark, Sparkles, Check, Calendar } from "../../i
 /**
  * The client workspace Overview, recreated.
  *
- * Verbatim from apps/web/app/clients/[id]/overview/page.tsx and the client
- * workspace shell: the sidebar's 21 tab names in their real order, the three
+ * Copied on 16-09-2026 from apps/web/app/clients/[id]/overview/page.tsx and the
+ * client workspace shell as they were then: the sidebar's tab names, the three
  * stat labels ("Open Tasks", "Overdue Filings", "Filed This FY"), the header
- * chrome, the health badge, and the activity-feed row shapes.
+ * chrome, the health badge, and the activity-feed row shapes. NOT VERBATIM
+ * TODAY: the product replaced that sidebar on 25-09-2026 with a module grid
+ * behind a thin top bar, so the sidebar drawn here is an out-of-date picture
+ * (POST-A-121); the page around it says the screens are redrawn by hand.
  *
  * The three stats are plain integers on purpose — the real screen renders no
  * rupee figure anywhere, and inventing one here would misrepresent the screen
