@@ -644,8 +644,8 @@ function Retract({ clientId, remittanceId, onDone, onError }: {
         challan paid. It does not undo anything at the portal, and it does not
         touch the ledger — if a bank entry paid this, that entry stays. It does not
         change the compliance calendar either: if this entry closed an ESI deposit
-        obligation there, that obligation stays filed and can only be corrected from
-        Compliance.
+        obligation there, that obligation stays filed, because a filed obligation cannot be
+        reopened yet.
       </p>
       <div className="flex items-center gap-2">
         <Button variant="plain" size="none" type="button" onClick={go} disabled={busy}

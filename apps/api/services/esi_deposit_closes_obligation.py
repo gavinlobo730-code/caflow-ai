@@ -221,7 +221,7 @@ def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict)
     """The sentence to answer a retraction with when the remittance retracted was an ESI one whose wage month's obligation reads
     Filed on the calendar, or None. A Filed obligation can only go to Completed, so the retraction cannot reopen it, and a person
     who retracts a wrong entry must not be left believing the calendar was corrected too. It says what the calendar holds and
-    where to correct it, and does not guess whether this remittance is what closed it."""
+    that nothing in the product can reopen it (POST-A-267), and does not guess whether this remittance is what closed it."""
     if remittance.get("scheme") != "esic" or not firm_id or not client_id:
         return None
     wage_month = str(remittance.get("wage_month") or "")
@@ -237,5 +237,5 @@ def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict)
     filed_on = str(record.get("filed_date") or "")[:10]
     return (f"The compliance calendar still shows the {_what(wage_month)} as filed"
             + (f" on {filed_on}" if filed_on else "")
-            + ". A filed obligation cannot be reopened from here, so if the entry just retracted was wrong, correct that obligation "
-              "from Compliance.")
+            + ". This product cannot reopen a filed obligation yet, so the calendar keeps saying it was filed even though the entry "
+              "is gone; check the payment against the challan before relying on it.")

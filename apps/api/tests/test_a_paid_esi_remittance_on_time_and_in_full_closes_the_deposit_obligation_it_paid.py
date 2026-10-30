@@ -306,7 +306,7 @@ def test_retracting_says_a_closed_obligation_stays_closed_and_says_nothing_other
     assert closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=row) is None      # still open
     assert _close(row, db)[0]["closed"] is True
     note = closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=row)
-    assert note and "still shows" in note and "June 2026" in note and "2026-07-10" in note and "Compliance" in note
+    assert note and "still shows" in note and "June 2026" in note and "2026-07-10" in note and "cannot reopen" in note
     assert closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=_remittance(scheme="professional_tax")) is None
     assert closes.note_after_retraction(db=db, firm_id=FIRM, client_id=CLIENT, remittance=_remittance(month="June 2026")) is None
     assert _now(rec)["status"] == "Filed"
@@ -401,7 +401,7 @@ def test_retracting_through_the_door_says_the_calendar_still_reads_filed(door, m
                                         "deleted_at": None})
     gone = payroll.retract_remittance(CLIENT, "rem-1", current_user=USER)
     assert gone["success"] is True and gone["data"]["retracted"] is True
-    assert "still shows" in gone["data"]["calendar_note"] and "Compliance" in gone["data"]["calendar_note"]
+    assert "still shows" in gone["data"]["calendar_note"] and "cannot reopen" in gone["data"]["calendar_note"]
     assert _now(rec)["status"] == "Filed"
 
 
