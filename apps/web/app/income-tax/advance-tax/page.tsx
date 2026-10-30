@@ -28,7 +28,7 @@ import { getClients } from "@/lib/data/clients";
 import {
   computeAdvanceTaxInterest, computeSection234ABInterest,
   listAdvanceTaxPayments, saveAdvanceTaxPayments,
-  type AdvanceTaxComputeResult, type AdvanceTaxInstallmentInput,
+  type AdvanceTaxComputeResult, type AdvanceTaxInstallmentInput, type AdvanceTaxObligationAnswer,
   type UnforeseenIncomeInput,
   type Section234ABResult, type SectionInterestResult,
   getSelfAssessmentPosition, createSelfAssessmentChallan, deleteSelfAssessmentChallan,
@@ -81,6 +81,8 @@ export default function AdvanceTaxPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  // What saving did to the compliance calendar's advance-tax obligations, in the server's words (POST-A-267).
+  const [calendarAnswers, setCalendarAnswers] = useState<AdvanceTaxObligationAnswer[] | null>(null);
 
   const [result, setResult] = useState<AdvanceTaxComputeResult | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
@@ -176,6 +178,8 @@ export default function AdvanceTaxPage() {
   }, [clientId, fy]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  // An answer is about the client and year it was given for.
+  useEffect(() => { setCalendarAnswers(null); }, [clientId, fy]);
 
   // Every figure on this screen drives s.234B and s.234C interest, which is
   // charged per month on a shortfall — so an estimate read as ₹1 does not just
@@ -417,10 +421,11 @@ export default function AdvanceTaxPage() {
         paid_date: editPaidDate[n] || null,
         challan_number: editChallan[n] || null,
       }));
-      await saveAdvanceTaxPayments({
+      const saved = await saveAdvanceTaxPayments({
         client_id: clientId, fy, estimated_tax_paise: estimatedTaxPaise, installments,
         is_presumptive_44ad_44ada: presumptive,
       });
+      setCalendarAnswers(saved.compliance_obligations ?? null);
       setSaveMsg("Saved");
       setTimeout(() => setSaveMsg(null), 3000);
       await loadData();
@@ -484,6 +489,23 @@ export default function AdvanceTaxPage() {
       {error && <Callout tone="problem">{error}</Callout>}
       {computeError && <Callout tone="problem">{computeError}</Callout>}
       {saveMsg && <div className="bg-state-ready-surface text-state-ready rounded-lg px-5 py-2 text-sm">{saveMsg}</div>}
+      {/* What saving did to the compliance calendar, in the server's words. The live region is always on the page, so that what
+          is put in it is announced; the tone is attention only for an obligation the server left open or could not touch. */}
+      <div role="status" className="space-y-2 empty:!mt-0">
+        {calendarAnswers && calendarAnswers.length > 0 && (
+          <>
+            <Callout tone={calendarAnswers.some(a => a.needs_action) ? "attention" : "note"}
+              title="Saved. What became of the advance-tax obligations on the compliance calendar:">
+              <ul className="list-disc pl-5 space-y-1">
+                {calendarAnswers.map((a, i) => (
+                  <li key={`${a.instalment ?? "all"}-${i}`}>{a.message}</li>
+                ))}
+              </ul>
+            </Callout>
+            <button type="button" onClick={() => setCalendarAnswers(null)} className="text-xs text-ps-label underline">Dismiss</button>
+          </>
+        )}
+      </div>
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
