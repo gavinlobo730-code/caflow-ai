@@ -36,6 +36,8 @@ OTHER_CLIENT = "30300000-0000-0000-0000-0000000000c2"
 PARTNER = {"id": "30300000-0000-0000-0000-00000000000a", "auth_user_id": "30300000-1111-0000-0000-000000000001"}
 MANAGER = {"id": "30300000-0000-0000-0000-00000000000b", "auth_user_id": "30300000-1111-0000-0000-000000000002"}
 OTHER_MANAGER = {"id": "30300000-0000-0000-0000-00000000000c", "auth_user_id": "30300000-1111-0000-0000-000000000003"}
+# A member of the OTHER firm, who created that firm's job (migration 566: a job cannot name a member of another firm).
+OTHER_FIRMS_PARTNER = "30300000-0000-0000-0000-00000000000d"
 JOB, FIRM_LEVEL_JOB, OTHER_FIRMS_JOB = (f"30300000-0000-0000-0000-0000000000{n}" for n in ("f1", "f2", "f3"))
 
 
@@ -67,12 +69,13 @@ def world(pg_template):
             INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role, is_active)
                  VALUES ('{PARTNER["id"]}', '{FIRM}', '{PARTNER["auth_user_id"]}', 'p@t.in', 'P', 'Partner', true),
                         ('{MANAGER["id"]}', '{FIRM}', '{MANAGER["auth_user_id"]}', 'm@t.in', 'M', 'Manager', true),
-                        ('{OTHER_MANAGER["id"]}', '{FIRM}', '{OTHER_MANAGER["auth_user_id"]}', 'o@t.in', 'O', 'Manager', true);
+                        ('{OTHER_MANAGER["id"]}', '{FIRM}', '{OTHER_MANAGER["auth_user_id"]}', 'o@t.in', 'O', 'Manager', true),
+                        ('{OTHER_FIRMS_PARTNER}', '{OTHER_FIRM}', NULL, 'g@t.in', 'GP', 'Partner', true);
             INSERT INTO user_client_assignments (firm_id, user_id, client_id) VALUES ('{FIRM}', '{MANAGER["id"]}', '{CLIENT}');
             INSERT INTO tally_migration_jobs (id, firm_id, client_id, name, source_file_name, target_financial_year, created_by)
                  VALUES ('{JOB}', '{FIRM}', '{CLIENT}', 'A books', 'a.xml', '2025-26', '{PARTNER["id"]}'),
                         ('{FIRM_LEVEL_JOB}', '{FIRM}', NULL, 'firm ledgers', 'f.xml', '2025-26', '{PARTNER["id"]}'),
-                        ('{OTHER_FIRMS_JOB}', '{OTHER_FIRM}', '{OTHER_CLIENT}', 'B books', 'b.xml', '2025-26', '{PARTNER["id"]}');
+                        ('{OTHER_FIRMS_JOB}', '{OTHER_FIRM}', '{OTHER_CLIENT}', 'B books', 'b.xml', '2025-26', '{OTHER_FIRMS_PARTNER}');
             INSERT INTO tally_migration_items (firm_id, job_id, item_type)
                  VALUES ('{FIRM}', '{JOB}', 'ledger'), ('{FIRM}', '{JOB}', 'customer'), ('{FIRM}', '{FIRM_LEVEL_JOB}', 'ledger'),
                         ('{OTHER_FIRM}', '{OTHER_FIRMS_JOB}', 'ledger');

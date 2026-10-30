@@ -275,7 +275,7 @@ def test_every_table_with_a_foreign_key_to_the_party_carries_its_triggers_and_no
 def test_the_trigger_functions_pin_their_search_path_and_take_no_argument(db):
     rows = _ok(db, """
         SELECT p.proname, p.prosecdef, p.proconfig::text, p.pronargs
-          FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname ~ '^assert_(inserted_rows|updated_row)_names?_a_' ORDER BY 1;""")
+          FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname ~ '^assert_(inserted_rows|updated_row)_names?_a_(client|customer|vendor)_' ORDER BY 1;""")
     lines = rows.splitlines()
     assert len(lines) == 6, lines
     for line in lines:
@@ -329,7 +329,7 @@ def test_the_rollback_takes_every_trigger_away_and_the_review_case_goes_through_
     assert back.returncode == 0, back.stderr
     for trigger in (*CLIENT_TRIGGERS, *PARTY_TRIGGERS["customer"], *PARTY_TRIGGERS["vendor"]):
         assert _tables_with_trigger(db, trigger) == set(), trigger
-    assert _ok(db, "SELECT count(*) FROM pg_proc WHERE proname = 'guard_client_firm' OR proname ~ '^assert_(inserted_rows|updated_row)_names?_a_';") == "0"
+    assert _ok(db, "SELECT count(*) FROM pg_proc WHERE proname = 'guard_client_firm' OR proname ~ '^assert_(inserted_rows|updated_row)_names?_a_(client|customer|vendor)_';") == "0"
     assert _signed_in_partner(_proposal(G, C_F, "AFTER"), db).returncode == 0, "the rollback should give the old behaviour back"
     assert _run_file(db, MIGRATION).returncode == 0
     assert _signed_in_partner(_proposal(G, C_F, "AGAIN"), db).returncode != 0

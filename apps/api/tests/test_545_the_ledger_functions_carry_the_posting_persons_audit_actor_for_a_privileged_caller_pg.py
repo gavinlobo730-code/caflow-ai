@@ -225,7 +225,6 @@ def test_a_privileged_receipt_is_audited_with_its_allocation_and_the_invoice_it_
 
 @pytest.mark.parametrize("label,created_by", [
     ("names nobody", None),
-    ("names a person of another firm", PEOPLE["other_firm"][0]),
     ("names a person with no auth id", NO_AUTH_USER),
 ])
 def test_a_payload_that_names_no_usable_person_writes_no_audit_row_and_still_posts(dsn, label, created_by):
@@ -233,6 +232,17 @@ def test_a_payload_that_names_no_usable_person_writes_no_audit_row_and_still_pos
     ok, jid = _post(dsn, "service", f"N-{abs(hash(label)) % 10**6}", **extra)
     assert ok, (label, jid)
     assert _audit(dsn, f"entity_type = 'journal_entry' AND entity_id = '{jid}'") == [], label
+
+
+def test_a_payload_that_names_a_person_of_another_firm_is_refused_by_the_database_and_leaves_no_entry_and_no_audit_row(dsn):
+    """This case used to be the third of the test above: the entry posted with another firm's person as `created_by` and no audit row,
+    because that person is no usable actor. Since migration 566 (POST-A-361) the database refuses the entry itself: a row of this firm
+    cannot name a member of another. The carrier still names no actor for such a person (the test above and `carry_audit_actor`'s own
+    cases hold that); what changed is that the entry is no longer stored with the foreign `created_by` beside it."""
+    ok, out = _post(dsn, "service", "N-OTHER-FIRM", created_by=PEOPLE["other_firm"][0])
+    assert not ok and "another firm" in out, (ok, out)
+    assert _rows(dsn, "SELECT count(*) FROM journal_entries WHERE reference_no = 'N-OTHER-FIRM'") == [["0"]]
+    assert _audit(dsn, "entity_type = 'journal_entry' AND entity_id IS NOT NULL AND metadata::text LIKE '%N-OTHER-FIRM%'") == []
 
 
 def test_a_value_that_is_not_a_usable_person_is_no_actor_and_the_carrier_does_not_raise(dsn):
