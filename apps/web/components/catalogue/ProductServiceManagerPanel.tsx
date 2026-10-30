@@ -226,6 +226,8 @@ export function ProductServiceManagerPanel({
       created: unknown[];
       duplicates: { name?: string }[];
       errors: { name?: string; error: string }[];
+      // What the server did NOT do about the opening stock the file asked for (POST-A-092): its own sentence, shown as written.
+      opening_stock?: { message: string | null };
     }>;
     if (res.success && res.data) {
       imported = res.data.created.length;
@@ -236,6 +238,9 @@ export function ProductServiceManagerPanel({
       for (const e of res.data.errors) {
         errors.push(`"${e.name ?? "?"}": ${e.error}`);
       }
+      // The products were created; their opening stock may not have been. The server says which, and the screen does not
+      // reword it or count it, so a stock list that did not land is never read as "imported".
+      if (res.data.opening_stock?.message) errors.push(res.data.opening_stock.message);
     } else {
       errors.push(res.error ?? "Bulk import failed");
     }
