@@ -1224,7 +1224,7 @@ export default function TDSPage() {
         )}
         {retractionNotes.length > 0 && (
           <>
-            <Callout tone="attention" title="Challan retracted. What it did not change:">
+            <Callout tone="attention" title="Challan retracted. What happened to the calendar and to a filed statement:">
               <ul className="list-disc pl-5 space-y-1">
                 {retractionNotes.map((n, i) => <li key={i}>{n}</li>)}
               </ul>

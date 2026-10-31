@@ -1081,8 +1081,9 @@ def retract_challan(
     tds:write (Manager and above), the tier migration 345 gives DELETE on this table: removing a statutory register row is not
     data entry. A reason is required and kept, with the whole challan, in the audit log BEFORE the row goes, and a failure to write
     that entry refuses the retraction (`services/tds_challan_retraction_service`). A year the firm has locked is refused, as
-    recording a challan in it is. It does not reopen a monthly deposit obligation the challan helped to close; the answer says which
-    months still read filed and who can reopen them, and says so when the quarter's statement is recorded as filed. To correct a
+    recording a challan in it is. It REOPENS the monthly deposit obligations the challan closed (the closer records which challans
+    closed a month) when the caller may approve Compliance, and only NAMES them otherwise; a filed month with no record of what closed
+    it is named and left. The answer says which, and says so when the quarter's statement is recorded as filed. To correct a
     challan, retract it and record it again.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this edits the practice's own register and transmits nothing."""
     firm_id = current_user["firm_id"]
@@ -1103,11 +1104,13 @@ def retract_challan(
             # In-memory mock mode has no audit log and no calendar: the row goes and the answer carries no calendar sentence.
             _MOCK_CHALLANS.pop(challan_id, None)
             answer = {"retracted": challan_id, "challan_no": rec.get("challan_no"), "payment_date": rec.get("payment_date"),
-                      "total_paise": rec.get("total_paise"), "calendar_note": None, "statement_note": None}
+                      "total_paise": rec.get("total_paise"), "reopened_obligation_ids": [], "calendar_note": None,
+                      "statement_note": None}
         else:
             from core.supabase_client import get_supabase
             answer = challan_retraction.retract(get_supabase(), firm_id=firm_id, client_id=rec["client_id"], challan=rec,
-                                                reason=body.reason, actor=current_user)
+                                                reason=body.reason, actor=current_user,
+                                                may_reopen=can_user(current_user, "compliance", "approve"))
         timeline_service.log_timeline_event(
             client_id=rec["client_id"], firm_id=firm_id, financial_year=rec.get("financial_year"), category="tds",
             event_type="tds_challan_retracted",

@@ -19,10 +19,16 @@ WHAT THIS DOES
       3. the row is deleted with its id, firm and client in the filter and answers whether it did, so two Managers pressing the
          button on one challan retract it once and the second is told it is gone.
 
-    It does NOT reopen a monthly deposit obligation the challan helped to close: the register does not record which challan
-    closed which month (it pairs challans to months by order), so the answer SAYS which months of the quarter still read filed
-    and that a Manager or Partner can reopen any of them (`POST /api/compliance/obligations/{id}/reopen`), exactly as the ESI
-    retraction does. A retraction that silently reopened months would be a guess about which ones.
+    It REOPENS the monthly deposit obligations the challan closed, when it can tell which they are and the caller may. Since migration
+    569 the closer records, on each obligation it closes, the ids of the challans that covered the month (`closing_tds_challan_ids`),
+    so the months to reopen are exactly the filed ones that name this challan, wherever in the register's order it was paired.
+    The caller must hold `compliance.approve`, the tier that undoes a filing (`POST /api/compliance/obligations/{id}/reopen`); a
+    caller who does not has the months NAMED instead, with who can reopen them, and nothing is reopened for them. Each month goes
+    back to Ready To File through `compliance_record_service.reopen_record` (the reason on the row, the audit log and the timeline
+    as for any reopening, in the caller's name), and a month that cannot be reopened is named with the sentence, never failing
+    the retraction. A month that reads filed in the challan's quarter with NO record of what closed it (closed before the record
+    existed, or by a person from Compliance) is named and left, as before: the register cannot say whether this challan was one of
+    them. A filed month that names OTHER challans only is not mentioned: this challan did not close it.
 
     It does NOT change a TDS statement already recorded as filed either, and says so: the statement is the CA's record of what
     went to the portal, and the register behind it has just changed, so when one for the challan's quarter is recorded as filed
@@ -98,33 +104,109 @@ def delete_row(db, *, firm_id: str, client_id: str, challan_id: str) -> bool:
     return bool(res)
 
 
-def calendar_note(*, firm_id: str, client_id: str, challan: dict) -> Optional[str]:
-    """The sentence to add to the answer when a month of the challan's quarter still reads filed on the compliance calendar, or
-    None. NEVER FAILS THE RETRACTION: the challan is already gone, and a failure to read the calendar is reported and answered
-    with nothing."""
-    if deposit_due.is_salary(str(challan.get("section") or "")):
-        return None                         # a salary challan is not what the monthly non-salary deposit obligations close from
+def _month_label(record: dict) -> str:
+    start = str(record.get("period_start") or "")[:10]
     try:
-        months = deposit_closer.months_of(str(challan.get("financial_year") or ""), str(challan.get("quarter") or ""))
-        wanted = {date(y, m, 1).isoformat(): (y, m) for y, m in months}
-        filed = []
-        for rec in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id,
-                                                    compliance_type=deposit_closer.COMPLIANCE_TYPE):
-            start = str(rec.get("period_start") or "")[:10]
-            if rec.get("obligation_type") == deposit_closer.OBLIGATION_TYPE and start in wanted \
-                    and rec.get("status") in ("Filed", "Completed"):
-                y, m = wanted[start]
-                filed.append(f"{deposit_closer._MONTH_NAMES[m - 1]} {y}")                       # noqa: SLF001
+        d = date.fromisoformat(start)
+    except ValueError:
+        return str(record.get("period_label") or "a month")
+    return f"{deposit_closer._MONTH_NAMES[d.month - 1]} {d.year}"                      # noqa: SLF001
+
+
+def _join(labels: list[str]) -> str:
+    return ", ".join(labels[:-1]) + " and " + labels[-1] if len(labels) > 1 else labels[0]
+
+
+def calendar_effect(*, firm_id: str, client_id: str, challan: dict, reason: Optional[str] = None,
+                    actor: Optional[dict] = None) -> dict[str, Any]:
+    """What the retraction did to the compliance calendar, and the one sentence for it: `{reopened, named, unknown, failed, note}`.
+
+    `reopened`, `named` and `failed` are the months (as "July 2025") the challan closed, which are recorded on the obligation; `unknown`
+    are filed months of its quarter with no record of what closed them. With `actor` the months the challan closed are reopened (the
+    caller has checked that this person may approve Compliance); without it they are only named. NEVER FAILS THE RETRACTION: the
+    challan is already gone, and a failure to read the calendar is reported and answered with nothing."""
+    empty: dict[str, Any] = {"reopened": [], "reopened_ids": [], "named": [], "unknown": [], "failed": [], "note": None}
+    if deposit_due.is_salary(str(challan.get("section") or "")):
+        return empty                        # a salary challan is not what the monthly non-salary deposit obligations close from
+    try:
+        quarter_starts = {date(y, m, 1).isoformat() for y, m in deposit_closer.months_of(
+            str(challan.get("financial_year") or ""), str(challan.get("quarter") or ""))}
+        filed = [rec for rec in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id,
+                                                                 compliance_type=deposit_closer.COMPLIANCE_TYPE)
+                 if rec.get("obligation_type") == deposit_closer.OBLIGATION_TYPE and rec.get("status") in ("Filed", "Completed")]
     except Exception as exc:                                # noqa: BLE001
         from core.observability import capture_soft_failure
         capture_soft_failure(exc, operation="tds.challan_retraction.calendar_note", firm_id=firm_id, client_id=client_id)
-        return None
-    if not filed:
-        return None
-    return (f"The compliance calendar still shows the monthly TDS deposit (non-salary) for {', '.join(filed)} as filed. Retracting "
-            "the challan does not reopen it, because the register does not record which challan closed which month. If this "
-            "challan closed one of them, a Manager or Partner can reopen it, with a reason, from Deadlines or the client's "
-            "Compliance tab.")
+        return empty
+    mine, unknown = [], []
+    for rec in filed:
+        recorded = deposit_closer.closed_on(rec)
+        if recorded is not None and str(challan.get("id")) in recorded:
+            mine.append(rec)
+        elif recorded is None and str(rec.get("period_start") or "")[:10] in quarter_starts:
+            unknown.append(rec)
+    out = {**empty, "unknown": [_month_label(r) for r in unknown]}
+    for rec in mine:
+        label = _month_label(rec)
+        if actor is None:
+            out["named"].append(label)
+            continue
+        problem = _reopen(rec, challan=challan, reason=reason or "", actor=actor, firm_id=firm_id, client_id=client_id)
+        if problem is None:
+            out["reopened"].append(label)
+            out["reopened_ids"].append(rec["id"])
+        else:
+            out["failed"].append(f"{label} ({problem})")
+    out["note"] = _calendar_sentence(out)
+    return out
+
+
+def _reopen(rec: dict, *, challan: dict, reason: str, actor: dict, firm_id: str, client_id: str) -> Optional[str]:
+    """Reopen one obligation the retracted challan closed. None when it was reopened, otherwise the sentence for why not."""
+    from core.exceptions import NotFoundError, ValidationError
+    from domain.compliance_record_service import MAX_REOPEN_REASON_CHARS, compliance_record_service
+    why = (f"The TDS challan {challan.get('challan_no') or 'recorded for it'} that this month was closed on was retracted: "
+           f"{reason}")[:MAX_REOPEN_REASON_CHARS]
+    try:
+        compliance_record_service.reopen_record(rec["id"], why, firm_id=firm_id, actor=actor)
+    except ValidationError as refusal:
+        return str(getattr(refusal, "message", None) or refusal)
+    except NotFoundError:
+        return "it could not be found to update"
+    except Exception as exc:                                # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="tds.challan_retraction.reopen", firm_id=firm_id, client_id=client_id)
+        return "it could not be reopened just now"
+    return None
+
+
+_WHO = "a Manager or Partner can reopen it, with a reason, from Deadlines or the client's Compliance tab"
+
+
+def _calendar_sentence(effect: dict[str, Any]) -> Optional[str]:
+    parts = []
+    if effect["reopened"]:
+        parts.append(f"The monthly TDS deposit (non-salary) on the compliance calendar for {_join(effect['reopened'])} was closed on "
+                     "this challan, so it has been reopened and reads Ready To File again. It is closed again when the challans "
+                     "recorded for the quarter cover it in full and on time.")
+    if effect["named"]:
+        parts.append(f"The monthly TDS deposit (non-salary) for {_join(effect['named'])} was closed on this challan and still reads "
+                     f"filed on the compliance calendar. Your access does not include approving Compliance, so it was not reopened; "
+                     f"{_WHO}.")
+    if effect["failed"]:
+        parts.append(f"The monthly TDS deposit (non-salary) for {_join(effect['failed'])} was closed on this challan and could not be "
+                     f"reopened; {_WHO}.")
+    if effect["unknown"]:
+        parts.append(f"The compliance calendar still shows the monthly TDS deposit (non-salary) for {_join(effect['unknown'])} as "
+                     "filed. Retracting the challan does not reopen it, because nothing recorded which challan closed that month. "
+                     f"If this challan closed one of them, {_WHO}.")
+    return " ".join(parts) or None
+
+
+def calendar_note(*, firm_id: str, client_id: str, challan: dict) -> Optional[str]:
+    """The calendar sentence for a retraction that reopens nothing (the months are named). Kept as the plain question the tests and
+    the older callers ask; `retract` asks `calendar_effect` with the caller so the months can be reopened."""
+    return calendar_effect(firm_id=firm_id, client_id=client_id, challan=challan)["note"]
 
 
 #: A statement the CA has recorded as sent to the portal. `revised` is a later version of one that was.
@@ -153,20 +235,25 @@ def statement_note(db, *, firm_id: str, client_id: str, challan: dict) -> Option
             "statement already filed, so if this challan was reported in it, the register and the filed statement now disagree.")
 
 
-def retract(db, *, firm_id: str, client_id: str, challan: dict, reason: str, actor: dict) -> dict[str, Any]:
+def retract(db, *, firm_id: str, client_id: str, challan: dict, reason: str, actor: dict,
+            may_reopen: bool = False) -> dict[str, Any]:
     """Retract the challan already read for this firm and client. Returns what to answer: the retracted challan's identifying
-    facts, and the calendar and statement sentences when there are any. Raises `RetractionRefused`."""
+    facts, the obligations it reopened (`may_reopen`: the caller holds `compliance.approve`), and the calendar and statement
+    sentences when there are any. Raises `RetractionRefused`."""
     why = clean_reason(reason)
     write_audit_or_refuse(firm_id=firm_id, challan=challan, reason=why, actor=actor)
     if not delete_row(db, firm_id=firm_id, client_id=client_id, challan_id=challan["id"]):
         # The audit entry says "retract" for a row another request had already removed. That is a true entry about a request, and
         # the answer is the honest one: it is gone.
         raise RetractionRefused("That challan is no longer in the register: somebody retracted it just now.", status=404)
+    effect = calendar_effect(firm_id=firm_id, client_id=client_id, challan=challan, reason=why,
+                             actor=actor if may_reopen else None)
     return {
         "retracted": challan["id"],
         "challan_no": challan.get("challan_no"),
         "payment_date": challan.get("payment_date"),
         "total_paise": challan.get("total_paise"),
-        "calendar_note": calendar_note(firm_id=firm_id, client_id=client_id, challan=challan),
+        "reopened_obligation_ids": effect["reopened_ids"],
+        "calendar_note": effect["note"],
         "statement_note": statement_note(db, firm_id=firm_id, client_id=client_id, challan=challan),
     }

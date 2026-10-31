@@ -753,9 +753,9 @@ export const listTdsReturns = (clientId: string) =>
 export const listTdsCertificates = (clientId: string) =>
   readTdsWindow<Record<string, unknown>, TdsCertificateCounts>(`/api/tds-workspace/certificates?${clientQuery(clientId)}`, "certificates", "counts", "certificates");
 
-/** What the server says of a retracted challan: which one went, and the calendar sentence when a month it may have closed still reads
- *  filed (the server cannot tell which challan closed which month, so it says so and does not reopen anything), and the sentence about
- *  a TDS statement for the quarter that is already recorded as filed. */
+/** What the server says of a retracted challan: which one went, the obligations it reopened (the months it closed, when the caller may
+ *  approve Compliance), the calendar sentence (which months were reopened, which still read filed and why), and the sentence about a
+ *  TDS statement for the quarter that is already recorded as filed. */
 export interface RetractedChallan {
   retracted: string;
   challan_no: string | null;

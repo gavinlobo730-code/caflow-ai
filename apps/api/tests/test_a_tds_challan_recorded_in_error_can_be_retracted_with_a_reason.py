@@ -15,9 +15,10 @@ WHAT THIS HOLDS
     * a challan of another firm, or of a client the caller may not reach, is "not found" and is not touched;
     * a year the firm has locked refuses the retraction as it refuses the recording;
     * two requests for one challan retract it once and the second is told it is gone;
-    * a month of the challan's quarter that still reads filed on the calendar is NAMED in the answer, with who can reopen it, and
-      nothing is reopened by the retraction; a salary challan, a quarter with nothing filed and a calendar that cannot be read
-      each produce no sentence and never fail the retraction.
+    * a month of the challan's quarter that still reads filed on the calendar WITH NO RECORD of what closed it is NAMED in the answer,
+      with who can reopen it, and nothing is reopened for it; a salary challan, a quarter with nothing filed and a calendar that
+      cannot be read each produce no sentence and never fail the retraction. (A month whose record NAMES the challan is reopened:
+      `test_a_retracted_tds_challan_reopens_the_months_it_closed.py`.)
 """
 from __future__ import annotations
 
