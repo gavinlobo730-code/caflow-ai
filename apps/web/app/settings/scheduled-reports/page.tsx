@@ -20,6 +20,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
 
+import { Button } from "@/components/ui/button";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ReportType = "pl" | "balance_sheet" | "gst_summary" | "tds_summary" | "payroll_summary";
@@ -326,12 +327,12 @@ export default function ScheduledReportsPage() {
                     </button>
                   </td>
                   <td className="px-5 py-3">
-                    <button disabled={actionInFlight}
+                    <Button variant="plain" size="none" disabled={actionInFlight}
                       onClick={() => handleDelete(s.id)}
                       className="flex items-center gap-1 text-xs text-state-problem hover:underline"
                     >
                       <Trash2 size={12} /> Delete
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}

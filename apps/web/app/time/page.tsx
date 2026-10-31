@@ -471,12 +471,12 @@ export default function TimeTrackingPage() {
                         )
                       )}
                     </div>
-                    <button
+                    <Button variant="plain" size="none"
                       onClick={() => handleDelete(e.id)}
                       className="p-1.5 rounded text-ps-disabled hover:text-state-problem hover:bg-state-problem-hover transition-colors"
                     >
                       <Trash2 size={13} />
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}

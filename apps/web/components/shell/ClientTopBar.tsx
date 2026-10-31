@@ -14,6 +14,7 @@ import { ClientModuleGrid } from "@/components/client/ClientModuleGrid";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { restoreClient } from "@/lib/data/clients";
 
+import { Button } from "@/components/ui/button";
 /**
  * The client workspace's whole chrome, in one 48px bar.
  *
@@ -202,7 +203,7 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             menu on another screen. Manager+ (`client` write), the same guard
             the endpoint's rbac() applies. */}
         {isArchived && can("client", "write") && (
-          <button
+          <Button variant="plain" size="none"
             onClick={handleRestore}
             disabled={restoring}
             title={restoreError ?? "Restore this client to the active list"}
@@ -215,7 +216,7 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
           >
             <RotateCcw size={12} />
             {restoring ? "Restoring…" : restoreError ? "Restore failed — retry" : "Restore"}
-          </button>
+          </Button>
         )}
 
         {/* The module switcher. A chevron rather than a label change when open:

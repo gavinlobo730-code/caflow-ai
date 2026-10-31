@@ -23,15 +23,18 @@
 //      an entry in the table.
 //
 // WHAT "ASYNC-WRITING" MEANS is in scripts/rawAsyncButtons.ts, with what it cannot
-// see: a handler that arrives as a prop, a write behind a helper in another file,
-// and a `<form onSubmit>`. It can only understate; it cannot invent a violation.
+// see: a handler that arrives as a prop, a write behind a helper in a file OUTSIDE lib/
+// (a helper in lib/ is followed since 31-10-2026: the drive of the TDS record forms found two
+// that recorded twice on a double click behind `lib/data/tds.ts`, which this scan had never
+// seen), and a `<form onSubmit>`. It can only understate; it cannot invent a violation.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   analyseButtons, API_CLIENTS, findAwaitedPropCallbacks, findDroppedPromises, findDroppedPropPromises,
-  findForwardedClicks, findRawAsyncButtons, GUARDED_PRIMITIVES, READS_BY_POST, writingClientMethods,
+  findForwardedClicks, findRawAsyncButtons, GUARDED_PRIMITIVES, LIB_READS_BY_POST, READS_BY_POST, writingClientMethods,
+  writingLibHelpers,
 } from "./rawAsyncButtons.ts";
 import { stripComments } from "./stripComments.ts";
 
@@ -263,6 +266,59 @@ test("every method named as a read-by-POST is real and really sends a POST", () 
   }
 });
 
+// ── a write behind a helper in lib/ (the blind spot the drive of the TDS record forms found, 31-10-2026) ──────────────────────────
+// The sources import REAL helpers (`createTdsChallan` and the rest are in lib/data/tds.ts): the scan reads the lib files, so a made-up
+// helper would be no helper at all.
+
+test("a click that reaches a write helper in lib/ is a write, though its own file does nothing but call it", () => {
+  const src = `import { createTdsChallan } from "@/lib/data/tds";
+    export function F() {
+      async function save() { await createTdsChallan({} as never); }
+      return <button onClick={save}>Add</button>;
+    }`;
+  const found = raw(src);
+  assert.equal(found.length, 1, "a raw button that records a challan through a lib helper was not found");
+  assert.match(found[0].write, /createTdsChallan\(…\) \[lib\/data\/tds::createTdsChallan\]/);
+});
+
+test("the same call on a <Button> that returns the promise is held, and one that drops it is found", () => {
+  const held = `import { retractTdsChallan } from "@/lib/data/tds";
+    export function F() { return <Button onClick={() => retractTdsChallan("c", "why")}>Retract</Button>; }`;
+  assert.deepEqual(dropped(held), [], "a Button that hands back the helper's promise was called a drop");
+  const drops = `import { retractTdsChallan } from "@/lib/data/tds";
+    export function F() { return <Button onClick={() => { void retractTdsChallan("c", "why"); }}>Retract</Button>; }`;
+  assert.equal(dropped(drops).length, 1, "a Button that drops the helper's promise was not found");
+});
+
+test("a lib helper that only reads is not a write, and a name the file did not import from lib/ is not a helper", () => {
+  const reads = `import { listTdsChallans } from "@/lib/data/tds";
+    export function F() { async function load() { await listTdsChallans("c"); } return <button onClick={load}>Reload</button>; }`;
+  assert.deepEqual(raw(reads), [], "a read helper was counted as a write");
+  const stranger = `export function F() { async function save() { await createTdsChallan({}); } return <button onClick={save}>Add</button>; }`;
+  assert.deepEqual(raw(stranger), [], "a function this file never imported from lib/ was counted as a write helper");
+});
+
+test("the helpers are read off the lib files: one that writes only through another function of its own file is one, a reader is not", () => {
+  const helpers = writingLibHelpers();
+  const tds = helpers.get("lib/data/tds");
+  assert.ok(tds, "lib/data/tds has no write helper in the derivation: the scan has gone blind");
+  for (const name of ["createTdsChallan", "createTdsDeduction", "retractTdsChallan", "approveTDSReturn", "markTDSFiled"]) {
+    assert.ok(tds.has(name), `${name} writes and was not derived as a write helper`);
+  }
+  for (const name of ["listTdsChallans", "listTdsDeductions", "fetchDepositDue"]) {
+    assert.ok(!tds.has(name), `${name} reads and was derived as a write helper`);
+  }
+  assert.ok(helpers.get("lib/data/deleteRowAndConfirm")?.has("deleteRowAndConfirm"), "the plain-row delete helper was once named by hand and is derived now");
+});
+
+test("every helper named as a read-by-POST is written as <module>::<name> with its reason", () => {
+  for (const [key, why] of Object.entries(LIB_READS_BY_POST)) {
+    const [mod, name] = key.split("::");
+    assert.ok(mod && name, `${key} is not <module>::<name>`);
+    assert.ok(why.length > 15, `${key} needs its reason written down`);
+  }
+});
+
 // ═════════════════════════════════════════════════════════════════════════════
 // THE FROZEN TABLE
 // ═════════════════════════════════════════════════════════════════════════════
@@ -287,7 +343,7 @@ const BASELINE: Record<string, number> = {
   "app/settings/invoice-settings/page.tsx": 1,
   "app/settings/invoice-templates/page.tsx": 1,
   "app/settings/page.tsx": 2,
-  "app/settings/scheduled-reports/page.tsx": 3,
+  "app/settings/scheduled-reports/page.tsx": 2,
   "app/settings/statutory-values/page.tsx": 2,
   "app/settings/treaty-rates/page.tsx": 2,
   "components/accounting/CostCentresTab.tsx": 2,
@@ -303,7 +359,7 @@ const BASELINE: Record<string, number> = {
   "app/clients/[id]/documents/page.tsx": 4,
   "app/clients/documents/page.tsx": 2,
   "app/documents/page.tsx": 2,
-  "app/income-tax/notices/page.tsx": 5,
+  "app/income-tax/notices/page.tsx": 4,
   "app/clients/[id]/compliance/page.tsx": 2,
   "app/clients/[id]/lifecycle/page.tsx": 4,
   "app/tasks/page.tsx": 2,
@@ -319,7 +375,7 @@ const BASELINE: Record<string, number> = {
   "app/relationships/cross-client/page.tsx": 2,
   "app/relationships/page.tsx": 1,
   // ── communication and engagement ──
-  "app/client-portal/page.tsx": 5,
+  "app/client-portal/page.tsx": 4,
   "app/clients/[id]/portal/page.tsx": 1,
   "app/engagements/page.tsx": 10,
   "app/notifications/page.tsx": 1,
@@ -424,7 +480,9 @@ test("the raw async-writing buttons that remain are exactly the frozen table", (
 
 test("the scan is not vacuous", () => {
   const total = Object.values(BASELINE).reduce((s, n) => s + n, 0);
-  assert.ok(total >= 90, `the table holds only ${total} — the analysis has probably gone blind`);
+  // A tripwire for a scanner gone blind, not a target: the table only falls as buttons are converted (it held 92, then 89 on 31-10-2026
+  // when the scanner learned to follow a write into `lib/` and 33 such buttons were converted at once), so the floor sits well below it.
+  assert.ok(total >= 60, `the table holds only ${total} — the analysis has probably gone blind`);
   assert.ok(FILES.length > 400, `only ${FILES.length} files walked`);
   const buttons = FILES.reduce((s, f) => s + (source(f).match(/<Button\b/g) ?? []).length, 0);
   assert.ok(buttons >= 300, `only ${buttons} <Button> in the tree — the conversion has been lost`);

@@ -33,6 +33,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
 
+import { Button } from "@/components/ui/button";
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 }
@@ -300,10 +301,10 @@ export default function TDSReturnsPage() {
           </div>
         </div>
         <div className="mt-4 flex items-center gap-3">
-          <button onClick={handleCompute} disabled={actionInFlight || !clientId}
+          <Button variant="plain" size="none" onClick={handleCompute} disabled={actionInFlight || !clientId}
             className="flex items-center gap-2 bg-brand text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-dark disabled:opacity-50">
             {loading ? "Computing…" : `Compute ${returnType}`}
-          </button>
+          </Button>
           {result && (
             <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusCfg.color}`}>
               {statusCfg.label}
@@ -657,11 +658,11 @@ export default function TDSReturnsPage() {
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
             {(filingStatus === "prepared") && (
-              <button onClick={handleApprove} disabled={actionInFlight || result.validation_errors.length > 0}
+              <Button variant="plain" size="none" onClick={handleApprove} disabled={actionInFlight || result.validation_errors.length > 0}
                 className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
                 <CheckCircle size={15} />
                 {approving ? "Approving…" : "CA Approve"}
-              </button>
+              </Button>
             )}
             {(filingStatus === "ca_approved" || filingStatus === "filed") && (
               <button onClick={() => result && downloadTDSJSON(result)}
@@ -720,10 +721,10 @@ export default function TDSReturnsPage() {
                 className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
-              <button onClick={handleMarkFiled} disabled={!prn || !filingDate}
+              <Button variant="plain" size="none" onClick={handleMarkFiled} disabled={!prn || !filingDate}
                 className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                 Confirm Filed
-              </button>
+              </Button>
             </div>
           </div>
         </div>

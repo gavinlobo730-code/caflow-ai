@@ -30,6 +30,7 @@ import { gstinProblem } from "@/lib/gst/gstin";
 import { panProblem } from "@/lib/identifiers/pan";
 import { PageHeader } from "@/components/ui/page-header";
 
+import { Button } from "@/components/ui/button";
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
   { key: "entity_type",  label: "Entity Type",    required: true,  hint: "Proprietorship | Partnership | LLP | Private Limited | Public Limited | Trust | Society | Individual | HUF | AOP | BOI" },
@@ -661,24 +662,24 @@ export default function ClientsPage() {
           <span className="font-semibold text-brand-dark">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {selectedActive > 0 && (
-              <button
+              <Button variant="plain" size="none"
                 onClick={bulkArchive}
                 disabled={actionInFlight}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Archive size={12} />
                 {bulkBusy ? "Working…" : selectedArchived > 0 ? `Archive ${selectedActive}` : "Archive"}
-              </button>
+              </Button>
             )}
             {selectedArchived > 0 && (
-              <button
+              <Button variant="plain" size="none"
                 onClick={bulkRestore}
                 disabled={actionInFlight}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-brand-light bg-white px-2.5 py-1.5 font-medium text-brand hover:bg-ps-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RotateCcw size={12} />
                 {bulkBusy ? "Working…" : selectedActive > 0 ? `Restore ${selectedArchived}` : "Restore"}
-              </button>
+              </Button>
             )}
             <button onClick={clearSelection} disabled={bulkBusy} className="text-ps-label hover:text-brand disabled:opacity-50" aria-label="Clear selection">
               <X size={14} />
@@ -867,13 +868,13 @@ export default function ClientsPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleArchive}
                 disabled={actionInFlight}
                 className="px-4 py-2 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
               >
                 {actionBusy ? "Archiving…" : "Archive"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -901,13 +902,13 @@ export default function ClientsPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleRestore}
                 disabled={actionInFlight}
                 className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
               >
                 {actionBusy ? "Restoring…" : "Restore"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -986,13 +987,13 @@ export default function ClientsPage() {
               )}
 
               {!deleteBlockers && (
-                <button
+                <Button variant="plain" size="none"
                   onClick={handleDelete}
                   disabled={actionInFlight || deleteConfirmName !== deleteTarget.client_name}
                   className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40"
                 >
                   {actionBusy ? "Deleting…" : "Delete Permanently"}
-                </button>
+                </Button>
               )}
             </div>
           </div>

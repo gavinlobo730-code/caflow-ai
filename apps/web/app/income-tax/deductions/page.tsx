@@ -30,6 +30,7 @@ import { computeITR, saveTaxPlanningRecord, type ITRComputeResult } from "@/lib/
 import type { Client } from "@/lib/types";
 import { PageHeader } from "@/components/ui/page-header";
 
+import { Button } from "@/components/ui/button";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface S80CItems {
@@ -713,10 +714,10 @@ export default function DeductionsPage() {
             placeholder="Planning notes…" />
         </div>
 
-        <button onClick={handleSave} disabled={saving || !clientId || computing || !oldResult || !newResult}
+        <Button variant="plain" size="none" onClick={handleSave} disabled={saving || !clientId || computing || !oldResult || !newResult}
           className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm rounded-lg hover:bg-brand-dark disabled:opacity-60">
           <Save size={15} /> {saving ? "Saving…" : "Save for Client"}
-        </button>
+        </Button>
         {saveMsg && <p className="text-xs text-state-ready">{saveMsg}</p>}
       </div>
     </div>
