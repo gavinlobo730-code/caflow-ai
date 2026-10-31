@@ -1,7 +1,7 @@
 "use client";
 
 // sweep-auth-and-public-05: this URL used to BE the client-onboarding
-// workflow tracker, and it shared the /onboarding/* prefix with the firm
+// workflow tracker, and it shared the /onboarding prefix with the firm
 // SIGNUP wizard at /onboarding — confusing enough that even a route-grouping
 // sweep treated it as step 2 of firm signup, although it is an authenticated
 // staff screen tracking a CLIENT's onboarding, unrelated to the wizard.

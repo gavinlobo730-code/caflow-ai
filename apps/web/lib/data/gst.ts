@@ -666,7 +666,7 @@ export async function getClientGSTIN(clientId: string): Promise<string> {
 // ── API Calls ──────────────────────────────────────────────────────────────
 
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  // Every /api/gst/* route is guarded by rbac("gst", "compute"), so an
+  // Every /api/gst route is guarded by rbac("gst", "compute"), so an
   // unauthenticated POST is a 401 — which this helper omitted entirely. Alongside
   // the dropped `transactions` table that made this path doubly non-functional.
   const { data: { session } } = await getSupabaseClient().auth.getSession();
