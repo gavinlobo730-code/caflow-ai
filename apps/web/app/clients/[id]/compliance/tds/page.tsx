@@ -1368,7 +1368,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
               onChange={(v) => setForm((f) => ({ ...f, valid_from: v }))}
               onStateChange={certDates.watch("from", "Valid from")}
               className="w-full border rounded px-3 py-1.5 text-sm" />
-            <DateInput aria-label="Valid to" anchor={form.valid_from || null} value={form.valid_to}
+            <DateInput aria-label="Valid to" anchor={form.valid_from || null} notBefore={form.valid_from || null} value={form.valid_to}
               onChange={(v) => setForm((f) => ({ ...f, valid_to: v }))}
               onStateChange={certDates.watch("to", "Valid to")}
               className="w-full border rounded px-3 py-1.5 text-sm" />

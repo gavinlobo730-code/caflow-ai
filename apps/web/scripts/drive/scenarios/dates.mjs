@@ -315,6 +315,37 @@ export const scenarios = [
       await expectWrites(env.stub, m.write, 1, `two same-tick clicks on ${m.name}`);
     },
   })),
+  // A date that belongs AFTER another is read after it. The anchor's financial year decides the year of a short form, so a valid-upto typed `2/4`
+  // beside a bill dated 31/03/2027 (the last day of FY 2026-27) came out as 02/04/2026, a year BEFORE the bill, and the field showed it without a word.
+  {
+    id: "record-eway-bill-a-short-valid-upto-is-read-after-the-bill-date",
+    title: "Record E-Way Bill: a short valid-upto beside a bill dated on the last day of the financial year is read in the NEXT year, and a typed year is left alone",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openRecordEway(env);
+      const bill = modalOf(page).locator('input[aria-label="EWB date"]');
+      const valid = modalOf(page).locator('input[aria-label="Valid upto"]');
+      await typeAndLeave(bill, "31/03/2027");
+      await typeAndLeave(valid, "2/4");
+      assert.equal(await valid.inputValue(), "02/04/2027", "2/4 beside a bill of 31/03/2027 was read before the bill");
+      await typeAndLeave(valid, "0204");
+      assert.equal(await valid.inputValue(), "02/04/2027", "the four-digit short form moved differently");
+      await typeAndLeave(valid, "2/4/2026");
+      assert.equal(await valid.inputValue(), "02/04/2026", "a year the person typed was moved");
+      await modalOf(page).getByText(/is before 31 Mar 2027/).waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error("a valid-upto typed in full before the bill's date was shown no hint");
+      });
+      await typeAndLeave(valid, "2/4");
+      await modalOf(page).getByRole("button", { name: "Record E-Way Bill", exact: true }).click();
+      await stub.quiet();
+      const writes = stub.writesTo(/eway-bill\/records\/ew-1\/generated$/);
+      assert.equal(writes.length, 1, `expected one write, saw ${writes.length}`);
+      const body = JSON.parse(writes[0].body);
+      assert.equal(body.ewb_date, "2027-03-31");
+      assert.equal(body.ewb_valid_upto, "2027-04-02", "the valid-upto that reached the server is the one before the bill");
+    },
+  },
   // A required date that is CLEARED reports "empty", not a problem, so a gate over unreadable text alone sends a blank (the server takes it into a
   // timestamp column and answers with a database error). The Record modals refuse it in a sentence of their own and send nothing.
   ...[

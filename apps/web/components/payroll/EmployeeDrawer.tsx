@@ -643,7 +643,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
               </p>
               <div className="mt-2 flex items-end gap-3">
                 <label className={LABEL}>Payment date
-                  <DateInput anchor={leavingDate || null} value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("payment", "Payment date")}
+                  <DateInput id="settlement-payment-date" anchor={leavingDate || null} value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("payment", "Payment date")}
                     className={`${FIELD} mt-1`} />
                 </label>
                 {confirming ? (

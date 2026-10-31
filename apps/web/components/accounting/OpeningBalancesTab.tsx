@@ -435,7 +435,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                   <DateInput value={form.due_date}
                     onChange={(iso) => setForm((f) => ({ ...f, due_date: iso }))}
                     onStateChange={dates.watch("due_date", "Due date")}
-                    anchor={form.due_date || form.document_date}
+                    anchor={form.due_date || form.document_date} notBefore={form.document_date}
                     className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
                 </label>
               </div>
