@@ -317,6 +317,26 @@ def _the_updated_row(res, what: str) -> dict:
     return rows[0]
 
 
+def _where_the_status_went(sb, res, firm_id: str, filing_id: str, current: str):
+    """(status, acknowledgement number) now on file when an update conditional on `current` matched no row because somebody else moved the
+    filing first, else None (the row is gone, or its status is still `current` and something else refused the write)."""
+    if getattr(res, "data", None):
+        return None
+    rows = sb.table("itr_filings").select("status, acknowledgement_number").eq("id", filing_id).eq("firm_id", firm_id).limit(1).execute().data or []
+    if rows and (rows[0].get("status") or "") != current:
+        return rows[0].get("status") or "", rows[0].get("acknowledgement_number")
+    return None
+
+
+def _refuse_a_step_from_a_moved_status(sb, res, firm_id: str, filing_id: str, current: str) -> None:
+    """Raise, in words, when the step that was just taken matched no row because the status it started from had moved (POST-A-367)."""
+    moved = _where_the_status_went(sb, res, firm_id, filing_id, current)
+    if moved:
+        raise ValueError(
+            f"This return was moved from '{current}' to '{moved[0]}' while you were working on it. "
+            "Reload it and take the step again from there. Nothing was changed.")
+
+
 def pin_computation(firm_id: str, filing_id: str, snapshot_id: str) -> dict:
     """Pin a saved computation to a filing that has none (POST-A-368). The pin is the record of what a return was built on, so it is set once and
     never replaced: the update names the empty pin as its condition, and a filing that already has one is refused in words."""
@@ -428,9 +448,12 @@ def transition_itr_status(
         update["partner_reviewed_by"] = actor_id
         update["partner_reviewed_at"] = datetime.now(timezone.utc).isoformat()
 
+    # The status read above is the update's condition (POST-A-367): a step taken from a status somebody else has just changed would
+    # otherwise overwrite it, and the case that matters is a return that was recorded as filed in the same moment.
     res = sb.table("itr_filings").update(update).eq("id", filing_id).eq(
         "firm_id", firm_id
-    ).execute()
+    ).eq("status", current).execute()
+    _refuse_a_step_from_a_moved_status(sb, res, firm_id, filing_id, current)
     return _the_updated_row(res, "move the return on")
 
 
@@ -547,10 +570,16 @@ def record_filing_acknowledgement(
     if current not in _MAY_BECOME_FILED:
         _refuse(current, rows[0].get("acknowledgement_number"))
 
+    # The update names the status that was just read as its condition (POST-A-367): two submits at the same moment both pass the read
+    # above, and without the condition the second would overwrite the first's acknowledgement number and date with its own, which is
+    # exactly what the refusal above exists to prevent. Whoever loses the race matches no row and is told what is on file.
     res = sb.table("itr_filings").update({
         "acknowledgement_number": acknowledgement_number,
         "filing_date": filing_date,
         "status": "filed",
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", filing_id).eq("firm_id", firm_id).execute()
+    }).eq("id", filing_id).eq("firm_id", firm_id).eq("status", current).execute()
+    moved = _where_the_status_went(sb, res, firm_id, filing_id, current)
+    if moved:
+        _refuse(*moved)
     return _the_updated_row(res, "record the acknowledgement on")
