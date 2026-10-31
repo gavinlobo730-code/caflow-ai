@@ -189,6 +189,33 @@ def ist_day_iso(stamp, default: str = "") -> str:
     return day.isoformat() if day else default
 
 
+def portal_day(value) -> "date | None":
+    """The Indian calendar day a PORTAL PRINTED, read from what a person typed or pasted (POST-A-251).
+
+    The e-invoice acknowledgement date and an e-way bill's date and valid-upto are days the IRP and the NIC portal print in Indian
+    wall-clock time, and the screens send a bare date. Anything longer is read the way the portal prints it: a value with NO offset is
+    already Indian wall-clock and its date part is the day, which is the OPPOSITE of `ist_date_of` (that one reads a naive STORED
+    instant as UTC); a value WITH an offset is an instant and is converted to the Indian day. None when nothing readable.
+
+    The doors store this day, as a bare date, so the column holds midnight UTC, whose first ten characters, whose Indian day and whose
+    typed day are one and the same, and no reader has to guess which of the two meanings the column carries."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.date()
+        try:
+            return value.astimezone(IST).date()
+        except OverflowError:
+            return None
+    return value if isinstance(value, date) else None
+
+
 def ist_day_window(date_from, date_to) -> tuple["str | None", "str | None"]:
     """The instants that bound a range of INDIAN days, as `(start, end)` for `.gte(col, start).lt(col, end)`.
 

@@ -82,6 +82,7 @@ logger = logging.getLogger("caflow.services")
 # SAC 998211 is "legal and accounting services" — the PRACTICE's own supply.
 # It is the default only on the practice's fee invoice. It is never printed on
 # a client's sales invoice: what the client sells is not what the CA sells.
+from core.ist_clock import ist_day_iso
 from domain.reporting.pdf_money import rupees_paise
 
 SAC_CODE = "998211"
@@ -252,7 +253,7 @@ def _einvoice_particulars(record: Optional[dict]) -> dict:
     return {
         "irn": str(record["irn"]).strip(),
         "ack_number": (record.get("ack_number") or "") and str(record["ack_number"]).strip(),
-        "ack_date": str(record.get("ack_date") or "")[:10],
+        "ack_date": ist_day_iso(record.get("ack_date")),
         "qr_data": record.get("qr_data") or None,
     }
 

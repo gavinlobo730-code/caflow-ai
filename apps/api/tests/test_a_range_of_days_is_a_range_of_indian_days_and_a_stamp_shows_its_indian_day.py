@@ -22,15 +22,18 @@ WHAT IS HELD
       with a reason each. The rule is a count of a shape, not a list of today's lines, and it has a negative control. Its blind
       spots are named below.
 
-THE RULE'S BLIND SPOTS (not a claim of coverage): a stamp sliced after being copied into a variable with another name, and a
-    column that holds a stamp but is not named `..._at` (nine of production's timestamptz columns are not, and three sites slice them:
-    `ewb_date` and `ewb_valid_upto` in routers/eway_bill.py and `ack_date` in services/invoice_pdf_service.py. Whether those portal
-    stamps are stored as the Indian wall-clock labelled UTC, in which case the first ten characters ARE the Indian day and
-    `ist_date_of` would be the wrong fix, is a question about what the portal sends and the column stores, left open on the ledger).
-    CLOSED on 28-10-2026: a `.split("T")[0]` / `.partition("T")[0]` of a stamp and a `.strftime(...)` called on a value that names one
-    (the server holds none of either), and the four private copies of the stamp-to-day conversion: three are folded onto
-    `ist_date_of` and the fourth (`domain/health/overrides._ist_date`) stays because it reads a naive value as Indian and raises on
-    junk, which the helper does not, and says so.
+THE RULE'S KEYS ARE THE SCHEMA'S, NOT A SUFFIX (POST-A-251, 31-10-2026). A stamp is a value named `..._at` OR named for a column that
+    production's schema snapshot types `timestamptz` everywhere it appears (nine are not named `..._at`: `ack_date`, `activity_date`,
+    `at`, `ewb_date`, `ewb_valid_upto`, `payroll_enabled_on`, `scheduled_for`, `snoozed_until`, `upload_date`). The three sites that sliced
+    one (`ewb_date` and `ewb_valid_upto` in routers/eway_bill.py and `ack_date` in services/invoice_pdf_service.py) read through the
+    Indian-day helpers now, and the doors that write them (`RecordEWBGeneratedRequest`, `RecordIRNRequest`) store the day the portal
+    printed as a bare date through `core.ist_clock.portal_day`, so a reader no longer has to guess whether a longer value was Indian
+    wall-clock labelled UTC or a true instant.
+    STILL A BLIND SPOT: a stamp sliced after being copied into a variable with another name. CLOSED on 28-10-2026: a `.split("T")[0]` /
+    `.partition("T")[0]` of a stamp and a `.strftime(...)` called on a value that names one (the server holds none of either), and the
+    four private copies of the stamp-to-day conversion: three are folded onto `ist_date_of` and the fourth
+    (`domain/health/overrides._ist_date`) stays because it reads a naive value as Indian and raises on junk, which the helper does not,
+    and says so.
 """
 from __future__ import annotations
 
@@ -173,26 +176,45 @@ def test_an_open_risk_is_old_after_seven_indian_days_not_seven_utc_days(monkeypa
 LEFT_ALONE: dict[tuple[str, str], str] = {}
 
 
+def _timestamptz_only_names() -> frozenset[str]:
+    """Every column name production's schema snapshot types `timestamptz` in EVERY table that has it. A name that is a `date` or text
+    column anywhere is left out: a slice of that is not provably a stamp, and the suffix rule below does not need it."""
+    from tests.production_types import _SCHEMA
+    seen: dict[str, set[str]] = {}
+    for columns in _SCHEMA.values():
+        for name, meta in columns.items():
+            seen.setdefault(name, set()).add(str(meta.get("type")))
+    return frozenset(name for name, kinds in seen.items() if kinds == {"timestamp with time zone"})
+
+
+#: The names a slice is judged by: the `_at` suffix, plus every column the schema says is a timestamptz whatever it is called.
+STAMP_NAMES = _timestamptz_only_names()
+
+
+def _is_stamp_name(name: str) -> bool:
+    return name.endswith("_at") or name in STAMP_NAMES
+
+
 def _stamp_key(node: ast.AST) -> str | None:
-    """The `..._at` key a value denotes, or None: `x["started_at"]`, `x.get("started_at", "")`, `str(...)` of either,
-    `(... or "")`, and a bare name or attribute ending `_at`."""
+    """The stamp key a value denotes, or None: `x["started_at"]`, `x.get("started_at", "")`, `str(...)` of either,
+    `(... or "")`, and a bare name or attribute that names a stamp column (`..._at`, or one the schema types timestamptz)."""
     if isinstance(node, ast.Call):
         func = node.func
         if isinstance(func, ast.Name) and func.id == "str" and node.args:
             return _stamp_key(node.args[0])
         if (isinstance(func, ast.Attribute) and func.attr == "get" and node.args
                 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
-                and node.args[0].value.endswith("_at")):
+                and _is_stamp_name(node.args[0].value)):
             return node.args[0].value
         return None
     if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
-        return node.slice.value if node.slice.value.endswith("_at") else None
+        return node.slice.value if _is_stamp_name(node.slice.value) else None
     if isinstance(node, ast.BoolOp):
         return next((k for k in (_stamp_key(v) for v in node.values) if k), None)
     if isinstance(node, ast.Attribute):
-        return node.attr if node.attr.endswith("_at") else None
+        return node.attr if _is_stamp_name(node.attr) else None
     if isinstance(node, ast.Name):
-        return node.id if node.id.endswith("_at") else None
+        return node.id if _is_stamp_name(node.id) else None
     return None
 
 
@@ -229,6 +251,13 @@ def test_no_stored_stamp_is_cut_to_its_first_ten_characters_outside_the_frozen_l
     assert stale == [], f"a frozen entry no longer matches a slice: delete it ({stale})"
 
 
+def test_the_rules_stamp_names_come_from_the_schema_and_not_only_from_a_suffix():
+    """The nine timestamptz columns that are not named `..._at` are in the rule, and a name the schema types as a date is not."""
+    assert {"ack_date", "ewb_date", "ewb_valid_upto"} <= STAMP_NAMES
+    assert "invoice_date" not in STAMP_NAMES and "due_date" not in STAMP_NAMES, "a date column is not a stamp"
+    assert len(STAMP_NAMES) > 100, "the snapshot was read: it holds well over a hundred stamp columns"
+
+
 def test_negative_control_the_rule_catches_each_spelling_and_spares_a_date_column():
     bad = {
         "get with a default": "def f(e):\n    return e.get('started_at', '')[:10]\n",
@@ -236,6 +265,10 @@ def test_negative_control_the_rule_catches_each_spelling_and_spares_a_date_colum
         "str of a subscript": "def f(r):\n    return str(r['created_at'])[:10]\n",
         "a name": "def f(created_at):\n    return created_at[:10]\n",
         "an attribute": "def f(row):\n    return row.approved_at[:10]\n",
+    }
+    bad |= {
+        "a timestamptz column not named _at (subscript)": "def f(r):\n    return r['ewb_valid_upto'][:10]\n",
+        "a timestamptz column not named _at (get)": "def f(r):\n    return str(r.get('ack_date') or '')[:10]\n",
     }
     for why, source in bad.items():
         assert [k for _f, _l, k in _first_ten_characters_of_a_stamp(source)], why

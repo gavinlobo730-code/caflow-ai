@@ -20,6 +20,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from core.exceptions import _sqlstate
+from core.ist_clock import portal_day
 from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
@@ -86,6 +87,16 @@ class RecordIRNRequest(BaseModel):
     ack_date: str
     qr_data: Optional[str] = None
     provider_response: Optional[dict] = None
+
+    @field_validator("ack_date")
+    @classmethod
+    def _the_day_the_portal_printed(cls, v: str) -> str:
+        """The IRP's acknowledgement DAY, stored as a bare date (POST-A-251): the column is a timestamptz, so a longer value kept its time of
+        day and a reader had to guess whether that was Indian wall-clock labelled UTC or a true instant."""
+        day = portal_day(v)
+        if day is None:
+            raise ValueError("must be a date, YYYY-MM-DD: the day the e-invoice portal printed")
+        return day.isoformat()
 
 
 class CancelIRNRequest(BaseModel):
