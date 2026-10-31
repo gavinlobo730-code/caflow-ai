@@ -11,10 +11,14 @@
  *
  * Accessibility: role="dialog" + aria-modal, labelled by its title; Escape closes;
  * focus moves into the panel on open and is restored to the previously focused element
- * on close; a click on the overlay (but not the panel) closes.
+ * on close; a click on the overlay (but not the panel) closes; Tab and Shift+Tab stay inside
+ * the panel (POST-A-130: it declared aria-modal and let focus walk out to the page behind),
+ * and the page behind does not scroll while it is open.
  */
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { trapTabKey } from "@/lib/ui/focusTrap";
+import { lockBodyScroll } from "@/lib/ui/scrollLock";
 
 export interface DrawerProps {
   open: boolean;
@@ -44,21 +48,25 @@ export function Drawer({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  // Escape-to-close + focus management. Only active while open.
+  // Escape-to-close + Tab trap + focus management + scroll lock. Only active while open.
   useEffect(() => {
     if (!open) return;
     restoreFocusRef.current = (document.activeElement as HTMLElement) ?? null;
     panelRef.current?.focus();
+    const unlockScroll = lockBodyScroll();
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.stopPropagation();
         onCloseRef.current();
+        return;
       }
+      trapTabKey(e, panelRef.current);
     }
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      unlockScroll();
       // Restore focus to whatever opened the drawer (row action / link).
       restoreFocusRef.current?.focus?.();
     };

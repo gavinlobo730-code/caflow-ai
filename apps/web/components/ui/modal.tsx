@@ -13,15 +13,8 @@
  */
 import { useEffect, useRef, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
-
-function focusables(root: HTMLElement | null): HTMLElement[] {
-  if (!root) return [];
-  return Array.from(
-    root.querySelectorAll<HTMLElement>(
-      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((n) => n.offsetParent !== null || n === document.activeElement);
-}
+import { trapTabKey } from "@/lib/ui/focusTrap";
+import { lockBodyScroll } from "@/lib/ui/scrollLock";
 
 export function Modal({
   title,
@@ -51,6 +44,7 @@ export function Modal({
     // Focus the first form field (not the Close button) once mounted.
     const firstField = panelRef.current?.querySelector<HTMLElement>("input, select, textarea");
     (firstField ?? panelRef.current)?.focus();
+    const unlockScroll = lockBodyScroll();
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -61,24 +55,12 @@ export function Modal({
         onCloseRef.current();
         return;
       }
-      if (e.key === "Tab") {
-        const items = focusables(panelRef.current);
-        if (items.length === 0) return;
-        const firstEl = items[0];
-        const lastEl = items[items.length - 1];
-        const active = document.activeElement as HTMLElement | null;
-        if (e.shiftKey && active === firstEl) {
-          e.preventDefault();
-          lastEl.focus();
-        } else if (!e.shiftKey && active === lastEl) {
-          e.preventDefault();
-          firstEl.focus();
-        }
-      }
+      trapTabKey(e, panelRef.current);
     }
     document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("keydown", onKey, true);
+      unlockScroll();
       restoreRef.current?.focus?.();
     };
   }, []);

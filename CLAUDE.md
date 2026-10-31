@@ -235,13 +235,14 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A STRAIGHT-LINE ASSET'S YEAR IS CAPPED AT WHAT WAS LEFT WHEN THE YEAR OPENED, SO ITS LAST YEAR POSTS WHAT IS LEFT
 - AN INTANGIBLE ASSET'S AMORTISATION HAS A LEDGER OF ITS OWN, ONE FUNCTION SAYS WHICH, AND A PARTNER MOVES WHAT THE SHARED LEDGER HOLDS
 
-### `docs/design-record/frontend.md` (5 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (6 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
 - A RECURRING ANYTHING SHARES ONE CADENCE ENGINE
 - A LOADING REGION SAYS WHEN THE SERVER IS SLOW, A SIGNED-IN TAB KEEPS IT AWAKE, AND THE WALK SCANS WHAT IT RENDERS FOR ACCESSIBILIT
 - A PREVIEW OF AN AMOUNT IS THE SERVER'S RULE OR THE SERVER'S ANSWER, AND A QUANTITY IS NEVER MULTIPLIED BY A PRICE ON A SCREEN
+- A DIALOG THAT DECLARES ITSELF MODAL KEEPS THE KEYBOARD INSIDE IT AND THE PAGE BEHIND IT STILL, AND A NEW FULL-SCREEN OVERLAY IS NOT BUILT BY HAND
 
 ### `docs/design-record/identifiers.md` (4 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
