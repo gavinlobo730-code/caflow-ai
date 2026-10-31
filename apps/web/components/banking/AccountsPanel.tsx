@@ -36,6 +36,8 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 import { SavedColumnMappings } from "@/components/banking/SavedColumnMappings";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -412,6 +414,8 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   const [accountType, setAccountType] = useState(account?.account_type ?? "Current");
   const [openingBal, setOpeningBal] = useState(account ? (account.opening_balance_paise / 100).toString() : "");
   const [openingDate, setOpeningDate] = useState(account?.opening_balance_date ?? "");
+  // Unreadable text in the date box holds the save and says why: the box hands up "" for it, which is also what a blank box hands up.
+  const dates = useDateProblems();
   const [coaId, setCoaId] = useState(account?.coa_account_id ?? "");
   const [isActive, setIsActive] = useState(account?.is_active ?? true);
   const [coaAccounts, setCoaAccounts] = useState<CoaAccountLite[]>([]);
@@ -461,6 +465,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   async function save() {
     if (!bankName.trim()) { setError("Bank name is required."); return; }
     if (!editing && !accountNo.trim()) { setError("Account number is required."); return; }
+    if (dates.first) { setError(dates.first); return; }
     // An opening balance read wrong is wrong for the life of the account: every
     // reconciliation after it starts from this number.
     const openingPaise = paiseFromRupeeInput(openingBal || "0");
@@ -549,10 +554,11 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>
+              <label htmlFor="bank-opening-date" className={labelCls}>
                 Opening Balance Date{openingBal && openingBal !== "0" ? " *" : ""}
               </label>
-              <input type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={inputCls} />
+              <DateInput id="bank-opening-date" value={openingDate} onChange={setOpeningDate}
+                onStateChange={dates.watch("openingDate", "Opening balance date")} className={inputCls} />
               {openingBal && openingBal !== "0" && !openingDate && (
                 <p className="mt-1 text-2xs text-state-attention">
                   The date this balance is as at — usually the day the books begin.

@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type WorthALook, type WorthALookRow } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { DateInput } from "@/components/ui/date-input";
 import { fmt } from "@/components/banking/shared";
 import { toLocalISO } from "@/lib/dateMath";
 import { GapList } from "@/components/ui/callout";
@@ -70,6 +71,15 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
 
   const load = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
+    // A box that is blank or unreadable hands up "". The server needs both
+    // ends of the period, so the screen asks for them instead of sending an
+    // empty one and calling the refusal a failure to build the list.
+    if (!from || !to) {
+      setData(null);
+      setFailed(false);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setFailed(false);
     try {
@@ -93,12 +103,12 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
       <div className="flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="wal-from" className="block text-2xs font-medium text-ps-label mb-1">From</label>
-          <input id="wal-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)}
+          <DateInput id="wal-from" value={from} onChange={setFrom}
             className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
         </div>
         <div>
           <label htmlFor="wal-to" className="block text-2xs font-medium text-ps-label mb-1">To</label>
-          <input id="wal-to" type="date" value={to} onChange={(e) => setTo(e.target.value)}
+          <DateInput id="wal-to" value={to} onChange={setTo} anchor={from || null} notBefore={from || null}
             className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
         </div>
         <p className="text-2xs text-ps-hint pb-1.5">
@@ -106,6 +116,14 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
           not what to approve.
         </p>
       </div>
+
+      {(!from || !to) && (
+        <p className="text-xs text-ps-label">
+          Enter both dates to see the lines worth a look. A date that is blank or
+          cannot be read as a day leaves the list empty on purpose, which is not
+          &ldquo;nothing stood out&rdquo;.
+        </p>
+      )}
 
       {loading && <TableSkeleton rows={4} />}
 
@@ -116,7 +134,7 @@ export function WorthALookTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {!loading && !failed && data && (
+      {!loading && !failed && data && from && to && (
         <>
           {/* What could not be asked comes FIRST. A rule that did not run looks
               exactly like one that passed, and a partner reading a short list

@@ -37,6 +37,8 @@ import { dayLabel } from "@/lib/dates/dayLabel";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
@@ -105,6 +107,9 @@ export default function PostDatedChequesPanel({
   const { flight } = useSingleFlight();
   const [showFinished, setShowFinished] = useState(false);
   const [presentedOn, setPresentedOn] = useState("");
+  // Two gates, because they gate different writes: the cheque form's date holds Save, the presented-on date holds a conversion (which posts).
+  const chequeDates = useDateProblems();
+  const presentDates = useDateProblems();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PostDatedCheque | null>(null);
@@ -191,6 +196,7 @@ export default function PostDatedChequesPanel({
   }, [form.alloc]);
 
   async function submit() {
+    if (chequeDates.first) { setMsg({ type: "err", text: chequeDates.first }); return; }
     if (!form.partyId && !editing) {
       setMsg({ type: "err", text: `Choose the ${words.party.toLowerCase()} first.` });
       return;
@@ -235,6 +241,7 @@ export default function PostDatedChequesPanel({
   }
 
   async function convert(c: PostDatedCheque) {
+    if (presentDates.first) { setMsg({ type: "err", text: presentDates.first }); return; }
     const ok = await confirmDialog({
       title: words.convert,
       message:
@@ -298,10 +305,10 @@ export default function PostDatedChequesPanel({
         <div className="ml-auto flex flex-wrap items-end gap-2">
           <label className="text-2xs text-ps-label">
             Presented on (blank = today)
-            <input
-              type="date"
+            <DateInput
               value={presentedOn}
-              onChange={(e) => setPresentedOn(e.target.value)}
+              onChange={setPresentedOn}
+              onStateChange={presentDates.watch("presentedOn", "Presented on")}
               className="mt-0.5 block rounded-lg border border-ps-border px-2 py-1.5 text-xs"
             />
           </label>
@@ -406,7 +413,8 @@ export default function PostDatedChequesPanel({
             </label>
             <label className="text-2xs text-ps-label">
               Cheque date
-              <input type="date" value={form.chequeDate} onChange={(e) => setForm({ ...form, chequeDate: e.target.value })}
+              <DateInput value={form.chequeDate} onChange={(iso) => setForm({ ...form, chequeDate: iso })}
+                onStateChange={chequeDates.watch("chequeDate", "Cheque date")}
                 className="mt-0.5 block w-full rounded-lg border border-ps-border px-2 py-1.5 text-xs" />
             </label>
             <label className="text-2xs text-ps-label">

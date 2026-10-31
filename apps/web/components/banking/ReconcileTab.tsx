@@ -16,6 +16,8 @@ import { fmt } from "@/components/banking/shared";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
@@ -174,6 +176,8 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const [error, setError] = useState<string | null>(null);
   const [bankAccounts, setBankAccounts] = useState<{ id: string; bank_name: string; account_no: string }[]>([]);
   const [form, setForm] = useState({ bank_account_id: "", start: "", end: "", opening: "", closing: "" });
+  // Unreadable text in a statement date holds the save and says which date: the box hands up "" for it, the same as a blank box.
+  const dates = useDateProblems();
   // Where this account's next reconciliation should start, fetched as soon as an
   // account is picked. The opening balance is not a matter of opinion — it is
   // the closing balance the last completed reconciliation tied out to, and it is
@@ -280,6 +284,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
 
   async function createSession() {
     setError(null);
+    if (dates.first) { setError(dates.first); return; }
     if (!form.bank_account_id || !form.start || !form.end) { setError("Bank account and statement dates are required."); return; }
     const opening = toPaise(form.opening);
     const closing = toPaise(form.closing);
@@ -421,10 +426,15 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                 {bankAccounts.map((b) => <option key={b.id} value={b.id}>{b.bank_name} · {b.account_no}</option>)}
               </select>
             </label>
-            <label className="block"><span className="text-2xs font-medium text-ps-label">Statement start</span>
-              <input type="date" value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" /></label>
-            <label className="block"><span className="text-2xs font-medium text-ps-label">Statement end</span>
-              <input type="date" value={form.end} onChange={(e) => setForm((f) => ({ ...f, end: e.target.value }))} className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" /></label>
+            <label htmlFor="recon-start" className="block"><span className="text-2xs font-medium text-ps-label">Statement start</span>
+              <DateInput id="recon-start" value={form.start} onChange={(iso) => setForm((f) => ({ ...f, start: iso }))}
+                onStateChange={dates.watch("start", "Statement start")}
+                className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" /></label>
+            <label htmlFor="recon-end" className="block"><span className="text-2xs font-medium text-ps-label">Statement end</span>
+              {/* The end belongs on or after the start, so a short form is read on that side of it (lib/dates/typedDate notBefore). */}
+              <DateInput id="recon-end" value={form.end} onChange={(iso) => setForm((f) => ({ ...f, end: iso }))}
+                onStateChange={dates.watch("end", "Statement end")} anchor={form.start || undefined} notBefore={form.start || undefined}
+                className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" /></label>
             <label className="block"><span className="text-2xs font-medium text-ps-label">Opening balance (₹)</span>
               <input type="number" step="0.01" value={form.opening} onChange={(e) => setForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" className="mt-1 w-full px-2 py-1.5 text-xs border border-ps-border rounded text-right focus:outline-none focus:ring-1 focus:ring-brand" /></label>
             <label className="block"><span className="text-2xs font-medium text-ps-label">Closing balance (₹)</span>

@@ -223,14 +223,14 @@ function foundInTree(): Record<string, number> {
   return found;
 }
 
-type Category = "needs-a-gate" | "acts-on-change" | "bank-editor";
+type Category = "needs-a-gate" | "acts-on-change";
 
 /**
  * WHY A FILE IS STILL ON THE LIST. Every native input that was a FILTER, a report
  * period, an as-at date or data entry has been converted (a filter saves nothing,
  * so an unreadable date costs a filter and the message under the box is the whole
- * answer; a data-entry date was given a validity gate when it was converted); what
- * is left is the bank screens and the one field whose change is the write.
+ * answer; a data-entry date was given a validity gate when it was converted, the
+ * bank screens included); what is left is the one field whose change is the write.
  *
  *   needs-a-gate    a data-entry date whose form has not been given a validity
  *                   gate (part 3 of the rule above). Converting it without one would
@@ -241,15 +241,10 @@ type Category = "needs-a-gate" | "acts-on-change" | "bank-editor";
  *                   picking a date writes. A field that hands its value up when the
  *                   person has finished is not a drop-in there; the action wants an
  *                   explicit button first.
- *   bank-editor     the bank screens (a register's range, a reconciliation period,
- *                   a cheque date). The spreadsheet-style keyboard-entry change
- *                   touches these files next, and converting them underneath it is a
- *                   merge for nobody's benefit.
  */
 const CATEGORY_REASON: Record<Category, string> = {
   "needs-a-gate": "a data-entry date whose save path has not been read and gated",
   "acts-on-change": "its change is the write, so it is not a drop-in",
-  "bank-editor": "the keyboard-entry change touches the bank editors next",
 };
 
 /**
@@ -258,12 +253,6 @@ const CATEGORY_REASON: Record<Category, string> = {
  * or a count: a new date field is a `<DateInput>`.
  */
 const FROZEN: Record<string, { count: number; category: Category; note: string }> = {
-  "components/banking/AccountsPanel.tsx": { count: 1, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
-  "components/banking/BankBook.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
-  "components/banking/FindMatchModal.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
-  "components/banking/PostDatedChequesPanel.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
-  "components/banking/ReconcileTab.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
-  "components/banking/WorthALookTab.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
   "components/sales/SalesCycleTab.tsx": { count: 1, category: "acts-on-change", note: "an uncontrolled field whose change IS the write: it records goods back on the date picked" },
 };
 
@@ -307,21 +296,22 @@ test("the frozen list is honest: each entry has a known category, a note and a c
     assert.ok(e.note.trim().length > 8, `${file}: a frozen entry says what its dates are`);
     assert.ok(Number.isInteger(e.count) && e.count > 0, `${file}: count must be a positive integer`);
   }
-  // Nothing on the bank list is outside the bank screens, and nothing else claims
-  // to be there: a category is a statement about the file, not a place to park it.
-  for (const [file, e] of Object.entries(FROZEN)) {
-    assert.equal(file.startsWith("components/banking/"), e.category === "bank-editor", `${file}: category ${e.category}`);
+  // The bank screens were the last category and are converted: none is parked
+  // under another name.
+  for (const file of Object.keys(FROZEN)) {
+    assert.ok(!file.startsWith("components/banking/"), `${file}: the bank screens use the date field`);
   }
 });
 
 test("a filter, a report period and an as-at date are not on the list: they were converted", () => {
-  // The bank screens aside, none of what is left is read-only. If one of these
-  // returns as a native input it fails the equality above; this names why.
+  // If one of these returns as a native input it fails the equality above; this
+  // names why.
   for (const file of [
     "components/PeriodPicker.tsx", "components/ui/data-table.tsx", "app/reports/page.tsx",
     "app/settings/audit-log/page.tsx", "app/time/page.tsx", "components/purchases/VendorStatementsTab.tsx",
     "components/sales/OverdueInterestPanel.tsx", "app/clients/[id]/reports/ageing/page.tsx",
     "app/portal/dashboard/page.tsx", "app/clients/[id]/accounting/page.tsx",
+    "components/banking/BankBook.tsx", "components/banking/FindMatchModal.tsx", "components/banking/WorthALookTab.tsx",
   ]) {
     assert.equal(FROZEN[file], undefined, `${file} is a filter or report period and is converted`);
   }
@@ -490,6 +480,9 @@ const UNGATED: Record<string, { count: number; reason: string }> = {
   "app/settings/audit-log/page.tsx": { count: 2, reason: "the audit log's date filter; nothing is saved" },
   "app/time/page.tsx": { count: 2, reason: "the time export's range; blank exports everything" },
   "components/PeriodPicker.tsx": { count: 2, reason: "the shared custom range; blank is unbounded" },
+  "components/banking/BankBook.tsx": { count: 2, reason: "the bank book's from and to; blank is an unbounded register, nothing is saved" },
+  "components/banking/FindMatchModal.tsx": { count: 2, reason: "the match finder's dated-from and dated-to; blank narrows nothing, nothing is saved" },
+  "components/banking/WorthALookTab.tsx": { count: 2, reason: "the review period; the tab declines a blank one in words, nothing is saved" },
   "components/purchases/VendorStatementsTab.tsx": { count: 2, reason: "a vendor statement's period; nothing is saved" },
   "components/sales/OverdueInterestPanel.tsx": { count: 1, reason: "the as-at date of a preview; the panel declines a blank one" },
   "components/ui/data-table.tsx": { count: 2, reason: "every list's date-range filter; blank is no bound" },
