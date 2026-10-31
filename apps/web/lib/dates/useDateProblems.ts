@@ -18,7 +18,7 @@
  * return, a date outside the financial year — those are the server's, and its
  * refusal is shown the way it always was.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DateFieldState } from "./typedDate.ts";
 
 /** The problems map after `state` is reported for `key`: a field that is
@@ -51,5 +51,33 @@ export function useDateProblems() {
     problems,
     /** The first of them, or null when every date in the form is a date or blank. */
     first: Object.values(problems)[0] ?? null,
+  };
+}
+
+/**
+ * A sentence for a screen that has nowhere of its own to say a date is wrong (a modal or drawer over a page whose message line is behind
+ * the overlay): shown once a save has been TRIED, and withdrawn the moment the date is right.
+ *
+ *     const dates = useDateProblems();
+ *     const refusal = useDateRefusal(dates.first);
+ *     ...  if (dates.first) { refusal.refuse(); return; }
+ *     ...  {refusal.shown && <p role="alert">{refusal.shown}</p>}
+ *
+ * It is a latch that RESETS, because a latch that lingered would speak the sentence at every keystroke of the retype (`15/`, `15/0`,
+ * `15/07/` are all unreadable on the way to a date) and the box itself deliberately stays quiet until it is left. `clear()` is for opening
+ * the form afresh.
+ */
+export function useDateRefusal(first: string | null) {
+  const [tried, setTried] = useState(false);
+  useEffect(() => {
+    if (!first) setTried(false);
+  }, [first]);
+  return {
+    /** The sentence to show now, or null. */
+    shown: tried ? first : null,
+    /** A save was tried over a date that is wrong. */
+    refuse: () => setTried(true),
+    /** The form is opened afresh. */
+    clear: () => setTried(false),
   };
 }

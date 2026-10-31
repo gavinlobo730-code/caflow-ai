@@ -16,6 +16,8 @@ import { Modal as ModalShell } from "@/components/ui/modal";
 import { apiCall, apiGet, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import {
   gstTreatment, treatmentLabel, validatePlaceOfSupply,
   irnEligibility, ewayEligibility, irnStatus, ewayStatus,
@@ -393,17 +395,31 @@ function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; 
   );
 }
 
-function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (f: { irn: string; ack_number: string; ack_date: string; qr_data: string }) => void }) {
+function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (f: { irn: string; ack_number: string; ack_date: string; qr_data: string }) => unknown }) {
   const today = todayLocalISO();
   const [irn, setIrn] = useState(""); const [ack, setAck] = useState(""); const [date, setDate] = useState(today); const [qr, setQr] = useState("");
   const ok = irn.trim().length > 0 && ack.trim().length > 0;
+  // The acknowledgement date is printed on the invoice and dates the IRN in its timeline: text that is not a date read as blank and went to the
+  // server as an empty date. It is refused in the date's own sentence, with Record left live so it is spoken and not a button gone dead
+  // (frontend_ux-19). The 30-day reporting clock is NOT read from it: that runs from the invoice's own date.
+  const dates = useDateProblems();
+  // A cleared box reports "empty", not a problem, and the server takes the blank into a timestamp column: it is refused here in a sentence too.
+  const problem = dates.first ?? (date ? null : "Acknowledgement date: enter the date from the IRP portal.");
+  const refusal = useDateRefusal(problem);
   return (
     <ModalShell title="Record IRN" note="Enter the IRN details from the IRP portal (# CA REVIEW REQUIRED — recorded, not submitted)." onClose={onClose}>
       <L label="IRN"><input value={irn} onChange={(e) => setIrn(e.target.value)} placeholder="64-char IRN" className={inputCls} /></L>
       <L label="Acknowledgement no."><input value={ack} onChange={(e) => setAck(e.target.value)} className={inputCls} /></L>
-      <L label="Acknowledgement date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></L>
+      <L label="Acknowledgement date"><DateInput aria-label="Acknowledgement date" value={date} onChange={setDate} onStateChange={dates.watch("ack", "Acknowledgement date")} className={inputCls} /></L>
       <L label="Signed QR payload (optional)"><textarea value={qr} onChange={(e) => setQr(e.target.value)} rows={2} className={inputCls} /></L>
-      <Actions onClose={onClose} onSubmit={() => ok && onSubmit({ irn, ack_number: ack, ack_date: date, qr_data: qr })} busy={busy} disabled={!ok} label="Record IRN" />
+      {refusal.shown && <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>}
+      {/* The write's promise is handed back so the shared Button holds a second click while it runs. */}
+      <Actions onClose={onClose} onSubmit={() => {
+        if (!ok) return;
+        if (problem) { refusal.refuse(); return; }
+        refusal.clear();
+        return onSubmit({ irn, ack_number: ack, ack_date: date, qr_data: qr });
+      }} busy={busy} disabled={!ok} label="Record IRN" />
     </ModalShell>
   );
 }
@@ -459,7 +475,7 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
   );
 }
 
-function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean; recordId: string; onClose: () => void; onSubmit: (f: { ewb_number: string; ewb_date: string; ewb_valid_upto: string }) => void }) {
+function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean; recordId: string; onClose: () => void; onSubmit: (f: { ewb_number: string; ewb_date: string; ewb_valid_upto: string }) => unknown }) {
   const today = todayLocalISO();
   const [num, setNum] = useState(""); const [date, setDate] = useState(today); const [valid, setValid] = useState(today);
   // WHAT RULE 138(10) SAYS THIS BILL IS VALID UNTIL, from the distance recorded
@@ -474,6 +490,13 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
   const [computed, setComputed] = useState<{ valid_upto: string | null; days: number | null;
     slab_km: number | null; source: string | null; caveat: string | null; gap: string | null } | null>(null);
   const [validTouched, setValidTouched] = useState(false);
+  // Both dates go to the server and the first one is what the validity above is worked out from: unreadable text is refused in the date's
+  // own sentence instead of recording a bill with an empty date or a valid-upto the CA did not type (frontend_ux-19).
+  const dates = useDateProblems();
+  // Both dates are required by the server, which takes a blank into a timestamp column; a cleared box is refused here in a sentence too.
+  const problem = dates.first
+    ?? (!date ? "EWB date: enter the date from the NIC portal." : !valid ? "Valid upto: enter the date from the NIC portal." : null);
+  const refusal = useDateRefusal(problem);
   useEffect(() => {
     if (!recordId || !date) return;
     let cancelled = false;
@@ -496,10 +519,11 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
     <ModalShell title="Record E-Way Bill" note="Enter the EWB details from the NIC portal." onClose={onClose}>
       <L label="E-Way Bill number"><input value={num} onChange={(e) => setNum(e.target.value)} placeholder="12-digit EWB no." className={inputCls} /></L>
       <div className="grid grid-cols-2 gap-2">
-        <L label="EWB date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></L>
+        <L label="EWB date"><DateInput aria-label="EWB date" value={date} onChange={setDate} onStateChange={dates.watch("ewb", "EWB date")} className={inputCls} /></L>
         <L label="Valid upto">
-          <input type="date" value={valid}
-            onChange={(e) => { setValidTouched(true); setValid(e.target.value); }}
+          <DateInput aria-label="Valid upto" anchor={date || null} value={valid}
+            onChange={(v) => { setValidTouched(true); setValid(v); }}
+            onStateChange={dates.watch("valid", "Valid upto")}
             className={inputCls} />
         </L>
       </div>
@@ -518,7 +542,13 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
           it is what every later expiry warning is worked out from.
         </p>
       )}
-      <Actions onClose={onClose} onSubmit={() => num.trim() && onSubmit({ ewb_number: num, ewb_date: date, ewb_valid_upto: valid })} busy={busy} disabled={!num.trim()} label="Record E-Way Bill" />
+      {refusal.shown && <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>}
+      <Actions onClose={onClose} onSubmit={() => {
+        if (!num.trim()) return;
+        if (problem) { refusal.refuse(); return; }
+        refusal.clear();
+        return onSubmit({ ewb_number: num, ewb_date: date, ewb_valid_upto: valid });
+      }} busy={busy} disabled={!num.trim()} label="Record E-Way Bill" />
     </ModalShell>
   );
 }

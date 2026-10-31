@@ -39,6 +39,12 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
+  // The latest onClose, read at the moment Escape is pressed. The effect below used to depend on `onClose`, so a parent that passes an
+  // inline arrow (nearly all of them) re-ran it on EVERY parent render: the cleanup gave focus back to the opener and the setup then moved
+  // it to the first field, so a parent that re-rendered while the person was in a later field (a date box commits on blur, a typed
+  // field re-renders per keystroke) pulled the cursor away. It runs once, when the dialog opens and closes.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     restoreRef.current = (document.activeElement as HTMLElement) ?? null;
@@ -52,7 +58,7 @@ export function Modal({
         // does not also bubble to a parent Drawer's document listener (a Modal
         // may be rendered inside the Invoice Hub drawer).
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === "Tab") {
@@ -75,7 +81,7 @@ export function Modal({
       document.removeEventListener("keydown", onKey, true);
       restoreRef.current?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">

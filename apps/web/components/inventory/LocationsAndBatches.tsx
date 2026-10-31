@@ -33,6 +33,8 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 interface Godown {
   id: string;
@@ -492,6 +494,8 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
   const [decision, setDecision] = useState<{ is_supply: boolean | null; reason: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // The movement date decides which return the transfer is in: unreadable text is refused in the date's own sentence (frontend_ux-19).
+  const dates = useDateProblems();
 
   // WHETHER IT IS A SUPPLY IS ASKED OF THE SERVER, on every change of either
   // godown. Comparing the two GSTINs here would be a second implementation of
@@ -513,6 +517,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
       .map((r) => [r.service_catalogue_id, r.item_name])).entries());
 
   async function move() {
+    if (dates.first) { setError(dates.first); return; }
     setSaving(true); setError("");
     try {
       await request("/api/inventory/transfer", {
@@ -568,7 +573,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
           </label>
           <label className="text-xs">
             <span className="block text-ps-hint mb-1">Date</span>
-            <input type="date" value={when} onChange={(e) => setWhen(e.target.value)} className={INPUT} />
+            <DateInput value={when} onChange={setWhen} onStateChange={dates.watch("when", "Date")} className={INPUT} />
           </label>
         </div>
 
@@ -694,8 +699,12 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
   const [expires, setExpires] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Both dates are optional and a blank one is stored as "this lot has no date", which is a different fact from stock that does not
+  // expire: text that is not a date is refused in the date's own sentence and never stored as that (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function save() {
+    if (dates.first) { setError(dates.first); return; }
     setSaving(true); setError("");
     try {
       await request("/api/inventory/batches", {
@@ -739,13 +748,13 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs">
               <span className="block text-ps-hint mb-1">Manufactured (optional)</span>
-              <input type="date" value={made} onChange={(e) => setMade(e.target.value)} className={INPUT} />
+              <DateInput value={made} onChange={setMade} onStateChange={dates.watch("made", "Manufactured")} className={INPUT} />
             </label>
             <label className="block text-xs">
               <span className="block text-ps-hint mb-1">Expires (optional)</span>
-              <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} className={INPUT} />
+              <DateInput anchor={made || null} value={expires} onChange={setExpires} onStateChange={dates.watch("expires", "Expires")} className={INPUT} />
               <span className="block text-3xs text-ps-hint mt-1">
-                Leave blank if this item does not expire.
+                Leave blank if there is no date to record: the expiry report then says this lot has none recorded, which is not the same as stock that does not expire.
               </span>
             </label>
           </div>

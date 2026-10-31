@@ -27,6 +27,8 @@ import { formatPaise } from "@/lib/money/format";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { readWindow } from "@/lib/lists/readWindow";
 import { LEAD_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -331,6 +333,9 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Both dates are optional follow-up dates, and the overdue banner and the card's "Overdue!" flag are read from the next one: text that is not a
+  // date read as blank, so a lead meant to be chased on a date was saved with none and nothing said (frontend_ux-19).
+  const dates = useDateProblems();
 
   useEffect(() => {
     if (open) {
@@ -360,6 +365,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return; // guard against duplicate submissions (double-click / Enter)
+    if (dates.first) { setErr(dates.first); return; }
     const feePaise = rupeesToPaise(form.estimatedMonthlyFeeRupees);
     if (feePaise === null) {
       setErr("Estimated monthly fee isn't an amount — enter rupees, like 15000 or 15000.50.");
@@ -548,12 +554,13 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               <label className="block text-xs font-medium text-ps-body mb-1">
                 Last Contact Date
               </label>
-              <input
-                type="date"
+              <DateInput
+                aria-label="Last contact date"
                 value={form.lastContactDate}
-                onChange={(e) =>
-                  setForm({ ...form, lastContactDate: e.target.value })
+                onChange={(v) =>
+                  setForm({ ...form, lastContactDate: v })
                 }
+                onStateChange={dates.watch("last", "Last contact date")}
                 className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
@@ -561,12 +568,13 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               <label className="block text-xs font-medium text-ps-body mb-1">
                 Next Follow-up Date
               </label>
-              <input
-                type="date"
+              <DateInput
+                aria-label="Next follow-up date"
                 value={form.nextFollowUpDate}
-                onChange={(e) =>
-                  setForm({ ...form, nextFollowUpDate: e.target.value })
+                onChange={(v) =>
+                  setForm({ ...form, nextFollowUpDate: v })
                 }
+                onStateChange={dates.watch("next", "Next follow-up date")}
                 className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>

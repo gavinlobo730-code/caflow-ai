@@ -28,6 +28,8 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
 
 interface Project {
@@ -392,8 +394,14 @@ function ProjectModal({ clientId, onClose, onSaved }: {
   const [expected, setExpected] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // The approved and expected completion dates are OPTIONAL and a blank one is read by the server as "no schedule": text that is not a
+  // date read as blank, so a project was created with no schedule to measure against and nothing said (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function save() {
+    if (dates.first) { setError(dates.first); return; }
+    // A cleared box reports "empty", and the server's date column is NOT NULL.
+    if (!started) { setError("Started on: enter the date the project started."); return; }
     setSaving(true); setError("");
     try {
       await request("/api/cwip", {
@@ -423,7 +431,7 @@ function ProjectModal({ clientId, onClose, onSaved }: {
           <input value={code} onChange={(e) => setCode(e.target.value)} className={INPUT} />
         </Field>
         <Field label="Started on">
-          <input type="date" value={started} onChange={(e) => setStarted(e.target.value)} className={INPUT} />
+          <DateInput aria-label="Started on" value={started} onChange={setStarted} onStateChange={dates.watch("started", "Started on")} className={INPUT} />
         </Field>
       </div>
       {/* Both OPTIONAL and never defaulted here. The completion schedule
@@ -431,8 +439,8 @@ function ProjectModal({ clientId, onClose, onSaved }: {
           with neither rather than reporting it as on track. */}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Approved completion date" hint="As originally approved — blank if there is none">
-          <input type="date" value={approvedDate}
-            onChange={(e) => setApprovedDate(e.target.value)} className={INPUT} />
+          <DateInput aria-label="Approved completion date" value={approvedDate} onChange={setApprovedDate}
+            onStateChange={dates.watch("approved", "Approved completion date")} className={INPUT} />
         </Field>
         <Field label="Approved cost (₹)" hint="As originally approved">
           <input value={approvedCost} inputMode="decimal"
@@ -441,7 +449,7 @@ function ProjectModal({ clientId, onClose, onSaved }: {
         </Field>
       </div>
       <Field label="Now expected to complete on" hint="A fresh judgement, not the original promise">
-        <input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} className={INPUT} />
+        <DateInput aria-label="Now expected to complete on" value={expected} onChange={setExpected} onStateChange={dates.watch("expected", "Now expected to complete on")} className={INPUT} />
       </Field>
     </Shell>
   );
@@ -455,8 +463,11 @@ function CostModal({ clientId, project, onClose, onSaved }: {
   const [incurred, setIncurred] = useState(todayLocalISO());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // The date the ageing schedule ages the cost from: unreadable text is refused in the date's own sentence (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function save() {
+    if (dates.first) { setError(dates.first); return; }
     const paise = paiseFromRupeeInput(amount);
     if (!description.trim() || paise === null || paise <= 0) {
       setError("Say what the cost is and what it came to.");
@@ -493,7 +504,7 @@ function CostModal({ clientId, project, onClose, onSaved }: {
             so a build begun three years ago whose last bill arrived last month
             has amounts in three bands at once. */}
         <Field label="Incurred on" hint="What the ageing schedule measures from">
-          <input type="date" value={incurred} onChange={(e) => setIncurred(e.target.value)} className={INPUT} />
+          <DateInput aria-label="Incurred on" value={incurred} onChange={setIncurred} onStateChange={dates.watch("incurred", "Incurred on")} className={INPUT} />
         </Field>
       </div>
     </Shell>
@@ -507,8 +518,11 @@ function CapitaliseModal({ clientId, project, onClose, onSaved }: {
   const [life, setLife] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // The date depreciation starts from, on an action that cannot be undone: unreadable text is refused before anything is posted (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function save() {
+    if (dates.first) { setError(dates.first); return; }
     setSaving(true); setError("");
     try {
       await request(`/api/cwip/${project.id}/capitalise`, {
@@ -532,7 +546,7 @@ function CapitaliseModal({ clientId, project, onClose, onSaved }: {
         fixed asset. Depreciation starts from the date it became ready for use.
       </p>
       <Field label="Ready for use on" hint="The date depreciation starts — not the date the build began">
-        <input type="date" value={readyOn} onChange={(e) => setReadyOn(e.target.value)} className={INPUT} />
+        <DateInput aria-label="Ready for use on" value={readyOn} onChange={setReadyOn} onStateChange={dates.watch("ready", "Ready for use on")} className={INPUT} />
       </Field>
       <Field label="Useful life (years, optional)">
         <input value={life} inputMode="numeric" onChange={(e) => setLife(e.target.value)} className={INPUT} />

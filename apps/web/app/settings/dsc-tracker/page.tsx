@@ -14,6 +14,8 @@ import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
 import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -121,8 +123,12 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
   const [tokenNo, setTokenNo] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The expiry date drives the red/amber warning and the risk register (nothing sends a reminder), and the issue date is optional: text that is not a date read as blank,
+  // so the first said "required" about a box that held a date and the second renewed without it (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { setErr(dates.first); return; }
     if (!newExpiry) { setErr("The new expiry date is required."); return; }
     setSaving(true); setErr(null);
     try {
@@ -165,14 +171,16 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
           <label className="block text-2xs text-ps-label mb-0.5">
             New expiry date <span className="text-state-problem">*</span>
           </label>
-          <input type="date" value={newExpiry} onChange={(e) => setNewExpiry(e.target.value)}
+          <DateInput aria-label="New expiry date" anchor={newIssued || null} value={newExpiry} onChange={setNewExpiry}
+            onStateChange={dates.watch("newExpiry", "New expiry date")}
             className={field} />
         </div>
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">
             New issue date <span className="text-ps-hint">(optional)</span>
           </label>
-          <input type="date" value={newIssued} onChange={(e) => setNewIssued(e.target.value)}
+          <DateInput aria-label="New issue date" value={newIssued} onChange={setNewIssued}
+            onStateChange={dates.watch("newIssued", "New issue date")}
             className={field} />
         </div>
         <div>
@@ -236,8 +244,12 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
   const [notes, setNotes] = useState(record.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // A correction sends a blank issue date as "none" and the expiry is required: text that is not a date read as blank, so a record with a
+  // keyed date was corrected to have none (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { setErr(dates.first); return; }
     if (!holderName.trim() || !expiryDate) {
       setErr("A holder name and an expiry date are required.");
       return;
@@ -290,11 +302,11 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block text-2xs text-ps-label mb-0.5">Issue date</label>
-            <input type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} className={field} />
+            <DateInput aria-label="Issue date" value={issuedDate} onChange={setIssuedDate} onStateChange={dates.watch("issued", "Issue date")} className={field} />
           </div>
           <div>
             <label className="block text-2xs text-ps-label mb-0.5">Expiry date</label>
-            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className={field} />
+            <DateInput aria-label="Expiry date" anchor={issuedDate || null} value={expiryDate} onChange={setExpiryDate} onStateChange={dates.watch("expiry", "Expiry date")} className={field} />
           </div>
         </div>
         <div>
@@ -337,8 +349,12 @@ function AddDSCModal({ onClose, onAdded }: {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Both dates are required: unreadable text is refused in the date's own sentence and not as "required" about a box that holds one
+  // (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function handleSubmit() {
+    if (dates.first) { setErr(dates.first); return; }
     if (!holderName.trim() || !issueDate || !expiryDate) {
       setErr("Name, issue date and expiry date are required.");
       return;
@@ -405,11 +421,11 @@ function AddDSCModal({ onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Issue Date</label>
-            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+            <DateInput aria-label="Issue date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={issueDate} onChange={setIssueDate} onStateChange={dates.watch("issued", "Issue date")} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date</label>
-            <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
+            <DateInput aria-label="Expiry date" anchor={issueDate || null} className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={expiryDate} onChange={setExpiryDate} onStateChange={dates.watch("expiry", "Expiry date")} />
           </div>
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>

@@ -29,6 +29,8 @@ import { buildServices, SERVICE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // Generous, not enforced by the API — but a ceiling either way, so whether it
@@ -59,6 +61,10 @@ export function ProductServiceManagerPanel({
   // upload/preview/import CsvImportModal.
   const [importStep, setImportStep] = useState<"closed" | "date" | "csv">("closed");
   const [openingBalanceDate, setOpeningBalanceDate] = useState("");
+  // The one date the whole file's opening stock is "as of". A blank one defaults to the client's financial-year start, so text that is not
+  // a date would have dated every opening balance in the file to a day nobody chose: Continue refuses it in the date's own sentence (frontend_ux-19).
+  const openingDates = useDateProblems();
+  const openingRefusal = useDateRefusal(openingDates.first);
   const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
   // This row's request is in flight. These handlers had no loading state at
   // all, so the button was never disabled and a second click sent it again.
@@ -314,7 +320,7 @@ export function ProductServiceManagerPanel({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => { setOpeningBalanceDate(""); setImportStep("date"); }}
+              onClick={() => { setOpeningBalanceDate(""); openingRefusal.clear(); setImportStep("date"); }}
               className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap"
             >
               <Upload size={15} /> Import
@@ -429,18 +435,25 @@ export function ProductServiceManagerPanel({
           </p>
           <label className="block space-y-1">
             <span className="block text-xs font-medium text-ps-label">Opening balance as of (optional)</span>
-            <input
-              type="date"
+            <DateInput
               autoFocus
               value={openingBalanceDate}
-              onChange={(e) => setOpeningBalanceDate(e.target.value)}
+              onChange={setOpeningBalanceDate}
+              onStateChange={openingDates.watch("opening", "Opening balance as of")}
               className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </label>
           <p className="text-xs text-ps-hint">No opening stock in this file? Leave this blank and continue — it&apos;s ignored for rows with no opening quantity/value.</p>
+          {openingRefusal.shown && <p role="alert" className="text-xs text-state-problem">{openingRefusal.shown}</p>}
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={() => setImportStep("closed")} className="text-sm px-3.5 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
-            <button type="button" onClick={() => setImportStep("csv")} className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Continue</button>
+            <button type="button"
+              onClick={() => {
+                if (openingDates.first) { openingRefusal.refuse(); return; }
+                openingRefusal.clear();
+                setImportStep("csv");
+              }}
+              className="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Continue</button>
           </div>
         </Modal>
       )}

@@ -15,6 +15,8 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const SAMPLE_CSV = `Account Name,Account Code,Debit Balance,Credit Balance,Account Type
 Cash in Hand,1001,50000,0,Asset
@@ -30,6 +32,9 @@ export default function TrialBalanceImportPage() {
   // why it could never have posted anything meaningful.
   const { clients, clientId: selectedClientId, setClientId: setSelectedClientId } = useClientPicker();
   const [openingDate, setOpeningDate] = useState("");
+  // A blank opening date defaults to the client's financial-year start, so text that is not a date would post the whole opening journal at a
+  // date nobody chose; it is refused in the date's own sentence before anything is posted (frontend_ux-19). The box is on the page at every step.
+  const dates = useDateProblems();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -111,6 +116,10 @@ export default function TrialBalanceImportPage() {
   const unreadable = accounts.filter((a) => a.dr_unreadable || a.cr_unreadable);
 
   async function runImport() {
+    if (dates.first) {
+      setErr(dates.first);
+      return;
+    }
     if (!selectedClientId) {
       setErr("Select the client this trial balance belongs to.");
       return;
@@ -168,11 +177,12 @@ export default function TrialBalanceImportPage() {
               <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
             </div>
             <div className="min-w-[180px]">
-              <label className="block text-xs font-medium text-ps-label mb-1">Opening date</label>
-              <input
-                type="date"
+              <label htmlFor="tb-opening-date" className="block text-xs font-medium text-ps-label mb-1">Opening date</label>
+              <DateInput
+                id="tb-opening-date"
                 value={openingDate}
-                onChange={e => setOpeningDate(e.target.value)}
+                onChange={setOpeningDate}
+                onStateChange={dates.watch("opening", "Opening date")}
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
               />
               <p className="text-2xs text-ps-hint mt-1">

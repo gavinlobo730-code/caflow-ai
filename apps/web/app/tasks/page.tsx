@@ -21,6 +21,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
@@ -209,6 +211,10 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
   const [form, setForm] = useState<Partial<Task>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The save below sends a blank due date as "clear the due date", so text that is not a date read as blank would have taken a task's
+  // deadline off it with nothing said; it is refused in the date's own sentence instead (frontend_ux-19). The box is on the page only
+  // while the task is being edited, and a box that goes away takes its problem with it.
+  const dates = useDateProblems();
 
   useEffect(() => {
     if (task) { setForm(task); setEditing(false); setSaveError(null); }
@@ -222,6 +228,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
 
   async function handleSave() {
     if (!task) return;
+    if (dates.first) { setSaveError(dates.first); return; }
     setSaving(true);
     setSaveError(null);
     try {
@@ -331,10 +338,11 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
-                <input
-                  type="date"
+                <DateInput
+                  aria-label="Due date"
                   value={form.due_date ?? ""}
-                  onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
+                  onChange={v => setForm(f => ({ ...f, due_date: v }))}
+                  onStateChange={dates.watch("due", "Due date")}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
                 />
               </div>
@@ -350,7 +358,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               {saveError && <Callout tone="problem">{saveError}</Callout>}
               <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => setEditing(false)}
+                  onClick={() => { setForm(task); setSaveError(null); setEditing(false); }}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-ps-body hover:bg-ps-bg"
                 >
                   Cancel

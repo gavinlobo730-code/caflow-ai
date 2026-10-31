@@ -18,6 +18,8 @@ import { toast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { minorHeadLabel } from "@/lib/tds/minorHead";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1197,6 +1199,9 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
   const [showNew, setShowNew] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The validity period is what the lower rate applies within, and both ends are required: text that is not a date read as blank and said
+  // "enter the validity period" about boxes that held one (frontend_ux-19). The boxes are only on the page while the form is open.
+  const certDates = useDateProblems();
   const [form, setForm] = useState({
     vendor_id: "", section: "", certificate_no: "",
     rate_percent: "", valid_from: "", valid_to: "", ceiling_rupees: "",
@@ -1264,6 +1269,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       setSaveError("Rule 28AA(4) issues a certificate for a specified AMOUNT. Enter the amount it applies up to.");
       return;
     }
+    if (certDates.first) { setSaveError(certDates.first); return; }
     if (!form.valid_from || !form.valid_to || form.valid_to < form.valid_from) {
       setSaveError("Enter the validity period. Rule 28AA(4) caps it at the financial year.");
       return;
@@ -1358,12 +1364,14 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
             <input placeholder="Certified rate % (0 for nil)" value={form.rate_percent}
               onChange={(e) => setForm((f) => ({ ...f, rate_percent: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
-            <input type="date" value={form.valid_from}
-              onChange={(e) => setForm((f) => ({ ...f, valid_from: e.target.value }))}
-              className="border rounded px-3 py-1.5 text-sm" />
-            <input type="date" value={form.valid_to}
-              onChange={(e) => setForm((f) => ({ ...f, valid_to: e.target.value }))}
-              className="border rounded px-3 py-1.5 text-sm" />
+            <DateInput aria-label="Valid from" value={form.valid_from}
+              onChange={(v) => setForm((f) => ({ ...f, valid_from: v }))}
+              onStateChange={certDates.watch("from", "Valid from")}
+              className="w-full border rounded px-3 py-1.5 text-sm" />
+            <DateInput aria-label="Valid to" anchor={form.valid_from || null} value={form.valid_to}
+              onChange={(v) => setForm((f) => ({ ...f, valid_to: v }))}
+              onStateChange={certDates.watch("to", "Valid to")}
+              className="w-full border rounded px-3 py-1.5 text-sm" />
             <input placeholder="Amount it applies up to (₹)" value={form.ceiling_rupees}
               onChange={(e) => setForm((f) => ({ ...f, ceiling_rupees: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm col-span-2" />

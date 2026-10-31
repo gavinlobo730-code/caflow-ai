@@ -12,6 +12,8 @@ import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import {
   HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass,
   weightLabel as weightBpToLabel, type HealthDimensionKey, type HealthGrade,
@@ -310,6 +312,9 @@ export default function ClientHealthDetailPage() {
   const [overrideForm, setOverrideForm] = useState(EMPTY_OVERRIDE_FORM);
   const [savingOverride, setSavingOverride] = useState(false);
   const [overrideSaveError, setOverrideSaveError] = useState<string | null>(null);
+  // An override with no expiry stays in force until somebody removes it: text that is not a date read as blank, so an override meant to lapse
+  // on a date was recorded to last for ever (frontend_ux-19). The box is only on the page while the modal is open.
+  const overrideDates = useDateProblems();
   const [removingOverride, setRemovingOverride] = useState<string | null>(null);
 
   const loadOverrides = useCallback(async () => {
@@ -419,6 +424,7 @@ export default function ClientHealthDetailPage() {
 
   async function handleAddOverride() {
     if (!overrideForm.dimension || !overrideForm.reason.trim() || !overrideForm.override_score) return;
+    if (overrideDates.first) { setOverrideSaveError(overrideDates.first); return; }
     setSavingOverride(true);
     setOverrideSaveError(null);
     try {
@@ -826,10 +832,11 @@ export default function ClientHealthDetailPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-600 font-medium">Expires At (optional)</label>
-                <input
-                  type="date"
+                <DateInput
+                  aria-label="Expires at (optional)"
                   value={overrideForm.expires_at}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, expires_at: e.target.value })}
+                  onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
+                  onStateChange={overrideDates.watch("expires", "Expires at")}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>

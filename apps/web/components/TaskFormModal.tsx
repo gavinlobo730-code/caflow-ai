@@ -8,6 +8,8 @@ import { Combobox } from "@/components/ui/combobox";
 import type { Client, FirmUser } from "@/lib/types";
 import type { CreateTaskInput } from "@/lib/data/tasks";
 import { Callout } from "@/components/ui/callout";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
@@ -50,6 +52,9 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
   const [customTitle, setCustomTitle] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The due date is optional and a blank one saves a task with no deadline: text that is not a date read as blank, so a task meant to be
+  // due on a date was saved with none and nothing said (frontend_ux-19). The box unmounts with the modal.
+  const dates = useDateProblems();
 
   useEffect(() => {
     if (open) {
@@ -77,6 +82,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
     e.preventDefault();
     if (!form.client_id) { setError("Please select a client"); return; }
     if (!form.title.trim()) { setError("Please enter a task title"); return; }
+    if (dates.first) { setError(dates.first); return; }
 
     setSaving(true);
     setError(null);
@@ -188,10 +194,11 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Due Date</label>
-              <input
-                type="date"
-                value={form.due_date}
-                onChange={e => set("due_date", e.target.value)}
+              <DateInput
+                aria-label="Due date"
+                value={form.due_date ?? ""}
+                onChange={v => set("due_date", v)}
+                onStateChange={dates.watch("due", "Due date")}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
               />
             </div>

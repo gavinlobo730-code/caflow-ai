@@ -6,6 +6,8 @@ import {
   X, Loader2, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -68,6 +70,9 @@ export default function TaskTemplatesPage() {
   const [instAssignTo, setInstAssignTo] = useState("");
   const [instantiating, setInstantiating] = useState(false);
   const [instError, setInstError] = useState<string | null>(null);
+  // The due date is optional and a blank one creates the task with none: text that is not a date read as blank, so a task meant to be due
+  // on a date was created with no deadline and nothing said (frontend_ux-19).
+  const instDates = useDateProblems();
   const [instSuccess, setInstSuccess] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -157,6 +162,10 @@ export default function TaskTemplatesPage() {
   const handleInstantiate = async () => {
     if (!instantiateId || !instClientId) {
       setInstError("Select a client");
+      return;
+    }
+    if (instDates.first) {
+      setInstError(instDates.first);
       return;
     }
     setInstantiating(true);
@@ -405,10 +414,11 @@ export default function TaskTemplatesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Due Date</label>
-                  <input
-                    type="date"
+                  <DateInput
+                    aria-label="Due date"
                     value={instDueDate}
-                    onChange={e => setInstDueDate(e.target.value)}
+                    onChange={setInstDueDate}
+                    onStateChange={instDates.watch("due", "Due date")}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                   />
                 </div>
