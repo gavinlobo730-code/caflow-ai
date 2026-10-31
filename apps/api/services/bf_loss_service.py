@@ -39,7 +39,7 @@ from core.authz import can_access_client
 from core.permissions import can_user
 from domain.income_tax import computation_workspace as workspace
 from domain.income_tax.loss_utilisation import (
-    Superseded, after_filing, available_for_year_paise, entries_of, used_in_year_paise,
+    Superseded, after_filing, available_for_year_paise, entries_of, holds_entry_for, is_earlier_year, later_uses, used_in_year_paise,
 )
 from domain.money_sentence import rupee_text
 
@@ -97,6 +97,69 @@ def _offer_note(row: Mapping[str, Any], offered: int, sent: int, financial_year:
     return f"{text}. The figure on the screen, {rupee_text(sent)}, was not used."
 
 
+def _later_years_sentence(row: Mapping[str, Any], financial_year: str) -> Optional[str]:
+    """Says which later years' returns have taken part of this loss, or None when none has (POST-A-367). The figure offered leaves their use
+    out; the sentence names it, because using more of the loss for this year may mean that later return has to be revised. The record takes
+    no view on which year should have had the loss first."""
+    later = later_uses(row, financial_year)
+    if not later:
+        return None
+    parts = ", ".join(f"FY {item['financial_year']}: {rupee_text(item['amount_paise'])}" for item in later)
+    return (f"The returns for later years have already used part of this loss ({parts}), and that use is left out of the figure offered. "
+            "Using more of it for this year may mean that later return has to be revised; the record shows the arithmetic and takes no "
+            "view on which year should have had it.")
+
+
+def _unrecorded_returns(current_user: Mapping[str, Any], client_id: str, financial_year: str,
+                        rows: Mapping[str, Mapping[str, Any]]) -> dict[str, list[dict]]:
+    """For each loss record id in `rows`, the earlier-year returns recorded as filed whose saved computation set off part of that loss and
+    which the record does not show (POST-A-367). A return acknowledged before the write-back existed, or one whose write was refused, leaves
+    exactly this: next year's computation is then offered the whole loss again. Only a computation that names the loss by its record id can
+    be told here; one that does not (saved before the ids) is not guessed at.
+
+    Reading is advisory: a failure to read returns nothing and is reported, never raised into the computation.
+    """
+    from core.observability import capture_soft_failure
+    from domain.income_tax import itr_workflow
+    found: dict[str, list[dict]] = {}
+    try:
+        for filing in itr_workflow.list_itr_filings(current_user["firm_id"], client_id):
+            fy = str(filing.get("financial_year") or "").strip()
+            kind = str(filing.get("return_type") or "original").strip().lower() or "original"
+            if (filing.get("status") != "filed" or kind not in _KINDS_WRITTEN_BACK or not filing.get("computation_snapshot_id")
+                    or not is_earlier_year(fy, financial_year)):
+                continue
+            snapshot = workspace.get_snapshot(current_user["firm_id"], str(filing.get("computation_snapshot_id")))
+            if (not snapshot or str(snapshot.get("client_id") or "") != str(client_id)
+                    or str(snapshot.get("financial_year") or "").strip() != fy):
+                continue
+            for line in _lines_of(snapshot.get("computation_json")) or []:
+                loss_id = str(line.get("loss_id") or "")
+                row = rows.get(loss_id)
+                set_off = int(line.get("set_off_paise") or 0)
+                if row is None or set_off <= 0 or holds_entry_for(row, str(filing.get("id")), fy, kind):
+                    continue
+                found.setdefault(loss_id, []).append({
+                    "filing_id": str(filing.get("id")), "financial_year": fy, "set_off_paise": set_off,
+                    "acknowledgement_number": filing.get("acknowledgement_number"),
+                })
+    except Exception as exc:                                          # noqa: BLE001
+        capture_soft_failure(exc, operation="bf_loss_service._unrecorded_returns",
+                             firm_id=current_user.get("firm_id"), client_id=client_id)
+        return {}
+    return found
+
+
+def _unrecorded_sentence(items: list[dict]) -> str:
+    parts = "; ".join(
+        f"FY {item['financial_year']}"
+        + (f" (acknowledgement {item['acknowledgement_number']})" if item.get("acknowledgement_number") else "")
+        + f", {rupee_text(item['set_off_paise'])}"
+        for item in items)
+    return (f"A return recorded as filed set off part of this loss, but the loss record does not show it: {parts}. Until the record is updated "
+            "from that return (Tax Filing, Brought-forward losses), the figure offered counts that part as unused.")
+
+
 def resolve_for_compute(current_user: Mapping[str, Any], losses: list[dict], financial_year: str,
                         client_id: Optional[str] = None) -> tuple[list[dict], list[dict]]:
     """(the losses to compute with, a note for each one whose figure the record changed).
@@ -109,6 +172,8 @@ def resolve_for_compute(current_user: Mapping[str, Any], losses: list[dict], fin
     out: list[dict] = []
     notes: list[dict] = []
     seen: set[str] = set()
+    rows: dict[str, Mapping[str, Any]] = {}
+    offered_by_id: dict[str, tuple[int, int]] = {}
     for item in losses:
         loss_id = str(item.get("id") or "").strip()
         if not loss_id:
@@ -126,6 +191,8 @@ def resolve_for_compute(current_user: Mapping[str, Any], losses: list[dict], fin
         sent = int(item.get("amount_paise") or 0)
         if offered == 0 and sent == 0:
             continue
+        rows[loss_id] = row
+        offered_by_id[loss_id] = (sent, offered)
         out.append({
             "loss_type": row.get("loss_type") or item.get("loss_type"),
             "amount_paise": offered,
@@ -138,7 +205,34 @@ def resolve_for_compute(current_user: Mapping[str, Any], losses: list[dict], fin
         if offered != sent:
             notes.append({"loss_id": loss_id, "sent_paise": sent, "offered_paise": offered,
                           "note": _offer_note(row, offered, sent, financial_year)})
-    return out, notes
+    return out, _with_what_the_record_says_about_other_years(current_user, notes, rows, offered_by_id, financial_year, client_id)
+
+
+def _with_what_the_record_says_about_other_years(current_user: Mapping[str, Any], notes: list[dict], rows: Mapping[str, Mapping[str, Any]],
+                                                 offered_by_id: Mapping[str, tuple[int, int]], financial_year: str,
+                                                 client_id: Optional[str]) -> list[dict]:
+    """The notes with two more facts added to each loss they apply to (POST-A-367): a later year's return has taken part of the loss, and an
+    earlier return recorded as filed is missing from the record. One note per loss, so the screen's list stays one line per loss."""
+    if not rows or not client_id:
+        return notes
+    unrecorded = _unrecorded_returns(current_user, str(client_id), financial_year, rows)
+    by_id = {n["loss_id"]: n for n in notes}
+    for loss_id, row in rows.items():
+        extra = [text for text in (_later_years_sentence(row, financial_year),
+                                   _unrecorded_sentence(unrecorded[loss_id]) if loss_id in unrecorded else None) if text]
+        if not extra:
+            continue
+        if loss_id in by_id:
+            by_id[loss_id]["note"] = " ".join([by_id[loss_id]["note"], *extra])
+        else:
+            sent, offered = offered_by_id[loss_id]
+            notes.append({"loss_id": loss_id, "sent_paise": sent, "offered_paise": offered, "note": " ".join(extra)})
+            by_id[loss_id] = notes[-1]
+        if loss_id in unrecorded:
+            by_id[loss_id]["unrecorded_returns"] = unrecorded[loss_id]
+        if later_uses(row, financial_year):
+            by_id[loss_id]["later_years"] = later_uses(row, financial_year)
+    return notes
 
 
 def _lines_of(computation: Any) -> Optional[list[dict]]:

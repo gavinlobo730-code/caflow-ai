@@ -90,6 +90,46 @@ def used_in_year_paise(row: Mapping[str, Any], financial_year: str) -> int:
     return sum(e["amount_paise"] for e in entries_of(row).values() if e["financial_year"] == fy)
 
 
+def _year_start(financial_year: str) -> int | None:
+    """The calendar year a financial-year label starts in (`2026-27` -> 2026), or None for a label that does not begin with four digits."""
+    head = (financial_year or "").strip()[:4]
+    return int(head) if len(head) == 4 and head.isdigit() else None
+
+
+def is_earlier_year(financial_year: str, than: str) -> bool:
+    """True when `financial_year` starts in an earlier year than `than`. A label that cannot be read is neither earlier nor later."""
+    a, b = _year_start(financial_year), _year_start(than)
+    return a is not None and b is not None and a < b
+
+
+def later_uses(row: Mapping[str, Any], financial_year: str) -> list[dict]:
+    """The returns for years AFTER `financial_year` that have already taken part of this loss, oldest year first (POST-A-367).
+
+    `available_for_year_paise` leaves these out, which is right for the year's own revised return and understates what an EARLIER year could
+    have had: using more of the loss now may mean the later return has to be revised. This only reports the record's arithmetic; which year
+    should have had the loss first is not decided here. Each item is `{"filing_id", "financial_year", "amount_paise", "return_type"}`.
+    """
+    found = [
+        {"filing_id": fid, "financial_year": e["financial_year"], "amount_paise": e["amount_paise"], "return_type": e["return_type"]}
+        for fid, e in entries_of(row).items()
+        if e["amount_paise"] > 0 and is_earlier_year(financial_year, e["financial_year"])
+    ]
+    return sorted(found, key=lambda item: (_year_start(item["financial_year"]) or 0, item["filing_id"]))
+
+
+def holds_entry_for(row: Mapping[str, Any], filing_id: str, financial_year: str, return_type: str = "original") -> bool:
+    """True when the record already shows the use of `financial_year` that `filing_id` made, or shows it as held by a return that stands over
+    it (a revised return replaced an original's entry, so the original's own id is rightly absent)."""
+    fy = (financial_year or "").strip()
+    kind = return_type if return_type in _RANK else "original"
+    for fid, e in entries_of(row).items():
+        if e["financial_year"] != fy:
+            continue
+        if fid == str(filing_id) or _RANK[e["return_type"]] >= _RANK[kind]:
+            return True
+    return False
+
+
 def available_for_year_paise(row: Mapping[str, Any], financial_year: str) -> int:
     """What a computation for `financial_year` may set off: the loss less the uses of OTHER years.
 
