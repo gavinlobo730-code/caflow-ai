@@ -102,3 +102,14 @@ test("the screen says what retracting does not do", () => {
   assert.ok(/is not reopened by this/.test(MODAL), "the prompt does not say a calendar month is not reopened");
   assert.ok(/Challan retracted\. What it did not change:/.test(PAGE), "the note after a retraction does not say what was not changed");
 });
+
+// ── the two forms that RECORD a deduction and a challan (found by driving them, PRE-A-015) ─────────────────────────
+
+test("the forms that record a TDS deduction and a challan save with the shared single-click button, not a `saving` flag", () => {
+  // Each posted twice on two clicks made in the same moment: `disabled={saving}` is state, which reaches the page a render after the
+  // click. A duplicate deduction doubles the tax the register says was withheld; a duplicate challan doubles what it says was deposited.
+  assert.ok(/<Button[^>]*onClick=\{handleSubmit\}/.test(PAGE), "Add Deduction is not the shared single-click Button");
+  assert.ok(/<Button[^>]*onClick=\{handleAdd\}/.test(PAGE), "Add (challan) is not the shared single-click Button");
+  assert.ok(!/<button[^>]*onClick=\{handle(Submit|Add)\}/.test(PAGE), "a raw button saves a TDS record again");
+  assert.ok(/async function handleSubmit\(/.test(PAGE) && /async function handleAdd\(/.test(PAGE), "the handlers no longer return their promise");
+});

@@ -11,7 +11,8 @@
  * path nobody takes.
  */
 import { ok } from "./stub.mjs";
-import { VENDOR, CUSTOMER, billRow, invoiceDetail, invoiceRow } from "./fixtures.mjs";
+import { VENDOR, CUSTOMER, CLIENT_ROW, billRow, invoiceDetail, invoiceRow } from "./fixtures.mjs";
+import { pick } from "./kit.mjs";
 
 /** The sales invoice drawer for one invoice in the given status. */
 export async function openInvoiceDrawer(env, status = "issued", id = "inv-9") {
@@ -95,4 +96,39 @@ export async function openNoteDrawer(env, kind) {
   const drawer = page.getByRole("dialog");
   await drawer.getByRole("button", { name: "Issue", exact: true }).waitFor();
   return drawer;
+}
+
+/** The TDS screen with a client chosen, for a person who may record on it. */
+async function atTheTdsScreen(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: ["read", "compute", "write"] } }) });
+  await page.goto(`${env.base}/tds/`, { waitUntil: "networkidle" });
+  await pick(page, page.locator('button:has-text("Select client")').first(), CLIENT_ROW.client_name);
+}
+
+/** The "Add TDS Deduction" form, open and filled with everything the server needs but the date. These forms are overlays, not
+ *  dialog roles, so the form is found by its heading. Returns the form's locator. */
+export async function openTdsDeductionForm(env) {
+  const { page } = env;
+  await atTheTdsScreen(env);
+  await page.getByRole("button", { name: "Add Deduction" }).first().click();
+  const form = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "Add TDS Deduction" }) });
+  await form.waitFor();
+  await form.getByPlaceholder("Vendor name").fill("ABC Consulting");
+  await form.locator("label:has-text('Gross Payment') + input").fill("100000");
+  return form;
+}
+
+/** The "Add Challan 281" form, open and filled with everything the server needs but the date. */
+export async function openTdsChallanForm(env) {
+  const { page } = env;
+  await atTheTdsScreen(env);
+  await page.getByRole("button", { name: "Challans", exact: true }).click();
+  await page.getByRole("button", { name: "Add Challan" }).first().click();
+  const form = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "Add Challan 281" }) });
+  await form.waitFor();
+  await form.getByPlaceholder("7-digit BSR code").fill("0510001");
+  await form.getByPlaceholder("00001").fill("00045");
+  await form.locator("label:has-text('Amount (₹)') + input").fill("125000");
+  return form;
 }

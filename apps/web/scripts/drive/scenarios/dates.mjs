@@ -23,7 +23,7 @@
  */
 import assert from "node:assert/strict";
 import { TZ_MATRIX, pick } from "../kit.mjs";
-import { openBillDrawer, openInvoiceDrawer } from "../flows.mjs";
+import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok } from "../stub.mjs";
 
 export const group = "dates";
@@ -139,6 +139,18 @@ const EDITORS = [
     id: "purchase-record-payment", title: "Record Payment on a bill", open: openBillPayment,
     fields: [{ box: (p) => modalOf(p).locator('input[aria-label="Payment date"]'), label: "Payment date", key: "payment_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => modalOf(p).getByRole("button", { name: "Record Payment", exact: true }), write: /purchase-payments$/,
+  },
+  {
+    id: "tds-deduction", title: "TDS deduction form",
+    open: openTdsDeductionForm,
+    fields: [{ box: (p) => p.locator("#tds-payment-date"), label: "Payment date", key: "transaction_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add Deduction", exact: true }), write: /tds-workspace\/deductions$/,
+  },
+  {
+    id: "tds-challan", title: "TDS challan form",
+    open: openTdsChallanForm,
+    fields: [{ box: (p) => p.locator("#tds-challan-date"), label: "Challan date", key: "challan_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/,
   },
   ...[
     { side: "sales", name: "sales credit note", action: "Credit Note", submit: "Create Credit Note", label: "Credit note date", key: "credit_note_date", write: /\/api\/credit-notes\/$/ },
