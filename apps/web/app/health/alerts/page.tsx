@@ -9,6 +9,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -52,11 +53,12 @@ export default function HealthAlertsPage() {
         // scoping list_alerts applies in Python via filter_by_client() —
         // verified against the live DB.
         const supabase = getSupabaseClient();
-        const { data, error: sbError } = await supabase
+        const { data, error: sbError } = await selectAll(() => supabase
           .from("health_alerts")
           .select("*")
           .eq("is_resolved", false)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .order("id"));
         if (sbError) throw sbError;
         setAlerts((data as HealthAlert[]) ?? []);
       } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }

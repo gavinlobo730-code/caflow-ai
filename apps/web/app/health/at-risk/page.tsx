@@ -11,6 +11,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { gradeBadgeClass, gradeOf, scoreTextClass } from "@/lib/health/vocabulary";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 interface ClientScore { id: string; client_id: string; client_name?: string; overall_score: number; health_grade: string | null; is_at_risk: boolean; is_critical?: boolean; last_calculated_at?: string; }
 
@@ -29,12 +30,13 @@ export default function AtRiskClientsPage() {
         // same can_access_client() assignment scoping list_scores applies
         // in Python via filter_by_client() — verified against the live DB.
         const supabase = getSupabaseClient();
-        const { data, error: sbError } = await supabase
+        const { data, error: sbError } = await selectAll(() => supabase
           .from("health_scores")
           .select("id, client_id, client_name, overall_score, health_grade, is_at_risk, is_critical, last_calculated_at")
           .eq("is_at_risk", true)
           .eq("is_critical", false)
-          .order("overall_score");
+          .order("overall_score")
+          .order("id"));
         if (sbError) throw sbError;
         // Exactly the clients the health engine flags at risk and not critical: the Health dashboard route lists the same
         // two flags, and the executive dashboard and the assistant count by them. This page used to drop anything under 40

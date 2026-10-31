@@ -90,6 +90,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { stripComments } from "./stripComments.ts";
 
 const WEB = join(import.meta.dirname, "..");
 const PAGER = "lib/supabase/selectAll.ts";
@@ -109,11 +110,11 @@ function walk(dir: string, out: string[] = []): string[] {
  *  satisfied — or broken — by prose describing it. That mistake has been made
  *  in this repository before. */
 function code(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .map((l) => l.replace(/\/\/.*$/, ""))
-    .join("\n");
+  // The shared, quote-aware stripper. This function used to remove block comments with a regex first, and a LINE comment that
+  // happened to contain the two characters "/*" (HealthDetailClient's "not the /api/health/* backend routes") opened a block that
+  // swallowed 200 lines of real code up to the next "*/", including a read this guard was asked to hold: the guard answered
+  // "no longer reads health_alerts" about code that read it (found 31-10-2026 when that read was paged).
+  return stripComments(src);
 }
 
 /** The source of the loop whose header starts at `from`, found by brace depth.
@@ -297,6 +298,11 @@ const PAGED_READS_THAT_FEED_A_FIGURE: Record<string, string[]> = {
   // The firm's own fee invoices and receipts: revenue, outstanding, overdue, issued and draft are added up in the
   // browser from them, newest first, so the cut at 1000 took the oldest (second slice, 19-10-2026).
   "app/billing/page.tsx": ["fee_invoices", "fee_receipts"],
+  // POST-A-135, third slice (31-10-2026). The Health dashboard's average score, band counts and distribution chart are computed
+  // from its rows, one per client; the MCA page's status counts and its KYC-due-soon list come from the firm's filings and
+  // directors, which only ever grow.
+  "app/health/page.tsx": ["health_scores"],
+  "app/mca/page.tsx": ["mca_filings", "mca_directors"],
 };
 
 /** The (screen, table) pairs whose reads are not a figure but are the ONLY place a record can be found, or the check that
@@ -309,6 +315,25 @@ const PAGED_READS_THAT_ARE_THE_ONLY_WAY_TO_FIND_OR_CHECK_A_RECORD: Record<string
   "app/accounting/account-groups/page.tsx": ["chart_of_accounts"],
   // The accounts a client's dues can be marked on: marking puts the balance into a statutory disclosure.
   "app/clients/[id]/reports/ageing/page.tsx": ["chart_of_accounts"],
+  // POST-A-135, third slice (31-10-2026): the pick-lists and lists that are the only way to reach a client, an alert, a notice, a
+  // supplier's bill or an obligation. A client past the cut could not be chosen on the GST screens, the declarations screen or the
+  // scheduled-reports screen; an unresolved alert, a notice or an MCA company past it could not be seen; and the two allocation
+  // modals list a party's documents OLDEST FIRST, so the cut dropped the newest, the ones a payment is allocated to.
+  "app/gst/gstr1/page.tsx": ["clients"],
+  "app/gst/gstr3b/page.tsx": ["clients"],
+  "app/payroll/declarations/page.tsx": ["clients"],
+  "app/settings/scheduled-reports/page.tsx": ["scheduled_reports", "clients"],
+  "app/health/at-risk/page.tsx": ["health_scores"],
+  "app/health/critical/page.tsx": ["health_scores"],
+  "app/health/alerts/page.tsx": ["health_alerts"],
+  "app/clients/[id]/health/page.tsx": ["health_alerts"],
+  "app/health/[client_id]/HealthDetailClient.tsx": ["health_alerts"],
+  "app/clients/[id]/relationships/page.tsx": ["cross_client_matches"],
+  "app/income-tax/notices/page.tsx": ["it_notices"],
+  "app/clients/[id]/fixed-assets/page.tsx": ["vendors", "purchase_bills"],
+  "components/purchases/AllocatePaymentModal.tsx": ["purchase_bills"],
+  "components/sales/AllocateReceiptModal.tsx": ["client_sales_invoices"],
+  "lib/data/compliance.ts": ["compliance_records"],
   // The document lists are not here any more (POST-A-010): the Documents page asks GET /api/documents, whose read pages every
   // row (repositories/document_repository.find_all), and the vault, a client's Documents tab and the portal page ask
   // GET /api/client-documents (routers/client_documents.py); both are held by tests that serve more rows than PostgREST

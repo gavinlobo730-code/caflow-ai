@@ -37,6 +37,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
+import { selectAll, selectAllKeyset } from "@/lib/supabase/selectAll";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -225,26 +226,28 @@ export default function LoansAndFDPage() {
       const firmId = await getFirmId();
       const sb = getSupabaseClient();
       const [clientsRes, loansRes, fdsRes] = await Promise.all([
-        sb.from("clients").select("id, name:client_name").eq("firm_id", firmId).eq("is_internal", false).order("client_name"),
-        sb
+        selectAll(() => sb.from("clients").select("id, name:client_name").eq("firm_id", firmId).eq("is_internal", false).order("client_name").order("id")),
+        // These two embed the client, so they are walked by keyset (an offset page would run the embed's aggregate over the whole table
+        // on every page) and shown newest first after the walk (POST-A-135).
+        selectAllKeyset(() => sb
           .from("loans")
           .select("*, clients(name:client_name)")
-          .eq("firm_id", firmId)
-          .order("created_at", { ascending: false }),
-        sb
+          .eq("firm_id", firmId)),
+        selectAllKeyset(() => sb
           .from("fixed_deposits")
           .select("*, clients(name:client_name)")
-          .eq("firm_id", firmId)
-          .order("created_at", { ascending: false }),
+          .eq("firm_id", firmId)),
       ]);
+      const newestFirst = <R extends { created_at?: unknown }>(rows: R[]): R[] =>
+        [...rows].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
       // A non-null PostgREST error is a real failure, not "zero loans/FDs" —
       // silently proceeding would understate a firm's tracked liabilities/assets.
       if (clientsRes.error) throw clientsRes.error;
       if (loansRes.error) throw loansRes.error;
       if (fdsRes.error) throw fdsRes.error;
       setClients((clientsRes.data ?? []) as Client[]);
-      setLoans((loansRes.data ?? []) as Loan[]);
-      setFDs((fdsRes.data ?? []) as FixedDeposit[]);
+      setLoans(newestFirst((loansRes.data ?? []) as unknown as Loan[]));
+      setFDs(newestFirst((fdsRes.data ?? []) as unknown as FixedDeposit[]));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {

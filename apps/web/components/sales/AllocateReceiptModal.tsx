@@ -37,6 +37,7 @@ import {
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 type OpenInvoice = {
   id: string;
@@ -79,7 +80,9 @@ export default function AllocateReceiptModal({
           supabase.from("receipt_allocations")
             .select("sales_invoice_id, allocated_paise")
             .eq("receipt_id", receipt.id),
-          supabase.from("client_sales_invoices")
+          // Paged (POST-A-135): every non-draft invoice of one customer is listed oldest first, so a cut at the ~1000-row cap
+          // would drop the NEWEST invoices, the ones a receipt is most often allocated to.
+          selectAll(() => supabase.from("client_sales_invoices")
             .select("id, invoice_no, invoice_date, total_paise, outstanding_paise, status")
             .eq("client_id", clientId)
             .eq("customer_id", receipt.customer_id)
@@ -87,7 +90,7 @@ export default function AllocateReceiptModal({
             // endpoint refuses it, so it is not offered.
             .not("status", "in", "(draft,cancelled)")
             .order("invoice_date", { ascending: true })
-            .order("id"),
+            .order("id")),
         ]);
       if (allocErr) throw allocErr;
       if (invErr) throw invErr;

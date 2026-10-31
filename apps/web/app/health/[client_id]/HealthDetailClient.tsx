@@ -11,6 +11,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { selectAll } from "@/lib/supabase/selectAll";
 import {
   HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass,
   weightLabel as weightBpToLabel, type HealthDimensionKey, type HealthGrade,
@@ -351,12 +352,14 @@ export default function ClientHealthDetailPage() {
           .eq("client_id", clientId)
           .order("recorded_at", { ascending: false })
           .limit(20),
-        supabase
+        // Paged (POST-A-135): unresolved alerts only ever accumulate until somebody resolves them.
+        selectAll(() => supabase
           .from("health_alerts")
           .select("*")
           .eq("client_id", clientId)
           .eq("is_resolved", false)
-          .order("created_at", { ascending: false }),
+          .order("created_at", { ascending: false })
+          .order("id")),
       ]);
       if (scoreRes.error) throw scoreRes.error;
       if (!scoreRes.data) throw new Error("Health score not found — run /calculate first");

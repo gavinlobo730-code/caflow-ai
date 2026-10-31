@@ -27,6 +27,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type DeclarationRow, type DeclarationItemRow } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 type Client = { id: string; client_name: string };
 type Employee = { id: string; name: string };
@@ -92,8 +93,8 @@ export default function DeclarationsPage() {
         const sb = getSupabaseClient();
         const fid = await getFirmId();
         if (!fid) return;
-        const { data } = await sb.from("clients")
-          .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("client_name");
+        const { data } = await selectAll(() => sb.from("clients")
+          .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("client_name").order("id"));
         setClients(data ?? []);
       } catch (e) {
         console.error("load clients:", e);

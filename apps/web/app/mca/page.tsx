@@ -36,6 +36,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -590,7 +591,7 @@ export default function MCAPage() {
         }
         if (!fid) return;
         const sb = getSupabaseClient();
-        const { data, error } = await sb.from("mca_filings").select("*").eq("firm_id", fid).order("due_date");
+        const { data, error } = await selectAll(() => sb.from("mca_filings").select("*").eq("firm_id", fid).order("due_date").order("id"));
         if (error) {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? error.message);
@@ -600,7 +601,7 @@ export default function MCAPage() {
         }
         // Companies + directors from the firm's real data (migration 038). Empty
         // arrays when none exist — never fall back to fictional seed records.
-        const { data: coData, error: coErr } = await sb.from("mca_companies").select("*").eq("firm_id", fid).order("company_name");
+        const { data: coData, error: coErr } = await selectAll(() => sb.from("mca_companies").select("*").eq("firm_id", fid).order("company_name").order("id"));
         if (coErr) {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? coErr.message);
@@ -614,7 +615,7 @@ export default function MCAPage() {
           paidup_capital_paise: (c.paid_up_capital_paise ?? 0) as number,
           regd_office: (c.registered_office ?? "") as string,
         })));
-        const { data: dirData, error: dirErr } = await sb.from("mca_directors").select("*").eq("firm_id", fid).order("director_name");
+        const { data: dirData, error: dirErr } = await selectAll(() => sb.from("mca_directors").select("*").eq("firm_id", fid).order("director_name").order("id"));
         if (dirErr) {
           setTableError(true);
           // KYC-due-soon relies on this list — a silently-empty Directors

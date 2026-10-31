@@ -18,6 +18,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -111,17 +112,19 @@ export default function ScheduledReportsPage() {
       const firmId = await getFirmId();
 
       const [{ data: srRaw, error: srError }, { data: cl, error: clError }] = await Promise.all([
-        supabase
+        selectAll(() => supabase
           .from("scheduled_reports")
           .select("id, client_id, report_type, frequency, recipients, day_of_month, is_active, last_sent_at, created_at")
           .eq("firm_id", firmId)
-          .order("created_at", { ascending: false }),
-        supabase
+          .order("created_at", { ascending: false })
+          .order("id")),
+        selectAll(() => supabase
           .from("clients")
           .select("id, name:client_name")
           .eq("firm_id", firmId)
           .eq("is_internal", false)
-          .order("client_name"),
+          .order("client_name")
+          .order("id")),
       ]);
       if (srError) throw new Error(srError.message);
       if (clError) throw new Error(clError.message);

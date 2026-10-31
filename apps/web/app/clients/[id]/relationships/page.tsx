@@ -23,6 +23,7 @@ import { windowDescription } from "@/lib/lists/window";
 import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 /**
  * Related parties — the AS 18 note, and the roles it is built from.
@@ -132,12 +133,13 @@ export default function ClientRelatedPartiesPage() {
       // no server-side computation, scoped to THIS client on either end —
       // `cross_client_matches` names two clients and either may be this one.
       const db = getSupabaseClient();
-      const { data, error: matchesError } = await db
+      const { data, error: matchesError } = await selectAll(() => db
         .from("cross_client_matches")
         .select("id, match_value, client_id_a, client_id_b, match_type, reviewed, is_confirmed")
         .eq("reviewed", false)
         .or(`client_id_a.eq.${clientId},client_id_b.eq.${clientId}`)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .order("id"));
       if (matchesError) throw matchesError;
       setMatches((data as CrossClientMatch[]) ?? []);
     } catch (e) {

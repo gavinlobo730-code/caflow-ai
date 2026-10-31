@@ -832,8 +832,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     (async () => {
       const sb = getSupabaseClient();
       const [v, b] = await Promise.all([
-        sb.from("vendors").select("id, name")
-          .eq("client_id", clientId).eq("is_active", true).order("name"),
+        selectAll(() => sb.from("vendors").select("id, name")
+          .eq("client_id", clientId).eq("is_active", true).order("name").order("id")),
         fetchActiveBankAccounts(clientId).catch(() => null),
       ]);
       setVendors((v.data as { id: string; name: string }[]) ?? []);
@@ -849,12 +849,13 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     if (form.acquisition_mode !== "from_bill" || !form.vendor_id) { setVendorBills([]); return; }
     let cancelled = false;
     (async () => {
-      const { data } = await getSupabaseClient()
+      const supabaseForBills = getSupabaseClient();
+      const { data } = await selectAll(() => supabaseForBills
         .from("purchase_bills")
         .select("id, bill_no, our_reference, bill_date")
         .eq("client_id", clientId).eq("vendor_id", form.vendor_id)
         .in("status", ["received", "partially_paid", "paid"])
-        .order("bill_date", { ascending: false }).order("id");
+        .order("bill_date", { ascending: false }).order("id"));
       if (!cancelled) setVendorBills((data as typeof vendorBills) ?? []);
     })();
     return () => { cancelled = true; };
