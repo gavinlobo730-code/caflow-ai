@@ -157,8 +157,11 @@ def _clause_32(db, firm_id: str, client_id: str) -> tuple[Optional[object], str]
     ]
     return losses, ("brought_forward_losses, one row per year and head — "
                     "IT-10/domain/income_tax/loss_carry_forward.py's own "
-                    "expiry. §79, §73 and §73A are NOT tested here and are "
-                    "named regardless of whether any row exists.")
+                    "expiry. The remaining figure is the position after the "
+                    "latest return recorded as filed here, which is not "
+                    "necessarily the position at the start of the year "
+                    "reported. §79, §73 and §73A are NOT tested "
+                    "here and are named regardless of whether any row exists.")
 
 
 GAP_CHALLAN_RECORDED_MORE_THAN_ONCE = deposit_state.GAP_CHALLAN_RECORDED_MORE_THAN_ONCE

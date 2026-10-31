@@ -128,6 +128,13 @@ interface ReturnWindow {
   caveats: string[];
   gaps: string[];
 }
+/** One saved computation of the client for the year, as `GET /api/itr/snapshots` serves it. */
+interface SnapshotChoice {
+  id: string;
+  version: number;
+  status: string;
+}
+
 interface ReturnKind {
   return_type: string;
   section: string;
@@ -238,6 +245,11 @@ export default function ITRFilingPage() {
   const createDates = useDateProblems();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // THE SAVED COMPUTATION THE RETURN IS BUILT ON (POST-A-073). A filing that pins one is the only kind whose acknowledgement can write the
+  // brought-forward losses it used back to their records, and the only kind the review gate (IT-30) can ask about. "" is a return computed
+  // outside the product, which is allowed and is said to write nothing.
+  const [snapshots, setSnapshots] = useState<SnapshotChoice[]>([]);
+  const [snapshotId, setSnapshotId] = useState("");
 
   // Transition
   const [transitioning, setTransitioning] = useState(false);
@@ -379,6 +391,26 @@ export default function ITRFilingPage() {
 
   const selectedKind = kinds.find((k) => k.return_type === kind);
 
+  // The client's saved computations for the year the form names, newest first, and the newest REVIEWED one chosen to begin with: a reviewed
+  // computation can be pinned without holding the filing at the review gate, and a draft one is a choice the CA makes on purpose.
+  useEffect(() => {
+    if (!showCreate || !clientId || clientId === "_placeholder") return;
+    let cancelled = false;
+    setSnapshots([]);
+    setSnapshotId("");
+    apiFetch(`/api/itr/snapshots?client_id=${encodeURIComponent(clientId)}&financial_year=${encodeURIComponent(fy)}`)
+      .then((r) => {
+        if (cancelled || !r?.success || !Array.isArray(r.data)) return;
+        const served = (r.data as SnapshotChoice[]).filter((x) => x && typeof x.id === "string");
+        setSnapshots(served);
+        setSnapshotId(served.find((x) => x.status === "reviewed")?.id ?? "");
+      })
+      .catch(() => {
+        // Nothing offered: the return is created unpinned, and the note after the acknowledgement says what that means.
+      });
+    return () => { cancelled = true; };
+  }, [showCreate, clientId, fy]);
+
   async function handleCreate() {
     if (createDates.first) { setCreateError(createDates.first); return; }
     setCreating(true);
@@ -392,6 +424,7 @@ export default function ITRFilingPage() {
           assessment_year: ay,
           itr_form: form,
           return_type: kind,
+          computation_snapshot_id: snapshotId || null,
           // Sent only where the kind needs them. The server refuses a revised
           // or updated return without the earlier receipt — the form carries
           // it — so an empty string here would produce a refusal that reads
@@ -596,6 +629,23 @@ export default function ITRFilingPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label htmlFor="itr-computation" className="text-3xs text-ps-label mb-1 block">Computation this return is built on</label>
+            <select id="itr-computation" value={snapshotId} onChange={e => setSnapshotId(e.target.value)}
+              className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
+              <option value="">None: computed outside this product</option>
+              {snapshots.map(x => (
+                <option key={x.id} value={x.id}>
+                  {`Version ${x.version} · ${x.status === "reviewed" ? "reviewed" : "not yet reviewed"}`}
+                </option>
+              ))}
+            </select>
+            <p className="text-3xs text-ps-hint mt-1">
+              Only a return built on a saved computation can record, when it is filed, how much of each brought-forward loss it used. A
+              computation that is not yet reviewed holds the return at the review step until it is.
+            </p>
           </div>
 
           {/* The window, exactly as the server states it — both dates where the

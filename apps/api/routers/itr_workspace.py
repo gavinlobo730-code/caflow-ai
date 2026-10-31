@@ -388,6 +388,19 @@ def review_snapshot(
 
 # ── ITR Filings ───────────────────────────────────────────────────────────────
 
+def _the_computation_is_this_clients_for_this_year(current_user: dict, req: "CreateFilingRequest") -> None:
+    """A filing that PINS a saved computation pins this client's own computation for the year the return is for (POST-A-073). The pin decides
+    which losses the return is written back to and which figures the keying sheet reads, and it was accepted whatever row it named. The
+    refusal is one sentence for a computation that is absent, another firm's, another client's or another year's."""
+    if not req.computation_snapshot_id:
+        return
+    from domain.income_tax.computation_workspace import get_snapshot
+    snap = get_snapshot(current_user["firm_id"], req.computation_snapshot_id)
+    if (not snap or str(snap.get("client_id")) != str(req.client_id)
+            or str(snap.get("financial_year") or "").strip() != req.financial_year):
+        raise HTTPException(400, detail=f"That saved computation is not one of this client's for FY {req.financial_year}.")
+
+
 @router.post("/filings")
 def create_filing(
     req: CreateFilingRequest,
@@ -395,6 +408,7 @@ def create_filing(
 ):
     """Create ITR filing in draft state."""
     assert_client_access(current_user, req.client_id)
+    _the_computation_is_this_clients_for_this_year(current_user, req)
     from domain.income_tax.itr_workflow import create_itr_filing
     try:
         filing = create_itr_filing(
@@ -776,6 +790,22 @@ def _close_the_obligation(current_user: dict, filing: dict, req: Acknowledgement
                            "Mark the obligation filed from Compliance."}
 
 
+def _audit_the_loss_records(current_user: dict, filing: dict, loss_records: dict) -> None:
+    """One audit event per loss record this acknowledgement changed. The row-level edit log records WHAT moved on a loss when the write is
+    made under the person's own token; this is the intent-level record, written whatever client made the write, saying which return moved it
+    and by how much. Non-fatal by construction (`log_event` never raises), and the acknowledgement does not wait on it."""
+    from services.audit_service import log_event
+    for r in loss_records.get("losses") or []:
+        if r.get("state") != "written":
+            continue
+        log_event(current_user.get("firm_id") or "", "brought_forward_loss", str(r.get("loss_id") or ""), "update",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data={"itr_filing_id": filing.get("id"), "financial_year": filing.get("financial_year"),
+                            "return_type": filing.get("return_type") or "original", "used_paise": r.get("used_paise"),
+                            "requested_paise": r.get("requested_paise")},
+                  metadata={"reason": "an ITR acknowledgement was recorded; the loss record now shows what the return used"})
+
+
 @router.post("/filings/{filing_id}/acknowledge")
 def record_acknowledgement(
     filing_id: str,
@@ -813,9 +843,11 @@ def record_acknowledgement(
         # What the filed return used of each brought-forward loss is written back to the loss records (POST-A-073). It never fails the
         # recording; whatever it did not write comes back, loss by loss, with the reason.
         from services import bf_loss_service
+        loss_records = bf_loss_service.write_back_filing(current_user, filing)
+        _audit_the_loss_records(current_user, filing, loss_records)
         return api_response(True, {
             **result, "compliance_obligation": _close_the_obligation(current_user, filing, req),
-            "brought_forward_losses": bf_loss_service.write_back_filing(current_user, filing)})
+            "brought_forward_losses": loss_records})
     except ValueError as e:
         # The state-machine refusal (IT-23): a draft cannot be marked filed,
         # and an already-filed return cannot be silently re-acknowledged. Both

@@ -1009,6 +1009,8 @@ export default function TaxComputationPage() {
           // one included, and `amount_paise` is only what this screen holds.
           // Which head each one may reach is the server's decision
           // (§72/§73/§71B/§74), and its working comes back in `brought_forward`.
+          // The client goes with them: the server accepts a recorded loss only for the client being computed.
+          client_id: clientId,
           brought_forward_losses: bfLosses
             .filter(l => (l.original_amount_paise ?? 0) > 0)
             .map(l => ({

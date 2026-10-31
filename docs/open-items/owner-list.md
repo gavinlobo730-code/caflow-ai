@@ -229,12 +229,12 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** The stored per-month 2B totals and the derived 8A. The return names 8A as a figure the product cannot see.
 - **Ledger:** POST-A-063
 
-### S21. An updated return (section 139(8A)): how does its set-off of a brought-forward loss sit beside the return it updates?
+### S21. A revised and an updated return: how does each one's set-off of a brought-forward loss sit beside the return it follows?
 
-- **Question:** When a return is filed as an UPDATED return under section 139(8A), does the brought-forward loss it sets off REPLACE what the return it updates set off for that year (as a revised return under section 139(5) replaces the original), or add to it? And does the proviso to sub-section (8A), which limits what an updated return may change, limit what it can do with a loss that was carried forward? The product writes a filed return's use of a loss back to the loss record; for a revised return it replaces the original's entry for the same year, and for an updated return it writes nothing.
-- **Needed:** Income-tax Act 1961 section 139(8A) with its provisos, and sections 72(1), 74 and 80 as they apply to a loss carried into an updated return; for tax years from 2026-27, the corresponding sections of the Income-tax Act 2025.
+- **Question:** (a) A revised return under section 139(5): does the brought-forward loss it sets off REPLACE what the original return set off for that year, so a loss record should show only the revised return's use? The product assumes so (it is how the code already treats a revised return, as re-declaring a year already declared) and has not read it from the Act. (b) An UPDATED return under section 139(8A): does its set-off replace the return it updates, or add to it, and does the proviso to sub-section (8A), which limits what an updated return may change, limit what it can do with a loss that was carried forward? The product writes a filed return's use of a loss back to the loss record; for an original it adds the use, for a revised return it replaces the same year's earlier use, and for an updated return it writes nothing and says so. The computation also offers a year's earlier use back whenever that year is computed again, which is the same assumption for any kind of return.
+- **Needed:** Income-tax Act 1961 section 139(5) and section 139(8A) with its provisos, and sections 72(1), 74 and 80 as they apply to a loss carried into a revised or an updated return; for tax years from 2026-27, the corresponding sections of the Income-tax Act 2025.
 - **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
-- **Stays unbuilt meanwhile:** Writing an updated return's use back to the loss records. The answer says no loss record was changed and asks the CA to record the use by hand.
+- **Stays unbuilt meanwhile:** Writing an updated return's use back to the loss records, and teaching the computation which kind of return it is for. The answer says no loss record was changed. The revised-return replacement stays built, graded [S], and is named here so you can overrule it.
 - **Ledger:** POST-A-366
 
 ## 5. Wait-until-asked items the goal probably needs

@@ -15,7 +15,7 @@ WHAT THIS PINS (the pure rule, domain/income_tax/loss_utilisation.py)
 import pytest
 
 from domain.income_tax.loss_utilisation import (
-    after_filing, available_for_year_paise, baseline_paise, entries_of, used_in_year_paise,
+    Superseded, after_filing, available_for_year_paise, baseline_paise, entries_of, used_in_year_paise,
 )
 
 L = 1_00_000_00   # one lakh, in paise
@@ -54,7 +54,7 @@ def test_a_row_with_no_uses_offers_what_remains():
 def test_filing_a_return_records_the_use_and_moves_both_totals():
     r = row(original=10 * L)
     out = after_filing(r, "f-2025", "2025-26", 4 * L)
-    assert out["utilisations"] == {"f-2025": {"financial_year": "2025-26", "amount_paise": 4 * L}}
+    assert out["utilisations"] == {"f-2025": {"financial_year": "2025-26", "amount_paise": 4 * L, "return_type": "original"}}
     assert out["utilized_amount_paise"] == 4 * L
     assert out["remaining_amount_paise"] == 6 * L
 
@@ -71,12 +71,14 @@ def test_a_revised_return_replaces_the_originals_use_for_the_same_year_and_does_
     r = row(original=10 * L)
     r = store(r, after_filing(r, "f-original", "2025-26", 4 * L))
     # the revised return for the same year uses 6 lakh: the original's 4 lakh is replaced, not added to
-    r = store(r, after_filing(r, "f-revised", "2025-26", 6 * L))
-    assert r["utilisations"] == {"f-revised": {"financial_year": "2025-26", "amount_paise": 6 * L}}
+    r = store(r, after_filing(r, "f-revised", "2025-26", 6 * L, "revised"))
+    assert r["utilisations"] == {"f-revised": {"financial_year": "2025-26", "amount_paise": 6 * L, "return_type": "revised"}}
     assert r["utilized_amount_paise"] == 6 * L and r["remaining_amount_paise"] == 4 * L
-    # and one that uses LESS (or nothing) gives the difference back
-    r = store(r, after_filing(r, "f-revised-again", "2025-26", 0))
-    assert r["utilisations"] == {} and r["utilized_amount_paise"] == 0 and r["remaining_amount_paise"] == 10 * L
+    # and one that uses LESS (or nothing) gives the difference back; a revised return that used nothing KEEPS its (empty) entry, which is
+    # what stops the original, acknowledged later, from writing over it
+    r = store(r, after_filing(r, "f-revised-again", "2025-26", 0, "revised"))
+    assert r["utilisations"] == {"f-revised-again": {"financial_year": "2025-26", "amount_paise": 0, "return_type": "revised"}}
+    assert r["utilized_amount_paise"] == 0 and r["remaining_amount_paise"] == 10 * L
 
 
 def test_other_years_are_never_touched_by_a_write():
@@ -84,7 +86,7 @@ def test_other_years_are_never_touched_by_a_write():
     r = store(r, after_filing(r, "f-2024", "2024-25", 2 * L))
     r = store(r, after_filing(r, "f-2025", "2025-26", 3 * L))
     assert set(r["utilisations"]) == {"f-2024", "f-2025"} and r["utilized_amount_paise"] == 5 * L
-    r = store(r, after_filing(r, "f-2025-revised", "2025-26", 1 * L))
+    r = store(r, after_filing(r, "f-2025-revised", "2025-26", 1 * L, "revised"))
     assert set(r["utilisations"]) == {"f-2024", "f-2025-revised"}, "only the same year's entry was replaced"
     assert r["utilisations"]["f-2024"]["amount_paise"] == 2 * L
     assert r["utilized_amount_paise"] == 3 * L and r["remaining_amount_paise"] == 7 * L
@@ -108,7 +110,7 @@ def test_a_use_recorded_by_hand_is_kept_beside_a_filings():
     # the same year recomputed offers back ONLY the filing's 2 lakh, never the hand-recorded 3
     assert available_for_year_paise(r, "2025-26") == 7 * L
     # and replacing the year's use keeps the baseline
-    r = store(r, after_filing(r, "f-revised", "2025-26", 1 * L))
+    r = store(r, after_filing(r, "f-revised", "2025-26", 1 * L, "revised"))
     assert r["utilized_amount_paise"] == 4 * L and baseline_paise(r) == 3 * L
 
 
@@ -127,7 +129,7 @@ def test_a_use_is_capped_at_what_was_there():
 
 def test_an_inconsistent_row_never_offers_more_than_the_original():
     bad = {"original_amount_paise": 5 * L, "remaining_amount_paise": 9 * L,
-           "utilized_amount_paise": 0, "utilisations": {"f": {"financial_year": "2025-26", "amount_paise": 9 * L}}}
+           "utilized_amount_paise": 0, "utilisations": {"f": {"financial_year": "2025-26", "amount_paise": 9 * L, "return_type": "original"}}}
     assert available_for_year_paise(bad, "2025-26") == 5 * L
     assert available_for_year_paise({"original_amount_paise": None, "remaining_amount_paise": None}, "2025-26") == 0
 
@@ -136,3 +138,36 @@ def test_an_inconsistent_row_never_offers_more_than_the_original():
 def test_a_use_that_is_not_a_positive_amount_records_nothing(used):
     out = after_filing(row(original=10 * L), "f", "2025-26", used)
     assert out["utilisations"] == {} and out["utilized_amount_paise"] == 0 and out["remaining_amount_paise"] == 10 * L
+
+
+# ── the order the returns are acknowledged in is not the order they stand in ──
+
+def test_an_original_acknowledged_after_the_revised_return_does_not_write_over_it():
+    r = row(original=10 * L)
+    r = store(r, after_filing(r, "f-rev", "2025-26", 2 * L, "revised"))
+    with pytest.raises(Superseded) as e:
+        after_filing(r, "f-orig", "2025-26", 5 * L, "original")
+    assert e.value.by == "f-rev"
+    assert r["utilisations"] == {"f-rev": {"financial_year": "2025-26", "amount_paise": 2 * L, "return_type": "revised"}}
+
+
+def test_a_revised_return_that_used_nothing_still_stands_over_a_later_original():
+    r = row(original=10 * L)
+    r = store(r, after_filing(r, "f-rev", "2025-26", 0, "revised"))
+    with pytest.raises(Superseded):
+        after_filing(r, "f-orig", "2025-26", 5 * L, "original")
+
+
+def test_an_original_of_another_year_and_a_second_revised_return_are_not_superseded():
+    r = row(original=10 * L)
+    r = store(r, after_filing(r, "f-rev-25", "2025-26", 2 * L, "revised"))
+    r = store(r, after_filing(r, "f-orig-26", "2026-27", 3 * L, "original"))          # another year: untouched by the 2025-26 revision
+    r = store(r, after_filing(r, "f-rev-25b", "2025-26", 4 * L, "revised"))           # a later revision replaces the earlier one
+    assert set(r["utilisations"]) == {"f-orig-26", "f-rev-25b"}
+
+
+def test_an_entry_written_before_the_kind_was_recorded_reads_as_an_original():
+    r = {"original_amount_paise": 10 * L, "utilized_amount_paise": 4 * L, "remaining_amount_paise": 6 * L,
+         "utilisations": {"f": {"financial_year": "2025-26", "amount_paise": 4 * L}}}
+    assert entries_of(r)["f"]["return_type"] == "original"
+    after_filing(r, "g", "2025-26", L, "revised")          # a revised return may replace it

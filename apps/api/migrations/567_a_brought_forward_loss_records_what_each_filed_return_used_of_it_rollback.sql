@@ -5,8 +5,11 @@
 BEGIN;
 
 ALTER TABLE public.brought_forward_losses
+    DROP CONSTRAINT IF EXISTS brought_forward_losses_entries_within_utilized;
+ALTER TABLE public.brought_forward_losses
     DROP CONSTRAINT IF EXISTS brought_forward_losses_utilisations_is_an_object;
 ALTER TABLE public.brought_forward_losses
     DROP COLUMN IF EXISTS utilisations;
+DROP FUNCTION IF EXISTS public.brought_forward_loss_entries_total(JSONB);
 
 COMMIT;

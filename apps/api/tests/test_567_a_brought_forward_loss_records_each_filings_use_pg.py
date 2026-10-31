@@ -5,7 +5,9 @@ WHAT IS BEING PROVED
     1. `brought_forward_losses.utilisations` exists, is NOT NULL and defaults to an empty object, so every row that predates the column reads
        as "no filing has used it", which is exactly what it was.
     2. The CHECK keeps it an object: an array, a string or a number is refused at the column, because the rule in
-       `domain/income_tax/loss_utilisation.py` reads an object and a screen or a hand-made request can reach the table by other doors.
+       `domain/income_tax/loss_utilisation.py` reads an object and a screen or a hand-made request can reach the table by other doors. A
+       second CHECK keeps the entries together within `utilized_amount_paise` (the difference is the hand-recorded baseline and cannot be
+       negative), through an IMMUTABLE function, so a direct write cannot leave the entries larger than the total.
     3. What the rule returns is accepted by the table's EXISTING checks (`chk_remaining_consistency`, `chk_utilized_lte_original`) for the
        cases that matter, and a write that moves one total without the other is refused, which is the second lock behind the rule's
        "written together".
@@ -13,7 +15,8 @@ WHAT IS BEING PROVED
     5. The file is re-runnable, and its rollback takes the column away.
 
 NEGATIVE CONTROL
-    Drop the CHECK from the migration and the three malformed-value cases insert straight in. Drop the NOT NULL and the NULL case does.
+    Drop the CHECKs from the migration and the malformed-value and the over-the-total cases write straight in. Drop the NOT NULL and the
+    NULL case does.
 
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
 """
@@ -125,7 +128,8 @@ def test_the_column_is_not_null(db):
 @pytest.mark.parametrize("bad", ["'[]'", "'\"x\"'", "'5'", "'true'"])
 def test_the_column_is_refused_anything_but_an_object(db, bad):
     r = _psql(db, f"UPDATE brought_forward_losses SET utilisations = {bad}::jsonb WHERE id = '{_loss(db)}';")
-    assert r.returncode != 0 and "brought_forward_losses_utilisations_is_an_object" in r.stderr
+    assert r.returncode != 0 and ("brought_forward_losses_utilisations_is_an_object" in r.stderr
+                                  or "brought_forward_losses_entries_within_utilized" in r.stderr)
 
 
 # ── 3. what the rule returns is accepted, and the pair is held together ──────
@@ -137,12 +141,12 @@ def test_what_a_filing_writes_is_accepted_by_the_tables_own_checks(db):
     assert r.returncode == 0, r.stderr
     after = _row(db, loss_id)
     assert (after["utilized_amount_paise"], after["remaining_amount_paise"]) == (7 * L, 3 * L)
-    assert after["utilisations"] == {"f-2025": {"financial_year": "2025-26", "amount_paise": 4 * L}}
+    assert after["utilisations"] == {"f-2025": {"financial_year": "2025-26", "amount_paise": 4 * L, "return_type": "original"}}
     # the same year again is offered the loss back, less only the hand-recorded part
     assert available_for_year_paise(after, "2025-26") == 7 * L
     assert available_for_year_paise(after, "2026-27") == 3 * L
     # a revised return replaces the year's entry and the checks still hold
-    r = _store(db, loss_id, after_filing(after, "f-rev", "2025-26", 6 * L))
+    r = _store(db, loss_id, after_filing(after, "f-rev", "2025-26", 6 * L, "revised"))
     assert r.returncode == 0, r.stderr
     assert _row(db, loss_id)["remaining_amount_paise"] == 1 * L
 
@@ -160,6 +164,30 @@ def test_a_use_beyond_the_loss_is_capped_by_the_rule_and_refused_by_the_table(db
 def test_one_total_cannot_move_without_the_other(db):
     r = _psql(db, f"UPDATE brought_forward_losses SET utilized_amount_paise = {4 * L} WHERE id = '{_loss(db)}';")
     assert r.returncode != 0 and "chk_remaining_consistency" in r.stderr
+
+
+# ── 3b. the entries stay within the total, whoever writes ───────────────────
+
+def test_the_entries_cannot_exceed_the_total_that_holds_them(db):
+    loss_id = _loss(db, utilized=3 * L)
+    entries = json.dumps({"f1": {"financial_year": "2025-26", "amount_paise": 2 * L}, "f2": {"financial_year": "2026-27", "amount_paise": 2 * L}})
+    r = _psql(db, f"UPDATE brought_forward_losses SET utilisations = '{entries}'::jsonb WHERE id = '{loss_id}';")
+    assert r.returncode != 0 and "brought_forward_losses_entries_within_utilized" in r.stderr
+    ok = json.dumps({"f1": {"financial_year": "2025-26", "amount_paise": 2 * L}, "f2": {"financial_year": "2026-27", "amount_paise": 1 * L}})
+    assert _psql(db, f"UPDATE brought_forward_losses SET utilisations = '{ok}'::jsonb WHERE id = '{loss_id}';").returncode == 0, "3 lakh in entries under a 3 lakh total is allowed"
+
+
+def test_an_entry_whose_amount_is_not_a_number_is_refused(db):
+    r = _psql(db, f"UPDATE brought_forward_losses SET utilisations = '{{\"f\": {{\"amount_paise\": \"lots\"}}}}'::jsonb WHERE id = '{_loss(db, utilized=L)}';")
+    assert r.returncode != 0
+
+
+def test_the_hand_edit_route_still_works_beside_the_entries(db):
+    """`utilize_bf_loss` raises the total only; the new check must let that through."""
+    loss_id = _loss(db, utilized=2 * L)
+    assert _store(db, loss_id, after_filing(_row(db, loss_id), "f", "2025-26", 3 * L)).returncode == 0
+    r = _psql(db, f"UPDATE brought_forward_losses SET utilized_amount_paise = {6 * L}, remaining_amount_paise = {4 * L} WHERE id = '{loss_id}';")
+    assert r.returncode == 0, r.stderr
 
 
 # ── 4. the compare the store makes ───────────────────────────────────────────
@@ -189,4 +217,6 @@ def test_the_rollback_takes_the_column_and_its_check_away(db):
     assert r.returncode == 0, r.stderr
     assert _one(db, "SELECT count(*) FROM information_schema.columns WHERE table_name = 'brought_forward_losses' "
                     "AND column_name = 'utilisations';") == "0"
-    assert _one(db, "SELECT count(*) FROM pg_constraint WHERE conname = 'brought_forward_losses_utilisations_is_an_object';") == "0"
+    assert _one(db, "SELECT count(*) FROM pg_constraint WHERE conname IN ('brought_forward_losses_utilisations_is_an_object', "
+                    "'brought_forward_losses_entries_within_utilized');") == "0"
+    assert _one(db, "SELECT count(*) FROM pg_proc WHERE proname = 'brought_forward_loss_entries_total';") == "0"

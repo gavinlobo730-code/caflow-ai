@@ -43,6 +43,11 @@ test("each loss goes to the server with its record's id", () => {
   assert.match(block, /\bid:\s*l\.id\b/, "a loss is sent without the id of its record");
 });
 
+test("the client being computed goes with the losses, so the server can refuse another client's record", () => {
+  const at = code.indexOf("brought_forward_losses: bfLosses");
+  assert.match(code.slice(Math.max(0, at - 200), at), /client_id:\s*clientId/, "the computation does not name its client beside the losses");
+});
+
 test("every loss ever recorded is sent, a fully used one included", () => {
   assert.match(block, /\.filter\(l => \(l\.original_amount_paise \?\? 0\) > 0\)/);
   assert.ok(!/remaining_amount_paise \?\? 0\) > 0/.test(block), "the screen filters on what is left, which hides the loss this year used");
