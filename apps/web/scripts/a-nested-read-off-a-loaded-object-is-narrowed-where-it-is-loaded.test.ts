@@ -95,6 +95,13 @@ test("the TDS deduction preview and deposit state refuse an answer without the p
   assert.match(src, /objectOrNull\(shaped\.deductions\)[\s\S]{0,40}objectOrNull\(shaped\.legend\)/, "and its two maps");
 });
 
+test("the TDS deposit worksheet refuses an answer that is not a worksheet, and a worksheet missing its lists keeps them empty", () => {
+  const src = read("lib/data/tds.ts");
+  assert.match(src, /objectWithLists<DepositDueWorksheet>\(\s*resp\.data\s*,\s*"sections"\s*,\s*"statutory_gaps"\s*\)/,
+    "fetchDepositDue must need the two lists the panel reads");
+  assert.match(src, /objectOrNull\(shaped\.totals\)/, "and the totals object the panel reads six figures from");
+});
+
 test("the capital-gains exemption working needs its three lists", () => {
   assert.match(read("lib/data/income-tax.ts"),
     /objectWithLists<CapitalGainExemption>\(\s*json\.data\s*,\s*"claims"\s*,\s*"gaps"\s*,\s*"caveats"\s*\)/);

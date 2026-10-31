@@ -581,7 +581,12 @@ export async function fetchDepositDue(
     `/api/tds-workspace/deposit-due?client_id=${encodeURIComponent(clientId)}` +
     `&month=${encodeURIComponent(month)}`);
   if (!resp.success) throw new Error(resp.error ?? "Could not work out what is due");
-  return resp.data;
+  // The panel reads `sections.length`, `statutory_gaps.map` and the totals: an answer that is not a worksheet (a list, an error envelope
+  // from a deploy that is behind this screen) used to take the whole TDS screen down with a read of undefined (POST-A-149, found by
+  // driving the Challans tab in a browser, PRE-A-015).
+  const shaped = objectWithLists<DepositDueWorksheet>(resp.data, "sections", "statutory_gaps");
+  if (!shaped || !objectOrNull(shaped.totals)) throw new Error("The deposit worksheet came back in a shape this screen cannot read.");
+  return shaped;
 }
 
 /** Record an ITNS 281 deposit. IT Act s.200(1).

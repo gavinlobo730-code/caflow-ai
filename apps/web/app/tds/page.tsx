@@ -75,6 +75,7 @@ import { formatDate } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { RetractChallanModal } from "@/components/tds/RetractChallanModal";
+import { Button } from "@/components/ui/button";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
 // resolved server-side — CLAUDE.md: zero business logic in the frontend.
@@ -415,9 +416,12 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
 
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          {/* The shared button, not a `disabled={saving}` flag: state reaches the page a render after the click, so two clicks made back
+              to back both ran this and recorded the deduction twice (found by driving the form in a browser, PRE-A-015). */}
+          <Button type="button" variant="plain" size="none" onClick={handleSubmit} disabled={saving}
+            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Deduction"}
-          </button>
+          </Button>
         </div>
         <p className="text-3xs text-amber-600 bg-state-attention-surface rounded px-2 py-1.5">
           {/* CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT */}
@@ -766,10 +770,11 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <button onClick={handleAdd} disabled={saving}
+          {/* The shared button, for the reason given on Add Deduction: a challan recorded twice doubles what the register says was deposited. */}
+          <Button type="button" variant="plain" size="none" onClick={handleAdd} disabled={saving}
             className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

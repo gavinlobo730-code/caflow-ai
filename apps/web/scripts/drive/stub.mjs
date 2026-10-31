@@ -67,6 +67,11 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
   /** How long a write is held before it is answered. Long enough that a second click lands first. */
   let writeDelayMs = 700;
   let inFlight = 0;
+  /** Which scenario's requests are being answered. `reset()` starts a new one, and a held write of the scenario that just ended is
+   *  still answered after the reset (a write is held 700 ms): when it was answered it used to take one off the NEW scenario's count,
+   *  so the new scenario's `quiet()` saw "-2 writes held" and never went quiet (found when the TDS scenarios followed the advance-tax
+   *  ones in a full run). A write is counted against the scenario it arrived in and only released into that one. */
+  let generation = 0;
   /** Refusals this stub sent ON PURPOSE (a route given a 4xx or 5xx status), so the runner can tell the browser's
    *  own "Failed to load resource" line for one of them from a request that failed for a reason nobody planned. */
   let refusals = 0;
@@ -127,6 +132,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         const target = pathname + url.search;
         const route = routes.find((r) => (!r.method || r.method === req.method) && r.re.test(target));
         const isWrite = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
+        const born = generation;
         if (isWrite) {
           writes.push({ t: Date.now(), via: "api", method: req.method, path: pathname, search: url.search, body });
           inFlight += 1;
@@ -139,7 +145,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         // /health is the keep-alive's own ping and never waits.
         const wait = pathname.startsWith("/__api/health") ? 0 : delay;
         setTimeout(() => {
-          if (isWrite) { inFlight -= 1; touch(); }
+          if (isWrite && born === generation) { inFlight -= 1; touch(); }
           if (res.destroyed || res.writableEnded) return;
           if ((route?.status ?? 200) >= 400) refusals += 1;
           sendJson(res, out, route?.status ?? 200);
@@ -168,6 +174,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
       routes = [];
       writes = [];
       writeDelayMs = 700;
+      generation += 1;
       inFlight = 0;
       refusals = 0;
       authUser = null;
