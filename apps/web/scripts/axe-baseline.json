@@ -17,11 +17,6 @@
       "nodes": 2
     },
     {
-      "route": "/accounting/trial-balance-import",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
       "route": "/ai-assistant",
       "rule": "color-contrast",
       "nodes": 1

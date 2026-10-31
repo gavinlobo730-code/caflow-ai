@@ -37,6 +37,8 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { MONTH_ABBREVIATIONS as MONTHS, formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 
 function rupees(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -64,6 +66,11 @@ export default function StatutoryValuesPage() {
   const [effectiveFrom, setEffectiveFrom] = useState("");
   const [reference, setReference] = useState("");
   const [notifiedOn, setNotifiedOn] = useState("");
+  // The effective-from date decides which payslips a recorded slab applies to, and the notification date is the source it names: text that
+  // is not a date read as blank and the screen said they were "required" about boxes that held one (frontend_ux-19).
+  const dates = useDateProblems();
+  // The form is a full-screen overlay, so the page's message line is behind it: the date's sentence is shown inside it once a save has been tried.
+  const refusal = useDateRefusal(dates.first);
   const [basis, setBasis] = useState("monthly");
   const [months, setMonths] = useState<number[]>([]);
   const [bands, setBands] = useState<BandDraft[]>([{ ...EMPTY_BAND, from: "0" }]);
@@ -108,6 +115,10 @@ export default function StatutoryValuesPage() {
     const code = state.trim().toUpperCase();
     if (!/^[A-Z]{2}$/.test(code)) {
       setMsg({ type: "err", text: 'State must be the two-letter code, e.g. "GJ".' });
+      return;
+    }
+    if (dates.first) {
+      refusal.refuse();
       return;
     }
     if (!reference.trim() || !notifiedOn || !effectiveFrom) {
@@ -219,7 +230,7 @@ export default function StatutoryValuesPage() {
           }
           actions={
             <button
-              onClick={() => { reset(); setShowForm(true); }}
+              onClick={() => { reset(); refusal.clear(); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               <Plus size={15} />Record a notification
@@ -359,9 +370,19 @@ export default function StatutoryValuesPage() {
               <div className="p-5 space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="State code" value={state} onChange={v => setState(v.toUpperCase().slice(0, 2))} placeholder="GJ" />
-                  <Field label="Effective from" value={effectiveFrom} onChange={setEffectiveFrom} type="date" />
+                  <div>
+                    <label htmlFor="sv-effective-from" className="block text-2xs text-ps-label mb-1">Effective from</label>
+                    <DateInput id="sv-effective-from" value={effectiveFrom} onChange={setEffectiveFrom}
+                      onStateChange={dates.watch("effective", "Effective from")}
+                      className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
+                  </div>
                   <Field label="Notification reference" value={reference} onChange={setReference} placeholder="PFT-2026/CR-12/Taxation-3" />
-                  <Field label="Notification date" value={notifiedOn} onChange={setNotifiedOn} type="date" />
+                  <div>
+                    <label htmlFor="sv-notified-on" className="block text-2xs text-ps-label mb-1">Notification date</label>
+                    <DateInput id="sv-notified-on" value={notifiedOn} onChange={setNotifiedOn}
+                      onStateChange={dates.watch("notified", "Notification date")}
+                      className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
+                  </div>
                 </div>
 
                 <div>
@@ -423,6 +444,9 @@ export default function StatutoryValuesPage() {
                 </div>
 
                 <Field label="Note (optional)" value={note} onChange={setNote} placeholder="Anything the next reviewer should know" />
+                {refusal.shown && (
+                  <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>
+                )}
               </div>
 
               <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-border">
@@ -441,14 +465,14 @@ export default function StatutoryValuesPage() {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = "text" }: {
+function Field({ label, value, onChange, placeholder }: {
   label: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; type?: string;
+  placeholder?: string;
 }) {
   return (
     <div>
       <label className="block text-2xs text-ps-label mb-1">{label}</label>
-      <input type={type} value={value} placeholder={placeholder}
+      <input type="text" value={value} placeholder={placeholder}
         onChange={e => onChange(e.target.value)}
         className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
     </div>

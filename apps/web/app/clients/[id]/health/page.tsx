@@ -12,6 +12,8 @@ import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import {
   HEALTH_DIMENSIONS, dimensionLabel, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass, weightLabel,
   type HealthDimensionKey,
@@ -143,6 +145,11 @@ export default function ClientHealthPage() {
   const [error, setError] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
   const [overrideModal, setOverrideModal] = useState(false);
+  // An override with no expiry stays in force until somebody removes it, and a blank date is how "none" is sent: text that is not a date read
+  // as blank, so an override meant to lapse on a date was recorded to last for ever (frontend_ux-19). The sentence is shown in the modal
+  // once a save has been tried, and goes when the date is put right.
+  const overrideDates = useDateProblems();
+  const overrideRefusal = useDateRefusal(overrideDates.first);
   const [overrideForm, setOverrideForm] = useState(EMPTY_OVERRIDE);
   const [removingOverride, setRemovingOverride] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -230,6 +237,7 @@ export default function ClientHealthPage() {
 
   async function handleAddOverride() {
     if (!overrideForm.reason.trim() || !overrideForm.override_score) return;
+    if (overrideDates.first) { overrideRefusal.refuse(); return; }
     setSavingOverride(true);
     try {
       const json: ApiResponse<HealthOverride> = await apiFetch(
@@ -493,7 +501,7 @@ export default function ClientHealthPage() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-brand">Overrides ({overrides.length})</h2>
           <button
-            onClick={() => { setOverrideForm(EMPTY_OVERRIDE); setOverrideModal(true); }}
+            onClick={() => { setOverrideForm(EMPTY_OVERRIDE); overrideRefusal.clear(); setOverrideModal(true); }}
             className="flex items-center gap-1 text-xs text-brand border border-brand px-2.5 py-1 rounded hover:bg-brand-light/20"
           >
             <Plus size={12} /> Add Override
@@ -619,14 +627,18 @@ export default function ClientHealthPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-600">Expires At (optional)</label>
-                <input
-                  type="date"
+                <DateInput
+                  aria-label="Expires at (optional)"
                   value={overrideForm.expires_at}
-                  onChange={(e) => setOverrideForm({ ...overrideForm, expires_at: e.target.value })}
+                  onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
+                  onStateChange={overrideDates.watch("expires", "Expires at")}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
             </div>
+            {overrideRefusal.shown && (
+              <p role="alert" className="mt-3 text-xs text-state-problem">{overrideRefusal.shown}</p>
+            )}
             <div className="flex gap-2 mt-5">
               <button onClick={() => setOverrideModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button

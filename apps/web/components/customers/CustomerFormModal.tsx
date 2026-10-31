@@ -258,7 +258,7 @@ export function CustomerFormModal({
 
   if (duplicateOf) {
     return (
-      <Modal title="Customer already exists" onClose={onClose} maxWidthClass="max-w-2xl">
+      <Modal key="duplicate" title="Customer already exists" onClose={onClose} maxWidthClass="max-w-2xl">
         <Callout tone="attention">{duplicateOf.reason}</Callout>
         <div className="flex justify-end gap-2 mt-3">
           <button onClick={() => setDuplicateOf(null)}
@@ -276,7 +276,7 @@ export function CustomerFormModal({
 
   if (saved && resemblances.length) {
     return (
-      <Modal title="Customer added" onClose={() => onSaved(saved)} maxWidthClass="max-w-2xl">
+      <Modal key="added" title="Customer added" onClose={() => onSaved(saved)} maxWidthClass="max-w-2xl">
         <PossibleDuplicatesNotice duplicates={resemblances} noun="customer" />
         <div className="flex justify-end">
           <button onClick={() => onSaved(saved)}
@@ -289,7 +289,7 @@ export function CustomerFormModal({
   }
 
   return (
-    <Modal title={existing ? "Edit Customer" : "Add Customer"} onClose={onClose} maxWidthClass="max-w-2xl">
+    <Modal key="form" title={existing ? "Edit Customer" : "Add Customer"} onClose={onClose} maxWidthClass="max-w-2xl">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-2 lg:col-span-1">
           <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>

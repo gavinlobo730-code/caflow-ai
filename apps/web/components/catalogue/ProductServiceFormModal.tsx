@@ -28,6 +28,8 @@ import {
   type ServiceCatalogueItem, type ServiceFormInput,
 } from "@/lib/catalogue/service";
 import { Callout } from "@/components/ui/callout";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatPaise } from "@/lib/money/format";
 
 const EMPTY_FORM: ServiceFormInput = {
@@ -54,6 +56,9 @@ export function ProductServiceFormModal({
     existing ? serviceToForm(existing) : { ...EMPTY_FORM, name: seedName ?? "" },
   );
   const [attempted, setAttempted] = useState(false);
+  // A blank opening date defaults to the client's financial-year start, so text that is not a date would have dated the opening stock to a
+  // day nobody chose: it is refused in the date's own sentence (frontend_ux-19).
+  const dates = useDateProblems();
   const [saving, setSaving] = useState(false);
   // Shown INSIDE the modal, next to Create/Save — a save failure must never be
   // visible only via onError, since a caller may surface that somewhere the CA
@@ -91,6 +96,7 @@ export function ProductServiceFormModal({
   async function submit() {
     setAttempted(true);
     if (!v.ok) return;
+    if (dates.first) { setSaveError(dates.first); return; }
     setSaving(true);
     setSaveError(null);
     try {
@@ -227,7 +233,7 @@ export function ProductServiceFormModal({
         )}
         {form.kind === "good" && !stockAlreadyStarted && (form.openingQty || form.openingCost) && (
           <Field label="Opening balance as of (optional)">
-            <input type="date" value={form.openingBalanceDate} onChange={(e) => set("openingBalanceDate", e.target.value)} className={inputCls} />
+            <DateInput aria-label="Opening balance as of" value={form.openingBalanceDate} onChange={(v) => set("openingBalanceDate", v)} onStateChange={dates.watch("opening", "Opening balance as of")} className={inputCls} />
             <span className="block text-2xs text-ps-hint mt-1">
               The date this stock is on hand as of — not when you&apos;re entering it. Defaults to your client&apos;s financial-year start if left blank.
             </span>

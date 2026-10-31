@@ -17,6 +17,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { objectOrNull } from "@/lib/api/shape";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -99,6 +101,10 @@ export default function ClientLifecyclePage() {
   const [error, setError] = useState<string | null>(null);
   const [creatingWorkflow, setCreatingWorkflow] = useState(false);
   const [renewalModal, setRenewalModal] = useState(false);
+  // The renewal date is optional and a blank one is saved as "no date": text that is not a date read as blank, so a renewal meant to fall due
+  // on a date was recorded with none and nothing said (frontend_ux-19). The sentence is shown in the modal once a save has been tried.
+  const renewalDates = useDateProblems();
+  const renewalRefusal = useDateRefusal(renewalDates.first);
   const [renewalForm, setRenewalForm] = useState({
     financial_year: "", service_type: "", renewal_date: "", value_paise: "", notes: "",
   });
@@ -234,6 +240,7 @@ export default function ClientLifecyclePage() {
 
   async function handleSaveRenewal() {
     if (!renewalForm.financial_year || !renewalForm.service_type) return;
+    if (renewalDates.first) { renewalRefusal.refuse(); return; }
     // Through the one parser. parseInt(x, 10) * 100 read "1,25,000" as ₹1 and
     // "15000.50" as ₹15,000 — and the field is named value_paise while holding
     // the rupees the CA typed, which is what made the truncation invisible.
@@ -396,7 +403,7 @@ export default function ClientLifecyclePage() {
             <span className="ml-2 text-xs text-gray-500 font-normal">({renewals.length})</span>
           </h2>
           <button
-            onClick={() => setRenewalModal(true)}
+            onClick={() => { renewalRefusal.clear(); setRenewalModal(true); }}
             className="flex items-center gap-1 text-xs text-brand border border-brand px-2.5 py-1 rounded hover:bg-brand-light/20"
           >
             <Plus size={12} /> Add Renewal
@@ -469,10 +476,11 @@ export default function ClientLifecyclePage() {
               </div>
               <div>
                 <label className="text-xs text-gray-600">Renewal Date</label>
-                <input
-                  type="date"
+                <DateInput
+                  aria-label="Renewal date"
                   value={renewalForm.renewal_date}
-                  onChange={(e) => setRenewalForm({ ...renewalForm, renewal_date: e.target.value })}
+                  onChange={(v) => setRenewalForm({ ...renewalForm, renewal_date: v })}
+                  onStateChange={renewalDates.watch("renewal", "Renewal date")}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
@@ -488,6 +496,9 @@ export default function ClientLifecyclePage() {
                 />
               </div>
             </div>
+            {renewalRefusal.shown && (
+              <p role="alert" className="mt-3 text-xs text-state-problem">{renewalRefusal.shown}</p>
+            )}
             <div className="flex gap-2 mt-5">
               <button onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button

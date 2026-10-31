@@ -24,6 +24,8 @@ import type { InventoryCostingPolicy } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 export function CostFormulaPanel({ clientId }: { clientId: string }) {
   const [policy, setPolicy] = useState<InventoryCostingPolicy | null>(null);
@@ -33,6 +35,9 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
   const [effectiveFrom, setEffectiveFrom] = useState("");
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // The server REFUSES a blank effective date ("say which date it applies from"), so text that is not a date, read as blank, would have been
+  // answered with that sentence about a box that held text. It is refused in the date's own sentence before the request instead (frontend_ux-19).
+  const dates = useDateProblems();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,6 +65,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
   }
 
   async function save() {
+    if (dates.first) { setRefusal(dates.first); return; }
     setSaving(true);
     setRefusal(null);
     try {
@@ -144,8 +150,9 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
             <label htmlFor="cost-formula-from" className="block text-3xs font-medium text-ps-hint mb-1">
               Takes effect from
             </label>
-            <input id="cost-formula-from" type="date" value={effectiveFrom}
-                   onChange={(e) => setEffectiveFrom(e.target.value)}
+            <DateInput id="cost-formula-from" value={effectiveFrom}
+                   onChange={setEffectiveFrom}
+                   onStateChange={dates.watch("from", "Takes effect from")}
                    className="w-full px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             <p className="text-2xs text-ps-label mt-1 leading-relaxed">
               A change is prospective. Nothing already priced is re-costed, so

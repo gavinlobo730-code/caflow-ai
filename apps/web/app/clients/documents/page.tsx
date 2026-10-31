@@ -22,6 +22,8 @@ import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 type DocCategory = "Identity" | "GST" | "Income Tax" | "MCA" | "Financials" | "Other";
 
 const CATEGORIES: DocCategory[] = ["Identity", "GST", "Income Tax", "MCA", "Financials", "Other"];
@@ -82,9 +84,13 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // The expiry date is optional and decides whether the document is flagged as expiring: text that is not a date read as blank, so a
+  // document with an expiry typed in was uploaded as one that never expires (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function handleUpload() {
     if (!file || !docName) { setError("Enter document name and select a file"); return; }
+    if (dates.first) { setError(dates.first); return; }
     setUploading(true);
     try {
       // The server bounds the file, checks its bytes against its type, names and stores it under the firm and client,
@@ -128,7 +134,8 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date (optional)</label>
-            <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
+            <DateInput aria-label="Expiry date (optional)" value={expiryDate} onChange={setExpiryDate}
+              onStateChange={dates.watch("expiry", "Expiry date")}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
           </div>
           <div>

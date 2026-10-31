@@ -31,6 +31,8 @@ import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -217,6 +219,9 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Both dates are optional, and a letter with no expiry date stays open for signing for ever: text that is not a date read as blank, so a
+  // letter meant to lapse on a date was created with no expiry and nothing said (frontend_ux-19).
+  const dates = useDateProblems();
 
   useEffect(() => {
     if (open) {
@@ -249,6 +254,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (dates.first) { setErr(dates.first); return; }
     const feePaise = rupeesToPaise(form.fee_rupees);
     if (feePaise === null) {
       setErr("Fee isn't an amount — enter rupees, like 25000 or 25000.50.");
@@ -361,19 +367,22 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Start Date</label>
-              <input
-                type="date"
+              <DateInput
+                aria-label="Start date"
                 value={form.start_date}
-                onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+                onChange={(v) => setForm({ ...form, start_date: v })}
+                onStateChange={dates.watch("start", "Start date")}
                 className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Expiry Date</label>
-              <input
-                type="date"
+              <DateInput
+                aria-label="Expiry date"
+                anchor={form.start_date || null}
                 value={form.expiry_date}
-                onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
+                onChange={(v) => setForm({ ...form, expiry_date: v })}
+                onStateChange={dates.watch("expiry", "Expiry date")}
                 className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light"
               />
             </div>

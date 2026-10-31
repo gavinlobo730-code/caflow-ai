@@ -38,6 +38,8 @@ import { api, type ExpiringEwayBill, type ExpiringEwayBills as Report } from "@/
 import { objectOrNull } from "@/lib/api/shape";
 import { Can } from "@/components/Can";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const STATE_LABEL: Record<ExpiringEwayBill["state"], string> = {
   expired: "Expired",
@@ -62,8 +64,13 @@ function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () 
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The new valid-upto date is what every later expiry warning for this bill is worked out from: unreadable text is refused in the date's
+  // own sentence, and Save stays live over it so the refusal is spoken and not a button that goes dead (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function submit() {
+    if (dates.first) { setError(dates.first); return; }
+    if (!validUpto) { setError("Enter the new valid-upto date."); return; }
     setSaving(true);
     setError(null);
     try {
@@ -100,7 +107,7 @@ function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () 
     <div className="space-y-1.5 min-w-[200px]">
       <label className="block">
         <span className="sr-only">New valid upto</span>
-        <input type="date" value={validUpto} onChange={(e) => setValidUpto(e.target.value)}
+        <DateInput value={validUpto} onChange={setValidUpto} onStateChange={dates.watch("valid", "New valid upto")}
           className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
       </label>
       <input type="text" value={reason} placeholder="Reason recorded on the portal"
@@ -108,7 +115,7 @@ function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () 
         className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
       {error && <p className="text-xs text-state-problem">{error}</p>}
       <div className="flex gap-1.5">
-        <Button variant="plain" size="none" onClick={submit} disabled={saving || !validUpto || !reason.trim()}
+        <Button variant="plain" size="none" onClick={submit} disabled={saving || !reason.trim()}
           className="text-xs px-2 py-1 rounded-md font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40 inline-flex items-center gap-1">
           {saving && <Loader2 size={11} className="animate-spin" />}Save
         </Button>

@@ -29,6 +29,8 @@ import { api, type ClientGstRegistration, type GstRegistrationKinds,
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { YearPicker } from "@/components/ui/year-picker";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { formatPaise } from "@/lib/money/format";
 import { Cmp08Panel } from "@/components/gst/Cmp08Panel";
 import { Gstr8Panel } from "@/components/gst/Gstr8Panel";
@@ -69,6 +71,14 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
    *  far. A real date control rather than a text prompt: the column is a DATE
    *  and a typed "31/03/2027" reaches the server as a 400 the CA cannot act on. */
   const [closing, setClosing] = useState<{ id: string; on: string } | null>(null);
+  // "Registered from" is optional and read as "not given" when blank, and the cancellation date is what closes the registration's returns:
+  // text that is not a date used to read as blank, so the first saved a registration without it and the second left Record dead with
+  // nothing said (frontend_ux-19).
+  const regDates = useDateProblems();
+  const closeDates = useDateProblems();
+  // The drawer is a full-screen overlay, so the page's own message line is behind it: the refusal is shown inside the drawer, once a save
+  // has been tried and for as long as the date is wrong.
+  const regRefusal = useDateRefusal(regDates.first);
   const [msg, setMsg] = useState<Msg>(null);
   // GST-17 — the aggregate turnover Table 12's HSN digit requirement reads on.
   const [turnover, setTurnover] = useState<ClientGstTurnover | null>(null);
@@ -148,6 +158,10 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
   }, []);
 
   async function handleSave() {
+    if (regDates.first) {
+      regRefusal.refuse();
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
@@ -176,7 +190,14 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
   }
 
   async function handleClose(r: ClientGstRegistration, on: string) {
-    if (!on) return;
+    if (closeDates.first) {
+      setMsg({ type: "err", text: closeDates.first });
+      return;
+    }
+    if (!on) {
+      setMsg({ type: "err", text: "Enter the date the registration was cancelled or surrendered." });
+      return;
+    }
     setBusyId(r.id ?? null);
     setMsg(null);
     try {
@@ -227,7 +248,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
             client record; add the rest here.
           </p>
         </div>
-        <button onClick={() => { setForm(BLANK); setShowForm(true); }} disabled={busy}
+        <button onClick={() => { setForm(BLANK); regRefusal.clear(); setShowForm(true); }} disabled={busy}
           className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
           <Plus size={13} /> Add a registration
         </button>
@@ -422,12 +443,13 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
                         )}
                         {closing?.id === r.id && (
                           <span className="inline-flex items-center gap-1">
-                            <input type="date" value={closing.on} autoFocus
+                            <DateInput value={closing.on} autoFocus
                               aria-label={`Date ${r.gstin} was cancelled or surrendered`}
-                              onChange={(e) => setClosing({ id: r.id as string, on: e.target.value })}
+                              onChange={(v) => setClosing({ id: r.id as string, on: v })}
+                              onStateChange={closeDates.watch("closing", "Date cancelled or surrendered")}
                               className="px-1.5 py-1 text-2xs border border-ps-border rounded" />
                             <button onClick={() => handleClose(r, closing.on)}
-                              disabled={busy || !closing.on}
+                              disabled={busy}
                               className="px-2 py-1 text-2xs bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-40">
                               Record
                             </button>
@@ -587,10 +609,14 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
 
               <label className="text-xs block">
                 <span className="block text-ps-body font-medium mb-1">Registered from</span>
-                <input type="date" value={form.effective_from}
-                  onChange={(e) => setForm(f => ({ ...f, effective_from: e.target.value }))}
+                <DateInput value={form.effective_from}
+                  onChange={(v) => setForm(f => ({ ...f, effective_from: v }))}
+                  onStateChange={regDates.watch("from", "Registered from")}
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
               </label>
+              {regRefusal.shown && (
+                <p role="alert" className="text-xs text-state-problem">{regRefusal.shown}</p>
+              )}
             </div>
 
             <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">

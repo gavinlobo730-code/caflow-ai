@@ -38,6 +38,11 @@ export function Drawer({
 }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  // Callers pass an inline arrow, so `onClose` is a new function on every render of the parent. The effect below moves focus when the
+  // drawer opens and gives it back when it closes; depending on `onClose` would run both at every render of the parent and pull the
+  // cursor out of the field the person is typing in. Escape reads the latest one through this ref instead.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Escape-to-close + focus management. Only active while open.
   useEffect(() => {
@@ -48,7 +53,7 @@ export function Drawer({
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
       }
     }
     document.addEventListener("keydown", onKey);
@@ -57,7 +62,7 @@ export function Drawer({
       // Restore focus to whatever opened the drawer (row action / link).
       restoreFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

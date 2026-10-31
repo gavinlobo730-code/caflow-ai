@@ -1495,6 +1495,10 @@ function Vendors({ clientId }: { clientId: string }) {
   // a wrong nil on the deductor, so a ticked box with no date behind it is a
   // claim with no evidence — the register reports it as a gap.
   const [noPeDeclarationOn, setNoPeDeclarationOn] = useState("");
+  // Optional, and a blank date is saved as "no date behind the declaration", which the register reports as a gap: text that is not a date
+  // read as blank, so a declaration dated by hand was saved as undated with nothing said (frontend_ux-19). The box is only on the form while
+  // the declaration is ticked, and a hidden box takes its problem with it.
+  const noPeDates = useDateProblems();
   const [noPeDeclarationRef, setNoPeDeclarationRef] = useState("");
   const [treatyRate, setTreatyRate] = useState("");
 
@@ -1652,6 +1656,10 @@ function Vendors({ clientId }: { clientId: string }) {
     }
     if (residentialStatus === "non_resident" && treatyRate.trim() && bpsFromPercentInput(treatyRate) === null) {
       setMsg({ type: "err", text: "Treaty rate must be a percentage, e.g. 10 or 7.5." });
+      return;
+    }
+    if (noPeDates.first) {
+      setMsg({ type: "err", text: noPeDates.first });
       return;
     }
     if (residentialStatus === "non_resident" && natureOfIncome === "business_profits_no_pe" && !noPeDeclaration) {
@@ -2344,11 +2352,12 @@ function Vendors({ clientId }: { clientId: string }) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label htmlFor="no-pe-on" className="block text-xs font-medium text-ps-label mb-1">Declaration dated</label>
-                      <input
+                      <DateInput
+                        key={editingVendor?.id ?? "new"}
                         id="no-pe-on"
-                        type="date"
                         value={noPeDeclarationOn}
-                        onChange={(e) => setNoPeDeclarationOn(e.target.value)}
+                        onChange={setNoPeDeclarationOn}
+                        onStateChange={noPeDates.watch("noPe", "Declaration dated")}
                         className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       />
                     </div>

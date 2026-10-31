@@ -26,6 +26,8 @@ import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
 const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] = [
@@ -174,6 +176,9 @@ export default function ClientPortalPage() {
   // document requests yet."
   const [requestsFailed, setRequestsFailed] = useState(false);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
+  // "Needed by" is optional and the client is told it in the notice: text that is not a date read as blank, so a request meant to be due on a
+  // date went to the client with none and nothing said (frontend_ux-19). The box is only on the page while the modal is open.
+  const requestDates = useDateProblems();
   const [newRequest, setNewRequest] = useState<NewRequestForm>({ title: "", description: "", is_urgent: false, due_date: "" });
   const [savingRequest, setSavingRequest] = useState(false);
   // A delete is in flight: one at a time, so a second click cannot withdraw the same request twice.
@@ -422,6 +427,10 @@ export default function ClientPortalPage() {
 
   async function handleCreateRequest() {
     if (!newRequest.title.trim() || !selectedClientId) return;
+    if (requestDates.first) {
+      toast({ title: requestDates.first, variant: "destructive" });
+      return;
+    }
     setSavingRequest(true);
     try {
       // THROUGH THE API, NOT STRAIGHT OVER POSTGREST. The screen used to insert
@@ -1158,10 +1167,11 @@ export default function ClientPortalPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Needed by</label>
-                <input
-                  type="date"
+                <DateInput
+                  aria-label="Needed by"
                   value={newRequest.due_date}
-                  onChange={(e) => setNewRequest((p) => ({ ...p, due_date: e.target.value }))}
+                  onChange={(v) => setNewRequest((p) => ({ ...p, due_date: v }))}
+                  onStateChange={requestDates.watch("needed", "Needed by")}
                   className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>

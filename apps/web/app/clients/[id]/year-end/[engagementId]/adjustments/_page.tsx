@@ -13,6 +13,8 @@ import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
 import { objectOrNull } from "@/lib/api/shape";
 /** Format paise → ₹ Indian number format */
@@ -326,6 +328,9 @@ function AdjustmentForm({
   const [creditAccount, setCreditAccount] = useState("");
   const [amountStr, setAmountStr] = useState("");
   const [adjDate, setAdjDate] = useState(today);
+  // The date the adjusting entry is posted at: text that is not a date read as blank and said "Date is required" about a box that held
+  // one; it is refused in the date's own sentence instead (frontend_ux-19).
+  const dates = useDateProblems();
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -340,6 +345,7 @@ function AdjustmentForm({
     const amount_paise = paiseFromRupeeInput(amountStr.replace(/[,\s₹]/g, ""));
     if (amount_paise === null) { setError("Amount isn't a rupee figure — enter it like 125000 or 125000.50"); return; }
     if (amount_paise <= 0) { setError("Amount must be greater than zero"); return; }
+    if (dates.first) { setError(dates.first); return; }
     if (!adjDate) { setError("Date is required"); return; }
 
     setSaving(true);
@@ -424,10 +430,11 @@ function AdjustmentForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Date *</label>
-          <input
-            type="date"
+          <DateInput
+            aria-label="Adjustment date"
             value={adjDate}
-            onChange={(e) => setAdjDate(e.target.value)}
+            onChange={setAdjDate}
+            onStateChange={dates.watch("adj", "Date")}
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
           />
         </div>

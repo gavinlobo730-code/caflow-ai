@@ -36,6 +36,8 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll, selectAllKeyset } from "@/lib/supabase/selectAll";
 
@@ -189,6 +191,9 @@ export default function LoansAndFDPage() {
   });
   const [loanError, setLoanError] = useState<string | null>(null);
   const [loanSaving, setLoanSaving] = useState(false);
+  // The disbursement date is required and the maturity date optional, and text that is not a date reads as blank: the first said
+  // "required" about a box with a date typed in it and the second saved a loan with no maturity, with nothing said (frontend_ux-19).
+  const loanDates = useDateProblems();
 
   // Add FD modal
   const [showAddFD, setShowAddFD] = useState(false);
@@ -207,6 +212,9 @@ export default function LoansAndFDPage() {
   });
   const [fdError, setFDError] = useState<string | null>(null);
   const [fdSaving, setFDSaving] = useState(false);
+  // Both dates are required, and the maturity estimate and the "must be after the start" check read them: unreadable text is refused in the
+  // date's own sentence and not as "required" about a box that holds one (frontend_ux-19).
+  const fdDates = useDateProblems();
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -283,6 +291,7 @@ export default function LoansAndFDPage() {
     if (principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
     if (outstanding < 0) { setLoanError("Enter a valid outstanding amount"); return; }
     if (rate === null || rate <= 0) { setLoanError("Enter a valid interest rate"); return; }
+    if (loanDates.first) { setLoanError(loanDates.first); return; }
     if (!loanForm.disbursement_date) { setLoanError("Disbursement date is required"); return; }
 
     setLoanSaving(true);
@@ -350,6 +359,7 @@ export default function LoansAndFDPage() {
     }
     if (principal <= 0) { setFDError("Enter a valid principal amount"); return; }
     if (rate === null || rate <= 0) { setFDError("Enter a valid interest rate"); return; }
+    if (fdDates.first) { setFDError(fdDates.first); return; }
     if (!fdForm.start_date) { setFDError("Start date is required"); return; }
     if (!fdForm.maturity_date) { setFDError("Maturity date is required"); return; }
     if (fdForm.maturity_date <= fdForm.start_date) { setFDError("Maturity date must be after start date"); return; }
@@ -901,10 +911,10 @@ export default function LoansAndFDPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Disbursement Date" required>
-                  <input type="date" value={loanForm.disbursement_date} onChange={(e) => setLoanForm({ ...loanForm, disbursement_date: e.target.value })} className={inputCls} />
+                  <DateInput aria-label="Disbursement date" value={loanForm.disbursement_date} onChange={(v) => setLoanForm({ ...loanForm, disbursement_date: v })} onStateChange={loanDates.watch("disbursed", "Disbursement date")} className={inputCls} />
                 </FormField>
                 <FormField label="Maturity Date" optional>
-                  <input type="date" value={loanForm.maturity_date} onChange={(e) => setLoanForm({ ...loanForm, maturity_date: e.target.value })} className={inputCls} />
+                  <DateInput aria-label="Loan maturity date" anchor={loanForm.disbursement_date || null} value={loanForm.maturity_date} onChange={(v) => setLoanForm({ ...loanForm, maturity_date: v })} onStateChange={loanDates.watch("loan-maturity", "Maturity date")} className={inputCls} />
                 </FormField>
               </div>
               <FormField label="Notes" optional>
@@ -962,10 +972,10 @@ export default function LoansAndFDPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Start Date" required>
-                  <input type="date" value={fdForm.start_date} onChange={(e) => setFDForm({ ...fdForm, start_date: e.target.value })} className={inputCls} />
+                  <DateInput aria-label="Fixed deposit start date" value={fdForm.start_date} onChange={(v) => setFDForm({ ...fdForm, start_date: v })} onStateChange={fdDates.watch("fd-start", "Start date")} className={inputCls} />
                 </FormField>
                 <FormField label="Maturity Date" required>
-                  <input type="date" value={fdForm.maturity_date} onChange={(e) => setFDForm({ ...fdForm, maturity_date: e.target.value })} className={inputCls} />
+                  <DateInput aria-label="Fixed deposit maturity date" anchor={fdForm.start_date || null} value={fdForm.maturity_date} onChange={(v) => setFDForm({ ...fdForm, maturity_date: v })} onStateChange={fdDates.watch("fd-maturity", "Maturity date")} className={inputCls} />
                 </FormField>
               </div>
 

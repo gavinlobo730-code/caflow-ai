@@ -227,15 +227,16 @@ type Category = "needs-a-gate" | "acts-on-change" | "bank-editor";
 
 /**
  * WHY A FILE IS STILL ON THE LIST. Every native input that was a FILTER, a report
- * period or an as-at date has been converted (they save nothing, so an unreadable
- * date costs a filter and the message under the box is the whole answer); what is
- * left is data entry that has to be given a gate, plus the bank screens.
+ * period, an as-at date or data entry has been converted (a filter saves nothing,
+ * so an unreadable date costs a filter and the message under the box is the whole
+ * answer; a data-entry date was given a validity gate when it was converted); what
+ * is left is the bank screens and the one field whose change is the write.
  *
  *   needs-a-gate    a data-entry date whose form has not been given a validity
  *                   gate (part 3 of the rule above). Converting it without one would
- *                   let an unreadable OPTIONAL date save as blank. Each needs its
- *                   save path read — to find what a blank means there, and to add
- *                   `useDateProblems` — which is the work, not a regex.
+ *                   let an unreadable OPTIONAL date save as blank. NONE REMAIN: the
+ *                   category stays so that a file cannot be put back on the list
+ *                   under it without a note saying why.
  *   acts-on-change  a field whose CHANGE is the action: the box is uncontrolled and
  *                   picking a date writes. A field that hands its value up when the
  *                   person has finished is not a drop-in there; the action wants an
@@ -257,39 +258,12 @@ const CATEGORY_REASON: Record<Category, string> = {
  * or a count: a new date field is a `<DateInput>`.
  */
 const FROZEN: Record<string, { count: number; category: Category; note: string }> = {
-  "app/accounting/loans/page.tsx": { count: 4, category: "needs-a-gate", note: "loan disbursement and maturity, FD start and maturity" },
-  "app/accounting/trial-balance-import/page.tsx": { count: 1, category: "needs-a-gate", note: "opening date of an imported trial balance" },
-  "app/client-portal/page.tsx": { count: 1, category: "needs-a-gate", note: "due date on a document request to a client" },
-  "app/clients/[id]/compliance/tds/page.tsx": { count: 2, category: "needs-a-gate", note: "lower-deduction certificate validity" },
-  "app/clients/[id]/health/page.tsx": { count: 1, category: "needs-a-gate", note: "health override expiry" },
-  "app/clients/[id]/lifecycle/page.tsx": { count: 1, category: "needs-a-gate", note: "renewal date" },
-  "app/clients/[id]/purchases/page.tsx": { count: 1, category: "needs-a-gate", note: "no-PE declaration date on a vendor" },
-  "app/clients/[id]/year-end/[engagementId]/adjustments/_page.tsx": { count: 1, category: "needs-a-gate", note: "year-end adjustment date" },
-  "app/clients/documents/page.tsx": { count: 1, category: "needs-a-gate", note: "document expiry date" },
-  "app/engagements/page.tsx": { count: 2, category: "needs-a-gate", note: "engagement start and expiry" },
-  "app/health/[client_id]/HealthDetailClient.tsx": { count: 1, category: "needs-a-gate", note: "health override expiry" },
-  "app/pipeline/page.tsx": { count: 2, category: "needs-a-gate", note: "CRM last contact and next follow-up" },
-  "app/settings/dsc-tracker/page.tsx": { count: 6, category: "needs-a-gate", note: "DSC issue and expiry dates" },
-  "app/settings/statutory-values/page.tsx": { count: 2, category: "needs-a-gate", note: "statutory value effective and notified dates, through a wrapper that forwards `type`" },
-  "app/tasks/page.tsx": { count: 1, category: "needs-a-gate", note: "task due date" },
-  "app/tasks/templates/page.tsx": { count: 1, category: "needs-a-gate", note: "task template due date" },
-  "components/TaskFormModal.tsx": { count: 1, category: "needs-a-gate", note: "task due date" },
   "components/banking/AccountsPanel.tsx": { count: 1, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
   "components/banking/BankBook.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
   "components/banking/FindMatchModal.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
   "components/banking/PostDatedChequesPanel.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
   "components/banking/ReconcileTab.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
   "components/banking/WorthALookTab.tsx": { count: 2, category: "bank-editor", note: "bank screen: filters, a period and a cheque date" },
-  "components/catalogue/ProductServiceFormModal.tsx": { count: 1, category: "needs-a-gate", note: "opening stock balance date" },
-  "components/catalogue/ProductServiceManagerPanel.tsx": { count: 1, category: "needs-a-gate", note: "opening stock balance date for an import" },
-  "components/currency/FxRatesPanel.tsx": { count: 1, category: "needs-a-gate", note: "date of a typed exchange rate" },
-  "components/fixed-assets/CwipTab.tsx": { count: 5, category: "needs-a-gate", note: "CWIP project and tranche dates" },
-  "components/gst/ExpiringEwayBills.tsx": { count: 1, category: "needs-a-gate", note: "e-way bill extension valid-upto" },
-  "components/gst/Itc04Panel.tsx": { count: 2, category: "needs-a-gate", note: "job-work lot return dates" },
-  "components/gst/RegistrationsTab.tsx": { count: 2, category: "needs-a-gate", note: "registration effective and closing dates" },
-  "components/inventory/CostFormulaPanel.tsx": { count: 1, category: "needs-a-gate", note: "costing method effective date" },
-  "components/inventory/LocationsAndBatches.tsx": { count: 3, category: "needs-a-gate", note: "transfer date, batch made and expiry" },
-  "components/invoices/CompliancePanel.tsx": { count: 3, category: "needs-a-gate", note: "IRN acknowledgement date and e-way bill dates" },
   "components/sales/SalesCycleTab.tsx": { count: 1, category: "acts-on-change", note: "an uncontrolled field whose change IS the write: it records goods back on the date picked" },
 };
 

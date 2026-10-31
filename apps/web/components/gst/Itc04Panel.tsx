@@ -48,6 +48,8 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { formatPaise } from "@/lib/money/format";
 import { BLANK_LOT, clockText, clockTone, lotBody, type LotForm } from "@/lib/gst/itc04";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const TONE_CLASS = {
   problem: "text-state-problem",
@@ -86,6 +88,11 @@ export function Itc04Panel({ clientId, onChanged }: {
   const [lotFor, setLotFor] = useState<string | null>(null);
   const [lot, setLot] = useState<LotForm>({ ...BLANK_LOT });
   const [saving, setSaving] = useState(false);
+  // The date the goods came back is what a lot is recorded against: it reduces what is still with the job worker, and the last lot's date
+  // marks the challan received back, which stops the s.143 clock that began on the day the goods were sent. The job worker's challan date is
+  // optional: text that is not a date read as blank, so the first said the date was missing about a box that held one and the second
+  // recorded the lot without it (frontend_ux-19).
+  const lotDates = useDateProblems();
 
   const load = useCallback(async () => {
     if (!clientId || !year) return;
@@ -112,6 +119,10 @@ export function Itc04Panel({ clientId, onChanged }: {
   useEffect(() => { void load(); }, [load]);
 
   async function record(line: BalanceLine, challanId: string) {
+    if (lotDates.first) {
+      setMsg({ type: "err", text: lotDates.first });
+      return;
+    }
     const built = lotBody(clientId, line.challan_line_id, lot);
     if (!built.ok) {
       setMsg({ type: "err", text: built.error });
@@ -412,8 +423,9 @@ export function Itc04Panel({ clientId, onChanged }: {
                     <div key={l.challan_line_id} className="mt-3 grid gap-2 sm:grid-cols-3 text-xs">
                       <label className="space-y-1">
                         <span className="text-ps-label">Came back on</span>
-                        <input type="date" value={lot.returned_on}
-                               onChange={(e) => setLot({ ...lot, returned_on: e.target.value })}
+                        <DateInput value={lot.returned_on}
+                               onChange={(v) => setLot({ ...lot, returned_on: v })}
+                               onStateChange={lotDates.watch("returned", "Came back on")}
                                className="block w-full rounded border border-ps-border px-2 py-1" />
                       </label>
                       <label className="space-y-1">
@@ -436,8 +448,9 @@ export function Itc04Panel({ clientId, onChanged }: {
                       </label>
                       <label className="space-y-1">
                         <span className="text-ps-label">Job worker&apos;s challan date</span>
-                        <input type="date" value={lot.job_worker_challan_date}
-                               onChange={(e) => setLot({ ...lot, job_worker_challan_date: e.target.value })}
+                        <DateInput anchor={lot.returned_on || null} value={lot.job_worker_challan_date}
+                               onChange={(v) => setLot({ ...lot, job_worker_challan_date: v })}
+                               onStateChange={lotDates.watch("challan-date", "Job worker's challan date")}
                                className="block w-full rounded border border-ps-border px-2 py-1" />
                       </label>
                       <label className="space-y-1">

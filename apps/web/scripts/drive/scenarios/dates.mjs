@@ -23,7 +23,7 @@
  * forms, the advance-tax register's paid-on date and the section 140A challan's deposit date are rows already.
  */
 import assert from "node:assert/strict";
-import { TZ_MATRIX, pick } from "../kit.mjs";
+import { TZ_MATRIX, pick, sameTickDouble, expectWrites } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok } from "../stub.mjs";
 import { CLIENT_ID } from "../fixtures.mjs";
@@ -112,6 +112,36 @@ async function openBillPayment(env) {
   await drawer.getByRole("button", { name: "Record Payment" }).first().click();
   await modalOf(env.page).getByRole("button", { name: "Record Payment", exact: true }).waitFor();
 }
+/** The invoice drawer for an issued invoice that has a DRAFT e-invoice record and a DRAFT e-way bill record, which is when it offers Record. */
+const IRN_RECORD = { id: "ei-1", sales_invoice_id: "inv-9", status: "draft", irn: null, created_at: "2026-10-01T00:00:00Z" };
+const EWAY_RECORD = { id: "ew-1", sales_invoice_id: "inv-9", status: "draft", ewb_number: null, created_at: "2026-10-01T00:00:00Z" };
+const recordsWindow = (rows) => ok({ records: rows, returned: rows.length, has_more: false, limit: 100, max_limit: 500 });
+async function openInvoiceWithDraftRecords(env) {
+  env.stub.route({ method: "GET", re: /einvoice\/records\?/, reply: () => recordsWindow([IRN_RECORD]) });
+  env.stub.route({ method: "GET", re: /eway-bill\/records\?/, reply: () => recordsWindow([EWAY_RECORD]) });
+  env.stub.route({
+    method: "GET", re: /eway-bill\/records\/ew-1\/validity/,
+    reply: () => ok({ valid_upto: null, days: null, slab_km: null, source: null, caveat: null, gap: null }),
+  });
+  return openInvoiceDrawer(env, "issued");
+}
+async function openRecordIrn(env) {
+  env.stub.route({ method: "POST", re: /einvoice\/records\/ei-1\/irn-generated$/, reply: () => ok({ id: "ei-1" }) });
+  const drawer = await openInvoiceWithDraftRecords(env);
+  await drawer.getByRole("button", { name: "Record IRN", exact: true }).click();
+  const modal = modalOf(env.page);
+  await modal.getByRole("button", { name: "Record IRN", exact: true }).waitFor();
+  await modal.getByPlaceholder("64-char IRN").fill("a".repeat(64));
+  await modal.locator("label:has-text('Acknowledgement no.') input").fill("112600000001");
+}
+async function openRecordEway(env) {
+  env.stub.route({ method: "POST", re: /eway-bill\/records\/ew-1\/generated$/, reply: () => ok({ id: "ew-1" }) });
+  const drawer = await openInvoiceWithDraftRecords(env);
+  await drawer.getByRole("button", { name: "Record E-Way Bill", exact: true }).click();
+  const modal = modalOf(env.page);
+  await modal.getByRole("button", { name: "Record E-Way Bill", exact: true }).waitFor();
+  await modal.getByPlaceholder("12-digit EWB no.").fill("141000000001");
+}
 /** A "Create … Note" modal over an issued invoice (sales) or a received bill (purchase). */
 function openNoteModal(side, opener) {
   return async (env) => {
@@ -160,6 +190,19 @@ const EDITORS = [
     id: "purchase-record-payment", title: "Record Payment on a bill", open: openBillPayment,
     fields: [{ box: (p) => modalOf(p).locator('input[aria-label="Payment date"]'), label: "Payment date", key: "payment_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => modalOf(p).getByRole("button", { name: "Record Payment", exact: true }), write: /purchase-payments$/,
+  },
+  {
+    id: "record-irn", title: "Record IRN on an issued invoice", open: openRecordIrn,
+    fields: [{ box: (p) => modalOf(p).locator('input[aria-label="Acknowledgement date"]'), label: "Acknowledgement date", key: "ack_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => modalOf(p).getByRole("button", { name: "Record IRN", exact: true }), write: /einvoice\/records\/ei-1\/irn-generated$/,
+  },
+  {
+    id: "record-eway-bill", title: "Record E-Way Bill on an issued invoice", open: openRecordEway,
+    fields: [
+      { box: (p) => modalOf(p).locator('input[aria-label="EWB date"]'), label: "EWB date", key: "ewb_date", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => modalOf(p).locator('input[aria-label="Valid upto"]'), label: "Valid upto", key: "ewb_valid_upto", full: "16/07/2026", iso: "2026-07-16" },
+    ],
+    save: (p) => modalOf(p).getByRole("button", { name: "Record E-Way Bill", exact: true }), write: /eway-bill\/records\/ew-1\/generated$/,
   },
   {
     id: "tds-deduction", title: "TDS deduction form",
@@ -258,6 +301,43 @@ export const scenarios = [
     title: `${spec.title}: typed dates are read by the one rule and reach the server as ISO`,
     contexts: TZ_MATRIX,
     run: (env) => driveEditor(env, spec),
+  })),
+  // The two Record modals hand the write's promise back to the shared Button, which is what holds the second click of a double click.
+  ...[
+    { id: "record-irn", open: openRecordIrn, name: "Record IRN", write: /einvoice\/records\/ei-1\/irn-generated$/ },
+    { id: "record-eway-bill", open: openRecordEway, name: "Record E-Way Bill", write: /eway-bill\/records\/ew-1\/generated$/ },
+  ].map((m) => ({
+    id: `${m.id}-sends-one-request-for-two-clicks-in-the-same-moment`,
+    title: `${m.name}: a same-tick double click on the modal's button sends ONE request`,
+    async run(env) {
+      await m.open(env);
+      await sameTickDouble(modalOf(env.page).getByRole("button", { name: m.name, exact: true }));
+      await expectWrites(env.stub, m.write, 1, `two same-tick clicks on ${m.name}`);
+    },
+  })),
+  // A required date that is CLEARED reports "empty", not a problem, so a gate over unreadable text alone sends a blank (the server takes it into a
+  // timestamp column and answers with a database error). The Record modals refuse it in a sentence of their own and send nothing.
+  ...[
+    { id: "record-irn-ack-date", open: openRecordIrn, name: "Record IRN", write: /einvoice\/records\/ei-1\/irn-generated$/,
+      box: (p) => modalOf(p).locator('input[aria-label="Acknowledgement date"]'), sentence: "Acknowledgement date: enter the date from the IRP portal." },
+    { id: "record-eway-bill-ewb-date", open: openRecordEway, name: "Record E-Way Bill", write: /eway-bill\/records\/ew-1\/generated$/,
+      box: (p) => modalOf(p).locator('input[aria-label="EWB date"]'), sentence: "EWB date: enter the date from the NIC portal." },
+    { id: "record-eway-bill-valid-upto", open: openRecordEway, name: "Record E-Way Bill", write: /eway-bill\/records\/ew-1\/generated$/,
+      box: (p) => modalOf(p).locator('input[aria-label="Valid upto"]'), sentence: "Valid upto: enter the date from the NIC portal." },
+  ].map((c) => ({
+    id: `${c.id}-cleared-is-refused-in-a-sentence-and-sends-nothing`,
+    title: `${c.name}: a cleared ${c.sentence.split(":")[0]} is refused in its own sentence and nothing is sent`,
+    async run(env) {
+      const { page, stub } = env;
+      await c.open(env);
+      await typeAndLeave(c.box(page), "");
+      await modalOf(page).getByRole("button", { name: c.name, exact: true }).click();
+      await page.getByText(c.sentence).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`${c.name} over a cleared date did not say "${c.sentence}"`);
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(c.write).length, 0, `${c.name} over a cleared date SENT A WRITE`);
+    },
   })),
   // A screen that is about ONE financial year says so to its date boxes. Every row above leaves the screen on the current year, where
   // "the year of today" and "the year of the screen" are the same year and a box that forgot to be told would still pass.

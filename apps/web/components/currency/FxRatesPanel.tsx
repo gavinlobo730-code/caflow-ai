@@ -31,6 +31,8 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { api, type FxRate } from "@/lib/api/index";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
 
 /** A plain decimal, and nothing else. Not a parser — it never converts, so
@@ -48,6 +50,9 @@ export function FxRatesPanel() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [when, setWhen] = useState("");
+  // The date a rate is recorded for is what the AS 11 revaluation looks it up by: text that is not a date read as blank and said "which date
+  // is this the rate for?" about a box that held one (frontend_ux-19).
+  const dates = useDateProblems();
   const [rate, setRate] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -84,6 +89,10 @@ export function FxRatesPanel() {
   useEffect(() => { load(); }, [load]);
 
   async function save() {
+    if (dates.first) {
+      setMsg({ ok: false, text: dates.first });
+      return;
+    }
     if (!looksLikeARate(rate)) {
       setMsg({ ok: false, text: "The rate must be a plain decimal, e.g. 83.4200 — no commas." });
       return;
@@ -141,7 +150,8 @@ export function FxRatesPanel() {
         </div>
         <div>
           <label htmlFor="fx-date" className="block text-2xs font-medium text-ps-label mb-1">For the date</label>
-          <input id="fx-date" type="date" value={when} onChange={(e) => setWhen(e.target.value)}
+          <DateInput id="fx-date" value={when} onChange={setWhen}
+            onStateChange={dates.watch("rate-date", "For the date")}
             className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
         </div>
         <div>
