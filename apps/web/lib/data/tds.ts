@@ -297,7 +297,14 @@ async function authedFetch<T>(path: string, init?: RequestInit): Promise<{ succe
       ...(init?.headers ?? {}),
     },
   });
-  return res.json();
+  const body = await res.json();
+  // A refusal raised as an HTTP error (a locked year, a missing row, a tier) comes back as `{ detail: "<sentence>" }` and carries no
+  // `success` or `error` key, so every caller read it as "no error given" and showed its own generic line. The sentence is the
+  // server's and is passed on as the error. A `detail` that is not a sentence (a validation list) is left as it was.
+  if (body && typeof body === "object" && !("success" in body) && typeof body.detail === "string") {
+    return { success: false, data: null as unknown as T, error: body.detail };
+  }
+  return body;
 }
 
 export interface TDSSection {
@@ -740,6 +747,28 @@ export const listTdsReturns = (clientId: string) =>
   readTdsWindow<Record<string, unknown>, TdsReturnCounts>(`/api/tds-workspace/returns?${clientQuery(clientId)}`, "returns", "counts", "returns");
 export const listTdsCertificates = (clientId: string) =>
   readTdsWindow<Record<string, unknown>, TdsCertificateCounts>(`/api/tds-workspace/certificates?${clientQuery(clientId)}`, "certificates", "counts", "certificates");
+
+/** What the server says of a retracted challan: which one went, and the calendar sentence when a month it may have closed still reads
+ *  filed (the server cannot tell which challan closed which month, so it says so and does not reopen anything), and the sentence about
+ *  a TDS statement for the quarter that is already recorded as filed. */
+export interface RetractedChallan {
+  retracted: string;
+  challan_no: string | null;
+  payment_date: string | null;
+  total_paise: number | null;
+  calendar_note: string | null;
+  /** Set when the quarter's TDS statement is recorded as filed: retracting changes the register and not that statement. */
+  statement_note: string | null;
+}
+
+/** Retract a challan recorded in error (`POST /challans/{id}/retract`, Manager and above). The reason is required and is kept with the
+ *  whole challan in the audit log; the server's refusal (no reason, locked year, already gone) is thrown as written. */
+export async function retractTdsChallan(id: string, reason: string): Promise<RetractedChallan> {
+  const resp = await authedFetch<RetractedChallan>(
+    `/api/tds-workspace/challans/${encodeURIComponent(id)}/retract`, { method: "POST", body: JSON.stringify({ reason }) });
+  if (!resp.success) throw new Error(resp.error ?? "Could not retract the challan");
+  return resp.data;
+}
 
 export async function deleteTdsDeduction(id: string): Promise<void> {
   const resp = await authedFetch<{ deleted: string }>(

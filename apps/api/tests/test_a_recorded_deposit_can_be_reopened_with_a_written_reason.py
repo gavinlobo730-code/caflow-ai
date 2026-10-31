@@ -283,7 +283,7 @@ def test_every_reopenable_type_says_what_becomes_of_the_record_that_closed_it():
 
 @pytest.mark.parametrize("otype,expected", [
     ("ESI_DEPOSIT", "retract it on the payroll hand-off"),
-    ("TDS_NON_SALARY_DEPOSIT", "cannot be retracted from the product yet"),
+    ("TDS_NON_SALARY_DEPOSIT", "retract it on the Challans tab first"),
     ("ADVANCE_TAX", "closes the instalment again"),
     ("EPF_DEPOSIT", "Nothing closes it again by itself"),
 ])

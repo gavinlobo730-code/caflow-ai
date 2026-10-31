@@ -145,6 +145,12 @@ NOT_YET: dict[str, str] = {
     "routers/tds_workspace.py:create_challan":
         "A challan is a dated payment to the government; it does not reach a "
         "GST return, so the lock's current filing types do not cover it.",
+    "routers/tds_workspace.py:retract_challan":
+        "The mirror of create_challan, for the same reason: a challan is a dated payment to the government, not a document that "
+        "feeds a GST return, so the lock's current filing types do not cover it. It asks the firm's locked year as recording "
+        "does. A TDS statement already recorded as filed for the quarter is NAMED in the answer (`statement_note`) and not made a "
+        "refusal: the statement is the CA's own record of what went to the portal, and the register cannot say whether this "
+        "challan was in it.",
     "routers/tds_workspace.py:create_return":
         "A TDS return is not a GST period; see create_challan.",
     "services/manual_journal_service.py:update":

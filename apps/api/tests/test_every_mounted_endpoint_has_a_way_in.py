@@ -187,7 +187,11 @@ BUDGET: dict[str, int] = {
     "/api/knowledge": 1,
     "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
-    "/api/tds-workspace": 1,
+    # /api/tds-workspace 1 -> 0 on 31-10-2026, and NOT because a screen reads one challan: `GET /challans/{challan_id}` still has
+    # no caller. The pattern for a route whose path ENDS in a parameter matches any longer URL beneath it, and the new retract URL
+    # (`/challans/${id}/retract`) is one, so the scan counts the read as reached. Measured with a stricter pattern (the last
+    # parameter is one path segment), up to 17 routes are reached only that way, this one among them: POST-A-365 re-measures them.
+    "/api/tds-workspace": 0,
     "/api/time-entries": 1,
     # GONE on 24-09-2026, four prefixes at once — the first sweep through this
     # list's own tail rather than through a module:

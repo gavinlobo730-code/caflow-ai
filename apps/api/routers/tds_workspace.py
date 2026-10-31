@@ -29,6 +29,7 @@ from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
 from services import tds_register_lists_service as lists
+from services import tds_challan_retraction_service as challan_retraction
 from services import lower_deduction_certificate_service as ldc_service
 from domain.tds import screen_counts
 from services.tds_register_lists_service import TDS_LIST_MAX
@@ -1061,6 +1062,63 @@ def create_challan(
         raise
     except Exception as e:
         return _could_not(e, "record the TDS challan")
+
+
+class RetractChallanRequest(BaseModel):
+    """Why a challan recorded in error is being taken out of the register. Required: it is kept with the challan in the audit log."""
+    reason: str
+
+
+@router.post("/challans/{challan_id}/retract")
+def retract_challan(
+    challan_id: str,
+    body: RetractChallanRequest,
+    current_user: dict = Depends(rbac("tds", "write")),
+):
+    """Take a challan recorded in error out of the register (POST-A-362).
+
+    tds:write (Manager and above), the tier migration 345 gives DELETE on this table: removing a statutory register row is not
+    data entry. A reason is required and kept, with the whole challan, in the audit log BEFORE the row goes, and a failure to write
+    that entry refuses the retraction (`services/tds_challan_retraction_service`). A year the firm has locked is refused, as
+    recording a challan in it is. It does not reopen a monthly deposit obligation the challan helped to close; the answer says which
+    months still read filed and who can reopen them, and says so when the quarter's statement is recorded as filed. To correct a
+    challan, retract it and record it again.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this edits the practice's own register and transmits nothing."""
+    firm_id = current_user["firm_id"]
+    try:
+        if _USE_MOCK:
+            rec = _visible_or_none(current_user, _MOCK_CHALLANS.get(challan_id))
+        else:
+            from core.supabase_client import get_supabase
+            rows = (get_supabase().table("tds_challans").select("*")
+                    .eq("id", challan_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+            rec = _visible_or_none(current_user, rows[0] if rows else None)
+        if rec is None:
+            return api_response(False, None, "Not found")
+        challan_retraction.clean_reason(body.reason)               # a refusal in words before anything else is touched
+        # The same lock that stops a challan being recorded in a closed year stops one being taken out of it.
+        period_validation_service.validate_posting_date(firm_id or "", str(rec.get("payment_date") or "")[:10])
+        if _USE_MOCK:
+            # In-memory mock mode has no audit log and no calendar: the row goes and the answer carries no calendar sentence.
+            _MOCK_CHALLANS.pop(challan_id, None)
+            answer = {"retracted": challan_id, "challan_no": rec.get("challan_no"), "payment_date": rec.get("payment_date"),
+                      "total_paise": rec.get("total_paise"), "calendar_note": None, "statement_note": None}
+        else:
+            from core.supabase_client import get_supabase
+            answer = challan_retraction.retract(get_supabase(), firm_id=firm_id, client_id=rec["client_id"], challan=rec,
+                                                reason=body.reason, actor=current_user)
+        timeline_service.log_timeline_event(
+            client_id=rec["client_id"], firm_id=firm_id, financial_year=rec.get("financial_year"), category="tds",
+            event_type="tds_challan_retracted",
+            title=f"TDS challan {rec.get('challan_no') or ''} retracted: {rupee_text(int(rec.get('total_paise') or 0))}".replace("  ", " "),
+        )
+        return api_response(True, answer)
+    except challan_retraction.RetractionRefused as refusal:
+        raise HTTPException(status_code=refusal.status, detail=refusal.sentence) from refusal
+    except HTTPException:
+        raise
+    except Exception as e:                                        # noqa: BLE001
+        return _could_not(e, "retract the TDS challan")
 
 
 @router.get("/challans/{challan_id}")

@@ -74,6 +74,8 @@ for (const [name, src] of [["Deadlines", DEADLINES], ["the client Compliance tab
 test("the prompt asks for a reason, sends none blank and ignores a second click while busy", () => {
   assert.ok(/disabled=\{busy \|\| trimmed === ""\}/.test(MODAL), "the button is not disabled when busy or blank");
   assert.ok(/onConfirm\(trimmed\)/.test(MODAL), "the trimmed reason is not what is sent");
+  assert.ok(/<Button[\s\S]{0,200}onClick=\{\(\) => onConfirm\(trimmed\)\}/.test(MODAL) && !/<button[^>]*onConfirm/.test(MODAL),
+    "the confirm button is not the shared single-click Button: a second click made in the same moment would send a second reopen");
   assert.ok(/maxLength=\{maxReasonChars\}/.test(MODAL), "the server's limit on the reason is not applied");
   assert.ok(/not touched by this/.test(MODAL), "the prompt does not say that a payment record is not touched");
   assert.ok(/role="alert"/.test(MODAL), "a refusal is not announced");
