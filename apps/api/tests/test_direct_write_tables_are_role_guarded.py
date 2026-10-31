@@ -357,9 +357,14 @@ def test_the_tds_tier_matches_the_endpoints_it_mirrors():
     and migration 345 uses Executive for insert/update, Manager for delete.
     """
     ws = (Path(__file__).resolve().parents[1] / "routers" / "tds_workspace.py").read_text()
-    write_routes = re.findall(r'@router\.(post|patch|put|delete)\([^)]*\)\s*\ndef \w+\('
-                              r'(?:[^)]|\n)*?rbac\("tds",\s*"(\w+)"\)', ws)
-    assert write_routes, "no TDS write routes found — has the router moved?"
+    found = re.findall(r'@router\.(post|patch|put|delete)\(\s*("[^"]*")[^)]*\)\s*\ndef \w+\('
+                       r'(?:[^)]|\n)*?rbac\("tds",\s*"(\w+)"\)', ws)
+    assert found, "no TDS write routes found — has the router moved?"
+    # A POST whose path ends in "/retract" REMOVES a register row (POST-A-362: a reason has to travel with it, and a DELETE carries
+    # no body the proxies keep), so it is judged as the DELETE it is. The exception is named, and used, or it is not an exception.
+    write_routes = [("delete" if path.endswith('/retract"') else verb, action) for verb, path, action in found]
+    assert any(path.endswith('/retract"') for _verb, path, _action in found), (
+        "no route ends in /retract: delete this exception rather than leave it standing for nothing")
 
     # PER VERB, because the two tiers are different on purpose and asserting
     # one tier for everything hides that. INSERT and UPDATE are tds:compute

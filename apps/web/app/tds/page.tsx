@@ -73,12 +73,14 @@ import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { formatPaise } from "@/lib/services/formatting";
 import { formatDate } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { RetractChallanModal } from "@/components/tds/RetractChallanModal";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
 // resolved server-side — CLAUDE.md: zero business logic in the frontend.
 import {
   listTdsSections, listTdsDeductions, listTdsChallans, listTdsReturns, listTdsCertificates, previewTdsDeduction, createTdsDeduction,
-  createTdsChallan, fetchDepositDue, fetchTdsDepositState, currentFinancialYear, type DepositDueWorksheet, type TdsDepositState,
+  createTdsChallan, retractTdsChallan, fetchDepositDue, fetchTdsDepositState, currentFinancialYear, type DepositDueWorksheet, type TdsDepositState,
   type CalendarAnswer, type TdsDeductionTotals, type TdsReturnCounts, type TdsCertificateCounts,
 } from "@/lib/data/tds";
 import { NO_SECTIONS, sectionChoices, sectionOptionText, type SectionChoices } from "@/lib/tds/sectionChoices";
@@ -805,6 +807,16 @@ export default function TDSPage() {
   const [depositStateError, setDepositStateError] = useState<string | null>(null);
   // What recording a challan did to the monthly deposit obligations on the compliance calendar, in the server's words.
   const [calendarAnswers, setCalendarAnswers] = useState<CalendarAnswer[] | null>(null);
+  // Taking a challan out of the register (POST-A-362): the one being retracted, whether the request is out, the server's refusal if it
+  // gave one, and the server's sentences about what it did not change (a month on the calendar that still reads filed, a TDS statement
+  // already recorded as filed).
+  const { can } = usePermissions();
+  const canRetract = can("tds", "write");                 // Manager and above: the tier the server asks, and it asks again
+  const { toast } = useToast();
+  const [retracting, setRetracting] = useState<TDSChallan | null>(null);
+  const [retractBusy, setRetractBusy] = useState(false);
+  const [retractError, setRetractError] = useState<string | null>(null);
+  const [retractionNotes, setRetractionNotes] = useState<string[]>([]);
   // Each read of the deposit state takes a number, and only the latest is allowed to land: an answer for the client open a moment
   // ago, or an earlier refresh for this one that finished late, must not replace what is on screen now.
   const depositSeq = useRef(0);
@@ -895,12 +907,36 @@ export default function TDSPage() {
     }
   }
 
+  // Retract the challan chosen. The server keeps the reason and the challan in the audit log first, then removes the row, and answers
+  // in words; the lists and the deposit position are read again because everything drawn from the register has changed.
+  async function confirmRetract(reason: string) {
+    if (!retracting || !selectedClientId) return;
+    const clientAtClick = selectedClientId;
+    setRetractBusy(true); setRetractError(null);
+    try {
+      const done = await retractTdsChallan(retracting.id, reason);
+      if (clientAtClick !== openClient.current) return;      // the CA moved to another client meanwhile: nothing here is theirs to show
+      setRetracting(null);
+      setRetractionNotes([done.calendar_note, done.statement_note].filter((n): n is string => !!n));
+      toast({ title: "Challan retracted", description: "It is out of the register. The reason is in the audit log." });
+      void loadLists(clientAtClick, false);
+      void refreshDepositState(clientAtClick, true);
+    } catch (e) {
+      // A row that is gone, or is not this firm's to see, is answered with the same two words either way; say what that means here.
+      const said = e instanceof Error ? e.message : "";
+      setRetractError(said === "Not found" ? "That challan is no longer in the register; it may have been retracted already." : said || "Could not retract the challan.");
+    } finally {
+      setRetractBusy(false);
+    }
+  }
+
   useEffect(() => {
     // A client switch starts from nothing, so no card or row can show the previous client's figures while this one is read, and a
     // failure for the previous client does not blank this one's cards.
     openClient.current = selectedClientId;
     depositSeq.current += 1;
     setDepositState(null); setDepositStateError(null); setCalendarAnswers(null);
+    setRetracting(null); setRetractError(null); setRetractionNotes([]);
     setYearFilter("");
     // client_id is required by the reads below; an empty string would be refused.
     if (!selectedClientId) {
@@ -1094,6 +1130,16 @@ export default function TDSPage() {
               </ul>
             </Callout>
             <button type="button" onClick={() => setCalendarAnswers(null)} className="text-xs text-ps-label underline">Dismiss</button>
+          </>
+        )}
+        {retractionNotes.length > 0 && (
+          <>
+            <Callout tone="attention" title="Challan retracted. What it did not change:">
+              <ul className="list-disc pl-5 space-y-1">
+                {retractionNotes.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            </Callout>
+            <button type="button" onClick={() => setRetractionNotes([])} className="text-xs text-ps-label underline">Dismiss</button>
           </>
         )}
       </div>
@@ -1291,6 +1337,7 @@ export default function TDSPage() {
                     {["BSR Code", "Payment Date", "Challan No.", "Amount", "Period", "FY", "Section", "Minor head"].map(h => (
                       <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                     ))}
+                    {canRetract && <th className="text-left text-xs font-medium text-ps-hint px-4 py-3"><span className="sr-only">Actions</span></th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ps-border">
@@ -1307,6 +1354,15 @@ export default function TDSPage() {
                       <td className="px-4 py-3 text-xs text-ps-label">{c.financial_year}</td>
                       <td className="px-4 py-3 text-xs font-mono text-blue-700">{c.section ?? "—"}</td>
                       <td className="px-4 py-3 text-xs text-ps-label">{minorHeadLabel(c.minor_head)}</td>
+                      {canRetract && (
+                        <td className="px-4 py-3 text-right">
+                          <button type="button" onClick={() => { setRetractError(null); setRetracting(c); }}
+                            aria-label={`Retract challan ${c.challan_no || c.bsr_code || ""} of ${formatDate(c.payment_date)}`.replace(/\s+/g, " ")}
+                            className="text-xs text-state-problem underline">
+                            Retract
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1426,6 +1482,15 @@ export default function TDSPage() {
             setCalendarAnswers(c.compliance_obligations ?? null);
             void refreshDepositState(selectedClientId, true);
           }} />
+      )}
+
+      {retracting && selectedClientId && (
+        <RetractChallanModal
+          intro={`Challan ${retracting.challan_no || "(no serial number)"} of ${formatDate(retracting.payment_date)} for ${formatPaise(retracting.total_paise)}, `
+            + `${QUARTER_LABEL[retracting.quarter] ?? retracting.quarter} of ${retracting.financial_year}.`}
+          busy={retractBusy} error={retractError}
+          onConfirm={(reason) => { void confirmRetract(reason); }}
+          onClose={() => { if (!retractBusy) { setRetracting(null); setRetractError(null); } }} />
       )}
 
       {showImport && selectedClientId && (

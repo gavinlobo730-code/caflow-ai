@@ -43,17 +43,18 @@ REOPENED_STATUS = "Ready To File"
 MAX_REOPEN_REASON_CHARS = 500
 
 #: What a person is told after a reopen about the payment record that closed the obligation, which a reopen never touches. Per type,
-#: because the truth differs: some closers re-close from a record that still stands, and a TDS challan cannot yet be retracted.
+#: because the truth differs: some closers re-close from a record that still stands, and a TDS challan recorded in error is retracted
+#: on the Challans tab (POST-A-362) before the month is reopened.
 #: A type without an entry here cannot be added to `REOPENABLE_OBLIGATION_TYPES` (a test).
 REOPEN_AFTERMATH: dict[str, str] = {
     "ESI_DEPOSIT": "A payment record that closed it, if there was one, is still there: retract it on the payroll hand-off if it was "
                    "wrong. Nothing closes it again by itself.",
     "EPF_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
     "TDS_SALARY_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
-    "TDS_NON_SALARY_DEPOSIT": "The challan that closed it is still in the TDS register, and a recorded challan cannot be retracted "
-                              "from the product yet, so the next time a challan is recorded for that quarter the register can close "
-                              "this month again from it. Check which month the register matched that challan to before relying on "
-                              "the reopen.",
+    "TDS_NON_SALARY_DEPOSIT": "The challan that closed it is still in the TDS register, so the next time a challan is recorded for "
+                              "that quarter the register can close this month again from it. If that challan was recorded in error, "
+                              "retract it on the Challans tab first (a Manager or Partner can). Check which month the register "
+                              "matched that challan to before relying on the reopen.",
     "ADVANCE_TAX": "The tax that closed it is still in the advance-tax register, and the next save of that register closes the "
                    "instalment again if the tax recorded there still covers it, so correct the register entry first.",
 }
