@@ -225,12 +225,14 @@ def _after_a_refused_write(firm_id: str, loss_id: str, before: Mapping[str, Any]
     have stored (a second submit of the same acknowledgement got there first), its totals moved (a hand edit or another write landed first),
     or they did not (the row is not writable by this caller, which row security answers with no row and no error)."""
     now = workspace.get_bf_loss(firm_id, loss_id) or {}
+    would_store: Optional[dict] = None
     try:
-        if _already_what_it_should_be(now, after_filing(now, str(filing["id"]), str(filing["financial_year"]).strip(), used,
-                                                        str(filing.get("return_type") or "original"))):
-            return UNCHANGED, ""
+        would_store = after_filing(now, str(filing["id"]), str(filing["financial_year"]).strip(), used,
+                                   str(filing.get("return_type") or "original"))
     except Superseded:
-        pass
+        would_store = None          # a revised return holds the year: this write could not have been stored, so it is not "already right"
+    if would_store is not None and _already_what_it_should_be(now, would_store):
+        return UNCHANGED, ""
     if (now.get("utilized_amount_paise"), now.get("remaining_amount_paise")) != (
             before.get("utilized_amount_paise"), before.get("remaining_amount_paise")):
         return NOT_WRITTEN, "the loss record changed while this was being written, so it was left as it was."

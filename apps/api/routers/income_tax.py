@@ -289,7 +289,7 @@ class ComputeITRRequest(BaseModel):
     # THE CLIENT BEING COMPUTED, needed only to name a brought-forward loss by its record (POST-A-073): a record is accepted only if it is
     # THIS client's, so a stale tab or a hand-made request cannot take another client's relief into this computation. Everything else on
     # this request is stateless and ignores it.
-    client_id: Optional[UUID] = None
+    client_id: Optional[str] = None
 
     # Financial year the statutory rates should be resolved for, e.g.
     # "2025-26". Omit to default to today's FY. See domain/income_tax/
@@ -379,12 +379,12 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
     from services import bf_loss_service
     from domain.income_tax.statutory_rates import current_fy
     if req.client_id:
-        assert_client_access(current_user, str(req.client_id))
+        assert_client_access(current_user, req.client_id)
     try:
         losses_to_compute, loss_notes = bf_loss_service.resolve_for_compute(
             current_user,
             [{**l.model_dump(), "id": str(l.id) if l.id else None} for l in req.brought_forward_losses],
-            req.fy or current_fy(), str(req.client_id) if req.client_id else None)
+            req.fy or current_fy(), req.client_id)
     except bf_loss_service.LossNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except (bf_loss_service.DuplicateLoss, bf_loss_service.ClientNotNamed) as exc:

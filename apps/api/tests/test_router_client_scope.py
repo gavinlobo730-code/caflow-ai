@@ -1472,11 +1472,11 @@ EXEMPT: dict[str, str] = {
         "the statutory Schedule III -> MCA XBRL taxonomy tag table "
         "(domain/income_tax/xbrl_service.DEFAULT_MAPPINGS) — identical for "
         "every firm and every client, no stored data read.",
-    # income_tax.py — ten stateless calculators. None of their request
-    # models carry a client_id; nothing is persisted or read from a table.
-    "/api/income-tax/compute":
-        "ComputeITRRequest has no client_id — a pure tax computation over "
-        "caller-supplied income/deduction figures, nothing stored or read.",
+    # income_tax.py — stateless calculators. None of their request models
+    # carry a client_id; nothing is persisted or read from a table. (The
+    # compute route itself left this list in POST-A-073: it now takes the
+    # client being computed so a brought-forward loss named by its record can
+    # be read, and it asserts access to that client.)
     "/api/income-tax/hra/compute":
         "plain scalar query params (basic/hra/rent/is_metro) — Section "
         "10(13A) exemption math, nothing stored or read.",
