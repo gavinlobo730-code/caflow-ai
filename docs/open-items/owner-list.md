@@ -237,6 +237,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Writing an updated return's use back to the loss records, and teaching the computation which kind of return it is for. The answer says no loss record was changed. The revised-return replacement stays built, graded [S], and is named here so you can overrule it.
 - **Ledger:** POST-A-366
 
+### S22. Unabsorbed depreciation and a specified business's loss: do they carry forward without a time limit, and where may they be set off?
+
+- **Question:** (a) Section 32(2): is unabsorbed depreciation carried forward and added to the next year's depreciation allowance with no limit on the number of years, and against which heads of income may it be set off (the product believes any head except salary, after the year's own allowance, with no ordering by age)? (b) Section 73A: is a loss of a specified business (section 35AD) carried forward without a time limit, and may it be set off only against profits of a specified business? (c) For tax years from 2026-27, where do these two sit in the Income-tax Act 2025, and do they keep the same rules? The product has no loss type for either: it names them on the form and refuses to record one as "other", because no section fixes a period for "other" and recording one under any period would expire a loss that never expires. The "no time limit" reading is the one the code's own notes carry, graded [S]; it has not been read from the Act.
+- **Needed:** Income-tax Act 1961 section 32(2) with its provisos, section 73A, and section 35AD(4); for tax years from 2026-27, the corresponding sections of the Income-tax Act 2025.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** The two loss types (a migration widening the stored loss types, the matching list in the set-off engine, and a representation of "never expires" in the carry-forward rule). The form keeps naming them, and recording one as "other" stays refused.
+- **Ledger:** POST-A-074
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.

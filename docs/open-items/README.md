@@ -51,7 +51,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 
 **493 open items** (23 before the demo, 470 after); 12 after-demo items are `high` priority; 28 are UNSURE. A further **150 items are parked** (not counted above).
 
-**Who must act.** 109 items are Claude's alone to build, but 9 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 100 can be built now. 181 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **393 of the 493 wait on the owner.**
+**Who must act.** 109 items are Claude's alone to build, but 10 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 99 can be built now. 181 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **394 of the 493 wait on the owner.**
 
 <!-- counts:end -->
 
