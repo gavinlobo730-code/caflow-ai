@@ -17,23 +17,8 @@
       "nodes": 2
     },
     {
-      "route": "/accounting/receivables",
-      "rule": "link-in-text-block",
-      "nodes": 1
-    },
-    {
-      "route": "/accounting/schedule-iii",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
       "route": "/accounting/trial-balance-import",
       "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/ai-assistant",
-      "rule": "button-name",
       "nodes": 1
     },
     {
@@ -47,38 +32,8 @@
       "nodes": 1
     },
     {
-      "route": "/billing",
-      "rule": "button-name",
-      "nodes": 1
-    },
-    {
       "route": "/client-portal",
       "rule": "color-contrast",
-      "nodes": 1
-    },
-    {
-      "route": "/clients/documents",
-      "rule": "button-name",
-      "nodes": 1
-    },
-    {
-      "route": "/copilot",
-      "rule": "button-name",
-      "nodes": 1
-    },
-    {
-      "route": "/copilot",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/gst/gstr1",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/gst/gstr3b",
-      "rule": "select-name",
       "nodes": 1
     },
     {
@@ -87,44 +42,9 @@
       "nodes": 6
     },
     {
-      "route": "/income-tax/ais",
-      "rule": "select-name",
-      "nodes": 2
-    },
-    {
-      "route": "/income-tax/capital-gains",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/income-tax/deductions",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/income-tax/notices",
-      "rule": "select-name",
-      "nodes": 2
-    },
-    {
-      "route": "/income-tax/tax-audit/form-3cd",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/insights",
-      "rule": "link-in-text-block",
-      "nodes": 1
-    },
-    {
-      "route": "/knowledge",
-      "rule": "button-name",
-      "nodes": 1
-    },
-    {
       "route": "/knowledge",
       "rule": "color-contrast",
-      "nodes": 2
+      "nodes": 1
     },
     {
       "route": "/memory",
@@ -132,44 +52,9 @@
       "nodes": 1
     },
     {
-      "route": "/notifications/whatsapp",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/payroll",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/payroll/declarations",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/payroll/reports",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/payroll/statutory",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/payroll/statutory",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
       "route": "/pipeline",
       "rule": "color-contrast",
       "nodes": 2
-    },
-    {
-      "route": "/pipeline",
-      "rule": "scrollable-region-focusable",
-      "nodes": 1
     },
     {
       "route": "/portal/login",
@@ -185,16 +70,6 @@
       "route": "/practice/compliance",
       "rule": "color-contrast",
       "nodes": 5
-    },
-    {
-      "route": "/practice/compliance",
-      "rule": "select-name",
-      "nodes": 2
-    },
-    {
-      "route": "/practice/profitability",
-      "rule": "select-name",
-      "nodes": 1
     },
     {
       "route": "/relationships/_placeholder",
@@ -217,89 +92,24 @@
       "nodes": 2
     },
     {
-      "route": "/reports/cash-flow",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
       "route": "/risks",
       "rule": "color-contrast",
       "nodes": 5
     },
     {
-      "route": "/settings",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/settings",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
       "route": "/settings/audit-log",
       "rule": "color-contrast",
       "nodes": 1
     },
     {
-      "route": "/settings/audit-log",
-      "rule": "link-name",
-      "nodes": 1
-    },
-    {
-      "route": "/settings/audit-log",
-      "rule": "select-name",
-      "nodes": 2
-    },
-    {
       "route": "/settings/branding",
       "rule": "color-contrast",
       "nodes": 2
-    },
-    {
-      "route": "/settings/branding",
-      "rule": "label",
-      "nodes": 3
-    },
-    {
-      "route": "/settings/branding",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/settings/email-templates",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/settings/firm-hsn-library",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/settings/invoice-settings",
-      "rule": "button-name",
-      "nodes": 3
-    },
-    {
-      "route": "/settings/invoice-settings",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
-      "route": "/settings/invoice-settings",
-      "rule": "select-name",
-      "nodes": 1
     },
     {
       "route": "/settings/scheduled-reports",
       "rule": "color-contrast",
       "nodes": 1
-    },
-    {
-      "route": "/settings/security",
-      "rule": "label",
-      "nodes": 2
     },
     {
       "route": "/sign",
@@ -312,11 +122,6 @@
       "nodes": 5
     },
     {
-      "route": "/tds/returns",
-      "rule": "select-name",
-      "nodes": 2
-    },
-    {
       "route": "/team/assignments",
       "rule": "color-contrast",
       "nodes": 3
@@ -324,26 +129,11 @@
     {
       "route": "/team/login-history",
       "rule": "color-contrast",
-      "nodes": 2
+      "nodes": 1
     },
     {
       "route": "/time",
       "rule": "color-contrast",
-      "nodes": 1
-    },
-    {
-      "route": "/time",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/workflows",
-      "rule": "select-name",
-      "nodes": 1
-    },
-    {
-      "route": "/workflows/approvals",
-      "rule": "select-name",
       "nodes": 1
     }
   ]

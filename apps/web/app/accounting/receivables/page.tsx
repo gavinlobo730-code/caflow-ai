@@ -220,7 +220,7 @@ export default function ReceivablesAgingPage() {
           <>
             What your clients owe the practice — your own unpaid fee invoices, by age.
             For what a client&apos;s own customers owe it, open the{" "}
-            <Link href="/accounting/invoices" className="text-brand hover:underline">
+            <Link href="/accounting/invoices" className="text-brand underline underline-offset-2">
               Sales worklist
             </Link>
             .

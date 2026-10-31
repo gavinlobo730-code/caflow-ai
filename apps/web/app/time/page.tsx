@@ -378,7 +378,7 @@ export default function TimeTrackingPage() {
         <CardContent className="py-3 flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-            <select
+            <select aria-label="Client to export"
               value={exportClientId}
               onChange={e => setExportClientId(e.target.value)}
               className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -514,7 +514,7 @@ export default function TimeTrackingPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                <select
+                <select aria-label="Client"
                   value={startClientId}
                   onChange={e => setStartClientId(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -578,7 +578,7 @@ export default function TimeTrackingPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                <select
+                <select aria-label="Client"
                   value={manualClientId}
                   onChange={e => setManualClientId(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"

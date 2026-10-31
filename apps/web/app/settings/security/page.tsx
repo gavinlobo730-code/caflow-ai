@@ -311,7 +311,7 @@ function ChangePasswordCard() {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-ps-label">Current password</label>
-              <input
+              <input aria-label="Current password"
                 type={showPw ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
                 autoComplete="current-password"
                 className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
@@ -322,7 +322,7 @@ function ChangePasswordCard() {
               <div className="relative max-w-sm">
                 <input
                   type={showPw ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
-                  autoComplete="new-password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                  autoComplete="new-password" aria-label="New password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                   className="w-full px-3 py-2 pr-10 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide passwords" : "Show passwords"}
@@ -333,7 +333,7 @@ function ChangePasswordCard() {
             </div>
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-ps-label">Confirm new password</label>
-              <input
+              <input aria-label="Confirm new password"
                 type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)}
                 autoComplete="new-password"
                 className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"

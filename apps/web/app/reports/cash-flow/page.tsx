@@ -130,7 +130,7 @@ export default function CashFlowForecastPage() {
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Months</label>
-          <select
+          <select aria-label="Months"
             value={months}
             onChange={(e) => setMonths(e.target.value)}
             className="px-3 py-2 text-sm bg-white border border-ps-border-strong rounded-md text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"

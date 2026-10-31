@@ -144,7 +144,7 @@ export default function DeclarationsPage() {
           </div>
           <div>
             <label className="block text-xs text-ps-label mb-1">Financial year</label>
-            <select
+            <select aria-label="Financial year"
               value={fy}
               onChange={(e) => setFy(e.target.value)}
               className="border border-ps-border rounded-lg px-3 py-2 text-sm"

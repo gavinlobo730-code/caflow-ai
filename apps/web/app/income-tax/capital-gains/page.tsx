@@ -533,7 +533,7 @@ export default function CapitalGainsPage() {
 
               <div>
                 <label className="text-xs font-medium text-ps-body block mb-1">Asset Type</label>
-                <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={assetType} onChange={e => setAssetType(e.target.value as AnyCapitalGainsAssetType)}>
+                <select aria-label="Asset Type" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={assetType} onChange={e => setAssetType(e.target.value as AnyCapitalGainsAssetType)}>
                   {ASSET_TYPES_CALC.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                 </select>
               </div>
@@ -1065,7 +1065,7 @@ export default function CapitalGainsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium text-ps-body block mb-1">Section</label>
-                        <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
+                        <select aria-label="Section" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                 value={claimForm.section}
                                 onChange={e => setClaimForm(f => ({ ...f, section: e.target.value as ReinvestmentSection }))}>
                           {(sectionInfo.length
@@ -1207,7 +1207,7 @@ export default function CapitalGainsPage() {
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Asset Type *</label>
-                    <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
+                    <select aria-label="Asset Type" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.asset_type} onChange={e => setRegForm(f => ({ ...f, asset_type: e.target.value as CapitalGainsRegisterAssetType }))}>
                       {ASSET_TYPES_REG.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
                     </select>
                   </div>

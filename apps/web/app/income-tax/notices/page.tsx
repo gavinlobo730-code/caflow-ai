@@ -159,7 +159,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">Add IT Notice</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
@@ -209,7 +209,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
           </div>
           <div>
             <label className={lbl}>Status</label>
-            <select value={form.status} onChange={e => upd({ status: e.target.value as NoticeStatus })} className={inputCls}>
+            <select aria-label="Status" value={form.status} onChange={e => upd({ status: e.target.value as NoticeStatus })} className={inputCls}>
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
             </select>
           </div>
@@ -409,12 +409,12 @@ export default function ITNoticesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
-        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+        <select aria-label="Filter notices by client" value={clientFilter} onChange={e => setClientFilter(e.target.value)}
           className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
           <option value="all">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
         </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as NoticeStatus | "all")}
+        <select aria-label="Filter notices by status" value={statusFilter} onChange={e => setStatusFilter(e.target.value as NoticeStatus | "all")}
           className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
           <option value="all">All Statuses</option>
           {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}

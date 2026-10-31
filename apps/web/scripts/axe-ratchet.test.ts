@@ -29,7 +29,7 @@ import { join } from "node:path";
 import {
   AXE_PACKAGE, AXE_PACKAGE_VERSION, AXE_TAGS, FAILING_IMPACTS, NAMED_ROUTE_PATHS, NAMED_SCREENS,
   auditPage, axeMode, compareToBaseline, describeFailure, failingFindings, initialBaseline, loadAxeBuilder,
-  parseBaseline, resolveNamedRoute, serialiseBaseline, settleVerdict, shrinkBaseline, summaryMarkdown,
+  parseBaseline, resolveNamedRoute, serialiseBaseline, planShrink, settleVerdict, shrinkBaseline, shrinkRefusal, summaryMarkdown,
 } from "./axeAudit.mjs";
 import { screenRoutes } from "./refresh-screen-snapshot.js";
 
@@ -187,6 +187,45 @@ test("--axe-shrink lowers and deletes, and never adds or raises", () => {
 test("--axe-shrink keeps the lines of routes it did not audit exactly as they were", () => {
   const out = shrinkBaseline(found({ "/gst": [] }), BASE);
   assert.deepEqual(out, [{ route: "/tasks", rule: "label", nodes: 1 }]);
+});
+
+test("--axe-shrink refuses to write from a walk that was not clean", () => {
+  // A page that has not finished drawing has no violations to find. On 31-10-2026 a walk run beside other heavy jobs had eleven screens with a
+  // problem and 32 more that drew only the shared shell, and it deleted eight contrast lines that had not been fixed.
+  const clean = { broken: [], herds: [], unaudited: [] };
+  assert.equal(shrinkRefusal(clean), null, "a clean walk may shrink");
+  const broken = shrinkRefusal({ ...clean, broken: [{ route: "/payroll", errors: ["rendered an empty body"] }] });
+  assert.ok(broken && broken.includes("/payroll") && broken.includes("writes nothing") && broken.includes("1 screen(s) had a problem"), String(broken));
+  // The case that lost the lines: a group of routes that all drew one identical body. Nothing is "broken" about them, so a check on
+  // `broken` alone passes, and the shell has no violations.
+  const shell = shrinkRefusal({ ...clean, herds: [[{ route: "/portal/login" }, { route: "/portal" }, { route: "/payroll/attendance" }]] });
+  assert.ok(shell && shell.includes("/portal/login") && shell.includes("3 route(s) drew one identical body"), String(shell));
+  const scan = shrinkRefusal({ ...clean, unaudited: [{ route: "/tasks", error: "timed out" }] });
+  assert.ok(scan && scan.includes("/tasks") && scan.includes("could not be scanned"), String(scan));
+  // The same screen reported two ways is named once, and a long list is cut.
+  const many = shrinkRefusal({
+    broken: Array.from({ length: 7 }, (_, i) => ({ route: `/r${i}`, errors: [] })),
+    herds: [], unaudited: [{ route: "/r0", error: "x" }],
+  });
+  assert.ok(many && many.includes("7 screen(s) had a problem") && many.includes("…"), String(many));
+});
+
+test("planShrink writes the shrunk baseline only from a clean walk, and the walk has no other way to shrink", () => {
+  const entries = [{ route: "/gst", rule: "color-contrast", nodes: 4 }, { route: "/tasks", rule: "label", nodes: 1 }];
+  const asFound = found({ "/gst": [], "/tasks": [finding("label", 1)] });
+  const clean = planShrink({ found: asFound, entries, broken: [], herds: [], unaudited: [] });
+  assert.equal(clean.refusal, null);
+  assert.deepEqual(clean.shrunk, [{ route: "/tasks", rule: "label", nodes: 1 }]);
+  // The same findings from a walk with a shell herd: nothing to write, and the sentence says why.
+  const refused = planShrink({ found: asFound, entries, broken: [], herds: [[{ route: "/gst" }]], unaudited: [] });
+  assert.equal(refused.shrunk, null, "a walk with a herd must not hand back a baseline to write");
+  assert.ok(refused.refusal?.includes("/gst"));
+  // The rule, not a spelling of it: the walk reaches the shrink only through planShrink, so it cannot shrink without asking.
+  const walk = readFileSync(join(WEB, "scripts", "smoke-walk.mjs"), "utf8");
+  assert.ok(walk.includes("planShrink({"), "smoke-walk.mjs must call planShrink");
+  assert.ok(!/\bshrinkBaseline\(/.test(walk), "smoke-walk.mjs must not call shrinkBaseline directly");
+  assert.match(walk, /planShrink\(\{[^}]*\bbroken\b[^}]*\bherds\b[^}]*\bunaudited: axeUnaudited\b[^}]*\}\);\s*if \(plan\.refusal\) \{[^}]*process\.exit\(2\)/s,
+    "the walk must hand planShrink its broken screens, its herds and its unscanned screens, and exit on a refusal");
 });
 
 test("the first baseline never includes a named screen's route", () => {

@@ -339,7 +339,7 @@ export default function InsightsPage() {
         <p className="text-3xs text-ps-hint">
           Profitability and realization are the third of this tile&apos;s three
           questions and live beside the rest of the practice&apos;s commercial
-          position — <Link href="/practice/profitability" className="text-blue-600 hover:underline">Practice → Profitability</Link>.
+          position — <Link href="/practice/profitability" className="text-blue-600 underline underline-offset-2">Practice → Profitability</Link>.
         </p>
       )}
     </div>

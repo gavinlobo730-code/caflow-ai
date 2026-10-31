@@ -258,7 +258,7 @@ export default function TrialBalanceImportPage() {
                   ] as { label: string; key: keyof ColumnMap }[]).map(({ label, key }) => (
                     <div key={key}>
                       <label className="block text-xs font-medium text-ps-body mb-1">{label}</label>
-                      <select
+                      <select aria-label={label}
                         className="w-full border rounded-lg px-3 py-2 text-sm"
                         value={colMap[key]}
                         onChange={e => setColMap(m => ({ ...m, [key]: parseInt(e.target.value) }))}
@@ -362,7 +362,7 @@ export default function TrialBalanceImportPage() {
                           <td className="py-2 px-4 font-medium">{acc.account_name}</td>
                           <td className="py-2 px-4 font-mono text-xs">{acc.account_code || "—"}</td>
                           <td className="py-2 px-4">
-                            <select
+                            <select aria-label={`Account type for ${acc.account_name}`}
                               className="border rounded px-1 py-0.5 text-xs"
                               value={acc.typeOverride ?? acc.account_type}
                               onChange={e => updateType(i, e.target.value)}

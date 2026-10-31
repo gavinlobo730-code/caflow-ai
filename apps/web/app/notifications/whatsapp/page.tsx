@@ -604,7 +604,7 @@ export default function WhatsAppPage() {
               <label className="block text-xs font-semibold text-ps-body mb-1">
                 Edit Message (optional)
               </label>
-              <textarea
+              <textarea aria-label="Edit Message (optional)"
                 value={composedMessage}
                 onChange={(e) => setComposedMessage(e.target.value)}
                 rows={8}

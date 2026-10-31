@@ -214,6 +214,7 @@ function TemplateEditor({
           </button>
         </div>
         <textarea
+          aria-label="Email body"
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}

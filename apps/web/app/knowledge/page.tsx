@@ -93,7 +93,7 @@ function KnowledgeInner() {
         actions={
           <>
             {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
-            <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
+            <button aria-label="Refresh" onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
           </>
         }
         className="mb-4"
@@ -112,7 +112,7 @@ function KnowledgeInner() {
       {showForm && canAuthor && (
         <form onSubmit={createArticle} className="mb-4 bg-white border border-gray-200 rounded-xl p-4 space-y-2 text-sm">
           <div className="flex gap-2">
-            <select value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} className="border rounded-lg px-2 py-1.5">
+            <select aria-label="Article scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} className="border rounded-lg px-2 py-1.5">
               <option value="firm">Firm</option><option value="department">Department</option>
             </select>
             <input placeholder="Department (optional)" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="border rounded-lg px-2 py-1.5 flex-1" />

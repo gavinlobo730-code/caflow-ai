@@ -330,7 +330,7 @@ function PayslipSummaryTab({
             <p className="text-xs text-ps-label mt-0.5">One client, one month — the month-end pack</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <select
+            <select aria-label="Payroll run"
               className="border rounded-lg px-3 py-2 text-sm"
               value={selectedRunId}
               onChange={e => { setSelectedRunId(e.target.value); setNote(null); }}
@@ -445,7 +445,7 @@ function MonthlyReviewTab({ runs, clientNames }: {
       <div className="flex items-end gap-3 flex-wrap">
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Payroll run</label>
-          <select value={selectedRunId} onChange={e => setSelectedRunId(e.target.value)}
+          <select aria-label="Payroll run" value={selectedRunId} onChange={e => setSelectedRunId(e.target.value)}
             className="px-3 py-1.5 border border-ps-border rounded-lg text-xs min-w-[16rem]">
             {runOptions.length === 0 && <option value="">No payroll runs</option>}
             {runOptions.map(r => (
@@ -546,14 +546,14 @@ function YtdTab({ employees, runs, fyOptions }: {
           <p className="text-xs text-ps-label mt-0.5">Month-by-month breakdown — used for Form 16 preparation (IT Act Section 203)</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <select
+          <select aria-label="Financial year"
             className="border rounded-lg px-3 py-2 text-sm"
             value={selectedFy}
             onChange={e => setSelectedFy(e.target.value)}
           >
             {fyOptions.map(fy => <option key={fy} value={fy}>FY {fy}</option>)}
           </select>
-          <select
+          <select aria-label="Employee"
             className="border rounded-lg px-3 py-2 text-sm"
             value={selectedEmpId}
             onChange={e => setSelectedEmpId(e.target.value)}
@@ -747,7 +747,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <select
+          <select aria-label="Month"
             className="border rounded-lg px-3 py-2 text-sm"
             value={selectedMonth}
             onChange={e => setSelectedMonth(e.target.value)}
@@ -910,14 +910,14 @@ function TdsProjectionTab({ employees, fyOptions }: {
             <p className="text-xs text-ps-label mt-0.5">Plan TDS deductions to avoid IT Act Section 234B/234C interest</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <select
+            <select aria-label="Financial year"
               className="border rounded-lg px-3 py-2 text-sm"
               value={selectedFy}
               onChange={e => setSelectedFy(e.target.value)}
             >
               {fyOptions.map(fy => <option key={fy} value={fy}>FY {fy}</option>)}
             </select>
-            <select
+            <select aria-label="Employee"
               className="border rounded-lg px-3 py-2 text-sm"
               value={selectedEmpId}
               onChange={e => setSelectedEmpId(e.target.value)}
@@ -1126,7 +1126,7 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
           <p className="text-xs text-ps-label mt-0.5">Annual totals per employee — for Form 24Q annual return &amp; employer reconciliation (IT Act Section 192)</p>
         </div>
         <div className="flex items-center gap-3">
-          <select
+          <select aria-label="Financial year"
             className="border rounded-lg px-3 py-2 text-sm"
             value={selectedFy}
             onChange={e => setSelectedFy(e.target.value)}
@@ -1281,14 +1281,14 @@ function StatutoryDuesCalendarTab() {
             ))}
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <select
+            <select aria-label="Financial year"
               className="border rounded-lg px-3 py-2 text-sm"
               value={selectedFy}
               onChange={e => setSelectedFy(e.target.value)}
             >
               {fyOptions.map(fy => <option key={fy} value={fy}>FY {fy}</option>)}
             </select>
-            <select
+            <select aria-label="Category"
               className="border rounded-lg px-3 py-2 text-sm"
               value={filterCategory}
               onChange={e => setFilterCategory(e.target.value as CategoryFilter)}

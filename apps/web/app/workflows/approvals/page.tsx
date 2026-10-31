@@ -134,6 +134,7 @@ export default function ApprovalsPage() {
         {/* Filter */}
         <div className="flex items-center gap-3">
           <select
+            aria-label="Filter approvals by status"
             value={status}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}
             className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white"

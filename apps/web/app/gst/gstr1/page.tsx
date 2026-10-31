@@ -267,7 +267,7 @@ export default function GSTR1Page() {
           </div>
           <div>
             <label className="block text-sm font-medium text-ps-body mb-1">Period</label>
-            <select
+            <select aria-label="Period"
               value={yearMonth}
               onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand focus:border-brand"
@@ -778,7 +778,7 @@ export default function GSTR1Page() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-ps-ink">Mark GSTR-1 as Filed</h3>
-              <button onClick={closeFiledModal}>
+              <button aria-label="Close" onClick={closeFiledModal}>
                 <X className="w-5 h-5 text-ps-hint hover:text-ps-label" />
               </button>
             </div>

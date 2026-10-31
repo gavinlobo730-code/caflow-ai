@@ -57,9 +57,8 @@ export const scenarios = [
     async run(env) {
       const { page } = env;
       await page.goto(`${env.base}/income-tax/capital-gains/`, { waitUntil: "networkidle" });
-      // The one `select` without a name is the walk's `select-name` baseline line for this route, a separate rule with a separate fix;
-      // the calculator's two date boxes were its `label` line and are named now.
-      const unnamed = (await unnamedControls(page)).filter((c) => !c.startsWith("select"));
+      // The calculator's two date boxes were this route's `label` line and its one select its `select-name` line; both are named now.
+      const unnamed = await unnamedControls(page);
       assert.deepEqual(unnamed, [], "an unnamed input is on the capital-gains screen");
     },
   },

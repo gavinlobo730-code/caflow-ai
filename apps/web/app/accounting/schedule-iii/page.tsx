@@ -403,7 +403,7 @@ export default function ScheduleIIIPage() {
       <div className="flex flex-wrap gap-4 items-end print:hidden">
         <div>
           <label className="block text-xs text-ps-label mb-1">Financial Year</label>
-          <select
+          <select aria-label="Financial Year"
             value={fyIndex}
             onChange={(e) => setFyIndex(Number(e.target.value))}
             className="px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand"

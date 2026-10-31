@@ -50,6 +50,10 @@ const OWN_CREDENTIALS: Record<string, string> = {
     "a client activating their portal login sets their own password here",
   "app/portal/employee/activate/page.tsx":
     "an employee activating their portal login, same reason",
+  "app/settings/security/page.tsx":
+    "the signed-in person changes their own PracticeSync password (and manages their own authenticator). The password boxes now carry "
+    + "an accessible name that contains the word password ('Current password', 'New password', 'Confirm new password'), which is what this "
+    + "guard reads and why the file needs listing; none of it is a government portal's secret",
   "app/accounting/lock-year/page.tsx":
     "the firm's OWN PIN, which authorises locking a financial year. It "
     + "authenticates a partner to PracticeSync — no government portal has "

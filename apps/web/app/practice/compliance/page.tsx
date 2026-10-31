@@ -217,13 +217,13 @@ function ComplianceDashboard() {
             <span className="text-2xs text-gray-400">{queue.length} of {dash?.queue?.length ?? 0}</span>
           </div>
           <div className="flex gap-2">
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+            <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
               className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
               <option value="all">All statuses</option>
               <option value={OVERDUE_FILTER}>Overdue (past its due date)</option>
               {Object.keys(NEXT_STATUS).filter((st) => st !== "Overdue").map((st) => <option key={st} value={st}>{st}</option>)}
             </select>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
+            <select aria-label="Filter by type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
               className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600">
               <option value="all">All types</option>
               {types.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -271,7 +271,7 @@ function ComplianceDashboard() {
                       {(NEXT_STATUS[o.status] ?? []).length === 0 ? (
                         <span className="text-gray-300">—</span>
                       ) : (
-                        <select disabled={busy} defaultValue=""
+                        <select aria-label={`Move ${o.client_name ?? "this client"}: ${o.period_label ?? o.obligation_type ?? "obligation"} to another status`} disabled={busy} defaultValue=""
                           onChange={(e) => { if (e.target.value) transition(o, e.target.value); }}
                           className="text-2xs border border-gray-200 rounded px-1.5 py-1 text-brand">
                           <option value="">→ move to…</option>

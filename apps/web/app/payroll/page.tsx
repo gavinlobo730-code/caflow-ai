@@ -327,7 +327,7 @@ function MonthQueueTab({ month, onMonthChange, clients }: {
               </p>
             </div>
             <input
-              type="month" value={month} onChange={e => onMonthChange(e.target.value)}
+              type="month" aria-label="Payroll month" value={month} onChange={e => onMonthChange(e.target.value)}
               className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand"
             />
           </div>
@@ -466,7 +466,7 @@ function PayslipModal({ slip, onClose }: { slip: PayrollSlip; onClose: () => voi
           <h2 className="font-semibold">Payslip</h2>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => window.print()}>Print</Button>
-            <button onClick={onClose}><X size={16} /></button>
+            <button aria-label="Close" onClick={onClose}><X size={16} /></button>
           </div>
         </div>
         <div className="border-b pb-3 mb-3">

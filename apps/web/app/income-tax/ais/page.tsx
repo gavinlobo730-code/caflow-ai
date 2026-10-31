@@ -356,7 +356,7 @@ export default function AISPage() {
       <div className="bg-white rounded-xl border border-ps-border px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-ps-body mb-1.5">Client</label>
-          <select
+          <select aria-label="Client"
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
@@ -369,7 +369,7 @@ export default function AISPage() {
           <label className="block text-xs font-medium text-ps-body mb-1.5">
             Assessment year
           </label>
-          <select
+          <select aria-label="Assessment year"
             value={assessmentYear}
             onChange={(e) => setAssessmentYear(e.target.value)}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
@@ -607,7 +607,7 @@ export default function AISPage() {
               <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1.5">Type</label>
-                  <select
+                  <select aria-label="Type"
                     value={manual.transaction_type}
                     onChange={(e) => setManual((p) => ({ ...p, transaction_type: e.target.value }))}
                     className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"

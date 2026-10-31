@@ -114,7 +114,7 @@ import { screenRoutes } from "./refresh-screen-snapshot.js";
 import { headersFor, parseHeadersFile } from "./security-headers.mjs";
 import {
   AXE_PACKAGE_VERSION, NAMED_ROUTE_PATHS, auditPage, axeMode, compareToBaseline, describeFailure,
-  initialBaseline, loadAxeBuilder, parseBaseline, serialiseBaseline, settleVerdict, shrinkBaseline,
+  initialBaseline, loadAxeBuilder, parseBaseline, planShrink, serialiseBaseline, settleVerdict,
   summaryMarkdown,
 } from "./axeAudit.mjs";
 import { auditNamedScreens, slowServerScenario } from "./walkAudits.mjs";
@@ -923,7 +923,12 @@ if (axe.run) {
     fs.writeFileSync(BASELINE_FILE, serialiseBaseline(entries));
     console.log(`axe: wrote ${entries.length} baseline line(s) to scripts/axe-baseline.json.`);
   } else if (axeShrink) {
-    const shrunk = shrinkBaseline(axeFound, entries);
+    const plan = planShrink({ found: axeFound, entries, broken, herds, unaudited: axeUnaudited });
+    if (plan.refusal) {
+      console.error(plan.refusal);
+      process.exit(2);
+    }
+    const shrunk = plan.shrunk;
     fs.writeFileSync(BASELINE_FILE, serialiseBaseline(shrunk));
     console.log(`axe: baseline ${entries.length} -> ${shrunk.length} line(s); counts only ever lowered.`);
     entries = shrunk;

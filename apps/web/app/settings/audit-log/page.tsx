@@ -300,7 +300,7 @@ function AuditLogContent() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/settings" className="text-ps-hint hover:text-ps-label">
+        <Link href="/settings" aria-label="Back to settings" className="text-ps-hint hover:text-ps-label">
           <ChevronLeft size={18} />
         </Link>
         <div className="flex-1">
@@ -340,7 +340,7 @@ function AuditLogContent() {
         </div>
         <div>
           <label className="text-xs text-ps-label">Action</label>
-          <select value={filterAction} onChange={(e) => setFilterAction(e.target.value)}
+          <select aria-label="Action" value={filterAction} onChange={(e) => setFilterAction(e.target.value)}
             className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand">
             <option value="">All Actions</option>
             {actionOptions.map((a) => (
@@ -350,7 +350,7 @@ function AuditLogContent() {
         </div>
         <div>
           <label className="text-xs text-ps-label">Entity Type</label>
-          <select value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)}
+          <select aria-label="Entity Type" value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)}
             className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand">
             <option value="">All Entities</option>
             {entityOptions.map((t) => (

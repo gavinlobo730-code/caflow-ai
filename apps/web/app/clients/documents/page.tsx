@@ -109,7 +109,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Upload Document</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
@@ -121,7 +121,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Category</label>
-            <select value={category} onChange={e => setCategory(e.target.value as DocCategory)}
+            <select aria-label="Category" value={category} onChange={e => setCategory(e.target.value as DocCategory)}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
               {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -240,7 +240,7 @@ export default function ClientDocumentsPage() {
         subtitle="Organized client document storage"
         actions={
           <>
-            <button onClick={load} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
+            <button aria-label="Refresh" onClick={load} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
             <button onClick={() => setShowUpload(true)}
