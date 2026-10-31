@@ -5,7 +5,7 @@
 //   node --experimental-strip-types --test lib/tax/lossRecordNote.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lossRecordNote } from "./lossRecordNote.ts";
+import { lossRecordAnswer, lossRecordNote } from "./lossRecordNote.ts";
 
 const answer = (state: string, message = "A sentence.") => ({ id: "f1", status: "filed", brought_forward_losses: { state, message, losses: [] } });
 
@@ -28,5 +28,17 @@ test("a blank sentence is not shown", () => {
 test("an answer without the block, or a payload that is not an object, says nothing", () => {
   for (const data of [null, undefined, "x", 3, [], {}, { brought_forward_losses: null }, { brought_forward_losses: "x" }, { brought_forward_losses: { state: 3 } }]) {
     assert.equal(lossRecordNote(data), null);
+  }
+});
+
+for (const state of ["written", "not_written", "unchanged", "no_losses"]) {
+  test(`when the CA asked, the server's sentence is shown whatever the state (${state})`, () => {
+    assert.equal(lossRecordAnswer(answer(state, "The server's sentence.")), "The server's sentence.");
+  });
+}
+
+test("a click is not answered with a blank or a payload that is not the answer", () => {
+  for (const data of [null, undefined, "x", 3, [], {}, { brought_forward_losses: null }, answer("written", "  ")]) {
+    assert.equal(lossRecordAnswer(data), null);
   }
 });

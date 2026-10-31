@@ -49,3 +49,16 @@ test("what the server says about the loss records is shown", () => {
   assert.match(code, /setLossNote\(lossRecordNote\(res\.data\)\)/);
   assert.match(code, /\{lossNote && \(/);
 });
+
+test("a return recorded as filed can be pinned afterwards and have its loss records updated, and the answer is shown whatever the state", () => {
+  assert.match(code, /\/api\/itr\/filings\/\$\{filing\.id\}\/computation/, "a filed return made without a computation cannot be pinned");
+  assert.match(code, /\/api\/itr\/filings\/\$\{filing\.id\}\/loss-records/, "a filed return cannot have its loss records updated again");
+  assert.match(code, /setLossNote\(lossRecordAnswer\(res\.data\)/, "a click on the update button is answered with silence");
+  assert.match(code, /<label htmlFor="itr-pin-computation"/);
+  assert.match(code, /<select id="itr-pin-computation"/);
+});
+
+test("the update waits for whatever is already running, like every other button on the screen", () => {
+  assert.match(code, /const actionInFlight = [^;]*\|\| savingLosses;/);
+  assert.match(code, /updateLossRecords\(selectedFiling, null\)\}\s*disabled=\{actionInFlight\}/);
+});
