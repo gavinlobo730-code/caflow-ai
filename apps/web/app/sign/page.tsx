@@ -131,7 +131,7 @@ export default function SignPage() {
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
             {/* Card header */}
             <div className="border-b border-ps-border px-6 py-4">
-              <p className="font-mono text-2xs text-slate-400">{letter.engagement_number}</p>
+              <p className="font-mono text-2xs text-ps-hint">{letter.engagement_number}</p>
               <h1 className="text-lg font-semibold text-slate-900">{letter.title}</h1>
               <p className="mt-0.5 text-sm text-slate-500">from {letter.firm_name}</p>
             </div>
@@ -235,7 +235,7 @@ export default function SignPage() {
                           Decline
                         </button>
                       </div>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-ps-hint">
                         Your name, the date/time, and your IP address will be recorded as proof of acceptance.
                       </p>
                     </>
@@ -282,7 +282,7 @@ export default function SignPage() {
           </div>
         )}
 
-        <p className="mt-5 text-center text-xs text-slate-400">Powered by PracticeSync</p>
+        <p className="mt-5 text-center text-xs text-ps-hint">Powered by PracticeSync</p>
       </div>
     </div>
   );

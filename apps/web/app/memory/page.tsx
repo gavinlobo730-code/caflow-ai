@@ -160,7 +160,7 @@ function TriggersTab() {
   );
 
   if (loadError) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+    <div className="flex flex-col items-center justify-center py-20 text-ps-hint gap-3">
       <AlertTriangle size={40} className="text-red-400" />
       <p className="font-medium text-red-600">{loadError}</p>
       <button onClick={load} disabled={loading} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-40">Retry</button>
@@ -168,7 +168,7 @@ function TriggersTab() {
   );
 
   if (triggers.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+    <div className="flex flex-col items-center justify-center py-20 text-ps-hint gap-3">
       <CheckCircle2 size={40} className="text-emerald-400" />
       <p className="font-medium text-slate-500">No active memory triggers</p>
       <p className="text-sm">All patterns look healthy for your portfolio.</p>
@@ -195,11 +195,11 @@ function TriggersTab() {
 
           {t.evidence.length > 0 && (
             <div className="mt-3 bg-slate-50 rounded-lg p-3">
-              <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Evidence</p>
+              <p className="text-2xs font-semibold text-ps-hint uppercase tracking-wider mb-1.5">Evidence</p>
               <ul className="space-y-1">
                 {t.evidence.map((e, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm text-slate-600">
-                    <ChevronRight size={12} className="mt-0.5 text-slate-400 shrink-0" />
+                    <ChevronRight size={12} className="mt-0.5 text-ps-hint shrink-0" />
                     {e}
                   </li>
                 ))}
@@ -209,11 +209,11 @@ function TriggersTab() {
 
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
-              <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider">Why it matters</p>
+              <p className="text-2xs font-semibold text-ps-hint uppercase tracking-wider">Why it matters</p>
               <p className="text-sm text-slate-600 mt-0.5">{t.why_it_matters}</p>
             </div>
             <div>
-              <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider">Recommended action</p>
+              <p className="text-2xs font-semibold text-ps-hint uppercase tracking-wider">Recommended action</p>
               <p className="text-sm text-slate-600 mt-0.5">{t.recommended_action}</p>
             </div>
           </div>
@@ -285,7 +285,7 @@ function ProfilesTab() {
   );
 
   if (loadError) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+    <div className="flex flex-col items-center justify-center py-20 text-ps-hint gap-3">
       <AlertTriangle size={40} className="text-red-400" />
       <p className="font-medium text-red-600">{loadError}</p>
       <button onClick={load} disabled={loading} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-40">Retry</button>
@@ -293,7 +293,7 @@ function ProfilesTab() {
   );
 
   if (profiles.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+    <div className="flex flex-col items-center justify-center py-20 text-ps-hint gap-3">
       <User size={40} className="text-slate-300" />
       <p className="font-medium text-slate-500">No client profiles yet</p>
       <p className="text-sm">Run the memory pipeline to generate profiles.</p>
@@ -302,7 +302,7 @@ function ProfilesTab() {
 
   return (
     <div>
-      <p className="text-xs text-slate-400 mb-3">
+      <p className="text-xs text-ps-hint mb-3">
         {profiles.length}{win?.hasMore ? "+" : ""} client profile{profiles.length === 1 ? "" : "s"}
       </p>
       {win && (
@@ -326,7 +326,7 @@ function ProfilesTab() {
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-800 truncate">{p.client_id}</p>
-                <p className="text-2xs text-slate-400">
+                <p className="text-2xs text-ps-hint">
                   Updated {formatDate(p.last_computed_at)}
                 </p>
               </div>
@@ -334,19 +334,19 @@ function ProfilesTab() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Compliance</p>
+                <p className="text-3xs font-semibold text-ps-hint uppercase tracking-wider">Compliance</p>
                 <p className={`text-xl font-bold mt-0.5 ${scoreColor}`}>{p.compliance_score.toFixed(0)}%</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Engagement</p>
+                <p className="text-3xs font-semibold text-ps-hint uppercase tracking-wider">Engagement</p>
                 <p className="text-xl font-bold mt-0.5 text-brand">{p.portal_engagement.toFixed(0)}%</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Doc Reliability</p>
+                <p className="text-3xs font-semibold text-ps-hint uppercase tracking-wider">Doc Reliability</p>
                 <p className="text-xl font-bold mt-0.5 text-slate-700">{p.doc_upload_reliability.toFixed(0)}%</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Response (days)</p>
+                <p className="text-3xs font-semibold text-ps-hint uppercase tracking-wider">Response (days)</p>
                 <p className="text-xl font-bold mt-0.5 text-slate-700">
                   {p.avg_response_time_days != null ? p.avg_response_time_days.toFixed(1) : "—"}
                 </p>
@@ -355,7 +355,7 @@ function ProfilesTab() {
 
             {p.recurring_issues.length > 0 && (
               <div className="mt-3">
-                <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Recurring Issues</p>
+                <p className="text-2xs font-semibold text-ps-hint uppercase tracking-wider mb-1">Recurring Issues</p>
                 <div className="flex flex-wrap gap-1">
                   {p.recurring_issues.map((ri, i) => (
                     <span key={i} className="text-2xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
@@ -429,7 +429,7 @@ function AnomaliesTab() {
   );
 
   if (loadError) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+    <div className="flex flex-col items-center justify-center py-20 text-ps-hint gap-3">
       <AlertTriangle size={40} className="text-red-400" />
       <p className="font-medium text-red-600">{loadError}</p>
       <button onClick={load} disabled={loading} className="text-sm px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-40">Retry</button>
@@ -437,7 +437,7 @@ function AnomaliesTab() {
   );
 
   if (anomalies.length === 0) return (
-    <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+    <div className="flex flex-col items-center justify-center py-20 text-ps-hint gap-3">
       <ShieldAlert size={40} className="text-slate-300" />
       <p className="font-medium text-slate-500">No open anomalies</p>
       <p className="text-sm">Pattern analysis shows no unusual deviations.</p>
@@ -446,7 +446,7 @@ function AnomaliesTab() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-ps-hint">
         {anomalies.length}{win?.hasMore ? "+" : ""} open anomal{anomalies.length === 1 ? "y" : "ies"}
       </p>
       {win && (
@@ -470,7 +470,7 @@ function AnomaliesTab() {
                   <span className="text-2xs font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
                     {a.anomaly_type.replace(/_/g, " ")}
                   </span>
-                  <span className="text-2xs text-slate-400">{a.period}</span>
+                  <span className="text-2xs text-ps-hint">{a.period}</span>
                 </div>
                 <h3 className="font-semibold text-slate-800 text-sm">{a.metric_name.replace(/_/g, " ")}</h3>
                 <p className="text-sm text-slate-500 mt-0.5">{a.explanation}</p>
@@ -483,26 +483,26 @@ function AnomaliesTab() {
 
             <div className="mt-3 grid grid-cols-3 gap-3">
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Baseline</p>
+                <p className="text-3xs font-semibold text-ps-hint uppercase tracking-wider">Baseline</p>
                 <p className="text-lg font-bold text-slate-700 mt-0.5">{a.baseline_value.toFixed(1)}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Actual</p>
+                <p className="text-3xs font-semibold text-ps-hint uppercase tracking-wider">Actual</p>
                 <p className={`text-lg font-bold mt-0.5 ${deviationColor}`}>{a.actual_value.toFixed(1)}</p>
               </div>
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <p className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">Score</p>
+                <p className="text-3xs font-semibold text-ps-hint uppercase tracking-wider">Score</p>
                 <p className="text-lg font-bold text-slate-700 mt-0.5">{a.deviation_score.toFixed(2)}</p>
               </div>
             </div>
 
             {a.evidence.length > 0 && (
               <div className="mt-3 bg-slate-50 rounded-lg p-3">
-                <p className="text-2xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Evidence</p>
+                <p className="text-2xs font-semibold text-ps-hint uppercase tracking-wider mb-1.5">Evidence</p>
                 <ul className="space-y-1">
                   {a.evidence.map((e, i) => (
                     <li key={i} className="flex items-start gap-1.5 text-sm text-slate-600">
-                      <ChevronRight size={12} className="mt-0.5 text-slate-400 shrink-0" />
+                      <ChevronRight size={12} className="mt-0.5 text-ps-hint shrink-0" />
                       {e}
                     </li>
                   ))}

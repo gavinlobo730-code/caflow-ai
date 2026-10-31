@@ -126,7 +126,7 @@ export default function CrossClientMatchesPage() {
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ps-hint" />
           <input
             className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-ps-hint focus:outline-none focus:border-brand"
             placeholder="Search entity name…"
@@ -164,7 +164,7 @@ export default function CrossClientMatchesPage() {
       )}
 
       {!loading && !error && filtered.length === 0 && (
-        <div className="text-center py-16 text-gray-400 text-sm">
+        <div className="text-center py-16 text-ps-hint text-sm">
           No cross-client matches found.
         </div>
       )}
@@ -185,7 +185,7 @@ export default function CrossClientMatchesPage() {
                         {m.match_type?.replace(/_/g, " ")}
                       </Badge>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-ps-hint mt-1">
                       Confidence: {Math.round((m.confidence_score ?? 0) * 100)}%
                     </p>
                     {m.notes && (

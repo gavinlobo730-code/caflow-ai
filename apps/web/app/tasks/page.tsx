@@ -68,7 +68,7 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
   return (
     <div className={`rounded-xl border px-4 py-3 flex flex-col gap-0.5 ${color}`}>
       <span className="text-2xl font-bold">{value}</span>
-      <span className="text-xs font-medium opacity-70">{label}</span>
+      <span className="text-xs font-medium">{label}</span>
     </div>
   );
 }
@@ -599,7 +599,7 @@ export default function TasksPage() {
       searchable: true, sortable: true,
       render: (t) => (
         <span className="whitespace-nowrap text-ps-label">
-          {t.assignee_name ?? <span className="text-ps-disabled">Unassigned</span>}
+          {t.assignee_name ?? <span className="text-ps-hint">Unassigned</span>}
         </span>
       ),
     },
@@ -633,7 +633,7 @@ export default function TasksPage() {
             {overdue ? <AlertTriangle size={11} /> : <Clock size={11} />}
             {fmt(t.due_date)}
           </span>
-        ) : <span className="text-ps-disabled">—</span>;
+        ) : <span className="text-ps-hint">—</span>;
       },
     },
     {

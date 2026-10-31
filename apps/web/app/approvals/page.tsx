@@ -141,7 +141,7 @@ export default function ApprovalsPage() {
       {!error && loading ? (
         <ListSkeleton rows={4} />
       ) : !error && items.length === 0 ? (
-        <div className="py-12 text-center text-xs text-gray-400">
+        <div className="py-12 text-center text-xs text-ps-hint">
           <Clock size={22} className="mx-auto mb-2 opacity-40" />
           No {tab} approvals.
         </div>
@@ -151,7 +151,7 @@ export default function ApprovalsPage() {
             <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-brand truncate">{r.summary || r.request_type}</p>
-                <p className="text-2xs text-gray-400 mt-0.5">
+                <p className="text-2xs text-ps-hint mt-0.5">
                   <span className="font-mono">{r.request_type}</span>
                   {r.requested_by_email ? ` · by ${r.requested_by_email}` : ""}
                   {r.reason ? ` · ${r.reason}` : ""}

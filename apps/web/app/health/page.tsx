@@ -245,7 +245,7 @@ export default function HealthPage() {
       render: (c) => (
         <span>
           <span className={`text-lg font-bold ${scoreTextClass(c.overall_score)}`}>{c.overall_score}</span>
-          <span className="text-xs text-gray-400">/100</span>
+          <span className="text-xs text-ps-hint">/100</span>
         </span>
       ),
     },
@@ -334,13 +334,13 @@ export default function HealthPage() {
         <Card className="bg-state-attention-surface border-state-attention-border shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-amber-600">{atRiskCount}</p>
-            <p className="text-xs text-amber-500 mt-1">At Risk ({gradeRangeLabel("At Risk")})</p>
+            <p className="text-xs text-state-attention mt-1">At Risk ({gradeRangeLabel("At Risk")})</p>
           </CardContent>
         </Card>
         <Card className="bg-green-50 border-green-200 shadow-sm">
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold text-green-600">{healthyCount}</p>
-            <p className="text-xs text-green-500 mt-1">Healthy ({gradeRangeLabel("Healthy")})</p>
+            <p className="text-xs text-state-ready mt-1">Healthy ({gradeRangeLabel("Healthy")})</p>
           </CardContent>
         </Card>
       </div>
@@ -390,7 +390,7 @@ export default function HealthPage() {
             }`}
           >
             {tab}
-            <span className="ml-1 text-gray-400">
+            <span className="ml-1 text-ps-hint">
               (
               {tab === "All"
                 ? clients.length

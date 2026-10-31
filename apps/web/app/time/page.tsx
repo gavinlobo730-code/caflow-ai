@@ -269,7 +269,7 @@ export default function TimeTrackingPage() {
               <Plus size={14} /> Manual Entry
             </Button>
             {!isRunning && (
-              <Button size="sm" onClick={() => setShowStart(true)} className="gap-1.5 bg-green-600 hover:bg-green-700">
+              <Button size="sm" onClick={() => setShowStart(true)} className="gap-1.5 bg-green-700 hover:bg-green-800">
                 <Play size={14} /> Start Timer
               </Button>
             )}
@@ -321,7 +321,7 @@ export default function TimeTrackingPage() {
               <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
               <div>
                 <p className="text-sm font-semibold text-green-800">Timer Running</p>
-                <p className="text-xs text-green-600">
+                <p className="text-xs text-state-ready">
                   {runningEntry.client_id ? (clientMap.get(runningEntry.client_id) ?? "Unknown client") : "No client"}
                   {runningEntry.description ? ` — ${runningEntry.description}` : ""}
                 </p>
@@ -555,7 +555,7 @@ export default function TimeTrackingPage() {
                 size="sm"
                 onClick={handleStartTimer}
                 disabled={starting}
-                className="bg-green-600 hover:bg-green-700 gap-1.5"
+                className="bg-green-700 hover:bg-green-800 gap-1.5"
               >
                 {starting ? <Loader2 className="animate-spin" size={13} /> : <Play size={13} />}
                 Start

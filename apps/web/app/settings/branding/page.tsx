@@ -104,7 +104,7 @@ function BrandingPreview({ branding, firmName }: { branding: Branding; firmName:
             </span>
           </div>
         )}
-        <span className="text-white/70 text-xs" style={{ fontFamily: branding.font_family }}>
+        <span className="text-white text-xs" style={{ fontFamily: branding.font_family }}>
           {branding.tagline || "Chartered Accountants"}
         </span>
       </div>

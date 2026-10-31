@@ -361,7 +361,7 @@ function AuditLogContent() {
         <div>
           <label className="text-xs text-ps-label">
             User (email)
-            <span className="ml-1 text-ps-disabled" title="Searches the events already loaded, not the whole log — the server matches a user by id, not by an email fragment.">
+            <span className="ml-1 text-ps-hint" title="Searches the events already loaded, not the whole log — the server matches a user by id, not by an email fragment.">
               · loaded only
             </span>
           </label>

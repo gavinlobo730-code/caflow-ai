@@ -121,20 +121,20 @@ export default function LoginHistoryPage() {
       {loading ? (
         <PageLoader onRetry={() => { void load(); }} />
       ) : events.length === 0 ? (
-        <div className="py-12 text-center text-xs text-gray-400">No login events recorded yet.</div>
+        <div className="py-12 text-center text-xs text-ps-hint">No login events recorded yet.</div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {events.map((e) => (
             <div key={e.id} className="flex items-center justify-between px-4 py-2.5 border-b border-ps-border text-xs">
               <div className="min-w-0">
                 <span className="text-brand font-medium">{e.email || e.user_id || "—"}</span>
-                {e.ip ? <span className="text-gray-400"> · {e.ip}</span> : null}
+                {e.ip ? <span className="text-ps-hint"> · {e.ip}</span> : null}
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className={`px-2 py-0.5 rounded-full font-medium ${EVENT_STYLE[e.event] ?? "bg-gray-100 text-gray-500"}`}>
                   {e.event}
                 </span>
-                <span className="text-gray-400">{formatDateTime(e.created_at, "")}</span>
+                <span className="text-ps-hint">{formatDateTime(e.created_at, "")}</span>
               </div>
             </div>
           ))}

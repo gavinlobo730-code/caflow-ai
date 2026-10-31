@@ -256,7 +256,7 @@ function LockYearContent() {
         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <div className="text-sm text-amber-800">
           <p className="font-medium">Locking a year prevents all journal entries, invoice edits, and adjustments for that period.</p>
-          <p className="text-xs mt-1 text-amber-600">Only Partners can lock or unlock. Unlock before making any corrections.</p>
+          <p className="text-xs mt-1 text-state-attention">Only Partners can lock or unlock. Unlock before making any corrections.</p>
         </div>
       </div>
 
@@ -321,7 +321,7 @@ function LockYearContent() {
         <div className="flex items-center gap-2 text-sm text-ps-label">
           <KeyRound size={14} className="text-ps-hint" />
           <span>Lock PIN: </span>
-          <span className={`font-medium ${pinSet ? "text-green-700" : "text-amber-600"}`}>
+          <span className={`font-medium ${pinSet ? "text-green-700" : "text-state-attention"}`}>
             {pinSet ? "Set" : "Not set — will be created on first lock"}
           </span>
         </div>

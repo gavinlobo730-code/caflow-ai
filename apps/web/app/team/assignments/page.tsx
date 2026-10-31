@@ -112,10 +112,10 @@ export default function AssignmentsPage() {
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
           {/* Staff list */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-3 py-2 border-b border-ps-border text-2xs font-semibold uppercase tracking-wide text-gray-400">
+            <div className="px-3 py-2 border-b border-ps-border text-2xs font-semibold uppercase tracking-wide text-ps-hint">
               Staff
             </div>
-            {members.length === 0 && <p className="px-3 py-4 text-xs text-gray-400">No staff members.</p>}
+            {members.length === 0 && <p className="px-3 py-4 text-xs text-ps-hint">No staff members.</p>}
             {members.map((m) => (
               <button
                 key={m.id}
@@ -125,7 +125,7 @@ export default function AssignmentsPage() {
                 }`}
               >
                 <p className="text-sm font-medium">{m.full_name || m.email || "—"}</p>
-                <p className={`text-2xs ${selectedUser === m.id ? "text-white/70" : "text-gray-400"}`}>{m.role}</p>
+                <p className={`text-2xs ${selectedUser === m.id ? "text-white/90" : "text-ps-hint"}`}>{m.role}</p>
               </button>
             ))}
           </div>
@@ -133,18 +133,18 @@ export default function AssignmentsPage() {
           {/* Client assignment grid */}
           <div className="bg-white border border-gray-200 rounded-xl">
             {!selectedUser ? (
-              <p className="px-4 py-10 text-center text-xs text-gray-400">Select a staff member to manage their clients.</p>
+              <p className="px-4 py-10 text-center text-xs text-ps-hint">Select a staff member to manage their clients.</p>
             ) : (
               <>
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-ps-border focus-within:ring-2 focus-within:ring-inset focus-within:ring-brand">
-                  <Search size={14} className="text-gray-400" />
+                  <Search size={14} className="text-ps-hint" />
                   <input
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     placeholder="Filter clients…"
                     className="flex-1 text-sm outline-none"
                   />
-                  <span className="text-2xs text-gray-400">{assigned.size} assigned</span>
+                  <span className="text-2xs text-ps-hint">{assigned.size} assigned</span>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto">
                   {shownClients.map((c) => {
@@ -158,7 +158,7 @@ export default function AssignmentsPage() {
                       >
                         <div className="text-left">
                           <p className="text-sm text-brand">{c.client_name}</p>
-                          <p className="text-2xs text-gray-400">{c.entity_type}{c.gstin ? ` · ${c.gstin}` : ""}</p>
+                          <p className="text-2xs text-ps-hint">{c.entity_type}{c.gstin ? ` · ${c.gstin}` : ""}</p>
                         </div>
                         <span className={`flex items-center justify-center w-5 h-5 rounded border ${
                           on ? "bg-brand border-brand text-white" : "border-gray-300"
@@ -168,7 +168,7 @@ export default function AssignmentsPage() {
                       </button>
                     );
                   })}
-                  {shownClients.length === 0 && <p className="px-4 py-6 text-xs text-gray-400">No clients.</p>}
+                  {shownClients.length === 0 && <p className="px-4 py-6 text-xs text-ps-hint">No clients.</p>}
                 </div>
               </>
             )}

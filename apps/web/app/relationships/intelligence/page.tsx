@@ -262,13 +262,13 @@ export default function RelationshipIntelligencePage() {
           )}
           {sec185Count !== null && sec185Count > 0 && (
             <div className="flex items-start gap-3 bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3">
-              <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+              <AlertTriangle size={16} className="text-state-attention mt-0.5 shrink-0" />
               <div>
                 <p className="text-sm font-medium text-amber-800">
                   Section 185 Alert — {sec185Count} loan
                   {sec185Count !== 1 ? "s" : ""} to director(s) detected
                 </p>
-                <p className="text-xs text-amber-600 mt-0.5">
+                <p className="text-xs text-state-attention mt-0.5">
                   Companies Act Sec 185 prohibits loans to directors without
                   special resolution. CA review required before any action.
                 </p>
@@ -277,7 +277,7 @@ export default function RelationshipIntelligencePage() {
           )}
 
           {loans.length === 0 ? (
-            <div className="text-center py-16 text-gray-400 text-sm">
+            <div className="text-center py-16 text-ps-hint text-sm">
               No loans recorded yet.
             </div>
           ) : (
@@ -343,7 +343,7 @@ export default function RelationshipIntelligencePage() {
       {!loading && !error && activeTab === "properties" && (
         <div className="space-y-3">
           {properties.length === 0 ? (
-            <div className="text-center py-16 text-gray-400 text-sm">
+            <div className="text-center py-16 text-ps-hint text-sm">
               No properties recorded yet.
             </div>
           ) : (
@@ -395,7 +395,7 @@ export default function RelationshipIntelligencePage() {
       {!loading && !error && activeTab === "cross-client" && (
         <div className="space-y-3">
           {crossMatches.length === 0 ? (
-            <div className="text-center py-16 text-gray-400 text-sm">
+            <div className="text-center py-16 text-ps-hint text-sm">
               No cross-client entity links found.
             </div>
           ) : (

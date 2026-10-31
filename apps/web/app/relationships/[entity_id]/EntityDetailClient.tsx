@@ -489,10 +489,10 @@ export default function EntityDetailPage() {
   if (error || !entity) {
     return (
       <div className="p-6">
-        <Link href="/relationships" className="flex items-center gap-1 text-xs text-slate-400 hover:text-white mb-4">
+        <Link href="/relationships" className="flex items-center gap-1 text-xs text-ps-hint hover:text-ps-ink mb-4">
           <ChevronLeft size={14} /> Back
         </Link>
-        <div className="bg-red-900/30 text-red-400 rounded-lg px-5 py-4 text-sm border border-red-800">
+        <div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm border border-state-problem-border">
           {error ?? "Entity not found"}
         </div>
       </div>

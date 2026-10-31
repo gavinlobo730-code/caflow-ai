@@ -1136,7 +1136,7 @@ export default function PipelinePage() {
               {/* Cards */}
               <div className={`p-3 space-y-3 min-h-[200px] ${colors.bg}`}>
                 {stageLeads.length === 0 && (
-                  <div className="text-center py-10 text-xs text-ps-hint">
+                  <div className="text-center py-10 text-xs text-ps-label">
                     No leads in this stage
                   </div>
                 )}

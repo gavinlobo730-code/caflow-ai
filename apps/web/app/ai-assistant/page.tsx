@@ -363,7 +363,7 @@ export default function AIAssistantPage() {
             <Send size={15} />
           </button>
         </div>
-        <p className="text-center text-xs text-ps-disabled mt-2">
+        <p className="text-center text-xs text-ps-hint mt-2">
           AI responses are for guidance only &mdash; always apply CA professional judgement before filing.
         </p>
       </div>
