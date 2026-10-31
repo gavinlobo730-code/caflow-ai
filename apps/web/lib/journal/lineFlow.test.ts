@@ -3,7 +3,7 @@
 // Run with: node --experimental-strip-types --test lib/journal/lineFlow.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { afterEnter, balancingLeg, isAmountless } from "./lineFlow.ts";
+import { afterEnter, afterTab, balancingLeg, isAmountless } from "./lineFlow.ts";
 
 const L = (debit = "", credit = "") => ({ debit, credit });
 
@@ -62,4 +62,18 @@ test("Enter moves to the next line, and on the last adds one only while unbalanc
   assert.deepEqual(afterEnter(2, 3, false), { kind: "add" });
   assert.deepEqual(afterEnter(2, 3, true), { kind: "stay" });
   assert.deepEqual(afterEnter(1, 2, false), { kind: "add" });
+});
+
+test("Tab from the last cell of the last line adds a line only while the entry is out of balance", () => {
+  assert.deepEqual(afterTab(2, 3, false), { kind: "add" });
+  assert.deepEqual(afterTab(2, 3, true), { kind: "default" }, "a balanced entry never grows a line nobody asked for");
+});
+
+test("Tab from any line but the last is the browser's own", () => {
+  assert.deepEqual(afterTab(0, 3, false), { kind: "default" });
+  assert.deepEqual(afterTab(1, 3, false), { kind: "default" });
+});
+
+test("a one-line entry is its own last line", () => {
+  assert.deepEqual(afterTab(0, 1, false), { kind: "add" });
 });

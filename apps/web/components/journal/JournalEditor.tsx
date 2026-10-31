@@ -45,7 +45,7 @@ import { useUnsentDraft } from "@/lib/drafts/useUnsentDraft";
 import {
   applyJournalDraft, validateJournalDraft, type JournalDraftFields,
 } from "@/lib/journal/journalDraft";
-import { afterEnter, balancingLeg, isAmountless } from "@/lib/journal/lineFlow";
+import { afterEnter, afterTab, balancingLeg, isAmountless } from "@/lib/journal/lineFlow";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 // The totals are a RENDERING, not an input: Indian grouping (D6) from the one
 // authority, the same one the Journal list reads. `rupeeInputFromPaise` is the
@@ -306,6 +306,19 @@ export function JournalEditor({
     else if (next.kind === "add") addLine();
   }
 
+  /** Tab from the last line's narration adds the next line while the entry is out of balance (lib/journal/lineFlow `afterTab`), so a
+   *  hand that tabs, as a Tally-trained one does, finishes an entry without reaching for the Add line button. Anything else about the
+   *  key is the narration cell's Enter rule. */
+  function onNarrationKeyDown(e: React.KeyboardEvent, idx: number) {
+    if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !readOnly
+        && afterTab(idx, lines.length, isBalanced).kind === "add") {
+      e.preventDefault();
+      addLine();
+      return;
+    }
+    onLineEnter(e, idx);
+  }
+
   /** A line carries one side or the other, never both — typing in one clears the other. */
   function setAmount(idx: number, side: "debit" | "credit", raw: string) {
     const other = side === "debit" ? "credit" : "debit";
@@ -552,6 +565,7 @@ export function JournalEditor({
                       <input inputMode="decimal" value={line.debit} disabled={readOnly}
                              aria-invalid={bad("debit")} aria-label="Debit"
                              onChange={(e) => setAmount(idx, "debit", e.target.value)}
+                             onFocus={(e) => e.currentTarget.select()}
                              onKeyDown={(e) => onLineEnter(e, idx)}
                              placeholder="0.00" className={amountCls("debit")} />
                     </td>
@@ -559,6 +573,7 @@ export function JournalEditor({
                       <input inputMode="decimal" value={line.credit} disabled={readOnly}
                              aria-invalid={bad("credit")} aria-label="Credit"
                              onChange={(e) => setAmount(idx, "credit", e.target.value)}
+                             onFocus={(e) => e.currentTarget.select()}
                              onKeyDown={(e) => onLineEnter(e, idx)}
                              placeholder="0.00" className={amountCls("credit")} />
                     </td>
@@ -566,7 +581,7 @@ export function JournalEditor({
                       <input value={line.narration} disabled={readOnly} placeholder="optional"
                              aria-label="Line narration"
                              onChange={(e) => setLine(idx, { narration: e.target.value })}
-                             onKeyDown={(e) => onLineEnter(e, idx)}
+                             onKeyDown={(e) => onNarrationKeyDown(e, idx)}
                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs disabled:bg-ps-bg" />
                     </td>
                     <td className="py-1.5 pl-1">
