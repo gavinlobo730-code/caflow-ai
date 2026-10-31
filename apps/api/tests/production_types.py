@@ -76,6 +76,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     # `users.first_run_dismissed_at` (557). The schema fixture now matches production row for row (md5
     # b164e362b13a15648f57a55b872dd5b1 over 5,197 columns in 337 tables, both sides ordered by C collation), so an entry belongs here
     # only for a migration this branch has not merged yet. Migration 558 adds no column.
+    ("tds_challans", "journal_entry_id"): "migration 568 (POST-A-272): the ledger entry that paid the challan; a link, never a posting",
 }
 
 

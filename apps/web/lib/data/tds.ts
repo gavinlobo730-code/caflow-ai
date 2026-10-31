@@ -775,6 +775,59 @@ export async function retractTdsChallan(id: string, reason: string): Promise<Ret
   return resp.data;
 }
 
+/** One ledger entry that could have paid a challan, with the server's sentence for why it is offered (POST-A-272). */
+export interface ChallanLedgerCandidate {
+  journal_entry_id: string;
+  entry_date: string;
+  reference_no: string | null;
+  narration: string | null;
+  /** What the entry debited to the TDS Payable account the challan's section belongs to. */
+  liability_debit_paise: number;
+  /** What left the bank on that entry: the figure a challan is matched on. */
+  entry_total_paise: number;
+  days_apart: number;
+  grade: "exact" | "near";
+  reason: string;
+}
+
+/** `GET /challans/{id}/ledger-candidates`: the entries inside a week of the payment date that debited the right TDS Payable account, best
+ *  first. `gap` is the server's sentence when it could not look (no such account, no payment date); `journal_entry_id` is set when the
+ *  challan is already tied. Nothing is tied by reading this. */
+export interface ChallanLedgerCandidates {
+  challan_id: string;
+  account_name: string;
+  window_days: number;
+  journal_entry_id: string | null;
+  candidates: ChallanLedgerCandidate[];
+  gap: string | null;
+}
+
+export async function fetchChallanLedgerCandidates(id: string): Promise<ChallanLedgerCandidates> {
+  const resp = await authedFetch<unknown>(`/api/tds-workspace/challans/${encodeURIComponent(id)}/ledger-candidates`);
+  if (!resp.success) throw new Error(resp.error ?? "Could not look for the ledger entry");
+  const shaped = objectWithLists<ChallanLedgerCandidates>(resp.data, "candidates");
+  if (!shaped) throw new Error("The server's answer about the ledger entries could not be read");
+  return shaped;
+}
+
+/** Tie a recorded challan to the ledger entry that paid it (`POST /challans/{id}/link-payment`, tds:compute). A LINK, never a
+ *  posting. The server's refusal (the entry is another client's, does not debit the right account, is already another challan's) is
+ *  thrown as written. */
+export async function linkChallanPayment(id: string, journalEntryId: string): Promise<{ challan_id: string; journal_entry_id: string }> {
+  const resp = await authedFetch<{ challan_id: string; journal_entry_id: string }>(
+    `/api/tds-workspace/challans/${encodeURIComponent(id)}/link-payment`,
+    { method: "POST", body: JSON.stringify({ journal_entry_id: journalEntryId }) });
+  if (!resp.success) throw new Error(resp.error ?? "Could not tie the challan to the ledger entry");
+  return resp.data;
+}
+
+/** Take back the link (`POST /challans/{id}/unlink-payment`). The challan and the entry are untouched. */
+export async function unlinkChallanPayment(id: string): Promise<void> {
+  const resp = await authedFetch<{ challan_id: string }>(
+    `/api/tds-workspace/challans/${encodeURIComponent(id)}/unlink-payment`, { method: "POST" });
+  if (!resp.success) throw new Error(resp.error ?? "Could not take back the link");
+}
+
 export async function deleteTdsDeduction(id: string): Promise<void> {
   const resp = await authedFetch<{ deleted: string }>(
     `/api/tds-workspace/deductions/${encodeURIComponent(id)}`, { method: "DELETE" });

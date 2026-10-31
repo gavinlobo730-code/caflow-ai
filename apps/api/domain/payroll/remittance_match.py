@@ -3,7 +3,7 @@
 WHAT THIS IS FOR
 
 `public.statutory_remittances.journal_entry_id` (migration 365) is a LINK, not
-a posting path. `services/bank_posting_service.post` already writes
+a posting path. the bank-posting service's `post` already writes
 Dr <liability> / Cr Bank when the CA passes the bank statement line, and it is
 the one path for money movement — posting from the remittance record as well
 would debit the statutory liability twice.

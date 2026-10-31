@@ -30,6 +30,7 @@ from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
 from services import tds_register_lists_service as lists
 from services import tds_challan_retraction_service as challan_retraction
+from services import tds_challan_ledger_service as challan_ledger
 from services import lower_deduction_certificate_service as ldc_service
 from domain.tds import screen_counts
 from services.tds_register_lists_service import TDS_LIST_MAX
@@ -1119,6 +1120,97 @@ def retract_challan(
         raise
     except Exception as e:                                        # noqa: BLE001
         return _could_not(e, "retract the TDS challan")
+
+
+def _challan_row(firm_id: str, challan_id: str) -> Optional[dict]:
+    """The challan as the firm holds it, with NO client check: every caller passes it through `_visible_or_none`, which is what makes a
+    row in a client the caller may not see read as a missing one. Mock mode has no ledger to tie it to and answers 409."""
+    if _USE_MOCK:
+        raise HTTPException(status_code=409, detail="Mock mode keeps no ledger, so a challan cannot be tied to an entry.")
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("tds_challans").select("*").eq("id", challan_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+    return rows[0] if rows else None
+
+
+@router.get("/challans/{challan_id}/ledger-candidates")
+def challan_ledger_candidates(challan_id: uuid.UUID, current_user: dict = Depends(rbac("tds", "read"))):
+    """The ledger entries that could have paid this challan, best first, each with a sentence saying why (POST-A-272). READS ONLY:
+    nothing is tied here. The figure matched is what left the bank (the entry's total), because a challan can carry interest the
+    liability does not. A challan that is already tied says so in `journal_entry_id`."""
+    try:
+        rec = _visible_or_none(current_user, _challan_row(current_user["firm_id"], str(challan_id)))
+        if rec is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        from core.supabase_client import get_supabase
+        return api_response(True, challan_ledger.payment_candidates(
+            get_supabase(), firm_id=current_user["firm_id"], client_id=rec["client_id"], challan=rec))
+    except HTTPException:
+        raise
+    except Exception as e:                                        # noqa: BLE001
+        return _could_not(e, "look for the ledger entry that paid the challan")
+
+
+class LinkChallanPaymentRequest(BaseModel):
+    """The ledger entry the CA says paid the challan."""
+    journal_entry_id: uuid.UUID
+
+
+@router.post("/challans/{challan_id}/link-payment")
+def link_challan_payment(
+    challan_id: uuid.UUID,
+    body: LinkChallanPaymentRequest,
+    current_user: dict = Depends(rbac("tds", "compute")),
+):
+    """Tie a recorded challan to the ledger entry that paid it (POST-A-272). A LINK, NEVER A POSTING: the bank line the CA passes
+    already writes Dr TDS Payable / Cr Bank, and posting from the challan as well would debit it twice. tds:compute (Executive and
+    above): editing a register row is the tier of recording one, and the tier migration 345 gives UPDATE on this table; removing a row
+    (retract) is a tier higher. Refused in words unless the
+    entry is a live entry of this client that debits the TDS Payable account the challan's section belongs to, and is not already the
+    payment of another challan. Audited as the person who tied it.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this edits the practice's own register and transmits nothing."""
+    firm_id = current_user["firm_id"]
+    try:
+        rec = _visible_or_none(current_user, _challan_row(firm_id, str(challan_id)))
+        if rec is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        from core.supabase_client import get_supabase
+        done = challan_ledger.link_payment(get_supabase(), firm_id=firm_id, client_id=rec["client_id"], challan=rec,
+                                           journal_entry_id=str(body.journal_entry_id))
+        log_event(firm_id=firm_id, entity_type="tds_challan", entity_id=str(challan_id), action="link_payment",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  old_data={"journal_entry_id": None}, new_data={"journal_entry_id": done["journal_entry_id"]},
+                  metadata={"client_id": rec["client_id"], "challan_no": rec.get("challan_no")})
+        return api_response(True, done)
+    except challan_ledger.LinkRefused as refusal:
+        raise HTTPException(status_code=refusal.status, detail=refusal.sentence) from refusal
+    except HTTPException:
+        raise
+    except Exception as e:                                        # noqa: BLE001
+        return _could_not(e, "tie the challan to the ledger entry")
+
+
+@router.post("/challans/{challan_id}/unlink-payment")
+def unlink_challan_payment(challan_id: uuid.UUID, current_user: dict = Depends(rbac("tds", "compute"))):
+    """Take back the link between a challan and a ledger entry (POST-A-272). The challan and the entry are untouched; the challan
+    reads "not tied to an entry" again. Audited as the person who took it back."""
+    firm_id = current_user["firm_id"]
+    try:
+        rec = _visible_or_none(current_user, _challan_row(firm_id, str(challan_id)))
+        if rec is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        from core.supabase_client import get_supabase
+        done = challan_ledger.unlink_payment(get_supabase(), firm_id=firm_id, client_id=rec["client_id"], challan=rec)
+        log_event(firm_id=firm_id, entity_type="tds_challan", entity_id=str(challan_id), action="unlink_payment",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  old_data={"journal_entry_id": done["was"]}, new_data={"journal_entry_id": None},
+                  metadata={"client_id": rec["client_id"], "challan_no": rec.get("challan_no")})
+        return api_response(True, done)
+    except challan_ledger.LinkRefused as refusal:
+        raise HTTPException(status_code=refusal.status, detail=refusal.sentence) from refusal
+    except HTTPException:
+        raise
+    except Exception as e:                                        # noqa: BLE001
+        return _could_not(e, "take back the challan's ledger link")
 
 
 @router.get("/challans/{challan_id}")

@@ -73,7 +73,7 @@ test("a list that the server cut short says so, and a refused read is said, not 
 
 test("the Challans tab prints no Status column (the server writes `deposited` for every challan) and shows the minor head instead", () => {
   assert.ok(!/"Section", "Status"/.test(PAGE), "the Challans tab has a Status column again");
-  assert.ok(/\["BSR Code", "Payment Date", "Challan No\.", "Amount", "Period", "FY", "Section", "Minor head"\]/.test(PAGE), "the Challans tab's columns changed");
+  assert.ok(/\["BSR Code", "Payment Date", "Challan No\.", "Amount", "Period", "FY", "Section", "Minor head", "Ledger"\]/.test(PAGE), "the Challans tab's columns changed");
   assert.ok(/\{minorHeadLabel\(c\.minor_head\)\}/.test(PAGE), "the list does not tell a demand payment (400) from tax paid over (200)");
   assert.ok(!/MINOR_HEAD_LABEL\[c\.minor_head/.test(PAGE), "the list reads the head with a fallback to 200: an unknown head would read as the ordinary one");
   // The client's own Compliance -> TDS Challans tab says the same thing in the same words, from the same module.
