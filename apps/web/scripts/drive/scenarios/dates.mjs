@@ -97,6 +97,25 @@ async function openSelfAssessmentChallan(env) {
   await page.locator("label:has-text('Tax (₹)') input").first().fill("125000");
 }
 
+/** The post-dated cheque form on the sales screen's cheques tab, with the party, the number and the amount filled. */
+async function openPostDatedCheque(env) {
+  const { page, stub } = env;
+  const register = { as_of: "2026-10-31", cheques: [], notes: [], includes_finished: false, summary: {
+    received: { due: { count: 0, amount_paise: 0 }, not_due: { count: 0, amount_paise: 0 }, converted: { count: 0, amount_paise: 0 }, cancelled: { count: 0, amount_paise: 0 } },
+    issued: { due: { count: 0, amount_paise: 0 }, not_due: { count: 0, amount_paise: 0 }, converted: { count: 0, amount_paise: 0 }, cancelled: { count: 0, amount_paise: 0 } },
+  } };
+  stub.route({ method: "GET", re: /post-dated-cheques\/options/, reply: () => ok({
+    parties: [{ id: "c-beta", name: "Beta Stores", gstin: null }], bank_accounts: [], documents: [],
+  }) });
+  stub.route({ method: "GET", re: /post-dated-cheques\?/, reply: () => ok(register) });
+  stub.route({ method: "POST", re: /post-dated-cheques$/, reply: () => ok({ id: "pdc-1" }) });
+  await page.goto(env.at("/sales/?tab=post-dated-cheques"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record a cheque" }).click();
+  await pick(page, page.locator('button[aria-label="Customer"]'), "Beta Stores");
+  await page.getByLabel("Cheque number").fill("000451");
+  await page.getByLabel("Amount (₹)").fill("25000");
+}
+
 /** A modal over a drawer: the open dialog is the last one. */
 const modalOf = (page) => page.getByRole("dialog").last();
 
@@ -230,6 +249,11 @@ const EDITORS = [
     open: openSelfAssessmentChallan,
     fields: [{ box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on", key: "deposit_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/,
+  },
+  {
+    id: "post-dated-cheque", title: "post-dated cheque form", open: openPostDatedCheque,
+    fields: [{ box: (p) => p.getByLabel("Cheque date"), label: "Cheque date", key: "cheque_date", full: "15/11/2026", iso: "2026-11-15" }],
+    save: (p) => p.getByRole("button", { name: "Record cheque", exact: true }), write: /post-dated-cheques$/,
   },
   ...[
     { side: "sales", name: "sales credit note", action: "Credit Note", submit: "Create Credit Note", label: "Credit note date", key: "credit_note_date", write: /\/api\/credit-notes\/$/ },

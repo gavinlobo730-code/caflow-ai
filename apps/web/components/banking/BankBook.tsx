@@ -12,6 +12,7 @@ import { RefreshCw, Download, Landmark } from "lucide-react";
 import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { api } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
+import { DateInput } from "@/components/ui/date-input";
 import { fmt, BankAccount } from "@/components/banking/shared";
 import { objectOrNull } from "@/lib/api/shape";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
@@ -232,12 +233,12 @@ export function BankRegister({ clientId }: { clientId: string }) {
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">From</span>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+          <DateInput value={dateFrom} onChange={setDateFrom}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">To</span>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+          <DateInput value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">

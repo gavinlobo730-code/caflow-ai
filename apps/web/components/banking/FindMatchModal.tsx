@@ -9,6 +9,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { X } from "lucide-react";
 import { api } from "@/lib/api";
+import { DateInput } from "@/components/ui/date-input";
 import { fmt, rsToP, QueueTxn } from "@/components/banking/shared";
 import { formatDate } from "@/lib/dates/format";
 
@@ -172,13 +173,13 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
             </select>
             <label className="flex items-center gap-1 text-3xs text-ps-hint">
               From
-              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+              <DateInput value={dateFrom} onChange={setDateFrom}
                 aria-label="Dated from"
                 className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
             </label>
             <label className="flex items-center gap-1 text-3xs text-ps-hint">
               To
-              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+              <DateInput value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
                 aria-label="Dated to"
                 className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
             </label>
