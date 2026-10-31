@@ -509,6 +509,29 @@ def get_bf_loss(firm_id: str, loss_id: str) -> Optional[dict]:
     return res.data[0] if res.data else None
 
 
+def store_bf_loss_use(firm_id: str, loss_id: str, before: dict, columns: dict) -> bool:
+    """Write the three columns `loss_utilisation.after_filing` returns, only while the row still reads as it did when they were worked out.
+
+    The totals are compared because they are what `utilize_bf_loss` (a hand edit) and a filing both move, and the database's own checks
+    (`chk_remaining_consistency`, `chk_utilized_lte_original`) hold the pair together. A write that matches no row returns False and writes
+    nothing: the caller says so and leaves the record as it was. The compare cannot see an entry swapped for another of the same size by a
+    concurrent write; the acknowledgement that drives this can only be recorded once per filing, which is what keeps that from mattering."""
+    if _USE_MOCK:
+        loss = _MOCK_LOSSES.get(loss_id)
+        if not loss or loss.get("firm_id") != firm_id:
+            return False
+        if (loss.get("utilized_amount_paise"), loss.get("remaining_amount_paise")) != (
+                before.get("utilized_amount_paise"), before.get("remaining_amount_paise")):
+            return False
+        loss.update(columns)
+        return True
+    sb = _supabase()
+    res = sb.table("brought_forward_losses").update(columns).eq("id", loss_id).eq("firm_id", firm_id).eq(
+        "utilized_amount_paise", before.get("utilized_amount_paise")
+    ).eq("remaining_amount_paise", before.get("remaining_amount_paise")).execute()
+    return bool(res.data)
+
+
 def utilize_bf_loss(
     firm_id: str, loss_id: str, utilization_paise: int
 ) -> dict:

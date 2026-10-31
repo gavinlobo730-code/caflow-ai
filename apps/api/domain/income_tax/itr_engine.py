@@ -804,6 +804,7 @@ class ITREngine:
                     "set_off_paise": ln.set_off_paise,
                     "carried_forward_paise": ln.carried_forward_paise,
                     "against": list(ln.against), "reasons": list(ln.reasons),
+                    "loss_id": ln.loss_id,
                 }
                 for ln in set_off.lines
             ]

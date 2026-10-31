@@ -19,6 +19,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { BooksSchedulesPanel, type BooksSchedules } from "@/components/tax/BooksSchedulesPanel";
 import { obligationNote } from "@/lib/compliance/obligationNote";
+import { lossRecordNote } from "@/lib/tax/lossRecordNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -127,6 +128,14 @@ interface ReturnWindow {
   caveats: string[];
   gaps: string[];
 }
+/** One saved computation of the client for the year, as `GET /api/itr/snapshots` serves it. */
+interface SnapshotChoice {
+  id: string;
+  version: number;
+  /** The server's word for "a CA has checked this computation". */
+  is_reviewed: boolean;
+}
+
 interface ReturnKind {
   return_type: string;
   section: string;
@@ -237,6 +246,11 @@ export default function ITRFilingPage() {
   const createDates = useDateProblems();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  // THE SAVED COMPUTATION THE RETURN IS BUILT ON (POST-A-073). A filing that pins one is the only kind whose acknowledgement can write the
+  // brought-forward losses it used back to their records, and the only kind the review gate (IT-30) can ask about. "" is a return computed
+  // outside the product, which is allowed and is said to write nothing.
+  const [snapshots, setSnapshots] = useState<SnapshotChoice[]>([]);
+  const [snapshotId, setSnapshotId] = useState("");
 
   // Transition
   const [transitioning, setTransitioning] = useState(false);
@@ -258,6 +272,9 @@ export default function ITRFilingPage() {
   // The server's sentence when recording the acknowledgement did NOT also close the compliance calendar's ITR
   // obligation. Kept on the page and not on the panel, because the panel closes when the return is recorded.
   const [calendarNote, setCalendarNote] = useState<string | null>(null);
+  // The server's sentence about the brought-forward loss records: that they now show what the filed return used, or that they
+  // could not be updated and the use is to be recorded by hand (POST-A-073). Kept on the page for the same reason.
+  const [lossNote, setLossNote] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -375,6 +392,26 @@ export default function ITRFilingPage() {
 
   const selectedKind = kinds.find((k) => k.return_type === kind);
 
+  // The client's saved computations for the year the form names, newest first, and the newest REVIEWED one chosen to begin with: a reviewed
+  // computation can be pinned without holding the filing at the review gate, and a draft one is a choice the CA makes on purpose.
+  useEffect(() => {
+    if (!showCreate || !clientId || clientId === "_placeholder") return;
+    let cancelled = false;
+    setSnapshots([]);
+    setSnapshotId("");
+    apiFetch(`/api/itr/snapshots?client_id=${encodeURIComponent(clientId)}&financial_year=${encodeURIComponent(fy)}`)
+      .then((r) => {
+        if (cancelled || !r?.success || !Array.isArray(r.data)) return;
+        const served = (r.data as SnapshotChoice[]).filter((x) => x && typeof x.id === "string");
+        setSnapshots(served);
+        setSnapshotId(served.find((x) => x.is_reviewed)?.id ?? "");
+      })
+      .catch(() => {
+        // Nothing offered: the return is created unpinned, and the note after the acknowledgement says what that means.
+      });
+    return () => { cancelled = true; };
+  }, [showCreate, clientId, fy]);
+
   async function handleCreate() {
     if (createDates.first) { setCreateError(createDates.first); return; }
     setCreating(true);
@@ -388,6 +425,7 @@ export default function ITRFilingPage() {
           assessment_year: ay,
           itr_form: form,
           return_type: kind,
+          computation_snapshot_id: snapshotId || null,
           // Sent only where the kind needs them. The server refuses a revised
           // or updated return without the earlier receipt — the form carries
           // it — so an empty string here would produce a refusal that reads
@@ -430,6 +468,7 @@ export default function ITRFilingPage() {
     if (ackDates.first) { toast({ title: ackDates.first, variant: "destructive" }); return; }
     setSavingAck(true);
     setCalendarNote(null);
+    setLossNote(null);
     try {
       const res = await apiFetch(`/api/itr/filings/${filing.id}/acknowledge`, {
         method: "POST",
@@ -437,6 +476,7 @@ export default function ITRFilingPage() {
       });
       if (!res.success) throw new Error(res.error ?? "Failed");
       setCalendarNote(obligationNote(res.data));
+      setLossNote(lossRecordNote(res.data));
       setShowAck(false);
       chooseFiling(null);
       await load();
@@ -530,6 +570,13 @@ export default function ITRFilingPage() {
         </Callout>
       )}
 
+      {lossNote && (
+        <Callout tone="note" title="Recorded as filed. The brought-forward loss records:">
+          <span>{lossNote}</span>{" "}
+          <button onClick={() => setLossNote(null)} className="underline">Dismiss</button>
+        </Callout>
+      )}
+
       {/* CA Review Banner */}
       <div className="flex items-center gap-2 bg-state-problem-surface border border-state-problem-border rounded-xl px-4 py-2.5">
         <AlertTriangle size={13} className="text-state-problem flex-shrink-0" />
@@ -583,6 +630,23 @@ export default function ITRFilingPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label htmlFor="itr-computation" className="text-3xs text-ps-label mb-1 block">Computation this return is built on</label>
+            <select id="itr-computation" value={snapshotId} onChange={e => setSnapshotId(e.target.value)}
+              className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
+              <option value="">None: computed outside this product</option>
+              {snapshots.map(x => (
+                <option key={x.id} value={x.id}>
+                  {`Version ${x.version} · ${x.is_reviewed ? "reviewed" : "not yet reviewed"}`}
+                </option>
+              ))}
+            </select>
+            <p className="text-3xs text-ps-hint mt-1">
+              Only a return built on a saved computation can record, when it is filed, how much of each brought-forward loss it used. A
+              computation that is not yet reviewed holds the return at the review step until it is.
+            </p>
           </div>
 
           {/* The window, exactly as the server states it — both dates where the
