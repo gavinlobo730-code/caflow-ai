@@ -18,7 +18,7 @@ from core.permissions import rbac
 from core.authz import filter_by_client, assert_client_access, effective_client_ids
 from core.exceptions import ValidationError, NotFoundError
 from core.ist_clock import ist_today
-from domain.practice import ical as ical_file
+from domain.practice import ical as ical_file, obligation_csv
 from services import compliance_obligation_service as obligations
 from domain.compliance_record_service import (
     MAX_REOPEN_REASON_CHARS, REOPEN_AFTERMATH, REOPENABLE_OBLIGATION_TYPES, REOPENED_STATUS, clean_filed_date,
@@ -344,17 +344,53 @@ def obligations_calendar_ics(client_id: Optional[str] = Query(None),
     the file, and the file's own description says how many were left out (the column is NOT NULL, so this is a guard and not
     something the data is expected to do), so a missing event is never read as nothing being due.
     It transmits nothing and files nothing."""
-    _assert_a_calendar_window(date_from, date_to)
-    today = ist_today()
-    if date_from is None:
-        date_from, date_to = today, today + timedelta(days=DEFAULT_ICS_DAYS_AHEAD)
-    cal = obligations.calendar(current_user["firm_id"], client_id=client_id, date_from=date_from, date_to=date_to)
+    cal = _calendar_for_file(current_user["firm_id"], client_id, date_from, date_to)
     cal = {bucket: filter_by_client(current_user, rows) for bucket, rows in cal.items()}
-    rows = cal["overdue"] + cal["upcoming"] + (cal["completed"] if include_completed else [])
-    names = obligations.client_names(current_user["firm_id"], {str(r.get("client_id")) for r in rows if r.get("client_id")})
-    body = ical_file.from_rows(rows, names, now=datetime.now(timezone.utc))
+    tagged, names = _tag_for_file(current_user["firm_id"], cal, include_completed)
+    body = ical_file.from_rows([row for _bucket, row in tagged], names, now=datetime.now(timezone.utc))
     return Response(content=body, media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="compliance-calendar.ics"'})
+
+
+def _calendar_for_file(firm_id: str, client_id: Optional[str], date_from: Optional[date], date_to: Optional[date]) -> dict:
+    """The calendar read a FILE is made from (POST-A-142), NOT YET NARROWED to the caller's clients: each file handler narrows it with
+    `filter_by_client` in its own body, so the scope is visible where the route is declared and a handler that forgets it fails the
+    router scope test. The screen's own window rules, and with no window today and a year ahead."""
+    _assert_a_calendar_window(date_from, date_to)
+    if date_from is None:
+        today = ist_today()
+        date_from, date_to = today, today + timedelta(days=DEFAULT_ICS_DAYS_AHEAD)
+    return obligations.calendar(firm_id, client_id=client_id, date_from=date_from, date_to=date_to)
+
+
+def _tag_for_file(firm_id: str, cal: dict, include_completed: bool) -> tuple[list[tuple[str, dict]], dict]:
+    """The rows of an already-narrowed calendar that a file holds, each with the bucket the calendar read put it in, and the client
+    names. Overdue is always in, filed ones only when asked for. One selection for every file format, so the iCalendar file and the
+    spreadsheet can never disagree about which obligations are in them."""
+    buckets = ["overdue", "upcoming"] + (["completed"] if include_completed else [])
+    tagged = [(bucket, row) for bucket in buckets for row in cal[bucket]]
+    names = obligations.client_names(firm_id, {str(r.get("client_id")) for _b, r in tagged if r.get("client_id")})
+    return tagged, names
+
+
+@router.get("/obligations/calendar.csv")
+def obligations_calendar_csv(client_id: Optional[str] = Query(None),
+                             date_from: Annotated[Optional[date], Query()] = None,
+                             date_to: Annotated[Optional[date], Query()] = None,
+                             include_completed: Annotated[bool, Query()] = False,
+                             current_user: dict = Depends(rbac("compliance", "read"))):
+    """The obligation calendar as a spreadsheet file (POST-A-142): one row per obligation, for a CA who sorts and sends them.
+
+    The same selection as the iCalendar file and the screen (`_calendar_for_file`, `_tag_for_file`): the same window rules and assignment scope,
+    overdue always in, filed ones only when `include_completed` asks, and with no window today and a year ahead. The server builds
+    the file (`domain/practice/obligation_csv.py`): UTF-8 with a byte-order mark, a cell that a spreadsheet would run as a formula is
+    written as text, and a row with no usable due date is kept with an empty date rather than dropped. It transmits nothing and
+    files nothing."""
+    cal = _calendar_for_file(current_user["firm_id"], client_id, date_from, date_to)
+    cal = {bucket: filter_by_client(current_user, rows) for bucket, rows in cal.items()}
+    tagged, names = _tag_for_file(current_user["firm_id"], cal, include_completed)
+    return Response(content=obligation_csv.from_rows(tagged, names), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="compliance-calendar.csv"'})
 
 
 @router.post("/run-escalations")

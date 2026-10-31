@@ -5562,6 +5562,17 @@ export const api = {
       const qs = q.toString();
       return downloadFile(`/api/compliance/obligations/calendar.ics${qs ? `?${qs}` : ""}`, "compliance-calendar.ics");
     },
+    // The same obligations as a spreadsheet (one row each, oldest due date first) for a CA who sorts, filters or sends them: the same
+    // selection as the file above, because the server picks both from one function. The server builds the file; the browser only saves it.
+    exportCalendarCsv: (params?: { client_id?: string; date_from?: string; date_to?: string; include_completed?: boolean }) => {
+      const q = new URLSearchParams();
+      if (params?.client_id) q.set("client_id", params.client_id);
+      if (params?.date_from) q.set("date_from", params.date_from);
+      if (params?.date_to) q.set("date_to", params.date_to);
+      if (params?.include_completed) q.set("include_completed", "true");
+      const qs = q.toString();
+      return downloadFile(`/api/compliance/obligations/calendar.csv${qs ? `?${qs}` : ""}`, "compliance-calendar.csv");
+    },
     generate: (params?: Record<string, string>) =>
       request(`/api/compliance/obligations/generate${params ? "?" + new URLSearchParams(params) : ""}`, { method: "POST" }),
     assign: (id: string, body: { preparer_id?: string; reviewer_id?: string; approver_id?: string }) =>

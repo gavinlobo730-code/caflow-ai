@@ -11,7 +11,9 @@
 //   * nothing in apps/web writes a VCALENDAR: a second implementation of the format is how the screen and the file would disagree;
 //   * a refusal is said in words and never swallowed.
 //
-// The backend half is `apps/api/tests/test_the_compliance_calendar_can_be_downloaded_as_an_ical_file.py`.
+// The same page also saves the server's SPREADSHEET of the same obligations (`calendar.csv`, POST-A-142's second half): held below.
+//
+// The backend half is `apps/api/tests/test_the_compliance_calendar_can_be_downloaded_as_an_ical_file.py` (and `..._as_a_spreadsheet.py`).
 //
 // Run with: node --experimental-strip-types --test scripts/the-calendar-saves-the-servers-ical-file.test.ts
 import test from "node:test";
@@ -47,7 +49,7 @@ test("the api method asks the .ics route and saves what it answers", () => {
 });
 
 test("the page offers the download, sends only the client chosen, and says a refusal in words", () => {
-  assert.ok(/api\.complianceOps\.exportCalendar\(clientId \? \{ client_id: clientId \} : undefined\)/.test(PAGE),
+  assert.ok(/const params = clientId \? \{ client_id: clientId \} : undefined;/.test(PAGE) && /api\.complianceOps\.exportCalendar\(params\)/.test(PAGE),
     "the page sends more than the client chosen, or does not call the export");
   assert.ok(PAGE.includes("Download .ics"), "the page does not offer the download");
   assert.ok(PAGE.includes("Could not download the calendar file"), "a refusal is not said");
@@ -57,4 +59,17 @@ test("the page offers the download, sends only the client chosen, and says a ref
 test("nothing in the browser builds a calendar file", () => {
   const offenders = [...sources(WEB)].filter(f => /BEGIN:VCALENDAR|BEGIN:VEVENT/.test(fs.readFileSync(f, "utf8")));
   assert.deepEqual(offenders.map(f => path.relative(WEB, f)), [], "a VCALENDAR is written in the browser");
+});
+
+test("the page also saves the server's spreadsheet of the same obligations, built nowhere in the browser", () => {
+  assert.ok(/exportCalendarCsv: \(params\?: \{[^}]*client_id\?: string;[^}]*\}\) => \{/.test(API), "exportCalendarCsv is missing or lost its parameters");
+  assert.ok(API.includes("downloadFile(`/api/compliance/obligations/calendar.csv"), "exportCalendarCsv does not save the server's file");
+  assert.ok(API.includes('"compliance-calendar.csv"'), "the saved file is not named compliance-calendar.csv");
+  assert.ok(/api\.complianceOps\.exportCalendarCsv\(params\)/.test(PAGE), "the page does not call the spreadsheet export with the client chosen alone");
+  assert.ok(PAGE.includes("Download .csv"), "the page does not offer the spreadsheet");
+  assert.ok(PAGE.includes("Could not download the spreadsheet"), "a refusal of the spreadsheet is not said");
+  assert.equal((PAGE.match(/disabled=\{downloading\}/g) ?? []).length, 2, "both download buttons must ignore a click while a file is being prepared");
+  // The browser writes no CSV for this: the formula guard, the byte-order mark and the order are the server's, in one place.
+  const callBody = PAGE.slice(PAGE.indexOf("async function downloadCalendarFile"), PAGE.indexOf("async function downloadCalendarFile") + 900);
+  assert.ok(!/toCsvRows|downloadCsv|new Blob/.test(callBody), "the calendar page builds a CSV itself");
 });
