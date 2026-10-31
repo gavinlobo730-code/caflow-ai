@@ -300,6 +300,7 @@ export default function FirmHsnLibraryPage() {
             />
           </div>
           <select
+            aria-label="Filter by goods or services"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
             className="px-3 py-2 text-xs border border-ps-border rounded-lg"

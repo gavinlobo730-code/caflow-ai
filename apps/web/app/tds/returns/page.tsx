@@ -281,7 +281,7 @@ export default function TDSReturnsPage() {
                 24Q and 26Q had no way to reach the statement they belong on
                 and rebuilt it by hand from the deduction list.
                 27EQ (TCS) is deliberately absent: nothing builds it. */}
-            <select value={returnType} onChange={e => setReturnType(e.target.value as TDSReturnType)}
+            <select aria-label="Return Type" value={returnType} onChange={e => setReturnType(e.target.value as TDSReturnType)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand">
               <option value="26Q">26Q — Non-salary, resident (194 series)</option>
               <option value="24Q">24Q — Salary (192)</option>
@@ -294,7 +294,7 @@ export default function TDSReturnsPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Quarter</label>
-            <select value={quarter} onChange={e => setQuarter(e.target.value as TDSQuarter)}
+            <select aria-label="Quarter" value={quarter} onChange={e => setQuarter(e.target.value as TDSQuarter)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand">
               {QUARTERS.map(q => <option key={q} value={q}>{QUARTER_LABELS[q]}</option>)}
             </select>

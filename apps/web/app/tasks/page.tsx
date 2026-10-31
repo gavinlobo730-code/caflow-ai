@@ -168,7 +168,7 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
         </div>
       )}
       <div className="flex gap-2">
-        <select
+        <select aria-label="Add a blocking task"
           value={addId}
           onChange={e => setAddId(e.target.value)}
           className="flex-1 border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-brand"
@@ -284,7 +284,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Client</label>
-                <select
+                <select aria-label="Client"
                   value={form.client_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
@@ -294,7 +294,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Assign To</label>
-                <select
+                <select aria-label="Assign To"
                   value={form.assignee_id ?? ""}
                   onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
@@ -306,7 +306,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-ps-label mb-1">Priority</label>
-                  <select
+                  <select aria-label="Priority"
                     value={form.priority ?? "medium"}
                     onChange={e => setForm(f => ({ ...f, priority: e.target.value as TaskPriority }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
@@ -318,7 +318,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-label mb-1">Status</label>
-                  <select
+                  <select aria-label="Status"
                     value={form.status ?? "todo"}
                     onChange={e => setForm(f => ({ ...f, status: e.target.value as TaskStatus }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"

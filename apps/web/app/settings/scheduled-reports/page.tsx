@@ -355,7 +355,7 @@ export default function ScheduledReportsPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Report Type *</label>
-                <select
+                <select aria-label="Report Type"
                   value={form.report_type}
                   onChange={e => setForm(f => ({ ...f, report_type: e.target.value as ReportType }))}
                   className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
@@ -382,7 +382,7 @@ export default function ScheduledReportsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Frequency *</label>
-                <select
+                <select aria-label="Frequency"
                   value={form.frequency}
                   onChange={e => setForm(f => ({ ...f, frequency: e.target.value as Frequency }))}
                   className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"

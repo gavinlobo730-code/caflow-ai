@@ -61,6 +61,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
           <div className="w-8 h-8 rounded-lg border border-ps-border overflow-hidden cursor-pointer">
             <input
               type="color"
+              aria-label={label}
               value={value}
               onChange={(e) => onChange(e.target.value.toUpperCase())}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -76,6 +77,7 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
             if (/^#[0-9A-F]{0,6}$/.test(v)) onChange(v);
           }}
           maxLength={7}
+          aria-label={`${label} (hex code)`}
           placeholder="#000000"
           className="w-28 text-sm font-mono text-ps-ink border border-ps-border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
         />
@@ -314,7 +316,7 @@ export default function BrandingPage() {
               </div>
               <div className="px-5 pb-4">
                 <label className="text-xs font-medium text-ps-label block mb-1">Font Family</label>
-                <select
+                <select aria-label="Font Family"
                   value={branding.font_family}
                   onChange={(e) => update("font_family", e.target.value)}
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"

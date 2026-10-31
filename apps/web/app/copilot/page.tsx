@@ -276,6 +276,7 @@ export default function CopilotPage() {
             <>
               {/* Context type selector */}
               <select
+                aria-label="Context for the question"
                 value={contextType}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setContextType(e.target.value)}
                 className="text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white text-ps-label"
@@ -438,6 +439,7 @@ export default function CopilotPage() {
                     />
                   </div>
                   <Button variant="plain" size="none"
+                    aria-label="Send"
                     onClick={() => sendMessage()}
                     disabled={actionInFlight || !input.trim()}
                     className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 transition-all"

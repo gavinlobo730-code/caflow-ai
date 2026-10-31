@@ -199,6 +199,42 @@ export function shrinkBaseline(found, entries) {
   return kept;
 }
 
+/**
+ * Whether `--axe-shrink` may write at all, and if not the sentence that says why (null when it may).
+ *
+ * `shrinkBaseline` deletes the line of every audited route on which it found no violation. A page that has not
+ * finished drawing has none, and a walk starved of CPU draws many that way: on 31-10-2026 a walk run beside other
+ * heavy jobs had eleven screens with a problem and 32 more that drew only the shared shell (122 distinct bodies,
+ * against 161 on a quiet machine), and it deleted eight contrast lines that had not been fixed (one of the eight,
+ * /portal/login, was among the 32). An empty page is never scanned, so it cannot lose a line; a shell can. A walk
+ * is clean when no screen had a problem, no group of routes drew one identical body, and every scan ran.
+ */
+export function shrinkRefusal({ broken, herds, unaudited }) {
+  const problems = (broken ?? []).map((b) => b.route);
+  const shells = (herds ?? []).flat().map((h) => h.route);
+  const unscanned = (unaudited ?? []).map((u) => u.route);
+  const routes = [...new Set([...problems, ...shells, ...unscanned])];
+  if (!routes.length) return null;
+  const parts = [];
+  if (problems.length) parts.push(`${problems.length} screen(s) had a problem`);
+  if (shells.length) parts.push(`${shells.length} route(s) drew one identical body (a shared shell or a refusal)`);
+  if (unscanned.length) parts.push(`${unscanned.length} could not be scanned`);
+  return `axe: --axe-shrink writes nothing from a walk that was not clean: ${parts.join("; ")} ` +
+    `(${routes.slice(0, 5).join(", ")}${routes.length > 5 ? ", …" : ""}). A page that has not finished drawing has no violations to ` +
+    "find, so shrinking now would delete the baseline lines of screens nobody properly looked at. Fix what the walk reported, or run it " +
+    "again on a quiet machine.";
+}
+
+/**
+ * The step `--axe-shrink` takes, as data: either the sentence that refuses it, or the shrunk baseline to write.
+ * The walk calls this and nothing else, so there is no path to `shrinkBaseline` that skips the question.
+ */
+export function planShrink({ found, entries, broken, herds, unaudited }) {
+  const refusal = shrinkRefusal({ broken, herds, unaudited });
+  if (refusal) return { refusal, shrunk: null };
+  return { refusal: null, shrunk: shrinkBaseline(found, entries) };
+}
+
 /** The first baseline, from a full walk: every serious or critical finding on a route that is not a named one. */
 export function initialBaseline(found) {
   const entries = [];

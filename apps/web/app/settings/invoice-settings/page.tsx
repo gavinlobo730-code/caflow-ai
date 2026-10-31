@@ -224,7 +224,7 @@ export default function InvoiceSettingsPage() {
 
                   <div>
                     <label className="text-xs font-medium text-ps-label block mb-1">Sequence Digits</label>
-                    <select
+                    <select aria-label="Sequence Digits"
                       value={form.sequence_length}
                       onChange={(e) => update("sequence_length", Number(e.target.value))}
                       className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
@@ -237,7 +237,7 @@ export default function InvoiceSettingsPage() {
 
                   <div>
                     <label className="text-xs font-medium text-ps-label block mb-1">Starting Number</label>
-                    <input
+                    <input aria-label="Starting Number"
                       type="number"
                       min={1}
                       value={form.starting_number}
@@ -254,6 +254,9 @@ export default function InvoiceSettingsPage() {
                     <p className="text-xs text-ps-hint">Adds the Indian financial year (e.g. 2025) to the number</p>
                   </div>
                   <button
+                    role="switch"
+                    aria-checked={form.include_financial_year}
+                    aria-label="Include financial year"
                     onClick={() => update("include_financial_year", !form.include_financial_year)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       form.include_financial_year ? "bg-brand" : "bg-ps-border-strong"
@@ -271,6 +274,9 @@ export default function InvoiceSettingsPage() {
                     <p className="text-xs text-ps-hint">Let managers manually set an invoice number on creation</p>
                   </div>
                   <button
+                    role="switch"
+                    aria-checked={form.manual_override_allowed}
+                    aria-label="Allow manual override"
                     onClick={() => update("manual_override_allowed", !form.manual_override_allowed)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       form.manual_override_allowed ? "bg-brand" : "bg-ps-border-strong"
@@ -300,7 +306,9 @@ export default function InvoiceSettingsPage() {
                   </div>
                   <button
                     onClick={() => update("credit_limit_blocks", !form.credit_limit_blocks)}
-                    aria-pressed={form.credit_limit_blocks}
+                    role="switch"
+                    aria-checked={form.credit_limit_blocks}
+                    aria-label="Refuse an invoice over a customer's credit limit"
                     className={`shrink-0 relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                       form.credit_limit_blocks ? "bg-brand" : "bg-ps-border-strong"
                     }`}

@@ -165,14 +165,14 @@ export default function StatutoryPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Month</label>
-                  <select className="border rounded-lg px-3 py-2 text-sm" value={selMonth}
+                  <select aria-label="Month" className="border rounded-lg px-3 py-2 text-sm" value={selMonth}
                     onChange={(e) => setSelMonth(Number(e.target.value))}>
                     {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Year</label>
-                  <input type="number" className="border rounded-lg px-3 py-2 text-sm w-24"
+                  <input aria-label="Year" type="number" className="border rounded-lg px-3 py-2 text-sm w-24"
                     value={selYear} onChange={(e) => setSelYear(Number(e.target.value))}
                     min={2020} max={2099} />
                 </div>

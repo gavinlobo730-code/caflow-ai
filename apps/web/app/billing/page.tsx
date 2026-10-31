@@ -171,7 +171,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Add Fee Engagement</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
@@ -189,7 +189,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Service Type</label>
-            <select value={serviceType} onChange={e => setServiceType(e.target.value as ServiceType)}
+            <select aria-label="Service Type" value={serviceType} onChange={e => setServiceType(e.target.value as ServiceType)}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
               {SERVICE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -203,7 +203,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Billing Cycle</label>
-              <select value={billingCycle} onChange={e => setBillingCycle(e.target.value as BillingCycle)}
+              <select aria-label="Billing Cycle" value={billingCycle} onChange={e => setBillingCycle(e.target.value as BillingCycle)}
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
                 {BILLING_CYCLES.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
@@ -284,13 +284,13 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Record Receipt</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Invoice</label>
-            <select value={invoiceId} onChange={e => setInvoiceId(e.target.value)}
+            <select aria-label="Invoice" value={invoiceId} onChange={e => setInvoiceId(e.target.value)}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
               {unpaid.map(i => (
                 <option key={i.id} value={i.id}>
@@ -314,7 +314,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Payment Mode</label>
-              <select value={paymentMode} onChange={e => setPaymentMode(e.target.value as PaymentMode)}
+              <select aria-label="Payment Mode" value={paymentMode} onChange={e => setPaymentMode(e.target.value as PaymentMode)}
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
                 {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
@@ -648,7 +648,7 @@ export default function BillingPage() {
         title="Fee Billing"
         subtitle="Manage CA firm fee engagements and invoices"
         actions={
-          <button onClick={() => load()} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
+          <button aria-label="Refresh" onClick={() => load()} className="p-2 rounded-lg border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
         }

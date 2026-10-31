@@ -253,6 +253,7 @@ export default function WorkflowsPage() {
               />
             </div>
             <select
+              aria-label="Filter templates by category"
               value={category}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setCategory(e.target.value)}
               className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -438,6 +439,7 @@ function WorkflowInstancesTab() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <select
+          aria-label="Filter runs by status"
           value={status}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStatus(e.target.value)}
           className="px-3 py-2 text-sm border border-ps-border rounded-lg bg-white"

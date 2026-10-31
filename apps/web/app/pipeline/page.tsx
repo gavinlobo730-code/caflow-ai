@@ -405,7 +405,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
           <h2 className="text-base font-semibold text-ps-ink">
             {initial ? "Edit Lead" : "Add Lead"}
           </h2>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-ps-hint hover:text-ps-label"
           >
@@ -492,7 +492,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               <label className="block text-xs font-medium text-ps-body mb-1">
                 Entity Type *
               </label>
-              <select
+              <select aria-label="Entity Type"
                 value={form.entityType}
                 onChange={(e) =>
                   setForm({ ...form, entityType: e.target.value as EntityType })
@@ -508,7 +508,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               <label className="block text-xs font-medium text-ps-body mb-1">
                 Source *
               </label>
-              <select
+              <select aria-label="Source"
                 value={form.source}
                 onChange={(e) =>
                   setForm({ ...form, source: e.target.value as Source })
@@ -1102,7 +1102,7 @@ export default function PipelinePage() {
           ))}
         </div>
       ) : (
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div role="region" aria-label="Sales pipeline by stage" tabIndex={0} className="flex gap-4 overflow-x-auto pb-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
         {STAGES.map((stage) => {
           const stageLeads = leads.filter((l) => l.stage === stage);
           const colors = STAGE_COLORS[stage];

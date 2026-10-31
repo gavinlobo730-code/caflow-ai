@@ -440,7 +440,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-label block mb-1">Email</label>
-            <input
+            <input aria-label="Email"
               type="email"
               value={user?.email ?? ""}
               disabled
@@ -545,7 +545,7 @@ export default function SettingsPage() {
 
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">State</label>
-                <select
+                <select aria-label="State"
                   value={form.state}
                   onChange={(e) => handleChange("state", e.target.value)}
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"

@@ -170,7 +170,7 @@ export default function Form3cdPage() {
         </div>
         <div>
           <label className="text-xs text-ps-label">Activity (for clause 8)</label>
-          <select
+          <select aria-label="Activity (for clause 8)"
             className="mt-1 border border-ps-border rounded px-2 py-1.5 text-sm"
             value={nature}
             onChange={(e) => setNature(e.target.value as "business" | "profession" | "")}

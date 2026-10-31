@@ -521,7 +521,7 @@ export default function DeductionsPage() {
           note={`Capped at ${state.isGovernmentEmployee ? LIMIT_80CCD2_GOVT_PCT : LIMIT_80CCD2_OTHER_PCT}% of salary`} />
         <div className="flex items-center justify-between py-2">
           <span className="text-sm text-ps-body">Government Employee</span>
-          <input type="checkbox" checked={state.isGovernmentEmployee}
+          <input type="checkbox" aria-label="Government employee" checked={state.isGovernmentEmployee}
             onChange={e => upd({ isGovernmentEmployee: e.target.checked })} />
         </div>
         <p className="text-xs text-ps-hint mt-1">
