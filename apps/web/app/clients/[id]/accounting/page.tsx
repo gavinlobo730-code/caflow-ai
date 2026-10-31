@@ -59,6 +59,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { DateInput } from "@/components/ui/date-input";
+import { NO_FILTER, accountCounts, filterNotice, filterRows, isFiltering, typeChoices, type TrialBalanceFilter } from "@/lib/accounting/trialBalanceFilter";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -1757,6 +1758,9 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   // backend's sentence when it could not be. Both come off the response.
   const [periodic, setPeriodic] = useState(false);
   const [periodGap, setPeriodGap] = useState<string | null>(null);
+  // POST-A-136. What the search box and the type filter have chosen to DRAW. They narrow the rows and nothing else: every total on the
+  // screen is the server's, for all of the accounts, and the screen says so while a filter is on.
+  const [filter, setFilter] = useState<TrialBalanceFilter>(NO_FILTER);
 
   // A trial balance is a point-in-time statement, so the picker's END date is
   // the whole of it — exactly how Balance Sheet uses the same control. Until
@@ -1843,6 +1847,12 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
   const grandDebit = totals.debit;
   const grandCredit = totals.credit;
   const isBalanced = totals.balanced;
+  const visibleRows = useMemo(() => filterRows(rows, filter), [rows, filter]);
+  const typeOptions = useMemo(() => typeChoices(rows), [rows]);
+  const accountsShown = accountCounts(rows, filter);
+  const filterSentence = filterNotice(accountsShown.shown, accountsShown.total, filter);
+  // Another client's accounts are a different list: a search typed for one is not carried to the next.
+  useEffect(() => { setFilter(NO_FILTER); }, [clientId]);
 
   // The Opening and This-period columns have no backend-authoritative grand
   // total of their own — the server sends only the CLOSING pair above — so the
@@ -1903,6 +1913,23 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
         </div>
       )}
       {loading ? <TableSkeleton cols={5} rows={6} /> : loaded && rows.length > 0 ? (
+        <>
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="tb-search" className="sr-only">Search accounts by code or name</label>
+          <input id="tb-search" type="search" value={filter.query} placeholder="Search by code or name"
+            onChange={(e) => setFilter((f) => ({ ...f, query: e.target.value }))}
+            className="text-xs px-2.5 py-1.5 border border-ps-border rounded-lg w-64 focus:outline-none focus:ring-1 focus:ring-brand" />
+          <label htmlFor="tb-type" className="sr-only">Account type</label>
+          <select id="tb-type" value={filter.type} onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}
+            className="text-xs px-2.5 py-1.5 border border-ps-border rounded-lg bg-white">
+            <option value="">All types</option>
+            {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {isFiltering(filter) && (
+            <button type="button" onClick={() => setFilter(NO_FILTER)} className="text-xs text-brand underline">Clear</button>
+          )}
+        </div>
+        {filterSentence && <p role="status" className="text-xs text-ps-label">{filterSentence}</p>}
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <table className="w-full text-xs">
             <thead>
@@ -1927,7 +1954,10 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
               </tr>
             </thead>
             <tbody className="divide-y divide-ps-border">
-              {rows.map((r) => {
+              {visibleRows.length === 0 && (
+                <tr><td colSpan={periodic ? 9 : 5} className="px-4 py-6 text-center text-ps-hint">No account matches. <button type="button" onClick={() => setFilter(NO_FILTER)} className="text-brand underline">Clear the search</button></td></tr>
+              )}
+              {visibleRows.map((r) => {
                 // The brought-forward surplus is DERIVED, not an account, so it
                 // has no ledger to drill into — the same reason the Balance
                 // Sheet's "__retained__" row is not a link.
@@ -1963,6 +1993,7 @@ function TrialBalance({ clientId, financialYear, onFinancialYearChange, onDrillD
             </tfoot>
           </table>
         </div>
+        </>
       ) : loaded ? (
         loadFailed ? (
           <div className="text-center py-12" role="alert">
