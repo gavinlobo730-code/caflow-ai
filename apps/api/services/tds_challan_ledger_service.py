@@ -1,0 +1,142 @@
+"""A recorded TDS challan is tied to the ledger entry that paid it (POST-A-272).
+
+WHAT WAS WRONG
+    `tds_challans` carried the challan's own facts and nothing that says whether the ledger knows the tax was paid. The product's one
+    path for money leaving a bank is passing a statement line (the bank-posting service's `post` writes Dr <liability> / Cr Bank), so after
+    the tax was deposited and the challan recorded, TDS Payable kept its whole credit until somebody passed a bank line to it by hand,
+    nothing offered the entry whose amount equals a recorded challan, and nothing said a challan had no entry behind it. A liability
+    nobody has paid and one that was paid and never tied back look identical on the ledger. ESI and professional tax answered this in
+    migration 365 (`statutory_remittances.journal_entry_id`); this gives the TDS register the same.
+
+WHAT THIS DOES
+    A LINK, NEVER A POSTING. Posting from the challan as well as from the bank line would debit TDS Payable twice, which is the note
+    in `statutory_remittance_service.link_payment`. So this only offers the entries that could be the payment (`payment_candidates`,
+    the same ranking the remittances use, with a reason sentence and never a score), ties one to the challan (`link_payment`) and
+    takes it back (`unlink_payment`). Nothing is linked automatically.
+
+    A link is refused in words unless: the challan has none already; the entry is a live entry of THIS client; the entry debits the
+    TDS Payable account the challan's section belongs to (a salary challan clears "TDS Payable - Salary", every other section clears
+    "TDS Payable": two distinct accounts, and a substring lookup of one finds the other); and no other challan of the client is tied to
+    the same entry (one bank debit cannot be the payment of two challans). The update names "no link yet" as its condition, so two
+    people linking at the same moment tie it once and the second is told.
+
+WHAT IT DOES NOT DO
+    It does not propose from the bank queue, and it does not raise an exception for a challan with no entry after some days: both
+    stay on the ledger line (POST-A-272). It does not backfill: which entry paid which challan is the CA's answer.
+
+# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this edits the practice's own register. It transmits nothing.
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
+
+from core.db_provider import privileged_for
+from domain.payroll import remittance_match
+from domain.tds import deposit_due
+from services import statutory_remittance_service as remittances
+
+_logger = logging.getLogger("caflow.tds.challan_ledger")
+
+#: The two real accounts the chart holds. Exact names, never a pattern: "TDS Payable - Salary" contains "TDS Payable".
+SALARY_ACCOUNT = "TDS Payable - Salary"
+OTHER_ACCOUNT = "TDS Payable"
+
+
+class LinkRefused(Exception):
+    """A link or unlink that must not go ahead, with the sentence to show. `status` is the HTTP status the route answers."""
+
+    def __init__(self, sentence: str, status: int = 422):
+        super().__init__(sentence)
+        self.sentence = sentence
+        self.status = status
+
+
+def account_name_for(section: Optional[str]) -> str:
+    """Which TDS Payable account a challan of this section is paid out of."""
+    return SALARY_ACCOUNT if deposit_due.is_salary(str(section or "")) else OTHER_ACCOUNT
+
+
+def liability_account_id(db, *, firm_id: str, client_id: str, section: Optional[str]) -> Optional[str]:
+    """The id of the account a challan of `section` clears, or None when the client's chart has none (a client that never accrued TDS).
+
+    A firm-level account (client_id IS NULL) is allowed on any of that firm's entries (migration 360); this client's own account wins
+    where both exist."""
+    rows = (db.table("chart_of_accounts").select("id, client_id")
+            .eq("firm_id", firm_id).eq("account_name", account_name_for(section))
+            .eq("is_active", True).execute().data) or []
+    own = [r for r in rows if r.get("client_id") == client_id]
+    shared = [r for r in rows if not r.get("client_id")]
+    pick = (own or shared)
+    return pick[0]["id"] if pick else None
+
+
+def payment_candidates(db, *, firm_id: str, client_id: str, challan: dict,
+                       window_days: int = remittance_match.DEFAULT_WINDOW_DAYS) -> dict[str, Any]:
+    """The entries that could have paid this challan, best first, and what was asked. Reads only."""
+    account = account_name_for(challan.get("section"))
+    paid_on = str(challan.get("payment_date") or "")[:10]
+    base = {"challan_id": challan.get("id"), "account_name": account, "window_days": window_days,
+            "journal_entry_id": challan.get("journal_entry_id")}
+    if not paid_on:
+        return {**base, "candidates": [], "gap": "The challan has no payment date, so there is no window to look in."}
+    account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
+    if not account_id:
+        return {**base, "candidates": [],
+                "gap": f"This client's chart of accounts has no \"{account}\" account, so no entry can have cleared it."}
+    found = remittances.entries_clearing_account(
+        db, firm_id=firm_id, client_id=client_id, account_id=account_id,
+        amount_paise=int(challan.get("total_paise") or 0), paid_on=paid_on, window_days=window_days)
+    return {**base, "candidates": found, "gap": None}
+
+
+def _live_entry(db, *, firm_id: str, client_id: str, journal_entry_id: str) -> Optional[dict]:
+    rows = (db.table("journal_entries").select("id, entry_date, reference_no")
+            .eq("id", journal_entry_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .is_("deleted_at", "null").limit(1).execute().data) or []
+    return rows[0] if rows else None
+
+
+def link_payment(db, *, firm_id: str, client_id: str, challan: dict, journal_entry_id: str) -> dict:
+    """Tie `challan` (already read for this firm and client) to the entry that paid it. Returns the challan's id and the entry. Raises
+    `LinkRefused`."""
+    if challan.get("journal_entry_id"):
+        raise LinkRefused("This challan is already tied to a ledger entry. Take that link back first if it is the wrong one.", 409)
+    entry = _live_entry(db, firm_id=firm_id, client_id=client_id, journal_entry_id=journal_entry_id)
+    if not entry:
+        raise LinkRefused("That journal entry is not an entry of this client.")
+    account = account_name_for(challan.get("section"))
+    account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
+    if not account_id:
+        raise LinkRefused(f"This client's chart of accounts has no \"{account}\" account, so no entry can have cleared it.")
+    debits = (db.table("journal_lines").select("debit_paise")
+              .eq("journal_entry_id", journal_entry_id).eq("account_id", account_id).execute().data) or []
+    if not any(int(d.get("debit_paise") or 0) > 0 for d in debits):
+        raise LinkRefused(f"That entry does not debit \"{account}\", so it cannot be the payment of this challan.")
+    taken = (db.table("tds_challans").select("id, challan_no")
+             .eq("firm_id", firm_id).eq("client_id", client_id).eq("journal_entry_id", journal_entry_id)
+             .neq("id", challan["id"]).limit(1).execute().data) or []
+    if taken:
+        raise LinkRefused("That entry is already tied to another challan"
+                          + (f" ({taken[0].get('challan_no')})" if taken[0].get("challan_no") else "")
+                          + ". One payment entry cannot be the payment of two challans.", 409)
+    done = (privileged_for(db).table("tds_challans").update({"journal_entry_id": journal_entry_id})
+            .eq("id", challan["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+            .is_("journal_entry_id", "null").execute().data)
+    if not done:
+        raise LinkRefused("This challan was tied to an entry just now by somebody else, or is no longer in the register.", 409)
+    return {"challan_id": challan["id"], "journal_entry_id": journal_entry_id,
+            "entry_date": entry.get("entry_date"), "reference_no": entry.get("reference_no")}
+
+
+def unlink_payment(db, *, firm_id: str, client_id: str, challan: dict) -> dict:
+    """Take back the link on `challan`. Raises `LinkRefused` when there is none."""
+    was = challan.get("journal_entry_id")
+    if not was:
+        raise LinkRefused("This challan is not tied to a ledger entry.", 409)
+    done = (privileged_for(db).table("tds_challans").update({"journal_entry_id": None})
+            .eq("id", challan["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("journal_entry_id", was).execute().data)
+    if not done:
+        raise LinkRefused("This challan's link was changed just now by somebody else. Reload it.", 409)
+    return {"challan_id": challan["id"], "journal_entry_id": None, "was": was}

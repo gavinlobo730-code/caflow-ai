@@ -13,6 +13,14 @@
  *   3. a person without the write tier sees no Retract button at all, and the screen still lists the challan;
  *   4. a deposit worksheet whose answer is not a worksheet leaves the Challans tab standing and says the worksheet could not be read (the
  *      screen used to be replaced by its error page: the first run of this group found it).
+ *
+ * And tying a challan to the ledger entry that paid it (POST-A-272):
+ *   5. "Match" opens a dialog listing the entries the server offers with its own sentence for each; two same-tick clicks on "Tie to this
+ *      entry" send ONE request naming that entry, and the row then reads "Tied to an entry" after the register is read again;
+ *   6. a refusal (the entry does not debit the right account) is shown in the dialog in the server's words, the dialog stays open and
+ *      the challan stays untied;
+ *   7. a person who can read but not edit sees the entries and no button to tie one;
+ *   8. a tied challan's dialog offers "Take the link back", and two same-tick clicks on it send ONE request.
  */
 import assert from "node:assert/strict";
 import { ok, refuse } from "../stub.mjs";
@@ -30,15 +38,24 @@ const CHALLAN = {
 const CALENDAR_NOTE = "The compliance calendar still shows the monthly TDS deposit (non-salary) for April 2026 as filed. Retracting the challan does not reopen it.";
 const STATEMENT_NOTE = "The TDS statement for this quarter is recorded as filed. Retracting a challan changes the register and does not change a statement already filed.";
 const RETRACT_ROUTE = /tds-workspace\/challans\/ch-1\/retract$/;
+const CANDIDATES_ROUTE = /tds-workspace\/challans\/ch-1\/ledger-candidates$/;
+const LINK_ROUTE = /tds-workspace\/challans\/ch-1\/link-payment$/;
+const UNLINK_ROUTE = /tds-workspace\/challans\/ch-1\/unlink-payment$/;
+const ENTRY = {
+  journal_entry_id: "0b5a1c2e-0000-4000-8000-000000000001", entry_date: "2026-07-05", reference_no: "JNL-0042", narration: "TDS paid, challan 00045",
+  liability_debit_paise: 1_250_000, entry_total_paise: 1_250_000, days_apart: 0, grade: "exact",
+  reason: "₹12,500.00 left the bank, dated the same day.",
+};
+const CANDIDATES = { challan_id: "ch-1", account_name: "TDS Payable", window_days: 7, journal_entry_id: null, candidates: [ENTRY], gap: null };
 
 /** The screen with one challan listed, for a person holding `actions` on tds; opens the Challans tab. */
-async function atTheChallans(env, actions, { listAfter = null } = {}) {
+async function atTheChallans(env, actions, { listAfter = null, challan = CHALLAN, rows = null } = {}) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: actions } }) });
   let retracted = false;
   stub.route({
     method: "GET", re: /tds-workspace\/challans\?/,
-    reply: () => ok({ challans: retracted && listAfter ? listAfter : [CHALLAN], has_more: false, limit: 500, max_limit: 500 }),
+    reply: () => ok({ challans: rows ? rows() : retracted && listAfter ? listAfter : [challan], has_more: false, limit: 500, max_limit: 500 }),
   });
   await page.goto(`${env.base}/tds/`, { waitUntil: "networkidle" });
   await pick(page, page.locator('button:has-text("Select client")').first(), CLIENT_ROW.client_name);
@@ -129,6 +146,83 @@ export const scenarios = [
       await atTheChallans(env, ["read", "compute"]);
       assert.equal(await page.getByRole("button", { name: /^Retract challan/ }).count(), 0, "a Retract button was offered without tds.write");
       assert.ok((await text(page)).includes("00045"), "the challan was not listed");
+    },
+  },
+  // ── tying a challan to the ledger entry that paid it (POST-A-272) ─────────────────────────────────────────────────────────
+  {
+    id: "two-clicks-on-tie-to-this-entry-send-one-request-and-the-row-reads-tied",
+    title: "Match lists the entries the server offers with its sentence for each; a same-tick double click on Tie to this entry sends one request naming it, and the row then reads Tied to an entry",
+    async run(env) {
+      const { page, stub } = env;
+      let tied = false;
+      stub.route({ method: "GET", re: CANDIDATES_ROUTE, reply: () => ok(CANDIDATES) });
+      stub.route({ method: "POST", re: LINK_ROUTE, reply: () => { tied = true; return ok({ challan_id: "ch-1", journal_entry_id: ENTRY.journal_entry_id }); } });
+      await atTheChallans(env, ["read", "compute", "write"], { rows: () => [tied ? { ...CHALLAN, journal_entry_id: ENTRY.journal_entry_id } : CHALLAN] });
+      assert.match(await text(page), /Not tied/, "an untied challan did not say so");
+
+      await page.getByRole("button", { name: /^Match challan 00045/ }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByText(ENTRY.reason).waitFor();
+      assert.match(await dialog.innerText(), /posts nothing/, "the dialog did not say it posts nothing");
+      const tie = dialog.getByRole("button", { name: /^Tie the challan to the entry of/ });
+
+      await sameTickDouble(tie);
+
+      await expectWrites(stub, LINK_ROUTE, 1, "two same-tick clicks on Tie to this entry");
+      const [write] = stub.writesTo(LINK_ROUTE);
+      assert.deepEqual(JSON.parse(write.body), { journal_entry_id: ENTRY.journal_entry_id }, "the entry chosen was not what was sent");
+      await until(async () => (await text(page)).includes("Tied to an entry"), "the row to read Tied to an entry");
+      assert.equal(await page.getByRole("dialog").count(), 0, "the dialog stayed open after the link was made");
+    },
+  },
+  {
+    id: "a-refusal-to-tie-is-shown-in-the-dialog-in-the-servers-words",
+    title: "a refusal (the entry does not debit TDS Payable) is shown in the dialog as written, the dialog stays open and the challan stays untied",
+    async run(env) {
+      const { page, stub } = env;
+      const WRONG = 'That entry does not debit "TDS Payable", so it cannot be the payment of this challan.';
+      stub.route({ method: "GET", re: CANDIDATES_ROUTE, reply: () => ok(CANDIDATES) });
+      stub.route({ method: "POST", re: LINK_ROUTE, ...refuse(WRONG, 422) });
+      await atTheChallans(env, ["read", "compute", "write"]);
+
+      await page.getByRole("button", { name: /^Match challan 00045/ }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByRole("button", { name: /^Tie the challan to the entry of/ }).click();
+      await dialog.getByRole("alert").filter({ hasText: WRONG }).waitFor();
+      assert.equal(await page.getByRole("dialog").count(), 1, "the dialog closed on a refusal");
+      assert.match(await text(page), /Not tied/, "a refused link changed the row");
+      assert.equal(await dialog.getByRole("button", { name: /^Tie the challan to the entry of/ }).isDisabled(), false,
+        "the button stayed held after a refusal");
+    },
+  },
+  {
+    id: "without-the-edit-tier-the-entries-are-shown-and-nothing-can-be-tied",
+    title: "a person without tds.compute sees the entries the server offers and no button to tie one",
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "GET", re: CANDIDATES_ROUTE, reply: () => ok(CANDIDATES) });
+      await atTheChallans(env, ["read"]);
+      await page.getByRole("button", { name: /^Match challan 00045/ }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByText(ENTRY.reason).waitFor();
+      assert.equal(await dialog.getByRole("button", { name: /^Tie the challan/ }).count(), 0, "a tie button was offered without tds.compute");
+    },
+  },
+  {
+    id: "two-clicks-on-take-the-link-back-send-one-request",
+    title: "a tied challan's dialog offers Take the link back, and a same-tick double click on it sends one request",
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "GET", re: CANDIDATES_ROUTE, reply: () => ok({ ...CANDIDATES, journal_entry_id: ENTRY.journal_entry_id, candidates: [] }) });
+      stub.route({ method: "POST", re: UNLINK_ROUTE, reply: () => ok({ challan_id: "ch-1", journal_entry_id: null, was: ENTRY.journal_entry_id }) });
+      await atTheChallans(env, ["read", "compute", "write"], { challan: { ...CHALLAN, journal_entry_id: ENTRY.journal_entry_id } });
+      assert.match(await text(page), /Tied to an entry/, "a tied challan did not say so");
+
+      await page.getByRole("button", { name: /^Open the ledger link of challan 00045/ }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByText("This challan is tied to a ledger entry.").waitFor();
+      await sameTickDouble(dialog.getByRole("button", { name: "Take the link back", exact: true }));
+      await expectWrites(stub, UNLINK_ROUTE, 1, "two same-tick clicks on Take the link back");
     },
   },
 ];

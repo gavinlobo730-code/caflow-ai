@@ -198,7 +198,7 @@ def link_payment(db, *, firm_id: str, client_id: str, remittance_id: str,
     """Tie a remittance to the journal entry that paid it.
 
     A LINK, NOT A POSTING, and the distinction is load-bearing.
-    `services/bank_posting_service.post` already writes Dr <liability> / Cr Bank
+    the bank-posting service's `post` already writes Dr <liability> / Cr Bank
     when the CA passes the bank statement line, and it is the one path for money
     movement. Posting from here as well would debit the statutory liability
     twice — once from the bank line they passed, once from the challan they
@@ -277,14 +277,9 @@ def payment_candidates(db, *, firm_id: str, client_id: str,
                        ) -> list[dict]:
     """Journal entries that could have paid this remittance, best first.
 
-    THE QUERY IS BOUNDED BY THE ANSWER, not by the ledger. It reads the lines
-    on ONE account inside a fortnight, then the entries behind them — a handful
-    of rows for a monthly obligation, whatever the client's transaction volume.
-    See CLAUDE.md's reporting rule; apps/api is in Singapore and Postgres is in
-    Mumbai.
-
     Nothing is linked here. The ranking and every sentence come from
-    domain/payroll/remittance_match.py, which has the tests.
+    domain/payroll/remittance_match.py, which has the tests; the query is
+    `entries_clearing_account`, which a TDS challan asks the same way.
     """
     paid_on = remittance.get("paid_on")
     if not paid_on:
@@ -294,7 +289,27 @@ def payment_candidates(db, *, firm_id: str, client_id: str,
         scheme=str(remittance.get("scheme") or ""))
     if not account_id:
         return []
+    return entries_clearing_account(
+        db, firm_id=firm_id, client_id=client_id, account_id=account_id,
+        amount_paise=int(remittance.get("amount_paise") or 0), paid_on=str(paid_on),
+        window_days=window_days)
 
+
+def entries_clearing_account(db, *, firm_id: str, client_id: str, account_id: str,
+                             amount_paise: int, paid_on: str,
+                             window_days: int = remittance_match.DEFAULT_WINDOW_DAYS
+                             ) -> list[dict]:
+    """Journal entries inside a fortnight of `paid_on` that DEBIT `account_id`, ranked against `amount_paise`, best first.
+
+    THE QUERY IS BOUNDED BY THE ANSWER, not by the ledger. It reads the entries
+    inside the window, then their lines, a handful of rows for a monthly
+    obligation, whatever the client's transaction volume. See CLAUDE.md's
+    reporting rule; apps/api is in Singapore and Postgres is in Mumbai.
+
+    Shared by the ESI / professional-tax remittance and the TDS challan
+    (POST-A-272): each names its own liability account and its own figure, and
+    the question asked of the ledger is the same.
+    """
     try:
         centre = date.fromisoformat(str(paid_on)[:10])
     except (ValueError, TypeError):
@@ -337,7 +352,7 @@ def payment_candidates(db, *, firm_id: str, client_id: str,
         for e in entries if debited.get(e["id"], 0) > 0
     ]
     return [c.to_dict() for c in remittance_match.candidates(
-        amount_paise=int(remittance.get("amount_paise") or 0),
+        amount_paise=int(amount_paise or 0),
         paid_on=str(paid_on)[:10], entries=shortlist, window_days=window_days)]
 
 

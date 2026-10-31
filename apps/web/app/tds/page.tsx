@@ -75,6 +75,7 @@ import { formatDate } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { RetractChallanModal } from "@/components/tds/RetractChallanModal";
+import { MatchChallanToLedgerModal } from "@/components/tds/MatchChallanToLedgerModal";
 import { Button } from "@/components/ui/button";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
@@ -83,6 +84,7 @@ import {
   listTdsSections, listTdsDeductions, listTdsChallans, listTdsReturns, listTdsCertificates, previewTdsDeduction, createTdsDeduction,
   createTdsChallan, retractTdsChallan, fetchDepositDue, fetchTdsDepositState, currentFinancialYear, type DepositDueWorksheet, type TdsDepositState,
   type CalendarAnswer, type TdsDeductionTotals, type TdsReturnCounts, type TdsCertificateCounts,
+  fetchChallanLedgerCandidates, linkChallanPayment, unlinkChallanPayment, type ChallanLedgerCandidates,
 } from "@/lib/data/tds";
 import { NO_SECTIONS, sectionChoices, sectionOptionText, type SectionChoices } from "@/lib/tds/sectionChoices";
 import { MINOR_HEAD_LABEL, minorHeadLabel } from "@/lib/tds/minorHead";
@@ -200,6 +202,8 @@ interface TDSChallan {
   /** Challan 281's minor head ("200" or "400"); the column defaults to "200". */
   minor_head?: string | null;
   status: "deposited" | "matched" | "unmatched";
+  /** The ledger entry that paid this challan, when a person has tied one (POST-A-272). A link only; null = not tied. */
+  journal_entry_id?: string | null;
   /** Only on the answer to recording one: what became of the monthly deposit obligations on the compliance calendar. */
   compliance_obligations?: CalendarAnswer[];
 }
@@ -822,6 +826,16 @@ export default function TDSPage() {
   const [retractBusy, setRetractBusy] = useState(false);
   const [retractError, setRetractError] = useState<string | null>(null);
   const [retractionNotes, setRetractionNotes] = useState<string[]>([]);
+  // Tying a challan to the ledger entry that paid it (POST-A-272): the challan being matched, what the server found in the ledger for
+  // it, whether a read or a write is out, and the server's refusal. The tier of editing a register row (Executive and above, as for
+  // recording a challan); retracting one is a tier higher. The server asks again.
+  const canTie = can("tds", "compute");
+  const [matching, setMatching] = useState<TDSChallan | null>(null);
+  const [matchAnswer, setMatchAnswer] = useState<ChallanLedgerCandidates | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [matchLoadError, setMatchLoadError] = useState<string | null>(null);
+  const [matchBusy, setMatchBusy] = useState(false);
+  const [matchError, setMatchError] = useState<string | null>(null);
   // Each read of the deposit state takes a number, and only the latest is allowed to land: an answer for the client open a moment
   // ago, or an earlier refresh for this one that finished late, must not replace what is on screen now.
   const depositSeq = useRef(0);
@@ -935,6 +949,73 @@ export default function TDSPage() {
     }
   }
 
+  // Open the match prompt for a challan and ask the server what in the ledger could have paid it. An answer that lands after the CA
+  // switched client, or after they opened another challan, is dropped.
+  const matchSeq = useRef(0);
+  async function openMatch(c: TDSChallan) {
+    const clientAtClick = selectedClientId;
+    const seq = ++matchSeq.current;
+    setMatching(c); setMatchAnswer(null); setMatchLoadError(null); setMatchError(null); setMatchLoading(true);
+    try {
+      const answer = await fetchChallanLedgerCandidates(c.id);
+      if (clientAtClick !== openClient.current || seq !== matchSeq.current) return;
+      setMatchAnswer(answer);
+    } catch (e) {
+      if (clientAtClick !== openClient.current || seq !== matchSeq.current) return;
+      const said = e instanceof Error ? e.message : "";
+      setMatchLoadError(said === "Not found" ? "That challan is no longer in the register." : said || "Could not look in the ledger.");
+    } finally {
+      if (seq === matchSeq.current) setMatchLoading(false);
+    }
+  }
+
+  function closeMatch() {
+    if (matchBusy) return;
+    matchSeq.current += 1;
+    setMatching(null); setMatchAnswer(null); setMatchLoadError(null); setMatchError(null); setMatchLoading(false);
+  }
+
+  // Tie the challan to the entry chosen, or take the link back. The server checks the entry is this client's, debits the right account
+  // and is not another challan's, and answers in words; the register is read again so the row shows the link it now has.
+  async function confirmLink(journalEntryId: string) {
+    if (!matching || !selectedClientId) return;
+    const clientAtClick = selectedClientId;
+    setMatchBusy(true); setMatchError(null);
+    try {
+      await linkChallanPayment(matching.id, journalEntryId);
+      if (clientAtClick !== openClient.current) return;
+      closeMatchAfterWrite();
+      toast({ title: "Challan tied to the ledger entry", description: "Nothing was posted. The challan now points at the entry that paid it." });
+      void loadLists(clientAtClick, false);
+    } catch (e) {
+      setMatchError(e instanceof Error && e.message ? e.message : "Could not tie the challan to that entry.");
+    } finally {
+      setMatchBusy(false);
+    }
+  }
+
+  async function confirmUnlink() {
+    if (!matching || !selectedClientId) return;
+    const clientAtClick = selectedClientId;
+    setMatchBusy(true); setMatchError(null);
+    try {
+      await unlinkChallanPayment(matching.id);
+      if (clientAtClick !== openClient.current) return;
+      closeMatchAfterWrite();
+      toast({ title: "Link taken back", description: "The challan reads \"not tied to an entry\" again. The entry is untouched." });
+      void loadLists(clientAtClick, false);
+    } catch (e) {
+      setMatchError(e instanceof Error && e.message ? e.message : "Could not take the link back.");
+    } finally {
+      setMatchBusy(false);
+    }
+  }
+
+  function closeMatchAfterWrite() {
+    matchSeq.current += 1;
+    setMatching(null); setMatchAnswer(null); setMatchLoadError(null); setMatchError(null); setMatchLoading(false);
+  }
+
   useEffect(() => {
     // A client switch starts from nothing, so no card or row can show the previous client's figures while this one is read, and a
     // failure for the previous client does not blank this one's cards.
@@ -942,6 +1023,8 @@ export default function TDSPage() {
     depositSeq.current += 1;
     setDepositState(null); setDepositStateError(null); setCalendarAnswers(null);
     setRetracting(null); setRetractError(null); setRetractionNotes([]);
+    matchSeq.current += 1;
+    setMatching(null); setMatchAnswer(null); setMatchLoadError(null); setMatchError(null); setMatchLoading(false);
     setYearFilter("");
     // client_id is required by the reads below; an empty string would be refused.
     if (!selectedClientId) {
@@ -1339,7 +1422,7 @@ export default function TDSPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-ps-border">
-                    {["BSR Code", "Payment Date", "Challan No.", "Amount", "Period", "FY", "Section", "Minor head"].map(h => (
+                    {["BSR Code", "Payment Date", "Challan No.", "Amount", "Period", "FY", "Section", "Minor head", "Ledger"].map(h => (
                       <th key={h} className="text-left text-xs font-medium text-ps-hint px-4 py-3">{h}</th>
                     ))}
                     {canRetract && <th className="text-left text-xs font-medium text-ps-hint px-4 py-3"><span className="sr-only">Actions</span></th>}
@@ -1359,6 +1442,17 @@ export default function TDSPage() {
                       <td className="px-4 py-3 text-xs text-ps-label">{c.financial_year}</td>
                       <td className="px-4 py-3 text-xs font-mono text-blue-700">{c.section ?? "—"}</td>
                       <td className="px-4 py-3 text-xs text-ps-label">{minorHeadLabel(c.minor_head)}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {c.journal_entry_id
+                          ? <span className="text-state-ready">Tied to an entry</span>
+                          : <span className="text-ps-hint">Not tied</span>}
+                        {" "}
+                        <button type="button" onClick={() => void openMatch(c)}
+                          aria-label={`${c.journal_entry_id ? "Open the ledger link of" : "Match"} challan ${c.challan_no || c.bsr_code || ""} of ${formatDate(c.payment_date)} ${c.journal_entry_id ? "" : "to the ledger"}`.replace(/\s+/g, " ").trim()}
+                          className="text-xs text-brand underline">
+                          {c.journal_entry_id ? "View" : "Match"}
+                        </button>
+                      </td>
                       {canRetract && (
                         <td className="px-4 py-3 text-right">
                           <button type="button" onClick={() => { setRetractError(null); setRetracting(c); }}
@@ -1496,6 +1590,16 @@ export default function TDSPage() {
           busy={retractBusy} error={retractError}
           onConfirm={confirmRetract}
           onClose={() => { if (!retractBusy) { setRetracting(null); setRetractError(null); } }} />
+      )}
+
+      {matching && selectedClientId && (
+        <MatchChallanToLedgerModal
+          intro={`Challan ${matching.challan_no || "(no serial number)"} of ${formatDate(matching.payment_date)} for ${formatPaise(matching.total_paise)}, `
+            + `${QUARTER_LABEL[matching.quarter] ?? matching.quarter} of ${matching.financial_year}.`}
+          answer={matchAnswer} loading={matchLoading} loadError={matchLoadError}
+          busy={matchBusy} error={matchError} canTie={canTie}
+          onLink={confirmLink} onUnlink={confirmUnlink}
+          onClose={closeMatch} />
       )}
 
       {showImport && selectedClientId && (
