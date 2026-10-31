@@ -191,7 +191,7 @@ function ComplianceDashboard() {
         {[
           { label: "Total", value: s?.total_obligations ?? 0, cls: "text-brand" },
           { label: "Open", value: s?.open_obligations ?? 0, cls: "text-brand" },
-          { label: "Due this week", value: s?.due_this_week ?? 0, cls: "text-amber-600" },
+          { label: "Due this week", value: s?.due_this_week ?? 0, cls: "text-state-attention" },
           { label: "Due this month", value: s?.due_this_month ?? 0, cls: "text-blue-600" },
           { label: "Overdue", value: s?.overdue ?? 0, cls: "text-red-600" },
         ].map((t) => (
@@ -214,7 +214,7 @@ function ComplianceDashboard() {
           <div className="flex items-center gap-2">
             <CalendarClock size={15} className="text-brand" />
             <h2 className="text-sm font-semibold text-brand">Compliance queue</h2>
-            <span className="text-2xs text-gray-400">{queue.length} of {dash?.queue?.length ?? 0}</span>
+            <span className="text-2xs text-ps-hint">{queue.length} of {dash?.queue?.length ?? 0}</span>
           </div>
           <div className="flex gap-2">
             <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
@@ -236,7 +236,7 @@ function ComplianceDashboard() {
           </div>
         </div>
         {queue.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-12">No obligations match the filters.</p>
+          <p className="text-sm text-ps-hint text-center py-12">No obligations match the filters.</p>
         ) : (
           <table className="w-full text-xs">
             <thead>
@@ -297,7 +297,7 @@ function ComplianceDashboard() {
         />
       )}
 
-      <p className="text-2xs text-gray-400 mt-4">
+      <p className="text-2xs text-ps-hint mt-4">
         Obligations are generated from active engagements using statutory due dates. Escalations are internal only —
         clients are never emailed. Nothing here files or submits to any government portal.
       </p>
@@ -312,7 +312,7 @@ function WorkloadCard({ title, rows, emptyLabel }: { title: string; rows: Worklo
         <h2 className="text-sm font-semibold text-brand">{title}</h2>
       </div>
       {rows.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-8">{emptyLabel}</p>
+        <p className="text-xs text-ps-hint text-center py-8">{emptyLabel}</p>
       ) : (
         <table className="w-full text-xs">
           <tbody className="divide-y divide-ps-border">

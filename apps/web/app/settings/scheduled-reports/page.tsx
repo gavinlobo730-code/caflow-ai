@@ -277,7 +277,7 @@ export default function ScheduledReportsPage() {
         <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
           <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
           <p className="text-sm text-ps-hint">No schedules yet</p>
-          <p className="text-xs text-ps-disabled mt-1">Add the first report you plan to send</p>
+          <p className="text-xs text-ps-hint mt-1">Add the first report you plan to send</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -300,7 +300,7 @@ export default function ScheduledReportsPage() {
                     {REPORT_TYPE_LABELS[s.report_type]}
                   </td>
                   <td className="px-4 py-3 text-xs text-ps-label">
-                    {s.client_name ?? <span className="text-ps-disabled italic">All clients</span>}
+                    {s.client_name ?? <span className="text-ps-hint italic">All clients</span>}
                   </td>
                   <td className="px-4 py-3 text-xs text-ps-label">
                     {FREQUENCY_LABELS[s.frequency]}
@@ -308,7 +308,7 @@ export default function ScheduledReportsPage() {
                   <td className="px-4 py-3 text-xs text-ps-label">{s.day_of_month}</td>
                   <td className="px-4 py-3 text-xs text-ps-label max-w-[160px]">
                     <div className="flex items-center gap-1 truncate">
-                      <Mail size={11} className="shrink-0 text-ps-disabled" />
+                      <Mail size={11} className="shrink-0 text-ps-hint" />
                       <span className="truncate">{s.recipients.join(", ")}</span>
                     </div>
                   </td>

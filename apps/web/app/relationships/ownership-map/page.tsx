@@ -112,7 +112,7 @@ export default function OwnershipMapPage() {
         {/* Entity list */}
         <div className="lg:col-span-1 space-y-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ps-hint" />
             <input
               className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-ps-hint focus:outline-none focus:border-brand"
               placeholder="Search entity…"
@@ -134,7 +134,7 @@ export default function OwnershipMapPage() {
           )}
 
           {!loading && !error && filtered.length === 0 && (
-            <p className="text-center py-8 text-gray-400 text-sm">
+            <p className="text-center py-8 text-ps-hint text-sm">
               {register.window?.hasMore && entities.length > 0
                 ? "None of the entities listed match. More exist that are not listed; show more to search them."
                 : "No entities found."}
@@ -154,7 +154,7 @@ export default function OwnershipMapPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm text-gray-800 font-medium truncate">{e.full_name}</span>
-                  <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                  <ChevronRight className="w-4 h-4 text-ps-hint shrink-0" />
                 </div>
                 <Badge
                   className={`mt-1 text-xs ${
@@ -181,7 +181,7 @@ export default function OwnershipMapPage() {
         {/* Ownership detail panel */}
         <div className="lg:col-span-2">
           {!selected && (
-            <div className="flex items-center justify-center h-full min-h-[300px] text-gray-400 text-sm">
+            <div className="flex items-center justify-center h-full min-h-[300px] text-ps-hint text-sm">
               Select an entity to view its ownership map.
             </div>
           )}
@@ -312,7 +312,7 @@ export default function OwnershipMapPage() {
                     {(detail.roles ?? []).length === 0 &&
                       (detail.outgoing ?? []).length === 0 &&
                       (detail.incoming ?? []).length === 0 && (
-                        <p className="text-sm text-gray-400 text-center py-4">
+                        <p className="text-sm text-ps-hint text-center py-4">
                           No ownership relationships recorded for this entity.
                         </p>
                       )}

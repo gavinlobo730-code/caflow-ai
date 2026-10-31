@@ -630,7 +630,7 @@ export default function ClientPortalPage() {
         <div className="flex flex-col items-center justify-center py-20 text-ps-hint">
           <ExternalLink size={40} className="mb-3 opacity-30" />
           <p className="text-base font-medium">Select a client to manage their portal</p>
-          <p className="text-sm mt-1 opacity-70">
+          <p className="text-sm mt-1">
             Request documents, share files, and view compliance status
           </p>
         </div>
@@ -894,7 +894,7 @@ export default function ClientPortalPage() {
                       <div className="px-6 py-10 text-center text-sm text-ps-hint">
                         <BarChart3 size={28} className="mx-auto mb-2 opacity-20" />
                         <p>No reports shared yet.</p>
-                        <p className="text-xs mt-1 text-ps-disabled">Go to Reports → Financial Statements → Generate → Share with Client</p>
+                        <p className="text-xs mt-1 text-ps-hint">Go to Reports → Financial Statements → Generate → Share with Client</p>
                       </div>
                     ) : (
                       <div className="divide-y divide-ps-border">

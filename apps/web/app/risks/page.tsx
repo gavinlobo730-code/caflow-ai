@@ -127,20 +127,20 @@ function riskColor(level: string) {
 
 function OverallScoreCard({ total }: { total: number }) {
   const items = total === 0
-    ? { label: "All Clear", color: "text-green-600 bg-green-50 border-green-200", Icon: CheckCircle }
+    ? { label: "All Clear", color: "text-state-ready bg-state-ready-surface border-state-ready-border", Icon: CheckCircle }
     : total <= 3
-    ? { label: "Low Risk", color: "text-yellow-600 bg-yellow-50 border-yellow-200", Icon: Info }
+    ? { label: "Low Risk", color: "text-yellow-800 bg-yellow-50 border-yellow-200", Icon: Info }
     : total <= 8
-    ? { label: "Medium Risk", color: "text-orange-600 bg-orange-50 border-orange-200", Icon: AlertTriangle }
-    : { label: "High Risk", color: "text-red-600 bg-state-problem-surface border-state-problem-border", Icon: AlertCircle };
+    ? { label: "Medium Risk", color: "text-orange-700 bg-orange-50 border-orange-200", Icon: AlertTriangle }
+    : { label: "High Risk", color: "text-state-problem bg-state-problem-surface border-state-problem-border", Icon: AlertCircle };
   const { label, color, Icon } = items;
   return (
     <div className={`rounded-xl border p-5 flex items-center gap-4 ${color}`}>
       <Icon size={36} />
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wider opacity-70">Overall Risk</p>
+        <p className="text-xs font-semibold uppercase tracking-wider">Overall Risk</p>
         <p className="text-2xl font-bold">{label}</p>
-        <p className="text-sm opacity-70">{total} open risk{total !== 1 ? "s" : ""} detected</p>
+        <p className="text-sm">{total} open risk{total !== 1 ? "s" : ""} detected</p>
       </div>
     </div>
   );
@@ -154,7 +154,7 @@ function MiniCard({ label, count, color, icon: Icon }: {
       <Icon size={20} className="shrink-0" />
       <div>
         <p className="text-2xl font-bold">{count}</p>
-        <p className="text-xs font-medium opacity-80">{label}</p>
+        <p className="text-xs font-medium">{label}</p>
       </div>
     </div>
   );
@@ -395,9 +395,9 @@ export default function RisksPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="sm:col-span-2 lg:col-span-1"><OverallScoreCard total={total} /></div>
-            <MiniCard label="High / Critical" count={(counts.high ?? 0) + (counts.critical ?? 0)} color="text-red-600 bg-state-problem-surface border-state-problem-border border" icon={AlertCircle} />
-            <MiniCard label="Medium Risk" count={counts.medium ?? 0} color="text-orange-600 bg-orange-50 border-orange-200 border" icon={AlertTriangle} />
-            <MiniCard label="Low Risk" count={counts.low ?? 0} color="text-yellow-600 bg-yellow-50 border-yellow-200 border" icon={Info} />
+            <MiniCard label="High / Critical" count={(counts.high ?? 0) + (counts.critical ?? 0)} color="text-state-problem bg-state-problem-surface border-state-problem-border border" icon={AlertCircle} />
+            <MiniCard label="Medium Risk" count={counts.medium ?? 0} color="text-orange-700 bg-orange-50 border-orange-200 border" icon={AlertTriangle} />
+            <MiniCard label="Low Risk" count={counts.low ?? 0} color="text-yellow-800 bg-yellow-50 border-yellow-200 border" icon={Info} />
           </div>
 
           {/* What the engine could not establish, and the conventions it applied.

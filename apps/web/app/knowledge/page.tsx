@@ -93,7 +93,7 @@ function KnowledgeInner() {
         actions={
           <>
             {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
-            <button aria-label="Refresh" onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
+            <button aria-label="Refresh" onClick={load} className="text-ps-hint hover:text-brand"><RefreshCw size={14} /></button>
           </>
         }
         className="mb-4"
@@ -101,7 +101,7 @@ function KnowledgeInner() {
 
       <div className="flex items-center gap-2 mb-4">
         <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus-within:ring-2 focus-within:ring-brand">
-          <Search size={14} className="text-gray-400" />
+          <Search size={14} className="text-ps-hint" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()}
             placeholder="Search articles…" className="flex-1 text-sm outline-none" />
         </div>
@@ -126,22 +126,22 @@ function KnowledgeInner() {
 
       {loading ? <PageLoader onRetry={() => { void load(); }} /> : (
         <div className="space-y-2">
-          {articles.length === 0 && <p className="text-xs text-gray-400">No articles found.</p>}
+          {articles.length === 0 && <p className="text-xs text-ps-hint">No articles found.</p>}
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl">
               <button disabled={rowBusy} onClick={() => open(a.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
                 <div>
                   <p className="text-sm font-medium text-brand">{a.title}</p>
-                  <p className="text-2xs text-gray-400 mt-0.5">
+                  <p className="text-2xs text-ps-hint mt-0.5">
                     {a.scope}{a.department ? ` · ${a.department}` : ""} · v{a.current_version}
                     {a.tags && a.tags.length > 0 ? ` · ${a.tags.join(", ")}` : ""}
                   </p>
                 </div>
-                <History size={14} className="text-gray-400" />
+                <History size={14} className="text-ps-hint" />
               </button>
               {expanded === a.id && (
                 <div className="border-t border-ps-border px-4 py-3">
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">{content || <span className="text-gray-400">No content.</span>}</p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap mb-3">{content || <span className="text-ps-hint">No content.</span>}</p>
                   <p className="text-2xs font-medium text-gray-500 uppercase mb-1">Version history</p>
                   <ul className="space-y-1">
                     {versions.map((v) => (

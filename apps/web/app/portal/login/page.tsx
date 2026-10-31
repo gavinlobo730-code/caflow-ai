@@ -108,8 +108,8 @@ export default function PortalLoginPage() {
         <p className="text-center text-sm text-ps-hint mt-6">
           New here? Access is set up by your accountant — ask them to send you an invite.
         </p>
-        <p className="text-center text-xs text-ps-disabled mt-4">
-          <Link href="/login" className="hover:text-ps-hint transition-colors">
+        <p className="text-center text-xs text-ps-hint mt-4">
+          <Link href="/login" className="hover:text-ps-label transition-colors">
             Are you a Chartered Accountant? Sign in here →
           </Link>
         </p>
