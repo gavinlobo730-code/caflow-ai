@@ -17,6 +17,7 @@
  */
 import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
 
 export function RetractChallanModal({
   intro,
@@ -30,7 +31,8 @@ export function RetractChallanModal({
   busy: boolean;
   /** The server's sentence when the last attempt was refused. */
   error?: string | null;
-  onConfirm: (reason: string) => void;
+  /** Returns the request's promise, which is what lets the confirm button ignore a second click made in the same moment. */
+  onConfirm: (reason: string) => unknown;
   onClose: () => void;
 }) {
   const [reason, setReason] = useState("");
@@ -74,14 +76,18 @@ export function RetractChallanModal({
           >
             Cancel
           </button>
-          <button
+          {/* The shared button: it holds a synchronous guard from the click until the promise settles, so a second click in the same
+              moment is ignored (a `busy` flag lags the click by a render and lets both through). */}
+          <Button
             type="button"
+            variant="plain"
+            size="none"
             onClick={() => onConfirm(trimmed)}
             disabled={busy || trimmed === ""}
             className="text-xs px-3 py-1.5 bg-brand text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
           >
             {busy ? "Retracting…" : "Retract challan"}
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

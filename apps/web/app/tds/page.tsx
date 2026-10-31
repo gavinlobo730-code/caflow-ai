@@ -1489,7 +1489,7 @@ export default function TDSPage() {
           intro={`Challan ${retracting.challan_no || "(no serial number)"} of ${formatDate(retracting.payment_date)} for ${formatPaise(retracting.total_paise)}, `
             + `${QUARTER_LABEL[retracting.quarter] ?? retracting.quarter} of ${retracting.financial_year}.`}
           busy={retractBusy} error={retractError}
-          onConfirm={(reason) => { void confirmRetract(reason); }}
+          onConfirm={confirmRetract}
           onClose={() => { if (!retractBusy) { setRetracting(null); setRetractError(null); } }} />
       )}
 

@@ -87,6 +87,11 @@ test("a retraction reloads the register and the deposit position and shows the s
 
 test("the prompt asks for a reason, sends none blank, ignores a second click while busy and holds no limit of its own", () => {
   assert.ok(/disabled=\{busy \|\| trimmed === ""\}/.test(MODAL), "the button is not disabled when busy or blank");
+  // A `busy` flag lags the click by a render, so two clicks made back to back both get through it: the confirm button is the shared
+  // one, which holds a synchronous guard until the promise it is handed settles, and the page hands it the request's promise.
+  assert.ok(/<Button[\s\S]{0,200}onClick=\{\(\) => onConfirm\(trimmed\)\}/.test(MODAL), "the confirm button is not the shared single-click Button");
+  assert.ok(!/<button[^>]*onConfirm/.test(MODAL), "a raw button confirms the retraction");
+  assert.ok(/onConfirm=\{confirmRetract\}/.test(PAGE) && /async function confirmRetract\(/.test(PAGE), "the page does not hand the button the request's promise");
   assert.ok(/onConfirm\(trimmed\)/.test(MODAL), "the trimmed reason is not what is sent");
   assert.ok(!/maxLength/.test(MODAL), "the prompt holds a limit of its own: the server's refusal says it");
   assert.ok(/role="alert"/.test(MODAL), "a refusal is not announced");
