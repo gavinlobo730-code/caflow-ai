@@ -294,7 +294,7 @@ export default function ClientHealthDetailPage() {
   // column on it and the page showed "Failed to load" instead of the client.
   // window.location.pathname is always the real browser URL; usePathname() is
   // only a re-run trigger, since its own value is the placeholder segment.
-  // This route is outside /clients/[id]/**, so there is no ClientNavProvider
+  // This route is outside the /clients/[id] pages, so there is no ClientNavProvider
   // to borrow — same fix as lib/workspace/ClientNavContext.tsx, done locally.
   const pathname = usePathname();
   const [clientId, setClientId] = useState<string>(getClientIdFromLocation);
@@ -324,7 +324,7 @@ export default function ClientHealthDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      // Direct Supabase for the 3 reads below, not the /api/health/*
+      // Direct Supabase for the 3 reads below, not the /api/health
       // backend routes. OVERRIDES ARE NO LONGER ONE OF THEM: whether a
       // recorded override is in force is a rule (expiry in IST, an
       // unknown dimension, a later override superseding it) and the

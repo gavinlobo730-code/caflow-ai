@@ -79,7 +79,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
       setAccounts(accRes.success ? (accRes.data ?? []) : []);
       setDeletability(delRes.success ? (delRes.data ?? {}) : {});
     } catch (e) {
-      // Was a bare `/* skip */`, which read as "an empty statement list" — the
+      // Was a bare empty-comment placeholder, which read as "an empty statement list" — the
       // same screen a client with nothing imported yet gets. Say which it is.
       setMsg({ type: "err", text: e instanceof Error ? e.message : "Could not load statements." });
     } finally {

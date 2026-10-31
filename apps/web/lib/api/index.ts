@@ -5601,7 +5601,7 @@ export const api = {
     calculate: (clientId: string) => request(`/api/health/scores/${clientId}/calculate`, { method: "POST" }),
   },
   // Note: the unversioned `documentIntelligence` wrapper (client-side, unused
-  // by any page) that pointed at /api/document-intelligence/* was removed in
+  // by any page) that pointed at the /api/document-intelligence paths was removed in
   // the R2.8 fix phase — that backend router was a retired, undisclosed 4th
   // extraction generation serving hardcoded fabricated data. Real document
   // extraction lives at /api/document-intelligence-v1 and

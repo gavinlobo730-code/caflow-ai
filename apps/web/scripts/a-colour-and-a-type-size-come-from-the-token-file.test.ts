@@ -211,7 +211,12 @@ const HEX_BUDGET = 0;
 // conversion cannot be quietly undone by the next screen somebody writes, and
 // that the plan's metric and this guard cannot drift apart. The end state is a
 // number small enough to argue about entry by entry, not necessarily zero.
-const NAMED_COLOUR_BUDGET = 3585;
+// 3,585 → 3,603 on 31-10-2026, AND THIS IS A CORRECTION OF THE MEASUREMENT, NOT PERMISSION TO GROW. `count` below removes comments
+// with a regex that treats "/*" inside a LINE comment as the start of a block, and two screens had such a comment ("... outside
+// /clients/[id]/**" in HealthDetailClient and EntityDetailClient), which hid 200 lines of each from this ratchet: 5 and 13 named
+// palette colours that were always there. The comments were reworded (`no-comment-or-string-hides-code-from-a-guard-by-opening-a-block`
+// holds that now) and the count is the true one. It may only come down from here.
+const NAMED_COLOUR_BUDGET = 3603;
 // 3,712 → 3,585 ON 28-10-2026. NINE OF THE 127 ARE THE CONVERSION AND 118 WERE SLACK. The `waiting` state (POST-A-137) took the
 // five purple "waiting on somebody outside the firm" sites onto tokens (3,594 → 3,585, measured on the same tree before and after),
 // and the budget is set to what is actually there, which is what the paragraph below it says every change does: the tree had

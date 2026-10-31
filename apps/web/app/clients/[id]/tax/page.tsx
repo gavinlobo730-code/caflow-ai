@@ -39,8 +39,8 @@ const MODULES = [
   },
 ];
 
-// The nine tools below live under the firm-wide /income-tax/* tree, not under
-// /clients/[id]/tax/* — each picks its client from its own page-local picker
+// The nine tools below live under the firm-wide /income-tax tree, not under
+// the pages below /clients/[id]/tax — each picks its client from its own page-local picker
 // rather than from the URL segment. Linking with ?client_id= and having the
 // target page read it (sweep-income-tax-hub-04) is what lets a CA reach them
 // without leaving this client's workspace and re-picking the same client.

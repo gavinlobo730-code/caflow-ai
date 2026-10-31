@@ -14,6 +14,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { arrayOrEmpty } from "@/lib/api/shape";
 
 // Same shape and field set as the "Add Entity" form on the Entity Registry
 // list (apps/web/app/relationships/page.tsx) — kept as its own copy here
@@ -281,7 +282,7 @@ export default function EntityDetailPage() {
   // below then requested entity "_placeholder" and the page showed "Entity not
   // found" for every entity. window.location.pathname is always the real
   // browser URL; usePathname() is only a re-run trigger, since its own value is
-  // the placeholder segment. This route is outside /clients/[id]/**, so there
+  // the placeholder segment. This route is outside the /clients/[id] pages, so there
   // is no ClientNavProvider to borrow — same fix as
   // lib/workspace/ClientNavContext.tsx, done locally.
   const pathname = usePathname();
@@ -318,7 +319,8 @@ export default function EntityDetailPage() {
         `/api/relationships/cross-client-matches?entity_id=${entityId}`
       );
       if (!matchesJson.success) throw new Error(matchesJson.error ?? "Failed to load cross-client matches");
-      setMatches(matchesJson.data);
+      // A payload that is not a list is no matches, never a crash further down (lib/api/shape).
+      setMatches(arrayOrEmpty<CrossClientMatch>(matchesJson.data));
       setMatchesError(null);
     } catch (e) {
       setMatches([]);

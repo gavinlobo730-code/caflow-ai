@@ -4,7 +4,7 @@
 // Auth is the client's own Supabase session, resolved server-side via
 // get_current_portal_client. Every surface here is the firm↔client fee
 // relationship (invoices, canonical dues, statement, payment reminders) plus
-// the client's own compliance status — served by /api/portal/self/*. The active
+// the client's own compliance status — served by the /api/portal/self routes. The active
 // client is selected EXPLICITLY via X-Portal-Client-Id (no implicit switching).
 // All amounts are integer paise from the server; the frontend only formats them.
 
