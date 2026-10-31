@@ -8,6 +8,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { api } from "@/lib/api";
 import type { Client } from "@/lib/types";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 export type ClientFilter = "active" | "archived" | "all";
 
@@ -49,17 +50,21 @@ export class DeleteBlockedError extends Error {
 
 export async function getClients(filter: ClientFilter = "active"): Promise<Client[]> {
   const sb = getSupabaseClient();
-  let q = sb
-    .from("clients")
-    .select("*")
-    .is("deleted_at", null)
-    .eq("is_internal", false);   // Guardrail G2: exclude the firm-as-internal-client
+  // Paged: this is THE client list every pick-list and dashboard reads, and a firm past PostgREST's ~1000-row cap would otherwise
+  // be handed the first thousand with no sign that a client was missing (POST-A-135). The query is rebuilt for each page.
+  const { data, error } = await selectAll(() => {
+    let q = sb
+      .from("clients")
+      .select("*")
+      .is("deleted_at", null)
+      .eq("is_internal", false);   // Guardrail G2: exclude the firm-as-internal-client
 
-  if (filter === "active") q = q.neq("status", "archived");
-  else if (filter === "archived") q = q.eq("status", "archived");
-  // filter === "all": no additional status constraint
+    if (filter === "active") q = q.neq("status", "archived");
+    else if (filter === "archived") q = q.eq("status", "archived");
+    // filter === "all": no additional status constraint
 
-  const { data, error } = await q.order("client_name");
+    return q.order("client_name").order("id");   // a unique tiebreaker: an offset-paged read needs a total order
+  });
   if (error) throw new Error(error.message);
   return (data ?? []) as Client[];
 }

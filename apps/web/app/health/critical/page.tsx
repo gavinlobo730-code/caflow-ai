@@ -11,6 +11,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { gradeBadgeClass, gradeOf, scoreTextClass } from "@/lib/health/vocabulary";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 
 interface ClientScore {
@@ -34,11 +35,12 @@ export default function CriticalClientsPage() {
         // same can_access_client() assignment scoping list_scores applies
         // in Python via filter_by_client() — verified against the live DB.
         const supabase = getSupabaseClient();
-        const { data, error: sbError } = await supabase
+        const { data, error: sbError } = await selectAll(() => supabase
           .from("health_scores")
           .select("id, client_id, client_name, overall_score, health_grade, is_critical, last_calculated_at")
           .eq("is_critical", true)
-          .order("overall_score");
+          .order("overall_score")
+          .order("id"));
         if (sbError) throw sbError;
         setClients((data as ClientScore[]) ?? []);
       } catch (e) { setError(e instanceof Error ? e.message : "Failed to load"); }

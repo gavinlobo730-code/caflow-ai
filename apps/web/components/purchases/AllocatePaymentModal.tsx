@@ -47,6 +47,7 @@ import {
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 type OpenBill = {
   id: string;
@@ -99,7 +100,9 @@ export default function AllocatePaymentModal({
           supabase.from("purchase_payment_allocations")
             .select("purchase_bill_id, allocated_paise")
             .eq("purchase_payment_id", payment.id),
-          supabase.from("purchase_bills")
+          // Paged (POST-A-135): every non-draft bill of one supplier is listed oldest first, so a cut at the ~1000-row cap
+          // would drop the NEWEST bills, the ones a payment is most often allocated to.
+          selectAll(() => supabase.from("purchase_bills")
             .select("id, bill_no, our_reference, bill_date, net_payable_paise, outstanding_paise, status")
             .eq("client_id", clientId)
             .eq("vendor_id", payment.vendor_id)
@@ -108,7 +111,7 @@ export default function AllocatePaymentModal({
             // both with a 409, so neither is offered.
             .not("status", "in", "(draft,cancelled)")
             .order("bill_date", { ascending: true })
-            .order("id"),
+            .order("id")),
         ]);
       if (allocErr) throw allocErr;
       if (billErr) throw billErr;

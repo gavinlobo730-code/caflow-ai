@@ -24,6 +24,7 @@ import type { ApiResp, ObligationFilingResult } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 export interface ComplianceEntry {
   id: string;
@@ -176,14 +177,18 @@ export async function getComplianceCalendar(clientId?: string): Promise<Complian
  * back undefined here; the compliance page doesn't render it.
  */
 export async function getComplianceCalendarDirect(clientId: string): Promise<ComplianceEntry[]> {
-  const { data, error } = await getSupabaseClient()
+  // Paged (POST-A-135): a client's whole obligation history is listed oldest first, so a cut at the ~1000-row cap would drop the
+  // NEWEST obligations, the ones due now.
+  const supabaseForCalendar = getSupabaseClient();
+  const { data, error } = await selectAll(() => supabaseForCalendar
     .from("compliance_records")
     .select(
       "id, client_id, compliance_type, obligation_type, period_start, period_end, due_date, status, filed_date, acknowledgement_no, notes"
     )
     .eq("client_id", clientId)
     .is("deleted_at", null)
-    .order("due_date");
+    .order("due_date")
+    .order("id"));
   // Throws (rather than swallowing to []) so the caller can distinguish a
   // genuinely empty calendar from a failed fetch — the only call site
   // (clients/[id]/compliance/page.tsx) is responsible for surfacing this.

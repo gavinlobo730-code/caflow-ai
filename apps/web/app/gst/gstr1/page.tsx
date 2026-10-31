@@ -47,6 +47,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayLocalISO } from "@/lib/dateMath";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -130,12 +131,14 @@ export default function GSTR1Page() {
 
   useEffect(() => {
     const sb = getSupabaseClient();
-    sb.from("clients")
+    // Paged: a firm past the ~1000-row cap would otherwise lose clients from this pick-list without a word (POST-A-135).
+    selectAll(() => sb.from("clients")
       .select("id,name:client_name,gstin")
       .eq("status", "active")
       .eq("is_internal", false)
       .order("client_name")
-      .then(({ data }) => setClients((data ?? []) as { id: string; name: string; gstin: string | null }[]));
+      .order("id"))
+      .then(({ data }) => setClients((data ?? []) as unknown as { id: string; name: string; gstin: string | null }[]));
   }, []);
 
   async function handleBuild() {

@@ -14,6 +14,7 @@ import {
   type HealthGrade,
 } from "@/lib/health/vocabulary";
 import { PageHeader } from "@/components/ui/page-header";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -156,10 +157,11 @@ export default function HealthPage() {
       // distribution chart) is already computed client-side below from the
       // raw rows, same as before.
       const supabase = getSupabaseClient();
-      const { data, error: sbError } = await supabase
+      const { data, error: sbError } = await selectAll(() => supabase
         .from("health_scores")
         .select("*")
-        .order("overall_score");
+        .order("overall_score")
+        .order("id"));
       if (sbError) throw sbError;
       setClients(((data as Record<string, unknown>[]) ?? []).map(normalizeScore));
     } catch (e) {

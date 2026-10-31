@@ -31,6 +31,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
+import { selectAll } from "@/lib/supabase/selectAll";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -317,11 +318,12 @@ export default function ITNoticesPage() {
       const [cls, fid] = await Promise.all([getClients(), getFirmId()]);
       setClients(cls);
       const sb = getSupabaseClient();
-      const { data, error: err } = await sb
+      const { data, error: err } = await selectAll(() => sb
         .from("it_notices")
         .select("*")
         .eq("firm_id", fid)
-        .order("date_received", { ascending: false });
+        .order("date_received", { ascending: false })
+        .order("id"));
       if (err) throw new Error(err.message);
       setNotices((data ?? []) as ITNotice[]);
     } catch (e) {
