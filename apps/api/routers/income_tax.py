@@ -9,6 +9,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Annotated, Optional
+from uuid import UUID
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client
 from core.permissions import can_user, rbac
@@ -196,7 +197,15 @@ class BroughtForwardLossInput(BaseModel):
     `amount_paise` is what REMAINS of the loss (remaining_amount_paise), not
     what it originally was — a loss already partly utilised in an earlier year
     can only relieve what is left of it.
+
+    `id` is the stored row's id (POST-A-073). WITH an id the server reads the
+    record and offers what the record says THIS YEAR may use, the loss less the
+    uses of the OTHER years' returns, whatever `amount_paise` says; the type,
+    assessment year and expiry are the record's too, so a request cannot attach
+    one loss's use to another's head. WITHOUT an id the loss is a figure the CA
+    typed in and is computed as it always was.
     """
+    id: Optional[UUID] = None
     loss_type: str
     amount_paise: int = Field(ge=0)
     assessment_year: OptionalAYLabel = None
@@ -361,6 +370,19 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
             detail=(f"Unknown assessee kind {kind!r}. Expected one of "
                     f"{', '.join(ALL_ASSESSEE_KINDS)}."))
 
+    # A loss named by its record id is offered at what the record says THIS year may use (POST-A-073); one without an id is as typed.
+    from services import bf_loss_service
+    from domain.income_tax.statutory_rates import current_fy
+    try:
+        losses_to_compute, loss_notes = bf_loss_service.resolve_for_compute(
+            current_user,
+            [{**l.model_dump(), "id": str(l.id) if l.id else None} for l in req.brought_forward_losses],
+            req.fy or current_fy())
+    except bf_loss_service.LossNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except bf_loss_service.DuplicateLoss as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
     engine_req = ITRComputeRequest(
         fy=req.fy,
         assessee_kind=kind,
@@ -377,17 +399,7 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         business_income_paise=req.business_income_paise,
         disallowances_paise=req.disallowances_paise,
         presumptive_income_paise=req.presumptive_income_paise,
-        brought_forward_losses=[
-            BroughtForwardLoss(
-                loss_type=l.loss_type,
-                amount_paise=l.amount_paise,
-                assessment_year=l.assessment_year,
-                expiry_assessment_year=l.expiry_assessment_year,
-                is_expired=l.is_expired,
-                source_itr_ack=l.source_itr_ack,
-            )
-            for l in req.brought_forward_losses
-        ],
+        brought_forward_losses=[BroughtForwardLoss(**l) for l in losses_to_compute],
         capital_gains_stcg_paise=req.capital_gains_stcg_paise,
         capital_gains_ltcg_paise=req.capital_gains_ltcg_paise,
         capital_gains_ltcg_other_paise=req.capital_gains_ltcg_other_paise,
@@ -570,6 +582,8 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         "brought_forward": {
             "set_off_paise": result.brought_forward_set_off_paise,
             "lines": result.brought_forward_set_off,
+            # Each loss whose offered figure the record changed, and why (POST-A-073). Empty when every figure was as sent.
+            "offered_from_record": loss_notes,
         },
         "warnings": result.warnings,
         "validation_errors": result.validation_errors,

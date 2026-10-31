@@ -19,6 +19,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { BooksSchedulesPanel, type BooksSchedules } from "@/components/tax/BooksSchedulesPanel";
 import { obligationNote } from "@/lib/compliance/obligationNote";
+import { lossRecordNote } from "@/lib/tax/lossRecordNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -258,6 +259,9 @@ export default function ITRFilingPage() {
   // The server's sentence when recording the acknowledgement did NOT also close the compliance calendar's ITR
   // obligation. Kept on the page and not on the panel, because the panel closes when the return is recorded.
   const [calendarNote, setCalendarNote] = useState<string | null>(null);
+  // The server's sentence about the brought-forward loss records: that they now show what the filed return used, or that they
+  // could not be updated and the use is to be recorded by hand (POST-A-073). Kept on the page for the same reason.
+  const [lossNote, setLossNote] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -430,6 +434,7 @@ export default function ITRFilingPage() {
     if (ackDates.first) { toast({ title: ackDates.first, variant: "destructive" }); return; }
     setSavingAck(true);
     setCalendarNote(null);
+    setLossNote(null);
     try {
       const res = await apiFetch(`/api/itr/filings/${filing.id}/acknowledge`, {
         method: "POST",
@@ -437,6 +442,7 @@ export default function ITRFilingPage() {
       });
       if (!res.success) throw new Error(res.error ?? "Failed");
       setCalendarNote(obligationNote(res.data));
+      setLossNote(lossRecordNote(res.data));
       setShowAck(false);
       chooseFiling(null);
       await load();
@@ -527,6 +533,13 @@ export default function ITRFilingPage() {
         <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
           <span>{calendarNote}</span>{" "}
           <button onClick={() => setCalendarNote(null)} className="underline">Dismiss</button>
+        </Callout>
+      )}
+
+      {lossNote && (
+        <Callout tone="note" title="Recorded as filed. The brought-forward loss records:">
+          <span>{lossNote}</span>{" "}
+          <button onClick={() => setLossNote(null)} className="underline">Dismiss</button>
         </Callout>
       )}
 

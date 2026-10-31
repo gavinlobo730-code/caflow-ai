@@ -84,6 +84,10 @@ class BroughtForwardLoss:
     #: The acknowledgement of the return that first reported the loss. Its
     #: absence is a warning, never a refusal — see the module docstring.
     source_itr_ack: str | None = None
+    #: The stored row this figure came from, when it came from one. The set-off
+    #: line carries it back out, which is how a filed return knows WHICH loss it
+    #: used (domain/income_tax/loss_utilisation.py). None for a loss typed in.
+    loss_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +100,7 @@ class SetOffLine:
     carried_forward_paise: int
     against: tuple[str, ...]
     reasons: tuple[str, ...]
+    loss_id: str | None = None
 
 
 @dataclass
@@ -173,7 +178,7 @@ def apply_brought_forward_losses(
             loss_type=loss.loss_type, section=section,
             offered_paise=max(0, loss.amount_paise), set_off_paise=used,
             carried_forward_paise=max(0, loss.amount_paise) - used,
-            against=against, reasons=tuple(reasons),
+            against=against, reasons=tuple(reasons), loss_id=loss.loss_id,
         ))
 
     # LONG-TERM FIRST. A long-term loss has only one home; a short-term one has

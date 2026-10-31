@@ -159,7 +159,13 @@ interface ComputeResult {
       carried_forward_paise: number;
       against: string[];
       reasons: string[];
+      /** The record this figure came from, when it came from one (POST-A-073). */
+      loss_id?: string | null;
     }[];
+    /** A loss whose offered figure the SERVER took from its record and not from
+     *  the figure this screen sent, with the server's own sentence. Empty when
+     *  every figure was as sent. */
+    offered_from_record?: { loss_id: string; sent_paise: number; offered_paise: number; note: string }[];
   };
   /** WHO was assessed, and on what basis. A firm, an LLP and a company are
    *  each taxed differently from an individual and from each other; until
@@ -995,13 +1001,18 @@ export default function TaxComputationPage() {
               : null,
 
           // IT-10 — the losses this screen has always LOADED and never sent.
-          // remaining_amount_paise, not the original: a loss already partly
-          // utilised can only relieve what is left of it. Which head each one
-          // may reach is the server's decision (§72/§73/§71B/§74), and its
-          // working comes back in `brought_forward`.
+          // Each goes with its RECORD'S ID (POST-A-073): the server reads the
+          // record and offers what that record says THIS year may use, which is
+          // not always what is left, because a return already filed for this
+          // very year has used part of it and a revised return must be offered
+          // that part back. So every loss ever recorded is sent, a fully used
+          // one included, and `amount_paise` is only what this screen holds.
+          // Which head each one may reach is the server's decision
+          // (§72/§73/§71B/§74), and its working comes back in `brought_forward`.
           brought_forward_losses: bfLosses
-            .filter(l => (l.remaining_amount_paise ?? 0) > 0)
+            .filter(l => (l.original_amount_paise ?? 0) > 0)
             .map(l => ({
+              id: l.id,
               loss_type: l.loss_type,
               amount_paise: l.remaining_amount_paise,
               assessment_year: l.assessment_year,
@@ -2253,6 +2264,9 @@ export default function TaxComputationPage() {
                     <p className="text-3xs font-semibold text-ps-body">
                       Brought-forward losses — {paise(computeResult.brought_forward.set_off_paise)} set off
                     </p>
+                    {(computeResult.brought_forward.offered_from_record ?? []).map(n => (
+                      <p key={n.loss_id} className="text-3xs text-ps-label">{n.note}</p>
+                    ))}
                     {computeResult.brought_forward.lines.map((ln, i) => (
                       <div key={i} className="text-3xs">
                         <p className={ln.set_off_paise > 0 ? "text-ps-ink" : "text-ps-hint"}>

@@ -810,8 +810,12 @@ def record_acknowledgement(
         # The year, the client and the kind of return come from the filing the scope check loaded, not from `result`: an
         # update that returns no row (the database's own answer is an empty list when it matched none) must not turn
         # into "the return names no client".
+        # What the filed return used of each brought-forward loss is written back to the loss records (POST-A-073). It never fails the
+        # recording; whatever it did not write comes back, loss by loss, with the reason.
+        from services import bf_loss_service
         return api_response(True, {
-            **result, "compliance_obligation": _close_the_obligation(current_user, filing, req)})
+            **result, "compliance_obligation": _close_the_obligation(current_user, filing, req),
+            "brought_forward_losses": bf_loss_service.write_back_filing(current_user, filing)})
     except ValueError as e:
         # The state-machine refusal (IT-23): a draft cannot be marked filed,
         # and an already-filed return cannot be silently re-acknowledged. Both

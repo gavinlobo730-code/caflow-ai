@@ -229,6 +229,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** The stored per-month 2B totals and the derived 8A. The return names 8A as a figure the product cannot see.
 - **Ledger:** POST-A-063
 
+### S21. An updated return (section 139(8A)): how does its set-off of a brought-forward loss sit beside the return it updates?
+
+- **Question:** When a return is filed as an UPDATED return under section 139(8A), does the brought-forward loss it sets off REPLACE what the return it updates set off for that year (as a revised return under section 139(5) replaces the original), or add to it? And does the proviso to sub-section (8A), which limits what an updated return may change, limit what it can do with a loss that was carried forward? The product writes a filed return's use of a loss back to the loss record; for a revised return it replaces the original's entry for the same year, and for an updated return it writes nothing.
+- **Needed:** Income-tax Act 1961 section 139(8A) with its provisos, and sections 72(1), 74 and 80 as they apply to a loss carried into an updated return; for tax years from 2026-27, the corresponding sections of the Income-tax Act 2025.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** Writing an updated return's use back to the loss records. The answer says no loss record was changed and asks the CA to record the use by hand.
+- **Ledger:** POST-A-366
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
