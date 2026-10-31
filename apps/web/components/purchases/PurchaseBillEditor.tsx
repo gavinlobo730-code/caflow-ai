@@ -38,6 +38,7 @@ import {
   lineIsItcEligible, reasonForHintLabel, supplySplitPreview,
   type PurchaseBillLine,
 } from "@/lib/purchases/billEditor";
+import { afterTab as tabFromGrid } from "@/lib/purchases/billGridFlow";
 import {
   lineFromExtraction, unreadAfterEdit, type ExtractedLine,
 } from "@/lib/purchases/extractedLine";
@@ -693,7 +694,9 @@ export function PurchaseBillEditor({
   // cells) moves to the SAME cell on the next line — down the column, the way a
   // spreadsheet does it — and on the last line adds one, but only when the line
   // has something on it, so Enter on an untouched blank line is not a way to
-  // grow the bill.
+  // grow the bill. TAB from a line's last data cell does the same walk (POST-A-128): to the next line's
+  // description, adding the line when it is the last and has something on it, instead of the browser's
+  // walk to the Remove button; Shift+Tab and every other Tab are the browser's.
   //
   // ONLY inputs that carry `data-cell` take part. The catalogue, HSN and account
   // pickers keep Enter (it selects an option), selects and checkboxes keep it
@@ -712,17 +715,30 @@ export function PurchaseBillEditor({
   }, [focusCell]);
 
   function onLineGridKeyDown(e: React.KeyboardEvent<HTMLTableSectionElement>) {
-    if (e.key !== "Enter" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.key !== "Enter" && e.key !== "Tab") || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     const target = e.target as HTMLElement;
     const cell = target instanceof HTMLInputElement ? target.dataset.cell : undefined;
     if (!cell || !gridRef.current) return;
     const rowEl = target.closest("tr");
     const row = rowEl ? Array.prototype.indexOf.call(gridRef.current.children, rowEl) : -1;
     if (row < 0) return;
+    const last = lines[lines.length - 1];
+    const lastHasContent = !!last && !!(last.description.trim() || last.rate || last.hsn_sac || last.service_catalogue_id);
+    if (e.key === "Tab") {
+      // POST-A-128. Tab from a line's LAST data cell goes to the next line's description (adding the line when it is the last and has
+      // something on it), instead of the browser's walk to the Remove button. Any other Tab, and Shift+Tab, is the browser's. The rule is
+      // lib/purchases/billGridFlow; the DOM fact it needs, which input is the row's last, is read here.
+      const cells = rowEl!.querySelectorAll<HTMLInputElement>("input[data-cell]");
+      const step = tabFromGrid({ isLastDataCell: cells[cells.length - 1] === target, rowIndex: row, rowCount: lines.length, lastLineHasContent: lastHasContent });
+      if (step.kind === "default") return;
+      e.preventDefault();
+      if (step.kind === "add") addLine();
+      setFocusCell({ row: row + 1, cell: "description" });
+      return;
+    }
     e.preventDefault();
     if (row < lines.length - 1) { setFocusCell({ row: row + 1, cell }); return; }
-    const last = lines[row];
-    if (!last || !(last.description.trim() || last.rate || last.hsn_sac || last.service_catalogue_id)) return;
+    if (!lastHasContent) return;
     addLine();
     setFocusCell({ row: row + 1, cell });
   }
