@@ -178,7 +178,7 @@ def _refusal_before_reading(filing: Mapping[str, Any]) -> Optional[dict]:
         return _answer(NOT_WRITTEN, "The filing does not say which client and year it is for, so no loss record was changed.")
     if not filing.get("computation_snapshot_id"):
         return _answer(NOT_WRITTEN, "This return was not created from a saved computation, so nothing says which losses it used and no loss "
-                                    f"record was changed. Choose the saved computation when creating a return. {_NO_SCREEN}")
+                                    "record was changed. Choose the saved computation on the return, then update the loss records from it.")
     return None
 
 

@@ -391,17 +391,18 @@ def review_snapshot(
 
 # ── ITR Filings ───────────────────────────────────────────────────────────────
 
-def _the_computation_is_this_clients_for_this_year(current_user: dict, req: "CreateFilingRequest") -> None:
+def _the_computation_is_this_clients_for_this_year(current_user: dict, client_id: str, financial_year: str,
+                                                   computation_snapshot_id: Optional[str]) -> None:
     """A filing that PINS a saved computation pins this client's own computation for the year the return is for (POST-A-073). The pin decides
     which losses the return is written back to and which figures the keying sheet reads, and it was accepted whatever row it named. The
     refusal is one sentence for a computation that is absent, another firm's, another client's or another year's."""
-    if not req.computation_snapshot_id:
+    if not computation_snapshot_id:
         return
     from domain.income_tax.computation_workspace import get_snapshot
-    snap = get_snapshot(current_user["firm_id"], req.computation_snapshot_id)
-    if (not snap or str(snap.get("client_id")) != str(req.client_id)
-            or str(snap.get("financial_year") or "").strip() != req.financial_year):
-        raise HTTPException(400, detail=f"That saved computation is not one of this client's for FY {req.financial_year}.")
+    snap = get_snapshot(current_user["firm_id"], computation_snapshot_id)
+    if (not snap or str(snap.get("client_id")) != str(client_id)
+            or str(snap.get("financial_year") or "").strip() != financial_year):
+        raise HTTPException(400, detail=f"That saved computation is not one of this client's for FY {financial_year}.")
 
 
 @router.post("/filings")
@@ -411,7 +412,7 @@ def create_filing(
 ):
     """Create ITR filing in draft state."""
     assert_client_access(current_user, req.client_id)
-    _the_computation_is_this_clients_for_this_year(current_user, req)
+    _the_computation_is_this_clients_for_this_year(current_user, req.client_id, req.financial_year, req.computation_snapshot_id)
     from domain.income_tax.itr_workflow import create_itr_filing
     try:
         filing = create_itr_filing(
@@ -791,6 +792,51 @@ def _close_the_obligation(current_user: dict, filing: dict, req: Acknowledgement
         return {"state": "not_closed", "closed": False, "obligation_id": None,
                 "message": "The acknowledgement is recorded, but the compliance calendar could not be updated just now. "
                            "Mark the obligation filed from Compliance."}
+
+
+class PinComputationRequest(BaseModel):
+    computation_snapshot_id: str = Field(..., min_length=1)
+
+
+@router.post("/filings/{filing_id}/computation")
+def pin_filing_computation(
+    filing_id: str,
+    req: PinComputationRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Say which saved computation a return was built on, for a return created without saying (POST-A-368). Set once: a return that already
+    has one keeps it, because the pin is the record of what the return was built on."""
+    filing = _assert_filing_scope(current_user, filing_id)
+    _the_computation_is_this_clients_for_this_year(current_user, str(filing.get("client_id")), str(filing.get("financial_year") or ""),
+                                                   req.computation_snapshot_id)
+    from domain.income_tax.itr_workflow import ITRWorkflowError, pin_computation
+    try:
+        pinned = pin_computation(current_user["firm_id"], filing_id, req.computation_snapshot_id)
+    except ITRWorkflowError as e:
+        raise HTTPException(409, detail=str(e)) from None
+    timeline_service.log(
+        client_id=str(filing.get("client_id")), category="tax", title="ITR filing built on a saved computation",
+        description=f"{filing.get('itr_form')} filing for FY {filing.get('financial_year')} was pinned to computation {req.computation_snapshot_id}",
+        severity="info", firm_id=current_user["firm_id"], entity_type="itr_filing", entity_id=filing_id)
+    return api_response(True, pinned)
+
+
+@router.post("/filings/{filing_id}/loss-records")
+def update_loss_records_from_a_filed_return(
+    filing_id: str,
+    current_user: dict = Depends(rbac("income_tax", "approve")),
+):
+    """Run again, for a return already recorded as filed, the write of what it used of each brought-forward loss back to the loss records
+    (POST-A-368). The same write the acknowledgement makes, idempotent, for the return whose acknowledgement could not make it: the loss write
+    was refused or failed, or the return was pinned to its computation afterwards. Refused for a return that is not filed, because a draft's
+    computation is a what-if and must not consume a client's loss."""
+    filing = _assert_filing_scope(current_user, filing_id)
+    if filing.get("status") != "filed":
+        raise HTTPException(409, detail="A return's use of a loss is recorded once the return is recorded as filed. This one is not yet.")
+    from services import bf_loss_service
+    loss_records = bf_loss_service.write_back_filing(current_user, filing)
+    _audit_the_loss_records(current_user, filing, loss_records)
+    return api_response(True, {"brought_forward_losses": loss_records})
 
 
 def _audit_the_loss_records(current_user: dict, filing: dict, loss_records: dict) -> None:

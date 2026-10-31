@@ -19,7 +19,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { BooksSchedulesPanel, type BooksSchedules } from "@/components/tax/BooksSchedulesPanel";
 import { obligationNote } from "@/lib/compliance/obligationNote";
-import { lossRecordNote } from "@/lib/tax/lossRecordNote";
+import { lossRecordAnswer, lossRecordNote } from "@/lib/tax/lossRecordNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -157,6 +157,8 @@ interface Filing {
   return_type: string | null;
   original_acknowledgement_number: string | null;
   original_filing_date: string | null;
+  /** The saved computation the return was built on (POST-A-073); null for a return created without one. */
+  computation_snapshot_id: string | null;
 }
 
 /** IT-17. One line of the keying sheet: a computed figure, and the box on the
@@ -251,6 +253,11 @@ export default function ITRFilingPage() {
   // outside the product, which is allowed and is said to write nothing.
   const [snapshots, setSnapshots] = useState<SnapshotChoice[]>([]);
   const [snapshotId, setSnapshotId] = useState("");
+  // A return already recorded as filed that was made without a saved computation, or whose loss write was refused (POST-A-368): the
+  // computations to choose from, the choice, and whether the update is running.
+  const [pinChoices, setPinChoices] = useState<SnapshotChoice[]>([]);
+  const [pinChoice, setPinChoice] = useState("");
+  const [savingLosses, setSavingLosses] = useState(false);
 
   // Transition
   const [transitioning, setTransitioning] = useState(false);
@@ -283,7 +290,7 @@ export default function ITRFilingPage() {
   // sheet reports it. One flag over all four, which is what
   // scripts/concurrent-actions.test.ts asserts rather than a list of
   // which pairs may overlap.
-  const actionInFlight = creating || savingAck || transitioning || sheetLoading || booksLoading;
+  const actionInFlight = creating || savingAck || transitioning || sheetLoading || booksLoading || savingLosses;
   function chooseFiling(f: Filing | null) {
     if ((f?.id ?? null) !== sheetFor.current) {
       sheetFor.current = f?.id ?? null;
@@ -310,7 +317,7 @@ export default function ITRFilingPage() {
     try {
       const { data, error } = await supabase
         .from("itr_filings")
-        .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at, return_type, original_acknowledgement_number, original_filing_date")
+        .select("id, itr_form, financial_year, assessment_year, status, acknowledgement_number, filing_date, created_at, return_type, original_acknowledgement_number, original_filing_date, computation_snapshot_id")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false });
       if (error) throw new Error(error.message || "Couldn't load ITR filings.");
@@ -461,6 +468,48 @@ export default function ITRFilingPage() {
       setTransitionError(err instanceof Error ? err.message : "Invalid transition");
     } finally {
       setTransitioning(false);
+    }
+  }
+
+  // The client's saved computations for the year of the selected return, when it is filed and was made without one. Newest first, as served.
+  useEffect(() => {
+    setPinChoices([]);
+    setPinChoice("");
+    const f = selectedFiling;
+    if (!f || f.status !== "filed" || f.computation_snapshot_id || !clientId || clientId === "_placeholder") return;
+    let cancelled = false;
+    apiFetch(`/api/itr/snapshots?client_id=${encodeURIComponent(clientId)}&financial_year=${encodeURIComponent(f.financial_year)}`)
+      .then((r) => {
+        if (cancelled || !r?.success || !Array.isArray(r.data)) return;
+        const served = (r.data as SnapshotChoice[]).filter((x) => x && typeof x.id === "string");
+        setPinChoices(served);
+        setPinChoice(served.find((x) => x.is_reviewed)?.id ?? "");
+      })
+      .catch(() => { /* nothing offered: the return stays as it is, and the panel says what is missing */ });
+    return () => { cancelled = true; };
+  }, [selectedFiling, clientId]);
+
+  // POST-A-368. Record, on each brought-forward loss, how much of it a return already recorded as filed used. Idempotent on the server, so a
+  // second press changes nothing; the panel is still held while one is running.
+  async function updateLossRecords(filing: Filing, pinFirst: string | null) {
+    setSavingLosses(true);
+    setLossNote(null);
+    try {
+      if (pinFirst) {
+        const pinned = await apiFetch(`/api/itr/filings/${filing.id}/computation`, {
+          method: "POST", body: JSON.stringify({ computation_snapshot_id: pinFirst }),
+        });
+        if (!pinned.success) throw new Error(pinned.error ?? "Could not choose that computation");
+      }
+      const res = await apiFetch(`/api/itr/filings/${filing.id}/loss-records`, { method: "POST" });
+      if (!res.success) throw new Error(res.error ?? "Could not update the loss records");
+      setLossNote(lossRecordAnswer(res.data) ?? "The loss records were not changed.");
+      await load();
+      if (pinFirst) chooseFiling(null);
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Failed", variant: "destructive" });
+    } finally {
+      setSavingLosses(false);
     }
   }
 
@@ -807,6 +856,47 @@ export default function ITRFilingPage() {
                 <p className="text-xs font-medium text-green-800">Filed Successfully</p>
                 <p className="text-3xs text-green-600">Ack: {selectedFiling.acknowledgement_number} · {formatDate(selectedFiling.filing_date)}</p>
               </div>
+            </div>
+          )}
+
+          {/* POST-A-368. A return recorded as filed writes, on each brought-forward loss, how much of it the return used. That happens when the
+              acknowledgement is recorded; this is for the return whose write was refused, or that was made without a saved computation. */}
+          {selectedFiling.status === "filed" && (selectedFiling.return_type ?? "original") !== "updated" && (
+            <div className="rounded-lg border border-ps-border p-3 space-y-2">
+              <p className="text-2xs font-medium text-ps-body">Brought-forward losses</p>
+              {selectedFiling.computation_snapshot_id ? (
+                <>
+                  <p className="text-3xs text-ps-hint">
+                    This return is built on a saved computation. Update the loss records to show how much of each loss it used; if they
+                    already show it, nothing changes.
+                  </p>
+                  <Button variant="plain" size="none" spinner={false} onClick={() => updateLossRecords(selectedFiling, null)}
+                    disabled={actionInFlight}
+                    className="text-xs px-3 py-1.5 border border-ps-border rounded-lg disabled:opacity-50 flex items-center gap-1">
+                    {savingLosses && <Loader2 size={10} className="animate-spin" />} Update the loss records from this return
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <label htmlFor="itr-pin-computation" className="text-3xs text-ps-label block">Saved computation this return is built on</label>
+                  <select id="itr-pin-computation" value={pinChoice} onChange={e => setPinChoice(e.target.value)}
+                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
+                    <option value="">Choose a saved computation</option>
+                    {pinChoices.map(x => (
+                      <option key={x.id} value={x.id}>{`Version ${x.version} · ${x.is_reviewed ? "reviewed" : "not yet reviewed"}`}</option>
+                    ))}
+                  </select>
+                  <p className="text-3xs text-ps-hint">
+                    This return was made without one, so nothing says which losses it used. Choose the computation it was built on (it
+                    cannot be changed afterwards), and the loss records are updated from it.
+                  </p>
+                  <Button variant="plain" size="none" spinner={false} onClick={() => updateLossRecords(selectedFiling, pinChoice)}
+                    disabled={actionInFlight || !pinChoice}
+                    className="text-xs px-3 py-1.5 border border-ps-border rounded-lg disabled:opacity-50 flex items-center gap-1">
+                    {savingLosses && <Loader2 size={10} className="animate-spin" />} Use this computation and update the loss records
+                  </Button>
+                </>
+              )}
             </div>
           )}
 

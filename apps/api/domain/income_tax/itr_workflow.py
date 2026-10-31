@@ -317,6 +317,31 @@ def _the_updated_row(res, what: str) -> dict:
     return rows[0]
 
 
+def pin_computation(firm_id: str, filing_id: str, snapshot_id: str) -> dict:
+    """Pin a saved computation to a filing that has none (POST-A-368). The pin is the record of what a return was built on, so it is set once and
+    never replaced: the update names the empty pin as its condition, and a filing that already has one is refused in words."""
+    if _USE_MOCK:
+        filing = _MOCK_FILINGS.get(filing_id)
+        if not filing or filing.get("firm_id") != firm_id:
+            raise ITRWorkflowError("Filing not found")
+        if filing.get("computation_snapshot_id"):
+            raise ITRWorkflowError("This return is already built on a saved computation, and that is not changed once it is set.")
+        filing["computation_snapshot_id"] = snapshot_id
+        filing["updated_at"] = datetime.now(timezone.utc).isoformat()
+        return filing
+    sb = _supabase()
+    res = sb.table("itr_filings").update({
+        "computation_snapshot_id": snapshot_id, "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", filing_id).eq("firm_id", firm_id).is_("computation_snapshot_id", "null").execute()
+    if not (res.data or []):
+        existing = get_filing(firm_id, filing_id)
+        if existing and existing.get("computation_snapshot_id"):
+            raise ITRWorkflowError("This return is already built on a saved computation, and that is not changed once it is set.")
+        raise ITRWorkflowError("Could not pin the computation to this filing: it may have been removed, or your access does not let you change it. "
+                               "Nothing was changed.")
+    return res.data[0]
+
+
 def _not_filed_by_a_transition(new_status: str) -> None:
     """Refuse the one step the state machine permits but a transition may not take: becoming `filed`.
 

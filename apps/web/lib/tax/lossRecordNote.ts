@@ -14,3 +14,15 @@ export function lossRecordNote(data: unknown): string | null {
   if (state !== "written" && state !== "not_written") return null;
   return typeof message === "string" && message.trim() ? message : null;
 }
+
+/**
+ * The same answer when a person ASKED for it (a button that updates the loss records of a return already filed): whatever state it is in, the
+ * server's sentence is shown, because a click that is answered with silence reads as a click that did nothing.
+ */
+export function lossRecordAnswer(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const answer = (data as { brought_forward_losses?: unknown }).brought_forward_losses;
+  if (typeof answer !== "object" || answer === null) return null;
+  const { message } = answer as { message?: unknown };
+  return typeof message === "string" && message.trim() ? message : null;
+}
