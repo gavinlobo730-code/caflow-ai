@@ -1109,7 +1109,12 @@ def list_bf_losses(
     # M2 audit finding: client_id was caller-supplied and never checked.
     assert_client_access(current_user, client_id)
     from domain.income_tax.computation_workspace import list_bf_losses as _list
-    return api_response(True, _list(current_user["firm_id"], client_id))
+    from services import bf_loss_service
+    rows = _list(current_user["firm_id"], client_id)
+    # Each record also says where it went (`uses`, `hand_recorded_paise`), built by the same rule that offers and writes back the loss, so
+    # the screen shows which return holds which part and does no arithmetic of its own.
+    seen = bf_loss_service.uses_by_loss(current_user, client_id, rows)
+    return api_response(True, [{**row, **seen[str(row.get("id"))]} for row in rows])
 
 
 @router.post("/bf-losses/{loss_id}/utilize")

@@ -40,6 +40,7 @@ from core.permissions import can_user
 from domain.income_tax import computation_workspace as workspace
 from domain.income_tax.loss_utilisation import (
     Superseded, after_filing, available_for_year_paise, entries_of, holds_entry_for, is_earlier_year, later_uses, used_in_year_paise,
+    uses_view,
 )
 from domain.money_sentence import rupee_text
 
@@ -148,6 +149,21 @@ def _unrecorded_returns(current_user: Mapping[str, Any], client_id: str, financi
                              firm_id=current_user.get("firm_id"), client_id=client_id)
         return {}
     return found
+
+
+def uses_by_loss(current_user: Mapping[str, Any], client_id: str, rows: list[dict]) -> dict[str, dict]:
+    """For each of the client's loss records, where it went: `loss_utilisation.uses_view` over the record and the client's filings, so the
+    list of losses can say which return holds which part (POST-A-368). Reads only. A failure to read the filings is reported and leaves the
+    items without an acknowledgement number and without a verdict on whether the return is still on file; it never fails the list."""
+    from core.observability import capture_soft_failure
+    from domain.income_tax import itr_workflow
+    filings: Optional[dict[str, dict]]
+    try:
+        filings = {str(f.get("id")): f for f in itr_workflow.list_itr_filings(current_user["firm_id"], client_id)}
+    except Exception as exc:                                          # noqa: BLE001
+        capture_soft_failure(exc, operation="bf_loss_service.uses_by_loss", firm_id=current_user.get("firm_id"), client_id=client_id)
+        filings = None
+    return {str(r.get("id")): uses_view(r, filings) for r in rows}
 
 
 def _unrecorded_sentence(items: list[dict]) -> str:

@@ -4,9 +4,11 @@ import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput
 import AisComputationLinesPanel from "@/components/tax/AisComputationLines";
 import HousePropertyWorksheet from "@/components/tax/HousePropertyWorksheet";
 import SalaryWorksheet from "@/components/tax/SalaryWorksheet";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
 import { formatWhole } from "@/lib/money/format";
+import { LossUses, type LossUsesState } from "@/components/tax/LossUses";
+import { lossUsesOf, type LossUsesView } from "@/lib/tax/lossUses";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -354,6 +356,10 @@ export default function TaxComputationPage() {
   const [lossForm, setLossForm] = useState({ assessment_year: "", loss_type: "", amount: "", expiry: "" });
   const [savingLoss, setSavingLoss] = useState(false);
   const [lossError, setLossError] = useState<string | null>(null);
+  // Where each loss went (POST-A-368): the server's per-record uses, read apart from the loss list so a failure to read them says so
+  // and never reads as "no use". `lossUsesFor` drops an answer that lands after the CA moved to another client.
+  const [lossUses, setLossUses] = useState<{ state: LossUsesState; byId: Record<string, LossUsesView> }>({ state: "loading", byId: {} });
+  const lossUsesFor = useRef<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
 
   // The client's own entity type, read from the client record and passed
@@ -594,6 +600,7 @@ export default function TaxComputationPage() {
         setShowAddLoss(false);
         setLossForm({ assessment_year: "", loss_type: "", amount: "", expiry: "" });
         await load();
+        void loadLossUses();
       } else {
         setLossError(res?.detail ?? res?.error ?? "The loss was not recorded.");
       }
@@ -659,6 +666,20 @@ export default function TaxComputationPage() {
     setLoadError(null);
   }, [clientId, fy]);
 
+  const loadLossUses = useCallback(async () => {
+    if (!clientId || clientId === "_placeholder") return;
+    const asked = clientId;
+    lossUsesFor.current = asked;
+    try {
+      const res = await apiFetch(`/api/itr/bf-losses?client_id=${encodeURIComponent(asked)}`);
+      if (lossUsesFor.current !== asked) return;
+      const byId = res?.success ? lossUsesOf(res.data) : null;
+      setLossUses(byId ? { state: "ready", byId } : { state: "failed", byId: {} });
+    } catch {
+      if (lossUsesFor.current === asked) setLossUses({ state: "failed", byId: {} });
+    }
+  }, [clientId]);
+
   async function markSnapshotReviewed(snapshotId: string) {
     setReviewing(snapshotId);
     setReviewError(null);
@@ -680,6 +701,7 @@ export default function TaxComputationPage() {
   }
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setLossUses({ state: "loading", byId: {} }); loadLossUses(); }, [loadLossUses]);
 
   // The entity type -> assessee mapping, from the server. A refusal (a trust, a
   // co-operative society, a blank entity type) is shown BEFORE the CA types a
@@ -2621,6 +2643,7 @@ export default function TaxComputationPage() {
                         {l.loss_type.replace(/_/g, " ")} Loss — AY {l.assessment_year}
                       </p>
                       <p className="text-3xs text-ps-hint">Expires AY {l.expiry_assessment_year}</p>
+                      <LossUses state={lossUses.state} view={lossUses.byId[l.id]} />
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-semibold text-ps-ink">{paise(l.remaining_amount_paise)}</p>

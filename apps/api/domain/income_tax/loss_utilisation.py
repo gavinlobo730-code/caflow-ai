@@ -37,7 +37,7 @@ write-back and a real-Postgres test, and none of them can drift from the others.
 """
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 
 #: Which kind of return stands over which, for the same financial year. A higher kind replaces a lower one and a lower one never replaces a
@@ -115,6 +115,29 @@ def later_uses(row: Mapping[str, Any], financial_year: str) -> list[dict]:
         if e["amount_paise"] > 0 and is_earlier_year(financial_year, e["financial_year"])
     ]
     return sorted(found, key=lambda item: (_year_start(item["financial_year"]) or 0, item["filing_id"]))
+
+
+def uses_view(row: Mapping[str, Any], filings: Optional[Mapping[str, Mapping[str, Any]]]) -> dict:
+    """Where a loss went, as a screen shows it (POST-A-368): the part recorded by hand and one item per filing's use, oldest year first.
+
+    `filings` maps a filing id to its row. `None` means the filings could not be read, and then an item says nothing about whether its return is
+    still on file (`filing_found` is `None`, and so is the acknowledgement number): a failed read must not be worded as a return that is gone.
+    An item whose return is not among the readable filings says `filing_found: False`. Nothing is added up here that the record does not
+    already hold: the hand-recorded part is the stored total less the entries (`baseline_paise`), and an entry of no rupees is not a use.
+    Each item is `{"filing_id", "financial_year", "return_type", "amount_paise", "filing_found", "acknowledgement_number"}`."""
+    items = []
+    for fid, e in entries_of(row).items():
+        if e["amount_paise"] <= 0:
+            continue
+        filing = None if filings is None else filings.get(fid)
+        ack = (filing or {}).get("acknowledgement_number")
+        items.append({
+            "filing_id": fid, "financial_year": e["financial_year"], "return_type": e["return_type"], "amount_paise": e["amount_paise"],
+            "filing_found": None if filings is None else filing is not None,
+            "acknowledgement_number": str(ack) if ack else None,
+        })
+    items.sort(key=lambda item: (_year_start(item["financial_year"]) or 0, item["filing_id"]))
+    return {"hand_recorded_paise": baseline_paise(row), "uses": items}
 
 
 def holds_entry_for(row: Mapping[str, Any], filing_id: str, financial_year: str, return_type: str = "original") -> bool:
