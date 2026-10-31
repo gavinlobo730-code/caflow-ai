@@ -86,9 +86,22 @@ MARKETING = _REPO / "apps" / "marketing"
 #: settings PUT, both halves of the bonus disqualification and the employee
 #: import template. Under the concatenation all five looked wired up.
 BUDGET: dict[str, int] = {
+    # 31-10-2026 (POST-A-365): the pattern for a route whose path ENDS in a parameter was too loose. It matched any URL beneath the
+    # route, so `GET /challans/{challan_id}` read as reached because the retract call's URL (`/challans/${id}/retract`) starts the same
+    # way. `_pattern` now makes the last parameter one path segment (a template expression, a run with no slash, or an id concatenated on
+    # after a closing quote), and sixteen routes that no screen calls came out, each prefix below RAISED to its true count and not
+    # wired or deleted in the same change (deleting a dead endpoint is the owner's standing permission, and each is a judgement about
+    # who else might call it): approvals 1 -> 2 (`GET /{request_id}`), engagements 1 -> 4 (the detail read, PATCH and DELETE, and
+    # `generate-obligations`), health 2 -> 3 (`GET /scores/{client_id}`), mca-workspace 2 -> 3 (`GET /filings/{filing_id}`), payments
+    # 0 -> 1 (`GET /links/{link_id}`), purchase-cycle 3 -> 4 (`PATCH /orders/{order_id}`), purchase-payments 0 -> 1, receipts 0 -> 1
+    # (the read-one of each), sales-cycle 2 -> 3 (`PATCH /orders/{order_id}`), tds-workspace 0 -> 1 (`GET /challans/{challan_id}`),
+    # workflows 10 -> 13 (the template read, PATCH and DELETE) and year-end 10 -> 11 (`PATCH /{engagement_id}/adjustments/{adjustment_id}`).
+    "/api/receipts": 1,
+    "/api/purchase-payments": 1,
+    "/api/payments": 1,
     # /api/banking 8 -> 6 on 18-10-2026 (POST-A-117): the saved statement layouts are listed beside the statement import, with
     # the Forget that deletes one, so both halves of `/statements/column-mappings` have a screen.
-    "/api/workflows": 10, "/api/year-end": 10, "/api/banking": 6,
+    "/api/workflows": 13, "/api/year-end": 11, "/api/banking": 6,
     # /api/copilot 8 -> 6 on 01-10-2026 (ai-10): `POST /actions` and `GET
     # /summaries` were DELETED, not wired — the first marked a row `executed`
     # having executed nothing, the second filtered an in-memory fixture list.
@@ -109,7 +122,7 @@ BUDGET: dict[str, int] = {
     # screen's "Unbilled work" tab is its first caller, and its two new siblings
     # (`staff-billable-rates`, GET and PUT) are wired by the "Billing rates" tab in
     # the same commit rather than added to the budget.
-    "/api/billing": 6, "/api/engagements": 1, "/api/income-tax": 5,
+    "/api/billing": 6, "/api/engagements": 4, "/api/income-tax": 5,
     # /api/ai-insights 6 -> 4 on 25-09-2026 (Phase 3a-6): the client AI
     # Insights screen read `ai_insights` over PostgREST and nothing could
     # write it — `generate_insights_for_client` is written and tested and
@@ -163,16 +176,16 @@ BUDGET: dict[str, int] = {
     # one, so it is served now rather than re-derived in two browsers. The two
     # left are `GET /dashboard` and `GET /scores/{id}/history`, both of which
     # ARE the recorded read-over-PostgREST convention.
-    "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 2,
+    "/api/firm-hsn-rate-history": 4, "/api/gst": 4, "/api/health": 3,
     # /api/mca-workspace 4 -> 2 on 28-09-2026: the Compliance Calendar asked
     # /api/mca/calendar/firm, a route nothing serves, so the firm calendar
     # was counted unreached while its screen 404'd on every load. It asks
     # /api/mca-workspace/calendar/firm now.
-    "/api/mca-workspace": 2, "/api/recurring-invoices": 4, "/api/xbrl": 4,
+    "/api/mca-workspace": 3, "/api/recurring-invoices": 4, "/api/xbrl": 4,
     # /api/invoices 3 -> 2 on 28-09-2026: the engagement screen's Raise
     # Invoice now asks POST /from-engagement/{id}, which carries the
     # once-per-billing-period refusal a hand-built invoice never did.
-    "/api/ai-copilot": 3, "/api/invoices": 2, "/api/purchase-cycle": 3,
+    "/api/ai-copilot": 3, "/api/invoices": 2, "/api/purchase-cycle": 4,
     # /api/accounting 2 -> 1 on 25-09-2026 (Phase 3a-3): the client
     # Reports tab renders `GET /statement-analysis`, whose method
     # `lib/api.accounting.statementAnalysis` had carried with no caller
@@ -180,18 +193,14 @@ BUDGET: dict[str, int] = {
     "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 1,
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 1,
     "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
-    "/api/public": 2, "/api/sales-cycle": 2,
+    "/api/public": 2, "/api/sales-cycle": 3,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
-    "/api/approvals": 1,
+    "/api/approvals": 2,
     "/api/document-intelligence-v2": 1, "/api/documents": 1,
     "/api/knowledge": 1,
     "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
-    # /api/tds-workspace 1 -> 0 on 31-10-2026, and NOT because a screen reads one challan: `GET /challans/{challan_id}` still has
-    # no caller. The pattern for a route whose path ENDS in a parameter matches any longer URL beneath it, and the new retract URL
-    # (`/challans/${id}/retract`) is one, so the scan counts the read as reached. Measured with a stricter pattern (the last
-    # parameter is one path segment), up to 17 routes are reached only that way, this one among them: POST-A-365 re-measures them.
-    "/api/tds-workspace": 0,
+    "/api/tds-workspace": 1,
     "/api/time-entries": 1,
     # GONE on 24-09-2026, four prefixes at once — the first sweep through this
     # list's own tail rather than through a module:
@@ -578,7 +587,17 @@ def _pattern(path: str) -> re.Pattern:
     "loans" occur in screens that have nothing to do with the endpoint.
     """
     chunks = re.split(r"\{[^}]+\}", path)
-    return re.compile(r"[^\s\"'`]*?".join(re.escape(c) for c in chunks))
+    lazy = r"[^\s\"'`]*?"
+    if path.endswith("}") and chunks[-1] == "":
+        # A path that ENDS in a parameter ends in one path segment, and joining the chunks with the lazy run above left a lazy run at
+        # the end as well, so `GET /challans/{challan_id}` was satisfied by any URL beneath it (`/challans/${id}/retract`): a route
+        # nothing calls read as reached, and up to seventeen did (POST-A-365). The last parameter is a template expression or a run
+        # with no slash, then the end of the string; or an id concatenated on after a closing quote (`"/api/x/" + id`).
+        head = lazy.join(re.escape(c) for c in chunks[:-1])
+        segment = r"(?:\$\{[^}]*\}|[^\s\"'`/?$])+(?=[\s\"'`?)]|$)"
+        concatenated = r"[\"'`]\s*\+"
+        return re.compile(head + "(?:" + segment + "|" + concatenated + ")")
+    return re.compile(lazy.join(re.escape(c) for c in chunks))
 
 
 def _routes() -> set[tuple[str, str]]:
@@ -604,6 +623,18 @@ def unreached() -> dict[str, list[str]]:
             by_prefix.setdefault("/".join(path.split("/")[:3]), []).append(
                 f"{method} {path}")
     return by_prefix
+
+
+def test_a_route_ending_in_a_parameter_is_not_reached_by_a_longer_url():
+    """POST-A-365. The pattern for `GET /challans/{challan_id}` matched `/challans/${id}/retract`, so a route nothing calls read as
+    reached. The last parameter is one path segment: a template expression, a run with no slash, or an id concatenated on."""
+    route = _pattern("/api/tds-workspace/challans/{challan_id}")
+    assert not route.search("`/api/tds-workspace/challans/${encodeURIComponent(id)}/retract`"), "a longer URL satisfied the route"
+    for url in ("`/api/tds-workspace/challans/${id}`", "`/api/tds-workspace/challans/${encodeURIComponent(id)}`",
+                '"/api/tds-workspace/challans/" + id', "'/api/tds-workspace/challans/' + id", '"/api/tds-workspace/challans/abc"'):
+        assert route.search(url), f"a URL that does reach the route was not matched: {url}"
+    middle = _pattern("/api/x/{a}/lines")                  # a parameter that is NOT last keeps the old, looser reading
+    assert middle.search("`/api/x/${id}/lines`")
 
 
 def test_the_route_scan_still_sees_the_app(unreached):
