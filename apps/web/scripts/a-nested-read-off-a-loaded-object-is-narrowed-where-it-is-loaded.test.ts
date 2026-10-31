@@ -102,6 +102,17 @@ test("the TDS deposit worksheet refuses an answer that is not a worksheet, and a
   assert.match(src, /objectOrNull\(shaped\.totals\)/, "and the totals object the panel reads six figures from");
 });
 
+test("the section 234A and 234B answer refuses a payload without its two blocks and the due-date basis, and keeps their lists", () => {
+  const src = read("lib/data/income-tax.ts");
+  const at = src.indexOf("export async function computeSection234ABInterest");
+  assert.ok(at > 0, "computeSection234ABInterest moved");
+  const body = src.slice(at, at + 2400);
+  assert.match(body, /objectWithLists<SectionInterestResult>\(\s*data\?\.section_234a\s*,\s*"reasons"\s*\)/, "the 234A block and its reasons");
+  assert.match(body, /objectWithLists<SectionInterestResult>\(\s*data\?\.section_234b\s*,\s*"reasons"\s*\)/, "the 234B block and its reasons");
+  assert.match(body, /objectWithLists<ITRDueDateBasis>\(\s*data\?\.itr_due_date\s*,\s*"statutory_gaps"\s*\)/, "the due-date basis and its gaps");
+  assert.doesNotMatch(body, /return json\.data as Section234ABResult/, "the unchecked cast is back");
+});
+
 test("the capital-gains exemption working needs its three lists", () => {
   assert.match(read("lib/data/income-tax.ts"),
     /objectWithLists<CapitalGainExemption>\(\s*json\.data\s*,\s*"claims"\s*,\s*"gaps"\s*,\s*"caveats"\s*\)/);

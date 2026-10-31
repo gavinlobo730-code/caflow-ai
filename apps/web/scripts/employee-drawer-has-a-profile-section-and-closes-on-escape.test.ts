@@ -109,9 +109,33 @@ test("the drawer closes on Escape via a document keydown listener", () => {
   // work started asking first (frontend_ux-23): Escape now calls a guard that
   // asks and then calls onClose. Either shape satisfies the rule; a handler that
   // reaches onClose by neither does not.
-  const handler = /e\.key === "Escape"\)\s*(\w+)\(\)/.exec(src)?.[1];
+  // The handler is the Escape branch's call, in either spelling: `if (e.key === "Escape") close();` or the same with a block.
+  const handler = /e\.key === "Escape"\)\s*\{?\s*(\w+)\(\)/.exec(src)?.[1];
   assert.ok(handler, "the Escape branch calls a function");
-  const reachesOnClose = handler === "onClose"
-    || new RegExp(`const ${handler} = [^;]*\\bonClose\\b`).test(src);
-  assert.ok(reachesOnClose, `Escape calls ${handler}(), which never reaches onClose`);
+  assert.ok(reaches(src, handler), `Escape calls ${handler}(), which never reaches onClose`);
 });
+
+/** The text of `const name = …;` — up to the `;` that ends it at bracket depth 0, so a callback's own statements are inside it. */
+function definitionOf(src: string, name: string): string | null {
+  const at = src.indexOf(`const ${name} = `);
+  if (at < 0) return null;
+  let depth = 0;
+  for (let i = at; i < src.length; i++) {
+    const c = src[i];
+    if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") depth--;
+    else if (c === ";" && depth === 0) return src.slice(at, i);
+  }
+  return null;
+}
+
+/** Whether calling `name` ends in `onClose`: it is onClose, or its definition mentions it, or calls something that does. */
+function reaches(src: string, name: string, seen = new Set<string>()): boolean {
+  if (name === "onClose") return true;
+  if (seen.has(name)) return false;
+  seen.add(name);
+  const body = definitionOf(src, name);
+  if (body === null) return false;
+  if (/\bonClose\b/.test(body)) return true;
+  return [...body.matchAll(/\b(\w+)\(/g)].some((m) => m[1] !== name && reaches(src, m[1], seen));
+}

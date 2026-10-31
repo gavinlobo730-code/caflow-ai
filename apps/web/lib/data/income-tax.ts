@@ -7,7 +7,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
-import { objectWithLists } from "@/lib/api/shape";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -758,7 +758,17 @@ export async function computeSection234ABInterest(req: Section234ABRequest): Pro
   });
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `234A/234B compute failed: ${res.statusText}`);
-  return json.data as Section234ABResult;
+  // The screen reads the two section blocks, their reasons and the due-date basis straight into its markup, so an answer without them
+  // (a server behind this screen, an error envelope that arrives as a 200) would throw in render and take the whole page down. It is
+  // refused here in a sentence the page already shows as a failed check, and never as a clear month.
+  const data = objectOrNull<Section234ABResult>(json.data);
+  const a = objectWithLists<SectionInterestResult>(data?.section_234a, "reasons");
+  const b = objectWithLists<SectionInterestResult>(data?.section_234b, "reasons");
+  const due = objectWithLists<ITRDueDateBasis>(data?.itr_due_date, "statutory_gaps");
+  if (!data || !a || !b || !due) {
+    throw new Error("The §234A / §234B answer came back in a shape this screen cannot read, so no figure is shown.");
+  }
+  return { ...data, section_234a: a, section_234b: b, itr_due_date: due };
 }
 
 export async function listAdvanceTaxPayments(clientId: string, fy: string): Promise<AdvanceTaxRecord[]> {

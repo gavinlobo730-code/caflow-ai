@@ -70,7 +70,9 @@ test("the ARN and the real filing date are what get sent", () => {
 
 test("the date is required and the ARN is not", () => {
   const ui = code(GST);
-  assert.match(ui, /disabled=\{saving \|\| !filedDate\}/,
+  // A date that is not a date reads as blank, so the same button is also held while the box holds unreadable text (frontend_ux-19). The
+  // second clause is part of the rule, and not optional: dropping it leaves an unreadable date reading as blank in the dialog that locks a period.
+  assert.match(ui, /disabled=\{saving \|\| !filedDate \|\| !!dates\.first\}/,
     "the date is what the period lock and the §37(3) window key on");
   assert.match(ui, /can be left blank and added later/,
     "the dialog must say the ARN is optional — a CA marking a return filed " +

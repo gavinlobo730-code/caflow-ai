@@ -43,6 +43,8 @@ import { useState, useEffect, useCallback } from "react";
 import { Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
@@ -216,6 +218,9 @@ export default function CapitalGainsPage() {
   const [result, setResult] = useState<CapitalGainsComputeResult | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
+  // The two dates decide the holding period and, on a transfer around 23 July 2024, the rate: text that is not a date reads as blank and
+  // the panel stayed empty with nothing said, so the date's own sentence is shown in its place (frontend_ux-19).
+  const calcDates = useDateProblems();
 
   // Server-side compute, debounced 400ms (matches the deductions page's
   // pattern) so every keystroke doesn't fire a request.
@@ -229,12 +234,22 @@ export default function CapitalGainsPage() {
                       + "without commas.");
       return;
     }
-    if (!purchaseDate || !saleDate || purchasePaise <= 0 || salePaise <= 0) {
+    // A date that is not a date reads as blank, so the blank check below must not be the one to answer for it. The problem is acted on
+    // inside the debounce and not here: `15/`, `15/0` and `15/03/2` are all unreadable on the way to a date, and wiping the result for each
+    // of them would flash an error at every keystroke (frontend_ux-19).
+    if (!calcDates.first && (!purchaseDate || !saleDate || purchasePaise <= 0 || salePaise <= 0)) {
       setResult(null);
       setComputeError(null);
       return;
     }
+    // A request already in flight when a date problem settles must not land over it.
+    let cancelled = false;
     const timer = setTimeout(() => {
+      if (calcDates.first) {
+        setResult(null);
+        setComputeError(calcDates.first);
+        return;
+      }
       setComputing(true);
       computeCapitalGains({
         asset_type: assetType,
@@ -251,13 +266,13 @@ export default function CapitalGainsPage() {
         is_listed_security: listedFromChoice(listedChoice),
         fmv_31_01_2018_paise: fmv2018Paise,
       })
-        .then(r => { setResult(r); setComputeError(null); })
-        .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); })
+        .then(r => { if (!cancelled) { setResult(r); setComputeError(null); } })
+        .catch(e => { if (!cancelled) { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); } })
         .finally(() => setComputing(false));
     }, 400);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [assetType, assesseeType, purchaseDate, saleDate, purchasePaise, salePaise,
-      improvementPaise, amountsUnreadable, listedChoice, fmv2018Paise]);
+      improvementPaise, amountsUnreadable, listedChoice, fmv2018Paise, calcDates.first]);
 
   const showIndexation = assetType === "property" && result?.is_long_term && result?.tax_with_indexation_percent != null;
   const showCII = assetType === "property";
@@ -271,6 +286,9 @@ export default function CapitalGainsPage() {
   const [regForm, setRegForm] = useState(BLANK_REG);
   const [saving, setSaving] = useState(false);
   const [regError, setRegError] = useState<string | null>(null);
+  // Both dates are required to save and decide the classification: text that is not a date is said in the date's own sentence and not as
+  // "purchase date and sale date are required" about a box that has one (frontend_ux-19).
+  const regDates = useDateProblems();
   const [clientsError, setClientsError] = useState<string | null>(null);
   const [regLoadError, setRegLoadError] = useState<string | null>(null);
 
@@ -325,6 +343,8 @@ export default function CapitalGainsPage() {
   const [exemption, setExemption] = useState<CapitalGainExemption | null>(null);
   const [exemptBusy, setExemptBusy] = useState(false);
   const [exemptError, setExemptError] = useState("");
+  // Both dates in a reinvestment claim are optional and read as "not given" when blank: unreadable text is refused instead (frontend_ux-19).
+  const claimDates = useDateProblems();
   const [claimForm, setClaimForm] = useState({ ...BLANK_CLAIM });
 
   useEffect(() => {
@@ -354,6 +374,7 @@ export default function CapitalGainsPage() {
   }
 
   async function saveClaim() {
+    if (claimDates.first) { setExemptError(claimDates.first); return; }
     if (!exemptFor || !claimForm.new_asset_description.trim()) {
       setExemptError("Describe what was bought.");
       return;
@@ -425,6 +446,7 @@ export default function CapitalGainsPage() {
 
   async function handleSaveRecord() {
     if (!selectedClientId) return;
+    if (regDates.first) { setRegError(regDates.first); return; }
     if (!regForm.asset_description.trim() || !regForm.purchase_date || !regForm.sale_date) {
       setRegError("Asset description, purchase date, and sale date are required");
       return;
@@ -583,12 +605,12 @@ export default function CapitalGainsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-ps-body block mb-1">Purchase Date</label>
-                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+                  <label htmlFor="cg-calc-purchase-date" className="text-xs font-medium text-ps-body block mb-1">Purchase Date</label>
+                  <DateInput id="cg-calc-purchase-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purchaseDate} onChange={setPurchaseDate} onStateChange={calcDates.watch("purchase", "Purchase date")} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-ps-body block mb-1">Sale Date</label>
-                  <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={saleDate} onChange={e => setSaleDate(e.target.value)} />
+                  <label htmlFor="cg-calc-sale-date" className="text-xs font-medium text-ps-body block mb-1">Sale Date</label>
+                  <DateInput id="cg-calc-sale-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={saleDate} onChange={setSaleDate} onStateChange={calcDates.watch("sale", "Sale date")} />
                 </div>
               </div>
 
@@ -1087,10 +1109,11 @@ export default function CapitalGainsPage() {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-ps-body block mb-1">Acquired on</label>
-                        <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
+                        <DateInput className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                aria-label="Acquisition date"
                                value={claimForm.acquisition_date}
-                               onChange={e => setClaimForm(f => ({ ...f, acquisition_date: e.target.value }))} />
+                               onChange={v => setClaimForm(f => ({ ...f, acquisition_date: v }))}
+                               onStateChange={claimDates.watch("acquisition", "Acquisition date")} />
                       </div>
                     </div>
 
@@ -1105,10 +1128,11 @@ export default function CapitalGainsPage() {
                       </div>
                       <div>
                         <label className="text-xs font-medium text-ps-body block mb-1">Deposited on</label>
-                        <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
+                        <DateInput className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                aria-label="CGAS deposit date"
                                value={claimForm.cgas_date}
-                               onChange={e => setClaimForm(f => ({ ...f, cgas_date: e.target.value }))} />
+                               onChange={v => setClaimForm(f => ({ ...f, cgas_date: v }))}
+                               onStateChange={claimDates.watch("cgas", "CGAS deposit date")} />
                       </div>
                     </div>
 
@@ -1245,12 +1269,12 @@ export default function CapitalGainsPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-medium text-ps-body block mb-1">Purchase Date *</label>
-                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.purchase_date} onChange={e => setRegForm(f => ({ ...f, purchase_date: e.target.value }))} />
+                      <label htmlFor="cg-reg-purchase-date" className="text-xs font-medium text-ps-body block mb-1">Purchase Date *</label>
+                      <DateInput id="cg-reg-purchase-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.purchase_date} onChange={v => setRegForm(f => ({ ...f, purchase_date: v }))} onStateChange={regDates.watch("purchase", "Purchase date")} />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-ps-body block mb-1">Sale Date *</label>
-                      <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.sale_date} onChange={e => setRegForm(f => ({ ...f, sale_date: e.target.value }))} />
+                      <label htmlFor="cg-reg-sale-date" className="text-xs font-medium text-ps-body block mb-1">Sale Date *</label>
+                      <DateInput id="cg-reg-sale-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.sale_date} onChange={v => setRegForm(f => ({ ...f, sale_date: v }))} onStateChange={regDates.watch("sale", "Sale date")} />
                     </div>
                   </div>
 

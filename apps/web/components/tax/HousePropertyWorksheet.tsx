@@ -12,6 +12,8 @@ import { bpsFromPercentInput, paiseFromRupeeInput, rupeeInputFromPaise } from "@
 import { Callout } from "@/components/ui/callout";
 
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 // The redeploy-window FALLBACK for the vocabularies `domain/income_tax/
 // house_property` owns (USES, PURPOSES) — the Schedule III caption shape. Each
 // is pinned from the Python side against the module, because a list asserted
@@ -149,8 +151,15 @@ export function HousePropertyWorksheet({
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Both dates are optional and read as "not given" when blank, and they decide whether the self-occupied cap is ₹2 lakh or ₹30,000:
+  // text that is not a date is refused in the date's own sentence instead of working the property out on the lower cap (frontend_ux-19).
+  const dates = useDateProblems();
+  // Bumped each time the worksheet is read afresh (a client, a year or the regime changed), so the date boxes are drawn again: a row keeps
+  // its key across a reload, and a box still holding text that is not a date would otherwise keep it, and its problem, over a blank date.
+  const [loadSeq, setLoadSeq] = useState(0);
 
   const take = useCallback((r: WorksheetResponse<HousePropertyResult>) => {
+    setLoadSeq(n => n + 1);
     setRows(rowsFrom(r.payload));
     setResult(objectOrNull<HousePropertyResult>(r.result));
     setSaved(Boolean(r.saved));
@@ -169,6 +178,7 @@ export function HousePropertyWorksheet({
   }, [clientId, fy, useNewRegime, take]);
 
   async function workOut() {
+    if (dates.first) { setErr(dates.first); return; }
     const built = payloadFrom(rows);
     if (built.error || !built.payload) { setErr(built.error ?? "Check the figures."); return; }
     setBusy(true); setErr(null);
@@ -290,13 +300,15 @@ export function HousePropertyWorksheet({
                   </div>
                   <div>
                     <label className="text-3xs text-ps-label block mb-1">Loan taken on</label>
-                    <input type="date" className={input} value={r.loanTakenOn}
-                      onChange={e => set(r.key, { loanTakenOn: e.target.value })} />
+                    <DateInput key={`${loadSeq}:loan:${r.key}`} className={input} value={r.loanTakenOn} aria-label="Loan taken on"
+                      onChange={v => set(r.key, { loanTakenOn: v })}
+                      onStateChange={dates.watch(`loan-${r.key}`, "Loan taken on")} />
                   </div>
                   <div>
                     <label className="text-3xs text-ps-label block mb-1">House completed on</label>
-                    <input type="date" className={input} value={r.completedOn}
-                      onChange={e => set(r.key, { completedOn: e.target.value })} />
+                    <DateInput key={`${loadSeq}:done:${r.key}`} className={input} value={r.completedOn} aria-label="House completed on"
+                      onChange={v => set(r.key, { completedOn: v })}
+                      onStateChange={dates.watch(`done-${r.key}`, "House completed on")} />
                   </div>
                 </>
               )}

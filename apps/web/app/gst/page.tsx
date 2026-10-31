@@ -36,6 +36,8 @@ import { api, type GstDueDates } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
 import { BulkGstr2bPanel } from "@/components/gst/BulkGstr2bPanel";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -161,6 +163,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   const [status, setStatus] = useState<FilingStatus>("Pending");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Text that is not a date reads as blank, and the filing would save with no due date: refuse it instead (frontend_ux-19).
+  const dates = useDateProblems();
 
   // Auto-fill the due date from the compliance engine when the return type or
   // the period changes. `cancelled` guards the response of a request the CA has
@@ -189,6 +193,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   }, [returnType, period]);
 
   async function handleSave() {
+    if (dates.first) { setErr(dates.first); return; }
     if (!clientId || !period) {
       setErr("Please fill all required fields.");
       return;
@@ -314,14 +319,15 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
         {/* Due Date — auto-filled, editable */}
         <div>
-          <label className="text-xs font-medium text-ps-body block mb-1">
+          <label htmlFor="gst-add-filing-due-date" className="text-xs font-medium text-ps-body block mb-1">
             Due Date
             <span className="text-ps-hint font-normal ml-1">(auto-filled, editable)</span>
           </label>
-          <input
-            type="date"
+          <DateInput
+            id="gst-add-filing-due-date"
             value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
+            onChange={setDueDate}
+            onStateChange={dates.watch("dueDate", "Due date")}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           />
           {dueDateErr ? (
@@ -395,11 +401,15 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const { toast } = useToast();
+  // The date is required and applies to every row: text that is not a date reads as blank and the button goes dead without a word, so
+  // the sentence is said beside it (frontend_ux-19).
+  const dates = useDateProblems();
 
   const allArnsFilled = rows.length > 0 && rows.every((f) => (arns[f.id] ?? "").trim().length > 0);
   const canSubmit = allArnsFilled && !!filedDate && !submitting;
 
   async function handleSubmit() {
+    if (dates.first) { setFormError(dates.first); return; }
     if (!canSubmit) return;
     setSubmitting(true);
     setFormError(null);
@@ -498,14 +508,15 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-ps-body mb-1.5">
+            <label htmlFor="gst-batch-filed-date" className="block text-xs font-medium text-ps-body mb-1.5">
               Date of Filing <span className="text-state-problem">*</span>
               <span className="text-ps-hint font-normal ml-1">(applied to all rows below)</span>
             </label>
-            <input
-              type="date"
+            <DateInput
+              id="gst-batch-filed-date"
               value={filedDate}
-              onChange={(e) => setFiledDate(e.target.value)}
+              onChange={setFiledDate}
+              onStateChange={dates.watch("filedDate", "Date of filing")}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
@@ -573,6 +584,9 @@ export default function GSTPage() {
   const [filedForm, setFiledForm] = useState({ arn: "", filed_date: "" });
   const [filedLoading, setFiledLoading] = useState(false);
   const [filedError, setFiledError] = useState<string | null>(null);
+  // Text that is not a date reads as blank, which the next check already refuses, but as "Filing date is required" about a box that
+  // has a date typed in it: the date's own sentence is the answer (frontend_ux-19).
+  const filedDates = useDateProblems();
   const [batchFiledModal, setBatchFiledModal] = useState<GSTFiling[] | null>(null);
   // Bumped after the batch modal closes, to remount <DataTable> and drop its
   // (id-keyed) row-selection Set — updating `filings` in place doesn't clear
@@ -657,6 +671,7 @@ export default function GSTPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
+    if (filedDates.first) { setFiledError(filedDates.first); return; }
     if (!filedForm.arn.trim()) {
       setFiledError("Acknowledgement number is required");
       return;
@@ -1062,13 +1077,14 @@ export default function GSTPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-ps-body mb-1.5">
+                <label htmlFor="gst-filed-modal-date" className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-state-problem">*</span>
                 </label>
-                <input
-                  type="date"
+                <DateInput
+                  id="gst-filed-modal-date"
                   value={filedForm.filed_date}
-                  onChange={(e) => setFiledForm((p) => ({ ...p, filed_date: e.target.value }))}
+                  onChange={(v) => setFiledForm((p) => ({ ...p, filed_date: v }))}
+                  onStateChange={filedDates.watch("filedDate", "Date of filing")}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>

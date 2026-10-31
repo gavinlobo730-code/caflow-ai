@@ -16,6 +16,8 @@ import { Combobox } from "@/components/ui/combobox";
 import { Plus, X, Upload, Download, Trash2, FileText, AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -108,12 +110,16 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
   const [form, setForm] = useState<AddFormState>({ ...BLANK, clientId: presetClientId });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The response due date is optional and the date received is required: text that is not a date read as blank, so the first saved a
+  // notice with no deadline on it and the second said "required" about a box with a date typed in it (frontend_ux-19).
+  const dates = useDateProblems();
 
   function upd(patch: Partial<AddFormState>) { setForm(f => ({ ...f, ...patch })); }
   const inputCls = "w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand";
   const lbl = "text-xs font-medium text-ps-body block mb-1";
 
   async function handleSave() {
+    if (dates.first) { setError(dates.first); return; }
     if (!form.clientId || !form.dateReceived) { setError("Client and date received are required"); return; }
     // All money in integer paise — no floating point
     const amountPaise = form.amountDemandedRs
@@ -189,12 +195,12 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lbl}>Date Received *</label>
-              <input type="date" value={form.dateReceived} onChange={e => upd({ dateReceived: e.target.value })} className={inputCls} />
+              <label htmlFor="notice-date-received" className={lbl}>Date Received *</label>
+              <DateInput id="notice-date-received" value={form.dateReceived} onChange={v => upd({ dateReceived: v })} onStateChange={dates.watch("received", "Date received")} className={inputCls} />
             </div>
             <div>
-              <label className={lbl}>Response Due Date</label>
-              <input type="date" value={form.responseDueDate} onChange={e => upd({ responseDueDate: e.target.value })} className={inputCls} />
+              <label htmlFor="notice-response-due" className={lbl}>Response Due Date</label>
+              <DateInput id="notice-response-due" anchor={form.dateReceived || null} value={form.responseDueDate} onChange={v => upd({ responseDueDate: v })} onStateChange={dates.watch("due", "Response due date")} className={inputCls} />
             </div>
           </div>
           <div>

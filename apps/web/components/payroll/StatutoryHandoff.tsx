@@ -50,6 +50,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatMonthYear, formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -129,6 +131,9 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   const [amount, setAmount] = useState("");
   const [paid, setPaid] = useState(true);
   const [busy, setBusy] = useState(false);
+  // The date is what a payment record is dated by: text that is not a date reads as blank and the record would go in without it, or be
+  // refused with a word about a date that is in the box (frontend_ux-19).
+  const dates = useDateProblems();
 
   const isEpf = obligation.scheme === "epf";
   // WHICH RETURN EPFO IS ACTUALLY EXPECTING. The server decides this
@@ -141,6 +146,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   const [returnType, setReturnType] = useState(options[0]);
 
   async function submit() {
+    if (dates.first) { onError(dates.first); return; }
     const paise = amount.trim() ? paiseFromRupeeInput(amount) : 0;
     if (paise === null) {
       onError("That amount is not an amount. Type it as ₹ and paise — "
@@ -237,8 +243,10 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
                        outline-none focus:border-brand" />
         </div>
         <div>
+          {/* One of these sits on the screen for each scheme, so it is named by an aria-label and not a shared id. */}
           <label className="block text-3xs text-ps-label mb-0.5">Date</label>
-          <input type="date" value={on} onChange={(e) => setOn(e.target.value)}
+          <DateInput aria-label="Date of the payment or filing" value={on} onChange={setOn}
+            onStateChange={dates.watch("on", "Date")}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                        outline-none focus:border-brand" />
         </div>

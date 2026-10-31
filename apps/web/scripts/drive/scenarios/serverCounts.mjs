@@ -140,4 +140,21 @@ export const scenarios = [
       assert.doesNotMatch(await text(page), /What became of the advance-tax obligations/, "an empty answer drew a panel");
     },
   },
+  // ── the §234A / §234B answer: a reply without its parts took the whole screen down (found by driving the typed-date rows) ────────────
+  {
+    id: "an-interest-answer-without-its-parts-is-refused-and-the-advance-tax-screen-stands",
+    title: "a §234A/§234B answer that lacks its blocks is refused in a sentence and the instalment table stays on the screen",
+    async run(env) {
+      const { page } = env;
+      // `{}` is what a server behind this screen, or an error envelope carried in a 200, looks like to the page: an object, so a
+      // plain truthiness check passes it, and then the panel reads `.itr_due_date.due_date` of nothing.
+      env.stub.route({ method: "POST", re: /api\/income-tax\/interest\/234ab$/, reply: () => ok({}) });
+      await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
+      await page.getByPlaceholder("Enter tax amount").fill("100000");
+      await until(async () => /The §234A \/ §234B answer came back in a shape this screen cannot read, so no figure is shown\./.test(await text(page)),
+        "the refusal sentence");
+      assert.ok(await page.getByLabel("Instalment 1 paid on").count() > 0, "the screen was replaced instead of standing");
+      assert.doesNotMatch(await text(page), /could not be displayed/i, "the error boundary took the screen");
+    },
+  },
 ];

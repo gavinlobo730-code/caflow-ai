@@ -33,6 +33,8 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 type RosterEmployee = {
   id: string; name: string; basic_paise?: number; status?: string;
@@ -69,6 +71,9 @@ export default function ApplyStructureModal({
   const [busy, setBusy] = useState<"preview" | "apply" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
+  // The date decides which month the new salary applies from. A blank one holds both buttons (nothing blank is ever sent), so over text that
+  // is not a date the buttons would go dead with no word; the box says why when it loses focus, and this is the second lock (frontend_ux-19).
+  const dates = useDateProblems();
 
   // The current basic is a starting point for the gross, not an answer — the
   // two are different things and the CA is the one who knows which.
@@ -93,6 +98,7 @@ export default function ApplyStructureModal({
       })), [employees, picked, gross]);
 
   async function send(preview: boolean) {
+    if (dates.first) { setErr(dates.first); return; }
     setBusy(preview ? "preview" : "apply");
     setErr(null); setProblems([]);
     try {
@@ -152,9 +158,10 @@ export default function ApplyStructureModal({
 
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <label className="text-2xs text-ps-label block">Effective from
-              <input type="date" value={effectiveFrom}
-                onChange={(e) => { setEffectiveFrom(e.target.value); setResult(null); }}
+            <label htmlFor="apply-structure-effective-from" className="text-2xs text-ps-label block">Effective from
+              <DateInput id="apply-structure-effective-from" value={effectiveFrom}
+                onChange={(v) => { setEffectiveFrom(v); setResult(null); }}
+                onStateChange={dates.watch("effectiveFrom", "Effective from")}
                 className={`${FIELD} w-full mt-1`} />
             </label>
             <label className="text-2xs text-ps-label block">Reason

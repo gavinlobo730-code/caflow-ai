@@ -37,6 +37,8 @@ import {
 import { Probable2BMatches } from "@/components/gst/Probable2BMatches";
 import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -108,6 +110,8 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
   // Defaulted to today because that is the common case, and EDITABLE because
   // recording here lags the portal by days more often than not.
   const [filedDate, setFiledDate] = useState(todayLocalISO());
+  // Text that is not a date reads as blank, and blank disables the button: say why instead of leaving it dead (frontend_ux-19).
+  const dates = useDateProblems();
   return (
     <div className="border border-state-ready-border bg-state-ready-surface rounded p-3 mb-3 space-y-2">
       <p className="text-sm font-medium text-state-ready">
@@ -129,11 +133,12 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
           />
         </div>
         <div>
-          <label className="text-xs text-ps-body block mb-1">Date filed</label>
-          <input
-            type="date"
+          <label htmlFor="gst-mark-filed-date" className="text-xs text-ps-body block mb-1">Date filed</label>
+          <DateInput
+            id="gst-mark-filed-date"
             value={filedDate}
-            onChange={(e) => setFiledDate(e.target.value)}
+            onChange={setFiledDate}
+            onStateChange={dates.watch("filedDate", "Date filed")}
             className="w-full border rounded px-2 py-1 text-sm"
           />
         </div>
@@ -146,11 +151,11 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
         The ARN can be left blank and added later. The date cannot: the correction
         window under CGST §37(3) and the period lock are both measured from it.
       </p>
-      {error && <p className="text-xs text-state-problem">{error}</p>}
+      {error && <p role="alert" className="text-xs text-state-problem">{error}</p>}
       <div className="flex gap-2">
         <button
           onClick={() => onConfirm(arn.trim(), filedDate)}
-          disabled={saving || !filedDate}
+          disabled={saving || !filedDate || !!dates.first}
           className="text-sm px-3 py-1 bg-state-ready-solid text-white rounded disabled:opacity-50"
         >
           {saving ? "Recording…" : "Record as filed"}
@@ -990,6 +995,9 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   // put an interest figure on Table 5.1 that changes every day it is not
   // filed. Given, the server computes §50(1) per head off the CASH payable.
   const [filedOn, setFiledOn] = useState("");
+  // An optional date: text that is not a date reads as blank, so a compute would run WITHOUT the §50 interest and say nothing
+  // (frontend_ux-19). The form refuses it instead.
+  const dates = useDateProblems();
   const [computing, setComputing] = useState(false);
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
@@ -1131,6 +1139,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   async function computeFromBooks() {
     // Refused before the request, never defaulted to the primary (GST-17).
     if (reg.choice.refused) { setComputeError(reg.choice.refused); return; }
+    if (dates.first) { setComputeError(dates.first); return; }
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
@@ -1259,8 +1268,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               onChange={(e) => setComputePeriod(e.target.value)}
               className="w-full border rounded px-3 py-1.5 text-sm" />
             <div>
-              <input type="date" value={filedOn} aria-label="Date filed"
-                onChange={(e) => setFiledOn(e.target.value)}
+              <DateInput id="gstr3b-compute-filed-on" aria-label="Date filed" value={filedOn} onChange={setFiledOn}
+                onStateChange={dates.watch("filedOn", "Date filed")}
                 className="w-full border rounded px-3 py-1.5 text-sm" />
               <p className="text-3xs text-ps-hint mt-0.5">
                 Date filed — optional. Fill it to see §50 interest.

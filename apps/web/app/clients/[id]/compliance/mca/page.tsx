@@ -20,6 +20,8 @@ import { todayLocalISO } from "@/lib/dateMath";
 import { panProblem } from "@/lib/identifiers/pan";
 import { dinProblem } from "@/lib/identifiers/din";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { toast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
@@ -225,6 +227,9 @@ function DirectorsTab({ clientId }: { clientId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" });
+  // An OPTIONAL date: text that is not a date reads as blank and the director would be saved with no appointment date and no word said
+  // (frontend_ux-19).
+  const dates = useDateProblems();
   // Why the last Save was refused — the server's sentence, or this screen's
   // own where it can tell before sending. The form stays open with it.
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -245,6 +250,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
 
   async function saveNew() {
     setSaveError(null);
+    if (dates.first) { setSaveError(dates.first); return; }
     // Companies Act 2013 §153, through the one browser identifier module,
     // which reproduces `core/validators.validate_din` — including that a BLANK
     // DIN is an error where a blank PAN is not, since a director without one is
@@ -331,13 +337,14 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                 onChange={(e) => setForm((f) => ({ ...f, [key]: uppercase ? e.target.value.toUpperCase() : e.target.value }))}
                 className="border rounded px-3 py-1.5 text-sm" />
             )))}
-            {/* A real date control: the column is a DATE, and a typed
-                "15/04/2024" reached the server as a value it could not store. */}
+            {/* The one date field (frontend_ux-19): a typed "15/04/2024" is read by the one rule and stored as the ISO date the column
+                takes, where it once reached the server as a value it could not store. */}
             <label className="text-xs text-ps-label flex flex-col gap-1">
               Date of appointment (optional)
-              <input type="date" value={form.date_of_appointment}
-                onChange={(e) => setForm((f) => ({ ...f, date_of_appointment: e.target.value }))}
-                className="border rounded px-3 py-1.5 text-sm text-ps-ink" />
+              <DateInput id="mca-director-appointment" value={form.date_of_appointment}
+                onChange={(v) => setForm((f) => ({ ...f, date_of_appointment: v }))}
+                onStateChange={dates.watch("appointment", "Date of appointment")}
+                className="w-full border rounded px-3 py-1.5 text-sm text-ps-ink" />
             </label>
             <select value={form.designation} onChange={(e) => setForm((f) => ({ ...f, designation: e.target.value }))}
               aria-label="Designation"
@@ -431,6 +438,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   const [confirmFiling, setConfirmFiling] = useState<Record<string, unknown> | null>(null);
   const [srn, setSrn] = useState("");
   const [filingDate, setFilingDate] = useState("");
+  // Text that is not a date is said in the date's own sentence, not as "Filing date is required" (frontend_ux-19).
+  const filingDates = useDateProblems();
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   // What the server said about the compliance calendar when a filing was recorded as filed and its obligation was not
@@ -505,6 +514,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
 
   async function confirmMarkFiled() {
     if (!confirmFiling) return;
+    if (filingDates.first) { setConfirmError(filingDates.first); return; }
     if (!srn.trim()) {
       setConfirmError("SRN is required");
       return;
@@ -653,9 +663,10 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
             <input placeholder="SRN (required)" value={srn}
               onChange={(e) => setSrn(e.target.value)}
               className="border rounded px-3 py-1.5 text-sm font-mono" />
-            <input type="date" value={filingDate}
-              onChange={(e) => setFilingDate(e.target.value)}
-              className="border rounded px-3 py-1.5 text-sm" />
+            <DateInput id="mca-confirm-filing-date" aria-label="Filing date" value={filingDate}
+              onChange={setFilingDate}
+              onStateChange={filingDates.watch("filingDate", "Filing date")}
+              className="w-full border rounded px-3 py-1.5 text-sm" />
           </div>
           {confirmError && <p className="text-xs text-state-problem">{confirmError}</p>}
           <div className="flex gap-2">

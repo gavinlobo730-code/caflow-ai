@@ -219,8 +219,12 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const dates = useDateProblems();
+  // The due date is always on the form (the filed-on box only for a Filed filing), so it is judged apart: text that is not a date reads as
+  // blank and "Due Date is required" would be said about a box that has a date typed in it (frontend_ux-19).
+  const dueDates = useDateProblems();
 
   async function handleSubmit() {
+    if (dueDates.first) { setErr(dueDates.first); return; }
     if (!clientId || !cin.trim() || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
     // The date box is on the form only for a filed filing, so an unreadable one matters only then.
     if (status === "Filed" && dates.first) { setErr(dates.first); return; }
@@ -318,8 +322,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
               <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
             </div>
             <div>
-              <label className="text-xs font-medium text-ps-body block mb-1">Due Date</label>
-              <input type="date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+              <label htmlFor="mca-due-date" className="text-xs font-medium text-ps-body block mb-1">Due Date</label>
+              <DateInput id="mca-due-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={dueDate} onChange={setDueDate} onStateChange={dueDates.watch("dueDate", "Due date")} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -394,11 +398,14 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
   const [srns, setSrns] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [failures, setFailures] = useState<{ label: string; error: string }[]>([]);
+  // The one date applies to every row. Confirm is held while the box holds text that is not a date, and the box says why in its own sentence
+  // when it loses focus; the sentence is not routed through `failures`, which is the server's list of rows it refused (frontend_ux-19).
+  const dates = useDateProblems();
 
   const allFilled = rows.length > 0 && rows.every(f => (srns[f.id] ?? "").trim().length > 0);
 
   async function handleSubmit() {
-    if (!allFilled || !filedDate || saving) return;
+    if (dates.first || !allFilled || !filedDate || saving) return;
     setSaving(true);
     setFailures([]);
     try {
@@ -477,13 +484,14 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
           ) : (
             <>
               <div>
-                <label className="block text-xs font-medium text-ps-body mb-1.5">
+                <label htmlFor="mca-batch-filed-date" className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-state-problem">*</span>
                 </label>
-                <input
-                  type="date"
+                <DateInput
+                  id="mca-batch-filed-date"
                   value={filedDate}
-                  onChange={(e) => setFiledDate(e.target.value)}
+                  onChange={setFiledDate}
+                  onStateChange={dates.watch("filedDate", "Date of filing")}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 <p className="text-3xs text-ps-hint mt-1">Applied to all filings below.</p>
@@ -536,7 +544,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
           {rows.length > 0 && (
             <Button variant="plain" size="none"
               onClick={handleSubmit}
-              disabled={!allFilled || saving}
+              disabled={!allFilled || !filedDate || !!dates.first || saving}
               className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
             >
               {saving ? "Saving…" : `Confirm ${rows.length} Filing${rows.length === 1 ? "" : "s"}`}
@@ -569,6 +577,8 @@ export default function MCAPage() {
   const [showModal, setShowModal] = useState(false);
   const [filedModal, setFiledModal] = useState<{ filing: MCAFiling } | null>(null);
   const [filedForm, setFiledForm] = useState({ srn: "", filed_date: "" });
+  // Text that is not a date is said in the date's own sentence and not as "Filing date is required" (frontend_ux-19).
+  const filedDates = useDateProblems();
   const [filedLoading, setFiledLoading] = useState(false);
   const [filedError, setFiledError] = useState<string | null>(null);
   const [batchFiledModal, setBatchFiledModal] = useState<MCAFiling[] | null>(null);
@@ -650,6 +660,7 @@ export default function MCAPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
+    if (filedDates.first) { setFiledError(filedDates.first); return; }
     if (!filedForm.srn.trim()) {
       setFiledError("SRN is required");
       return;
@@ -1068,13 +1079,14 @@ export default function MCAPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-ps-body mb-1.5">
+                <label htmlFor="mca-filed-modal-date" className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-state-problem">*</span>
                 </label>
-                <input
-                  type="date"
+                <DateInput
+                  id="mca-filed-modal-date"
                   value={filedForm.filed_date}
-                  onChange={(e) => setFiledForm((p) => ({ ...p, filed_date: e.target.value }))}
+                  onChange={(v) => setFiledForm((p) => ({ ...p, filed_date: v }))}
+                  onStateChange={filedDates.watch("filedDate", "Date of filing")}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
