@@ -78,6 +78,20 @@ export type AfterEnter =
   | { kind: "add" }
   | { kind: "stay" };
 
+export type AfterTab = { kind: "add" } | { kind: "default" };
+
+/**
+ * Where Tab from a line's LAST cell (its narration) goes.
+ *
+ * The same rule as Enter, for the hand that tabs: on the last line, while the entry is still short of balance, Tab adds the next line
+ * (carrying its balancing leg) instead of walking off to the Remove button and the buttons below; on any other line, or once the entry
+ * balances, Tab does what the browser does. A line the CA did not ask for is one they have to delete, which is why a balanced entry
+ * never grows one. Shift+Tab is never intercepted (a person going back is not asking for a line).
+ */
+export function afterTab(rowIndex: number, rowCount: number, balanced: boolean): AfterTab {
+  return rowIndex === rowCount - 1 && !balanced ? { kind: "add" } : { kind: "default" };
+}
+
 /**
  * Where Enter in a line's amount or narration cell goes.
  *

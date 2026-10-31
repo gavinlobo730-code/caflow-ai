@@ -60,7 +60,10 @@ test("Enter finishes a line from the amount and narration cells", () => {
     const at = editor.indexOf(label);
     assert.ok(at > 0, `${label} not found`);
     const tag = editor.slice(at, editor.indexOf("/>", at));
-    assert.match(tag, /onKeyDown=\{\(e\) => onLineEnter\(e, idx\)\}/, `${label} has no Enter handler`);
+    // The narration cell hands Tab to the Tab rule first and everything else, Enter included, on to `onLineEnter`
+    // (the-journal-editor-is-finished-from-the-keyboard.test.ts holds that hand-over).
+    const handler = label.includes("narration") ? "onNarrationKeyDown" : "onLineEnter";
+    assert.match(tag, new RegExp(`onKeyDown=\\{\\(e\\) => ${handler}\\(e, idx\\)\\}`), `${label} has no Enter handler`);
   }
 });
 
