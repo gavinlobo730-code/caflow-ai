@@ -63,7 +63,7 @@
  * the analysis, and a helper two tests import from a third is how a test file
  * grows a second job.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 
@@ -263,6 +263,115 @@ function clientCallWrites(chain: string): boolean {
   return WRITE_VERB.test(chain.slice(chain.lastIndexOf(".") + 1));
 }
 
+/** Helpers in `lib/` that WRITE, as `<module path under lib, without extension>::<exported name>`, and why a POST that only reads is not one.
+ *
+ *  THE BLIND SPOT THIS CLOSES (found by driving the TDS record forms in a browser, PRE-A-015). A click handler was followed through the
+ *  functions of ITS OWN FILE and into the API clients, and no further, so a screen whose handler calls `createTdsDeduction(...)` (a
+ *  function in `lib/data/tds.ts` that POSTs) had a write the analysis could not see. Add Deduction and Add Challan were such buttons:
+ *  each recorded twice on two clicks made in the same moment, and the ratchet that exists to stop that counted neither. One helper had
+ *  been named here by hand (`deleteRowAndConfirm`); the rest were simply not seen. A helper is a write because of what its body does,
+ *  read off the file: it sends a mutating HTTP method, writes through Supabase, calls a writing API client method, or calls another
+ *  function of the same file that does. */
+export const LIB_READS_BY_POST: Readonly<Record<string, string>> = {
+  // Each is keyed `<module>::<name>` and says why a helper that POSTs writes nothing. Asserted to be a real helper that still POSTs
+  // (a stale entry fails), and any POST helper the lib gains is counted as a write until somebody says otherwise: the direction that
+  // gets a repeat click held, not the one that lets a duplicate through.
+};
+
+let libWritersCache: Map<string, Set<string>> | null = null;
+
+function libFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) libFiles(full, out);
+    else if (/\.(?:ts|tsx)$/.test(entry.name) && !/\.(?:test|d)\.tsx?$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+export function writingLibHelpers(): ReadonlyMap<string, ReadonlySet<string>> {
+  if (libWritersCache) return libWritersCache;
+  const found = new Map<string, Set<string>>();
+  for (const file of libFiles(join(WEB, "lib"))) {
+    const rel = file.slice(WEB.length + 1).replace(/\\/g, "/");
+    const sf = ts.createSourceFile(rel, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true,
+      rel.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+    // Top-level functions and whether each is exported.
+    const fns = new Map<string, FnLike>();
+    const exported = new Set<string>();
+    for (const st of sf.statements) {
+      const isExported = ts.canHaveModifiers(st) && (ts.getModifiers(st) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+      if (ts.isFunctionDeclaration(st) && st.name && st.body) {
+        fns.set(st.name.text, st);
+        if (isExported) exported.add(st.name.text);
+      } else if (ts.isVariableStatement(st)) {
+        for (const d of st.declarationList.declarations) {
+          const decl = declaredFunction(d);
+          if (decl) {
+            fns.set(decl.name, decl.fn);
+            if (isExported) exported.add(decl.name);
+          }
+        }
+      }
+    }
+    if (exported.size === 0) continue;
+    const memo = new Map<string, boolean>();
+    const writes = (name: string, stack: Set<string> = new Set()): boolean => {
+      if (memo.has(name)) return memo.get(name)!;
+      if (stack.has(name)) return false;
+      stack.add(name);
+      const fn = fns.get(name);
+      let hit = false;
+      const walk = (n: ts.Node): void => {
+        if (hit) return;
+        if (ts.isCallExpression(n)) {
+          if (directWrite(n, sf, false)) hit = true;
+          else if (ts.isIdentifier(n.expression) && fns.has(n.expression.text) && n.expression.text !== name) hit = writes(n.expression.text, stack);
+        }
+        if (!hit) ts.forEachChild(n, walk);
+      };
+      if (fn?.body) walk(fn.body);
+      stack.delete(name);
+      memo.set(name, hit);
+      return hit;
+    };
+    const mod = rel.replace(/\.(?:ts|tsx)$/, "").replace(/\/index$/, "");
+    for (const name of Array.from(exported)) {
+      if (writes(name) && !(`${mod}::${name}` in LIB_READS_BY_POST)) {
+        if (!found.has(mod)) found.set(mod, new Set());
+        found.get(mod)!.add(name);
+      }
+    }
+  }
+  libWritersCache = found;
+  return found;
+}
+
+const importedWritersCache = new WeakMap<ts.SourceFile, Map<string, string>>();
+
+/** The names this file imported from `@/lib/...` that are write helpers, as local name -> `<module>::<name>`. */
+function importedWriters(sf: ts.SourceFile): Map<string, string> {
+  const cached = importedWritersCache.get(sf);
+  if (cached) return cached;
+  const out = new Map<string, string>();
+  const helpers = writingLibHelpers();
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+    const spec = st.moduleSpecifier.text;
+    if (!spec.startsWith("@/lib/")) continue;
+    const mod = `lib/${spec.slice("@/lib/".length)}`.replace(/\/index$/, "");
+    const names = helpers.get(mod);
+    const bindings = st.importClause?.namedBindings;
+    if (!names || !bindings || !ts.isNamedImports(bindings)) continue;
+    for (const el of bindings.elements) {
+      const exportedName = (el.propertyName ?? el.name).text;
+      if (names.has(exportedName)) out.set(el.name.text, `${mod}::${exportedName}`);
+    }
+  }
+  importedWritersCache.set(sf, out);
+  return out;
+}
+
 function stringLiteralArgs(call: ts.CallExpression): string[] {
   const out: string[] = [];
   const scan = (n: ts.Node): void => {
@@ -274,8 +383,14 @@ function stringLiteralArgs(call: ts.CallExpression): string[] {
 }
 
 /** Does this CALL itself write? Returns what it is, for the message. */
-function directWrite(call: ts.CallExpression, sf: ts.SourceFile): string | null {
+function directWrite(call: ts.CallExpression, sf: ts.SourceFile, followImports = true): string | null {
   const callee = call.expression;
+  // A helper imported from `lib/` whose own body writes (see `writingLibHelpers`). Not asked while the helpers themselves are being
+  // derived, which read the same files and must not ask the question of themselves.
+  if (followImports && ts.isIdentifier(callee)) {
+    const imported = importedWriters(sf).get(callee.text);
+    if (imported) return `${callee.text}(…) [${imported}]`;
+  }
   // supabase.from("customers").insert(...) — a REAL table name even in a comment or a fixture:
   // tests/test_frontend_tables_exist.py and test_direct_write_tables_are_role_guarded.py scan every
   // file under apps/web for `.from("<name>")`, and a made-up name reads as a write to a table that
@@ -295,8 +410,6 @@ function directWrite(call: ts.CallExpression, sf: ts.SourceFile): string | null 
   const name = tail(callee);
   // (The stored-document delete used to be named here, because its write sat in a helper out of this file's sight. It is
   // an API call now, `api.clientDocuments.remove`, and the chain above classifies it; POST-A-010.)
-  // The same for a plain row (POST-A-247): the write sits in lib/data/deleteRowAndConfirm.ts, so the call is named here.
-  if (name === "deleteRowAndConfirm") return "deleteRowAndConfirm(…)";
   if (name && FETCHERS.has(name)) {
     const method = stringLiteralArgs(call).find((s) => MUTATING_METHOD.test(s));
     if (method) return `${name}(…, "${method}")`;
@@ -473,6 +586,12 @@ export function analyseButtons(
         const callee = resolve(n.expression.text, n);
         const w = callee ? asyncWrite(callee) : null;
         if (w) out.push({ call: n, write: w, name: n.expression.text });
+        else if (!callee) {
+          // A write helper imported from lib/ and called right here (`() => void retractTdsChallan(…)`): it starts the write with
+          // no function of this file in between, so it is the call itself that has to hand its promise back.
+          const imported = importedWriters(sf).get(n.expression.text);
+          if (imported) out.push({ call: n, write: `${n.expression.text}(…) [${imported}]`, name: n.expression.text });
+        }
       }
       ts.forEachChild(n, walk);
     };

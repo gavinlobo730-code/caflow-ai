@@ -15,6 +15,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { todayLocalISO } from "@/lib/dateMath";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { DIRECT_READ_WINDOW_MAX, windowDescription } from "@/lib/lists/window";
+import { Button } from "@/components/ui/button";
 /**
  * A client's tasks — and, since this change, a place to create and close them.
  *
@@ -159,7 +160,7 @@ export default function TasksPage() {
                           {t.status.replace(/_/g, " ")}
                         </Badge>
                         {next && (
-                          <button
+                          <Button variant="plain" size="none"
                             onClick={() => advance(t)}
                             disabled={busy === t.id}
                             className="shrink-0 flex items-center gap-1 text-2xs border border-ps-border rounded-md px-2 py-1 text-ps-label hover:bg-ps-muted disabled:opacity-50"
@@ -168,7 +169,7 @@ export default function TasksPage() {
                               ? <Loader2 size={11} className="animate-spin" />
                               : <Check size={11} />}
                             {next.label}
-                          </button>
+                          </Button>
                         )}
                       </div>
                     );

@@ -504,10 +504,10 @@ export default function ITNoticesPage() {
                               Appeal
                             </button>
                           )}
-                          <button onClick={() => deleteNotice(n.id)}
+                          <Button variant="plain" size="none" onClick={() => deleteNotice(n.id)}
                             className="p-1 text-ps-disabled hover:text-state-problem">
                             <Trash2 size={13} />
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>

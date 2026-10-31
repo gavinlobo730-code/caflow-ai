@@ -59,6 +59,7 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayLocalISO } from "@/lib/dateMath";
 import { selectAll } from "@/lib/supabase/selectAll";
 
+import { Button } from "@/components/ui/button";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function r(paise: number): string {
@@ -319,14 +320,14 @@ export default function GSTR3BPage() {
             />
           </div>
         </div>
-        <button
+        <Button variant="plain" size="none"
           onClick={handleCompute}
           disabled={actionInFlight || !clientId || !yearMonth}
           className="flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
         >
           <Calculator className="w-4 h-4" />
           {loading ? "Computing…" : "Compute GSTR-3B"}
-        </button>
+        </Button>
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
@@ -374,14 +375,14 @@ export default function GSTR3BPage() {
                 </button>
               )}
               {(filingStatus === "draft" || filingStatus === "validated") && (
-                <button
+                <Button variant="plain" size="none"
                   onClick={handleApprove}
                   disabled={actionInFlight}
                   className="flex items-center gap-2 px-4 py-2 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   <CheckCircle className="w-4 h-4" />
                   {approving ? "Approving…" : "CA Approve"}
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -1432,13 +1433,13 @@ export default function GSTR3BPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none"
                 onClick={handleMarkFiled}
                 disabled={!arn.trim() || !!dates.first}
                 className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg"
               >
                 Confirm Filed
-              </button>
+              </Button>
             </div>
           </div>
         </div>

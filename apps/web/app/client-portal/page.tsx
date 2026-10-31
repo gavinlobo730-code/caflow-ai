@@ -25,6 +25,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 
+import { Button } from "@/components/ui/button";
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
 const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] = [
@@ -917,7 +918,7 @@ export default function ClientPortalPage() {
                               >
                                 <Download size={12} /> Download
                               </button>
-                              <button
+                              <Button variant="plain" size="none"
                                 onClick={async () => {
                                   if (!(await confirmDialog({ message: "Remove this shared report?", danger: true, confirmLabel: "Remove" }))) return;
                                   const out = await deleteRowAndConfirm(getSupabaseClient(), "shared_reports", r.id);
@@ -927,7 +928,7 @@ export default function ClientPortalPage() {
                                 className="flex items-center gap-1 text-xs text-red-600 hover:text-state-problem px-2 py-1.5 rounded-lg hover:bg-state-problem-hover"
                               >
                                 <Trash2 size={12} />
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         ))}

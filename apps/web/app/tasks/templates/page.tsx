@@ -243,12 +243,12 @@ export default function TaskTemplatesPage() {
                       </span>
                     )}
                     {t.firm_id && (
-                      <button
+                      <Button variant="plain" size="none"
                         onClick={() => handleDelete(t.id)}
                         className="p-1.5 rounded text-ps-hint hover:text-red-600 hover:bg-state-problem-hover transition-colors"
                       >
                         <Trash2 size={14} />
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>

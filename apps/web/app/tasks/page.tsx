@@ -20,6 +20,7 @@ import { formatDate } from "@/lib/services/formatting";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
+import { Button } from "@/components/ui/button";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
@@ -354,13 +355,13 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
                 >
                   Cancel
                 </button>
-                <button
+                <Button variant="plain" size="none"
                   onClick={handleSave}
                   disabled={saving}
                   className="flex-1 bg-brand text-white rounded-lg px-3 py-2 text-sm hover:bg-brand-dark disabled:opacity-60"
                 >
                   {saving ? "Saving…" : "Save"}
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -756,13 +757,13 @@ export default function TasksPage() {
             >
               <ChevronRight size={14} />
             </button>
-            <button
+            <Button variant="plain" size="none"
               onClick={() => handleDelete(t.id)}
               className="p-1 rounded text-ps-hint hover:text-state-problem"
               title="Delete"
             >
               <Trash2 size={13} />
-            </button>
+            </Button>
           </div>
         )}
       />
@@ -774,13 +775,13 @@ export default function TasksPage() {
           {(Object.keys(STATUS_LABEL) as TaskStatus[])
             .filter(s => s !== detailTask.status && (!transitions || (transitions[detailTask.status] ?? []).includes(s)))
             .map(s => (
-              <button
+              <Button variant="plain" size="none"
                 key={s}
                 onClick={() => handleMove(detailTask.id, s)}
                 className="px-2 py-1 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label hover:text-ps-ink"
               >
                 {STATUS_LABEL[s]}
-              </button>
+              </Button>
             ))
           }
         </div>

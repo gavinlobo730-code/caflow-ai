@@ -10,6 +10,7 @@ import {
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 
+import { Button } from "@/components/ui/button";
 /**
  * What the Annual Information Statement says, offered line by line
  * (TDS-INCOME-TAX-10).
@@ -148,22 +149,22 @@ export function AisComputationLinesPanel({
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <button type="button" disabled={busy === l.line_key || l.state === "accepted"}
+            <Button variant="plain" size="none" type="button" disabled={busy === l.line_key || l.state === "accepted"}
               onClick={() => decide(l.line_key, "accepted")}
               className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40 inline-flex items-center gap-1">
               {busy === l.line_key && <Loader2 size={10} className="animate-spin" />} Accept
-            </button>
-            <button type="button" disabled={busy === l.line_key || l.state === "rejected"}
+            </Button>
+            <Button variant="plain" size="none" type="button" disabled={busy === l.line_key || l.state === "rejected"}
               onClick={() => decide(l.line_key, "rejected")}
               className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg disabled:opacity-40">
               Reject
-            </button>
+            </Button>
             {l.state !== "suggested" && (
-              <button type="button" disabled={busy === l.line_key}
+              <Button variant="plain" size="none" type="button" disabled={busy === l.line_key}
                 onClick={() => decide(l.line_key, "undecided")}
                 className="text-2xs px-2.5 py-1 text-ps-hint hover:underline">
                 Take back
-              </button>
+              </Button>
             )}
           </div>
         </div>

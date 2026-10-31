@@ -878,12 +878,12 @@ export default function AdvanceTaxPage() {
                       <td className="py-1.5 pr-3">{c.major_head}/{c.minor_head}</td>
                       <td className="py-1.5 pr-3 text-right tabular-nums">{formatPaise(c.total_paise)}</td>
                       <td className="py-1.5 text-right">
-                        <button type="button" disabled={saBusy}
+                        <Button variant="plain" size="none" type="button" disabled={saBusy}
                           onClick={() => handleRemoveChallan(c.id, c.challan_serial_no)}
                           className="text-ps-hint hover:text-state-problem"
                           aria-label={`Remove challan ${c.challan_serial_no}`}>
                           <Trash2 size={13} />
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}

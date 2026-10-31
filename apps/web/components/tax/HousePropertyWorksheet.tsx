@@ -11,6 +11,7 @@ import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { bpsFromPercentInput, paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 
+import { Button } from "@/components/ui/button";
 // The redeploy-window FALLBACK for the vocabularies `domain/income_tax/
 // house_property` owns (USES, PURPOSES) — the Schedule III caption shape. Each
 // is pinned from the Python side against the module, because a list asserted
@@ -309,11 +310,11 @@ export function HousePropertyWorksheet({
           className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg inline-flex items-center gap-1">
           <Plus size={12} /> Add a property
         </button>
-        <button type="button" onClick={workOut} disabled={busy}
+        <Button variant="plain" size="none" type="button" onClick={workOut} disabled={busy}
           className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg disabled:opacity-40 inline-flex items-center gap-1">
           {busy && <Loader2 size={12} className="animate-spin" />}
           Save and work out
-        </button>
+        </Button>
         {saved && <span className="text-3xs text-ps-hint self-center">Saved for FY {fy}</span>}
       </div>
 
