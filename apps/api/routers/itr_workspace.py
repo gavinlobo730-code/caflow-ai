@@ -355,7 +355,10 @@ def list_snapshots(
     # M2 audit finding: client_id was caller-supplied and never checked.
     assert_client_access(current_user, client_id)
     from domain.income_tax.computation_workspace import list_snapshots as _list
-    return api_response(True, _list(current_user["firm_id"], client_id, financial_year))
+    # `is_reviewed` is the server's word for "a CA has checked this computation", so a screen that offers the list (the filing form's choice
+    # of the computation a return is built on) does not compare the stored status text itself (POST-A-073).
+    return api_response(True, [{**s, "is_reviewed": s.get("status") == "reviewed"}
+                               for s in _list(current_user["firm_id"], client_id, financial_year)])
 
 
 @router.post("/snapshots/{snapshot_id}/review")

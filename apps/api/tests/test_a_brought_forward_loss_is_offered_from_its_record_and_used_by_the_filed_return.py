@@ -533,3 +533,12 @@ def test_a_filing_cannot_pin_another_clients_or_another_years_computation(make, 
     assert e.value.status_code == 400 and "not one of this client's for FY 2025-26" in e.value.detail
     with pytest.raises(HTTPException):
         _create("no-such-snapshot")
+
+
+def test_the_list_of_saved_computations_says_which_a_ca_has_reviewed(monkeypatch):
+    """The filing form offers this list and chooses the newest reviewed one to begin with; it must not compare the stored status text itself."""
+    monkeypatch.setattr(itr, "assert_client_access", lambda user, client_id: None)
+    snapshot("S-A", client=MINE, fy="2025-26")["status"] = "draft"
+    snapshot("S-B", client=MINE, fy="2025-26")["status"] = "reviewed"
+    out = itr.list_snapshots(client_id=MINE, financial_year="2025-26", current_user=USER)["data"]
+    assert {s["id"]: s["is_reviewed"] for s in out} == {"S-A": False, "S-B": True}

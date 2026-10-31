@@ -132,7 +132,8 @@ interface ReturnWindow {
 interface SnapshotChoice {
   id: string;
   version: number;
-  status: string;
+  /** The server's word for "a CA has checked this computation". */
+  is_reviewed: boolean;
 }
 
 interface ReturnKind {
@@ -403,7 +404,7 @@ export default function ITRFilingPage() {
         if (cancelled || !r?.success || !Array.isArray(r.data)) return;
         const served = (r.data as SnapshotChoice[]).filter((x) => x && typeof x.id === "string");
         setSnapshots(served);
-        setSnapshotId(served.find((x) => x.status === "reviewed")?.id ?? "");
+        setSnapshotId(served.find((x) => x.is_reviewed)?.id ?? "");
       })
       .catch(() => {
         // Nothing offered: the return is created unpinned, and the note after the acknowledgement says what that means.
@@ -638,7 +639,7 @@ export default function ITRFilingPage() {
               <option value="">None: computed outside this product</option>
               {snapshots.map(x => (
                 <option key={x.id} value={x.id}>
-                  {`Version ${x.version} · ${x.status === "reviewed" ? "reviewed" : "not yet reviewed"}`}
+                  {`Version ${x.version} · ${x.is_reviewed ? "reviewed" : "not yet reviewed"}`}
                 </option>
               ))}
             </select>
