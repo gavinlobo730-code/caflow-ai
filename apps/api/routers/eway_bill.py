@@ -19,7 +19,7 @@ from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
 from domain.gst import eway_validity
 from core.authz import assert_client_access, can_access_client, effective_client_ids
-from core.ist_clock import ist_today
+from core.ist_clock import ist_date_of, ist_day_iso, ist_today, portal_day
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -69,6 +69,16 @@ class RecordEWBGeneratedRequest(BaseModel):
     ewb_date: str
     ewb_valid_upto: str
     provider_response: Optional[dict] = None
+
+    @field_validator("ewb_date", "ewb_valid_upto")
+    @classmethod
+    def _the_day_the_portal_printed(cls, v: str) -> str:
+        """Both are DAYS the NIC portal printed, stored as a bare date (POST-A-251): the column is a timestamptz, so a longer value kept
+        its time of day and a reader had to guess whether that was Indian wall-clock labelled UTC or a true instant."""
+        day = portal_day(v)
+        if day is None:
+            raise ValueError("must be a date, YYYY-MM-DD: the day the e-way bill portal printed")
+        return day.isoformat()
 
 
 class ExtendEWBRequest(BaseModel):
@@ -182,9 +192,8 @@ def _computed_validity(rec: dict, ewb_date: Optional[str]) -> dict:
     if gap:
         return {"valid_upto": None, "days": None, "slab_km": None,
                 "source": None, "caveat": None, "gap": gap}
-    try:
-        generated_on = date.fromisoformat(str(ewb_date or "")[:10])
-    except ValueError:
+    generated_on = ist_date_of(ewb_date)
+    if generated_on is None:
         return {"valid_upto": None, "days": None, "slab_km": None,
                 "source": None, "caveat": None,
                 "gap": "The e-way bill's own date is needed before its validity can be worked out."}
@@ -308,7 +317,8 @@ def record_ewb_generated(
         result["validity_check"] = {
             **computed,
             "recorded_valid_upto": req.ewb_valid_upto,
-            "agrees": (computed["valid_upto"] == str(req.ewb_valid_upto)[:10]
+            # `req.ewb_valid_upto` is the bare day the validator stored, so it compares as it is.
+            "agrees": (computed["valid_upto"] == req.ewb_valid_upto
                        if computed["valid_upto"] else None),
         }
         return api_response(True, result)
@@ -335,7 +345,7 @@ def extend_ewb(
     # What is refused is a date that does not extend anything — which would
     # SHORTEN the window this screen exists to watch, and would flip `source`
     # to "recorded" (the authoritative claim) while doing it.
-    current = str(rec.get("ewb_valid_upto") or "")[:10]
+    current = ist_day_iso(rec.get("ewb_valid_upto"))
     if current and req.new_valid_upto <= current:
         raise HTTPException(
             422,
