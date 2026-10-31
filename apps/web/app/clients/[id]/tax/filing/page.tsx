@@ -15,6 +15,8 @@ import { errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { BooksSchedulesPanel, type BooksSchedules } from "@/components/tax/BooksSchedulesPanel";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import { EmptyState } from "@/components/ui/states";
@@ -230,6 +232,9 @@ export default function ITRFilingPage() {
   const [kinds, setKinds] = useState<ReturnKind[]>(RETURN_KIND_FALLBACK);
   const [originalAck, setOriginalAck] = useState("");
   const [originalAckDate, setOriginalAckDate] = useState("");
+  // Optional until the kind needs it, then the server refuses a blank one as "the earlier receipt is missing": text that is not a date
+  // read as blank, so the refusal named a box that held a date. The date's own sentence is shown instead (frontend_ux-19).
+  const createDates = useDateProblems();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -246,6 +251,9 @@ export default function ITRFilingPage() {
   const [showAck, setShowAck] = useState(false);
   const [ackNumber, setAckNumber] = useState("");
   const [ackDate, setAckDate] = useState("");
+  // The date the genuine filing record carries, and the one the period lock and the calendar are closed by: unreadable text holds the
+  // button and says why, instead of a button that stays dead over a box with a date in it (frontend_ux-19).
+  const ackDates = useDateProblems();
   const [savingAck, setSavingAck] = useState(false);
   // The server's sentence when recording the acknowledgement did NOT also close the compliance calendar's ITR
   // obligation. Kept on the page and not on the panel, because the panel closes when the return is recorded.
@@ -368,6 +376,7 @@ export default function ITRFilingPage() {
   const selectedKind = kinds.find((k) => k.return_type === kind);
 
   async function handleCreate() {
+    if (createDates.first) { setCreateError(createDates.first); return; }
     setCreating(true);
     setCreateError(null);
     try {
@@ -418,6 +427,7 @@ export default function ITRFilingPage() {
   }
 
   async function handleRecordAck(filing: Filing) {
+    if (ackDates.first) { toast({ title: ackDates.first, variant: "destructive" }); return; }
     setSavingAck(true);
     setCalendarNote(null);
     try {
@@ -614,11 +624,12 @@ export default function ITRFilingPage() {
                   placeholder="e.g. 123456789012345" />
               </div>
               <div>
-                <label className="text-3xs text-ps-label mb-1 block">
+                <label htmlFor="itr-original-filing-date" className="text-3xs text-ps-label mb-1 block">
                   Earlier return&apos;s filing date
                 </label>
-                <input type="date" value={originalAckDate}
-                  onChange={e => setOriginalAckDate(e.target.value)}
+                <DateInput id="itr-original-filing-date" value={originalAckDate}
+                  onChange={setOriginalAckDate}
+                  onStateChange={createDates.watch("original", "Earlier return's filing date")}
                   className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
               </div>
               <p className="col-span-2 text-3xs text-ps-hint">
@@ -820,8 +831,9 @@ export default function ITRFilingPage() {
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
                 <div>
-                  <label className="text-3xs text-ps-label mb-1 block">Filing Date</label>
-                  <input type="date" value={ackDate} onChange={e => setAckDate(e.target.value)}
+                  <label htmlFor="itr-ack-filing-date" className="text-3xs text-ps-label mb-1 block">Filing Date</label>
+                  <DateInput id="itr-ack-filing-date" value={ackDate} onChange={setAckDate}
+                    onStateChange={ackDates.watch("filing", "Filing date")}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
               </div>

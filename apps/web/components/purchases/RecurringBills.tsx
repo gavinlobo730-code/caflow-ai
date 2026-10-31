@@ -35,6 +35,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 type Frequency = (typeof FREQUENCIES)[number];
@@ -458,6 +460,9 @@ function RecurringBillEditor({
   const [frequency, setFrequency] = useState<Frequency>(existing?.frequency ?? "monthly");
   const [startDate, setStartDate] = useState(existing?.start_date ?? todayLocalISO());
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
+  // The stop date is OPTIONAL: text that is not a date reads as blank, and a bill template meant to stop would keep raising bills with
+  // nothing said (frontend_ux-19).
+  const dates = useDateProblems();
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [interState, setInterState] = useState(Boolean(existing?.is_inter_state));
   const [reverseCharge, setReverseCharge] = useState(Boolean(existing?.is_reverse_charge));
@@ -487,6 +492,7 @@ function RecurringBillEditor({
 
   async function save() {
     setErr(null);
+    if (dates.first) { setErr(dates.first); return; }
     if (!vendorId) { setErr("Choose the vendor this bill comes from."); return; }
     if (!title.trim()) { setErr("Give the template a name — you will pick it out of a list."); return; }
     if (endDate && endDate < startDate) { setErr("The end date cannot be before the start date."); return; }
@@ -591,13 +597,15 @@ function RecurringBillEditor({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">First bill on *</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+              <label htmlFor="rec-bill-start" className="block text-xs font-medium text-ps-label mb-1">First bill on *</label>
+              <DateInput id="rec-bill-start" value={startDate} onChange={setStartDate}
+                onStateChange={dates.watch("start", "First bill on")}
                 className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Stop after (optional)</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+              <label htmlFor="rec-bill-end" className="block text-xs font-medium text-ps-label mb-1">Stop after (optional)</label>
+              <DateInput id="rec-bill-end" anchor={startDate || null} value={endDate} onChange={setEndDate}
+                onStateChange={dates.watch("end", "Stop after")}
                 className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div className="col-span-2 lg:col-span-3 flex flex-wrap gap-4 pt-1">

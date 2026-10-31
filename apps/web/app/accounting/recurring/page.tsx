@@ -28,6 +28,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -108,6 +110,9 @@ export default function RecurringPage() {
   const [editing, setEditing] = useState<RecurringJournalTemplate | null>(null);
   const [form, setForm] = useState<TemplateForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  // The end date is OPTIONAL: text that is not a date reads as blank, and a template meant to stop would run on for ever, posting
+  // unattended, with nothing said (frontend_ux-19).
+  const dates = useDateProblems();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   /** The next few dates this template will generate on, from
@@ -193,6 +198,7 @@ export default function RecurringPage() {
   }
 
   async function handleSave() {
+    if (dates.first) { setFormError(dates.first); return; }
     if (!form.client_id) { setFormError("Client is required"); return; }
     if (!form.name.trim()) { setFormError("Name is required"); return; }
     if (!form.debit_account_id) { setFormError("Debit account is required"); return; }
@@ -712,22 +718,23 @@ export default function RecurringPage() {
               </div>
               <div>
                 <label htmlFor="rj-start" className="text-xs font-medium text-ps-body block mb-1">Starts</label>
-                <input
+                <DateInput
                   id="rj-start"
-                  type="date"
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.start_date}
-                  onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
+                  onChange={v => setForm(f => ({ ...f, start_date: v }))}
+                  onStateChange={dates.watch("start", "Start date")}
                 />
               </div>
               <div>
                 <label htmlFor="rj-end" className="text-xs font-medium text-ps-body block mb-1">Ends (optional)</label>
-                <input
+                <DateInput
                   id="rj-end"
-                  type="date"
+                  anchor={form.start_date || null}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.end_date}
-                  onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
+                  onChange={v => setForm(f => ({ ...f, end_date: v }))}
+                  onStateChange={dates.watch("end", "End date")}
                 />
               </div>
             </div>

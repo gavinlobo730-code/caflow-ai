@@ -18,6 +18,8 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { toast } from "@/components/ui/use-toast";
 import Link from "next/link";
 
@@ -445,6 +447,9 @@ export default function TaxComputationPage() {
   // the section for the life of the loan. Their limits differ by ₹1,00,000, so
   // the server allows NOTHING where no date is given rather than assuming one.
   const [housingSanctionedOn, setHousingSanctionedOn] = useState("");
+  // This date alone decides which section applies, and text that is not a date read as "not given", so a loan was quietly treated as
+  // having no sanction date: the date's own sentence stops the computation instead (frontend_ux-19).
+  const sanctionDates = useDateProblems();
   const [hasDisabledDependant, setHasDisabledDependant] = useState(false);
   const [dependantDisabilitySevere, setDependantDisabilitySevere] = useState(false);
   const [assesseeIsDisabled, setAssesseeIsDisabled] = useState(false);
@@ -869,6 +874,9 @@ export default function TaxComputationPage() {
                       + "1200000.50 — without commas.");
       return;
     }
+    // The box is hidden where the server does not offer the relief, and a hidden box is not asked.
+    const sanctionProblem = offers("s80ee") ? sanctionDates.first : null;
+    if (sanctionProblem) { setComputeError(sanctionProblem); return; }
     setComputing(true);
     setComputeError(null);
     setSnapshotError(null);
@@ -1763,11 +1771,12 @@ export default function TaxComputationPage() {
                       </p>
                     </div>
                     <div hidden={!offers("s80ee")}>
-                      <label className="text-3xs text-ps-label mb-1 block">
+                      <label htmlFor="computation-loan-sanctioned-on" className="text-3xs text-ps-label mb-1 block">
                         Loan sanctioned on
                       </label>
-                      <input type="date" value={housingSanctionedOn}
-                        onChange={e => setHousingSanctionedOn(e.target.value)}
+                      <DateInput id="computation-loan-sanctioned-on" value={housingSanctionedOn}
+                        onChange={setHousingSanctionedOn}
+                        onStateChange={sanctionDates.watch("sanctioned", "Loan sanctioned on")}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                       <p className="text-3xs text-ps-hint mt-0.5">
                         This date alone decides which section applies. Both

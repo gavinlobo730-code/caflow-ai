@@ -33,6 +33,8 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api } from "@/lib/api";
 import { PT_STATES, type Client, type Employee } from "@/components/payroll/shared";
@@ -120,8 +122,13 @@ export function AddEmployeeModal({
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  // All three dates are optional and every one of them moves money when blank: no date of birth means no age relief, no joining date
+  // means a mid-year joiner's tax is spread over twelve months, no start date means PF on actual wages from the first month. Text that is
+  // not a date reads as blank, so the save is refused instead (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function save() {
+    if (dates.first) { setErr(dates.first); return; }
     if (!form.name || !form.basic_rs) { setErr("Name and Basic Salary are required."); return; }
 
     // The exact parsers, and they REFUSE rather than coerce.
@@ -279,8 +286,9 @@ export function AddEmployeeModal({
           </div>
           <div>
             <label htmlFor="date-of-birth" className="block text-xs font-medium text-ps-body mb-1">Date of Birth</label>
-            <input id="date-of-birth" type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
-              value={form.date_of_birth} onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))} />
+            <DateInput id="date-of-birth" className="w-full border rounded-lg px-3 py-2 text-sm"
+              value={form.date_of_birth} onChange={v => setForm(f => ({ ...f, date_of_birth: v }))}
+              onStateChange={dates.watch("dob", "Date of birth")} />
             <p className="text-3xs text-ps-hint mt-1">
               Not demographics — the old regime&apos;s nil band widens at 60 and again at 80.
             </p>
@@ -386,9 +394,10 @@ export function AddEmployeeModal({
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div>
                     <label htmlFor="pf-actual-from" className="block text-xs font-medium text-ps-body mb-1">Takes effect from</label>
-                    <input id="pf-actual-from" type="date" className="w-full border rounded-lg px-3 py-2 text-sm"
+                    <DateInput id="pf-actual-from" className="w-full border rounded-lg px-3 py-2 text-sm"
                       value={form.pf_on_actual_wages_from}
-                      onChange={e => setForm(f => ({ ...f, pf_on_actual_wages_from: e.target.value }))} />
+                      onChange={v => setForm(f => ({ ...f, pf_on_actual_wages_from: v }))}
+                      onStateChange={dates.watch("pfFrom", "PF on actual wages takes effect from")} />
                     <p className="text-3xs text-ps-hint mt-0.5">
                       Blank means every month. A month that ends before this date stays on the ceiling.
                     </p>
@@ -444,9 +453,10 @@ export function AddEmployeeModal({
             <p className="text-3xs text-ps-hint mt-0.5">Without it this member cannot go in the ESIC return.</p>
           </div>
           <div>
-            <label className="block text-xs font-medium text-ps-body mb-1">Joining date</label>
-            <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.joining_date}
-                   onChange={e => setForm(f => ({ ...f, joining_date: e.target.value }))} />
+            <label htmlFor="employee-joining-date" className="block text-xs font-medium text-ps-body mb-1">Joining date</label>
+            <DateInput id="employee-joining-date" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.joining_date}
+                   onChange={v => setForm(f => ({ ...f, joining_date: v }))}
+                   onStateChange={dates.watch("joining", "Joining date")} />
             <p className="text-3xs text-ps-hint mt-0.5">
               Without it a mid-year joiner&apos;s tax is estimated over twelve months, not the months they actually work — which over-deducts.
             </p>

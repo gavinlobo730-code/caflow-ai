@@ -62,6 +62,8 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -217,6 +219,8 @@ function BulkMarkFiledModal({
   // Rows already written successfully on a prior (partially-failed) submit —
   // excluded from the next retry so we never re-check/re-block on them.
   const [succeededIds, setSucceededIds] = useState<Set<string>>(new Set());
+  // The one date applies to every row: text that is not a date reads as blank, the button goes dead and nothing says why (frontend_ux-19).
+  const dates = useDateProblems();
 
   if (pending.length === 0) return null;
 
@@ -226,6 +230,7 @@ function BulkMarkFiledModal({
   const submitDisabled = loading || !filedDate || !allArnsFilled;
 
   async function handleSubmit() {
+    if (dates.first) { setError(dates.first); return; }
     if (submitDisabled || remaining.length === 0) return;
     setLoading(true);
     setError(null);
@@ -315,16 +320,17 @@ function BulkMarkFiledModal({
 
           {/* Shared Filed Date — applied to every row below on submit */}
           <div>
-            <label className="block text-xs font-medium text-ps-body mb-1.5">
+            <label htmlFor="itr-batch-filed-date" className="block text-xs font-medium text-ps-body mb-1.5">
               Date of Filing <span className="text-state-problem">*</span>
               <span className="ml-1 text-ps-hint font-normal">
                 (applied to all rows below)
               </span>
             </label>
-            <input
-              type="date"
+            <DateInput
+              id="itr-batch-filed-date"
               value={filedDate}
-              onChange={(e) => setFiledDate(e.target.value)}
+              onChange={setFiledDate}
+              onStateChange={dates.watch("filedDate", "Date of filing")}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
@@ -427,6 +433,8 @@ export default function IncomeTaxPage() {
   });
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  // Text that is not a date reads as blank, and "No due date yet" would be said about a box with a date typed in it (frontend_ux-19).
+  const addDates = useDateProblems();
   // What the backend said about this client + FY. Null until a client is
   // chosen; the Due Date field stays empty until then, because there is no
   // honest date to pre-fill without knowing the assessee.
@@ -438,6 +446,8 @@ export default function IncomeTaxPage() {
   // Mark as Filed modal
   const [filedModal, setFiledModal] = useState<{ entry: ITREntry } | null>(null);
   const [filedForm, setFiledForm] = useState({ arn: "", filed_date: "" });
+  // Text that is not a date is said in the date's own sentence, not as "Filing date is required" (frontend_ux-19).
+  const filedDates = useDateProblems();
   const [filedLoading, setFiledLoading] = useState(false);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
@@ -600,6 +610,7 @@ export default function IncomeTaxPage() {
   }
 
   async function handleAddSubmit() {
+    if (addDates.first) { setAddError(addDates.first); return; }
     if (!addForm.client_id) {
       setAddError("Please select a client");
       return;
@@ -651,6 +662,7 @@ export default function IncomeTaxPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
+    if (filedDates.first) { setFiledError(filedDates.first); return; }
     if (!filedForm.arn.trim()) {
       setFiledError("Acknowledgement number is required");
       return;
@@ -1276,18 +1288,17 @@ export default function IncomeTaxPage() {
 
               {/* Due Date — computed by apps/api, editable */}
               <div>
-                <label className="block text-xs font-medium text-ps-body mb-1.5">
+                <label htmlFor="itr-add-due-date" className="block text-xs font-medium text-ps-body mb-1.5">
                   Due Date
                   <span className="ml-1 text-ps-hint font-normal">
                     (IT Act §139(1), Explanation 2 — computed for this client)
                   </span>
                 </label>
-                <input
-                  type="date"
+                <DateInput
+                  id="itr-add-due-date"
                   value={addForm.due_date}
-                  onChange={(e) =>
-                    handleAddFormChange("due_date", e.target.value)
-                  }
+                  onChange={(v) => handleAddFormChange("due_date", v)}
+                  onStateChange={addDates.watch("dueDate", "Due date")}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
 
@@ -1413,15 +1424,14 @@ export default function IncomeTaxPage() {
 
               {/* Filing Date */}
               <div>
-                <label className="block text-xs font-medium text-ps-body mb-1.5">
+                <label htmlFor="itr-filed-modal-date" className="block text-xs font-medium text-ps-body mb-1.5">
                   Date of Filing <span className="text-state-problem">*</span>
                 </label>
-                <input
-                  type="date"
+                <DateInput
+                  id="itr-filed-modal-date"
                   value={filedForm.filed_date}
-                  onChange={(e) =>
-                    setFiledForm((p) => ({ ...p, filed_date: e.target.value }))
-                  }
+                  onChange={(v) => setFiledForm((p) => ({ ...p, filed_date: v }))}
+                  onStateChange={filedDates.watch("filedDate", "Date of filing")}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>

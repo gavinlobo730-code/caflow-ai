@@ -43,6 +43,8 @@ import { UnforeseenIncomePanel, type UnforeseenRow } from "@/components/tax/Unfo
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -109,6 +111,12 @@ export default function AdvanceTaxPage() {
   // A zero for an unfiled return would tell a CA the cheapest moment to file
   // is never.
   const [furnishedOn, setFurnishedOn] = useState("");
+  // The four paid-on dates and the unforeseen incomes' dates are optional for the §234C working and the save, and text that is not a date used
+  // to read as blank, so the interest was computed (or the register saved) without them and said nothing (frontend_ux-19). The "furnished
+  // on" date is read by a different calculation (the §234A period runs to it, or to today) and has a hook of its own, so a typo in one date
+  // does not stop the work that does not read it.
+  const advDates = useDateProblems();
+  const lateDates = useDateProblems();
   // The two facts Explanation 2 to §139(1) turns on that no column holds.
   // §44AB applicability is the year's own turnover (domain/income_tax/
   // tax_audit.py needs figures this screen has not got) and §92E is a
@@ -124,6 +132,8 @@ export default function AdvanceTaxPage() {
   // bank receipt and the ITR keying sheet printed §140A as a structural nil.
   const [saPosition, setSaPosition] = useState<SelfAssessmentPosition | null>(null);
   const [saError, setSaError] = useState<string | null>(null);
+  // The challan's deposit date is what the return's credit is dated by: unreadable text is refused in the date's own sentence (frontend_ux-19).
+  const saDates = useDateProblems();
   const [saBusy, setSaBusy] = useState(false);
   const [saForm, setSaForm] = useState({
     bsr_code: "", deposit_date: "", challan_serial_no: "", bank_name: "",
@@ -221,7 +231,10 @@ export default function AdvanceTaxPage() {
                       + "rupees, e.g. 125000 — without commas.");
       return;
     }
-    if (unforeseenProblem) {
+    // A date that is not a date reads as blank, which `unforeseenProblem` would call "needs the date it arose": the date's own sentence is the
+    // better one and is given inside the debounce below, not here — `15/`, `15/0` and `15/03/2` are all unreadable on the way to a date, and
+    // wiping the result at each keystroke would flash an error (frontend_ux-19).
+    if (!advDates.first && unforeseenProblem) {
       setResult(null);
       setComputeError(unforeseenProblem);
       return;
@@ -231,7 +244,14 @@ export default function AdvanceTaxPage() {
       setComputeError(null);
       return;
     }
+    // A request already in flight when a date problem settles must not land over it.
+    let cancelled = false;
     const timer = setTimeout(() => {
+      if (advDates.first) {
+        setResult(null);
+        setComputeError(advDates.first);
+        return;
+      }
       const installments: AdvanceTaxInstallmentInput[] = [1, 2, 3, 4].map(n => ({
         installment_number: n as 1 | 2 | 3 | 4,
         paid_amount_paise: paidPaiseOf(n) as number,
@@ -243,12 +263,12 @@ export default function AdvanceTaxPage() {
         is_presumptive_44ad_44ada: presumptive,
         unforeseen_income: unforeseenIncome,
       })
-        .then(r => { setResult(r); setComputeError(null); })
-        .catch(e => { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); });
+        .then(r => { if (!cancelled) { setResult(r); setComputeError(null); } })
+        .catch(e => { if (!cancelled) { setResult(null); setComputeError(e instanceof Error ? e.message : "Failed to compute"); } });
     }, 400);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan, presumptive, unforeseenKey, unforeseenProblem]);
+  }, [fy, estimatedTaxPaise, editPaidRs, editPaidDate, editChallan, presumptive, unforeseenKey, unforeseenProblem, advDates.first]);
 
   // §234A / §234B. Same debounce and the same refusal to compute on a coerced
   // zero: a TDS credit read as nil manufactures a §234B shortfall on tax the
@@ -267,7 +287,15 @@ export default function AdvanceTaxPage() {
           : null);
       return;
     }
+    // The "furnished on" problem is acted on inside the debounce, for the reason given at the first effect, and a request in flight when it
+    // settles must not land over it.
+    let cancelled = false;
     const timer = setTimeout(() => {
+      if (lateDates.first) {
+        setLateResult(null);
+        setLateError(lateDates.first);
+        return;
+      }
       computeSection234ABInterest({
         fy,
         tax_on_total_income_paise: estimatedTaxPaise,
@@ -279,12 +307,12 @@ export default function AdvanceTaxPage() {
         has_tax_audit_engagement: hasAudit,
         has_transfer_pricing_report: hasTP,
       })
-        .then(r => { setLateResult(r); setLateError(null); })
-        .catch(e => { setLateResult(null); setLateError(e instanceof Error ? e.message : "Failed to compute"); });
+        .then(r => { if (!cancelled) { setLateResult(r); setLateError(null); } })
+        .catch(e => { if (!cancelled) { setLateResult(null); setLateError(e instanceof Error ? e.message : "Failed to compute"); } });
     }, 400);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fy, estimatedTaxPaise, editPaidRs, tdsTcsRs, reliefRs, furnishedOn, entityType, hasAudit, hasTP]);
+  }, [fy, estimatedTaxPaise, editPaidRs, tdsTcsRs, reliefRs, furnishedOn, entityType, hasAudit, hasTP, lateDates.first]);
 
   const totalPaid = [1, 2, 3, 4].reduce((s, n) => s + (paidPaiseOf(n) ?? 0), 0);
   const totalInterest = result?.total_interest_paise ?? 0;
@@ -340,6 +368,7 @@ export default function AdvanceTaxPage() {
 
   async function handleAddChallan() {
     if (!clientId) { setSaError("Select a client first."); return; }
+    if (saDates.first) { setSaError(saDates.first); return; }
     // Every amount through the one parser. A blank box is nil, and anything
     // that is not an amount stops the save rather than being coerced — a
     // coerced zero on `total_paise` records a challan for nothing and claims
@@ -412,6 +441,7 @@ export default function AdvanceTaxPage() {
       setError("Enter estimated annual tax first");
       return;
     }
+    if (advDates.first) { setError(advDates.first); return; }
     setSaving(true);
     setError(null);
     try {
@@ -595,14 +625,19 @@ export default function AdvanceTaxPage() {
                       </td>
                       <td className="px-3 py-3">
                         <input type="number" min="0" step="0.01"
+                          aria-label={`Instalment ${n} amount paid (₹)`}
                           value={editPaidRs[n] ?? ""}
                           onChange={e => setEditPaidRs(prev => ({ ...prev, [n]: e.target.value }))}
                           className="w-28 border border-ps-border rounded px-2 py-1 text-sm text-right outline-none focus:border-brand" />
                       </td>
                       <td className="px-3 py-3">
-                        <input type="date"
+                        <DateInput
+                          key={`${clientId}:${fy}:paid${n}`}
+                          financialYear={fy}
+                          aria-label={`Instalment ${n} paid on`}
                           value={editPaidDate[n] ?? ""}
-                          onChange={e => setEditPaidDate(prev => ({ ...prev, [n]: e.target.value }))}
+                          onChange={v => setEditPaidDate(prev => ({ ...prev, [n]: v }))}
+                          onStateChange={advDates.watch(`paid${n}`, `Instalment ${n} paid on`)}
                           className="border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-brand" />
                       </td>
                       <td className="px-3 py-3">
@@ -639,7 +674,8 @@ export default function AdvanceTaxPage() {
             onChange={setUnforeseenRows}
             lines={result?.unforeseen_income}
             caveats={result?.caveats}
-            problem={unforeseenProblem}
+            problem={advDates.first ? null : unforeseenProblem}
+            watchDate={advDates.watch}
           />
         </CardContent>
       </Card>
@@ -672,9 +708,10 @@ export default function AdvanceTaxPage() {
                 placeholder="0.00" />
             </div>
             <div>
-              <label className="text-xs text-ps-label">Return furnished on</label>
-              <input type="date" value={furnishedOn}
-                onChange={e => setFurnishedOn(e.target.value)}
+              <label htmlFor="at-furnished-on" className="text-xs text-ps-label">Return furnished on</label>
+              <DateInput id="at-furnished-on" value={furnishedOn}
+                onChange={setFurnishedOn}
+                onStateChange={lateDates.watch("furnished", "Return furnished on")}
                 className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
               <p className="text-3xs text-ps-hint mt-1 max-w-[16rem]">
                 Leave blank if it has not been filed — the §234A period then runs to today
@@ -792,8 +829,9 @@ export default function AdvanceTaxPage() {
                 placeholder="7 digits" />
             </label>
             <label className="text-xs text-ps-label">Deposited on
-              <input type="date" value={saForm.deposit_date}
-                onChange={e => setSaForm({ ...saForm, deposit_date: e.target.value })}
+              <DateInput id="sa-deposit-date" value={saForm.deposit_date}
+                onChange={v => setSaForm({ ...saForm, deposit_date: v })}
+                onStateChange={saDates.watch("deposit", "Deposited on")}
                 className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </label>
             <label className="text-xs text-ps-label">Challan serial no.

@@ -42,6 +42,8 @@ import { formatDate } from "@/lib/services/formatting";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { useDirtyFields, useReportDirty } from "@/lib/forms/useDirtyFields";
 import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
 
@@ -180,9 +182,24 @@ export default function EmployeeDrawer({ employee, clientId, canFinalize, onClos
   // Escape closes the drawer, matching the shared Drawer/Modal/ClientFormModal
   // pattern (a document/window keydown listener) — this component was the one
   // full-screen overlay with no way out but the explicit Close button.
+  //
+  // A date box commits on blur, not per keystroke, so Escape pressed while one is still focused would be asked about before the typed
+  // date had reached the section that reports unsaved typing: the question would be skipped and the date lost. The focused box is left
+  // first, and the question is asked on the next tick, by the closure that has seen the commit (frontend_ux-19).
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
   useEffect(() => {
+    const closeOnEscape = () => {
+      const focused = document.activeElement;
+      if (focused instanceof HTMLInputElement) {
+        focused.blur();
+        setTimeout(() => requestCloseRef.current(), 0);
+        return;
+      }
+      requestClose();
+    };
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") requestClose();
+      if (e.key === "Escape") closeOnEscape();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -281,12 +298,15 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Text that is not a date reads as blank, and a blank joining date means "unchanged" (frontend_ux-19): the save is refused instead.
+  const dates = useDateProblems();
   const { dirty, markSaved } = useDirtyFields({
     pan, uan, esiNumber, bankAccountNo, bankIfsc, joiningDate, basic, hraPercent, daPercent,
   });
   useReportDirty(onDirtyChange, dirty);
 
   async function save() {
+    if (dates.first) { setErr(dates.first); return; }
     setBusy(true); setErr(null); setDone(false);
     try {
       // A typed value not a number REFUSES here rather than being silently
@@ -348,7 +368,7 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
             className={`${FIELD} mt-1`} />
         </label>
         <label className={LABEL}>Joining date
-          <input type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)}
+          <DateInput value={joiningDate} onChange={setJoiningDate} onStateChange={dates.watch("joining", "Joining date")}
             className={`${FIELD} mt-1`} />
           <span className="text-3xs text-ps-hint">
             Gratuity&apos;s five years, EPS eligibility on first joining, and whether the
@@ -414,6 +434,10 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // The last working day decides the settlement and a blank payment date takes the last working day on the server (so the journal falls in
+  // that day's period, which can be a different one from the day of the click): text that is not a date reads as
+  // blank in both, so a preview or a record over one is refused in the date's own sentence (frontend_ux-19).
+  const dates = useDateProblems();
   const { dirty, markSaved } = useDirtyFields({
     leavingDate, onRetirement, onDeath, isGovernment, salaryToLastDay, leaveDays, leaveAmount,
     noticePay, loansOutstanding, otherRecoveries, averageTenMonths, gratuityUsed, leaveUsed,
@@ -443,6 +467,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   }
 
   async function preview() {
+    if (dates.first) { setErr(dates.first); return; }
     setBusy("preview"); setErr(null); setDone(null); setConfirming(false);
     try {
       const res = await api.payroll.previewSettlement(employee.id, body());
@@ -455,6 +480,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   }
 
   async function record() {
+    if (dates.first) { setErr(dates.first); return; }
     setBusy("record"); setErr(null);
     try {
       const res = await api.payroll.recordSettlement(employee.id, {
@@ -479,7 +505,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>Last working day
-          <input type="date" value={leavingDate} onChange={(e) => setLeavingDate(e.target.value)}
+          <DateInput value={leavingDate} onChange={setLeavingDate} onStateChange={dates.watch("leaving", "Last working day")}
             className={`${FIELD} mt-1`} />
           <span className="text-3xs text-ps-hint">
             Joined {employee.joining_date ? formatDate(employee.joining_date) : "— not recorded, so gratuity cannot be computed"}.
@@ -617,7 +643,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
               </p>
               <div className="mt-2 flex items-end gap-3">
                 <label className={LABEL}>Payment date
-                  <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}
+                  <DateInput anchor={leavingDate || null} value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("payment", "Payment date")}
                     className={`${FIELD} mt-1`} />
                 </label>
                 {confirming ? (
@@ -671,6 +697,8 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The date a new salary applies from: text that is not a date reads as blank (frontend_ux-19).
+  const dates = useDateProblems();
   const { dirty, markSaved } = useDirtyFields({
     effectiveFrom, basic, hraPercent, daPercent, lta, medical, special, other, reason,
   });
@@ -687,6 +715,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
   useEffect(() => { load(); }, [load]);
 
   async function save() {
+    if (dates.first) { setErr(dates.first); return; }
     setBusy(true); setErr(null);
     try {
       const res = await api.payroll.addSalaryRevision(employee.id, {
@@ -726,7 +755,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
         </p>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <label className={LABEL}>Effective from
-            <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)}
+            <DateInput value={effectiveFrom} onChange={setEffectiveFrom} onStateChange={dates.watch("effectiveFrom", "Effective from")}
               className={`${FIELD} mt-1`} />
           </label>
           <Money label="Basic" value={basic} onChange={setBasic} />
@@ -803,6 +832,8 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
+  // OPTIONAL date: text that is not a date reads as blank and the loan would be recorded with no start date (frontend_ux-19).
+  const dates = useDateProblems();
   const { dirty, markSaved } = useDirtyFields({ principal, instalment, ratePercent, purpose, startedOn });
   useReportDirty(onDirtyChange, dirty);
 
@@ -817,6 +848,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
   useEffect(() => { load(); }, [load]);
 
   async function save() {
+    if (dates.first) { setErr(dates.first); return; }
     setBusy(true); setErr(null); setNotes([]);
     try {
       const res = await api.payroll.addEmployeeLoan(employee.id, {
@@ -857,7 +889,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
             </span>
           </label>
           <label className={LABEL}>Started on
-            <input type="date" value={startedOn} onChange={(e) => setStartedOn(e.target.value)}
+            <DateInput value={startedOn} onChange={setStartedOn} onStateChange={dates.watch("startedOn", "Started on")}
               className={`${FIELD} mt-1`} />
           </label>
           <label className={`${LABEL} col-span-2`}>Purpose

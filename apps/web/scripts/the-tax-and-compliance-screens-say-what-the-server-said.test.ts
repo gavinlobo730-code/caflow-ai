@@ -139,7 +139,9 @@ test("Add Director reads its result and sends no empty date", () => {
     "the Add Director POST is awaited and dropped again");
   assert.match(src, /date_of_appointment: form\.date_of_appointment \|\| null/,
     "a blank date must go as null — \"\" is an invalid DATE in Postgres");
-  assert.match(src, /<input type="date" value=\{form\.date_of_appointment\}/);
+  // The one date field (frontend_ux-19): an unreadable date is refused before the request, a blank one still goes as null.
+  assert.match(src, /<DateInput id="mca-director-appointment" value=\{form\.date_of_appointment\}/);
+  assert.match(src, /if \(dates\.first\) \{ setSaveError\(dates\.first\); return; \}/, "an unreadable appointment date is not refused");
 });
 
 test("the notice extractor keeps its panel open on a refusal", () => {

@@ -10,6 +10,8 @@ import {
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import type { DateFieldState } from "@/lib/dates/typedDate";
 
 /** One income the CA has put forward for §234C(1)'s proviso. The tax is held as
  *  TEXT and parsed with the one money parser by the page that owns the rows. */
@@ -56,7 +58,7 @@ export function newUnforeseenRow(over: Partial<UnforeseenRow> = {}): UnforeseenR
  * it. A candidate nobody includes changes no figure.
  */
 export function UnforeseenIncomePanel({
-  clientId, fy, rows, onChange, lines, caveats, problem,
+  clientId, fy, rows, onChange, lines, caveats, problem, watchDate,
 }: {
   clientId: string;
   fy: string;
@@ -65,6 +67,9 @@ export function UnforeseenIncomePanel({
   lines?: UnforeseenIncomeLine[];
   caveats?: string[];
   problem?: string | null;
+  /** The parent's `useDateProblems().watch`: a date that is not a date holds the calculation and the save, in its own sentence. A row
+   *  that is removed takes its problem with it (the field reports empty as it goes). */
+  watchDate?: (key: string, label: string) => (state: DateFieldState) => void;
 }) {
   const [candidates, setCandidates] = useState<UnforeseenIncomeCandidate[] | null>(null);
   const [offerCaveats, setOfferCaveats] = useState<string[]>([]);
@@ -157,8 +162,9 @@ export function UnforeseenIncomePanel({
                 className="border border-ps-border rounded px-2 py-1.5 text-xs bg-white">
                 {kinds.map(k => <option key={k.key} value={k.key}>{k.label}</option>)}
               </select>
-              <input type="date" value={r.arose_on} aria-label="Date the income arose"
-                onChange={e => set(r.key, { arose_on: e.target.value })}
+              <DateInput value={r.arose_on} aria-label="Date the income arose" financialYear={fy}
+                onChange={v => set(r.key, { arose_on: v })}
+                onStateChange={watchDate?.(`arose-${r.key}`, "Date the income arose")}
                 className="border border-ps-border rounded px-2 py-1.5 text-xs" />
               <input type="text" inputMode="decimal" value={r.tax_rs} aria-label="Tax on the income (₹)"
                 onChange={e => set(r.key, { tax_rs: e.target.value })}

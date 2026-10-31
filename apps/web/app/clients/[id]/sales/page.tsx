@@ -762,6 +762,9 @@ function RecurringEditor({
   const [frequency, setFrequency] = useState(existing?.frequency ?? "monthly");
   const [startDate, setStartDate] = useState(existing?.start_date ?? todayLocalISO());
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
+  // The end date is OPTIONAL: text that is not a date reads as blank, and an invoice template meant to stop would keep raising invoices
+  // with nothing said (frontend_ux-19).
+  const recurringDates = useDateProblems();
   const [isInterState, setIsInterState] = useState(existing?.is_inter_state ?? false);
   // Reuses the invoice form's vocabulary and its unknown-value fallback rather
   // than a second copy of the option lists (task #156 / #157).
@@ -812,6 +815,7 @@ function RecurringEditor({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (recurringDates.first) { setError(recurringDates.first); return; }
     if (!customerId) { setError("Select a customer"); return; }
     if (!title.trim()) { setError("Title is required"); return; }
     if (lines.some((l) => l.description.trim() && !l.service_catalogue_id)) {
@@ -904,13 +908,15 @@ function RecurringEditor({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Start date</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+              <label htmlFor="rec-inv-start" className="block text-xs font-medium text-ps-label mb-1">Start date</label>
+              <DateInput id="rec-inv-start" value={startDate} onChange={setStartDate}
+                onStateChange={recurringDates.watch("start", "Start date")}
                 className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">End date (optional)</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+              <label htmlFor="rec-inv-end" className="block text-xs font-medium text-ps-label mb-1">End date (optional)</label>
+              <DateInput id="rec-inv-end" anchor={startDate || null} value={endDate} onChange={setEndDate}
+                onStateChange={recurringDates.watch("end", "End date")}
                 className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>
           </div>

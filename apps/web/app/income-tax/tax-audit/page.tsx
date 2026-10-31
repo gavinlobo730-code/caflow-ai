@@ -16,6 +16,8 @@ import Link from "next/link";
 import { Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
@@ -155,6 +157,9 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Both dates are optional and save as "not given" when blank: unreadable text is refused in the date's own sentence instead of
+  // saving an audit with no report date on it (frontend_ux-19).
+  const dates = useDateProblems();
 
   // Until the permission map has loaded nothing is known about the person, so the form is not narrowed (a form that
   // waited would turn a slow identity call into a screen that never opens); the database refuses the write either way.
@@ -325,6 +330,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
 
   async function handleSave() {
     if (!form.clientId) { setError("Select a client"); return; }
+    if (dates.first) { setError(dates.first); return; }
     if (lockedForYou || (!mayClose && FINISHED_STATUSES.includes(form.status))) { setError(APPROVER_ONLY); return; }
     // All money in integer paise — no floating point
     // This turnover decides whether a s.44AB tax audit applies at all. Read as
@@ -551,12 +557,12 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lbl}>Audit Date</label>
-              <input type="date" value={form.auditDate} onChange={e => upd({ auditDate: e.target.value })} className={inputCls} />
+              <label htmlFor="tax-audit-date" className={lbl}>Audit Date</label>
+              <DateInput id="tax-audit-date" value={form.auditDate} onChange={v => upd({ auditDate: v })} onStateChange={dates.watch("audit", "Audit date")} className={inputCls} />
             </div>
             <div>
-              <label className={lbl}>Filing Date</label>
-              <input type="date" value={form.filingDate} onChange={e => upd({ filingDate: e.target.value })} className={inputCls} />
+              <label htmlFor="tax-audit-filing-date" className={lbl}>Filing Date</label>
+              <DateInput id="tax-audit-filing-date" anchor={form.auditDate || null} value={form.filingDate} onChange={v => upd({ filingDate: v })} onStateChange={dates.watch("filing", "Filing date")} className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

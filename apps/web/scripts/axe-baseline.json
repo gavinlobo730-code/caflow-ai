@@ -87,18 +87,8 @@
       "nodes": 6
     },
     {
-      "route": "/income-tax/advance-tax",
-      "rule": "label",
-      "nodes": 1
-    },
-    {
       "route": "/income-tax/ais",
       "rule": "select-name",
-      "nodes": 2
-    },
-    {
-      "route": "/income-tax/capital-gains",
-      "rule": "label",
       "nodes": 2
     },
     {

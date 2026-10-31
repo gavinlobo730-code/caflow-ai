@@ -275,7 +275,8 @@ function dateInputsOf(rel: string): string[] {
   for (const m of text.matchAll(/<DateInput\b([\s\S]*?)(?:\/>|>)/g)) {
     const attrs = m[1];
     const id = /\bid="([^"]+)"/.exec(attrs)?.[1];
-    const label = /\baria-label="([^"]+)"/.exec(attrs)?.[1];
+    // A label built per row (`Instalment ${n} paid on`) is read as written; the scenario types into row 1.
+    const label = /\baria-label="([^"]+)"/.exec(attrs)?.[1] ?? /\baria-label=\{`([^`]+)`\}/.exec(attrs)?.[1];
     out.push(id ? `#${id}` : label ? `[${label}]` : "(unnamed)");
   }
   return out;
@@ -288,6 +289,7 @@ const DRIVEN: Record<string, string[]> = {
   "components/purchases/PurchaseBillEditor.tsx": ["#bill-date", "#bill-due-date"],
   "components/invoices/InvoiceViewDrawer.tsx": ["[Payment date]", "[Credit note date]", "[Debit note date]"],
   "components/purchases/PurchaseBillViewDrawer.tsx": ["[Payment date]", "[Debit note date]", "[Credit note date]"],
+  "app/income-tax/advance-tax/page.tsx": ["[Instalment ${n} paid on]", "#sa-deposit-date"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
@@ -295,6 +297,7 @@ const DRIVEN: Record<string, string[]> = {
 const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "components/invoices/InvoiceEditor.tsx": { "#inv-sb-date": "the shipping bill date of an export invoice; shown only for exports (second slice)" },
   "components/purchases/PurchaseBillEditor.tsx": { "#bill-15ca-date": "the Form 15CA date; shown only for a foreign payee (second slice)" },
+  "app/income-tax/advance-tax/page.tsx": { "#at-furnished-on": "feeds the §234A/§234B calculation and is saved nowhere, so the save claims do not apply (the working's own scenario is a later row)" },
 };
 
 test("every date field the drive types into is a real DateInput in the editor it names", () => {
@@ -303,7 +306,8 @@ test("every date field the drive types into is a real DateInput in the editor it
     const have = dateInputsOf(file);
     for (const f of fields) {
       assert.ok(have.includes(f), `${file} no longer has a DateInput ${f}: the drive would be typing into nothing`);
-      const needle = f.startsWith("#") ? f : f.slice(1, -1);
+      // A per-row label is driven on its first row.
+      const needle = f.startsWith("#") ? f : f.slice(1, -1).replace("${n}", "1");
       assert.ok(dates.includes(needle), `the date scenarios never mention ${needle}, so ${f} of ${file} is not driven`);
     }
   }

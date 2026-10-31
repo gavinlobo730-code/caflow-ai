@@ -18,6 +18,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -77,8 +79,12 @@ function SetRetainerModal({
   const [nextRun, setNextRun] = useState<string>(existing?.next_run_date ?? todayLocalISO());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Text that is not a date reads as blank, which the server takes as "today" on a new retainer and "leave it as it was" on an edit: either
+  // way a retainer billed unattended every month would run from a date nobody typed (frontend_ux-19).
+  const dates = useDateProblems();
 
   async function handleSave() {
+    if (dates.first) { setError(dates.first); return; }
     // Through the one parser. parseFloat("1,25,000") is 1, and a retainer is
     // billed unattended every month, so a fee read wrong is wrong twelve times.
     const feePaise = paiseFromRupeeInput(feeRupees);
@@ -198,12 +204,12 @@ function SetRetainerModal({
 
         <div>
           <label htmlFor="retainer-next" className="text-xs font-medium text-ps-body block mb-1">Next invoice due</label>
-          <input
+          <DateInput
             id="retainer-next"
-            type="date"
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
             value={nextRun}
-            onChange={e => setNextRun(e.target.value)}
+            onChange={setNextRun}
+            onStateChange={dates.watch("nextRun", "Next invoice due")}
           />
         </div>
 

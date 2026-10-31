@@ -18,13 +18,15 @@
  *      field (`Payment date: Feb 2026 has only 28 days.`), which is a different sentence from the field's own;
  *   5. a date typed in full reaches the request body as the ISO date typed, whatever the locale or zone.
  *
- * The editors not here (billing, TDS, mark-as-filed, payroll disbursement, asset acquisition and the rest) are
- * the second slice: each is one more row in `EDITORS`, because the claims are the same.
+ * The editors not here (billing, mark-as-filed, payroll disbursement, asset acquisition and the rest) are
+ * the second slice: each is one more row in `EDITORS`, because the claims are the same. The TDS deduction and challan
+ * forms, the advance-tax register's paid-on date and the section 140A challan's deposit date are rows already.
  */
 import assert from "node:assert/strict";
 import { TZ_MATRIX, pick } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok } from "../stub.mjs";
+import { CLIENT_ID } from "../fixtures.mjs";
 
 export const group = "dates";
 
@@ -74,6 +76,25 @@ async function openBill(env) {
   await pick(page, page.locator('button[aria-label="Vendor"]'), "Gamma Supplies");
   await page.fill('input[placeholder="INV-001"]', "GS/2026/114");
   await pick(page, page.locator('button[aria-label="Line 1 product or service"]'), "Consulting");
+}
+
+/** The advance-tax register with an estimate typed, so the four instalments (and their paid-on dates) are drawn. */
+async function openAdvanceTaxRegister(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/income-tax\/advance-tax(\?|$)/, reply: () => ok({ installments: [], compliance_obligations: [] }) });
+  await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
+  await page.getByPlaceholder("Enter tax amount").fill("100000");
+  await page.getByLabel("Instalment 1 paid on").waitFor();
+}
+
+/** The §140A challan form on the same screen, filled with everything the server needs but the date. */
+async function openSelfAssessmentChallan(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/income-tax\/self-assessment$/, reply: () => ok({ id: "sa-1" }) });
+  await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
+  await page.getByPlaceholder("7 digits").fill("0510001");
+  await page.getByPlaceholder("e.g. 00123").fill("00045");
+  await page.locator("label:has-text('Tax (₹)') input").first().fill("125000");
 }
 
 /** A modal over a drawer: the open dialog is the last one. */
@@ -152,6 +173,21 @@ const EDITORS = [
     fields: [{ box: (p) => p.locator("#tds-challan-date"), label: "Challan date", key: "challan_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/,
   },
+  {
+    id: "advance-tax-register", title: "advance-tax register",
+    open: openAdvanceTaxRegister,
+    fields: [{
+      box: (p) => p.getByLabel("Instalment 1 paid on"), label: "Instalment 1 paid on", key: "installments[0].paid_date",
+      read: (b) => b.installments?.[0]?.paid_date, full: "15/07/2026", iso: "2026-07-15",
+    }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/,
+  },
+  {
+    id: "self-assessment-challan", title: "§140A challan form",
+    open: openSelfAssessmentChallan,
+    fields: [{ box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on", key: "deposit_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/,
+  },
   ...[
     { side: "sales", name: "sales credit note", action: "Credit Note", submit: "Create Credit Note", label: "Credit note date", key: "credit_note_date", write: /\/api\/credit-notes\/$/ },
     { side: "sales", name: "sales debit note", action: "Debit Note", submit: "Create Debit Note", label: "Debit note date", key: "debit_note_date", write: /\/api\/sales-debit-notes\/$/ },
@@ -211,13 +247,34 @@ async function driveEditor(env, spec) {
   assert.equal(writes.length, 1, `${spec.title}: expected one write, saw ${writes.length} (${stub.allWrites().map((w) => w.method + " " + w.path).join(", ") || "none"})`);
   const body = JSON.parse(writes[0].body);
   for (const field of spec.fields) {
-    assert.equal(body[field.key], field.iso, `${spec.title}: ${field.key} should reach the server as ${field.iso}, was ${JSON.stringify(body[field.key])}`);
+    const got = field.read ? field.read(body) : body[field.key];
+    assert.equal(got, field.iso, `${spec.title}: ${field.key} should reach the server as ${field.iso}, was ${JSON.stringify(got)}`);
   }
 }
 
-export const scenarios = EDITORS.map((spec) => ({
-  id: spec.id,
-  title: `${spec.title}: typed dates are read by the one rule and reach the server as ISO`,
-  contexts: TZ_MATRIX,
-  run: (env) => driveEditor(env, spec),
-}));
+export const scenarios = [
+  ...EDITORS.map((spec) => ({
+    id: spec.id,
+    title: `${spec.title}: typed dates are read by the one rule and reach the server as ISO`,
+    contexts: TZ_MATRIX,
+    run: (env) => driveEditor(env, spec),
+  })),
+  // A screen that is about ONE financial year says so to its date boxes. Every row above leaves the screen on the current year, where
+  // "the year of today" and "the year of the screen" are the same year and a box that forgot to be told would still pass.
+  {
+    id: "a-short-date-is-read-inside-the-year-the-screen-is-about",
+    title: "on the advance-tax register set to the previous year, 15/3 in a paid-on box is 15 March of THAT year",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
+      // The year picker is the one select that offers the previous year; the clock is pinned in FY 2026-27, so 2025-26 is the previous.
+      await page.locator("select").filter({ has: page.locator('option[value="2025-26"]') }).first().selectOption("2025-26");
+      await page.getByPlaceholder("Enter tax amount").fill("100000");
+      const box = page.getByLabel("Instalment 1 paid on");
+      await box.waitFor();
+      await typeAndLeave(box, "15/3");
+      assert.equal(await box.inputValue(), "15/03/2026", "15/3 on the 2025-26 screen was read inside the year of today, not the screen's year");
+    },
+  },
+];
