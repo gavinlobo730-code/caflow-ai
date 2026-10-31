@@ -915,7 +915,7 @@ function RecurringEditor({
             </div>
             <div>
               <label htmlFor="rec-inv-end" className="block text-xs font-medium text-ps-label mb-1">End date (optional)</label>
-              <DateInput id="rec-inv-end" anchor={startDate || null} value={endDate} onChange={setEndDate}
+              <DateInput id="rec-inv-end" anchor={startDate || null} notBefore={startDate || null} value={endDate} onChange={setEndDate}
                 onStateChange={recurringDates.watch("end", "End date")}
                 className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>

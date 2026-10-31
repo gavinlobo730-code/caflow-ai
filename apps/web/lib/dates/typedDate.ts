@@ -45,6 +45,23 @@
  *   means for a CA entering last year's books in October: a bare `15` is March,
  *   the last month of that year, and the field shows 15/03/2027 at once.
  *
+ * ── A DATE THAT BELONGS AFTER (OR BEFORE) ANOTHER ───────────────────────────
+ *
+ *   The financial year decides the year of a short form, and the anchor decides
+ *   the financial year, so a maturity typed `15/6` beside a start of 01/03/2026
+ *   came out as 15/06/2025: the anchor's FY is 2025-26, a year BEFORE its start,
+ *   and an e-way bill's valid-upto of `2/4` beside a bill of 31/03/2027 as
+ *   02/04/2026. A field that is by nature on or after another date (an end, a
+ *   maturity, an expiry, a due date) says so with `notBefore`; one that is on or
+ *   before it (a challan date beside the date the goods came back) says
+ *   `notAfter`. A short form that lands on the wrong side is then read as the
+ *   FIRST such day on or after the bound (the LAST on or before it): the same day
+ *   in the next year that has it (a 29 February waits for the next leap year, so
+ *   it can move four years), or, for a bare day, in the next month that has it.
+ *   Only a short form moves. A year that was TYPED is never changed, and a date
+ *   typed in full that is on the wrong side is left as typed (the field gives it
+ *   the `min`/`max` hint): nothing here refuses a date.
+ *
  * ── NOTHING IS GUESSED ──────────────────────────────────────────────────────
  *
  *   31/02/2026 is an error naming February 2026's 28 days. It is never March
@@ -107,6 +124,12 @@ export interface TypedDateContext {
   /** `YYYY-MM-DD` bounds, an input hint only (see the header). */
   min?: string | null;
   max?: string | null;
+  /** `YYYY-MM-DD`: the date this one belongs on or after (see the header). Moves a
+   *  SHORT form forward to the first such day; moves nothing else. */
+  notBefore?: string | null;
+  /** `YYYY-MM-DD`: the date this one belongs on or before. Moves a SHORT form back
+   *  to the last such day. */
+  notAfter?: string | null;
   /** Injectable clock for tests, `YYYY-MM-DD`; defaults to today in IST. */
   today?: string;
 }
@@ -223,6 +246,41 @@ function yearInFinancialYear(fy: FinancialYear, month: number): number {
   return month >= fy.startMonth ? fy.startYear : fy.startYear + 1;
 }
 
+/** One month on (`step` 1) or back (-1) from month `m` of year `y`. */
+function stepMonth(y: number, m: number, step: 1 | -1): { y: number; m: number } {
+  const n = y * 12 + (m - 1) + step;
+  return { y: Math.floor(n / 12), m: (n % 12) + 1 };
+}
+
+/**
+ * Where a SHORT form lands once `notBefore` / `notAfter` are asked (see the header). `monthGiven` is whether the person typed a month: a day and a
+ * month move by whole years (at most eight steps), a bare day by whole months (at most 24). A day that does not exist where it landed, or that no
+ * step within those limits puts on the right side, stays where it was and gets the usual sentence or hint.
+ */
+function rollToBound(ctx: TypedDateContext, y: number, m: number, d: number, monthGiven: boolean): { y: number; m: number } {
+  const after = readIso(ctx.notBefore) ? (ctx.notBefore as string).trim() : null;
+  const before = readIso(ctx.notAfter) ? (ctx.notAfter as string).trim() : null;
+  if (after === null && before === null) return { y, m };
+  const at = (yy: number, mm: number) => (isRealDay(yy, mm, d) ? isoOf(yy, mm, d) : null);
+  const here = at(y, m);
+  if (here === null) return { y, m };
+  const walk = (dir: 1 | -1, bound: string): { y: number; m: number } | null => {
+    let cy = y;
+    let cm = m;
+    for (let i = 0; i < (monthGiven ? 8 : 24); i++) {
+      if (monthGiven) cy += dir;
+      else ({ y: cy, m: cm } = stepMonth(cy, cm, dir));
+      if (cy < MIN_YEAR || cy > MAX_YEAR) return null;
+      const iso = at(cy, cm);
+      if (iso !== null && (dir === 1 ? iso >= bound : iso <= bound)) return { y: cy, m: cm };
+    }
+    return null;
+  };
+  if (after !== null && here < after) return walk(1, after) ?? { y, m };
+  if (before !== null && here > before) return walk(-1, before) ?? { y, m };
+  return { y, m };
+}
+
 const unreadable = (): TypedDate => ({
   kind: "error",
   problem: "unreadable",
@@ -314,6 +372,8 @@ export function parseTypedDate(raw: string | null | undefined, ctx: TypedDateCon
     return { kind: "error", problem: "no_such_month", message: `There is no month ${month}: months run from 1 to 12.` };
   }
   if (year === null) year = yearInFinancialYear(fy, month);
+  // A short form is read in the financial year; a field that belongs after (or before) another date moves it to the right side of it.
+  if (shape.year === null) ({ y: year, m: month } = rollToBound(ctx, year, month, day, shape.month !== null));
   if (year < MIN_YEAR || year > MAX_YEAR) {
     return {
       kind: "error", problem: "bad_year",

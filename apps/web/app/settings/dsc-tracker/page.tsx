@@ -171,7 +171,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
           <label className="block text-2xs text-ps-label mb-0.5">
             New expiry date <span className="text-state-problem">*</span>
           </label>
-          <DateInput aria-label="New expiry date" anchor={newIssued || null} value={newExpiry} onChange={setNewExpiry}
+          <DateInput aria-label="New expiry date" anchor={newIssued || null} notBefore={newIssued || null} value={newExpiry} onChange={setNewExpiry}
             onStateChange={dates.watch("newExpiry", "New expiry date")}
             className={field} />
         </div>
@@ -306,7 +306,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
           </div>
           <div>
             <label className="block text-2xs text-ps-label mb-0.5">Expiry date</label>
-            <DateInput aria-label="Expiry date" anchor={issuedDate || null} value={expiryDate} onChange={setExpiryDate} onStateChange={dates.watch("expiry", "Expiry date")} className={field} />
+            <DateInput aria-label="Expiry date" anchor={issuedDate || null} notBefore={issuedDate || null} value={expiryDate} onChange={setExpiryDate} onStateChange={dates.watch("expiry", "Expiry date")} className={field} />
           </div>
         </div>
         <div>
@@ -425,7 +425,7 @@ function AddDSCModal({ onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date</label>
-            <DateInput aria-label="Expiry date" anchor={issueDate || null} className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={expiryDate} onChange={setExpiryDate} onStateChange={dates.watch("expiry", "Expiry date")} />
+            <DateInput aria-label="Expiry date" anchor={issueDate || null} notBefore={issueDate || null} className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={expiryDate} onChange={setExpiryDate} onStateChange={dates.watch("expiry", "Expiry date")} />
           </div>
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>

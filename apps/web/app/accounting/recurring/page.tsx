@@ -730,7 +730,7 @@ export default function RecurringPage() {
                 <label htmlFor="rj-end" className="text-xs font-medium text-ps-body block mb-1">Ends (optional)</label>
                 <DateInput
                   id="rj-end"
-                  anchor={form.start_date || null}
+                  anchor={form.start_date || null} notBefore={form.start_date || null}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                   value={form.end_date}
                   onChange={v => setForm(f => ({ ...f, end_date: v }))}

@@ -521,7 +521,7 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
       <div className="grid grid-cols-2 gap-2">
         <L label="EWB date"><DateInput aria-label="EWB date" value={date} onChange={setDate} onStateChange={dates.watch("ewb", "EWB date")} className={inputCls} /></L>
         <L label="Valid upto">
-          <DateInput aria-label="Valid upto" anchor={date || null} value={valid}
+          <DateInput aria-label="Valid upto" anchor={date || null} notBefore={date || null} value={valid}
             onChange={(v) => { setValidTouched(true); setValid(v); }}
             onStateChange={dates.watch("valid", "Valid upto")}
             className={inputCls} />

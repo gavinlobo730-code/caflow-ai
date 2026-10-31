@@ -752,7 +752,7 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
             </label>
             <label className="block text-xs">
               <span className="block text-ps-hint mb-1">Expires (optional)</span>
-              <DateInput anchor={made || null} value={expires} onChange={setExpires} onStateChange={dates.watch("expires", "Expires")} className={INPUT} />
+              <DateInput anchor={made || null} notBefore={made || null} value={expires} onChange={setExpires} onStateChange={dates.watch("expires", "Expires")} className={INPUT} />
               <span className="block text-3xs text-ps-hint mt-1">
                 Leave blank if there is no date to record: the expiry report then says this lot has none recorded, which is not the same as stock that does not expire.
               </span>

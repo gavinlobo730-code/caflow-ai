@@ -604,7 +604,7 @@ function RecurringBillEditor({
             </div>
             <div>
               <label htmlFor="rec-bill-end" className="block text-xs font-medium text-ps-label mb-1">Stop after (optional)</label>
-              <DateInput id="rec-bill-end" anchor={startDate || null} value={endDate} onChange={setEndDate}
+              <DateInput id="rec-bill-end" anchor={startDate || null} notBefore={startDate || null} value={endDate} onChange={setEndDate}
                 onStateChange={dates.watch("end", "Stop after")}
                 className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>

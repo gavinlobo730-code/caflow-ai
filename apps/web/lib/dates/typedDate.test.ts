@@ -162,6 +162,101 @@ test("blank text is empty, which an optional date may be, and is not an error", 
   assert.equal(parseTypedDate(undefined).kind, "empty");
 });
 
+// ── A date that belongs after (or before) another ──────────────────────────
+
+test("a short form beside a start that falls in the next financial year is read AFTER the start, not in the anchor's year", () => {
+  // The defect: the anchor's FY decides the year, so a maturity typed beside a March start was read a year before it.
+  const fd = { anchor: "2026-03-01" };
+  assert.equal(read("15/6", fd), "2025-06-15", "without notBefore the anchor's FY 2025-26 is used (the old reading)");
+  assert.equal(read("15/6", { ...fd, notBefore: "2026-03-01" }), "2026-06-15");
+  // an e-way bill dated on the last day of the FY, valid until early April
+  assert.equal(read("2/4", { anchor: "2027-03-31", notBefore: "2027-03-31" }), "2027-04-02");
+  assert.equal(read("0204", { anchor: "2027-03-31", notBefore: "2027-03-31" }), "2027-04-02", "the four-digit form moves the same way");
+});
+
+test("a short form that is already on or after the bound does not move", () => {
+  const ctx = { anchor: "2026-04-01", notBefore: "2026-04-01" };
+  assert.equal(read("15/6", ctx), "2026-06-15");
+  assert.equal(read("1/4", ctx), "2026-04-01", "the bound itself is on the right side");
+  assert.equal(read("15/1", ctx), "2027-01-15");
+});
+
+test("a year that was typed is never moved, in either form", () => {
+  const ctx = { anchor: "2026-03-01", notBefore: "2026-03-01" };
+  assert.equal(read("15/06/2025", ctx), "2025-06-15", "a full date before the bound is left as typed");
+  assert.equal(read("150625", ctx), "2025-06-15");
+  assert.equal(read("2025-06-15", ctx), "2025-06-15");
+  const hint = parseTypedDate("15/06/2025", { ...ctx, min: "2026-03-01" });
+  assert.equal(hint.kind === "date" && hint.outOfRange, "min", "min still says so; nothing refuses it");
+});
+
+test("a bare day that would land before the bound goes to the next month that has the day", () => {
+  const ctx = { anchor: "2027-03-20", notBefore: "2027-03-20" };
+  assert.equal(read("25", ctx), "2027-03-25");
+  assert.equal(read("15", ctx), "2027-04-15", "15 March is before 20 March: the next 15th");
+  assert.equal(read("20", ctx), "2027-03-20");
+  // a day the anchor's own month lacks is still the usual sentence: only a day that EXISTS where it landed is moved
+  assert.equal(read("31", { anchor: "2026-04-30", notBefore: "2026-04-30" }), "error:no_such_day");
+  // 31 May is before 1 June, and the next month that has a 31st is July
+  assert.equal(read("31", { anchor: "2026-05-31", notBefore: "2026-06-01" }), "2026-07-31", "June has no 31st: July");
+});
+
+test("notAfter moves a short form BACK to the last such day on or before the bound", () => {
+  // a job worker's challan date is on or before the date the goods came back
+  const ctx = { anchor: "2026-04-02", notAfter: "2026-04-02" };
+  assert.equal(read("30/3", ctx), "2026-03-30", "FY 2026-27 would say March 2027, which is after the bound");
+  assert.equal(read("1/4", ctx), "2026-04-01");
+  assert.equal(read("15/6", ctx), "2025-06-15", "June 2026 is after the bound: the June before");
+  assert.equal(read("1", { anchor: "2026-04-02", notAfter: "2026-04-02" }), "2026-04-01");
+  assert.equal(read("20", { anchor: "2026-04-02", notAfter: "2026-04-02" }), "2026-03-20", "a bare day goes back to the month before");
+});
+
+test("a day that does not exist where the financial year puts it is the usual sentence, and a 29 February that does exist waits for the next leap year", () => {
+  // FY 2026-27's February is 2027, which has no 29th: only a day that exists where it landed is moved, so this stays an error
+  const gone = parseTypedDate("29/2", { anchor: "2027-03-01", notBefore: "2027-03-01" });
+  assert.ok(gone.kind === "error" && gone.problem === "no_such_day" && gone.message.includes("Feb 2027 has only 28 days"), JSON.stringify(gone));
+  assert.equal(read("29/2", { anchor: "2026-07-01" }), "error:no_such_day", "and with no bound at all it is the same sentence");
+  // FY 2027-28's February is 2028, a leap year; the bound is after it, so the next 29 February is four years on, not one
+  assert.equal(read("29/2", { financialYear: "2027-28", notBefore: "2028-03-01" }), "2032-02-29");
+  assert.equal(read("29/2", { financialYear: "2027-28", notAfter: "2028-02-28" }), "2024-02-29", "and back four years for a date that precedes its anchor");
+});
+
+test("a bound that is not a date is no bound", () => {
+  // a bound that is not a date is no bound
+  assert.equal(read("15/6", { anchor: "2026-03-01", notBefore: "not a date" }), "2025-06-15");
+  assert.equal(read("15/6", { anchor: "2026-03-01", notBefore: null, notAfter: undefined }), "2025-06-15");
+});
+
+test("the walk lands ON the bound, and stops at eight years for a day and month and 24 months for a bare day", () => {
+  // on the bound is the right side of it, both ways
+  assert.equal(read("15", { anchor: "2026-03-15", notBefore: "2026-04-15" }), "2026-04-15", "bare 15 beside a 15 March start with a 15 April bound");
+  assert.equal(read("15/4", { financialYear: "2026-27", notBefore: "2026-04-15" }), "2026-04-15");
+  assert.equal(read("15/4", { financialYear: "2026-27", notAfter: "2026-04-15" }), "2026-04-15");
+  assert.equal(read("16/4", { financialYear: "2026-27", notAfter: "2026-04-15" }), "2025-04-16", "the day after the bound is the wrong side")
+  assert.equal(read("15/4", { financialYear: "2026-27", notAfter: "2025-04-15" }), "2025-04-15", "going back, the walk stops ON the bound");
+  // the limits are exact: the bound just inside is reached, the bound just outside leaves the reading where it landed
+  assert.equal(read("15/6", { financialYear: "2026-27", notBefore: "2034-06-15" }), "2034-06-15", "eight years");
+  assert.equal(read("15/6", { financialYear: "2026-27", notBefore: "2034-06-16" }), "2026-06-15", "nine");
+  assert.equal(read("15", { anchor: "2026-03-15", notBefore: "2028-03-15" }), "2028-03-15", "24 months");
+  assert.equal(read("15", { anchor: "2026-03-15", notBefore: "2028-03-16" }), "2026-03-15", "25");
+});
+
+test("a bound no step within eight years reaches leaves the reading where it landed, and the edge of the supported years is not run off", () => {
+  assert.equal(read("15/6", { financialYear: "2026-27", notBefore: "2040-01-01" }), "2026-06-15");
+  assert.equal(read("15/6", { financialYear: "2998-99", notBefore: "2999-07-01" }), "2998-06-15", "2999 is the last year: June 2999 is before the bound and nothing later exists");
+});
+
+test("the starting day of an empty field is the anchor's, not the bound's, and a typed full date steps by a day whatever the bound", () => {
+  // the anchor is on the far side of the bound, so a starting day that moved to the bound would be a different day
+  const ctx = { anchor: "2026-02-01", notBefore: "2026-03-01" };
+  assert.equal(startingDay(ctx), "2026-02-01");
+  assert.equal(stepTypedDate("", 1, ctx), "2026-02-01");
+  assert.equal(stepTypedDate("", -1, ctx), "2026-02-01");
+  assert.equal(stepTypedDate("01/02/2026", 1, ctx), "2026-02-02", "a full date before the bound is stepped, not moved");
+  const after = { anchor: "2026-05-01", notAfter: "2026-03-01" };
+  assert.equal(startingDay(after), "2026-05-01");
+});
+
 // ── The anchor and the financial year ──────────────────────────────────────
 
 test("the anchor is a day, a month, or today in India", () => {

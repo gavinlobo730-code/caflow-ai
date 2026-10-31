@@ -66,6 +66,19 @@
  *   month under the typist. `financialYear` names the year inside which the
  *   month and day are resolved; absent, it is the financial year of the anchor.
  *
+ * ── WHICH SIDE OF ITS ANCHOR ────────────────────────────────────────────────
+ *
+ *   The anchor's financial year decides the year of a short form, so an end typed
+ *   `15/6` beside a start of 01/03/2026 would read as 15/06/2025, a year BEFORE
+ *   its start. A field that belongs on or after another date says `notBefore`
+ *   (an end, a maturity, an expiry, a due date); one that belongs on or before it
+ *   says `notAfter`. A SHORT form on the wrong side is then read as the first
+ *   such day on or after (the last on or before) it, and a date typed in full on
+ *   the wrong side gets the `min`/`max` hint. A year that was typed is never
+ *   changed. `scripts/a-date-a-person-types-goes-through-one-field.test.ts`
+ *   fails a field that has an `anchor` and says neither, unless it is listed
+ *   there with the reason no side is claimed.
+ *
  * ── WHAT IT DOES NOT DO ─────────────────────────────────────────────────────
  *
  *   It does not know a period is locked or a return filed. Those are the
@@ -128,6 +141,13 @@ export interface DateInputProps
   /** `YYYY-MM-DD` bounds, an input hint only. */
   min?: string;
   max?: string;
+  /** `YYYY-MM-DD`: the date this one belongs on or after (an end beside its start, a due date beside its invoice date). A SHORT form that would
+   *  land before it is read in a later year (a bare day, in a later month), and a date typed in full that is before it gets the same hint `min`
+   *  gives, so a year the person typed is shown and never changed. See the header of lib/dates/typedDate.ts. */
+  notBefore?: string | null;
+  /** `YYYY-MM-DD`: the date this one belongs on or before. A SHORT form that would land after it is read in an earlier year (month), and a date
+   *  typed in full that is after it gets the `max` hint. */
+  notAfter?: string | null;
   /** Marks the box invalid for a reason the PARENT knows (the server refused the
    *  date). The field's own unreadable-text state needs no help. */
   invalid?: boolean;
@@ -206,10 +226,13 @@ function boxFor(value: string, min?: string, max?: string): Box {
 
 export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
   function DateInput(
-    { value, onChange, onStateChange, financialYear, anchor, min, max, invalid, wrapperClassName,
+    { value, onChange, onStateChange, financialYear, anchor, min: minHint, max: maxHint, notBefore, notAfter, invalid, wrapperClassName,
       id, onFocus, onBlur, onKeyDown, disabled, readOnly, ...rest },
     ref,
   ) {
+    // The side a field belongs on is also its range hint: a date typed in full on the wrong side is shown a sentence, never changed or refused.
+    const min = minHint ?? (notBefore || undefined);
+    const max = maxHint ?? (notAfter || undefined);
     const generated = React.useId();
     const inputId = id ?? `date-${generated.replace(/:/g, "")}`;
     const [box, setBox] = React.useState<Box>(() => boxFor(value, min, max));
@@ -241,7 +264,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     }, []);
 
     function context(): TypedDateContext {
-      return { financialYear, anchor: anchorAtFocus.current ?? anchor ?? (value || null), min, max };
+      return { financialYear, anchor: anchorAtFocus.current ?? anchor ?? (value || null), min, max, notBefore, notAfter };
     }
 
     /** What the box holds changed: tell the parent what it IS, not yet its value. */

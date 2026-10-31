@@ -350,7 +350,7 @@ test("the equality fails both ways: a new native input, and a conversion that le
 
 // ── 2 and 3. Every <DateInput> names itself, and says what it holds ──────────
 
-interface Use { line: number; id: string | null; named: boolean; gated: boolean }
+interface Use { line: number; id: string | null; named: boolean; gated: boolean; anchored: boolean; sided: boolean }
 
 /** Every `<DateInput …>` in a source, with whether it is named and whether it
  *  reports its state. */
@@ -383,6 +383,8 @@ export function dateInputUses(src: string, name = "x.tsx"): Use[] {
         id: idText,
         named: has("aria-label") || has("aria-labelledby") || inLabel || (idText !== null && htmlFors.has(idText)),
         gated: has("onStateChange"),
+        anchored: has("anchor"),
+        sided: has("notBefore") || has("notAfter"),
       });
     }
     ts.forEachChild(node, visit);
@@ -408,6 +410,46 @@ test("the DateInput detector tells a named field from a bare one, and a gated on
   assert.deepEqual(gated(`<DateInput value={x} onChange={f} />`), [false]);
   assert.deepEqual(gated(`<DateInput value={x} onChange={f} onStateChange={dates.watch("d", "Date")} />`), [true]);
   assert.equal(dateInputUses(`<input type="text" />`).length, 0);
+});
+
+test("the detector tells an anchored field that says its side from one that does not", () => {
+  const sided = (src: string) => dateInputUses(src).map((u) => [u.anchored, u.sided]);
+  assert.deepEqual(sided(`<DateInput value={x} onChange={f} />`), [[false, false]]);
+  assert.deepEqual(sided(`<DateInput anchor={s} value={x} onChange={f} />`), [[true, false]]);
+  assert.deepEqual(sided(`<DateInput anchor={s} notBefore={s} value={x} onChange={f} />`), [[true, true]]);
+  assert.deepEqual(sided(`<DateInput anchor={s} notAfter={s} value={x} onChange={f} />`), [[true, true]]);
+});
+
+test("a <DateInput> that is anchored to another date says which side of it it belongs on", () => {
+  // The anchor decides the financial year a short form is read in, so an end typed `15/6` beside a start of 01/03/2026 came out as 15/06/2025
+  // and an e-way bill's valid-upto of `2/4` beside a bill of 31/03/2027 as 02/04/2026: a date a year before the one it belongs after, and the
+  // field showed it without a word. `notBefore` (an end, a maturity, an expiry, a due date) and `notAfter` (a date that precedes its anchor)
+  // read a short form on the right side of it. There is no field that is anchored and has no side; one that really has none is listed here
+  // WITH the reason.
+  // file#id -> why no side of its anchor is claimed. The anchor then still chooses the financial year a short form is read in, so a short date
+  // typed beside a March document is read a year before it (named on POST-A-126). A side is claimed only where it is true by the nature of the
+  // field (an end, a maturity, an expiry, a due date), never from a statutory or portal sequence that has not been read from a primary source and
+  // never from a date that can legitimately fall on either side.
+  const NO_SIDE: Record<string, string> = {
+    "app/income-tax/notices/page.tsx#notice-response-due":
+      "a notice can reach the firm after the response date it states, and the received date defaults to today, so a due date before it is ordinary",
+    "components/payroll/EmployeeDrawer.tsx#settlement-payment-date":
+      "a settlement can be paid before the last working day (the money leaves on payment_date, which nothing orders against the leaving date), for example the day before a holiday",
+    "components/invoices/InvoiceEditor.tsx#inv-sb-date":
+      "the editor says customs issues the shipping bill after the invoice, but that is a customs-practice statement nobody has graded against a primary source",
+    "components/purchases/PurchaseBillEditor.tsx#bill-15ca-date":
+      "the editor says Form 15CA is filed when the money moves, after the bill is booked, but that sequence (Rule 37BB) has not been read from a primary source here",
+  };
+  const uses = usesInTree();
+  const anchored = Object.entries(uses).flatMap(([file, us]) => us.filter((u) => u.anchored).map((u) => ({ file, line: u.line, id: u.id, sided: u.sided })));
+  assert.ok(anchored.length >= 15, `only ${anchored.length} anchored DateInputs were read — the scan is broken`);
+  const unsided = anchored.filter((a) => !a.sided && !(`${a.file}#${a.id}` in NO_SIDE)).map((a) => `${a.file}:${a.line}`);
+  // An exemption names a real field that is still anchored and still says no side: a stale entry would exempt the next field that takes its id.
+  const stale = Object.keys(NO_SIDE).filter((k) => !anchored.some((a) => `${a.file}#${a.id}` === k && !a.sided));
+  assert.deepEqual(stale, [], "NO_SIDE lists a field that no longer exists, is no longer anchored, or now says a side: delete the entry");
+  assert.deepEqual(unsided, [],
+    "A DateInput with an `anchor` and no `notBefore` or `notAfter` reads a short form in the ANCHOR'S financial year, which is a year before " +
+    "the anchor when the anchor is in the last months of one. Say which side: notBefore={the date it belongs after} or notAfter={the date it belongs before}.");
 });
 
 function usesInTree(): Record<string, Use[]> {

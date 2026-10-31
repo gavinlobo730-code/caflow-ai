@@ -1151,7 +1151,7 @@ export function InvoiceEditor({
             <div>
               <label htmlFor="inv-due-date" className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
               <DateInput id="inv-due-date" value={dueDate ?? ""} onChange={onDueDateChange} onStateChange={dates.watch("dueDate", "Due date")}
-                anchor={dueDate || invoiceDate}
+                anchor={dueDate || invoiceDate} notBefore={invoiceDate}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               <p className="mt-1 text-3xs text-ps-hint">Auto-set from terms; edit for a custom date.</p>
             </div>

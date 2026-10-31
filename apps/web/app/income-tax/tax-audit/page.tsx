@@ -562,7 +562,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
             </div>
             <div>
               <label htmlFor="tax-audit-filing-date" className={lbl}>Filing Date</label>
-              <DateInput id="tax-audit-filing-date" anchor={form.auditDate || null} value={form.filingDate} onChange={v => upd({ filingDate: v })} onStateChange={dates.watch("filing", "Filing date")} className={inputCls} />
+              <DateInput id="tax-audit-filing-date" anchor={form.auditDate || null} notBefore={form.auditDate || null} value={form.filingDate} onChange={v => upd({ filingDate: v })} onStateChange={dates.watch("filing", "Filing date")} className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

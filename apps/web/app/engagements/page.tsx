@@ -379,7 +379,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
               <label className="block text-xs font-medium text-ps-body mb-1">Expiry Date</label>
               <DateInput
                 aria-label="Expiry date"
-                anchor={form.start_date || null}
+                anchor={form.start_date || null} notBefore={form.start_date || null}
                 value={form.expiry_date}
                 onChange={(v) => setForm({ ...form, expiry_date: v })}
                 onStateChange={dates.watch("expiry", "Expiry date")}

@@ -1243,7 +1243,7 @@ export function PurchaseBillEditor({
             <div>
               <label htmlFor="bill-due-date" className="block text-xs font-medium text-ps-label mb-1">Due Date</label>
               <DateInput id="bill-due-date" value={dueDate} onChange={setDueDate} onStateChange={dates.watch("dueDate", "Due date")}
-                anchor={dueDate || billDate}
+                anchor={dueDate || billDate} notBefore={billDate}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">

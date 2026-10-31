@@ -914,7 +914,7 @@ export default function LoansAndFDPage() {
                   <DateInput aria-label="Disbursement date" value={loanForm.disbursement_date} onChange={(v) => setLoanForm({ ...loanForm, disbursement_date: v })} onStateChange={loanDates.watch("disbursed", "Disbursement date")} className={inputCls} />
                 </FormField>
                 <FormField label="Maturity Date" optional>
-                  <DateInput aria-label="Loan maturity date" anchor={loanForm.disbursement_date || null} value={loanForm.maturity_date} onChange={(v) => setLoanForm({ ...loanForm, maturity_date: v })} onStateChange={loanDates.watch("loan-maturity", "Maturity date")} className={inputCls} />
+                  <DateInput aria-label="Loan maturity date" anchor={loanForm.disbursement_date || null} notBefore={loanForm.disbursement_date || null} value={loanForm.maturity_date} onChange={(v) => setLoanForm({ ...loanForm, maturity_date: v })} onStateChange={loanDates.watch("loan-maturity", "Maturity date")} className={inputCls} />
                 </FormField>
               </div>
               <FormField label="Notes" optional>
@@ -975,7 +975,7 @@ export default function LoansAndFDPage() {
                   <DateInput aria-label="Fixed deposit start date" value={fdForm.start_date} onChange={(v) => setFDForm({ ...fdForm, start_date: v })} onStateChange={fdDates.watch("fd-start", "Start date")} className={inputCls} />
                 </FormField>
                 <FormField label="Maturity Date" required>
-                  <DateInput aria-label="Fixed deposit maturity date" anchor={fdForm.start_date || null} value={fdForm.maturity_date} onChange={(v) => setFDForm({ ...fdForm, maturity_date: v })} onStateChange={fdDates.watch("fd-maturity", "Maturity date")} className={inputCls} />
+                  <DateInput aria-label="Fixed deposit maturity date" anchor={fdForm.start_date || null} notBefore={fdForm.start_date || null} value={fdForm.maturity_date} onChange={(v) => setFDForm({ ...fdForm, maturity_date: v })} onStateChange={fdDates.watch("fd-maturity", "Maturity date")} className={inputCls} />
                 </FormField>
               </div>
 

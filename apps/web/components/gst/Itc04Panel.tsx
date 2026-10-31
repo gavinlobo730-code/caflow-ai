@@ -448,7 +448,7 @@ export function Itc04Panel({ clientId, onChanged }: {
                       </label>
                       <label className="space-y-1">
                         <span className="text-ps-label">Job worker&apos;s challan date</span>
-                        <DateInput anchor={lot.returned_on || null} value={lot.job_worker_challan_date}
+                        <DateInput anchor={lot.returned_on || null} notAfter={lot.returned_on || null} value={lot.job_worker_challan_date}
                                onChange={(v) => setLot({ ...lot, job_worker_challan_date: v })}
                                onStateChange={lotDates.watch("challan-date", "Job worker's challan date")}
                                className="block w-full rounded border border-ps-border px-2 py-1" />
