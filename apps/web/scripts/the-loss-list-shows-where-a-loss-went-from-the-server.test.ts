@@ -51,7 +51,7 @@ test("an answer that lands after a client switch is dropped, a read from an earl
 });
 
 test("the loss row draws the component with the server's view for that record, and the screen reads no stored arithmetic itself", () => {
-  assert.ok(/<LossUses state=\{lossUses\.state\} view=\{lossUses\.byId\[l\.id\]\} \/>/.test(PAGE), "the row does not draw the uses");
+  assert.ok(/<LossUses state=\{lossUses\.state\} view=\{lossUses\.byId\[l\.id\]\}/.test(PAGE), "the row does not draw the uses");
   const select = PAGE.slice(PAGE.indexOf('.from("brought_forward_losses")'), PAGE.indexOf('.order("assessment_year")'));
   assert.ok(select.length > 40, "the loss read could not be found");
   assert.ok(!/utilisations|utilized_amount_paise/.test(select), "the screen reads the stored per-filing column or total itself");

@@ -24,8 +24,9 @@ WHAT IT DELIBERATELY DOES NOT DO
       not write over it.
     * It does not touch a loss the pinned computation does not list, except to clear the use an earlier return of the SAME year had recorded
       when this one (a revised return) used none of it.
-    * It writes only for a filing created from a saved computation. There is no way yet to re-run it for a filing that was not, or to correct
-      a record on a screen; the answers say so (POST-A-368).
+    * It writes only for a filing created from a saved computation. A filing that was not can have its saved computation pinned afterwards and
+      its loss records written again; and a person can record a year's use BY HAND, or take an entry back, on the Tax Computation screen
+      (`record_year_use`, `take_back_use`; POST-A-368). A hand entry ranks below a return's, so the return's write replaces it.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records the use of a loss by a return the CA has already filed on the portal. It transmits
 # nothing.
@@ -39,7 +40,8 @@ from core.authz import can_access_client
 from core.permissions import can_user
 from domain.income_tax import computation_workspace as workspace
 from domain.income_tax.loss_utilisation import (
-    Superseded, after_filing, available_for_year_paise, entries_of, holds_entry_for, is_earlier_year, later_uses, used_in_year_paise,
+    MANUAL, HeldByReturn, MoreThanTheRecordCanTake, NoSuchEntry, Superseded, after_filing, available_for_year_paise,
+    entries_of, holds_entry_for, is_earlier_year, later_uses, record_by_hand, take_back, used_in_year_paise,
     uses_view,
 )
 from domain.money_sentence import rupee_text
@@ -60,8 +62,9 @@ _ENGINE_KEYS = ("loss_type", "amount_paise", "assessment_year", "expiry_assessme
 #: The return kinds a write-back acts on. `updated` is absent on purpose (see the module docstring).
 _KINDS_WRITTEN_BACK = frozenset({"original", "revised"})
 
-#: Said wherever the answer is "this was not recorded": the honest state of the product, so nobody is told to do what they cannot.
-_NO_SCREEN = "There is no screen yet to correct a loss record."
+#: Said wherever the answer is "this was not recorded": where a person can put a record right. It ADVISES nothing: for an updated return (section
+#: 139(8A)) how its set-off sits beside the return it updates has not been read from the Act, so no sentence about it tells anyone to record a use.
+_WHERE_TO_CORRECT = "A loss record can be corrected on the Tax Computation screen, under the loss."
 
 
 class LossNotFound(Exception):
@@ -93,7 +96,9 @@ def _offer_note(row: Mapping[str, Any], offered: int, sent: int, financial_year:
     text = (f"The {_name(row)} is offered at {rupee_text(offered)} for FY {financial_year}: the record holds {rupee_text(original)} and "
             f"shows {rupee_text(max(0, original - offered))} as already used by returns for other years or recorded by hand")
     if same_year:
-        text += (f", and the {rupee_text(same_year)} used by the return for FY {financial_year} itself is offered back because that "
+        own_by_hand = any(e["return_type"] == MANUAL and e["financial_year"] == financial_year.strip() for e in entries_of(row).values())
+        what = "recorded by hand for" if own_by_hand else "used by the return for"
+        text += (f", and the {rupee_text(same_year)} {what} FY {financial_year} itself is offered back because that "
                  "year is being computed again")
     return f"{text}. The figure on the screen, {rupee_text(sent)}, was not used."
 
@@ -106,8 +111,15 @@ def _later_years_sentence(row: Mapping[str, Any], financial_year: str) -> Option
     if not later:
         return None
     parts = ", ".join(f"FY {item['financial_year']}: {rupee_text(item['amount_paise'])}" for item in later)
-    return (f"The returns for later years have already used part of this loss ({parts}), and that use is left out of the figure offered. "
-            "Using more of it for this year may mean that later return has to be revised; the record shows the arithmetic and takes no "
+    by_hand = [i["return_type"] == MANUAL for i in later]
+    if all(by_hand):
+        who, revise = "The uses recorded by hand for later years", "what was recorded for those years"
+    elif any(by_hand):
+        who, revise = "The returns for later years, and the uses recorded by hand for some of them,", "that later return, or what was recorded for it,"
+    else:
+        who, revise = "The returns for later years", "that later return"
+    return (f"{who} have already used part of this loss ({parts}), and that use is left out of the figure offered. "
+            f"Using more of it for this year may mean {revise} has to be revised; the record shows the arithmetic and takes no "
             "view on which year should have had it.")
 
 
@@ -140,9 +152,11 @@ def _unrecorded_returns(current_user: Mapping[str, Any], client_id: str, financi
                 set_off = int(line.get("set_off_paise") or 0)
                 if row is None or set_off <= 0 or holds_entry_for(row, str(filing.get("id")), fy, kind):
                     continue
+                by_hand = sum(e["amount_paise"] for e in entries_of(row).values() if e["return_type"] == MANUAL and e["financial_year"] == fy)
                 found.setdefault(loss_id, []).append({
                     "filing_id": str(filing.get("id")), "financial_year": fy, "set_off_paise": set_off,
                     "acknowledgement_number": filing.get("acknowledgement_number"),
+                    **({"recorded_by_hand_paise": by_hand} if by_hand else {}),
                 })
     except Exception as exc:                                          # noqa: BLE001
         capture_soft_failure(exc, operation="bf_loss_service._unrecorded_returns",
@@ -172,6 +186,12 @@ def _unrecorded_sentence(items: list[dict]) -> str:
         + (f" (acknowledgement {item['acknowledgement_number']})" if item.get("acknowledgement_number") else "")
         + f", {rupee_text(item['set_off_paise'])}"
         for item in items)
+    held = [i for i in items if i.get("recorded_by_hand_paise")]
+    if held:
+        by_hand = "; ".join(f"FY {i['financial_year']}: {rupee_text(i['recorded_by_hand_paise'])}" for i in held)
+        return (f"A return recorded as filed set off part of this loss, but the loss record shows what was recorded by hand for that year "
+                f"instead of what the return used: {parts}. Recorded by hand: {by_hand}. Until the record is updated from that return "
+                "(Tax Filing, Brought-forward losses), which replaces the hand entry, the figure offered counts the hand figure as used.")
     return (f"A return recorded as filed set off part of this loss, but the loss record does not show it: {parts}. Until the record is updated "
             "from that return (Tax Filing, Brought-forward losses), the figure offered counts that part as unused.")
 
@@ -283,7 +303,7 @@ def _refusal_before_reading(filing: Mapping[str, Any]) -> Optional[dict]:
     kind = str(filing.get("return_type") or "original").strip().lower() or "original"
     if kind not in _KINDS_WRITTEN_BACK:
         return _answer(NOT_WRITTEN, "This is an updated return. How an updated return's set-off sits beside the return it updates has not "
-                                    f"been confirmed from the Act, so no brought-forward loss record was changed. {_NO_SCREEN}")
+                                    f"been confirmed from the Act, so no brought-forward loss record was changed. {_WHERE_TO_CORRECT}")
     if not (filing.get("id") and filing.get("client_id") and str(filing.get("financial_year") or "").strip()):
         return _answer(NOT_WRITTEN, "The filing does not say which client and year it is for, so no loss record was changed.")
     if not filing.get("computation_snapshot_id"):
@@ -305,7 +325,7 @@ def _snapshot_lines(firm_id: str, filing: Mapping[str, Any]) -> tuple[Optional[l
     lines = _lines_of(snapshot.get("computation_json"))
     if lines is None:
         return None, _answer(NOT_WRITTEN, "The saved computation does not list its brought-forward losses in a form this can read, so no "
-                                          f"loss record was changed. {_NO_SCREEN}")
+                                          f"loss record was changed. {_WHERE_TO_CORRECT}")
     return lines, None
 
 
@@ -365,6 +385,14 @@ def _write_one(firm_id: str, filing: Mapping[str, Any], row: Mapping[str, Any], 
     capped = (f"this return set off {rupee_text(used)} but the record could still take only {rupee_text(recorded)} (other years' returns "
               f"and recorded uses had taken the rest), so {rupee_text(recorded)} is recorded. The returns together have used more of "
               "this loss than there was.") if recorded < used else ""
+    # A use a person recorded by hand for this year stands in for the return until the return writes its own: say that it was replaced, and by
+    # how much, so a figure typed by a person never changes without a word.
+    fy = str(filing["financial_year"]).strip()
+    by_hand = sum(e["amount_paise"] for e in entries_of(row).values() if e["return_type"] == MANUAL and e["financial_year"] == fy)
+    if by_hand:
+        label["replaced_by_hand_paise"] = by_hand
+        capped = (f"the {rupee_text(by_hand)} recorded by hand for FY {fy} was replaced by what this return used"
+                  + (f"; {capped}" if capped else ""))
     if _already_what_it_should_be(row, columns):
         return {**label, "state": UNCHANGED, **({"message": capped} if capped else {})}
     if workspace.store_bf_loss_use(firm_id, loss_id, row, columns):
@@ -388,11 +416,15 @@ def _write_one_on_its_own(firm_id: str, filing: Mapping[str, Any], row: Mapping[
 
 def _targets(records: Mapping[str, Mapping[str, Any]], used_by_loss: Mapping[str, int], filing: Mapping[str, Any]) -> dict[str, int]:
     """The client's records this write touches and what each is to hold: those the computation names, and any other that an earlier return
-    of the SAME year had recorded a use on (this return stands in its place and used none of it)."""
+    of the SAME year had recorded a use on (this return stands in its place and used none of it).
+
+    A use recorded BY HAND is not cleared that way: it is replaced only where the return's own computation names the loss and says what it used
+    of it. A computation that set off a loss it does not name by record (a typed-in figure) cannot say that this loss was untouched, so what a
+    person recorded by hand for the year stays (found in review: the write-back used to erase it and report a success)."""
     financial_year = str(filing["financial_year"]).strip()
     targets = {loss_id: used for loss_id, used in used_by_loss.items() if loss_id in records}
     for loss_id, row in records.items():
-        if loss_id not in targets and any(e["financial_year"] == financial_year and other != str(filing["id"])
+        if loss_id not in targets and any(e["financial_year"] == financial_year and other != str(filing["id"]) and e["return_type"] != MANUAL
                                          for other, e in entries_of(row).items()):
             targets[loss_id] = 0
     return targets
@@ -434,7 +466,7 @@ def _write_back(current_user: Mapping[str, Any], filing: Mapping[str, Any]) -> d
     if not targets and not unknown:
         if typed_in_used:
             return _answer(NOT_WRITTEN, "The saved computation set off a loss that names no loss record (it was made before losses were "
-                                        f"tied to their records, or the loss was typed in), so no loss record was changed. {_NO_SCREEN}")
+                                        f"tied to their records, or the loss was typed in), so no loss record was changed. {_WHERE_TO_CORRECT}")
         return _answer(NO_LOSSES, "The saved computation set off no brought-forward loss, so no loss record was changed.")
     if targets and not can_user(dict(current_user), "income_tax", "compute"):
         return _answer(NOT_WRITTEN, "You can approve a return but not change loss records, so no loss record was changed.")
@@ -443,3 +475,132 @@ def _write_back(current_user: Mapping[str, Any], filing: Mapping[str, Any]) -> d
     wrote = any(r["state"] == WRITTEN for r in results)
     return _answer(WRITTEN if wrote else (NOT_WRITTEN if problems else UNCHANGED), _summary(results, unknown, typed_in, typed_in_used),
                    results)
+
+
+# ── A person corrects a loss record by hand (POST-A-368, items 2 and 3) ─────────────────────────────────────────────────────────────────
+
+MAX_REASON_CHARS = 500
+
+
+class UseRefused(Exception):
+    """A hand correction that must not go ahead, with the sentence to show. `status` is the HTTP status the route answers."""
+
+    def __init__(self, sentence: str, status: int = 422):
+        super().__init__(sentence)
+        self.sentence = sentence
+        self.status = status
+
+
+def clean_reason(reason: Optional[str]) -> str:
+    """The reason as it will be kept, or a refusal in words. Every hand correction carries one: it is the only account of why a record that a
+    filed return wrote, or one a person typed, was changed."""
+    why = (reason or "").strip()
+    if not why:
+        raise UseRefused("Say why the loss record is being changed. The reason is kept with the change in the audit log.")
+    if len(why) > MAX_REASON_CHARS:
+        raise UseRefused(f"The reason is too long: keep it to {MAX_REASON_CHARS} characters.")
+    return why
+
+
+def _write_audit_or_refuse(*, firm_id: str, row: Mapping[str, Any], change: str, requested: Mapping[str, Any], reason: str,
+                           actor: Mapping[str, Any]) -> None:
+    """Keep what the record held, what was asked and the reason in the audit log, or refuse. Not `audit_service.log_event`, which swallows its
+    failures: this entry is the only account of why the record changed, and a change with no account behind it is the thing the audit log is
+    for. The entry says what was ASKED; a write that then finds the record changed under it is refused afterwards and the entry stays, a true
+    account of the request."""
+    from core.supabase_client import get_service_supabase
+    try:
+        get_service_supabase().table("audit_log").insert({
+            "firm_id": firm_id,
+            "actor_id": actor.get("auth_user_id"),          # the AUTH id: that is the audit log's flavour of actor
+            "actor_email": actor.get("email"),
+            "entity_type": "brought_forward_loss",
+            "entity_id": row.get("id"),
+            "action": "update",
+            "old_data": {"utilisations": entries_of(row), "utilized_amount_paise": int(row.get("utilized_amount_paise") or 0),
+                         "remaining_amount_paise": int(row.get("remaining_amount_paise") or 0)},
+            "new_data": {"requested": dict(requested), "reason": reason},
+            "metadata": {"client_id": row.get("client_id"), "change": change},
+        }).execute()
+    except Exception as exc:                                # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="bf_loss_service.hand_correction_audit", firm_id=firm_id, client_id=row.get("client_id"))
+        raise UseRefused("The loss record was not changed, because the audit log could not be written just now and the audit log is the only "
+                         "account of why it would have. Nothing changed; try again in a moment.", status=503) from exc
+
+
+def _store_or_refuse(firm_id: str, row: Mapping[str, Any], columns: Mapping[str, Any]) -> None:
+    """Write the three columns only while the record still reads as it did, or refuse in words (told apart by reading it again, as the
+    acknowledgement's write-back does: its totals moved, or it is not writable by this caller)."""
+    row = dict(row)
+    if workspace.store_bf_loss_use(firm_id, str(row["id"]), row, dict(columns)):
+        return
+    now = workspace.get_bf_loss(firm_id, str(row["id"])) or {}
+    if (now.get("utilized_amount_paise"), now.get("remaining_amount_paise")) != (
+            row.get("utilized_amount_paise"), row.get("remaining_amount_paise")):
+        raise UseRefused("The loss record changed while this was being saved, so it was left as it was. Reload the loss and try again.", 409)
+    raise UseRefused("This loss record could not be written with your access, so it was left as it was.", 403)
+
+
+def _loss(firm_id: str, loss_id: str) -> dict:
+    row = workspace.get_bf_loss(firm_id, loss_id)
+    if not row:
+        raise UseRefused("Loss record not found", 404)
+    return row
+
+
+def record_year_use(current_user: Mapping[str, Any], loss_id: str, financial_year: str, amount_paise: int, reason: str) -> dict:
+    """Record that `financial_year` used `amount_paise` of this loss, by hand. The year's entry is SET (a second call replaces it, never adds),
+    an amount of nothing takes it away, a year a return's entry holds is refused, and an amount past what the record could take is refused
+    with the figure it could (`loss_utilisation.record_by_hand`). The reason and what the record held go into the audit log first."""
+    firm_id = current_user["firm_id"]
+    why = clean_reason(reason)
+    row = _loss(firm_id, loss_id)
+    fy = (financial_year or "").strip()
+    try:
+        columns = record_by_hand(row, fy, amount_paise)
+    except HeldByReturn:
+        raise UseRefused(f"A return on file already holds FY {fy}'s use of this loss, so it is corrected on that return (the Tax Filing screen "
+                         "writes its loss records again) and not by hand. If that return's use is wrong, take it off the list first and "
+                         "then record the year.", 409) from None
+    except MoreThanTheRecordCanTake as exc:
+        raise UseRefused(f"FY {fy} cannot be recorded as using more than {rupee_text(exc.room_paise)} of this loss: the loss is "
+                         f"{rupee_text(int(row.get('original_amount_paise') or 0))}, and other years' uses and the part recorded by hand "
+                         "have used the rest.") from None
+    except ValueError as exc:
+        raise UseRefused(f"{str(exc)[:1].upper()}{str(exc)[1:]}.") from None
+    if _already_what_it_should_be(row, columns):
+        return {"state": UNCHANGED, "loss_id": str(row["id"]), "financial_year": fy,
+                "message": f"The record already shows {rupee_text(columns['utilisations'].get(f'{MANUAL}:{fy}', {}).get('amount_paise', 0))} "
+                           f"for FY {fy}."}
+    _write_audit_or_refuse(firm_id=firm_id, row=row, change="year_use_recorded_by_hand", reason=why, actor=current_user,
+                           requested={"financial_year": fy, "amount_paise": int(amount_paise)})
+    _store_or_refuse(firm_id, row, columns)
+    recorded = columns["utilisations"].get(f"{MANUAL}:{fy}", {}).get("amount_paise", 0)
+    return {"state": WRITTEN, "loss_id": str(row["id"]), "financial_year": fy, "recorded_paise": recorded,
+            "message": (f"FY {fy} is recorded as having used {rupee_text(recorded)} of this loss." if recorded
+                        else f"The hand entry for FY {fy} was taken off this loss.")}
+
+
+def take_back_use(current_user: Mapping[str, Any], loss_id: str, entry_id: str, reason: str) -> dict:
+    """Take one entry off the record: a hand entry, or the use a filed return had written. The part recorded by hand without a year (the old
+    route's) is not an entry and is not taken back here. A return's entry comes back the next time that return's loss records are written, and
+    the answer says so."""
+    firm_id = current_user["firm_id"]
+    why = clean_reason(reason)
+    row = _loss(firm_id, loss_id)
+    held = entries_of(row).get(str(entry_id))
+    try:
+        columns = take_back(row, entry_id)
+    except NoSuchEntry:
+        raise UseRefused("That use is not on this loss record (it may already have been taken back).", 404) from None
+    _write_audit_or_refuse(firm_id=firm_id, row=row, change="use_taken_back", reason=why, actor=current_user,
+                           requested={"entry_id": str(entry_id), "financial_year": (held or {}).get("financial_year"),
+                                      "amount_paise": (held or {}).get("amount_paise"), "kind": (held or {}).get("return_type")})
+    _store_or_refuse(firm_id, row, columns)
+    by_a_return = (held or {}).get("return_type") != MANUAL
+    note = (" It was written by a filed return, and it comes back the next time that return's loss records are written; to keep it off, "
+            "do not write them again.") if by_a_return else ""
+    return {"state": WRITTEN, "loss_id": str(row["id"]), "entry_id": str(entry_id),
+            "message": f"The use of {rupee_text((held or {}).get('amount_paise') or 0)} for FY {(held or {}).get('financial_year')} was taken "
+                       f"off this loss.{note}"}

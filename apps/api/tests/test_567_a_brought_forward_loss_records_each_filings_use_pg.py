@@ -183,7 +183,7 @@ def test_an_entry_whose_amount_is_not_a_number_is_refused(db):
 
 
 def test_the_hand_edit_route_still_works_beside_the_entries(db):
-    """`utilize_bf_loss` raises the total only; the new check must let that through."""
+    """A write that raises the total only (what the removed route that typed a use in with no year did) is still let through by the new check."""
     loss_id = _loss(db, utilized=2 * L)
     assert _store(db, loss_id, after_filing(_row(db, loss_id), "f", "2025-26", 3 * L)).returncode == 0
     r = _psql(db, f"UPDATE brought_forward_losses SET utilized_amount_paise = {6 * L}, remaining_amount_paise = {4 * L} WHERE id = '{loss_id}';")

@@ -10,9 +10,21 @@ const use = (over: Record<string, unknown> = {}) => ({
 });
 const record = (over: Record<string, unknown> = {}) => ({ id: "L1", hand_recorded_paise: 0, uses: [use()], ...over });
 
-test("a record's uses and hand-recorded part are handed on exactly as the server gave them", () => {
+test("a record's uses and hand-recorded part are handed on exactly as the server gave them, a return's entry id being the filing's id when an older server sent none", () => {
   const out = lossUsesOf([record({ hand_recorded_paise: 100000 })]);
-  assert.deepEqual(out, { L1: { hand_recorded_paise: 100000, uses: [use()] } });
+  assert.deepEqual(out, { L1: { hand_recorded_paise: 100000, uses: [{ ...use(), entry_id: "f1" }] } });
+  const named = lossUsesOf([record({ uses: [use({ entry_id: "e-9" })] })])!.L1.uses[0];
+  assert.equal(named.entry_id, "e-9");
+});
+
+test("a use recorded by hand keeps its kind and its entry id, and names no return (POST-A-368, item 2)", () => {
+  const hand = lossUsesOf([record({ uses: [use({ entry_id: "manual:2024-25", filing_id: "manual:2024-25", return_type: "manual", filing_found: null, acknowledgement_number: null })] })])!.L1.uses[0];
+  assert.equal(hand.return_type, "manual");
+  assert.equal(hand.entry_id, "manual:2024-25");
+  assert.equal(hand.filing_found, null);
+  assert.equal(hand.acknowledgement_number, null);
+  // an unknown kind is read as an original return, as it always was
+  assert.equal(lossUsesOf([record({ uses: [use({ return_type: "updated" })] })])!.L1.uses[0].return_type, "original");
 });
 
 test("several records are keyed by their ids, and the order of the uses is the server's", () => {

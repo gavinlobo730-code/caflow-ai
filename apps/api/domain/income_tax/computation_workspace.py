@@ -496,7 +496,7 @@ def get_bf_loss(firm_id: str, loss_id: str) -> Optional[dict]:
     assignment scope. Deliberately NOT .single(): Supabase's real .single()
     raises (PGRST116) rather than returning no data on zero rows, which would
     turn a routine 404 into an unhandled 500. A lookup that may find nothing
-    is .maybe_single() (see utilize_bf_loss a few lines down), and
+    is .maybe_single(), and
     tests/test_a_lookup_that_may_find_nothing_does_not_use_single.py holds
     that for the tree."""
     if _USE_MOCK:
@@ -512,10 +512,11 @@ def get_bf_loss(firm_id: str, loss_id: str) -> Optional[dict]:
 def store_bf_loss_use(firm_id: str, loss_id: str, before: dict, columns: dict) -> bool:
     """Write the three columns `loss_utilisation.after_filing` returns, only while the row still reads as it did when they were worked out.
 
-    The totals are compared because they are what `utilize_bf_loss` (a hand edit) and a filing both move, and the database's own checks
+    The totals are compared because they are what a hand entry, a take-back and a filing all move, and the database's own checks
     (`chk_remaining_consistency`, `chk_utilized_lte_original`) hold the pair together. A write that matches no row returns False and writes
     nothing: the caller says so and leaves the record as it was. The compare cannot see an entry swapped for another of the same size by a
-    concurrent write; the acknowledgement that drives this can only be recorded once per filing, which is what keeps that from mattering."""
+    concurrent write. For a filing's write the acknowledgement can only be recorded once, which keeps that from mattering; for a hand entry or a
+    take-back two corrections landing in the same instant could do it, and the window is the length of one request."""
     if _USE_MOCK:
         loss = _MOCK_LOSSES.get(loss_id)
         if not loss or loss.get("firm_id") != firm_id:
@@ -530,34 +531,3 @@ def store_bf_loss_use(firm_id: str, loss_id: str, before: dict, columns: dict) -
         "utilized_amount_paise", before.get("utilized_amount_paise")
     ).eq("remaining_amount_paise", before.get("remaining_amount_paise")).execute()
     return bool(res.data)
-
-
-def utilize_bf_loss(
-    firm_id: str, loss_id: str, utilization_paise: int
-) -> dict:
-    """Record utilization of a brought-forward loss in the current year."""
-    if _USE_MOCK:
-        if loss_id in _MOCK_LOSSES:
-            loss = _MOCK_LOSSES[loss_id]
-            new_util = loss["utilized_amount_paise"] + utilization_paise
-            if new_util > loss["original_amount_paise"]:
-                raise ValueError("Utilization exceeds original loss amount")
-            loss["utilized_amount_paise"] = new_util
-            loss["remaining_amount_paise"] = loss["original_amount_paise"] - new_util
-        return _MOCK_LOSSES.get(loss_id, {})
-
-    sb = _supabase()
-    existing = sb.table("brought_forward_losses").select("*").eq("id", loss_id).eq(
-        "firm_id", firm_id
-    ).maybe_single().execute()
-    if not existing.data:
-        raise ValueError("Loss record not found")
-    loss = existing.data
-    new_util = loss["utilized_amount_paise"] + utilization_paise
-    if new_util > loss["original_amount_paise"]:
-        raise ValueError("Utilization exceeds original loss amount")
-    res = sb.table("brought_forward_losses").update({
-        "utilized_amount_paise": new_util,
-        "remaining_amount_paise": loss["original_amount_paise"] - new_util,
-    }).eq("id", loss_id).execute()
-    return res.data[0] if res.data else {}

@@ -8,7 +8,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Plus, Loader2, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Save } from "lucide-react";
 import { formatWhole } from "@/lib/money/format";
 import { LossUses, type LossUsesState } from "@/components/tax/LossUses";
-import { lossUsesOf, type LossUsesView } from "@/lib/tax/lossUses";
+import { LossHandEntryModal } from "@/components/tax/LossHandEntryModal";
+import { lossUsesOf, type LossUse, type LossUsesView } from "@/lib/tax/lossUses";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -363,6 +364,11 @@ export default function TaxComputationPage() {
   const [lossUses, setLossUses] = useState<{ state: LossUsesState; byId: Record<string, LossUsesView> }>({ state: "loading", byId: {} });
   const clientShown = useRef<string | null>(null);
   const lossUsesSeq = useRef(0);
+  // A correction made by hand (POST-A-368, items 2 and 3): which loss it is for and whether a year is being recorded or one use taken back.
+  // The server decides every refusal; `handError` is its sentence as written.
+  const [handEdit, setHandEdit] = useState<{ loss: BFLoss; take?: LossUse } | null>(null);
+  const [handBusy, setHandBusy] = useState(false);
+  const [handError, setHandError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
 
   // The client's own entity type, read from the client record and passed
@@ -683,6 +689,42 @@ export default function TaxComputationPage() {
       if (seq === lossUsesSeq.current && clientShown.current === asked) setLossUses({ state: "failed", byId: {} });
     }
   }, [clientId]);
+
+  // Both corrections go through the server, which keeps the reason and what the record held in the audit log before it changes anything.
+  // They return the promise so the dialog's shared button ignores a second click made in the same moment. The new uses are read again
+  // after a write: the screen never works out what the record now holds.
+  async function sendHandEdit(path: string, body: Record<string, unknown>) {
+    if (!handEdit) return;
+    setHandBusy(true);
+    setHandError(null);
+    try {
+      const res = await apiFetch(path, { method: "POST", body: JSON.stringify(body) });
+      if (!res?.success) {
+        setHandError(res?.detail ?? res?.error ?? "The loss record was not changed.");
+        return;
+      }
+      setHandEdit(null);
+      toast({ title: res.data?.message ?? "The loss record was changed." });
+      await load();
+      void loadLossUses();
+    } catch (e) {
+      setHandError(e instanceof Error ? e.message : "The loss record was not changed.");
+    } finally {
+      setHandBusy(false);
+    }
+  }
+
+  const recordYearUse = (financialYear: string, amountPaise: number, reason: string) =>
+    handEdit
+      ? sendHandEdit(`/api/itr/bf-losses/${encodeURIComponent(handEdit.loss.id)}/year-use`,
+        { financial_year: financialYear, amount_paise: amountPaise, reason })
+      : undefined;
+
+  const takeBackUse = (reason: string) =>
+    handEdit?.take
+      ? sendHandEdit(`/api/itr/bf-losses/${encodeURIComponent(handEdit.loss.id)}/uses/${encodeURIComponent(handEdit.take.entry_id)}/take-back`,
+        { reason })
+      : undefined;
 
   async function markSnapshotReviewed(snapshotId: string) {
     setReviewing(snapshotId);
@@ -2647,7 +2689,9 @@ export default function TaxComputationPage() {
                         {l.loss_type.replace(/_/g, " ")} Loss — AY {l.assessment_year}
                       </p>
                       <p className="text-3xs text-ps-hint">Expires AY {l.expiry_assessment_year}</p>
-                      <LossUses state={lossUses.state} view={lossUses.byId[l.id]} />
+                      <LossUses state={lossUses.state} view={lossUses.byId[l.id]} canEdit={can("income_tax", "compute")}
+                        onRecord={() => { setHandError(null); setHandEdit({ loss: l }); }}
+                        onTakeBack={(use) => { setHandError(null); setHandEdit({ loss: l, take: use }); }} />
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-semibold text-ps-ink">{paise(l.remaining_amount_paise)}</p>
@@ -2706,6 +2750,20 @@ export default function TaxComputationPage() {
             </div>
           )}
         </div>
+      )}
+
+      {handEdit && (
+        <LossHandEntryModal
+          mode={handEdit.take
+            ? { kind: "take_back", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}`,
+                entryLabel: `the use for FY ${handEdit.take.financial_year}`, byAReturn: handEdit.take.return_type !== "manual" }
+            : { kind: "record", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}` }}
+          busy={handBusy}
+          error={handError}
+          onRecord={recordYearUse}
+          onTakeBack={takeBackUse}
+          onClose={() => { if (!handBusy) { setHandEdit(null); setHandError(null); } }}
+        />
       )}
     </div>
   );

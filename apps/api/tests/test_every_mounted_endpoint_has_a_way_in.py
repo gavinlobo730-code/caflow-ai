@@ -156,7 +156,7 @@ BUDGET: dict[str, int] = {
     # through the API now, so that door is reached, and the new unread count and
     # mark-read endpoints are reached from the same screen.
     "/api/automation": 5, "/api/gst-portal": 5,
-    "/api/itr": 5, "/api/lifecycle": 5, "/api/portal": 3,
+    "/api/itr": 4, "/api/lifecycle": 5, "/api/portal": 3,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
     # endpoint on this prefix at all. It asks GET /register now, and the
