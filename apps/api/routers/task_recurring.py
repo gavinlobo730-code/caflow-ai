@@ -8,6 +8,7 @@ from core.authz import (
 )
 from repositories.assignment_rule_repository import assignment_rule_repo
 from core import db_provider
+from services import named_row_ownership
 
 router = APIRouter(prefix="/api/task-recurring", tags=["task-recurring"])
 
@@ -152,6 +153,8 @@ def create_recurring(body: RecurringCreate, current_user: dict = Depends(rbac("t
         ).maybe_single().execute()
         if not tpl.data:
             raise HTTPException(status_code=404, detail="Template not found")
+    # `assignee_id` is a bare uuid on this table: nothing but this line asks whether the person named belongs to the caller's firm.
+    named_row_ownership.member_is_the_firms(db, firm_id, body.assignee_id)
 
     now = _now_iso()
     result = db.table("task_recurring_configs").insert({
@@ -187,6 +190,7 @@ def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict =
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if "frequency" in updates and updates["frequency"] not in VALID_FREQUENCIES:
         raise HTTPException(status_code=400, detail=f"Invalid frequency")
+    named_row_ownership.member_is_the_firms(db, firm_id, updates.get("assignee_id"))
     updates["updated_at"] = _now_iso()
     result = db.table("task_recurring_configs").update(updates).eq("id", config_id).eq("firm_id", firm_id).execute()
     return api_response(True, {"config": result.data[0] if result.data else None})

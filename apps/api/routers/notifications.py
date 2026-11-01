@@ -6,6 +6,8 @@ from core.list_window import MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
 from core.authz import assert_client_access, filter_by_client
 from repositories.notifications_repository import notifications_repo
+from core import db_provider
+from services import named_row_ownership
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -159,6 +161,8 @@ def create_notification(body: NotificationCreate, current_user: dict = Depends(r
     # caller could plant a notification against another staff member's client.
     # A no-op when client_id is None (a firm-level notification).
     assert_client_access(current_user, body.client_id)
+    # A notification is delivered to the member it names: a stranger of another firm would be sent this firm's title, body and link.
+    named_row_ownership.member_is_the_firms(db_provider.request_db_or_none(), firm_id, body.user_id)
     notif = notifications_repo.create({
         "firm_id": firm_id,
         "type": body.type,

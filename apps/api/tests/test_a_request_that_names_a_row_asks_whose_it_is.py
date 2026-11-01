@@ -29,6 +29,22 @@ WHAT IS ASSERTED
       three real doors that stored another client's row under this one: the 26AS upload named any client's stored file, and the ITR
       workspace's deduction claim and disallowance named any client's evidence file (the disallowance also any client's ledger entry).
       The payroll, stock and ledger doors the survey listed were already asked, by helpers the rule now knows by name.
+    * THE THIRD FAMILY (POST-A-361, part 2): a MEMBER of the firm. A request that names a person (`assigned_to`, `assignee_id`, `reviewer_id`,
+      `approver_id`, `preparer_id`, `partner_id`, `user_id`) names a row of `users`, which is the FIRM's and not a client's. Nine doors
+      took the id as typed: the recurring-task configuration (a bare uuid column, so nothing anywhere refused a stranger), a fee engagement's
+      assignee (also bare) with its reviewer and partner, a lead's assignee, a compliance obligation's preparer, reviewer and approver, and
+      the recipient of a notification (a stranger of another firm would have been sent this firm's title, text and link). Where the column
+      is keyed, migration 566 refuses a member of another firm, in a failure nobody can read; the door now says it in a sentence, before
+      anything is written, and answers a stranger, a deleted member and an invented id in the same words. This family is asked by its own
+      scan and not by the call graph's reach: the graph guesses a callee by its bare name, and an audit write ends in the MFA reset's
+      lookup of a user, so "something below it looks a user up" is true of nearly every route. A lookup counts only when it is made ON the
+      value the request carried (its text names the field, or the parameter the value was handed on as), up to three calls down.
+    * ONE FIELD THE SCAN FOUND IS DELETED AND NOT LISTED. `RenewalIn.assigned_to` was accepted by `POST /api/lifecycle/renewals` and never
+      stored (the table has no such column and the handler's row names none): a field nothing stores is removed, so the door asks about
+      nothing instead of being put on the reviewed list with an apology.
+    * TWO MODELS OF ONE NAME ARE NOT ONE MODEL. `routers/engagements.py` and `routers/engagement_letters.py` each define an
+      `EngagementUpdate`; the scan matched an annotation by the bare class name and gave the letters door the fee engagement's assignee
+      fields. Models are keyed by (module, class) now and a route sees the one its own module defines or imports.
     * THE SCAN IS NOT BLIND. It finds more than forty doors and all seven kinds, it flags a synthetic route that writes without asking, it
       accepts one that asks in the route and one that asks two calls down, and it flags one whose check sits in a function nothing calls.
     * EACH DOOR THE RULE FOUND. A sibling client's row named under this client is answered in the words a missing row gets and nothing is
@@ -45,15 +61,20 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import routers.compliance_ops as compliance_ops_router
 import routers.credit_notes as credit_notes_router
 import routers.debit_notes as debit_notes_router
+import routers.engagements as engagements_router
 import routers.eway_bill as eway_router
 import routers.form_26as as form26as_router
 import routers.itr_workspace as itr_router
+import routers.lifecycle as lifecycle_router
+import routers.notifications as notifications_router
 import routers.purchase_credit_notes as pcn_router
 import routers.purchase_payments as pp_router
 import routers.receipts as receipts_router
 import routers.recurring_invoices as ri_router
+import routers.task_recurring as task_recurring_router
 import routers.recurring_purchase_bills as rpb_router
 import routers.sales_debit_notes as sdn_router
 import routers.sales_invoices as sales_router
@@ -82,7 +103,16 @@ KINDS: dict[str, tuple[re.Pattern, set[str], set[str]]] = {
     "godown": (re.compile(r"(^|_)godown_id$"), set(), {"godowns"}),
     "batch": (re.compile(r"(^|_)batch_id$"), set(), {"inventory_batches"}),
     "cost_centre": (re.compile(r"(^|_)cost_centre_id$"), set(), {"cost_centres"}),
+    # THE THIRD FAMILY (POST-A-361, part 2): a MEMBER of the firm named by a request (an assignee, a reviewer, a capacity row's person).
+    # A member is the FIRM's and not a client's, and a call graph that guesses a callee by its bare name reaches a user lookup from almost
+    # any route (an audit write ends in the MFA reset's lookup), so this kind is not asked through `_own_kinds`: `_Tree.asks_member`
+    # needs the lookup to be made on the value the request carried.
+    "member": (re.compile(r"(^|_)(assigned_to|assignee_id|assignee|reviewer_id|approver_id|preparer_id|partner_id|user_id)$"), set(), set()),
 }
+MEMBER_ASKING_FUNCTIONS = {"member_is_the_firms"}
+# A call that looks one member up under the firm although it is not the function above: the user repository's own lookup (scoped by firm).
+MEMBER_ASKING_CALLS = {("user_repo", "find_by_id")}
+MEMBER_DEPTH = 3
 DICT_BODY = re.compile(r"(Optional\[)?(dict|Dict)(\[[^\]]*\])?\]?")
 SCAN_DIRS = ("services", "domain", "repositories", "routers", "models", "core")      # not jobs: nothing a route calls lives there
 WRITING_VERBS = ("post", "put", "patch", "delete")
@@ -131,11 +161,32 @@ class _Tree(CallGraph):
 
     def __init__(self, root: Path):
         super().__init__(root, SCAN_DIRS)
+        self.homes = self._model_homes()
         self.models = self._models_with_named_fields()
 
-    def _models_with_named_fields(self) -> dict[str, dict[str, set[str]]]:
-        found: dict[str, dict[str, set[str]]] = {}
-        annotated: dict[str, list[tuple[str, str]]] = {}
+    def _model_homes(self) -> dict[str, set[str]]:
+        """{class name: modules that define a class of that name}. Two routers define their own `EngagementUpdate`, and a scan that
+        matches an annotation, and the fields of a class, by the bare name gave one router the other's fields."""
+        homes: dict[str, set[str]] = {}
+        for mod, tree in self.mods.items():
+            if mod.startswith("models.") or mod.startswith("routers."):
+                for c in ast.walk(tree):
+                    if isinstance(c, ast.ClassDef):
+                        homes.setdefault(c.name, set()).add(mod)
+        return homes
+
+    def model_is_visible_to(self, router_mod: str, model: tuple[str, str]) -> bool:
+        """Is the class `model` = (defining module, name), as written in a route of `router_mod`, the class that name means there: the one
+        the module defines, the only one of its name, or the one it imports by name."""
+        home, name = model
+        if home == router_mod or self.homes.get(name, set()) <= {home}:
+            return True
+        imported = self.imports.get(router_mod, {}).get(name)
+        return bool(imported and imported[0] == "sym" and imported[1] == home)
+
+    def _models_with_named_fields(self) -> dict[tuple[str, str], dict[str, set[str]]]:
+        found: dict[tuple[str, str], dict[str, set[str]]] = {}
+        annotated: dict[tuple[str, str], list[tuple[str, str]]] = {}
         for mod, tree in self.mods.items():
             if not (mod.startswith("models.") or mod.startswith("routers.")):
                 continue
@@ -143,10 +194,10 @@ class _Tree(CallGraph):
                 if isinstance(c, ast.ClassDef):
                     for n in c.body:
                         if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
-                            annotated.setdefault(c.name, []).append((n.target.id, ast.unparse(n.annotation)))
+                            annotated.setdefault((mod, c.name), []).append((n.target.id, ast.unparse(n.annotation)))
                             for kind, (rx, _, _) in KINDS.items():
                                 if rx.search(n.target.id):
-                                    found.setdefault(c.name, {}).setdefault(kind, set()).add(n.target.id)
+                                    found.setdefault((mod, c.name), {}).setdefault(kind, set()).add(n.target.id)
         # A model that CARRIES another model (a receipt's allocations, a payment's bills) names that model's rows too: the route
         # takes the outer model, so the scan has to read through it. Followed to a fixed point, so a list of lists is read.
         grew = True
@@ -155,7 +206,7 @@ class _Tree(CallGraph):
             for outer, fields in annotated.items():
                 for field, annotation in fields:
                     for inner, by_kind in list(found.items()):
-                        if inner == outer or not re.search(rf"\b{inner}\b", annotation):
+                        if inner == outer or not re.search(rf"\b{inner[1]}\b", annotation) or not self.model_is_visible_to(outer[0], inner):
                             continue
                         for kind, names in by_kind.items():
                             have = found.setdefault(outer, {}).setdefault(kind, set())
@@ -218,6 +269,64 @@ class _Tree(CallGraph):
         return asked
 
 
+def _mentions(text: str, names: set[str]) -> bool:
+    return any(re.search(rf"\b{re.escape(n)}\b", text) for n in names)
+
+
+def _simple(names: set[str]) -> set[str]:
+    return {n.split(".")[-1] for n in names}
+
+
+def _member_lookup(call: ast.Call) -> bool:
+    """Is this call a lookup of one member under the firm: the ownership function, the user repository's own, or a read of `users` by id AND firm."""
+    if (called_name(call) or "") in MEMBER_ASKING_FUNCTIONS:
+        return True
+    if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) \
+            and (call.func.value.id, call.func.attr) in MEMBER_ASKING_CALLS:
+        return True
+    table, columns = None, set()
+    for method, link in chain_of(call):
+        if method == "table" and link.args and isinstance(link.args[0], ast.Constant):
+            table = link.args[0].value
+        if method in ("eq", "in_") and link.args and isinstance(link.args[0], ast.Constant):
+            columns.add(link.args[0].value)
+    return table == "users" and {"id", "firm_id"} <= columns
+
+
+def _asks_member(self, key, names: set[str], depth: int = MEMBER_DEPTH, seen: frozenset = frozenset()) -> bool:
+    """Does this function, or one it passes the named value to (up to MEMBER_DEPTH calls down), look the named member up under the firm?
+    A lookup counts only when it is made ON the value the request carried (its text mentions the field, or the parameter the value was
+    passed in as), so a lookup of the caller's own row, or of the firm's roster, asks nothing about the person who was named."""
+    fn = self.funcs[key]
+    names = _simple(names)
+    for c in ast.walk(fn):
+        if isinstance(c, ast.Call) and _member_lookup(c) and _mentions(ast.unparse(c), names):
+            return True
+    if depth <= 0:
+        return False
+    for call, targets in self.calls_of(key):
+        if not _mentions(ast.unparse(call), names):
+            continue                                            # the value is not handed on: nothing the callee does is about this member
+        for target in targets:
+            if target in seen:
+                continue
+            callee = self.funcs[target]
+            params = [a.arg for a in callee.args.args if a.arg not in ("self", "cls")]
+            passed = set(names)
+            for i, arg in enumerate(call.args):
+                if i < len(params) and _mentions(ast.unparse(arg), names):
+                    passed.add(params[i])
+            for kw in call.keywords:
+                if kw.arg and _mentions(ast.unparse(kw.value), names):
+                    passed.add(kw.arg)
+            if _asks_member(self, target, passed, depth - 1, seen | {target}):
+                return True
+    return False
+
+
+_Tree.asks_member = _asks_member
+
+
 def doors(root: Path) -> list[tuple[str, str, set[str], set[str]]]:
     """(router, handler, kinds the request names, kinds nothing reached asks) for every writing route whose request names a row."""
     tree = _Tree(root)
@@ -242,7 +351,7 @@ def doors(root: Path) -> list[tuple[str, str, set[str], set[str]]]:
                     continue                                    # the caller's own identity, not something the caller named
                 annotation = ast.unparse(arg.annotation) if arg.annotation else ""
                 for model, by_kind in tree.models.items():
-                    if re.search(rf"\b{model}\b", annotation):
+                    if re.search(rf"\b{model[1]}\b", annotation) and tree.model_is_visible_to(mod, model):
                         for kind, fields in by_kind.items():
                             named.setdefault(kind, set()).update(fields)
                 if "{" + arg.arg + "}" in route_path:
@@ -254,7 +363,10 @@ def doors(root: Path) -> list[tuple[str, str, set[str], set[str]]]:
                     named.setdefault("dict_body", set()).add(arg.arg)
             if not named or (mod, fn.name) not in tree.funcs:
                 continue
-            found.append((mod.split(".")[-1], fn.name, set(named), set(named) - tree.asks((mod, fn.name))))
+            asked = tree.asks((mod, fn.name))
+            if "member" in named and tree.asks_member((mod, fn.name), named["member"]):
+                asked = asked | {"member"}
+            found.append((mod.split(".")[-1], fn.name, set(named), set(named) - asked))
     return found
 
 
@@ -289,7 +401,9 @@ def test_the_scan_sees_the_doors_it_is_meant_to(real):
                      ("recurring_invoices", "create_recurring"), ("recurring_purchase_bills", "create_recurring_bill"),
                      ("debit_notes", "create_debit_note"), ("fixed_assets", "create_asset"), ("bills_of_entry", "create_bill_of_entry"),
                      ("form_26as", "create_upload"), ("itr_workspace", "create_disallowance"), ("itr_workspace", "create_deduction"),
-                     ("payroll", "put_attendance"), ("inventory", "transfer_stock")):
+                     ("payroll", "put_attendance"), ("inventory", "transfer_stock"),
+                     ("task_recurring", "create_recurring"), ("engagements", "create_engagement"), ("lifecycle", "update_lead"),
+                     ("compliance_ops", "assign_obligation"), ("notifications", "create_notification"), ("tasks", "create_task")):
         assert expected in handlers, f"{expected} is no longer found as a door"
 
 
@@ -456,6 +570,123 @@ def test_the_names_that_the_ledger_listed_are_recognised():
                        ("from_godown_id", "godown"), ("batch_id", "batch"), ("cost_centre_id", "cost_centre"),
                        ("purchase_payment_id", "vendor_payment")):
         assert KINDS[kind][0].search(name), name
+
+
+# ── the member scan against code written for the purpose ───────────────────────────────────────────────────────────────────
+def _member_tree(tmp_path: Path, router_body: str, service_body: str = "def noop():\n    return None\n") -> Path:
+    for d in ("models", "routers", "services"):
+        (tmp_path / d).mkdir(exist_ok=True)
+    (tmp_path / "models" / "m.py").write_text(textwrap.dedent('''
+        from typing import Optional
+        from pydantic import BaseModel
+        class AssignIn(BaseModel):
+            title: str
+            assignee_id: Optional[str] = None
+    '''))
+    (tmp_path / "services" / "s.py").write_text(textwrap.dedent(service_body))
+    (tmp_path / "routers" / "r.py").write_text(textwrap.dedent(_ROUTER.replace("ThingIn", "AssignIn").replace(
+        "{body}", textwrap.indent(textwrap.dedent(router_body), "    "))))
+    return tmp_path
+
+
+def _member_verdict(tmp_path, body: str, service: str = "def noop():\n    return None\n"):
+    out = doors(_member_tree(tmp_path, body, service))
+    assert len(out) == 1, out
+    return out[0][3]
+
+
+def test_a_route_that_stores_a_named_person_without_asking_is_flagged(tmp_path):
+    assert _member_verdict(tmp_path, 'db.table("things").insert({"assignee_id": data.assignee_id}).execute()') == {"member"}
+
+
+def test_a_route_that_asks_whether_the_person_is_the_firms_is_not(tmp_path):
+    assert _member_verdict(tmp_path, '''
+        named_row_ownership.member_is_the_firms(db, "f", data.assignee_id)
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == set()
+
+
+def test_the_user_repositorys_own_lookup_on_the_named_value_counts(tmp_path):
+    assert _member_verdict(tmp_path, '''
+        user_repo.find_by_id(data.assignee_id, firm_id="f")
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == set()
+
+
+def test_a_read_of_users_by_id_and_firm_on_the_named_value_counts(tmp_path):
+    assert _member_verdict(tmp_path, '''
+        db.table("users").select("id").eq("id", data.assignee_id).eq("firm_id", "f").execute()
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == set()
+
+
+def test_a_service_two_calls_down_that_is_handed_the_value_and_asks_is_not_flagged(tmp_path):
+    service = '''
+        def first(db, who):
+            return second(db, who)
+        def second(db, other):
+            named_row_ownership.member_is_the_firms(db, "f", other)
+    '''
+    assert _member_verdict(tmp_path, "s.first(db, data.assignee_id)", service) == set()
+
+
+def test_a_lookup_of_somebody_else_does_not_count(tmp_path):
+    """The caller's own row, looked up under the firm, says nothing about the person who was named."""
+    assert _member_verdict(tmp_path, '''
+        user_repo.find_by_id(current_user["id"], firm_id="f")
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == {"member"}
+
+
+def test_a_roster_read_by_firm_alone_does_not_count(tmp_path):
+    assert _member_verdict(tmp_path, '''
+        db.table("users").select("id").eq("firm_id", "f").execute()
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == {"member"}
+
+
+def test_a_check_in_a_function_that_is_not_handed_the_value_does_not_count(tmp_path):
+    service = '''
+        def first(db):
+            named_row_ownership.member_is_the_firms(db, "f", "somebody")
+    '''
+    assert _member_verdict(tmp_path, '''
+        s.first(db)
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''', service) == {"member"}
+
+
+def test_two_models_of_one_name_are_not_mixed(tmp_path):
+    """A router whose own `AssignIn` names nobody is not a door because ANOTHER module's `AssignIn` names a person."""
+    for d in ("models", "routers", "services"):
+        (tmp_path / d).mkdir(exist_ok=True)
+    (tmp_path / "services" / "s.py").write_text("def noop():\n    return None\n")
+    (tmp_path / "models" / "m.py").write_text(textwrap.dedent('''
+        from typing import Optional
+        from pydantic import BaseModel
+        class AssignIn(BaseModel):
+            assignee_id: Optional[str] = None
+    '''))
+    (tmp_path / "routers" / "other.py").write_text(textwrap.dedent('''
+        from pydantic import BaseModel
+        from fastapi import APIRouter
+        router = APIRouter()
+        class AssignIn(BaseModel):
+            title: str
+        @router.post("/o")
+        def make(data: AssignIn):
+            return data
+    '''))
+    (tmp_path / "routers" / "r.py").write_text(textwrap.dedent('''
+        from fastapi import APIRouter
+        from models.m import AssignIn
+        router = APIRouter()
+        @router.post("/x")
+        def make(data: AssignIn):
+            return data
+    '''))
+    assert sorted((r, h, sorted(missing)) for r, h, _n, missing in doors(tmp_path)) == [("r", "make", ["member"])]
+
+
+def test_the_member_names_are_recognised_and_a_path_parameter_is_not_a_door():
+    for name in ("assigned_to", "assignee_id", "reviewer_id", "approver_id", "preparer_id", "partner_id", "user_id", "task_assignee_id"):
+        assert KINDS["member"][0].search(name), name
+    assert not KINDS["member"][0].search("created_by")
+    assert not KINDS["member"][0].search("client_id")
 
 
 # ── each door the rule found ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -682,3 +913,129 @@ def test_a_disallowance_names_an_evidence_file_and_a_ledger_entry_of_its_own_cli
     own = client.post("/api/itr/disallowances", json={**body, **own_ids})
     assert own.status_code == 200, own.text
     assert (own.json()["data"]["evidence_document_id"], own.json()["data"]["journal_entry_id"]) == ("doc-a", "je-a")
+
+
+# ── THE THIRD FAMILY: each door that names a person (POST-A-361, part 2) ──────────────────────────────────────────────────────
+OTHER_FIRM = "99999999-9999-9999-9999-999999999999"
+STRANGER_WORDS = "That team member was not found."
+
+
+@pytest.fixture()
+def staff(monkeypatch):
+    """A firm with one member, another firm with one, and the request's database pointed at them."""
+    db = FakeDB()
+    db.seed("users", {"id": "member-own", "firm_id": FIRM, "full_name": "Asha Rao"})
+    db.seed("users", {"id": "member-other-firm", "firm_id": OTHER_FIRM, "full_name": "Stranger"})
+    wire_e2e(monkeypatch, db, [])
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    import services.audit_service as audit
+    monkeypatch.setattr(audit, "log_event", lambda *a, **k: None)
+    return db
+
+
+STRANGERS = ["member-other-firm", "no-such-member"]
+
+
+def test_the_ownership_function_answers_a_stranger_a_missing_member_and_an_invented_one_alike(staff):
+    from services import named_row_ownership as nro
+    assert nro.member_is_the_firms(staff, FIRM, "member-own") is None
+    for named in STRANGERS:
+        with pytest.raises(Exception) as e:
+            nro.member_is_the_firms(staff, FIRM, named)
+        assert (e.value.status_code, e.value.detail) == (404, STRANGER_WORDS), named
+    # The same member asked about under the OTHER firm is the stranger.
+    with pytest.raises(Exception) as e:
+        nro.member_is_the_firms(staff, OTHER_FIRM, "member-own")
+    assert e.value.detail == STRANGER_WORDS
+
+
+def test_nothing_named_and_no_database_ask_nothing(staff):
+    from services import named_row_ownership as nro
+    for named in (None, "", "   "):
+        assert nro.member_is_the_firms(staff, FIRM, named) is None
+    assert nro.member_is_the_firms(None, FIRM, "member-other-firm") is None
+
+
+def test_a_recurring_configuration_names_a_member_of_its_own_firm_only(staff, monkeypatch):
+    monkeypatch.setattr(task_recurring_router, "_get_db", lambda: staff)
+    client = _client(task_recurring_router)
+    body = {"title": "Monthly close", "frequency": "monthly", "next_due_date": "2026-12-01"}
+    for named in STRANGERS:
+        _refused(client.post("/api/task-recurring", json={**body, "assignee_id": named}), STRANGER_WORDS)
+    assert staff.rows("task_recurring_configs") == [], "nothing was stored for a person of another firm"
+    own = client.post("/api/task-recurring", json={**body, "assignee_id": "member-own"})
+    assert own.status_code == 200, own.text
+    assert [r["assignee_id"] for r in staff.rows("task_recurring_configs")] == ["member-own"]
+    assert client.post("/api/task-recurring", json=body).status_code == 200, "no assignee is still allowed"
+
+
+def test_a_recurring_configuration_cannot_be_re_pointed_at_a_member_of_another_firm(staff, monkeypatch):
+    monkeypatch.setattr(task_recurring_router, "_get_db", lambda: staff)
+    staff.seed("task_recurring_configs", {"id": "cfg-1", "firm_id": FIRM, "client_id": None, "assignee_id": "member-own", "title": "T"})
+    client = _client(task_recurring_router)
+    for named in STRANGERS:
+        _refused(client.put("/api/task-recurring/cfg-1", json={"assignee_id": named}), STRANGER_WORDS)
+    assert [r["assignee_id"] for r in staff.rows("task_recurring_configs")] == ["member-own"]
+    ok = client.put("/api/task-recurring/cfg-1", json={"assignee_id": "member-own", "title": "Renamed"})
+    assert ok.status_code == 200, ok.text
+
+
+@pytest.fixture()
+def engagement_repo_calls(monkeypatch, staff):
+    calls = {"create": [], "update": []}
+    monkeypatch.setattr(engagements_router.client_repo, "find_by_id", lambda *a, **k: {"id": A, "firm_id": FIRM})
+    monkeypatch.setattr(engagements_router.engagement_repo, "find_by_id",
+                        lambda *a, **k: {"id": "eng-1", "firm_id": FIRM, "client_id": A, "fee_paise": 1})
+    monkeypatch.setattr(engagements_router.engagement_repo, "create", lambda row: calls["create"].append(row) or {"id": "eng-new", **row})
+    monkeypatch.setattr(engagements_router.engagement_repo, "update", lambda i, row: calls["update"].append(row) or {"id": i, **row})
+    return calls
+
+
+@pytest.mark.parametrize("field", ["assigned_to", "reviewer_id", "partner_id"])
+def test_a_fee_engagement_names_its_assignee_reviewer_and_partner_from_its_own_firm_only(engagement_repo_calls, field):
+    client = _client(engagements_router)
+    base = {"client_id": A, "service_type": "GST", "fee_paise": 100, "billing_cycle": "monthly", "start_date": "2026-04-01"}
+    for named in STRANGERS:
+        _refused(client.post("/api/engagements", json={**base, field: named}), STRANGER_WORDS)
+        _refused(client.patch("/api/engagements/eng-1", json={field: named}), STRANGER_WORDS)
+    assert engagement_repo_calls == {"create": [], "update": []}, "something was stored for a person of another firm"
+    assert client.post("/api/engagements", json={**base, field: "member-own"}).status_code == 200
+    assert client.patch("/api/engagements/eng-1", json={field: "member-own"}).status_code == 200
+    assert [r[field] for r in engagement_repo_calls["create"]] == ["member-own"]
+
+
+def test_a_lead_names_an_assignee_of_its_own_firm_only(staff, monkeypatch):
+    monkeypatch.setattr(lifecycle_router, "_db", lambda: staff)
+    client = _client(lifecycle_router)
+    for named in STRANGERS:
+        _refused(client.post("/api/lifecycle/leads", json={"company_name": "Acme", "assigned_to": named}), STRANGER_WORDS)
+        _refused(client.patch("/api/lifecycle/leads/lead-1", json={"assigned_to": named}), STRANGER_WORDS)
+    assert staff.rows("leads") == [], "a lead was stored for a person of another firm"
+    own = client.post("/api/lifecycle/leads", json={"company_name": "Acme", "assigned_to": "member-own"})
+    assert own.json().get("detail") != STRANGER_WORDS, own.text
+
+
+def test_an_obligation_names_its_preparer_reviewer_and_approver_from_its_own_firm_only(staff, monkeypatch):
+    saved = []
+    monkeypatch.setattr(compliance_ops_router, "_assert_obligation_scope", lambda *a, **k: None)
+    monkeypatch.setattr(compliance_ops_router.obligations, "assign", lambda *a, **k: saved.append(k) or {"id": "rec-1"})
+    client = _client(compliance_ops_router)
+    for field in ("preparer_id", "reviewer_id", "approver_id"):
+        for named in STRANGERS:
+            _refused(client.post("/api/compliance/obligations/rec-1/assign", json={field: named}), STRANGER_WORDS)
+    assert saved == [], "an assignment was stored for a person of another firm"
+    assert client.post("/api/compliance/obligations/rec-1/assign", json={"preparer_id": "member-own"}).status_code == 200
+    assert len(saved) == 1
+
+
+def test_a_notification_is_addressed_to_a_member_of_its_own_firm_only(staff, monkeypatch):
+    created = []
+    monkeypatch.setattr(notifications_router.notifications_repo, "create", lambda row: created.append(row) or {"id": "n-1", **row})
+    client = _client(notifications_router)
+    body = {"type": "info", "title": "Hello", "body": "This firm's text"}
+    for named in STRANGERS:
+        _refused(client.post("/api/notifications", json={**body, "user_id": named}), STRANGER_WORDS)
+    assert created == [], "a stranger of another firm was sent this firm's notification"
+    assert client.post("/api/notifications", json={**body, "user_id": "member-own"}).status_code == 200
+    assert client.post("/api/notifications", json=body).status_code == 200, "a firm-level notification names nobody"
+    assert [r["user_id"] for r in created] == ["member-own", None]

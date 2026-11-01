@@ -20,6 +20,8 @@ from core.exceptions import ValidationError, NotFoundError
 from core.ist_clock import ist_today
 from domain.practice import ical as ical_file, obligation_csv
 from services import compliance_obligation_service as obligations
+from services import named_row_ownership
+from core import db_provider
 from domain.compliance_record_service import (
     MAX_REOPEN_REASON_CHARS, REOPEN_AFTERMATH, REOPENABLE_OBLIGATION_TYPES, REOPENED_STATUS, clean_filed_date,
     compliance_record_service,
@@ -184,6 +186,12 @@ def assign_obligation(record_id: str, body: AssignBody,
                       current_user: dict = Depends(rbac("compliance", "write"))):
     """Set preparer / reviewer / approver on an obligation (audited + timelined)."""
     _assert_obligation_scope(current_user, record_id)
+    # Each person named is a member of the caller's firm; the three columns are keyed, but the refusal of a stranger would come back as a
+    # failure nobody can read.
+    _db = db_provider.request_db_or_none()
+    named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.preparer_id)
+    named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.reviewer_id)
+    named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.approver_id)
     return api_response(True, obligations.assign(
         current_user["firm_id"], record_id, preparer_id=body.preparer_id,
         reviewer_id=body.reviewer_id, approver_id=body.approver_id, actor=current_user))
