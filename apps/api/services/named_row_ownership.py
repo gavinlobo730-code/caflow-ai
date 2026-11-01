@@ -18,7 +18,11 @@ A MEMBER OF THE FIRM IS THE SAME QUESTION ONE LEVEL UP (POST-A-361, part 2)
     and not to a client. Where the column has a foreign key to `users` and a `firm_id` on its own table the database refuses a stranger
     since migration 566, in a failure the person cannot read; where the column is a bare uuid (`task_recurring_configs.assignee_id`,
     `fee_engagements.assigned_to`) nothing refused it at all. `member_is_the_firms` asks before anything is written and answers a
-    stranger, a deleted member and an invented id in the same words.
+    stranger, a deleted member and an invented id in the same words. **ONE COLUMN IS KEYED TO THE OTHER ID.** Every person column above holds a
+    `users.id`, except `leads.assigned_to`, whose foreign key is to `auth.users(id)` (migration 059; the production snapshot of 13-09-2026
+    agrees): the value it can hold is a member's AUTH id, and a `users.id` there is refused by the database as a 500. A lead's assignee is asked
+    with `member_auth_id_is_the_firms`, which reads `users.auth_user_id`; asking the first function there made every value unusable (an auth
+    id answered 404, a `users.id` passed the check and failed the key).
 
 WHAT IT DOES NOT DO
     It is the API's answer only. A writer that does not come through these routes (an import that builds rows itself, a SQL
@@ -62,15 +66,30 @@ def _is_a_malformed_id(exc: Exception) -> bool:
 
 
 def member_is_the_firms(db, firm_id: str, member_id) -> None:
-    """404 "That team member was not found." unless `member_id` is a member of this firm. Nothing named, nothing asked.
+    """404 "That team member was not found." unless `member_id` is a `users.id` of this firm that has not been deleted. Nothing named, nothing asked.
 
     Membership, not activity: a suspended member can still be named, as the task door has always allowed, because whether somebody may be
-    assigned work is a staffing decision and not a tenancy one. The read is made with the privileged client and filtered by the id AND the
-    firm, the same reasoning as the bank account below: the filter is the assertion."""
+    assigned work is a staffing decision and not a tenancy one. A DELETED member (`users.deleted_at`) is not named: the task door's own
+    lookup (`user_repo.find_by_id`) leaves them out, and a person who has been removed is not somebody to hand work to. The read is made with
+    the privileged client and filtered by the id AND the firm, the same reasoning as the bank account below: the filter is the assertion."""
     named = _named(member_id)
     if db is None or named is None:
         return
-    rows = _find(privileged_for(db).table("users").select("id").eq("id", named).eq("firm_id", firm_id).limit(1))
+    rows = _find(privileged_for(db).table("users").select("id").eq("id", named).eq("firm_id", firm_id)
+                 .is_("deleted_at", None).limit(1))
+    if not rows:
+        raise _not_found("team member")
+
+
+def member_auth_id_is_the_firms(db, firm_id: str, auth_user_id) -> None:
+    """The same question for a column keyed to `auth.users(id)` (a lead's assignee): 404 unless `auth_user_id` is the auth id of a member of this
+    firm who has not been deleted. Nothing named, nothing asked. A `users.id` is NOT an answer here: it is not an auth id, and the database
+    would refuse it."""
+    named = _named(auth_user_id)
+    if db is None or named is None:
+        return
+    rows = _find(privileged_for(db).table("users").select("id").eq("auth_user_id", named).eq("firm_id", firm_id)
+                 .is_("deleted_at", None).limit(1))
     if not rows:
         raise _not_found("team member")
 

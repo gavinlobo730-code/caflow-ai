@@ -158,8 +158,9 @@ def create_engagement(
     firm_id = current_user.get("firm_id")
     if client.get("firm_id") != firm_id:
         raise HTTPException(status_code=404, detail="Client not found")
-    # `assigned_to` is a bare uuid on `fee_engagements` (no key, nothing in the database asks), and the reviewer and the partner are keys
-    # whose refusal would come back as a failure nobody can read: each named person is asked about here, before the row is written.
+    # `assigned_to`, `reviewer_id` and `partner_id` are all bare uuids on `fee_engagements` (migration 108: the production guard snapshot holds
+    # no key on any of them, only on the client and the firm), so nothing in the database asks about them and this check is the only one:
+    # each named person is asked about here, before the row is written.
     _db = db_provider.request_db_or_none()
     named_row_ownership.member_is_the_firms(_db, firm_id, body.assigned_to)
     named_row_ownership.member_is_the_firms(_db, firm_id, body.reviewer_id)
