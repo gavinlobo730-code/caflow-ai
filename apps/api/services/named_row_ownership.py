@@ -13,6 +13,13 @@ WHAT THIS DOES
     another firm's, deleted or invented) is a 404 in the same words a missing row gets, so the answer does not say which it was.
     It asks nothing when no id is named or when there is no database (mock mode).
 
+A MEMBER OF THE FIRM IS THE SAME QUESTION ONE LEVEL UP (POST-A-361, part 2)
+    A request that names a person (an assignee, a reviewer, a capacity row's person) names a row of `users`, which belongs to the FIRM
+    and not to a client. Where the column has a foreign key to `users` and a `firm_id` on its own table the database refuses a stranger
+    since migration 566, in a failure the person cannot read; where the column is a bare uuid (`task_recurring_configs.assignee_id`,
+    `fee_engagements.assigned_to`) nothing refused it at all. `member_is_the_firms` asks before anything is written and answers a
+    stranger, a deleted member and an invented id in the same words.
+
 WHAT IT DOES NOT DO
     It is the API's answer only. A writer that does not come through these routes (an import that builds rows itself, a SQL
     function) is not asked. Each table is spelled out in its own function and not read through a variable, because the column
@@ -52,6 +59,20 @@ def _find(query) -> list:
 def _is_a_malformed_id(exc: Exception) -> bool:
     code = getattr(exc, "code", None) or (exc.args[0].get("code") if exc.args and isinstance(exc.args[0], dict) else None)
     return str(code) == "22P02" or "invalid input syntax for type uuid" in str(exc)
+
+
+def member_is_the_firms(db, firm_id: str, member_id) -> None:
+    """404 "That team member was not found." unless `member_id` is a member of this firm. Nothing named, nothing asked.
+
+    Membership, not activity: a suspended member can still be named, as the task door has always allowed, because whether somebody may be
+    assigned work is a staffing decision and not a tenancy one. The read is made with the privileged client and filtered by the id AND the
+    firm, the same reasoning as the bank account below: the filter is the assertion."""
+    named = _named(member_id)
+    if db is None or named is None:
+        return
+    rows = _find(privileged_for(db).table("users").select("id").eq("id", named).eq("firm_id", firm_id).limit(1))
+    if not rows:
+        raise _not_found("team member")
 
 
 def vendor_is_the_clients(db, firm_id: str, client_id: str, vendor_id) -> None:

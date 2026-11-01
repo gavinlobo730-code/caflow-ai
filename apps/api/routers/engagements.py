@@ -8,6 +8,8 @@ from repositories.engagement_repository import engagement_repo
 from repositories.client_repository import client_repo
 from datetime import datetime, timezone
 from models.fy import OptionalFYLabel
+from core import db_provider
+from services import named_row_ownership
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -156,6 +158,12 @@ def create_engagement(
     firm_id = current_user.get("firm_id")
     if client.get("firm_id") != firm_id:
         raise HTTPException(status_code=404, detail="Client not found")
+    # `assigned_to` is a bare uuid on `fee_engagements` (no key, nothing in the database asks), and the reviewer and the partner are keys
+    # whose refusal would come back as a failure nobody can read: each named person is asked about here, before the row is written.
+    _db = db_provider.request_db_or_none()
+    named_row_ownership.member_is_the_firms(_db, firm_id, body.assigned_to)
+    named_row_ownership.member_is_the_firms(_db, firm_id, body.reviewer_id)
+    named_row_ownership.member_is_the_firms(_db, firm_id, body.partner_id)
 
     engagement = engagement_repo.create({
         **body.model_dump(),
@@ -188,6 +196,11 @@ def update_engagement(
         client = client_repo.find_by_id(updates["client_id"])
         if not client or client.get("firm_id") != firm_id:
             raise HTTPException(status_code=404, detail="Client not found")
+
+    _db = db_provider.request_db_or_none()
+    named_row_ownership.member_is_the_firms(_db, firm_id, updates.get("assigned_to"))
+    named_row_ownership.member_is_the_firms(_db, firm_id, updates.get("reviewer_id"))
+    named_row_ownership.member_is_the_firms(_db, firm_id, updates.get("partner_id"))
 
     updated = engagement_repo.update(engagement_id, updates)
     return api_response(True, {"engagement": updated})

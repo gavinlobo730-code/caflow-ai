@@ -416,7 +416,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE
 - A RECORDED TDS CHALLAN POINTS AT THE LEDGER ENTRY THAT PAID IT, AND POSTS NOTHING
 
-### `docs/design-record/tenancy-and-security.md` (80 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (81 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -498,6 +498,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SIGNED-IN SESSION READS AND WRITES NONE OF THE PAYROLL TABLES OR THE BANK TABLES, RUNS NEITHER BANK REPORT AND READS NO
 - A SIGNED-IN SESSION READS AND WRITES NONE OF THE DOCUMENT TABLES AND OPENS NO STORED FILE, AND THE TABLE POLICIES STAY AS THE
 - A DOCUMENT NAMES ONLY ROWS OF ITS OWN CLIENT, A PERMANENT DELETE COUNTS WHAT IT WOULD CASCADE, AND A FAILED PERMISSION READ IS NOT NOTHING
+- A REQUEST THAT NAMES A PERSON ASKS WHETHER THEY ARE A MEMBER OF THE CALLER'S FIRM, BECAUSE NINE DOORS TOOK THE ID AS TYPED AND THE DATABASE'S KEY CHECK IS NOT A SENTENCE
 
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 

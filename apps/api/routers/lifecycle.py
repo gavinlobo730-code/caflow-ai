@@ -20,6 +20,7 @@ from core.permissions import rbac
 from core.validators import validate_pan, validate_gstin
 from services.timeline_service import timeline_service
 from services.audit_service import log_event
+from services import named_row_ownership
 from models.fy import FYLabel, OptionalFYLabel
 from core import db_provider
 from core.db_paging import fetch_window
@@ -668,7 +669,8 @@ class RenewalIn(BaseModel):
     renewal_date: Optional[str] = None
     value_paise: int = 0               # mapped to fee_paise in DB
     status: str = "pending"
-    assigned_to: Optional[str] = None
+    # No `assigned_to` here: `renewals` has no such column and this handler never stored one, so the field was accepted and dropped.
+    # A request that names a person is asked about (`member_is_the_firms`), and a field nothing stores is deleted and not asked about.
     notes: Optional[str] = None
 
 
@@ -751,6 +753,9 @@ def create_lead(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
+    # The assignee is a member of the caller's firm: the column is keyed, but the database's refusal of a stranger comes back as a failure
+    # nobody can read, so the person is asked about here.
+    named_row_ownership.member_is_the_firms(db, current_user["firm_id"], data.assigned_to)
     lead_no = _next_lead_no(db, current_user["firm_id"])  # for mock only
     now = datetime.now(timezone.utc).isoformat()
 
@@ -860,6 +865,7 @@ def update_lead(
     db = _db()
     update = {k: v for k, v in data.model_dump().items() if v is not None}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    named_row_ownership.member_is_the_firms(db, current_user["firm_id"], update.get("assigned_to"))
 
     if not db:
         for lead in _MOCK_LEADS:

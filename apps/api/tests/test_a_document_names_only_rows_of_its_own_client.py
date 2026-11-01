@@ -376,7 +376,7 @@ def test_the_ownership_module_reads_each_table_by_a_literal_name():
     """A table read through a variable is invisible to the column check, which resolves no name."""
     tree = ast.parse(pathlib.Path(nro.__file__).read_text(encoding="utf-8"))
     tables = [n.args[0] for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "table"]
-    assert len(tables) == 7 and all(isinstance(t, ast.Constant) and isinstance(t.value, str) for t in tables)
+    assert len(tables) == 8 and all(isinstance(t, ast.Constant) and isinstance(t.value, str) for t in tables)
 
 
 # ── POST-A-342: a count that cannot be read is not zero ────────────────────────────────────────────────────────────────
