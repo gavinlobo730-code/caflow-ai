@@ -155,6 +155,7 @@ const STATUS_STYLES: Record<string, string> = {
   overdue: "bg-state-problem-surface text-state-problem",
   filed: "bg-state-ready-surface text-state-ready",
   in_progress: "bg-state-working-surface text-state-working",
+  na: "bg-ps-muted text-ps-label",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -162,6 +163,7 @@ const STATUS_LABELS: Record<string, string> = {
   overdue: "Overdue",
   filed: "Filed",
   in_progress: "In Progress",
+  na: "Not applicable",
 };
 
 // ---------------------------------------------------------------------------
@@ -539,7 +541,9 @@ export default function IncomeTaxPage() {
   // figure the page exists to show, wrong from 1 April with nothing to say so.
   const currentFY = currentFinancialYearLabel();
 
-  const totalDue = entries.length;
+  // An entry recorded as not applicable is not due, so it is not in the total (it would otherwise be the one status filed, overdue and
+  // pending do not add up to).
+  const totalDue = entries.filter((e) => e.filing_status !== "na").length;
   const filed = entries.filter((e) => e.filing_status === "filed").length;
   const overdue = entries.filter((e) => isOverdue(e, today)).length;
   const pending = entries.filter((e) => isUpcoming(e, today)).length;
@@ -819,7 +823,7 @@ export default function IncomeTaxPage() {
       {
         key: "status", label: "Status", type: "select",
         accessor: (e) => effectiveStatusOf(e),
-        options: ["pending", "in_progress", "overdue", "filed"].map((s) => ({
+        options: ["pending", "in_progress", "overdue", "filed", "na"].map((s) => ({
           value: s, label: STATUS_LABELS[s] ?? s,
         })),
       },

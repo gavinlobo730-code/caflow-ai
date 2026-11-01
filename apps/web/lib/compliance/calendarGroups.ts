@@ -123,9 +123,12 @@ export function groupsOnDay(groups: readonly ObligationGroup[], iso: string): Ob
   return groups.filter((g) => g.due_date === iso);
 }
 
-/** The next `n` groups that still have something to do, due today or later. */
+/**
+ * The next `n` groups that still have something to do, due today or later. "Something to do" is an open row that is NOT already late: a row
+ * somebody moved to "overdue" by hand with a date ahead is in `overdueGroups`, so a group holding only that row is not listed here as well.
+ */
 export function upcomingGroups(groups: readonly ObligationGroup[], todayISO: string, n = 10): ObligationGroup[] {
-  return groups.filter((g) => g.open > 0 && g.due_date >= todayISO).slice(0, n);
+  return groups.filter((g) => g.open - g.overdue > 0 && g.due_date >= todayISO).slice(0, n);
 }
 
 /** Groups with at least one overdue row, earliest first. */

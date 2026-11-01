@@ -373,7 +373,7 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
         # by hand with a date ahead or none, which every other reader counts. The unsettled ones are read and the rule judges them: a
         # client has a few dozen obligations a year, so this is not a read that grows with the ledger.
         unsettled = (db.table("compliance_records").select("id, status, due_date")
-                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .eq("firm_id", firm_id).eq("client_id", client_id).is_("deleted_at", "null")
                      .not_.in_("status", ["Filed", "Completed"]).execute().data or [])
         score -= len(overdue_records(unsettled, ist_today())) * 25
     except Exception as exc:
@@ -773,7 +773,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
         try:
             # The one rule (POST-A-280), not the date alone: the unsettled obligations are read and `overdue_records` judges them.
             overdue = overdue_records((db.table("compliance_records").select("id, status, period_label, compliance_type, due_date")
-                                       .eq("firm_id", firm_id).eq("client_id", client_id)
+                                       .eq("firm_id", firm_id).eq("client_id", client_id).is_("deleted_at", "null")
                                        .not_.in_("status", ["Filed", "Completed"]).execute().data or []), today)
             for t in overdue[:5]:
                 label = t.get("period_label") or t.get("compliance_type") or "Return"

@@ -101,3 +101,18 @@ for (const [type, category] of [
     assert.equal(categoryOf(type), category);
   });
 }
+
+test("an obligation moved to overdue by hand with a date ahead is in the overdue list and not also in the upcoming one", () => {
+  const groups = groupObligations([entry({ id: "hand", due_date: "2026-11-20", filing_status: "overdue", period_label: "GSTR-3B Oct 2026" })], TODAY);
+  assert.deepEqual(overdueGroups(groups).map((g) => g.label), ["GSTR-3B Oct 2026"]);
+  assert.deepEqual(upcomingGroups(groups, TODAY).map((g) => g.label), [], "listed as both");
+});
+
+test("a group with one late row and one that is not late is in both lists, each for its own row", () => {
+  const groups = groupObligations([
+    entry({ id: "late", client_id: "c1", due_date: "2026-11-20", filing_status: "overdue" }),
+    entry({ id: "fine", client_id: "c2", due_date: "2026-11-20", filing_status: "pending" }),
+  ], TODAY);
+  assert.equal(overdueGroups(groups).length, 1);
+  assert.equal(upcomingGroups(groups, TODAY).length, 1);
+});

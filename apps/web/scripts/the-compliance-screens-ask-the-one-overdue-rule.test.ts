@@ -68,6 +68,16 @@ test("the five screens import the rule and call it", () => {
   }
 });
 
+test("the income-tax tracker gives a not-applicable entry its own label and keeps it out of the total", () => {
+  const src = read("app/income-tax/page.tsx");
+  assert.match(src, /na: "Not applicable"/, "a not-applicable entry prints as the raw word");
+  assert.match(src, /const totalDue = entries\.filter\(\(e\) => e\.filing_status !== "na"\)\.length;/, "the total counts entries that are not due");
+});
+
+test("the calendar lists an obligation as upcoming only when it has an open row that is not already late", () => {
+  assert.match(read("lib/compliance/calendarGroups.ts").replace(/\s+/g, " "), /g\.open - g\.overdue > 0 && g\.due_date >= todayISO/);
+});
+
 test("the patterns see what they are meant to see", () => {
   for (const sample of [
     'c.due_date < today && c.filing_status !== "filed"',
