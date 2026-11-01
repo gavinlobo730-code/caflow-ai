@@ -37,12 +37,16 @@ test("the screen asks the server where each loss went, for the client on screen,
   assert.ok(/apiFetch\(`\/api\/itr\/bf-losses\?client_id=\$\{encodeURIComponent\(asked\)\}`\)/.test(PAGE), "the uses are not read from the server's list");
   assert.ok(/const byId = res\?\.success \? lossUsesOf\(res\.data\) : null;/.test(PAGE), "the answer is not checked before it is used");
   assert.ok(/byId \? \{ state: "ready", byId \} : \{ state: "failed", byId: \{\} \}/.test(PAGE), "a bad answer is not the failed state");
-  assert.ok(/catch \{\s*if \(lossUsesFor\.current === asked\) setLossUses\(\{ state: "failed"/.test(PAGE), "a thrown read is not the failed state");
+  assert.ok(/catch \{\s*if \(seq === lossUsesSeq\.current && clientShown\.current === asked\) setLossUses\(\{ state: "failed"/.test(PAGE), "a thrown read is not the failed state");
 });
 
-test("an answer that lands after a client switch is dropped, and recording a loss refreshes the uses", () => {
-  assert.ok(/lossUsesFor\.current = asked;/.test(PAGE) && /if \(lossUsesFor\.current !== asked\) return;/.test(PAGE), "a late answer is not dropped");
-  assert.ok(/setLossUses\(\{ state: "loading", byId: \{\} \}\); loadLossUses\(\);/.test(PAGE), "the uses are not cleared and read again for the new client");
+test("an answer that lands after a client switch is dropped, a read from an earlier render never starts, and recording a loss refreshes the uses", () => {
+  assert.ok(/if \(clientShown\.current !== asked\) return;/.test(PAGE), "a read begun by a closure of an earlier render is not refused");
+  assert.ok(/const seq = \+\+lossUsesSeq\.current;/.test(PAGE) && /if \(seq !== lossUsesSeq\.current \|\| clientShown\.current !== asked\) return;/.test(PAGE),
+    "a late or out-of-order answer is not dropped");
+  assert.ok(!/lossUsesFor/.test(PAGE), "the guard that was set at call time is back");
+  assert.ok(/clientShown\.current = clientId; setLossUses\(\{ state: "loading", byId: \{\} \}\); loadLossUses\(\);/.test(PAGE),
+    "the client shown is not recorded before the uses are cleared and read again for the new client");
   assert.ok(/await load\(\);\s*void loadLossUses\(\);/.test(PAGE), "a loss recorded just now does not refresh the uses");
 });
 
@@ -61,7 +65,9 @@ test("the component says each state in its own words and adds nothing up", () =>
   assert.ok(!/\.reduce\(|Math\.|\* 100|\/ 100|\bsum\b/.test(COMPONENT + LIB), "the browser adds something up");
   assert.ok(/u\.filing_found === false \? " \(that return is no longer on file\)"/.test(COMPONENT), "a return that is gone is not said to be");
   assert.ok(!/filing_found !== true|!u\.filing_found/.test(COMPONENT), "an unread list of returns is worded as a return that is gone");
-  assert.ok(/Recorded by hand, with no return behind it/.test(COMPONENT), "the hand-recorded part is not said to have no return behind it");
+  assert.ok(/Recorded by hand, not linked to a filed return/.test(COMPONENT), "the hand-recorded part is not said to be unlinked to a return");
+  assert.ok(!/no return behind it/.test(COMPONENT), "the hand-recorded part is said to have no return, which the record cannot know");
+  assert.ok(/u\.filing_found === null \? " \(the return's details could not be read just now\)"/.test(COMPONENT), "an unread list of returns draws like a found return");
 });
 
 test("the payload check treats a non-list as null and a malformed use as an unreadable record", () => {

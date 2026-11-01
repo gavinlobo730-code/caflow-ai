@@ -357,9 +357,12 @@ export default function TaxComputationPage() {
   const [savingLoss, setSavingLoss] = useState(false);
   const [lossError, setLossError] = useState<string | null>(null);
   // Where each loss went (POST-A-368): the server's per-record uses, read apart from the loss list so a failure to read them says so
-  // and never reads as "no use". `lossUsesFor` drops an answer that lands after the CA moved to another client.
+  // and never reads as "no use". `clientShown` is the client the screen is on NOW and `lossUsesSeq` numbers the reads: an answer is drawn
+  // only if it is the newest read AND for the client still shown, and a read started by a closure of an earlier render (a loss saved,
+  // then the CA moved to another client) never starts at all, so it cannot point the guard back at the client the screen has left.
   const [lossUses, setLossUses] = useState<{ state: LossUsesState; byId: Record<string, LossUsesView> }>({ state: "loading", byId: {} });
-  const lossUsesFor = useRef<string | null>(null);
+  const clientShown = useRef<string | null>(null);
+  const lossUsesSeq = useRef(0);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
 
   // The client's own entity type, read from the client record and passed
@@ -669,14 +672,15 @@ export default function TaxComputationPage() {
   const loadLossUses = useCallback(async () => {
     if (!clientId || clientId === "_placeholder") return;
     const asked = clientId;
-    lossUsesFor.current = asked;
+    if (clientShown.current !== asked) return;
+    const seq = ++lossUsesSeq.current;
     try {
       const res = await apiFetch(`/api/itr/bf-losses?client_id=${encodeURIComponent(asked)}`);
-      if (lossUsesFor.current !== asked) return;
+      if (seq !== lossUsesSeq.current || clientShown.current !== asked) return;
       const byId = res?.success ? lossUsesOf(res.data) : null;
       setLossUses(byId ? { state: "ready", byId } : { state: "failed", byId: {} });
     } catch {
-      if (lossUsesFor.current === asked) setLossUses({ state: "failed", byId: {} });
+      if (seq === lossUsesSeq.current && clientShown.current === asked) setLossUses({ state: "failed", byId: {} });
     }
   }, [clientId]);
 
@@ -701,7 +705,7 @@ export default function TaxComputationPage() {
   }
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setLossUses({ state: "loading", byId: {} }); loadLossUses(); }, [loadLossUses]);
+  useEffect(() => { clientShown.current = clientId; setLossUses({ state: "loading", byId: {} }); loadLossUses(); }, [clientId, loadLossUses]);
 
   // The entity type -> assessee mapping, from the server. A refusal (a trust, a
   // co-operative society, a blank entity type) is shown BEFORE the CA types a

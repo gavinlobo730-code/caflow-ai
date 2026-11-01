@@ -12,6 +12,9 @@
  *   * the list could not be read  -> "could not be read just now" (NOT "no use");
  *   * the list was read and the record is in it -> its uses, the part recorded by hand, or "The record shows no use of it";
  *   * the list was read and the record is not in it (just added, or an older server that does not say) -> nothing.
+ * A use whose returns could not be read says so ("the return's details could not be read just now") and is never drawn like a return that was found
+ * without an acknowledgement number or one that is gone. The part "recorded by hand" is not linked to a filed return: it says nothing about whether
+ * a return exists, only that the record holds no link to one.
  * "The record shows no use of it" says what the RECORD holds. It does not say no return used the loss: a return acknowledged before the write-back
  * existed leaves exactly that, which the computation screen names when it finds one.
  *
@@ -37,10 +40,10 @@ export function LossUses({ state, view }: { state: LossUsesState; view?: LossUse
         <li key={u.filing_id}>
           FY {u.financial_year}, {u.return_type} return
           {u.acknowledgement_number ? `, acknowledgement ${u.acknowledgement_number}` : ""}: {formatWhole(u.amount_paise)}
-          {u.filing_found === false ? " (that return is no longer on file)" : ""}
+          {u.filing_found === false ? " (that return is no longer on file)" : u.filing_found === null ? " (the return's details could not be read just now)" : ""}
         </li>
       ))}
-      {view.hand_recorded_paise > 0 && <li>Recorded by hand, with no return behind it: {formatWhole(view.hand_recorded_paise)}</li>}
+      {view.hand_recorded_paise > 0 && <li>Recorded by hand, not linked to a filed return: {formatWhole(view.hand_recorded_paise)}</li>}
     </ul>
   );
 }
