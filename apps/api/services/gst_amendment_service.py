@@ -26,7 +26,9 @@ THE DEADLINE, REPORTED AND NEVER ENFORCED
 """
 from __future__ import annotations
 
+import contextvars
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Optional
 
@@ -40,6 +42,11 @@ _logger = logging.getLogger("caflow.gst_amendments")
 
 _SUBMITTED = "submitted"
 PAGE = 1000
+
+#: How many earlier periods are rebuilt from the books at once (POST-A-265). Each rebuild is a few dozen reads from a host a continent
+#: from its database, about a second apiece, and they are independent of one another; the number is a ceiling on the connections one
+#: request may hold, not a tuning knob, so it is small.
+_MAX_PARALLEL_REBUILDS = 4
 
 
 def _sort_key(period: str) -> tuple:
@@ -118,6 +125,28 @@ def annual_returns_filed_safely(db, firm_id: str, client_id: str) -> dict:
             "annual return dates unavailable (%s) — correction windows fall back "
             "to the 30 November statutory limit", e)
         return {}
+
+
+def _exception_reports(db, firm_id: str, client_id: str, periods: list[str]) -> list[dict]:
+    """`gstr1_exceptions` for each of `periods`, IN THE ORDER GIVEN, several at a time.
+
+    THE ANSWER IS THE SEQUENTIAL ONE. The caller reads the reports oldest first and builds its lists in that order, so the reports are
+    returned in the order asked for whichever finishes first, and a period that raises raises from here as the FIRST failing period
+    in order (the later ones may have run; they only read). Every report is the one `gstr1_exceptions` gives, and the rebuild behind it
+    is `drift_since_filing`, the single comparison the tie-out shares, so nothing about WHAT is compared changes; only how long it waits.
+
+    The reads are independent (a different period each, no shared state) and the client is the one `httpx` documents as safe to share
+    across threads, the pattern `domain/reporting/sources.py` and `hub_service` already use. Each task runs in a copy of the caller's
+    context so the request id and the error-tracking scope follow the work into the thread.
+
+    This shortens the wall clock of a build with many earlier filed periods from the sum of their rebuilds to roughly a quarter of it;
+    it does NOT reduce the reads (each period is still rebuilt once per build), which is the remainder of POST-A-265.
+    """
+    if len(periods) <= 1 or _MAX_PARALLEL_REBUILDS <= 1:
+        return [gstr1_exceptions(db, firm_id, client_id, p) for p in periods]
+    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_REBUILDS, len(periods))) as ex:
+        futures = [ex.submit(contextvars.copy_context().run, gstr1_exceptions, db, firm_id, client_id, p) for p in periods]
+        return [f.result() for f in futures]
 
 
 def _earlier_filed_periods(db, firm_id: str, client_id: str, period: str) -> list[str]:
@@ -269,8 +298,8 @@ def outstanding_amendments(
     # a client with no drift pays nothing for this.
     declared: Optional[list] = None
 
-    for source in _earlier_filed_periods(db, firm_id, client_id, period):
-        report = gstr1_exceptions(db, firm_id, client_id, source)
+    sources = _earlier_filed_periods(db, firm_id, client_id, period)
+    for source, report in zip(sources, _exception_reports(db, firm_id, client_id, sources), strict=True):
         if report.get("status") != "ok" or report.get("clean"):
             continue
         proposal = propose(report, original_period=source)
