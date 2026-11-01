@@ -149,6 +149,7 @@
  "GET /api/compliance/itr-due-date",
  "GET /api/compliance/obligations",
  "GET /api/compliance/obligations/calendar",
+ "GET /api/compliance/obligations/calendar.csv",
  "GET /api/compliance/obligations/calendar.ics",
  "GET /api/compliance/payroll-deposit-due-dates",
  "GET /api/compliance/payroll-deposit-due-dates/fy",

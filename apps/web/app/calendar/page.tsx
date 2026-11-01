@@ -250,12 +250,14 @@ export default function CalendarPage() {
 
   /** The obligations as a calendar file. The server builds it (overdue ones are in it, filed ones are not, and with no window it is
    *  today and a year ahead); this saves it, and says so in words if the server refused. */
-  async function downloadCalendarFile() {
+  async function downloadCalendarFile(kind: "ics" | "csv" = "ics") {
     setDownloading(true);
     try {
-      await api.complianceOps.exportCalendar(clientId ? { client_id: clientId } : undefined);
+      const params = clientId ? { client_id: clientId } : undefined;
+      await (kind === "csv" ? api.complianceOps.exportCalendarCsv(params) : api.complianceOps.exportCalendar(params));
     } catch (e: unknown) {
-      toast({ title: "Could not download the calendar file", description: e instanceof Error ? e.message : "Try again." });
+      toast({ title: kind === "csv" ? "Could not download the spreadsheet" : "Could not download the calendar file",
+              description: e instanceof Error ? e.message : "Try again." });
     } finally {
       setDownloading(false);
     }
@@ -342,6 +344,11 @@ export default function CalendarPage() {
               title="Save these obligations as a calendar file for Outlook, Google Calendar or a phone. Overdue ones are included and filed ones are not; it covers today and the next twelve months."
               className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg disabled:opacity-50">
               {downloading ? "Preparing…" : "Download .ics"}
+            </button>
+            <button onClick={() => void downloadCalendarFile("csv")} disabled={downloading}
+              title="Save these obligations as a spreadsheet (one row each, oldest due date first). The same obligations as the calendar file: overdue ones are included and filed ones are not; it covers today and the next twelve months."
+              className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg disabled:opacity-50">
+              {downloading ? "Preparing…" : "Download .csv"}
             </button>
           </div>
         }

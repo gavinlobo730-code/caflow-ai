@@ -644,6 +644,7 @@ LITERAL_INVENTORY = {
     "domain/compliance_record_service.py": (4, "the stored status vocabulary and VALID_TRANSITIONS: a transition somebody makes by hand"),
     "domain/hub/worklist.py": (1, "a column heading"),
     "domain/practice/compliance_overdue.py": (1, "STORED_OVERDUE, the rule's own word"),
+    "domain/practice/obligation_csv.py": (1, "a column's text in the calendar spreadsheet: the label of the bucket the calendar read already decided"),
     "mock_data.py": (2, "mock compliance records whose status was set by hand"),
     "routers/invoices.py": (4, "the fee invoice's own statuses and the moves a person may make by hand (a table, a pair and the vocabulary)"),
     "routers/lifecycle.py": (1, "a legacy engagement status mapped to another"),
