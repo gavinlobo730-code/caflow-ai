@@ -13,6 +13,10 @@ WHAT THIS PINS
               of the ledger marks every tied challan UNKNOWN with its own words: a failed read is never a live link;
     SURFACES  the challan list carries the link on each tied row, over a whole window, and the candidates answer carries it for the dialog;
     NEVER     the link is not cleared, the entry is not touched, and nothing is posted by reading it.
+    RECOVERY  an entry that no longer records a payment (a draft, a reversed original, the reversal that undid it, a deleted one) is
+              not OFFERED as the payment, is REFUSED if named, and reads as such beside a tied challan: one rule
+              (`remittance_match.entry_state`) for all three, so "take the link back and tie it again" is not met by the entry that was
+              just undone. The shared candidate query serves ESI and professional tax too; their candidates follow the same rule.
 """
 import uuid
 
@@ -177,3 +181,98 @@ def test_a_stale_link_can_be_taken_back_and_the_challan_tied_again(world):
     rows = [fresh]
     svc.annotate_links(world, firm_id=FIRM, client_id=A, rows=rows)
     assert "ledger_link" not in rows[0]
+
+
+# ── an entry that no longer records a payment is never the payment ─────────────────────────────────────────────────────
+
+ACC_TDS, ACC_BANK = "acc-tds", "acc-bank"
+DRAFT, REVERSAL, GOOD, OLD = (_id(i) for i in (11, 12, 13, 14))
+
+
+def _debiting(db, je, client=A, *, date="2026-07-07", **flags):
+    """An entry that debits TDS Payable by the challan's amount, with whatever flags the case needs (the row's own columns)."""
+    db.seed("journal_entries", {"id": je, "firm_id": FIRM, "client_id": client, "entry_date": date, "reference_no": f"R-{je[-2:]}",
+                                "narration": "TDS paid", "is_posted": True, "is_reversed": False, "reversal_of": None,
+                                "deleted_at": None, **flags})
+    db.seed("journal_lines", {"journal_entry_id": je, "account_id": ACC_TDS, "debit_paise": 100_000_00, "credit_paise": 0})
+    db.seed("journal_lines", {"journal_entry_id": je, "account_id": ACC_BANK, "debit_paise": 0, "credit_paise": 100_000_00})
+
+
+@pytest.fixture
+def ledger(world):
+    world.seed("chart_of_accounts", {"id": ACC_TDS, "firm_id": FIRM, "client_id": A, "account_name": "TDS Payable", "is_active": True})
+    world.seed("chart_of_accounts", {"id": ACC_BANK, "firm_id": FIRM, "client_id": A, "account_name": "Bank", "is_active": True})
+    return world
+
+
+def _offered(db, ch):
+    return [c["journal_entry_id"] for c in svc.payment_candidates(db, firm_id=FIRM, client_id=A, challan=ch)["candidates"]]
+
+
+def test_a_reversed_original_a_draft_a_reversal_and_a_deleted_entry_are_not_offered_as_the_payment(ledger):
+    _debiting(ledger, REVERSED, is_reversed=True)
+    _debiting(ledger, DRAFT, is_posted=False)
+    _debiting(ledger, REVERSAL, reversal_of=REVERSED)
+    _debiting(ledger, DELETED, deleted_at="2026-07-08T00:00:00+00:00")
+    _debiting(ledger, GOOD)
+    ch = _challan(ledger, _id(601), None)
+    assert _offered(ledger, ch) == [GOOD]
+
+
+def test_the_recovery_after_a_reversal_is_offered_the_replacement_and_not_the_entry_that_was_undone(ledger):
+    """The path the stale-link note sends a CA down: take the link back, then tie the entry that now records the payment."""
+    _debiting(ledger, OLD, is_reversed=True)
+    _debiting(ledger, REVERSAL, reversal_of=OLD)
+    _debiting(ledger, GOOD)
+    ch = _challan(ledger, _id(602), OLD)
+    assert svc.payment_candidates(ledger, firm_id=FIRM, client_id=A, challan=ch)["ledger_link"]["state"] == "reversed"
+    svc.unlink_payment(ledger, firm_id=FIRM, client_id=A, challan=ch)
+    fresh = next(r for r in ledger.rows("tds_challans") if r["id"] == ch["id"])
+    assert _offered(ledger, fresh) == [GOOD]
+    svc.link_payment(ledger, firm_id=FIRM, client_id=A, challan=fresh, journal_entry_id=GOOD)
+    tied = next(r for r in ledger.rows("tds_challans") if r["id"] == ch["id"])
+    assert tied["journal_entry_id"] == GOOD
+
+
+@pytest.mark.parametrize("je,flags,words", [
+    (REVERSED, {"is_reversed": True}, "was reversed"),
+    (DRAFT, {"is_posted": False}, "still a draft"),
+    (REVERSAL, {"reversal_of": OLD}, "undid another entry"),
+    (DELETED, {"deleted_at": "2026-07-08T00:00:00+00:00"}, "was deleted"),
+])
+def test_naming_an_entry_that_records_no_payment_is_refused_in_words_and_changes_nothing(ledger, je, flags, words):
+    _debiting(ledger, je, **flags)
+    ch = _challan(ledger, _id(603), None)
+    with pytest.raises(svc.LinkRefused) as e:
+        svc.link_payment(ledger, firm_id=FIRM, client_id=A, challan=ch, journal_entry_id=je)
+    assert words in e.value.sentence and e.value.status == 422
+    assert next(r for r in ledger.rows("tds_challans") if r["id"] == ch["id"])["journal_entry_id"] is None
+
+
+def test_a_tied_draft_or_reversal_reads_as_such_and_never_as_live(ledger):
+    _debiting(ledger, DRAFT, is_posted=False)
+    _debiting(ledger, REVERSAL, reversal_of=OLD)
+    _debiting(ledger, GOOD)
+    assert states(ledger, [DRAFT, REVERSAL, GOOD]) == {DRAFT: "draft", REVERSAL: "reversal", GOOD: "live"}
+    a, b = rows_for(ledger, DRAFT, REVERSAL)
+    assert a["ledger_link"]["label"] == "Tied to an entry that is still a draft" and "Post the entry" in a["ledger_link"]["note"]
+    assert b["ledger_link"]["label"] == "Tied to an entry that is itself a reversal" and "Take the link back" in b["ledger_link"]["note"]
+
+
+def test_the_one_rule_orders_deleted_over_reversed_over_reversal_over_draft_and_reads_an_absent_key_as_ordinary():
+    from domain.payroll.remittance_match import entry_state as st
+    assert st({"deleted_at": "x", "is_reversed": True, "is_posted": False}) == "deleted"
+    assert st({"is_reversed": True, "reversal_of": "y", "is_posted": False}) == "reversed"
+    assert st({"reversal_of": "y", "is_posted": False}) == "reversal"
+    assert st({"is_posted": False}) == "draft"
+    assert st({}) == "live" and st({"is_posted": True}) == "live" and st({"is_posted": None}) == "live"
+
+
+def test_every_query_that_feeds_the_rule_selects_the_columns_it_reads():
+    """An absent key reads as an ordinary entry, so a narrower select would switch the rule off without a sound."""
+    import inspect
+    from domain.payroll import remittance_match as rm
+    from services import statutory_remittance_service as esi
+    assert rm.ENTRY_STATE_COLUMNS == ("is_posted", "is_reversed", "reversal_of")
+    for fn in (esi.entries_clearing_account, svc.entry_states, svc._entry):
+        assert "ENTRY_STATE_COLUMNS" in inspect.getsource(fn), f"{fn.__name__} does not select the columns entry_state reads"
