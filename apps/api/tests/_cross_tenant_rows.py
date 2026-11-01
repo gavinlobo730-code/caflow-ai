@@ -14,7 +14,7 @@ Two things are offered, both limited to the eight trigger names 565 and 566 crea
     `ALTER COLUMN ... TYPE` on a column a trigger names, and a dropped column leaves the statement trigger reading a name that is
     gone). In real history those migrations ran long before 565, so only the simulation needs this.
 
-Neither touches any other trigger, so a seed that depends on the balance or audit triggers still gets them.
+The ledger-account triggers of migration 570 are matched by their name pattern (`row_ledger_account_<column>_ins` and `_upd`). Neither touches any other trigger, so a seed that depends on the balance or audit triggers still gets them.
 """
 from __future__ import annotations
 
@@ -29,11 +29,16 @@ NAMES = (
 )
 
 
+#: Migration 570 (POST-A-353): a row names a ledger account of its own client. One pair of triggers per column, named by the column.
+LEDGER_ACCOUNT_PATTERN = "row\\_ledger\\_account\\_%"
+
+
 def _each(action: str) -> str:
     names = ", ".join(f"'{n}'" for n in NAMES)
     return (
         "DO $m565$ DECLARE r record; BEGIN "
-        f"FOR r IN SELECT g.tgrelid::regclass AS t, g.tgname AS n FROM pg_trigger g WHERE NOT g.tgisinternal AND g.tgname IN ({names}) LOOP "
+        f"FOR r IN SELECT g.tgrelid::regclass AS t, g.tgname AS n FROM pg_trigger g WHERE NOT g.tgisinternal "
+        f"AND (g.tgname IN ({names}) OR g.tgname LIKE '{LEDGER_ACCOUNT_PATTERN}') LOOP "
         f"EXECUTE format('{action}', r.t, r.n); "
         "END LOOP; END $m565$;\n"
     )

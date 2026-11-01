@@ -785,6 +785,7 @@ def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_
     writes = re.compile(r"\b(insert|update)\b", re.I)
     assert {f["n"] for f in functions if dynamic.search(f["s"] or "") and writes.search(f["s"] or "")} == {
         "guard_client_firm",                              # migration 565's installer: EXECUTE format of CREATE and DROP TRIGGER, writes no row
+        "guard_ledger_account",                           # migration 570's installer: the same, for the ledger-account check
         "guard_member_firm",                              # migration 566's installer: the same, for the member check
         "numbered_document_atomic__unguarded",            # INSERT of the four note tables: judged by the role setting, so not a bypass
         "post_journal_atomic__unguarded",                 # the journal tables only
