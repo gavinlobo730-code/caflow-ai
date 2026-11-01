@@ -82,9 +82,11 @@ pytestmark = pytest.mark.skipif(
 #   lifecycle      "done", "skipped"   onboarding_tasks.status ('pending','in_progress','done','skipped', migration 059).
 #   sales          "failed", "generated", "paused"   recurring invoice template and run statuses (migration 107), read
 #                              through the API.
-#   mca            "Filed", "Overdue", "Pending"   a display vocabulary: `computeStatus(due_date, filed_date)` derives it in
-#                              the browser from dates, and the write maps to the table's own values (line 232 and the
-#                              lowercase 'filed' path).
+#   mca            "Filed", "Overdue", "Pending", "Not applicable"   a display vocabulary: `computeStatus(row)` derives it in the
+#                              browser through `filingTrackerStatus` (the one overdue rule, `lib/compliance/overdue.ts`) from the
+#                              stored status and the dates, and the write maps to the table's own values (line 232 and the
+#                              lowercase 'filed' path). "Not applicable" is the display word for the stored `not_applicable`
+#                              (migration 038's CHECK), added when the tracker stopped printing such a filing as Overdue.
 #   declarations   "rejected", "verified"   payroll_it_declaration_items.status ('declared','verified','rejected',
 #                              migration 296), which this file reaches through a table the scanner does not attribute it to.
 #   payroll/reports "due-soon", "overdue"   computed in the browser for the statutory due-date strip; not database values.
@@ -109,7 +111,7 @@ KNOWN: dict[str, set[str]] = {
     # payload had desynchronised it (see _frontend_select_parser.blank_comments).
     # Blanking comments before the walk removed the false positive.
     "app/clients/[id]/sales/page.tsx": {"failed", "generated", "paused"},
-    "app/mca/page.tsx": {"Filed", "Overdue", "Pending"},
+    "app/mca/page.tsx": {"Filed", "Not applicable", "Overdue", "Pending"},
     "app/payroll/declarations/page.tsx": {"rejected", "verified"},
     "app/payroll/reports/page.tsx": {"due-soon", "overdue"},
 }
