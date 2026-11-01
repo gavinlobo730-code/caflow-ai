@@ -225,4 +225,27 @@ export const scenarios = [
       await expectWrites(stub, UNLINK_ROUTE, 1, "two same-tick clicks on Take the link back");
     },
   },
+  {
+    id: "a-challan-tied-to-a-reversed-entry-says-so-in-the-column-and-the-dialog",
+    title: "a challan tied to an entry that was reversed reads as such in the Ledger column, and its dialog shows the server's note and still offers Take the link back",
+    async run(env) {
+      const { page, stub } = env;
+      const link = {
+        state: "reversed", label: "Tied to an entry that was reversed",
+        note: "The ledger entry this challan is tied to was reversed, so it no longer records the payment. Take the link back and tie the challan to the entry that now records the payment, if there is one.",
+      };
+      stub.route({ method: "GET", re: CANDIDATES_ROUTE,
+        reply: () => ok({ ...CANDIDATES, journal_entry_id: ENTRY.journal_entry_id, ledger_link: link, candidates: [] }) });
+      await atTheChallans(env, ["read", "compute", "write"],
+        { challan: { ...CHALLAN, journal_entry_id: ENTRY.journal_entry_id, ledger_link: link } });
+      const body = await text(page);
+      assert.match(body, /Tied to an entry that was reversed/, "the column did not say the entry was reversed");
+      assert.doesNotMatch(body, /Tied to an entry(?! that)/, "the column still said plainly tied");
+
+      await page.getByRole("button", { name: /^Open the ledger link of challan 00045/ }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByText(link.note).waitFor();
+      assert.equal(await dialog.getByRole("button", { name: "Take the link back", exact: true }).count(), 1, "the way out was not offered");
+    },
+  },
 ];

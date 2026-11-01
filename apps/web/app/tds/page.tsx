@@ -204,6 +204,8 @@ interface TDSChallan {
   status: "deposited" | "matched" | "unmatched";
   /** The ledger entry that paid this challan, when a person has tied one (POST-A-272). A link only; null = not tied. */
   journal_entry_id?: string | null;
+  /** The server's reading of the entry the challan is tied to (present only on a tied challan). */
+  ledger_link?: { state: string; label: string; note: string | null } | null;
   /** Only on the answer to recording one: what became of the monthly deposit obligations on the compliance calendar. */
   compliance_obligations?: CalendarAnswer[];
 }
@@ -1444,7 +1446,9 @@ export default function TDSPage() {
                       <td className="px-4 py-3 text-xs text-ps-label">{minorHeadLabel(c.minor_head)}</td>
                       <td className="px-4 py-3 text-xs">
                         {c.journal_entry_id
-                          ? <span className="text-state-ready">Tied to an entry</span>
+                          ? <span className={c.ledger_link && c.ledger_link.state !== "live" ? "text-state-attention" : "text-state-ready"}>
+                              {c.ledger_link?.label ?? "Tied to an entry"}
+                            </span>
                           : <span className="text-ps-hint">Not tied</span>}
                         {" "}
                         <button type="button" onClick={() => void openMatch(c)}
