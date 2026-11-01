@@ -21,7 +21,7 @@ from core.ist_clock import month_end_date, ist_today
 from services.ledger_door import ledger_rpc
 from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
-from domain.accounting import journal_source as JS
+from domain.accounting import journal_figures, journal_source as JS
 from domain.sales import issue_readiness
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 from core.db_provider import privileged_for
@@ -88,104 +88,7 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            receivables_id = self._find_account(
-                db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
-            )
-            sales_id = self._find_account(
-                db, firm_id, client_id, "%Sales%", system_key="revenue"
-            )
-
-            lines = [
-                {
-                    "account_id": receivables_id,
-                    "debit_paise": invoice["total_paise"],
-                    "credit_paise": 0,
-                    "narration": "Trade receivable on sale",
-                },
-                {
-                    "account_id": sales_id,
-                    "debit_paise": 0,
-                    "credit_paise": invoice["taxable_amount_paise"],
-                    "narration": "Sales revenue",
-                },
-            ]
-
-            # CGST Act §8: separate posting per GST head so each head hits its own ledger.
-            # Falls back to combined %GST Output% for standard single-account charts.
-            if invoice.get("cgst_paise", 0) > 0:
-                cgst_id = self._find_account(
-                    db, firm_id, client_id, "%GST Output%", system_key="gst_cgst"
-                )
-                lines.append({
-                    "account_id": cgst_id,
-                    "debit_paise": 0,
-                    "credit_paise": invoice["cgst_paise"],
-                    "narration": "CGST output tax payable",
-                })
-            if invoice.get("sgst_paise", 0) > 0:
-                sgst_id = self._find_account(
-                    db, firm_id, client_id, "%GST Output%", system_key="gst_sgst"
-                )
-                lines.append({
-                    "account_id": sgst_id,
-                    "debit_paise": 0,
-                    "credit_paise": invoice["sgst_paise"],
-                    "narration": "SGST output tax payable",
-                })
-            if invoice.get("igst_paise", 0) > 0:
-                igst_id = self._find_account(
-                    db, firm_id, client_id, "%GST Output%", system_key="gst_igst"
-                )
-                lines.append({
-                    "account_id": igst_id,
-                    "debit_paise": 0,
-                    "credit_paise": invoice["igst_paise"],
-                    "narration": "IGST output tax payable",
-                })
-
-            # GST compensation cess — its OWN liability ledger, never the GST
-            # Output account. GST (Compensation to States) Act 2017 s.11(2),
-            # proviso: credit of this cess "shall be utilised only towards
-            # payment of cess". Booking it into GST Output would put it where
-            # the s.49(5) set-off can reach it in the books, asserting an
-            # offset the electronic credit ledger will not perform.
-            if invoice.get("cess_paise", 0) > 0:
-                cess_id = self._find_account(
-                    db, firm_id, client_id, "%Compensation Cess Payable%",
-                    system_key="gst_cess_output",
-                )
-                lines.append({
-                    "account_id": cess_id,
-                    "debit_paise": 0,
-                    "credit_paise": invoice["cess_paise"],
-                    "narration": "Compensation cess payable — Compensation Act s.8",
-                })
-
-            # Invoice-level round-off — post the nearest-₹1 adjustment to the
-            # 'Round Off' ledger so Dr Trade Receivables (the rounded total) balances
-            # Cr Revenue + Cr GST. CGST Act §15: taxable value & GST are unchanged;
-            # this line only carries the rounding of the invoice total.
-            round_off_paise = int(invoice.get("round_off_paise", 0) or 0)
-            if round_off_paise != 0:
-                round_off_id = self._find_account(
-                    db, firm_id, client_id, "%Round Off%", system_key="round_off"
-                )
-                if round_off_paise > 0:
-                    # Rounded up: extra credit (rounding gain) balances the higher AR.
-                    lines.append({
-                        "account_id": round_off_id,
-                        "debit_paise": 0,
-                        "credit_paise": round_off_paise,
-                        "narration": "Invoice round-off",
-                    })
-                else:
-                    # Rounded down: debit (rounding expense) balances the lower AR.
-                    lines.append({
-                        "account_id": round_off_id,
-                        "debit_paise": -round_off_paise,
-                        "credit_paise": 0,
-                        "narration": "Invoice round-off",
-                    })
+            lines = self.sales_invoice_lines(db, invoice, firm_id, client_id)
 
             _ccy = self._currency_kwargs(db, invoice, firm_id, client_id, lines)
             customer_name = self._party_name(
@@ -201,6 +104,9 @@ class Phase2JournalService:
                 entry_type="Sales",
                 lines=lines,
                 source_type=JS.SALES_INVOICE, source_id=invoice.get("id"),
+                # An issue that failed after posting leaves this entry behind with the invoice still a draft; the draft may have been
+                # changed since, so the entry is reused only if it carries these very figures (POST-A-092).
+                must_match=f"invoice {invoice['invoice_no']}",
                 **_ccy,
             )
         except ValueError:
@@ -214,6 +120,140 @@ class Phase2JournalService:
             # existing actionable behaviour via the ValueError branch above.
             _logger.error("journal_for_sales_invoice error: %s", e, exc_info=True)
             raise
+
+    def sales_invoice_lines(self, db, invoice: dict, firm_id: str, client_id: str) -> list[dict]:
+        """The double-entry lines `journal_for_sales_invoice` posts for this invoice, built and not posted. Raises ValueError, as the
+        posting does, when an account it needs cannot be found. The one place the lines are made, so the pre-flight that asks whether
+        an entry left by an earlier issue still matches compares what the issue would post and not a copy of it (POST-A-092)."""
+        receivables_id = self._find_account(
+            db, firm_id, client_id, "%Trade Receivable%", system_key="ar"
+        )
+        sales_id = self._find_account(
+            db, firm_id, client_id, "%Sales%", system_key="revenue"
+        )
+
+        lines = [
+            {
+                "account_id": receivables_id,
+                "debit_paise": invoice["total_paise"],
+                "credit_paise": 0,
+                "narration": "Trade receivable on sale",
+            },
+            {
+                "account_id": sales_id,
+                "debit_paise": 0,
+                "credit_paise": invoice["taxable_amount_paise"],
+                "narration": "Sales revenue",
+            },
+        ]
+
+        # CGST Act §8: separate posting per GST head so each head hits its own ledger.
+        # Falls back to combined %GST Output% for standard single-account charts.
+        if invoice.get("cgst_paise", 0) > 0:
+            cgst_id = self._find_account(
+                db, firm_id, client_id, "%GST Output%", system_key="gst_cgst"
+            )
+            lines.append({
+                "account_id": cgst_id,
+                "debit_paise": 0,
+                "credit_paise": invoice["cgst_paise"],
+                "narration": "CGST output tax payable",
+            })
+        if invoice.get("sgst_paise", 0) > 0:
+            sgst_id = self._find_account(
+                db, firm_id, client_id, "%GST Output%", system_key="gst_sgst"
+            )
+            lines.append({
+                "account_id": sgst_id,
+                "debit_paise": 0,
+                "credit_paise": invoice["sgst_paise"],
+                "narration": "SGST output tax payable",
+            })
+        if invoice.get("igst_paise", 0) > 0:
+            igst_id = self._find_account(
+                db, firm_id, client_id, "%GST Output%", system_key="gst_igst"
+            )
+            lines.append({
+                "account_id": igst_id,
+                "debit_paise": 0,
+                "credit_paise": invoice["igst_paise"],
+                "narration": "IGST output tax payable",
+            })
+
+        # GST compensation cess — its OWN liability ledger, never the GST
+        # Output account. GST (Compensation to States) Act 2017 s.11(2),
+        # proviso: credit of this cess "shall be utilised only towards
+        # payment of cess". Booking it into GST Output would put it where
+        # the s.49(5) set-off can reach it in the books, asserting an
+        # offset the electronic credit ledger will not perform.
+        if invoice.get("cess_paise", 0) > 0:
+            cess_id = self._find_account(
+                db, firm_id, client_id, "%Compensation Cess Payable%",
+                system_key="gst_cess_output",
+            )
+            lines.append({
+                "account_id": cess_id,
+                "debit_paise": 0,
+                "credit_paise": invoice["cess_paise"],
+                "narration": "Compensation cess payable — Compensation Act s.8",
+            })
+
+        # Invoice-level round-off — post the nearest-₹1 adjustment to the
+        # 'Round Off' ledger so Dr Trade Receivables (the rounded total) balances
+        # Cr Revenue + Cr GST. CGST Act §15: taxable value & GST are unchanged;
+        # this line only carries the rounding of the invoice total.
+        round_off_paise = int(invoice.get("round_off_paise", 0) or 0)
+        if round_off_paise != 0:
+            round_off_id = self._find_account(
+                db, firm_id, client_id, "%Round Off%", system_key="round_off"
+            )
+            if round_off_paise > 0:
+                # Rounded up: extra credit (rounding gain) balances the higher AR.
+                lines.append({
+                    "account_id": round_off_id,
+                    "debit_paise": 0,
+                    "credit_paise": round_off_paise,
+                    "narration": "Invoice round-off",
+                })
+            else:
+                # Rounded down: debit (rounding expense) balances the lower AR.
+                lines.append({
+                    "account_id": round_off_id,
+                    "debit_paise": -round_off_paise,
+                    "credit_paise": 0,
+                    "narration": "Invoice round-off",
+                })
+
+        return lines
+
+    def entry_left_behind_problem(self, db, firm_id: str, client_id: str, invoice: dict) -> Optional[str]:
+        """The sentence for an entry already in the ledger under this invoice's number and date, or belonging to this invoice by its
+        source, that the draft no longer matches (usually one an earlier issue left, POST-A-092), or None. Asked by the pre-flight, so
+        the CA reads it BEFORE the click; the posting asks the same question itself and refuses, so a change between the two requests
+        is still caught.
+
+        None when nothing is there (which costs two reads of the ledger and no chart-of-accounts lookup: the lines the issue would post
+        are built only when an entry is found to compare them with), when what is there carries the very lines the issue would post (the
+        retry then links it), when an account the posting needs cannot be found (the chart-of-accounts blocker says that), and when the
+        ledger could not be read: a pre-flight is a reading and not a gate, so on a failed read it says nothing, where the posting
+        refuses. Reads only; writes nothing. An unexpected failure is reported and answered with None, because the issue itself refuses on
+        the same question."""
+        number = invoice.get("invoice_no")
+        if _USE_MOCK or not number:
+            return None
+        try:
+            self._live_entry_for(
+                db, firm_id=firm_id, client_id=client_id, entry_date=invoice.get("invoice_date") or str(ist_today()),
+                reference_no=number, lines=lambda: self.sales_invoice_lines(db, invoice, firm_id, client_id),
+                must_match=f"invoice {number}", source_type=JS.SALES_INVOICE, source_id=invoice.get("id"))
+        except journal_figures.EntryCannotBeReused as refusal:
+            return None if refusal.unreadable else str(refusal)
+        except ValueError:
+            return None
+        except Exception as e:
+            capture_posting_failure(e, operation="entry_left_behind_problem", firm_id=firm_id, client_id=client_id)
+            return None
+        return None
 
     def missing_accounts_for_sales_invoice(self, db, firm_id: str, client_id: str, invoice: dict) -> list[str]:
         """Labels of the ledger accounts `journal_for_sales_invoice` would fail to find for this invoice, in its order; empty when it
@@ -2226,6 +2266,118 @@ class Phase2JournalService:
             "rate_overridden": dc.rate_overridden, "currency_policy": resolve_currency_policy(firm, client),
         }
 
+    def _live_entry_for(self, db, *, firm_id: str, client_id: str, entry_date: str, reference_no: str, lines: list[dict],
+                        must_match: Optional[str], source_type: Optional[str] = None,
+                        source_id: Optional[str] = None) -> Optional[str]:
+        """The id of the entry already live under this number and date, or None. The kernel's idempotency fast path.
+
+        Idempotency fast path (firm-scoped): same firm+client+reference_no+entry_date
+        is already posted → return it. The UNIQUE index (migration 143) is the
+        authoritative backstop for the concurrent race this SELECT can't close (H2).
+
+        THIS ASKS THE SAME QUESTION THE INDEX DOES, AND THE INDEX IS PARTIAL: it
+        holds only `deleted_at IS NULL AND is_reversed = false` rows (migrations 143
+        and 213), and `post_journal_atomic` filters `deleted_at IS NULL` when it
+        resolves a unique violation to the winner (418). This pre-check carried the
+        second predicate and not the first, so an entry the CA had DISCARDED
+        (migrations 275/276 — its number is free) answered for the number: the
+        kernel logged "Duplicate journal detected", returned the dead entry's id and
+        wrote nothing, and a caller told its user the document was posted — the
+        voucher import's summary, and the journal editor's success response.
+        `tests/test_a_discarded_entrys_number_is_free_to_the_kernel.py` drives it.
+
+        `must_match` (POST-A-092) names a document whose retry is allowed to reuse the entry only if it carries these very lines: a
+        retry of the same document finds the same figures, a different set means the draft changed after an issue that did not
+        finish, and linking it to the old entry would leave the ledger saying one thing and the document another. Left unset the
+        entry is returned as it always was. A refusal is an `EntryCannotBeReused`, which a caller that stops on a ValueError stops on.
+        With `must_match` the lookups fail closed (a read that fails refuses: falling through would reach the database's own duplicate
+        handling, which returns the winner without comparing), and when nothing is held under the number and date an entry that belongs to
+        this document by its source but sits under another number or date is a refusal too, since posting would count the document twice.
+        """
+        if _USE_MOCK or not reference_no:
+            return None
+        try:
+            existing = (db.table("journal_entries").select("id")
+                        .eq("firm_id", firm_id).eq("client_id", client_id)
+                        .eq("reference_no", reference_no).eq("entry_date", entry_date)
+                        .eq("is_reversed", False)
+                        .is_("deleted_at", "null")
+                        .limit(1).execute())
+        except Exception as e:
+            # Low severity — the (firm, client, reference_no, entry_date) UNIQUE
+            # index (migration 143) is the authoritative backstop for a real
+            # duplicate, so this pre-check failing just means a possible
+            # duplicate-post attempt below (caught there instead). Still worth
+            # visibility: this was previously a fully silent `except: pass`.
+            capture_posting_failure(
+                e, operation="_create_journal.idempotency_precheck",
+                firm_id=firm_id, client_id=client_id, reference_no=reference_no, entry_date=entry_date,
+            )
+            if must_match:
+                raise journal_figures.EntryCannotBeReused(journal_figures.unreadable(what=must_match), unreadable=True) from e
+            return None
+        if not existing.data:
+            if must_match and source_id:
+                self._assert_not_held_elsewhere(db, firm_id=firm_id, client_id=client_id, source_type=source_type,
+                                                source_id=source_id, what=must_match)
+            return None
+        _logger.warning(
+            "Duplicate journal detected for firm=%s ref=%s date=%s client=%s — skipping",
+            firm_id, reference_no, entry_date, client_id,
+        )
+        entry_id = existing.data[0]["id"]
+        if must_match:
+            self._assert_entry_carries(db, entry_id, lines, what=must_match, firm_id=firm_id, client_id=client_id,
+                                       reference_no=reference_no, entry_date=entry_date)
+        return entry_id
+
+    def _assert_not_held_elsewhere(self, db, *, firm_id: str, client_id: str, source_type: Optional[str], source_id: str,
+                                   what: str) -> None:
+        """Raise `EntryCannotBeReused` if a live, unreversed entry whose SOURCE is this document is held under some other number or
+        date. The draft's number or date can be corrected after an issue that did not finish, and the retry then builds a different
+        key from the entry the first attempt left, finds nothing, and posts a second live entry: the document counted twice in the
+        ledger, the output tax and the customer's balance. A read that fails refuses, as the others here do."""
+        try:
+            query = (db.table("journal_entries").select("id,reference_no,entry_date")
+                     .eq("firm_id", firm_id).eq("client_id", client_id).eq("source_id", source_id)
+                     .eq("is_reversed", False).is_("deleted_at", "null")
+                     # A REVERSAL copies the document's source onto itself (reverse_entry) and is not itself marked reversed, so without
+                     # this the entry that undid a stranded one would be read as another posting of the document, and reversing the
+                     # stranded entry, which is the remedy the refusal advises, would block the draft for ever.
+                     .is_("reversal_of", "null"))
+            if source_type:
+                query = query.eq("source_type", source_type)
+            held = query.limit(1).execute().data or []
+        except Exception as read_error:
+            capture_posting_failure(
+                read_error, operation="_create_journal.held_elsewhere_read",
+                firm_id=firm_id, client_id=client_id, source_id=source_id)
+            raise journal_figures.EntryCannotBeReused(journal_figures.unreadable(what=what), unreadable=True) from read_error
+        if held:
+            raise journal_figures.EntryCannotBeReused(journal_figures.elsewhere(
+                what=what, number=str(held[0].get("reference_no") or ""), date=str(held[0].get("entry_date") or "")))
+
+    def _assert_entry_carries(self, db, entry_id: str, lines: list[dict], *, what: str, firm_id: str, client_id: str,
+                              reference_no: str, entry_date: str) -> None:
+        """Raise `EntryCannotBeReused` unless the live entry `entry_id` carries exactly `lines`. A read that fails refuses too: falling
+        through would reach the database's own duplicate handling, which returns the winner without comparing, so a check that cannot
+        look would have become no check."""
+        # `lines` may be a function that builds them (the pre-flight passes one, so the accounts are looked up only when an entry
+        # is actually there to compare with). The kernel passes the list it is about to post.
+        if callable(lines):
+            lines = lines()
+        try:
+            held = (db.table("journal_lines").select("account_id,debit_paise,credit_paise")
+                    .eq("journal_entry_id", entry_id).execute().data) or []
+        except Exception as read_error:
+            capture_posting_failure(
+                read_error, operation="_create_journal.same_figures_read",
+                firm_id=firm_id, client_id=client_id, reference_no=reference_no, entry_date=entry_date)
+            raise journal_figures.EntryCannotBeReused(journal_figures.unreadable(what=what), unreadable=True) from read_error
+        problem = journal_figures.difference(held, lines, what=what)
+        if problem:
+            raise journal_figures.EntryCannotBeReused(problem)
+
     def _create_journal(
         self,
         db,
@@ -2251,6 +2403,10 @@ class Phase2JournalService:
         rate_selected_by: Optional[str] = None,
         rate_overridden: bool = False,
         currency_policy: Optional[CurrencyPolicy] = None,
+        # POST-A-092: when set, an entry already live under this number and date is reused only if it carries these very lines; the
+        # value names the document in the refusal. Left unset, the kernel behaves exactly as it always has (a retry of anything
+        # returns the entry that is there).
+        must_match: Optional[str] = None,
     ) -> str:
         """
         Insert a balanced double-entry journal entry and its lines.
@@ -2377,47 +2533,12 @@ class Phase2JournalService:
             if rate <= 0:
                 raise ValueError("exchange_rate must be positive")
 
-        # Idempotency fast path (firm-scoped): same firm+client+reference_no+entry_date
-        # is already posted → return it. The UNIQUE index (migration 143) is the
-        # authoritative backstop for the concurrent race this SELECT can't close (H2).
-        #
-        # THIS ASKS THE SAME QUESTION THE INDEX DOES, AND THE INDEX IS PARTIAL: it
-        # holds only `deleted_at IS NULL AND is_reversed = false` rows (migrations 143
-        # and 213), and `post_journal_atomic` filters `deleted_at IS NULL` when it
-        # resolves a unique violation to the winner (418). This pre-check carried the
-        # second predicate and not the first, so an entry the CA had DISCARDED
-        # (migrations 275/276 — its number is free) answered for the number: the
-        # kernel logged "Duplicate journal detected", returned the dead entry's id and
-        # wrote nothing, and a caller told its user the document was posted — the
-        # voucher import's summary, and the journal editor's success response.
-        # `tests/test_a_discarded_entrys_number_is_free_to_the_kernel.py` drives it.
-        def _find_existing():
-            return (db.table("journal_entries").select("id")
-                    .eq("firm_id", firm_id).eq("client_id", client_id)
-                    .eq("reference_no", reference_no).eq("entry_date", entry_date)
-                    .eq("is_reversed", False)
-                    .is_("deleted_at", "null")
-                    .limit(1).execute())
-        if not _USE_MOCK and reference_no:
-            try:
-                existing = _find_existing()
-                if existing.data:
-                    _logger.warning(
-                        "Duplicate journal detected for firm=%s ref=%s date=%s client=%s — skipping",
-                        firm_id, reference_no, entry_date, client_id,
-                    )
-                    return existing.data[0]["id"]
-            except Exception as e:
-                # Low severity — the (firm, client, reference_no, entry_date) UNIQUE
-                # index (migration 143) is the authoritative backstop for a real
-                # duplicate, so this pre-check failing just means a possible
-                # duplicate-post attempt below (caught there instead). Still worth
-                # visibility: this was previously a fully silent `except: pass`.
-                from core.observability import capture_posting_failure
-                capture_posting_failure(
-                    e, operation="_create_journal.idempotency_precheck",
-                    firm_id=firm_id, client_id=client_id, reference_no=reference_no, entry_date=entry_date,
-                )
+        # Idempotency fast path: an entry already live under this number and date answers for it (see `_live_entry_for`).
+        already = self._live_entry_for(
+            db, firm_id=firm_id, client_id=client_id, entry_date=entry_date, reference_no=reference_no,
+            lines=lines, must_match=must_match, source_type=source_type, source_id=source_id)
+        if already:
+            return already
 
         now_iso = datetime.now(timezone.utc).isoformat()
         entry_payload = {

@@ -18,6 +18,7 @@ from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
 from domain.sales.line_tax import compute_line_gst
 from domain.sales import credit_limit
+from domain.accounting import journal_figures
 from domain.inventory import stock_effect as stock_effects
 from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
@@ -2207,6 +2208,10 @@ def issue_invoice(
                 firm_id=current_user.get("firm_id", ""),
                 client_id=inv.get("client_id", ""),
             )
+        except journal_figures.EntryCannotBeReused as ve:
+            # An entry from an earlier issue that did not finish is in the ledger and the draft no longer matches it (POST-A-092).
+            # The sentence is whole, and the advice to seed the chart of accounts would be wrong here.
+            return api_response(False, None, f"Cannot issue — {ve}")
         except ValueError as ve:
             return api_response(False, None,
                                 f"Cannot issue — {ve} Invoice remains a draft; seed the Chart of Accounts and retry.")
@@ -2570,6 +2575,8 @@ def repost_journal(
 
         try:
             journal_id = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv.get("client_id", ""))
+        except journal_figures.EntryCannotBeReused as ve:
+            return api_response(False, None, f"Cannot repost — {ve}")
         except ValueError as ve:
             return api_response(False, None, f"Cannot repost — {ve} Seed the Chart of Accounts and retry.")
         if not journal_id:

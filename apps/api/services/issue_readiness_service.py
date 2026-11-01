@@ -128,6 +128,12 @@ def blockers_for_sales_invoice(db, firm_id: str, invoice: dict, *, first_only: b
         db, firm_id, invoice.get("client_id") or "", invoice)
     if missing:
         found.append(ir.blocker(ir.COA_MISSING, ir.missing_accounts_sentence(missing)))
+        return found
+    # Asked last, because it builds the lines the posting would write and so needs the accounts. An earlier issue that posted and then
+    # failed leaves an entry; one the draft still matches is simply linked at the click, and only one it no longer matches is a blocker.
+    left_behind = phase2_journal_service.entry_left_behind_problem(db, firm_id, invoice.get("client_id") or "", invoice)
+    if left_behind:
+        found.append(ir.blocker(ir.ENTRY_ALREADY_IN_LEDGER, left_behind))
     return found
 
 

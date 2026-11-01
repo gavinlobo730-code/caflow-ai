@@ -247,10 +247,15 @@ def test_the_pre_flight_reads_and_writes_nothing(monkeypatch):
     db = _setup(monkeypatch)
     inv = _new_invoice("INV-READ")
     _row(db, inv)["supply_state_code"] = ""
-    before = {t: [dict(r) for r in rows] for t, rows in db._tables.items()}
+    # An empty table is not a write: the in-memory database makes one appear the first time something READS a table nobody has put a row
+    # in (the pre-flight reads the ledger for an entry an earlier issue left, POST-A-092), so only tables holding rows are compared.
+    def snapshot():
+        return {t: [dict(r) for r in rows] for t, rows in db._tables.items() if rows}
+
+    before = snapshot()
     _preflight(inv)
     _preflight(inv)
-    after = {t: [dict(r) for r in rows] for t, rows in db._tables.items()}
+    after = snapshot()
     assert before == after, "every table is as it was, not only the ones the author thought of"
 
 
