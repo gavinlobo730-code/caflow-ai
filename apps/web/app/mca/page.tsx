@@ -401,7 +401,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
   // batch-marked filed. Snapshotted once on open; rows are removed from this
   // local list as they succeed (see handleSubmit), so a partial failure only
   // re-shows the rows that still need attention.
-  const [rows, setRows] = useState<MCAFiling[]>(() => filings.filter(f => f.status !== "Filed"));
+  const [rows, setRows] = useState<MCAFiling[]>(() => filings.filter(f => f.status !== "Filed" && f.status !== "Not applicable"));
   const [filedDate, setFiledDate] = useState(todayLocalISO());
   const [srns, setSrns] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -706,7 +706,7 @@ export default function MCAPage() {
   // left open. Both sides are now the YYYY-MM prefix of a local calendar date,
   // which needs no Date at all.
   const thisMonthPrefix = todayLocalISO().slice(0, 7);
-  const dueThisMonth = filings.filter(f => String(f.due_date).slice(0, 7) === thisMonthPrefix && f.status !== "Filed").length;
+  const dueThisMonth = filings.filter(f => String(f.due_date).slice(0, 7) === thisMonthPrefix && f.status !== "Filed" && f.status !== "Not applicable").length;
   const overdueCount = filings.filter(f => f.status === "Overdue").length;
   const kycDueSoon = directors.filter(d => {
     const diff = daysUntilKyc(d.kyc_due_date);
@@ -970,7 +970,9 @@ export default function MCAPage() {
               </EmptyStateActions>
             }
             rowActions={(f) =>
-              f.status !== "Filed" ? (
+              f.status === "Not applicable" ? (
+                <span className="text-xs text-ps-hint">Not applicable</span>
+              ) : f.status !== "Filed" ? (
                 <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
               ) : (
                 <span className="text-xs text-ps-hint">Done</span>
