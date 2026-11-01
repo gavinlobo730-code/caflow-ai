@@ -210,7 +210,9 @@ def link_payment(db, *, firm_id: str, client_id: str, remittance_id: str,
     # And it must still RECORD a payment (`remittance_match.entry_state`, the one rule the candidates and the TDS challan's door use): a draft
     # is not in the books, a reversed original no longer records anything, and the reversal is the entry that undid one. Tying a remittance
     # to one of those would clear the liability on the reconciliation for a payment the ledger does not show.
-    rows = (db.table("journal_entries").select("id, deleted_at, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
+    # The select names the rule's columns as a literal (a built string is a column list the backend column check cannot read, and counts
+    # against its budget); `test_the_entry_state_selects_name_the_rules_columns` holds the literal equal to remittance_match.ENTRY_STATE_COLUMNS.
+    rows = (db.table("journal_entries").select("id, deleted_at, is_posted, is_reversed, reversal_of")
             .eq("id", journal_entry_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
     if not rows:
         raise RemittanceError("That journal entry is not an entry of this client.")
@@ -276,7 +278,7 @@ def entry_states(db, *, firm_id: str, client_id: str, entry_ids: list) -> dict:
     wanted = sorted({str(i) for i in entry_ids if i})
     found: dict = {}
     for at in range(0, len(wanted), _ENTRY_CHUNK):
-        rows = (db.table("journal_entries").select("id, deleted_at, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
+        rows = (db.table("journal_entries").select("id, deleted_at, is_posted, is_reversed, reversal_of")
                 .eq("firm_id", firm_id).eq("client_id", client_id).in_("id", wanted[at:at + _ENTRY_CHUNK]).execute().data) or []
         found.update({str(r["id"]): r for r in rows})
     return {i: MISSING if found.get(i) is None else remittance_match.entry_state(found[i]) for i in wanted}

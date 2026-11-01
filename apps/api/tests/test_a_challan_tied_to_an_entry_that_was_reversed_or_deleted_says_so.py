@@ -274,7 +274,11 @@ def test_every_query_that_feeds_the_rule_selects_the_columns_it_reads():
     from domain.payroll import remittance_match as rm
     from services import statutory_remittance_service as esi
     assert rm.ENTRY_STATE_COLUMNS == ("is_posted", "is_reversed", "reversal_of")
+    # Either names the tuple or spells the same columns as a literal (the two reads in the remittance service do the second, so the
+    # backend column check can read them: a string built from the tuple is invisible to it and counts against its budget).
+    literal = '"' + "id, deleted_at, " + ", ".join(rm.ENTRY_STATE_COLUMNS) + '"'
     for fn in (esi.entries_clearing_account, esi.entry_states, esi.link_payment, svc._entry):
-        assert "ENTRY_STATE_COLUMNS" in inspect.getsource(fn), f"{fn.__name__} does not select the columns entry_state reads"
+        source = inspect.getsource(fn)
+        assert "ENTRY_STATE_COLUMNS" in source or literal in source, f"{fn.__name__} does not select the columns entry_state reads"
     # the TDS challan's reader is the remittance register's one, not a second copy of it
     assert "remittances.entry_states(" in inspect.getsource(svc.entry_states)

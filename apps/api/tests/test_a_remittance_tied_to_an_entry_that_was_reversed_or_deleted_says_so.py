@@ -278,3 +278,16 @@ def test_the_unlink_route_is_a_delete_at_the_payroll_write_tier_and_checks_the_c
     assert sorted(m for r in routes for m in r.methods) == ["DELETE", "PATCH"]
     src = inspect.getsource(pay.unlink_remittance_payment)
     assert 'rbac("payroll", "write")' in src and "assert_client_access(current_user, client_id)" in src
+
+
+def test_the_entry_state_selects_name_the_rules_columns():
+    """Both reads of an entry's state spell their column list as a literal, so the backend column check can read them (a string built from
+    a tuple is unreadable to it and counts against its budget). The literal must stay equal to what the rule reads."""
+    import ast
+    import inspect
+    from domain.payroll import remittance_match
+    from services import statutory_remittance_service as service
+    wanted = "id, deleted_at, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS)
+    literals = [n.value for n in ast.walk(ast.parse(inspect.getsource(service)))
+                if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith("id, deleted_at,")]
+    assert literals == [wanted, wanted], literals
