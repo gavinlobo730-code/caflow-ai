@@ -13,16 +13,17 @@ _create_journal(db, firm_id, client_id, entry_date, reference_no, narration,
                 reversal_of=None, attachments=None,
                 txn_currency=None, exchange_rate=None, rate_source=None,
                 rate_type=None, rate_date=None, rate_selected_by=None,
-                rate_overridden=False, currency_policy=None) -> entry_id
+                rate_overridden=False, currency_policy=None,
+                must_match=None) -> entry_id
 ```
 
-The last eight parameters are the multi-currency metadata (`06b`): every one defaults to the INR, rate 1 identity, so a caller that passes none is unchanged.
+The eight parameters before the last are the multi-currency metadata (`06b`): every one defaults to the INR, rate 1 identity, so a caller that passes none is unchanged. `must_match` is the one opt-in of the dedup below (POST-A-092): a document name, set only by the sales invoice builder.
 
 What it guarantees, in order:
 1. **Double-entry balance** — sums `debit_paise` / `credit_paise` across `lines`; raises `ValueError` if `total_debit != total_credit`, and refuses a balanced but zero-value journal. Nothing unbalanced ever reaches the GL.
 2. **The period is not closed** — `period_lock_service.closure_reason` (the SQL `period_closure_reason`, migration 361) refuses a date inside a financial year the firm locked or a client year-end that was finalised, and raises its CA-facing sentence. A date it cannot read is itself a refusal. The *filed-return* branch is deliberately not asked here; see `03-financial-years.md`.
 3. **Currency** — a non-INR line or a rate other than 1 is refused unless an active `CurrencyPolicy` is supplied (`06b`).
-4. **Dedup** — if a live entry with the same `(client_id, reference_no, entry_date)` exists (not reversed, not soft-deleted: the unique index is partial on exactly those), it returns that id instead of duplicating (idempotency for auto-posted sources).
+4. **Dedup** — if a live entry with the same `(client_id, reference_no, entry_date)` exists (not reversed, not soft-deleted: the unique index is partial on exactly those), it returns that id instead of duplicating (idempotency for auto-posted sources). A caller that sets `must_match` gets that id only if the entry's lines are the very lines being posted (account, debit, credit; order and narration ignored); a different set, or an entry that cannot be read to compare, raises `EntryCannotBeReused` (`domain/accounting/journal_figures`) and writes nothing. Only `journal_for_sales_invoice` asks, because a draft invoice whose issue failed after posting can be changed before the retry.
 5. **Insert** — the `post_journal_atomic` RPC (migration 152) writes one `journal_entries` row and its `journal_lines` in one transaction, recording each line's position in the array as `journal_lines.line_order` (migration 384; a posted line from before it keeps `NULL` and `domain/accounting/line_order.py` orders it at read time). Only a database double with no `rpc` takes the two-insert fallback, which stamps `line_order` too.
 
 Entry payload fields: `firm_id, client_id, entry_date, reference_no, narration, entry_type, is_posted, status(=posted/draft), posted_at, posted_by, created_by, source_type, source_id` — plus the additive, optional `reversal_of` and `attachments` (written only when supplied, so every existing caller is unchanged).

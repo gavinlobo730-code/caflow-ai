@@ -503,7 +503,7 @@ services/payslip_pdf_service.py :: PLR0915 :: build_payslip_pdf :: 98
 services/period_validation_service.py :: B904 :: PeriodValidationService.validate_posting_date :: 1
 services/period_validation_service.py :: F401 :: <module> :: 1
 services/phase2_journal_service.py :: B904 :: Phase2JournalService._create_journal :: 1
-services/phase2_journal_service.py :: C901 :: Phase2JournalService._create_journal :: 23
+services/phase2_journal_service.py :: C901 :: Phase2JournalService._create_journal :: 20
 services/phase2_journal_service.py :: C901 :: Phase2JournalService.journal_for_purchase_bill :: 23
 services/portal_data_service.py :: F401 :: <module> :: 2
 services/practice_mail_service.py :: F401 :: <module> :: 1
