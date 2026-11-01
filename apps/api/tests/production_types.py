@@ -77,6 +77,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     # b164e362b13a15648f57a55b872dd5b1 over 5,197 columns in 337 tables, both sides ordered by C collation), so an entry belongs here
     # only for a migration this branch has not merged yet. Migration 558 adds no column.
     ("tds_challans", "journal_entry_id"): "migration 568 (POST-A-272): the ledger entry that paid the challan; a link, never a posting",
+    ("compliance_records", "closing_tds_challan_ids"): "migration 569 (POST-A-362): the challans that closed a monthly TDS deposit obligation",
 }
 
 

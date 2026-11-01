@@ -51,10 +51,11 @@ REOPEN_AFTERMATH: dict[str, str] = {
                    "wrong. Nothing closes it again by itself.",
     "EPF_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
     "TDS_SALARY_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
-    "TDS_NON_SALARY_DEPOSIT": "The challan that closed it is still in the TDS register, so the next time a challan is recorded for "
-                              "that quarter the register can close this month again from it. If that challan was recorded in error, "
-                              "retract it on the Challans tab first (a Manager or Partner can). Check which month the register "
-                              "matched that challan to before relying on the reopen.",
+    "TDS_NON_SALARY_DEPOSIT": "The challans that closed it are remembered on the month, so while only those same challans cover it, "
+                              "recording another challan for the quarter does not close it again; a different challan covering it "
+                              "does, or you can mark it filed from Compliance with the date it really went. If a challan was "
+                              "recorded in error, retract it on the Challans tab first (a Manager or Partner can): that reopens "
+                              "exactly the months it closed.",
     "ADVANCE_TAX": "The tax that closed it is still in the advance-tax register, and the next save of that register closes the "
                    "instalment again if the tax recorded there still covers it, so correct the register entry first.",
 }
@@ -461,7 +462,17 @@ class ComplianceRecordService:
                 record, updates.get("filed_date") or record.get("filed_date"),
                 (updates.get("acknowledgement_no") or record.get("acknowledgement_no") or None))
 
-        updated = compliance_records_repo.update(record_id, updates)
+        # RECORDING AN OBLIGATION FILED MAKES THE RECORD OF WHAT CLOSED IT UNTRUE (POST-A-362): the TDS closer remembers the challans it
+        # closed a month on (`closing_tds_challan_ids`) and a person's reopen keeps that on purpose, but a person who then marks the month
+        # filed from Compliance has closed it on a payment of their own, and the closer closing it AGAIN writes its new challans after
+        # this. Left in place the old ids would let a later retraction reopen a month it did not close, and a failed write of the new ones
+        # would leave the old as if they were current. Cleared in the same write as the filing, so there is no gap; only the move INTO
+        # Filed clears it (Filed to Completed is the same closure).
+        if new_status == "Filed" and record.get("closing_tds_challan_ids") is not None:
+            updated = compliance_records_repo.update_clearing(
+                record_id, firm_id or record.get("firm_id") or "", updates, clear=compliance_records_repo.CLEARABLE_RECORD)
+        else:
+            updated = compliance_records_repo.update(record_id, updates)
         if not updated:
             raise NotFoundError("ComplianceRecord", record_id)
 
@@ -477,7 +488,7 @@ class ComplianceRecordService:
         return out
 
     def reopen_record(self, record_id: str, reason: str, firm_id: Optional[str] = None,
-                      actor: Optional[dict] = None) -> dict:
+                      actor: Optional[dict] = None, forget_what_closed_it: bool = False) -> dict:
         """Take back a recorded filing on a DEPOSIT obligation (POST-A-267, item 3).
 
         Filed went only to Completed and Completed nowhere, so a closure made from a wrong payment record, or by a person who
@@ -486,7 +497,11 @@ class ComplianceRecordService:
         and the completion time, keeps the reason on the row's notes and in the audit log, and leaves everything else alone:
         a payment register entry that closed it is still there, and the answer says so, because reopening the calendar line
         does not retract a payment record and must not be mistaken for it. Refused in words for an obligation that is not
-        filed, for a reason that is empty, and for a type with a filing record behind it (`REOPENABLE_OBLIGATION_TYPES`)."""
+        filed, for a reason that is empty, and for a type with a filing record behind it (`REOPENABLE_OBLIGATION_TYPES`).
+
+        A PERSON'S reopen keeps `closing_tds_challan_ids` (the TDS closer's "the same challans do not close it again" rule reads it);
+        the retraction of a challan the month was closed on passes `forget_what_closed_it` so the month goes back to having no
+        record, because the challans that remain are the register's to judge afresh and not a person's correction."""
         record = self.get_record(record_id, firm_id=firm_id)
         why = (reason or "").strip()
         if not why:
@@ -512,7 +527,8 @@ class ComplianceRecordService:
         notes = f"{record['notes']}\n{note}" if record.get("notes") else note
         updated = compliance_records_repo.update_clearing(
             record_id, firm_id or record["firm_id"], {"status": REOPENED_STATUS, "notes": notes},
-            clear=compliance_records_repo.CLEARABLE, only_if_status=("Filed", "Completed"))
+            clear=compliance_records_repo.CLEARABLE + (compliance_records_repo.CLEARABLE_RECORD if forget_what_closed_it else ()),
+            only_if_status=("Filed", "Completed"))
         if not updated:
             # The row was read as filed a moment ago, so it is gone, or somebody changed it in between (reopened it, or recorded
             # it as filed again with a new date). Writing over that would erase their change.

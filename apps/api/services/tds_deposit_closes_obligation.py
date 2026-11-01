@@ -41,8 +41,14 @@ THE RULE (`decide_month`, a pure function, holds it)
     What it deliberately does not do:
       * the salary deposit (`TDS_SALARY_DEPOSIT`) and the EPF and ESI deposits are payroll's: a section 192 challan closes
         nothing here;
-      * a challan edited or removed later does not reopen an obligation it closed, and a deduction recorded later in a month
-        already closed does not either (a closed obligation says what was true when it was closed);
+      * a challan edited later does not reopen an obligation it closed, and a deduction recorded later in a month already closed
+        does not either (a closed obligation says what was true when it was closed). A challan RETRACTED later reopens the months
+        it closed, because the closer records which challans covered a month when it closed it (`closing_tds_challan_ids`, migration
+        569, POST-A-362): see `tds_challan_retraction_service`;
+      * a month a person REOPENED is left alone for as long as the same challans cover it. The register's order may have paired
+        the wrong challans to the month, and closing it again on them would undo the person's correction on the next challan
+        saved for the quarter. A challan that is not among those it was closed on covers it differently, and the rule is asked
+        again;
       * a deposit made outside the product and never recorded closes nothing: the CA marks it from Compliance;
       * it does not act for a caller without compliance access (closing an obligation is a compliance write, decided per
         person), and it never fails the recording of the challan: whatever stops an obligation closing comes back in the
@@ -57,6 +63,7 @@ from datetime import date
 from typing import Any, Optional
 
 from core.ist_clock import ist_today
+from core.observability import capture_soft_failure
 from domain.money_sentence import rupee_text
 from domain.tds import challan_mapping, deposit_due
 from domain.tds.section_rates import quarter_dates
@@ -97,7 +104,8 @@ class Decision:
 
 def decide_month(*, today: date, due: date, month_end: date, what: str, month_name: str, tax_paise: int,
                  outstanding_paise: int, salary_rows: bool, before_deduction: bool = False, paid_dates: list[date],
-                 challans: list[dict], touched: bool) -> Decision:
+                 challans: list[dict], touched: bool, covering_ids: frozenset = frozenset(),
+                 closed_on_before: Optional[frozenset] = None) -> Decision:
     """The rule, as a pure function of what the worksheet says about one month. Checked in this order, and a month is closed
     only if it passes every one:
 
@@ -110,7 +118,10 @@ def decide_month(*, today: date, due: date, month_end: date, what: str, month_na
          by order within the quarter and not by month (a challan carries a quarter and no month), so a challan paid after the
          due date may be the deposit for a later month and not for this one; closing on it would date the month late, or
          close the wrong month, and a wrong closure is a wrong statement on the calendar until somebody notices and reopens it. A month covered only by a late challan is
-         left for a person to mark, with the date it really went.
+         left for a person to mark, with the date it really went;
+      7. it is not a month a PERSON REOPENED whose covering challans are all among those it was closed on (`closed_on_before`, the
+         ids recorded when it was closed): the register's order may have paired the wrong challans to it, and closing it again on
+         them undoes the correction. A month with no record of what closed it (`closed_on_before` empty or None) is not held back.
     A sentence is returned only when the recorded challan paid some of the month (`touched`): a month it did not touch that
     stays open is not its business. What the rule CANNOT settle, and says so in the design record: two challans that are both
     on time can be swapped between two months (July's paid late on 20 August and August's paid on 5 August are matched the
@@ -146,9 +157,33 @@ def decide_month(*, today: date, due: date, month_end: date, what: str, month_na
                      f"{due.isoformat()}, and a late challan may be the deposit for a later month: the register matches "
                      "challans to deductions by order within the quarter and not by month.",
                      "Mark it filed from Compliance with the date it really went.")
+    if closed_on_before and covering_ids and covering_ids <= closed_on_before:
+        return leave("it was closed on these same challans and a person reopened it, and they still cover it.",
+                     "It is looked at again when a different challan covers it, or it can be marked filed from Compliance.")
     same_day = [c for c in challans if challan_mapping.as_date((c or {}).get("payment_date")) == last]
     last_challan = max(same_day, key=lambda c: str(c.get("challan_no") or ""), default=None)
     return Decision(filed_on=last, reference=str((last_challan or {}).get("challan_no") or "") or None)
+
+
+def closed_on(record: dict) -> Optional[frozenset]:
+    """The ids of the challans an obligation was last closed on, as recorded by `_record_what_closed_it`, or None when there is no
+    record (closed before migration 569, closed by a person from Compliance, or the write of the record failed). An entry that is
+    not a list is no record."""
+    ids = (record or {}).get("closing_tds_challan_ids")
+    if not isinstance(ids, list):
+        return None
+    return frozenset(str(i) for i in ids if i)
+
+
+def _record_what_closed_it(record: dict, *, firm_id: str, client_id: str, covering: frozenset) -> None:
+    """Keep the ids of the challans that covered the month on the obligation just closed. NEVER FAILS THE CLOSE: the obligation IS
+    closed, and without the record a retraction falls back to naming the filed months of the quarter. A failure is reported."""
+    if not covering:
+        return
+    try:
+        compliance_records_repo.stamp_closing_tds_challans(record["id"], firm_id, sorted(covering))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="tds_deposit_closes_obligation.record_challans", firm_id=firm_id, client_id=client_id)
 
 
 def close_for_recorded_challan(
@@ -211,6 +246,7 @@ def _close(
         if not rows:
             continue
         parts = [(challan, paise) for r in rows for challan, paise in mapping.for_deduction(r.get("id")).parts]
+        covering = frozenset(str(c["id"]) for c, _ in parts if (c or {}).get("id"))
         decision = decide_month(
             today=today, due=window["due"], month_end=window["month_end"], what=_what(year, mon),
             month_name=_MONTH_NAMES[mon - 1], tax_paise=int(sheet.totals["tax_paise"]),
@@ -222,7 +258,8 @@ def _close(
             # Whether THIS challan paid some of the month decides whether a month left open is worth a sentence; a month
             # fully and punctually deposited is closed whichever challan made it so, which is also how a quarter's earlier
             # challans, recorded before the calendar was asked, are caught up the next time one is recorded.
-            touched=any(str((c or {}).get("id")) == str(challan_id) for c, _ in parts))
+            touched=any(str((c or {}).get("id")) == str(challan_id) for c, _ in parts),
+            covering_ids=covering, closed_on_before=closed_on(record))
         month = f"{year:04d}-{mon:02d}"
         if decision.filed_on is None:
             if decision.sentence:
@@ -233,6 +270,7 @@ def _close(
             client_id=client_id, compliance_type=COMPLIANCE_TYPE, filed_date=decision.filed_on.isoformat(),
             arn=decision.reference, actor=actor)
         if result.get("closed"):
+            _record_what_closed_it(record, firm_id=firm_id, client_id=client_id, covering=covering)
             # Said, not only done: the date and serial are the register's order's (see `decide_month`), and a closed
             # obligation cannot be corrected afterwards, so the person is told what was recorded and can check it.
             result = {**result, "filed_on": decision.filed_on.isoformat(), "reference": decision.reference,

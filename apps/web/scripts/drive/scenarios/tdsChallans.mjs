@@ -97,7 +97,7 @@ export const scenarios = [
       await page.getByText(CALENDAR_NOTE).waitFor();
       const body = await text(page);
       assert.ok(body.includes(STATEMENT_NOTE), "the statement note was not shown as the server wrote it");
-      assert.match(body, /Challan retracted\. What it did not change:/);
+      assert.match(body, /Challan retracted\. What happened to the calendar and to a filed statement:/);
       await until(async () => !(await text(page)).includes("00045"), "the retracted challan to leave the list");
       assert.equal(await page.getByRole("dialog").count(), 0, "the prompt stayed open after a retraction");
     },

@@ -8,9 +8,10 @@
  * already retracted): that sentence is shown as written, and this component decides nothing. To correct a challan, retract it and
  * record it again; there is no edit.
  *
- * The screen says what retracting does NOT do, because it is the part a person assumes: a monthly deposit on the compliance
- * calendar that this challan helped to close is not reopened by it (the register does not record which challan closed which
- * month), and the answer says which months still read filed.
+ * The screen says what retracting does to the compliance calendar, because it is the part a person does not expect: a monthly
+ * deposit that was closed on this challan is reopened when the person may approve Compliance (the server records which challans
+ * closed a month and does the reopening), and is only named when they may not, or when the month was closed before the server
+ * recorded that. The answer says which, in the server's own sentences.
  *
  * Nothing is filed or un-filed at any portal by this: it corrects the practice's own register. CA REVIEW REQUIRED — DO NOT
  * AUTO-SUBMIT.
@@ -44,8 +45,9 @@ export function RetractChallanModal({
         <p className="text-xs text-ps-body">
           This takes the challan out of the register: it no longer counts toward what has been deposited, the deposit worksheet or
           the quarter&apos;s statement. The challan and your reason are kept in the audit log. A monthly deposit on the compliance
-          calendar that this challan helped to close is not reopened by this; the answer says which months still read filed, and a
-          Manager or Partner can reopen them.
+          calendar that was closed on this challan is reopened if your access includes approving Compliance; otherwise the answer
+          names it and a Manager or Partner can reopen it. A month closed before the product recorded which challan closed it is
+          named and left as it is.
         </p>
         <div>
           <label htmlFor="retract-challan-reason" className="text-xs font-medium text-ps-body block mb-1">

@@ -132,16 +132,21 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
     #: taking a filing back needs its own way to write a NULL, and it is limited to the three columns a filing sets and the two
     #: that remember the last escalation (a reopened obligation that is overdue again must not wait out the old notice's week).
     CLEARABLE = ("filed_date", "acknowledgement_no", "completed_at", "last_escalated_tier", "last_escalated_on")
+    #: The record of which TDS challans the closer closed a month on (migration 569). Kept apart from `CLEARABLE` on purpose: a PERSON's
+    #: reopen must keep it (the closer's "same challans" rule reads it), so reopening passes `CLEARABLE` alone, and only the two things
+    #: that make it untrue ask for this one: a person (or the closer) recording the obligation filed again, and a retraction of a
+    #: challan it names.
+    CLEARABLE_RECORD = ("closing_tds_challan_ids",)
 
     def update_clearing(self, id: str, firm_id: str, data: dict, clear: tuple,
                         only_if_status: Optional[tuple] = None) -> Optional[dict]:
-        """`update` plus an explicit NULL for each column named in `clear`, which must be among `CLEARABLE`. It names the firm, so
+        """`update` plus an explicit NULL for each column named in `clear`, which must be among `CLEARABLE` and `CLEARABLE_RECORD`. It names the firm, so
         the write is confined to that firm's row whatever the caller checked before (the rows of two firms never share an id, and
         this does not rely on that). With `only_if_status` it acts only on a row still in one of those statuses, the state the
         caller saw: a row somebody changed in between is not written, and None comes back."""
-        bad = [c for c in clear if c not in self.CLEARABLE]
+        bad = [c for c in clear if c not in self.CLEARABLE + self.CLEARABLE_RECORD]
         if bad:
-            raise ValueError(f"update_clearing may only clear {self.CLEARABLE}, not {bad}")
+            raise ValueError(f"update_clearing may only clear {self.CLEARABLE + self.CLEARABLE_RECORD}, not {bad}")
         if not firm_id:
             raise ValueError("update_clearing needs the firm")
         if _USE_MOCK:
@@ -160,6 +165,25 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
             query = query.in_("status", list(only_if_status))
         result = query.execute()
         return result.data[0] if result.data else None
+
+    def stamp_closing_tds_challans(self, id: str, firm_id: str, challan_ids: list[str]) -> bool:
+        """Record which TDS challans a monthly deposit obligation was closed on (POST-A-362, migration 569). Written once, by
+        `services/tds_deposit_closes_obligation`, right after it closes the obligation; confined to the firm and to a row that is NOW
+        Filed or Completed, so a row somebody reopened in between is not stamped as though it were closed. True when a row was
+        written."""
+        if not firm_id:
+            raise ValueError("stamp_closing_tds_challans needs the firm")
+        ids = sorted({str(c) for c in challan_ids if c})
+        if _USE_MOCK:
+            record = self.find_by_id(id)
+            if not record or str(record.get("firm_id")) != str(firm_id) or record.get("status") not in ("Filed", "Completed"):
+                return False
+            record.update({"closing_tds_challan_ids": ids, "updated_at": self.now_iso()})
+            return True
+        result = (_get_db().table("compliance_records")
+                  .update({"closing_tds_challan_ids": ids, "updated_at": self.now_iso()})
+                  .eq("id", id).eq("firm_id", firm_id).in_("status", ["Filed", "Completed"]).execute())
+        return bool(result.data)
 
     def soft_delete(self, id: str) -> bool:
         """Mark one obligation deleted without erasing it — the row the audit

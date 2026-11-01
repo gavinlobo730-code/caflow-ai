@@ -18,7 +18,8 @@
 //   * after a retraction the screen RELOADS the register and the deposit position (everything drawn from the register has
 //     changed) and shows the server's sentences about what it did not change: any month still reading filed on the compliance
 //     calendar, and a TDS statement for the quarter already recorded as filed;
-//   * the screen says what retracting does NOT do (it does not reopen a calendar month), which is what the server does.
+//   * the screen says what retracting does to the calendar (a month closed on the challan is reopened for a person who may approve
+//     Compliance, and only named otherwise), which is what the server does.
 //
 // Run with: node --experimental-strip-types --test scripts/a-challan-is-retracted-with-a-reason-through-the-servers-door.test.ts
 import test from "node:test";
@@ -78,6 +79,7 @@ test("a retraction reloads the register and the deposit position and shows the s
   assert.ok(/loadLists\(clientAtClick, false\)/.test(handler), "the register is not read again");
   assert.ok(/refreshDepositState\(clientAtClick, true\)/.test(handler), "the deposit position is not read again");
   assert.ok(/setRetractionNotes\(\[done\.calendar_note, done\.statement_note\]/.test(handler), "the server's two sentences are not kept");
+  assert.ok(/setCalendarAnswers\(null\)/.test(handler), "what became of the months when the challan was recorded stays on screen after it is retracted");
   assert.ok(/setRetractError\(/.test(handler), "a refusal is not shown");
   assert.ok(/clientAtClick !== openClient\.current\) return/.test(handler), "an answer that lands after a client switch is not dropped");
   assert.ok(!/setChallans\(/.test(handler), "the handler patches the list by hand");
@@ -98,9 +100,12 @@ test("the prompt asks for a reason, sends none blank, ignores a second click whi
   assert.ok(/audit log/.test(MODAL), "the prompt does not say the reason is kept in the audit log");
 });
 
-test("the screen says what retracting does not do", () => {
-  assert.ok(/is not reopened by this/.test(MODAL), "the prompt does not say a calendar month is not reopened");
-  assert.ok(/Challan retracted\. What it did not change:/.test(PAGE), "the note after a retraction does not say what was not changed");
+test("the screen says what retracting does to the calendar", () => {
+  assert.ok(/was closed on this challan is reopened if your access includes approving Compliance/.test(MODAL),
+    "the prompt does not say a month closed on the challan is reopened for a person who may approve Compliance");
+  assert.ok(!/is not reopened by this/.test(MODAL), "the prompt still says a calendar month is not reopened");
+  assert.ok(/Challan retracted\. What happened to the calendar and to a filed statement:/.test(PAGE),
+    "the note after a retraction does not say it is about the calendar and a filed statement");
 });
 
 // ── the two forms that RECORD a deduction and a challan (found by driving them, PRE-A-015) ─────────────────────────
