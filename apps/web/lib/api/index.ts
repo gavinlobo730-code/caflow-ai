@@ -6079,8 +6079,18 @@ export const api = {
      *  can say which is which. */
     remittanceReconciliation: (clientId: string) =>
       request<ApiResp<{ client_id: string; window_days: number;
-                        unmatched: UnmatchedRemittance[] }>>(
+                        unmatched: UnmatchedRemittance[];
+                        /** Remittances TIED to an entry that no longer records the payment (reversed, deleted, a draft, a reversal,
+                         *  gone, or not checked just now), each with the server's label and note. Absent from an older server. */
+                        stale_links?: StaleRemittanceLink[] }>>(
         `/api/payroll/clients/${clientId}/remittance-reconciliation`),
+
+    /** Take back the link between a remittance and a ledger entry (POST-A-272). Nothing else changes: the remittance reads "paid, not
+     *  tied to an entry" again and is offered its candidates. */
+    unlinkRemittancePayment: (clientId: string, remittanceId: string) =>
+      request<ApiResp<{ remittance_id: string; unlinked: boolean; was: string }>>(
+        `/api/payroll/clients/${clientId}/remittances/${remittanceId}/payment`,
+        { method: "DELETE" }),
 
     /** Tie a remittance to the journal entry that paid it. A LINK, never a
      *  posting: bank_posting_service already writes Dr liability / Cr Bank when
@@ -8669,6 +8679,18 @@ export type ApprovalRequest = {
 
 export type UnmatchedRemittance = Remittance & {
   candidates: RemittanceCandidate[];
+};
+
+/** A remittance tied to an entry that no longer records the payment. `ledger_link` is the server's reading of that entry, in its own
+ *  words: the screen draws `label` and `note` and decides nothing. */
+export type StaleRemittanceLink = Remittance & {
+  ledger_link: {
+    state: "reversed" | "deleted" | "draft" | "reversal" | "missing" | "unknown";
+    label: string;
+    note: string | null;
+    /** The server's judgement that taking the link back is worth offering (false when the ledger could not be read). */
+    can_take_back: boolean;
+  };
 };
 
 /** ESIC's mapped-IP list against this month's contribution file. The two

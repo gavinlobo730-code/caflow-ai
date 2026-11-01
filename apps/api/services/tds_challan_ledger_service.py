@@ -55,7 +55,7 @@ OTHER_ACCOUNT = "TDS Payable"
 #: The state of the entry a tied challan points at, and what the screen says about it. The words are the server's.
 LIVE, DRAFT, REVERSED, REVERSAL, DELETED = (remittance_match.ENTRY_LIVE, remittance_match.ENTRY_DRAFT, remittance_match.ENTRY_REVERSED,
                                             remittance_match.ENTRY_REVERSAL, remittance_match.ENTRY_DELETED)
-MISSING, UNKNOWN = "missing", "unknown"
+MISSING, UNKNOWN = remittances.MISSING, remittances.UNKNOWN
 
 _LABEL = {
     LIVE: "Tied to an entry",
@@ -80,10 +80,6 @@ _NOTE = {
     UNKNOWN: "The ledger could not be read just now, so whether the entry this challan is tied to still records the payment is not known.",
 }
 
-#: Entry ids asked for in one request (they ride in the URL).
-_ENTRY_CHUNK = 100
-
-
 class LinkRefused(Exception):
     """A link or unlink that must not go ahead, with the sentence to show. `status` is the HTTP status the route answers."""
 
@@ -99,15 +95,9 @@ def _link(state: str) -> dict:
 
 def entry_states(db, *, firm_id: str, client_id: str, entry_ids: list[str]) -> dict[str, str]:
     """The state of each entry in `entry_ids` for this firm and client: LIVE, DRAFT, REVERSED, REVERSAL, DELETED, or MISSING (no such
-    entry of this client, which includes an id that belongs to another client). The first five are `remittance_match.entry_state`'s, the
-    one rule the candidates and the link refusal use. Reads only; raises what the database raises."""
-    wanted = sorted({str(i) for i in entry_ids if i})
-    found: dict[str, dict] = {}
-    for at in range(0, len(wanted), _ENTRY_CHUNK):
-        rows = (db.table("journal_entries").select("id, deleted_at, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
-                .eq("firm_id", firm_id).eq("client_id", client_id).in_("id", wanted[at:at + _ENTRY_CHUNK]).execute().data) or []
-        found.update({str(r["id"]): r for r in rows})
-    return {i: MISSING if found.get(i) is None else remittance_match.entry_state(found[i]) for i in wanted}
+    entry of this client, which includes an id that belongs to another client). One reader for both registers: the ESI / professional-tax
+    remittance's link asks the same function (`statutory_remittance_service.entry_states`). Reads only; raises what the database raises."""
+    return remittances.entry_states(db, firm_id=firm_id, client_id=client_id, entry_ids=entry_ids)
 
 
 def annotate_links(db, *, firm_id: str, client_id: str, rows: list[dict]) -> None:

@@ -43,7 +43,7 @@ import {
 
 import { api, request, type ApiResp, type HandoffObligation,
          type Remittance, type StatutoryHandoff as Handoff,
-         type EsicMappedIpCheck, type UnmatchedRemittance } from "@/lib/api";
+         type EsicMappedIpCheck, type StaleRemittanceLink, type UnmatchedRemittance } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { todayLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
@@ -691,6 +691,9 @@ function UnmatchedRemittances({ clientId, onLinked }: {
   clientId: string; onLinked: () => void;
 }) {
   const [rows, setRows] = useState<UnmatchedRemittance[]>([]);
+  // Remittances TIED to an entry that no longer records the payment (POST-A-272): listed apart, in the server's words, with the one thing
+  // that can be done about them, taking the link back. An older server sends none.
+  const [stale, setStale] = useState<StaleRemittanceLink[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<Note>(null);
   const [loaded, setLoaded] = useState(false);
@@ -699,7 +702,8 @@ function UnmatchedRemittances({ clientId, onLinked }: {
     try {
       const res = await api.payroll.remittanceReconciliation(clientId);
       setRows(res?.success ? (res.data?.unmatched ?? []) : []);
-    } catch { setRows([]); }
+      setStale(res?.success ? (res.data?.stale_links ?? []) : []);
+    } catch { setRows([]); setStale([]); }
     finally { setLoaded(true); }
   }, [clientId]);
 
@@ -720,12 +724,63 @@ function UnmatchedRemittances({ clientId, onLinked }: {
     } finally { setBusy(null); }
   }
 
+  async function unlink(remittanceId: string) {
+    setBusy(remittanceId); setNote(null);
+    try {
+      const res = await api.payroll.unlinkRemittancePayment(clientId, remittanceId);
+      if (!res?.success) throw new Error(res?.error ?? "The link was not taken back.");
+      setNote({ kind: "ok", text: "The link was taken back. The remittance is listed again below with the entries that could be its payment." });
+      await load();
+      onLinked();
+    } catch (e) {
+      setNote({ kind: "err", text: e instanceof Error ? e.message : "The link was not taken back." });
+    } finally { setBusy(null); }
+  }
+
   // Nothing outstanding is the ordinary state, and an empty panel on every
   // screen teaches people to stop reading it.
-  if (!loaded || rows.length === 0) return null;
+  if (!loaded || (rows.length === 0 && stale.length === 0)) return null;
 
   return (
     <div className="bg-white rounded-xl border border-state-attention-border p-4 space-y-3">
+      {/* Above both lists: a refusal of either action is shown whichever list is on screen. */}
+      {note && (
+        <p className={`text-2xs px-3 py-2 rounded-lg ${
+          note.kind === "ok" ? "bg-state-ready-surface text-state-ready"
+          : "bg-state-problem-surface text-state-problem"}`}>{note.text}</p>
+      )}
+      {stale.length > 0 && (
+        <div className="space-y-2" aria-label="Remittances tied to an entry that no longer records the payment">
+          <p className="text-sm font-semibold text-ps-ink">
+            Tied to an entry that no longer records the payment ({stale.length})
+          </p>
+          {stale.map((r) => (
+            <div key={r.id} className="border-t border-ps-border pt-2">
+              <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                <p className="text-xs text-ps-ink">
+                  <span className="font-semibold">
+                    {r.scheme === "esic" ? "ESI" : `Professional tax — ${r.state ?? ""}`}
+                  </span>
+                  {" · "}{formatMonthYear(r.wage_month)}
+                  {r.challan_number ? ` · challan ${r.challan_number}` : ""}
+                </p>
+                <p className="text-xs font-mono text-ps-ink">{fmtPaise(r.amount_paise)}</p>
+              </div>
+              {/* The server's own words: the label says what the entry is now and the note says what to do. */}
+              <p className="text-2xs text-ps-ink mt-1 font-medium">{r.ledger_link.label}</p>
+              {r.ledger_link.note && <p className="text-3xs text-ps-label mt-0.5">{r.ledger_link.note}</p>}
+              {r.ledger_link.can_take_back && (
+                <Button variant="plain" size="none" onClick={() => unlink(r.id)} disabled={busy !== null}
+                  className="mt-1.5 px-2.5 py-1 text-2xs border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body disabled:opacity-40">
+                  {busy === r.id ? "Taking back…" : "Take the link back"}
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {rows.length > 0 && (<>
       <div>
         <p className="text-sm font-semibold text-ps-ink">
           Paid, but not yet matched to a bank payment ({rows.length})
@@ -736,12 +791,6 @@ function UnmatchedRemittances({ clientId, onLinked }: {
           the entry itself is unchanged.
         </p>
       </div>
-
-      {note && (
-        <p className={`text-2xs px-3 py-2 rounded-lg ${
-          note.kind === "ok" ? "bg-state-ready-surface text-state-ready"
-          : "bg-state-problem-surface text-state-problem"}`}>{note.text}</p>
-      )}
 
       {rows.map((r) => (
         <div key={r.id} className="border-t border-ps-border pt-3">
@@ -804,6 +853,7 @@ function UnmatchedRemittances({ clientId, onLinked }: {
           )}
         </div>
       ))}
+      </>)}
     </div>
   );
 }

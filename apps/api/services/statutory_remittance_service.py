@@ -207,16 +207,124 @@ def link_payment(db, *, firm_id: str, client_id: str, remittance_id: str,
     """
     # The entry must be an entry of THIS client: the link is what the reconciliation reads to say a liability was paid, and an
     # entry of another client of the firm would clear it. Read first, so a refusal changes nothing.
-    entry = (db.table("journal_entries").select("id")
-             .eq("id", journal_entry_id).eq("firm_id", firm_id).eq("client_id", client_id)
-             .is_("deleted_at", "null").limit(1).execute().data) or []
-    if not entry:
+    # And it must still RECORD a payment (`remittance_match.entry_state`, the one rule the candidates and the TDS challan's door use): a draft
+    # is not in the books, a reversed original no longer records anything, and the reversal is the entry that undid one. Tying a remittance
+    # to one of those would clear the liability on the reconciliation for a payment the ledger does not show.
+    # The select names the rule's columns as a literal (a built string is a column list the backend column check cannot read, and counts
+    # against its budget); `test_the_entry_state_selects_name_the_rules_columns` holds the literal equal to remittance_match.ENTRY_STATE_COLUMNS.
+    rows = (db.table("journal_entries").select("id, deleted_at, is_posted, is_reversed, reversal_of")
+            .eq("id", journal_entry_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
+    if not rows:
         raise RemittanceError("That journal entry is not an entry of this client.")
+    state = remittance_match.entry_state(rows[0])
+    if state != LIVE:
+        raise RemittanceError(NOT_A_PAYMENT[state])
     res = (privileged_for(db).table("statutory_remittances")
            .update({"journal_entry_id": journal_entry_id})
            .eq("id", remittance_id).eq("firm_id", firm_id).eq("client_id", client_id)
            .is_("deleted_at", "null").execute().data)
     return bool(res)
+
+
+# ── What a tied remittance says about the entry it points at ─────────────────────────────────────────────────────────────────────────────
+#
+# A remittance is tied to the entry that paid it by `journal_entry_id`. The column is cleared when an entry is hard-deleted, but a posted entry
+# is never hard-deleted: it is REVERSED or soft-deleted, and the link then points at an entry that no longer records the payment while the
+# reconciliation (`unlinked`) goes on treating the remittance as matched. The words are the server's, in the same five states and the same
+# shape as the TDS challan's (`tds_challan_ledger_service`), with this register's own noun.
+LIVE, DRAFT, REVERSED, REVERSAL, DELETED = (remittance_match.ENTRY_LIVE, remittance_match.ENTRY_DRAFT, remittance_match.ENTRY_REVERSED,
+                                            remittance_match.ENTRY_REVERSAL, remittance_match.ENTRY_DELETED)
+MISSING, UNKNOWN = "missing", "unknown"
+
+LINK_LABEL = {
+    LIVE: "Tied to an entry",
+    REVERSED: "Tied to an entry that was reversed",
+    DRAFT: "Tied to an entry that is still a draft",
+    REVERSAL: "Tied to an entry that is itself a reversal",
+    DELETED: "Tied to an entry that was deleted",
+    MISSING: "Tied to an entry that can no longer be found",
+    UNKNOWN: "Tied to an entry (not checked just now)",
+}
+LINK_NOTE = {
+    REVERSED: "The ledger entry this remittance is tied to was reversed, so it no longer records the payment. The remittance stays: it was "
+              "paid. Take the link back and tie it to the entry that now records the payment, if there is one.",
+    DELETED: "The ledger entry this remittance is tied to was deleted, so it no longer records the payment. The remittance stays: it was "
+             "paid. Take the link back and tie it to the entry that now records the payment, if there is one.",
+    DRAFT: "The ledger entry this remittance is tied to is still a draft, so it is not in the books and does not yet record the payment. "
+           "The remittance stays: it was paid. Post the entry, or take the link back and tie the remittance to the entry that records it.",
+    REVERSAL: "The ledger entry this remittance is tied to is the entry that undid another one, so it does not record the payment. The "
+              "remittance stays: it was paid. Take the link back and tie it to the entry that records the payment.",
+    MISSING: "The ledger entry this remittance is tied to could not be found for this client. Take the link back and tie the remittance "
+             "to the entry that records the payment, if there is one.",
+    UNKNOWN: "The ledger could not be read just now, so whether the entry this remittance is tied to still records the payment is not known.",
+}
+
+#: Why an entry that is not LIVE cannot be tied, in words.
+NOT_A_PAYMENT = {
+    DELETED: "That journal entry was deleted, so it cannot be the payment of this remittance.",
+    REVERSED: "That journal entry was reversed, so it no longer records a payment and cannot be the payment of this remittance.",
+    REVERSAL: "That journal entry is the one that undid another entry, so it cannot be the payment of this remittance.",
+    DRAFT: "That journal entry is still a draft, not yet in the books, so it cannot be the payment of this remittance.",
+}
+
+#: Entry ids asked for in one request (they ride in the URL).
+_ENTRY_CHUNK = 100
+
+
+def entry_states(db, *, firm_id: str, client_id: str, entry_ids: list) -> dict:
+    """The state of each entry in `entry_ids` for this firm and client: LIVE, DRAFT, REVERSED, REVERSAL, DELETED (`remittance_match.entry_state`,
+    the one rule the candidates and both link doors use), or MISSING (no such entry of this client, which includes an id that belongs to
+    another client). Reads only; raises what the database raises. Shared with the TDS challan's link."""
+    wanted = sorted({str(i) for i in entry_ids if i})
+    found: dict = {}
+    for at in range(0, len(wanted), _ENTRY_CHUNK):
+        rows = (db.table("journal_entries").select("id, deleted_at, is_posted, is_reversed, reversal_of")
+                .eq("firm_id", firm_id).eq("client_id", client_id).in_("id", wanted[at:at + _ENTRY_CHUNK]).execute().data) or []
+        found.update({str(r["id"]): r for r in rows})
+    return {i: MISSING if found.get(i) is None else remittance_match.entry_state(found[i]) for i in wanted}
+
+
+def link_view(state: str) -> dict:
+    """`can_take_back` is the server's judgement that taking the link back is a sensible thing to offer: not when the ledger could not be read
+    (UNKNOWN), because a failed read is no reason to undo a link. The screen shows the button on it and reads no state word."""
+    return {"state": state, "label": LINK_LABEL[state], "note": LINK_NOTE.get(state), "can_take_back": state != UNKNOWN}
+
+
+def stale_links(db, *, firm_id: str, client_id: str) -> list:
+    """Remittances tied to an entry that no longer records the payment, each with `ledger_link` (`{state, label, note}`).
+
+    A live link is not listed. When the ledger cannot be read every tied remittance is listed as UNKNOWN: a failed read is not a live link, and
+    it is not a clean bill either. Nothing is changed by reading, and the link is never cleared on its own."""
+    tied = [r for r in read(db, firm_id=firm_id, client_id=client_id) if r.get("journal_entry_id")]
+    if not tied:
+        return []
+    try:
+        states = entry_states(db, firm_id=firm_id, client_id=client_id, entry_ids=[r["journal_entry_id"] for r in tied])
+    except Exception as exc:                                        # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="statutory_remittance_service.stale_links", firm_id=firm_id, client_id=client_id)
+        states = {}
+    out = []
+    for r in tied:
+        state = states.get(str(r["journal_entry_id"]), UNKNOWN)
+        if state != LIVE:
+            out.append({**r, "ledger_link": link_view(state)})
+    return out
+
+
+def unlink_payment(db, *, firm_id: str, client_id: str, remittance_id: str) -> Optional[str]:
+    """Take back the link on a remittance. Returns the entry id it pointed at, or None when the remittance is not found, has no link, or was
+    changed under the call (the update is guarded by the id it read, so two people taking it back act once)."""
+    rows = (privileged_for(db).table("statutory_remittances").select("id, journal_entry_id")
+            .eq("id", remittance_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .is_("deleted_at", "null").limit(1).execute().data) or []
+    was = (rows[0].get("journal_entry_id") if rows else None)
+    if not was:
+        return None
+    done = (privileged_for(db).table("statutory_remittances").update({"journal_entry_id": None})
+            .eq("id", remittance_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("journal_entry_id", was).is_("deleted_at", "null").execute().data)
+    return str(was) if done else None
 
 
 def retract(db, *, firm_id: str, client_id: str, remittance_id: str,

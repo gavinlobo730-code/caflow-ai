@@ -406,7 +406,10 @@ UNFIXED: dict[str, str] = {}
 # literal to read. It used to be one literal dict with the optional columns added by item assignment. The compensating
 # control is `tests/test_a_leave_allotment_and_a_timeline_event_are_written_through_the_server.py`, which asserts that every
 # key `_row` can produce is a column of `client_timeline_events` in the production snapshot.
-MAX_UNREADABLE = 471
+# 471 -> 470 (1-11-2026, POST-A-272): the one reader of a journal entry's state (`statutory_remittance_service.entry_states`) now serves both the
+# remittance's and the TDS challan's link, and spells its column list as a literal (a test holds it equal to the rule's columns), so the
+# challan service's own built select is gone and the two reads the remittance door and the stale-link list needed add none.
+MAX_UNREADABLE = 470
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
