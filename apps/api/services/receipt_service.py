@@ -419,7 +419,7 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
 
     log_event(firm_id, "receipt", receipt_id, "create", actor_id=(actor or {}).get("auth_user_id"),
               actor_email=(actor or {}).get("email"), new_data={"amount_paise": cash_base, "currency": ccy})
-    return {**receipt, "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
+    return {**_with_allocated_total(receipt, alloc_rows), "allocations": alloc_rows, "journal_entry_id": entry_id, "realized_fx_paise": fx_diff}
 
 
 def _compensate_failed_settlement(
@@ -493,6 +493,14 @@ def _compensate_failed_settlement(
             firm_id=firm_id, client_id=client_id, receipt_id=receipt_id, journal_id=journal_id,
             attempted_invoice_ids=attempted_invoice_ids,
         )
+
+
+def _with_allocated_total(receipt: dict, allocations: list) -> dict:
+    """The receipt as the database now holds it: `allocated_paise` is the sum of the allocation rows written for it (migration 571 keeps that
+    figure with a trigger on those rows). Every path inserts the receipt FIRST, with the column at its default of 0, and the allocations after
+    it, so the row a path holds in hand says 0 beside allocation lines that cover it; the response and the edit-log event are built from this
+    copy instead, and a receipt created with no allocation still says 0."""
+    return {**receipt, "allocated_paise": sum(int(a.get("allocated_paise") or 0) for a in allocations)}
 
 
 def _settle_receipt_via_atomic_rpc(
@@ -576,6 +584,7 @@ def _settle_receipt_via_atomic_rpc(
     db_receipt_row = out.get("receipt")
 
     receipt = {**receipt_payload, **(db_receipt_row or {}), "id": receipt_id, "journal_entry_id": journal_id}
+    receipt = _with_allocated_total(receipt, alloc_results)
 
     log_event(
         firm_id or "", "receipt", receipt_id,
@@ -921,7 +930,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
     log_event(
         firm_id or "", "receipt", receipt_id,
         "create", actor_id=actor.get("auth_user_id"),
-        actor_email=actor.get("email"), new_data=receipt,
+        actor_email=actor.get("email"), new_data=_with_allocated_total(receipt, alloc_payloads),
     )
 
     timeline_service.log_timeline_event(
@@ -942,4 +951,4 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
 
     receipt["journal_entry_id"] = journal_id
     receipt["allocations"]      = alloc_payloads
-    return receipt
+    return _with_allocated_total(receipt, alloc_payloads)
