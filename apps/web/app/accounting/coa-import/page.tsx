@@ -236,7 +236,7 @@ export default function CoaImportPage() {
           <Upload size={28} className="mx-auto text-ps-hint mb-3" />
           <p className="text-sm font-medium text-ps-body">Click to upload CSV or Excel file</p>
           <p className="text-xs text-ps-hint mt-1">Supports .csv, .txt (Excel paste)</p>
-          <input ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
+          <input aria-label="Chart of accounts file to upload" ref={fileRef} type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={e => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }} />
         </div>
       )}
 

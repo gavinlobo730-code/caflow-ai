@@ -393,7 +393,7 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
                   <p className="text-sm text-ps-label">Click to browse or drag & drop your file</p>
                   <p className="text-xs text-ps-hint mt-1">CSV (.csv) and Excel (.xlsx, .xls) files are supported</p>
                 </div>
-                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
+                <input aria-label="CSV or Excel file to import" ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                 {fileError && (
                   <p className="text-xs text-red-600 mt-2 flex items-center gap-1">

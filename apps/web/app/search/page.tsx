@@ -100,7 +100,7 @@ function SearchContent() {
         <form onSubmit={handleSubmit} className="mb-8">
           <div className="relative">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-ps-hint" />
-            <input
+            <input aria-label="Search"
               autoFocus
               type="text"
               className="w-full pl-11 pr-4 py-3 border rounded-xl text-base bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand/30"

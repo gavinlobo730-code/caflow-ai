@@ -452,7 +452,7 @@ export default function Form26ASPage() {
           <p className="text-2xs text-ps-label">
             Download Form 26AS from the TRACES portal (tdscpc.gov.in) or via the e-filing portal login, convert PDF to text, and paste below.
           </p>
-          <textarea
+          <textarea aria-label="Form 26AS text"
             value={rawText}
             onChange={e => setRawText(e.target.value)}
             rows={10}

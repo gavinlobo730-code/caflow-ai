@@ -426,7 +426,7 @@ export default function FinancialStatementsPage() {
 
         {/* Version selector */}
         {versions.length > 0 && (
-          <select
+          <select aria-label="Version of the financial statements"
             value={selectedVersionId}
             onChange={(e) => setSelectedVersionId(e.target.value)}
             className="text-xs border border-ps-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand"

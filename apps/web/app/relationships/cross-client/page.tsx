@@ -127,7 +127,7 @@ export default function CrossClientMatchesPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ps-hint" />
-          <input
+          <input aria-label="Search entity name"
             className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-ps-hint focus:outline-none focus:border-brand"
             placeholder="Search entity name…"
             value={search}

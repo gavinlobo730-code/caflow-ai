@@ -2135,7 +2135,7 @@ function FXReports({ clientId, financialYear, onFinancialYearChange, ledgerSpan 
             ariaLabel="Period"
           />
           {currencyOptions.length > 0 && (
-            <select value={ccy} onChange={(e) => setCcy(e.target.value)}
+            <select aria-label="Currency" value={ccy} onChange={(e) => setCcy(e.target.value)}
               className="text-xs rounded border border-ps-border px-2 py-1 text-ps-label bg-white">
               <option value="all">All currencies</option>
               {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -3956,7 +3956,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <input
+                <input aria-label={`Resolution note — what you found or fixed (${f.severity})`}
                   type="text"
                   placeholder="Resolution note (what did you find / fix)…"
                   value={noteDrafts[f.id] ?? ""}

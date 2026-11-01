@@ -424,13 +424,13 @@ export default function StatutoryValuesPage() {
                   <div className="space-y-1.5">
                     {bands.map((band, i) => (
                       <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-1.5 items-center">
-                        <input value={band.from} placeholder="From ₹"
+                        <input aria-label={`Band ${i + 1}: from (₹)`} value={band.from} placeholder="From ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, from: e.target.value } : x))}
                           className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
-                        <input value={band.to} placeholder="To ₹ (blank = and above)"
+                        <input aria-label={`Band ${i + 1}: to (₹), blank for and above`} value={band.to} placeholder="To ₹ (blank = and above)"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, to: e.target.value } : x))}
                           className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
-                        <input value={band.amount} placeholder="Tax ₹"
+                        <input aria-label={`Band ${i + 1}: tax (₹)`} value={band.amount} placeholder="Tax ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
                           className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
                         <button type="button" disabled={bands.length === 1}
@@ -472,7 +472,7 @@ function Field({ label, value, onChange, placeholder }: {
   return (
     <div>
       <label className="block text-2xs text-ps-label mb-1">{label}</label>
-      <input type="text" value={value} placeholder={placeholder}
+      <input aria-label={label} type="text" value={value} placeholder={placeholder}
         onChange={e => onChange(e.target.value)}
         className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
     </div>

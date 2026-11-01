@@ -309,7 +309,7 @@ export default function FilingDemoWizard({
                   </label>
                   <div>
                     <label className="text-xs text-ps-label block mb-1">{stage.signatory_label}</label>
-                    <select value={signatory} onChange={(e) => setSignatory(e.target.value)}
+                    <select aria-label={stage.signatory_label} value={signatory} onChange={(e) => setSignatory(e.target.value)}
                       className="w-full px-2 py-1.5 text-sm border rounded">
                       <option value="">Select…</option>
                       {(stage.signatory_options ?? []).map((o) => (

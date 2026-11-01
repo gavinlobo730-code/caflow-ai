@@ -316,7 +316,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Template</label>
             <div className="relative">
-              <select
+              <select aria-label="Template"
                 value={form.template_id}
                 onChange={(e) => setForm({ ...form, template_id: e.target.value })}
                 className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light appearance-none"
@@ -508,7 +508,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Service Type *</label>
             <div className="relative">
-              <select
+              <select aria-label="Service type"
                 value={form.service_type}
                 onChange={(e) => setForm({ ...form, service_type: e.target.value })}
                 className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light appearance-none"
@@ -901,7 +901,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
             <div>
               <p className="text-xs font-medium text-ps-hint uppercase tracking-wider mb-1.5">Client Signing Link</p>
               <div className="flex items-center gap-2">
-                <input
+                <input aria-label="Client signing link"
                   readOnly
                   value={`${typeof window !== "undefined" ? window.location.origin : ""}/sign/?t=${letter.sign_token}`}
                   className="flex-1 rounded-lg border border-ps-border bg-ps-bg px-3 py-2 text-xs text-ps-label outline-none focus:border-brand focus:ring-2 focus:ring-brand"

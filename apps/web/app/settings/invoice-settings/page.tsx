@@ -212,7 +212,7 @@ export default function InvoiceSettingsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-medium text-ps-label block mb-1">Prefix <span className="text-state-problem">*</span></label>
-                    <input
+                    <input aria-label="Invoice number prefix"
                       type="text"
                       value={form.prefix}
                       onChange={(e) => update("prefix", e.target.value.toUpperCase().slice(0, 10))}

@@ -195,7 +195,7 @@ function VariableForm({
             {LABELS[v] ?? v.replaceAll("_", " ")}
           </label>
           {v === "document_list" ? (
-            <textarea
+            <textarea aria-label={LABELS[v] ?? v.replaceAll("_", " ")}
               value={values[v] ?? ""}
               onChange={(e) => onChange(v, e.target.value)}
               rows={3}
@@ -203,7 +203,7 @@ function VariableForm({
               className="w-full rounded-lg border border-ps-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand-light resize-none"
             />
           ) : (
-            <input
+            <input aria-label={LABELS[v] ?? v.replaceAll("_", " ")}
               value={values[v] ?? ""}
               onChange={(e) => onChange(v, e.target.value)}
               placeholder={`Enter ${LABELS[v] ?? v}`}

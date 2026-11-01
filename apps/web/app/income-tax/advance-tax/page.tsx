@@ -641,7 +641,7 @@ export default function AdvanceTaxPage() {
                           className="border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-brand" />
                       </td>
                       <td className="px-3 py-3">
-                        <input type="text"
+                        <input aria-label={`BSR code or challan number, instalment ${n}`} type="text"
                           value={editChallan[n] ?? ""}
                           onChange={e => setEditChallan(prev => ({ ...prev, [n]: e.target.value }))}
                           placeholder="BSR/challan"

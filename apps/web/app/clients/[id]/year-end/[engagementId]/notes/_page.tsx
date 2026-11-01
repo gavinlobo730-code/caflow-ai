@@ -255,7 +255,7 @@ export default function NotesPage() {
                         </p>
                       ) : (
                         <>
-                          <textarea
+                          <textarea aria-label={`Text of the note: ${note.title}`}
                             value={contentValue}
                             onChange={(e) => setEditContent((prev) => ({ ...prev, [note.id]: e.target.value }))}
                             rows={5}

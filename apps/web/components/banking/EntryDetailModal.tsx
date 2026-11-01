@@ -545,7 +545,7 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
 
         {editable && (
           <div className="flex items-center gap-2 flex-wrap">
-            <input ref={fileRef} type="file" className="hidden"
+            <input aria-label="File to attach to this entry" ref={fileRef} type="file" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) attachFile(f); }} />
             <button onClick={() => fileRef.current?.click()} disabled={busy || uploading}
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-disabled bg-white rounded-lg hover:bg-ps-muted text-ps-body font-medium disabled:opacity-50">

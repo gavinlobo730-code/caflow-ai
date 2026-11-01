@@ -349,7 +349,7 @@ function RatioRow({
         <div className="mt-2">
           {editing ? (
             <div className="flex items-start gap-2">
-              <textarea
+              <textarea aria-label={`Explanation for ${r.label}`}
                 value={draft}
                 onChange={(e) => onDraft(e.target.value)}
                 rows={2}

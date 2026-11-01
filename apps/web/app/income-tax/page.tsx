@@ -367,7 +367,7 @@ function BulkMarkFiledModal({
                       </span>
                     ) : (
                       <div className="w-44 shrink-0">
-                        <input
+                        <input aria-label={`Acknowledgement number (ARN) — ${entry.clients?.client_name ?? "Client"}`}
                           type="text"
                           placeholder="e.g. 123456789012345"
                           value={arns[entry.id] ?? ""}
@@ -1239,7 +1239,7 @@ export default function IncomeTaxPage() {
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Client <span className="text-state-problem">*</span>
                 </label>
-                <select
+                <select aria-label="Client"
                   value={addForm.client_id}
                   onChange={(e) => handleAddFormChange("client_id", e.target.value)}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
@@ -1412,7 +1412,7 @@ export default function IncomeTaxPage() {
                   Acknowledgement Number (ARN){" "}
                   <span className="text-state-problem">*</span>
                 </label>
-                <input
+                <input aria-label="Acknowledgement number (ARN)"
                   type="text"
                   placeholder="e.g. 123456789012345"
                   value={filedForm.arn}

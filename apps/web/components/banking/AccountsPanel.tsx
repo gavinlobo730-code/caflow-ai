@@ -549,7 +549,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
             </div>
             <div>
               <label className={labelCls}>{openingLabel} (₹)</label>
-              <input type="number" step="0.01" value={openingBal} onChange={(e) => setOpeningBal(e.target.value)} className={inputCls} placeholder="0.00" />
+              <input aria-label={`${openingLabel} (₹)`} type="number" step="0.01" value={openingBal} onChange={(e) => setOpeningBal(e.target.value)} className={inputCls} placeholder="0.00" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1004,7 +1004,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                     No active bank accounts. <button onClick={onManageAccounts} className="underline font-medium">Add one first</button>.
                   </div>
                 ) : (
-                  <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
+                  <select aria-label="Bank account" value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
                     {accounts.map((a) => <option key={a.id} value={a.id}>{a.bank_name} · ····{a.account_no.slice(-4)}</option>)}
                   </select>
                 )}
@@ -1055,9 +1055,9 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   </span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  <input value={openingRs} onChange={(e) => setOpeningRs(e.target.value)}
+                  <input aria-label="Opening balance printed on the statement (₹)" value={openingRs} onChange={(e) => setOpeningRs(e.target.value)}
                          placeholder="Opening e.g. 1,00,000.00" className={inputCls} inputMode="decimal" />
-                  <input value={closingRs} onChange={(e) => setClosingRs(e.target.value)}
+                  <input aria-label="Closing balance printed on the statement (₹)" value={closingRs} onChange={(e) => setClosingRs(e.target.value)}
                          placeholder="Closing e.g. 1,30,000.00" className={inputCls} inputMode="decimal" />
                 </div>
                 <p className="text-3xs text-ps-hint mt-1">
@@ -1114,7 +1114,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                         {f.label}{f.required && <span className="text-state-problem"> *</span>}
                         <span className="font-normal text-ps-hint"> — {f.hint}</span>
                       </label>
-                      <select
+                      <select aria-label={f.label}
                         value={mapping[f.key] ?? ""}
                         onChange={(e) => {
                           const v = e.target.value === "" ? null : Number(e.target.value);

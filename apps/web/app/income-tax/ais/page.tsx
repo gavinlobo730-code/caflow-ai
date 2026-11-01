@@ -401,7 +401,7 @@ export default function AISPage() {
           </p>
         </div>
         <div className="px-5 py-6">
-          <input
+          <input aria-label="AIS JSON file to upload"
             ref={fileRef}
             type="file"
             accept=".json,application/json"
@@ -530,7 +530,7 @@ export default function AISPage() {
                           : <span className="text-ps-disabled">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <input
+                        <input aria-label={`Books figure (₹) — ${line.transaction_type}, ${line.information_label}`}
                           type="text"
                           inputMode="decimal"
                           placeholder="Not reviewed"
@@ -567,7 +567,7 @@ export default function AISPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <input
+                        <input aria-label={`Why the difference is acceptable — ${line.transaction_type}, ${line.information_label}`}
                           type="text"
                           placeholder="Why the difference is acceptable"
                           value={notes[line.id] ?? ""}

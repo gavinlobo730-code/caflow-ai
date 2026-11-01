@@ -635,7 +635,7 @@ export default function TimeTrackingPage() {
                 </div>
                 {manualBillable && (
                   <div className="flex-1">
-                    <input
+                    <input aria-label="Hourly rate (₹)"
                       type="number"
                       min="0"
                       step="0.01"

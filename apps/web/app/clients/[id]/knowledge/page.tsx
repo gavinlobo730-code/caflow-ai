@@ -139,15 +139,15 @@ export default function ClientKnowledgePage() {
         <Search size={14} className="text-gray-400" />
         {/* No Enter-key handler: the debounced effect above already covers
             every keystroke, Enter included, ~300ms after typing stops. */}
-        <input value={query} onChange={(e) => setQuery(e.target.value)}
+        <input aria-label="Search client articles" value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder="Search client articles…" className="flex-1 text-sm outline-none" />
       </div>
       {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
       {showForm && canAuthor && (
         <form onSubmit={createArticle} className="mb-4 bg-white border border-ps-border rounded-xl p-4 space-y-2 text-sm">
-          <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
-          <textarea placeholder="Content…" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={4} />
-          <input placeholder="Tags (comma-separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
+          <input aria-label="Title" required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
+          <textarea aria-label="Content" placeholder="Content…" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={4} />
+          <input aria-label="Tags, comma-separated" placeholder="Tags (comma-separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
           <button type="submit" disabled={saving} className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-50">Create</button>
         </form>
       )}

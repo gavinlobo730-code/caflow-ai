@@ -238,7 +238,7 @@ export function SalaryWorksheet({
                ["Professional tax (₹)", "professionalTax"]] as [string, keyof Emp][]).map(([label, field]) => (
               <div key={field}>
                 <label className="text-3xs text-ps-label block mb-1">{label}</label>
-                <input className={input} inputMode="decimal" value={e[field] as string}
+                <input aria-label={label} className={input} inputMode="decimal" value={e[field] as string}
                   onChange={ev => upd(e.key, { [field]: ev.target.value } as Partial<Emp>)} />
               </div>
             ))}
@@ -248,11 +248,11 @@ export function SalaryWorksheet({
             <p className="text-3xs text-ps-label">Perquisites — §17(2), as valued in Form 16</p>
             {e.perqs.map((x, i) => (
               <div key={i} className="flex flex-wrap gap-2">
-                <select className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" value={x.kind}
+                <select aria-label={`Kind of perquisite ${i + 1}`} className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" value={x.kind}
                   onChange={ev => upd(e.key, { perqs: e.perqs.map((y, j) => j === i ? { ...y, kind: ev.target.value } : y) })}>
                   {PERQUISITE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                 </select>
-                <input className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
+                <input aria-label={`Perquisite amount (₹), perquisite ${i + 1}`} className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
                   placeholder="₹" value={x.amount}
                   onChange={ev => upd(e.key, { perqs: e.perqs.map((y, j) => j === i ? { ...y, amount: ev.target.value } : y) })} />
                 <button type="button" aria-label="Remove this perquisite" className="p-1 text-ps-hint hover:text-state-problem"
@@ -271,16 +271,16 @@ export function SalaryWorksheet({
             <p className="text-3xs text-ps-label">ESOP and RSU exercised — §17(2)(vi)</p>
             {e.esop.map((x, i) => (
               <div key={i} className="flex flex-wrap gap-2 items-center">
-                <input className="w-40 text-xs px-2 py-1.5 border border-ps-border rounded-lg" placeholder="Grant"
+                <input aria-label={`ESOP or RSU grant ${i + 1}`} className="w-40 text-xs px-2 py-1.5 border border-ps-border rounded-lg" placeholder="Grant"
                   value={x.description}
                   onChange={ev => upd(e.key, { esop: e.esop.map((y, j) => j === i ? { ...y, description: ev.target.value } : y) })} />
-                <input className="w-20 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="numeric"
+                <input aria-label={`Shares exercised, grant ${i + 1}`} className="w-20 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="numeric"
                   placeholder="Shares" value={x.shares}
                   onChange={ev => upd(e.key, { esop: e.esop.map((y, j) => j === i ? { ...y, shares: ev.target.value } : y) })} />
-                <input className="w-28 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
+                <input aria-label={`Fair market value per share (₹), grant ${i + 1}`} className="w-28 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
                   placeholder="FMV per share ₹" value={x.fmv}
                   onChange={ev => upd(e.key, { esop: e.esop.map((y, j) => j === i ? { ...y, fmv: ev.target.value } : y) })} />
-                <input className="w-28 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
+                <input aria-label={`Price paid per share (₹, 0 for an RSU), grant ${i + 1}`} className="w-28 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
                   placeholder="Price paid ₹ (0 for RSU)" value={x.price}
                   onChange={ev => upd(e.key, { esop: e.esop.map((y, j) => j === i ? { ...y, price: ev.target.value } : y) })} />
                 <button type="button" aria-label="Remove this exercise" className="p-1 text-ps-hint hover:text-state-problem"
@@ -299,11 +299,11 @@ export function SalaryWorksheet({
             <p className="text-3xs text-ps-label">Exemptions under §10 — the EXEMPT amount, as Form 16 states it</p>
             {e.exempts.map((x, i) => (
               <div key={i} className="flex flex-wrap gap-2">
-                <select className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" value={x.kind}
+                <select aria-label={`Kind of exemption ${i + 1}`} className="text-xs px-2 py-1.5 border border-ps-border rounded-lg" value={x.kind}
                   onChange={ev => upd(e.key, { exempts: e.exempts.map((y, j) => j === i ? { ...y, kind: ev.target.value } : y) })}>
                   {EXEMPTION_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                 </select>
-                <input className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
+                <input aria-label={`Exempt amount (₹), exemption ${i + 1}`} className="w-32 text-xs px-2 py-1.5 border border-ps-border rounded-lg text-right" inputMode="decimal"
                   placeholder="₹" value={x.amount}
                   onChange={ev => upd(e.key, { exempts: e.exempts.map((y, j) => j === i ? { ...y, amount: ev.target.value } : y) })} />
                 <button type="button" aria-label="Remove this exemption" className="p-1 text-ps-hint hover:text-state-problem"
@@ -327,7 +327,7 @@ export function SalaryWorksheet({
              ["Rent paid (₹)", "rent"]] as [string, "basic" | "received" | "rent"][]).map(([label, field]) => (
             <div key={field}>
               <label className="text-3xs text-ps-label block mb-1">{label}</label>
-              <input className={input} inputMode="decimal" value={hra[field]}
+              <input aria-label={label} className={input} inputMode="decimal" value={hra[field]}
                 onChange={ev => setHra(h => ({ ...h, [field]: ev.target.value }))} />
             </div>
           ))}

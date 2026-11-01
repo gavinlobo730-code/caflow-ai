@@ -239,7 +239,7 @@ export default function TrialBalanceImportPage() {
                   <p className="text-sm text-ps-hint">Supports: Tally CSV, Busy CSV, QuickBooks CSV, Zoho CSV</p>
                   <p className="text-xs text-ps-hint mt-1">Excel: File &rarr; Save As &rarr; CSV</p>
                 </div>
-                <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFile} />
+                <input aria-label="Trial balance CSV file to upload" ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFile} />
               </CardContent>
             </Card>
 

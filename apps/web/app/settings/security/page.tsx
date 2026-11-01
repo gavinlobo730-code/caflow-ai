@@ -286,7 +286,7 @@ function ChangePasswordCard() {
               For your security, we sent a verification code to your email. Enter it below to finish changing your password.
             </p>
             <div className="flex gap-2">
-              <input
+              <input aria-label="Verification code from your email"
                 value={reauthOtp}
                 onChange={(e) => setReauthOtp(e.target.value.replace(/\D/g, "").slice(0, 8))}
                 inputMode="numeric" maxLength={8} placeholder="123456"
@@ -493,7 +493,7 @@ function MfaCard() {
               <div className="space-y-1.5">
                 <p className="text-sm text-ps-body">2. Enter the 6-digit code from the app:</p>
                 <div className="flex gap-2">
-                  <input
+                  <input aria-label="6-digit code from the authenticator app"
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     inputMode="numeric"

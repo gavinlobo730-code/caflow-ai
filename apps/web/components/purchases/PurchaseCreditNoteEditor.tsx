@@ -427,7 +427,7 @@ export function PurchaseCreditNoteEditor({
           <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Attachment</p>
           {!isLocked && (
             <div className="flex items-center gap-2">
-              <input type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
+              <input aria-label="Attachment to upload" type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
               <Button variant="plain" size="none" onClick={handleUpload} disabled={!uploadFile || uploading} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {uploading ? "Uploading…" : "Upload"}
               </Button>

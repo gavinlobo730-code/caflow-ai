@@ -263,13 +263,13 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
               <div className="border border-ps-border rounded-lg divide-y divide-ps-border">
                 {docs.map((d) => (
                   <div key={d.id} className="flex items-center gap-2 px-3 py-2">
-                    <input type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
+                    <input aria-label={`Settle ${d.no}`} type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-ps-ink truncate">{d.no}</p>
                       <p className="text-3xs text-ps-hint">{formatDate(d.date)} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
                     </div>
                     {checked.has(d.id) && (
-                      <input
+                      <input aria-label={`Amount to settle on ${d.no}`}
                         type="number" min="0" step="0.01" value={amounts[d.id] ?? ""}
                         onChange={(e) => setAmounts((a) => ({ ...a, [d.id]: e.target.value }))}
                         className="w-24 border rounded px-2 py-1 text-xs text-right font-mono"
@@ -303,7 +303,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
           {isForeign && (
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Exchange rate ({currency} → INR) *</label>
-              <input type="number" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
+              <input aria-label={`Exchange rate (${currency} to INR)`} type="number" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. 83.25" />
             </div>
           )}

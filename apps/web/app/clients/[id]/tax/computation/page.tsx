@@ -1228,7 +1228,7 @@ export default function TaxComputationPage() {
           <h2 className="text-sm font-semibold text-ps-ink">Tax Computation Workspace</h2>
           <p className="text-xs text-ps-hint mt-0.5">IT Act 1961 — Sections 40A, 43B, 80C–80JJAA</p>
         </div>
-        <select
+        <select aria-label="Financial year"
           value={fy}
           onChange={e => setFy(e.target.value)}
           className="text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
@@ -1318,7 +1318,7 @@ export default function TaxComputationPage() {
                 {isCompany ? (
                   <>
                     <label className="text-3xs text-ps-label mb-1 block">Company Regime</label>
-                    <select value={companyRegime} onChange={e => setCompanyRegime(e.target.value)}
+                    <select aria-label="Company regime" value={companyRegime} onChange={e => setCompanyRegime(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       <option value="normal">Normal rates — 25% or 30%</option>
                       <option value="115BAA">§115BAA — 22%</option>
@@ -1335,7 +1335,7 @@ export default function TaxComputationPage() {
                 ) : (
                   <>
                     <label className="text-3xs text-ps-label mb-1 block">Tax Regime</label>
-                    <select value={regime} onChange={e => setRegime(e.target.value)}
+                    <select aria-label="Tax regime" value={regime} onChange={e => setRegime(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       <option value="new">New Regime (Default)</option>
                       <option value="old">Old Regime</option>
@@ -1516,7 +1516,7 @@ export default function TaxComputationPage() {
               ].filter(f => !f.relief || offers(f.relief)).map(({ label, value, set, hint }) => (
                 <div key={label}>
                   <label className="text-3xs text-ps-label mb-1 block">{label}</label>
-                  <input
+                  <input aria-label={label}
                     type="text"
                     inputMode="decimal"
                     value={value}
@@ -1583,7 +1583,7 @@ export default function TaxComputationPage() {
                     ).map(({ label, value, set, hint }) => (
                       <div key={label}>
                         <label className="text-3xs text-ps-label mb-1 block">{label}</label>
-                        <input type="text" inputMode="decimal" value={value}
+                        <input aria-label={label} type="text" inputMode="decimal" value={value}
                           onChange={e => set(e.target.value)}
                           className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                           placeholder="0" />
@@ -1622,12 +1622,12 @@ export default function TaxComputationPage() {
                       </div>
                       {presVehicles.map((v, i) => (
                         <div key={i} className="grid grid-cols-12 gap-2">
-                          <input type="text" inputMode="numeric" value={v.weight}
+                          <input aria-label={`Gross vehicle weight (kg), carriage ${i + 1}`} type="text" inputMode="numeric" value={v.weight}
                             placeholder="Gross vehicle weight (kg)"
                             onChange={e => setPresVehicles(rows => rows.map((r, j) =>
                               j === i ? { ...r, weight: e.target.value } : r))}
                             className="col-span-6 text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
-                          <input type="text" inputMode="numeric" value={v.months}
+                          <input aria-label={`Months owned in the year, carriage ${i + 1}`} type="text" inputMode="numeric" value={v.months}
                             placeholder="Months owned"
                             onChange={e => setPresVehicles(rows => rows.map((r, j) =>
                               j === i ? { ...r, months: e.target.value } : r))}
@@ -1771,7 +1771,7 @@ export default function TaxComputationPage() {
                   ].filter(f => !f.relief || offers(f.relief)).map(({ label, value, set, hint }) => (
                     <div key={label}>
                       <label className="text-3xs text-ps-label mb-1 block">{label}</label>
-                      <input type="text" inputMode="decimal" value={value}
+                      <input aria-label={label} type="text" inputMode="decimal" value={value}
                         onChange={e => set(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
@@ -1970,7 +1970,7 @@ export default function TaxComputationPage() {
                     ].map(({ label, value, set, hint }) => (
                       <div key={label}>
                         <label className="text-3xs text-ps-label mb-1 block">{label}</label>
-                        <input type="text" inputMode="decimal" value={value}
+                        <input aria-label={label} type="text" inputMode="decimal" value={value}
                           onChange={e => set(e.target.value)}
                           className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                           placeholder="0" />
@@ -2012,22 +2012,22 @@ export default function TaxComputationPage() {
                   )}
                   {donations.map((d, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-start">
-                      <input type="text" value={d.description} placeholder="Donee"
+                      <input aria-label={`Donee, donation ${i + 1}`} type="text" value={d.description} placeholder="Donee"
                         onChange={e => setDonations(rows => rows.map((r, j) =>
                           j === i ? { ...r, description: e.target.value } : r))}
                         className="col-span-4 text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
-                      <input type="text" inputMode="decimal" value={d.amount} placeholder="Amount (₹)"
+                      <input aria-label={`Donation amount (₹), donation ${i + 1}`} type="text" inputMode="decimal" value={d.amount} placeholder="Amount (₹)"
                         onChange={e => setDonations(rows => rows.map((r, j) =>
                           j === i ? { ...r, amount: e.target.value } : r))}
                         className="col-span-2 text-xs px-2 py-1.5 border border-ps-border rounded-lg" />
-                      <select value={d.pct}
+                      <select aria-label={`Share of the donation that qualifies, donation ${i + 1}`} value={d.pct}
                         onChange={e => setDonations(rows => rows.map((r, j) =>
                           j === i ? { ...r, pct: Number(e.target.value) } : r))}
                         className="col-span-2 text-xs px-2 py-1.5 border border-ps-border rounded-lg">
                         <option value={50}>50%</option>
                         <option value={100}>100%</option>
                       </select>
-                      <select value={d.paidInCash}
+                      <select aria-label={`How the donation was paid, donation ${i + 1}`} value={d.paidInCash}
                         onChange={e => setDonations(rows => rows.map((r, j) =>
                           j === i ? { ...r, paidInCash: e.target.value as DonationRow["paidInCash"] } : r))}
                         className="col-span-3 text-xs px-2 py-1.5 border border-ps-border rounded-lg">
@@ -2063,7 +2063,7 @@ export default function TaxComputationPage() {
                     <label className="text-3xs text-ps-label mb-1 block">
                       Turnover in {computeResult?.assessee?.turnover_reference_fy ?? "the reference year"} (₹)
                     </label>
-                    <input type="text" inputMode="decimal" value={turnoverRefYear}
+                    <input aria-label={`Turnover in ${computeResult?.assessee?.turnover_reference_fy ?? "the reference year"} (₹)`} type="text" inputMode="decimal" value={turnoverRefYear}
                       onChange={e => setTurnoverRefYear(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="Leave blank for 30%" />
@@ -2079,7 +2079,7 @@ export default function TaxComputationPage() {
                   <label className="text-3xs text-ps-label mb-1 block">
                     {isCompany ? "Book profit — §115JB (₹)" : "Adjusted total income — §115JC (₹)"}
                   </label>
-                  <input type="text" inputMode="decimal" value={bookProfit}
+                  <input aria-label={isCompany ? "Book profit — §115JB (₹)" : "Adjusted total income — §115JC (₹)"} type="text" inputMode="decimal" value={bookProfit}
                     onChange={e => setBookProfit(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                     placeholder={isCompany ? "Companies Act profit as adjusted" : "Total income with §10AA/§35AD/VI-A Part C added back"} />

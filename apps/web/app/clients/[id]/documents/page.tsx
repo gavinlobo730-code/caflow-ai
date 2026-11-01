@@ -342,7 +342,7 @@ export default function DocumentsPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">File *{maxUploadMb ? ` (max ${maxUploadMb} MB)` : ""}</label>
-                <input
+                <input aria-label="File to upload"
                   ref={fileInputRef}
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"

@@ -391,7 +391,7 @@ function BudgetTable({
                   <td className="px-3 py-2.5 text-right">
                     {isEditing ? (
                       <div className="flex items-center justify-end gap-1">
-                        <input
+                        <input aria-label={`Annual budget (₹) — ${row.account_name}`}
                           autoFocus
                           type="text"
                           inputMode="decimal"

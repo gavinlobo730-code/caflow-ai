@@ -285,7 +285,7 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
         </button>
       ) : (
         <>
-          <input ref={fileRef} type="file" className="hidden" onChange={handleFile} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" />
+          <input aria-label="Notice file to upload" ref={fileRef} type="file" className="hidden" onChange={handleFile} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" />
           <button onClick={() => fileRef.current?.click()} disabled={uploading}
             className="flex items-center gap-1 text-xs text-ps-label hover:text-brand disabled:opacity-40">
             {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}

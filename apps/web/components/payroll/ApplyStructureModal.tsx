@@ -203,13 +203,13 @@ export default function ApplyStructureModal({
                   {employees.map((e) => (
                     <tr key={e.id} className="border-b border-ps-border">
                       <td className="px-3 py-1.5">
-                        <input type="checkbox" checked={!!picked[e.id]}
+                        <input aria-label={`Apply to ${e.name}`} type="checkbox" checked={!!picked[e.id]}
                           onChange={(ev) => { setPicked((p) => ({ ...p, [e.id]: ev.target.checked })); setResult(null); }} />
                       </td>
                       <td className="px-3 py-1.5 text-ps-ink">{e.name}</td>
                       <td className="px-3 py-1.5 text-right text-ps-label">{fmt(e.basic_paise)}</td>
                       <td className="px-3 py-1.5">
-                        <input value={gross[e.id] ?? ""} type="text" inputMode="decimal"
+                        <input aria-label={`Gross salary (₹) — ${e.name}`} value={gross[e.id] ?? ""} type="text" inputMode="decimal"
                           onChange={(ev) => { setGross((g) => ({ ...g, [e.id]: ev.target.value })); setResult(null); }}
                           disabled={!picked[e.id]}
                           className={`${FIELD} w-32 disabled:opacity-40 ${

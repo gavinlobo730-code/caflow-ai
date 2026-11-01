@@ -244,7 +244,7 @@ export default function WorkflowsPage() {
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ps-hint" />
-              <input
+              <input aria-label="Search workflows"
                 type="text"
                 placeholder="Search workflows..."
                 value={search}

@@ -220,7 +220,7 @@ function Field<T extends Record<string, string>>({
         {label}
         {required && <span className="text-state-problem ml-0.5">*</span>}
       </label>
-      <input
+      <input aria-label={label}
         type={type}
         value={form[field] as string}
         onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
@@ -721,7 +721,7 @@ export default function OnboardingPage() {
             <div className="space-y-4 max-w-md">
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">Full Name<span className="text-state-problem ml-0.5">*</span></label>
-                <input
+                <input aria-label="Full name"
                   type="text"
                   value={ownerName}
                   onChange={(e) => setOwnerName(e.target.value)}
@@ -733,7 +733,7 @@ export default function OnboardingPage() {
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">Password<span className="text-state-problem ml-0.5">*</span></label>
                 <div className="relative">
-                  <input
+                  <input aria-label="Password"
                     type={showPw ? "text" : "password"}
                     value={pw}
                     onChange={(e) => setPw(e.target.value)}
@@ -748,7 +748,7 @@ export default function OnboardingPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">Confirm password<span className="text-state-problem ml-0.5">*</span></label>
-                <input
+                <input aria-label="Confirm password"
                   type={showPw ? "text" : "password"}
                   value={pw2}
                   onChange={(e) => setPw2(e.target.value)}
@@ -768,7 +768,7 @@ export default function OnboardingPage() {
                   <p className="text-sm text-blue-700">
                     We sent an 8-digit code to <span className="font-medium">{user?.email}</span>. Enter it below to set your password.
                   </p>
-                  <input
+                  <input aria-label="Email verification code"
                     type="text"
                     inputMode="numeric"
                     maxLength={8}

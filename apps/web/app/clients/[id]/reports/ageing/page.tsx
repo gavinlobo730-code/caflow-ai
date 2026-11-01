@@ -592,7 +592,7 @@ function MsmeSelect({ value, busy, onChange }: {
 }) {
   return (
     <div className="relative flex items-center">
-      <select
+      <select aria-label="MSME status of this supplier"
         value={value}
         disabled={busy}
         onChange={(e) => onChange(e.target.value as "" | MsmeStatus)}
@@ -956,7 +956,7 @@ function UnbilledPanel({
           </p>
           <div className="mt-2.5 flex items-center gap-2">
             {!reviewedOn && (
-              <input
+              <input aria-label="Note on what you checked (optional)"
                 value={note}
                 onChange={(e) => onNote(e.target.value)}
                 placeholder="Optional note — what you checked"
@@ -1010,7 +1010,7 @@ function UnbilledPanel({
                 </span>
                 <span className="text-2xs text-ps-body flex-1 truncate">{a.account_name}</span>
                 <span className="text-3xs text-ps-disabled w-16 flex-shrink-0">{a.account_type}</span>
-                <select
+                <select aria-label={`Unbilled dues side — ${a.account_code} ${a.account_name}`}
                   value={a.unbilled_dues_side ?? ""}
                   disabled={saving === a.id}
                   onChange={(e) => onMark(

@@ -792,14 +792,14 @@ export default function ClientPortalPage() {
                       <span className="text-xs text-ps-hint font-normal ml-1">(CA → Client)</span>
                     </CardTitle>
                     <div className="flex items-center gap-2">
-                      <input
+                      <input aria-label="Label for the shared document (optional)"
                         type="text"
                         placeholder="Label (optional)"
                         value={uploadLabel}
                         onChange={(e) => setUploadLabel(e.target.value)}
                         className="text-xs px-2 py-1.5 border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand w-36"
                       />
-                      <input
+                      <input aria-label="Document to share with the client"
                         type="file"
                         className="hidden"
                         ref={sharedUploadRef}
@@ -1112,7 +1112,7 @@ export default function ClientPortalPage() {
                       ))
                     )}
                     <div className="pt-2 border-t border-ps-border space-y-2">
-                      <textarea
+                      <textarea aria-label="Message to this client"
                         rows={2}
                         placeholder="Type a message to send to this client…"
                         value={newMessageText}

@@ -152,7 +152,7 @@ function PaiseInput({ label, valuePaise, onChange, note }: {
       </div>
       <div className="flex items-center gap-1 shrink-0">
         <span className="text-sm text-ps-hint">₹</span>
-        <input
+        <input aria-label={label}
           type="text" inputMode="decimal" value={raw}
           onChange={e => {
             setRaw(e.target.value);
@@ -565,11 +565,11 @@ export default function DeductionsPage() {
         <div className="space-y-2">
           {state.donations.map((d, i) => (
             <div key={i} className="flex gap-2 items-center">
-              <input type="text" value={d.description}
+              <input aria-label={`Fund or trust name, donation ${i + 1}`} type="text" value={d.description}
                 onChange={e => { const ds = [...state.donations]; ds[i].description = e.target.value; upd({ donations: ds }); }}
                 placeholder="Fund/Trust name"
                 className="flex-1 border border-ps-border rounded px-2 py-1 text-sm outline-none focus:border-brand" />
-              <input type="number" min="0" value={d.amountPaise / 100}
+              <input aria-label={`Donation amount (₹), donation ${i + 1}`} type="number" min="0" value={d.amountPaise / 100}
                 onChange={e => {
                   // A s.80G donation deducted at 100% or 50% of a mis-read
                   // amount is a deduction claimed on a number nobody entered.

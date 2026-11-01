@@ -401,7 +401,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
         <div className="flex-1 min-w-[240px]">
           <label className="block text-xs font-medium text-ps-label mb-1.5">Reconciliation session</label>
           {loading ? <div className="h-9 bg-ps-bg rounded animate-pulse" /> : (
-            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
+            <select aria-label="Reconciliation session" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               <option value="">— Select a reconciliation —</option>
               {sessions.map((s) => <option key={s.id} value={s.id}>{formatDate(s.statement_start_date)} → {formatDate(s.statement_end_date)} · {s.account_no ?? "account"} · {s.status}</option>)}
             </select>
@@ -566,8 +566,8 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               <div className="pt-1 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-2xs text-ps-label">Adjustment (₹)</span>
-                  <input type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-ps-border rounded text-right focus:outline-none focus:ring-1 focus:ring-brand" />
-                  <input
+                  <input aria-label="Adjustment (₹)" type="number" step="0.01" value={adj} onChange={(e) => setAdj(e.target.value)} className="w-28 px-2 py-1 text-xs border border-ps-border rounded text-right focus:outline-none focus:ring-1 focus:ring-brand" />
+                  <input aria-label="What the adjustment is"
                     type="text" value={adjReason} onChange={(e) => setAdjReason(e.target.value)}
                     placeholder="What is it? e.g. bank charges debited 31 Mar, not yet in the books"
                     className="flex-1 min-w-0 px-2 py-1 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand"

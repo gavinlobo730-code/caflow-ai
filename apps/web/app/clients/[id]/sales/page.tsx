@@ -939,15 +939,15 @@ function RecurringEditor({
                     placeholder="Product/Service…"
                   />
                   <div className="grid grid-cols-12 gap-2 items-center">
-                    <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Description"
+                    <input aria-label={`Line ${i + 1} description`} value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Description"
                       className="col-span-4 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
-                    <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })} placeholder="HSN/SAC"
+                    <input aria-label={`Line ${i + 1} HSN or SAC code`} value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })} placeholder="HSN/SAC"
                       className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
-                    <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" inputMode="decimal"
+                    <input aria-label={`Line ${i + 1} quantity`} value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} placeholder="Qty" inputMode="decimal"
                       className="col-span-1 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-brand" />
-                    <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" inputMode="decimal"
+                    <input aria-label={`Line ${i + 1} rate (₹)`} value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })} placeholder="Rate ₹" inputMode="decimal"
                       className="col-span-2 px-2 py-1.5 border border-ps-border rounded text-xs text-right focus:outline-none focus:ring-1 focus:ring-brand" />
-                    <select value={l.gst} onChange={(e) => setLine(i, { gst: parseFloat(e.target.value) })}
+                    <select aria-label={`Line ${i + 1} GST rate`} value={l.gst} onChange={(e) => setLine(i, { gst: parseFloat(e.target.value) })}
                       className="col-span-2 px-1 py-1.5 border border-ps-border rounded text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                       {[0, 5, 12, 18, 28].map((g) => <option key={g} value={g}>{g}%</option>)}
                     </select>
@@ -4078,7 +4078,7 @@ function ReceiptForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
-          <input
+          <input aria-label={`Amount (${isForeign ? currency : "₹"})`}
             type="number"
             min="0"
             step="0.01"
@@ -4272,7 +4272,7 @@ function ReceiptForm({
                     {inv.status}
                   </span>
                 </span>
-                <input
+                <input aria-label={`Amount to apply to ${inv.invoice_no}`}
                   type="number"
                   min="0"
                   step="0.01"

@@ -145,6 +145,9 @@ type AttendanceExportRow = {
   net_pay_days: number;
 };
 
+/** The five attendance boxes' names, from the same columns the import reads, so a box and its column heading cannot be worded two ways. */
+const ATTENDANCE_FIELD_LABEL: Record<string, string> = Object.fromEntries(ATTENDANCE_IMPORT_COLUMNS.map(c => [c.key, c.label]));
+
 const ATTENDANCE_EXPORT_COLUMNS: Column<AttendanceExportRow>[] = [
   { key: "name",           header: "Employee",       accessor: (r) => r.name },
   { key: "designation",    header: "Designation",    accessor: (r) => r.designation },
@@ -889,7 +892,7 @@ export default function AttendancePage() {
                               </td>
                               {(["working_days", "days_present", "casual_leaves", "sick_leaves", "earned_leaves"] as const).map(field => (
                                 <td key={field} className="py-2 px-3 text-center">
-                                  <input
+                                  <input aria-label={`${ATTENDANCE_FIELD_LABEL[field]} — ${emp.name}`}
                                     type="number"
                                     min={0}
                                     max={31}
@@ -1026,7 +1029,7 @@ export default function AttendancePage() {
                             {/* CL */}
                             <td className="py-2 px-2 text-center">
                               {isEditing ? (
-                                <input
+                                <input aria-label={`Casual leave entitlement — ${emp?.name ?? lb.employee_id}`}
                                   type="number" min={0}
                                   value={editLeaveForm.casual_leave_balance ?? ""}
                                   placeholder="not set"
@@ -1046,7 +1049,7 @@ export default function AttendancePage() {
                             {/* SL */}
                             <td className="py-2 px-2 text-center">
                               {isEditing ? (
-                                <input
+                                <input aria-label={`Sick leave entitlement — ${emp?.name ?? lb.employee_id}`}
                                   type="number" min={0}
                                   value={editLeaveForm.sick_leave_balance ?? ""}
                                   placeholder="not set"
@@ -1066,7 +1069,7 @@ export default function AttendancePage() {
                             {/* EL */}
                             <td className="py-2 px-2 text-center">
                               {isEditing ? (
-                                <input
+                                <input aria-label={`Earned leave entitlement — ${emp?.name ?? lb.employee_id}`}
                                   type="number" min={0}
                                   value={editLeaveForm.earned_leave_balance ?? ""}
                                   placeholder="not set"
@@ -1260,7 +1263,7 @@ export default function AttendancePage() {
                         {earnings.map(r => (
                           <tr key={r.key} className="border-b align-top">
                             <td className="py-2 pr-3">
-                              <select
+                              <select aria-label="Employee"
                                 className="border rounded px-2 py-1 text-sm"
                                 value={r.employee_id}
                                 disabled={earnLocked}
@@ -1273,7 +1276,7 @@ export default function AttendancePage() {
                               </select>
                             </td>
                             <td className="py-2 pr-3">
-                              <select
+                              <select aria-label="Kind of payment"
                                 className="border rounded px-2 py-1 text-sm"
                                 value={r.kind}
                                 disabled={earnLocked}
@@ -1289,7 +1292,7 @@ export default function AttendancePage() {
                               </select>
                             </td>
                             <td className="py-2 pr-3">
-                              <input
+                              <input aria-label="Description of the payment"
                                 className="border rounded px-2 py-1 text-sm w-40"
                                 value={r.label}
                                 disabled={earnLocked}
@@ -1298,7 +1301,7 @@ export default function AttendancePage() {
                               />
                             </td>
                             <td className="py-2 pr-3">
-                              <input
+                              <input aria-label="Amount (₹)"
                                 className="border rounded px-2 py-1 text-sm w-28 text-right"
                                 value={r.amount_rs}
                                 disabled={earnLocked}
@@ -1317,7 +1320,7 @@ export default function AttendancePage() {
                               )}
                             </td>
                             <td className="py-2 pr-3">
-                              <input
+                              <input aria-label="Paid every (months)"
                                 type="number" min={1} max={12}
                                 className="border rounded px-2 py-1 text-sm w-16"
                                 value={r.payment_interval_months ?? ""}
@@ -1332,7 +1335,7 @@ export default function AttendancePage() {
                             </td>
                             {(["pf_wages", "esi_wages", "taxable"] as const).map(f => (
                               <td key={f} className="py-2 pr-3">
-                                <input
+                                <input aria-label={f === "pf_wages" ? "Counts as PF wages" : f === "esi_wages" ? "Counts as ESI wages" : "Part of taxable salary"}
                                   type="checkbox"
                                   checked={r[f]}
                                   disabled={earnLocked}
