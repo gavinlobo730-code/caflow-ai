@@ -132,13 +132,13 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-label block mb-1">Logo Position</label>
-              <select value={logoPos} onChange={(e) => setLogoPos(e.target.value as typeof logoPos)} className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 bg-ps-bg">
+              <select aria-label="Logo Position" value={logoPos} onChange={(e) => setLogoPos(e.target.value as typeof logoPos)} className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 bg-ps-bg">
                 {LOGO_POSITIONS.map((p) => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-ps-label block mb-1">Signature</label>
-              <select value={sigPlacement} onChange={(e) => setSigPlacement(e.target.value as typeof sigPlacement)} className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 bg-ps-bg">
+              <select aria-label="Signature" value={sigPlacement} onChange={(e) => setSigPlacement(e.target.value as typeof sigPlacement)} className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 bg-ps-bg">
                 {SIG_PLACEMENTS.map((p) => <option key={p} value={p} className="capitalize">{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </div>

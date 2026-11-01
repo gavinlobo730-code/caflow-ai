@@ -282,7 +282,7 @@ export default function BrandingPage() {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-label block mb-1">Or paste a URL</label>
-                  <input
+                  <input aria-label="Or paste a URL"
                     type="url"
                     value={branding.logo_url ?? ""}
                     onChange={(e) => update("logo_url", e.target.value || null)}
@@ -292,7 +292,7 @@ export default function BrandingPage() {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-label block mb-1">Tagline</label>
-                  <input
+                  <input aria-label="Tagline"
                     type="text"
                     value={branding.tagline ?? ""}
                     onChange={(e) => update("tagline", e.target.value)}

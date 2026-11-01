@@ -744,7 +744,7 @@ export default function AttendancePage() {
                   <div className="flex gap-4 items-end">
                     <div>
                       <label className="block text-xs font-medium text-ps-body mb-1">Month</label>
-                      <select
+                      <select aria-label="Month"
                         className="border rounded-lg px-3 py-2 text-sm"
                         value={attMonth}
                         onChange={e => setAttMonth(Number(e.target.value))}
@@ -754,7 +754,7 @@ export default function AttendancePage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-ps-body mb-1">Year</label>
-                      <input
+                      <input aria-label="Year"
                         type="number"
                         className="border rounded-lg px-3 py-2 text-sm w-24"
                         value={attYear}
@@ -765,7 +765,7 @@ export default function AttendancePage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                      <select
+                      <select aria-label="Client"
                         className="border rounded-lg px-3 py-2 text-sm"
                         value={attClient}
                         onChange={e => setAttClient(e.target.value)}
@@ -935,7 +935,7 @@ export default function AttendancePage() {
                 <div className="flex gap-4 items-end">
                   <div>
                     <label className="block text-xs font-medium text-ps-body mb-1">Year</label>
-                    <input
+                    <input aria-label="Year"
                       type="number"
                       className="border rounded-lg px-3 py-2 text-sm w-24"
                       value={leaveYear}
@@ -1141,7 +1141,7 @@ export default function AttendancePage() {
                 <div className="flex flex-wrap gap-4 items-end mb-4">
                   <div>
                     <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                    <select
+                    <select aria-label="Client"
                       className="border rounded-lg px-3 py-2 text-sm min-w-[220px]"
                       value={earnClient}
                       onChange={e => setEarnClient(e.target.value)}

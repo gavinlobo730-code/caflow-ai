@@ -187,7 +187,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
           <label className="block text-2xs text-ps-label mb-0.5">
             Token serial <span className="text-ps-hint">(only if the device changed)</span>
           </label>
-          <input value={tokenNo} onChange={(e) => setTokenNo(e.target.value)}
+          <input aria-label="Token serial (only if the device changed)" value={tokenNo} onChange={(e) => setTokenNo(e.target.value)}
             placeholder="leave blank to keep the current one" className={field} />
         </div>
 
@@ -293,11 +293,11 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
 
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">Holder name</label>
-          <input value={holderName} onChange={(e) => setHolderName(e.target.value)} className={field} />
+          <input aria-label="Holder name" value={holderName} onChange={(e) => setHolderName(e.target.value)} className={field} />
         </div>
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">PAN</label>
-          <input value={pan} onChange={(e) => setPan(e.target.value)} className={field} />
+          <input aria-label="PAN" value={pan} onChange={(e) => setPan(e.target.value)} className={field} />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -311,7 +311,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
         </div>
         <div>
           <label className="block text-2xs text-ps-label mb-0.5">Notes</label>
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
+          <input aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} className={field} />
         </div>
 
         {err && <Callout tone="problem">{err}</Callout>}
@@ -395,27 +395,27 @@ function AddDSCModal({ onClose, onAdded }: {
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Full Name</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={holderName} onChange={e => setHolderName(e.target.value)} placeholder="CA / Director name" />
+            <input aria-label="Full Name" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={holderName} onChange={e => setHolderName(e.target.value)} placeholder="CA / Director name" />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">PAN</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <input aria-label="PAN" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={pan} onChange={e => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Type</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={dscType} onChange={e => setDscType(e.target.value as "Class 2" | "Class 3")}>
+            <select aria-label="Type" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={dscType} onChange={e => setDscType(e.target.value as "Class 2" | "Class 3")}>
               {DSC_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Purpose</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purpose} onChange={e => setPurpose(e.target.value)}>
+            <select aria-label="Purpose" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purpose} onChange={e => setPurpose(e.target.value)}>
               {DSC_PURPOSES.map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Issuing CA</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={issuingCA} onChange={e => setIssuingCA(e.target.value)}>
+            <select aria-label="Issuing CA" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={issuingCA} onChange={e => setIssuingCA(e.target.value)}>
               {ISSUING_CAS.map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
@@ -429,7 +429,7 @@ function AddDSCModal({ onClose, onAdded }: {
           </div>
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+            <input aria-label="Notes" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
         <div className="flex gap-2">

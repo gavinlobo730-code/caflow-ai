@@ -190,7 +190,7 @@ export default function SignPage() {
                         <label className="mb-1 block text-sm font-medium text-slate-700">
                           Full name (your electronic signature)
                         </label>
-                        <input
+                        <input aria-label="Full name (your electronic signature)"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           placeholder="e.g. Rahul Patel"
@@ -244,7 +244,7 @@ export default function SignPage() {
                       <label className="block text-sm font-medium text-slate-700">
                         Reason for declining (optional)
                       </label>
-                      <textarea
+                      <textarea aria-label="Reason for declining (optional)"
                         value={declineReason}
                         onChange={(e) => setDeclineReason(e.target.value)}
                         rows={3}

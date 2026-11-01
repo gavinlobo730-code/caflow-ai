@@ -365,7 +365,7 @@ function AuditLogContent() {
               · loaded only
             </span>
           </label>
-          <input value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
+          <input aria-label="User (email) · loaded only" value={filterUser} onChange={(e) => setFilterUser(e.target.value)}
             placeholder="Search loaded events…"
             className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>

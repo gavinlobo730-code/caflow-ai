@@ -820,7 +820,7 @@ function RunsTab({ clientId, firmId, openDoc }:
         <div className="flex items-end gap-3">
           <div>
             <label className="block text-2xs text-ps-label mb-1">Month</label>
-            <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+            <input aria-label="Month" type="month" value={month} onChange={e => setMonth(e.target.value)}
               className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-ink outline-none focus:border-brand" />
           </div>
           <Button variant="plain" size="none" onClick={createRun} disabled={creating}
@@ -883,7 +883,7 @@ function RunsTab({ clientId, firmId, openDoc }:
               Releasing anyway? Say why — this goes on the release log beside these
               items and is what a reviewer reads months later.
             </label>
-            <textarea
+            <textarea aria-label="Releasing anyway? Say why — this goes on the release log beside these items and is what a reviewer reads months later."
               value={overrideReason}
               onChange={e => setOverrideReason(e.target.value)}
               rows={2}
@@ -1553,7 +1553,7 @@ function OutputsTab({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <label className="text-2xs text-ps-label">Month</label>
-        <select value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
+        <select aria-label="Month" value={runId} onChange={(e) => { setRunId(e.target.value); setMsg(null); }}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand">
           {runs.map((r) => <option key={r.id} value={r.id}>{formatMonthYear(r.month)} · {r.status}</option>)}
         </select>

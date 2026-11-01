@@ -531,7 +531,7 @@ export default function TimeTrackingPage() {
               />
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Description</label>
-                <input
+                <input aria-label="Description"
                   value={startDescription}
                   onChange={e => setStartDescription(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -595,7 +595,7 @@ export default function TimeTrackingPage() {
               />
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Description</label>
-                <input
+                <input aria-label="Description"
                   value={manualDescription}
                   onChange={e => setManualDescription(e.target.value)}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -605,7 +605,7 @@ export default function TimeTrackingPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Start *</label>
-                  <input
+                  <input aria-label="Start"
                     type="datetime-local"
                     value={manualStarted}
                     onChange={e => setManualStarted(e.target.value)}
@@ -614,7 +614,7 @@ export default function TimeTrackingPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">End *</label>
-                  <input
+                  <input aria-label="End"
                     type="datetime-local"
                     value={manualEnded}
                     onChange={e => setManualEnded(e.target.value)}

@@ -500,7 +500,7 @@ export default function AdvanceTaxPage() {
         </div>
         <div>
           <label className="text-xs text-ps-label">Estimated Annual Tax (₹)</label>
-          <input type="number" min="0" step="0.01" value={estimatedTaxRs}
+          <input aria-label="Estimated Annual Tax (₹)" type="number" min="0" step="0.01" value={estimatedTaxRs}
             onChange={e => setEstimatedTaxRs(e.target.value)}
             className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand w-48"
             placeholder="Enter tax amount" />
@@ -695,14 +695,14 @@ export default function AdvanceTaxPage() {
           <div className="flex flex-wrap items-end gap-4">
             <div>
               <label className="text-xs text-ps-label">TDS / TCS credit (₹)</label>
-              <input type="text" inputMode="decimal" value={tdsTcsRs}
+              <input aria-label="TDS / TCS credit (₹)" type="text" inputMode="decimal" value={tdsTcsRs}
                 onChange={e => setTdsTcsRs(e.target.value)}
                 className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand w-40"
                 placeholder="0.00" />
             </div>
             <div>
               <label className="text-xs text-ps-label">Relief u/s 89 / 90 / 91 (₹)</label>
-              <input type="text" inputMode="decimal" value={reliefRs}
+              <input aria-label="Relief u/s 89 / 90 / 91 (₹)" type="text" inputMode="decimal" value={reliefRs}
                 onChange={e => setReliefRs(e.target.value)}
                 className="block mt-1 border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand w-40"
                 placeholder="0.00" />

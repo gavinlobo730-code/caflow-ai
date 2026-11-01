@@ -263,7 +263,7 @@ export default function PortalPage() {
               <>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Client email *</label>
-                  <input
+                  <input aria-label="Client email"
                     type="email"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}

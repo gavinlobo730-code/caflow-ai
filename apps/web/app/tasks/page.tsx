@@ -283,7 +283,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Title</label>
-                <input
+                <input aria-label="Title"
                   value={form.title ?? ""}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
@@ -348,7 +348,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
-                <textarea
+                <textarea aria-label="Description"
                   rows={3}
                   value={form.description ?? ""}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}

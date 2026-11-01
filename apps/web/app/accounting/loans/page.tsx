@@ -648,7 +648,7 @@ export default function LoansAndFDPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">Principal (₹)</label>
-                <input
+                <input aria-label="Principal (₹)"
                   type="number"
                   min="0"
                   step="1000"
@@ -660,7 +660,7 @@ export default function LoansAndFDPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">Interest Rate (% p.a.)</label>
-                <input
+                <input aria-label="Interest Rate (% p.a.)"
                   type="number"
                   min="0"
                   step="0.01"
@@ -672,7 +672,7 @@ export default function LoansAndFDPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1.5">Tenure (months)</label>
-                <input
+                <input aria-label="Tenure (months)"
                   type="number"
                   min="1"
                   step="1"

@@ -436,7 +436,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             <label className="block text-xs font-medium text-ps-body mb-1">
               Contact Name *
             </label>
-            <input
+            <input aria-label="Contact Name"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -451,7 +451,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               <label className="block text-xs font-medium text-ps-body mb-1">
                 Phone *
               </label>
-              <input
+              <input aria-label="Phone"
                 required
                 type="tel"
                 inputMode="numeric"
@@ -466,7 +466,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               <label className="block text-xs font-medium text-ps-body mb-1">
                 Email
               </label>
-              <input
+              <input aria-label="Email"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -481,7 +481,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             <label className="block text-xs font-medium text-ps-body mb-1">
               Business Name *
             </label>
-            <input
+            <input aria-label="Business Name"
               required
               value={form.businessName}
               onChange={(e) =>
@@ -533,7 +533,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             <label className="block text-xs font-medium text-ps-body mb-1">
               Estimated Monthly Fee (₹)
             </label>
-            <input
+            <input aria-label="Estimated Monthly Fee (₹)"
               type="number"
               min="0"
               value={form.estimatedMonthlyFeeRupees}
@@ -585,7 +585,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
             <label className="block text-xs font-medium text-ps-body mb-1">
               Notes
             </label>
-            <textarea
+            <textarea aria-label="Notes"
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={3}
@@ -860,7 +860,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-ps-label font-medium">PAN (optional)</label>
-                <input
+                <input aria-label="PAN (optional)"
                   value={pan}
                   onChange={(e) => setPan(e.target.value.toUpperCase())}
                   maxLength={10}
@@ -870,7 +870,7 @@ function ConvertModal({ lead, onClose, onConverted }: ConvertModalProps) {
               </div>
               <div>
                 <label className="text-xs text-ps-label font-medium">GSTIN (optional)</label>
-                <input
+                <input aria-label="GSTIN (optional)"
                   value={gstin}
                   onChange={(e) => setGstin(e.target.value.toUpperCase())}
                   maxLength={15}

@@ -141,7 +141,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
             <label className="block text-xs font-medium text-ps-label mb-1">
               Their email address *
             </label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)}
+            <input aria-label="Their email address" value={email} onChange={(e) => setEmail(e.target.value)}
                    placeholder="name@example.com" type="email"
                    className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm mb-1" />
             {status?.invite_pending && (

@@ -177,7 +177,7 @@ export default function ClientTrendPage() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <label className="text-2xs text-ps-label">Years</label>
-          <select
+          <select aria-label="Years"
             value={years}
             onChange={(e) => setYears(Number(e.target.value))}
             className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
@@ -185,7 +185,7 @@ export default function ClientTrendPage() {
             {YEAR_CHOICES.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
           <label className="text-2xs text-ps-label">to</label>
-          <select
+          <select aria-label="to"
             value={toFy}
             onChange={(e) => setToFy(e.target.value)}
             className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"

@@ -790,7 +790,7 @@ export default function GSTR1Page() {
               <label className="block text-sm font-medium text-ps-body mb-1">
                 ARN (Acknowledgment Reference Number)
               </label>
-              <input
+              <input aria-label="ARN (Acknowledgment Reference Number)"
                 type="text"
                 value={arn}
                 onChange={e => setArn(e.target.value)}

@@ -572,12 +572,12 @@ export default function MigrationPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-3xs text-ps-label mb-1 block">Job Name</label>
-                  <input value={name} onChange={e => setName(e.target.value)}
+                  <input aria-label="Job Name" value={name} onChange={e => setName(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="e.g. Tally FY2025 Import" />
                 </div>
                 <div>
                   <label className="text-3xs text-ps-label mb-1 block">Source File Name</label>
-                  <input value={fileName} onChange={e => setFileName(e.target.value)}
+                  <input aria-label="Source File Name" value={fileName} onChange={e => setFileName(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="export.xml" />
                 </div>
               </div>
@@ -590,7 +590,7 @@ export default function MigrationPage() {
                   <label className="text-3xs text-ps-label mb-1 block">
                     Client — needed to import customers or vendors
                   </label>
-                  <select value={clientId} onChange={e => setClientId(e.target.value)}
+                  <select aria-label="Client — needed to import customers or vendors" value={clientId} onChange={e => setClientId(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white">
                     <option value="">{noClientOptionLabel()}</option>
                     {clients.map(c => (

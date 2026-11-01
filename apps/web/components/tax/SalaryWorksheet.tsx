@@ -215,11 +215,11 @@ export function SalaryWorksheet({
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex-1 min-w-[10rem]">
               <label className="text-3xs text-ps-label block mb-1">Employer</label>
-              <input className={input} value={e.name} onChange={ev => upd(e.key, { name: ev.target.value })} />
+              <input aria-label="Employer" className={input} value={e.name} onChange={ev => upd(e.key, { name: ev.target.value })} />
             </div>
             <div className="w-32">
               <label className="text-3xs text-ps-label block mb-1">TAN</label>
-              <input className={input} value={e.tan} maxLength={10}
+              <input aria-label="TAN" className={input} value={e.tan} maxLength={10}
                 onChange={ev => upd(e.key, { tan: ev.target.value.toUpperCase() })} />
             </div>
             <label className="flex items-center gap-1.5 text-2xs text-ps-body pb-1.5">

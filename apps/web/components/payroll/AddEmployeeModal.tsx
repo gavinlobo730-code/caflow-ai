@@ -265,15 +265,15 @@ export function AddEmployeeModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Name *</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            <input aria-label="Name" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">PAN</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value }))} maxLength={10} />
+            <input aria-label="PAN" className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value }))} maxLength={10} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Designation</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))} />
+            <input aria-label="Designation" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))} />
           </div>
           <div>
             <label htmlFor="employee-code" className="block text-xs font-medium text-ps-body mb-1">Employee Code</label>
@@ -304,7 +304,7 @@ export function AddEmployeeModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Gender</label>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
+            <select aria-label="Gender" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.gender} onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}>
               <option value="">Not specified</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
@@ -314,19 +314,19 @@ export function AddEmployeeModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Basic Salary (Rs/month) *</label>
-            <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.basic_rs} onChange={e => setForm(f => ({ ...f, basic_rs: e.target.value }))} />
+            <input aria-label="Basic Salary (Rs/month)" type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.basic_rs} onChange={e => setForm(f => ({ ...f, basic_rs: e.target.value }))} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">HRA %</label>
-            <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.hra_percent} onChange={e => setForm(f => ({ ...f, hra_percent: e.target.value }))} />
+            <input aria-label="HRA %" type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.hra_percent} onChange={e => setForm(f => ({ ...f, hra_percent: e.target.value }))} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">DA %</label>
-            <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.da_percent} onChange={e => setForm(f => ({ ...f, da_percent: e.target.value }))} />
+            <input aria-label="DA %" type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.da_percent} onChange={e => setForm(f => ({ ...f, da_percent: e.target.value }))} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Other Allowances (Rs)</label>
-            <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.other_rs} onChange={e => setForm(f => ({ ...f, other_rs: e.target.value }))} />
+            <input aria-label="Other Allowances (Rs)" type="number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.other_rs} onChange={e => setForm(f => ({ ...f, other_rs: e.target.value }))} />
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="pf" checked={form.pf_applicable} onChange={e => setForm(f => ({ ...f, pf_applicable: e.target.checked }))} />
@@ -340,7 +340,7 @@ export function AddEmployeeModal({
           </div>
           <div className="col-span-2">
             <label className="block text-xs font-medium text-ps-body mb-1">Professional Tax (state)</label>
-            <select className="w-full border rounded-lg px-3 py-2 text-sm" value={form.pt_state} onChange={e => setForm(f => ({ ...f, pt_state: e.target.value }))}>
+            <select aria-label="Professional Tax (state)" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.pt_state} onChange={e => setForm(f => ({ ...f, pt_state: e.target.value }))}>
               {PT_STATES.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}
             </select>
           </div>
@@ -442,13 +442,13 @@ export function AddEmployeeModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">UAN</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.uan}
+            <input aria-label="UAN" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.uan}
                    onChange={e => setForm(f => ({ ...f, uan: e.target.value }))} maxLength={12} inputMode="numeric" />
             <p className="text-3xs text-ps-hint mt-0.5">12 digits. Without it this member cannot go in the EPFO ECR.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">ESIC IP number</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.esi_number}
+            <input aria-label="ESIC IP number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.esi_number}
                    onChange={e => setForm(f => ({ ...f, esi_number: e.target.value }))} />
             <p className="text-3xs text-ps-hint mt-0.5">Without it this member cannot go in the ESIC return.</p>
           </div>
@@ -463,23 +463,23 @@ export function AddEmployeeModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Department</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department}
+            <input aria-label="Department" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.department}
                    onChange={e => setForm(f => ({ ...f, department: e.target.value }))} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Bank account number</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_account_no}
+            <input aria-label="Bank account number" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_account_no}
                    onChange={e => setForm(f => ({ ...f, bank_account_no: e.target.value }))} />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">IFSC</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.bank_ifsc}
+            <input aria-label="IFSC" className="w-full border rounded-lg px-3 py-2 text-sm uppercase" value={form.bank_ifsc}
                    onChange={e => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} maxLength={11} />
             <p className="text-3xs text-ps-hint mt-0.5">The account and IFSC are what a salary payment file is built from.</p>
           </div>
           <div className="col-span-2">
             <label className="block text-xs font-medium text-ps-body mb-1">Bank name</label>
-            <input className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_name}
+            <input aria-label="Bank name" className="w-full border rounded-lg px-3 py-2 text-sm" value={form.bank_name}
                    onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} />
           </div>
         </div>

@@ -437,7 +437,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
             </div>
             <div>
               <label className={lbl}>Form Type</label>
-              <select value={form.formType} onChange={e => upd({ formType: e.target.value as FormType })} className={inputCls}>
+              <select aria-label="Form Type" value={form.formType} onChange={e => upd({ formType: e.target.value as FormType })} className={inputCls}>
                 <option value="3CB-3CD">Form 3CB-3CD (Non-company)</option>
                 <option value="3CA-3CD">Form 3CA-3CD (Company)</option>
               </select>
@@ -446,7 +446,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>Turnover / Gross Receipts (₹)</label>
-              <input type="number" min="0" step="0.01" value={form.turnoverRs} onChange={e => upd({ turnoverRs: e.target.value })} className={inputCls} placeholder="Enter turnover for threshold check" />
+              <input aria-label="Turnover / Gross Receipts (₹)" type="number" min="0" step="0.01" value={form.turnoverRs} onChange={e => upd({ turnoverRs: e.target.value })} className={inputCls} placeholder="Enter turnover for threshold check" />
             </div>
             <div>
               {/* §44AB(a) and (b) are different clauses. Which applies is a
@@ -454,7 +454,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
                   to infer it from the amount, which is how a ₹60 lakh trader
                   was told a profession's threshold applied to them. */}
               <label className={lbl}>Nature of activity (§44AB)</label>
-              <select value={form.nature} onChange={e => upd({ nature: e.target.value as "business" | "profession" })} className={inputCls}>
+              <select aria-label="Nature of activity (§44AB)" value={form.nature} onChange={e => upd({ nature: e.target.value as "business" | "profession" })} className={inputCls}>
                 <option value="business">Business — §44AB(a)</option>
                 <option value="profession">Profession — §44AB(b)</option>
               </select>
@@ -489,15 +489,15 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className={lbl}>Cash receipts (₹)</label>
-                      <input type="number" min="0" step="0.01" value={form.cashReceiptsRs} onChange={e => upd({ cashReceiptsRs: e.target.value })} className={inputCls} />
+                      <input aria-label="Cash receipts (₹)" type="number" min="0" step="0.01" value={form.cashReceiptsRs} onChange={e => upd({ cashReceiptsRs: e.target.value })} className={inputCls} />
                     </div>
                     <div>
                       <label className={lbl}>Cash payments (₹)</label>
-                      <input type="number" min="0" step="0.01" value={form.cashPaymentsRs} onChange={e => upd({ cashPaymentsRs: e.target.value })} className={inputCls} />
+                      <input aria-label="Cash payments (₹)" type="number" min="0" step="0.01" value={form.cashPaymentsRs} onChange={e => upd({ cashPaymentsRs: e.target.value })} className={inputCls} />
                     </div>
                     <div>
                       <label className={lbl}>Total payments (₹)</label>
-                      <input type="number" min="0" step="0.01" value={form.totalPaymentsRs} onChange={e => upd({ totalPaymentsRs: e.target.value })} className={inputCls} />
+                      <input aria-label="Total payments (₹)" type="number" min="0" step="0.01" value={form.totalPaymentsRs} onChange={e => upd({ totalPaymentsRs: e.target.value })} className={inputCls} />
                     </div>
                   </div>
                 </div>
@@ -553,7 +553,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
           </div>
           <div>
             <label className={lbl}>Auditor Name</label>
-            <input type="text" value={form.auditorName} onChange={e => upd({ auditorName: e.target.value })} className={inputCls} placeholder="CA firm / individual name" />
+            <input aria-label="Auditor Name" type="text" value={form.auditorName} onChange={e => upd({ auditorName: e.target.value })} className={inputCls} placeholder="CA firm / individual name" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -568,11 +568,11 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lbl}>UDIN</label>
-              <input type="text" value={form.udin} onChange={e => upd({ udin: e.target.value })} className={inputCls} placeholder="ICAI UDIN" />
+              <input aria-label="UDIN" type="text" value={form.udin} onChange={e => upd({ udin: e.target.value })} className={inputCls} placeholder="ICAI UDIN" />
             </div>
             <div>
               <label className={lbl}>Acknowledgement Number</label>
-              <input type="text" value={form.ackNumber} onChange={e => upd({ ackNumber: e.target.value })} className={inputCls} placeholder="ITD ack number" />
+              <input aria-label="Acknowledgement Number" type="text" value={form.ackNumber} onChange={e => upd({ ackNumber: e.target.value })} className={inputCls} placeholder="ITD ack number" />
             </div>
           </div>
         </div>

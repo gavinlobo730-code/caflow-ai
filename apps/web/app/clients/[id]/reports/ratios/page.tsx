@@ -167,7 +167,7 @@ export default function ClientRatioNotePage() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <label className="text-2xs text-ps-label">FY</label>
-          <select
+          <select aria-label="FY"
             value={fy}
             onChange={(e) => setFy(e.target.value)}
             className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body bg-white"
@@ -327,7 +327,7 @@ function RatioRow({
       {r.key === "dscr" && r.unavailable_reason && (
         <div className="mt-2 flex items-center gap-2">
           <label className="text-3xs text-ps-label">Principal repaid this year (₹)</label>
-          <input
+          <input aria-label="Principal repaid this year (₹)"
             value={principal}
             onChange={(e) => onPrincipal(e.target.value)}
             placeholder="e.g. 200000"

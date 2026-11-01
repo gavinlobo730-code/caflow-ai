@@ -458,7 +458,7 @@ export default function ClientLifecyclePage() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-gray-600">Service Type *</label>
-                <input
+                <input aria-label="Service Type"
                   value={renewalForm.service_type}
                   onChange={(e) => setRenewalForm({ ...renewalForm, service_type: e.target.value })}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
@@ -467,7 +467,7 @@ export default function ClientLifecyclePage() {
               </div>
               <div>
                 <label className="text-xs text-gray-600">Financial Year *</label>
-                <input
+                <input aria-label="Financial Year"
                   value={renewalForm.financial_year}
                   onChange={(e) => setRenewalForm({ ...renewalForm, financial_year: e.target.value })}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
@@ -486,7 +486,7 @@ export default function ClientLifecyclePage() {
               </div>
               <div>
                 <label className="text-xs text-gray-600">Value (₹)</label>
-                <input
+                <input aria-label="Value (₹)"
                   type="text"
                   inputMode="decimal"
                   value={renewalForm.value_paise}

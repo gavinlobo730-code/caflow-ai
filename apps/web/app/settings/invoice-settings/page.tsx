@@ -334,7 +334,7 @@ export default function InvoiceSettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">Bank Name</label>
-                <input
+                <input aria-label="Bank Name"
                   type="text"
                   value={form.bank_name}
                   onChange={(e) => update("bank_name", e.target.value)}
@@ -344,7 +344,7 @@ export default function InvoiceSettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">Account Holder</label>
-                <input
+                <input aria-label="Account Holder"
                   type="text"
                   value={form.account_holder}
                   onChange={(e) => update("account_holder", e.target.value)}
@@ -354,7 +354,7 @@ export default function InvoiceSettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">Account Number</label>
-                <input
+                <input aria-label="Account Number"
                   type="text"
                   value={form.account_number}
                   onChange={(e) => update("account_number", e.target.value)}
@@ -364,7 +364,7 @@ export default function InvoiceSettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">IFSC Code</label>
-                <input
+                <input aria-label="IFSC Code"
                   type="text"
                   value={form.ifsc_code}
                   onChange={(e) => update("ifsc_code", e.target.value.toUpperCase())}
@@ -375,7 +375,7 @@ export default function InvoiceSettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">UPI ID</label>
-                <input
+                <input aria-label="UPI ID"
                   type="text"
                   value={form.upi_id}
                   onChange={(e) => update("upi_id", e.target.value)}
@@ -385,7 +385,7 @@ export default function InvoiceSettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">UPI QR Code URL</label>
-                <input
+                <input aria-label="UPI QR Code URL"
                   type="url"
                   value={form.upi_qr_url}
                   onChange={(e) => update("upi_qr_url", e.target.value)}
@@ -397,7 +397,7 @@ export default function InvoiceSettingsPage() {
 
             <div>
               <label className="text-xs font-medium text-ps-label block mb-1">Invoice Footer Text</label>
-              <textarea
+              <textarea aria-label="Invoice Footer Text"
                 value={form.footer_text}
                 onChange={(e) => update("footer_text", e.target.value)}
                 rows={2}

@@ -796,7 +796,7 @@ export default function ClientHealthDetailPage() {
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-gray-600 font-medium">Dimension *</label>
-                <select
+                <select aria-label="Dimension"
                   value={overrideForm.dimension}
                   onChange={(e) => setOverrideForm({ ...overrideForm, dimension: e.target.value as DimensionKey })}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
@@ -810,7 +810,7 @@ export default function ClientHealthDetailPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-600 font-medium">Override Score (0–100) *</label>
-                <input
+                <input aria-label="Override Score (0–100)"
                   type="number"
                   min="0"
                   max="100"
@@ -822,7 +822,7 @@ export default function ClientHealthDetailPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-600 font-medium">Reason *</label>
-                <textarea
+                <textarea aria-label="Reason"
                   rows={3}
                   value={overrideForm.reason}
                   onChange={(e) => setOverrideForm({ ...overrideForm, reason: e.target.value })}

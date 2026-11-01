@@ -784,7 +784,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           {reportId === "gst_summary" && (
             <div className="flex flex-col gap-1">
               <label className="text-xs text-ps-label font-medium">Month</label>
-              <input
+              <input aria-label="Month"
                 type="month"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}

@@ -387,7 +387,7 @@ export default function StatutoryValuesPage() {
 
                 <div>
                   <label className="block text-2xs text-ps-label mb-1">Read against</label>
-                  <select value={basis} onChange={e => setBasis(e.target.value)}
+                  <select aria-label="Read against" value={basis} onChange={e => setBasis(e.target.value)}
                     className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand">
                     <option value="monthly">The month&apos;s gross</option>
                     <option value="half_yearly">Six months&apos; gross (half-yearly levy)</option>

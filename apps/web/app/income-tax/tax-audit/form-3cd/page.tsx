@@ -182,7 +182,7 @@ export default function Form3cdPage() {
         </div>
         <div>
           <label className="text-xs text-ps-label">RBI Bank Rate, bps (for clause 22)</label>
-          <input
+          <input aria-label="RBI Bank Rate, bps (for clause 22)"
             className="mt-1 border border-ps-border rounded px-2 py-1.5 text-sm w-40"
             placeholder="e.g. 675"
             value={bankRateBps}

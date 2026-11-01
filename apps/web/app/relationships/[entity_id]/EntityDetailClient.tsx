@@ -126,7 +126,7 @@ function EntityFormModal({
         <div className="space-y-3">
           <div>
             <label className="text-xs text-ps-label font-medium">Full Name *</label>
-            <input
+            <input aria-label="Full Name"
               value={form.full_name}
               onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
               className={inputClass}
@@ -135,7 +135,7 @@ function EntityFormModal({
           </div>
           <div>
             <label className="text-xs text-ps-label font-medium">Entity Type</label>
-            <select
+            <select aria-label="Entity Type"
               value={form.entity_type}
               onChange={(e) => setForm((f) => ({ ...f, entity_type: e.target.value as EntityType }))}
               className={inputClass}
@@ -150,7 +150,7 @@ function EntityFormModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-ps-label font-medium">PAN</label>
-              <input
+              <input aria-label="PAN"
                 value={form.pan}
                 onChange={(e) => setForm((f) => ({ ...f, pan: e.target.value.toUpperCase() }))}
                 className={`${inputClass} font-mono`}
@@ -160,7 +160,7 @@ function EntityFormModal({
             </div>
             <div>
               <label className="text-xs text-ps-label font-medium">GSTIN</label>
-              <input
+              <input aria-label="GSTIN"
                 value={form.gstin}
                 onChange={(e) => setForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
                 className={`${inputClass} font-mono`}
@@ -172,7 +172,7 @@ function EntityFormModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-ps-label font-medium">Email</label>
-              <input
+              <input aria-label="Email"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
@@ -182,7 +182,7 @@ function EntityFormModal({
             </div>
             <div>
               <label className="text-xs text-ps-label font-medium">Phone</label>
-              <input
+              <input aria-label="Phone"
                 type="tel"
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}

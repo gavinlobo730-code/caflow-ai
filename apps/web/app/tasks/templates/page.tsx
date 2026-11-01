@@ -310,7 +310,7 @@ export default function TaskTemplatesPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Name *</label>
-                <input
+                <input aria-label="Name"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -319,7 +319,7 @@ export default function TaskTemplatesPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Description</label>
-                <textarea
+                <textarea aria-label="Description"
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                   rows={2}
@@ -330,7 +330,7 @@ export default function TaskTemplatesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Default Priority</label>
-                  <select
+                  <select aria-label="Default Priority"
                     value={form.default_priority}
                     onChange={e => setForm(f => ({ ...f, default_priority: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -342,7 +342,7 @@ export default function TaskTemplatesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Est. Hours</label>
-                  <input
+                  <input aria-label="Est. Hours"
                     type="number"
                     min="0"
                     value={form.estimated_hours}
@@ -354,7 +354,7 @@ export default function TaskTemplatesPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Tags (comma-separated)</label>
-                <input
+                <input aria-label="Tags (comma-separated)"
                   value={form.tags}
                   onChange={e => setForm(f => ({ ...f, tags: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -363,7 +363,7 @@ export default function TaskTemplatesPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Default Assignee Role</label>
-                <select
+                <select aria-label="Default Assignee Role"
                   value={form.default_assignee_role}
                   onChange={e => setForm(f => ({ ...f, default_assignee_role: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
@@ -403,7 +403,7 @@ export default function TaskTemplatesPage() {
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1">Client *</label>
-                  <select
+                  <select aria-label="Client"
                     value={instClientId}
                     onChange={e => setInstClientId(e.target.value)}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"

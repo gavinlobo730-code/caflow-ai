@@ -617,18 +617,18 @@ export default function CapitalGainsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Purchase Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
+                  <input aria-label="Purchase Price (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={purchaseRupees} onChange={e => setPurchaseRupees(e.target.value)} placeholder="0.00" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Sale Price (₹)</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
+                  <input aria-label="Sale Price (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={saleRupees} onChange={e => setSaleRupees(e.target.value)} placeholder="0.00" />
                 </div>
               </div>
 
               {(assetType === "property" || assetType === "gold") && (
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Improvement Costs (₹) — optional</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
+                  <input aria-label="Improvement Costs (₹) — optional" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={improvementRupees} onChange={e => setImprovementRupees(e.target.value)} placeholder="0.00" />
                 </div>
               )}
 
@@ -1094,7 +1094,7 @@ export default function CapitalGainsPage() {
 
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">What was bought *</label>
-                      <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
+                      <input aria-label="What was bought" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                              value={claimForm.new_asset_description}
                              onChange={e => setClaimForm(f => ({ ...f, new_asset_description: e.target.value }))}
                              placeholder="e.g. Flat 402, Prabhat Residency, Pune" />
@@ -1103,7 +1103,7 @@ export default function CapitalGainsPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium text-ps-body block mb-1">Cost (₹)</label>
-                        <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
+                        <input aria-label="Cost (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                value={claimForm.cost_rs}
                                onChange={e => setClaimForm(f => ({ ...f, cost_rs: e.target.value }))} placeholder="0" />
                       </div>
@@ -1122,7 +1122,7 @@ export default function CapitalGainsPage() {
                         <label className="text-xs font-medium text-ps-body block mb-1">
                           Capital Gains Accounts Scheme (₹)
                         </label>
-                        <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
+                        <input aria-label="Capital Gains Accounts Scheme (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                value={claimForm.cgas_rs}
                                onChange={e => setClaimForm(f => ({ ...f, cgas_rs: e.target.value }))} placeholder="0" />
                       </div>
@@ -1144,7 +1144,7 @@ export default function CapitalGainsPage() {
                         <label className="text-xs font-medium text-ps-body block mb-1">
                           Other residential houses owned on the date of transfer
                         </label>
-                        <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
+                        <input aria-label="Other residential houses owned on the date of transfer" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
                                value={claimForm.other_houses}
                                onChange={e => setClaimForm(f => ({ ...f, other_houses: e.target.value }))}
                                placeholder="Leave blank if not established" />
@@ -1202,7 +1202,7 @@ export default function CapitalGainsPage() {
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Asset Description *</label>
-                    <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
+                    <input aria-label="Asset Description" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.asset_description} onChange={e => setRegForm(f => ({ ...f, asset_description: e.target.value }))} placeholder="e.g. Reliance Industries Ltd — 100 shares" />
                   </div>
 
                   <div>
@@ -1302,17 +1302,17 @@ export default function CapitalGainsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Purchase Cost (₹)</label>
-                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
+                      <input aria-label="Purchase Cost (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.purchase_cost_rs} onChange={e => setRegForm(f => ({ ...f, purchase_cost_rs: e.target.value }))} placeholder="0" />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-ps-body block mb-1">Sale Value (₹)</label>
-                      <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
+                      <input aria-label="Sale Value (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.sale_value_rs} onChange={e => setRegForm(f => ({ ...f, sale_value_rs: e.target.value }))} placeholder="0" />
                     </div>
                   </div>
 
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Improvement Cost (₹) — optional</label>
-                    <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
+                    <input aria-label="Improvement Cost (₹) — optional" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={regForm.improvement_cost_rs} onChange={e => setRegForm(f => ({ ...f, improvement_cost_rs: e.target.value }))} placeholder="0" />
                   </div>
 
                   {/* Server-computed preview (STCG/LTCG, rate, indexed cost) */}

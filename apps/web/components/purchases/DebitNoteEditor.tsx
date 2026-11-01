@@ -491,7 +491,7 @@ export function DebitNoteEditor({
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
-              <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={isLocked} placeholder="Goods returned / rate correction / excess billed"
+              <input aria-label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={isLocked} placeholder="Goods returned / rate correction / excess billed"
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
             </div>
             <div className="flex flex-col justify-end gap-2 pb-1.5">
@@ -506,7 +506,7 @@ export function DebitNoteEditor({
             </div>
             <div className="col-span-2 lg:col-span-3">
               <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the vendor" rows={2}
+              <textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the vendor" rows={2}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>

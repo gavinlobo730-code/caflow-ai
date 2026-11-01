@@ -617,7 +617,7 @@ export default function AISPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1.5">Payer / Deductor</label>
-                  <input
+                  <input aria-label="Payer / Deductor"
                     type="text"
                     value={manual.payer}
                     onChange={(e) => setManual((p) => ({ ...p, payer: e.target.value }))}
@@ -626,7 +626,7 @@ export default function AISPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1.5">Amount (₹)</label>
-                  <input
+                  <input aria-label="Amount (₹)"
                     type="text"
                     inputMode="decimal"
                     value={manual.amount}
@@ -636,7 +636,7 @@ export default function AISPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-ps-body mb-1.5">TDS (₹)</label>
-                  <input
+                  <input aria-label="TDS (₹)"
                     type="text"
                     inputMode="decimal"
                     value={manual.tds}

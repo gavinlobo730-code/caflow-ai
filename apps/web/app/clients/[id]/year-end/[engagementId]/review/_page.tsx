@@ -206,7 +206,7 @@ export default function ReviewPage() {
 
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Comment (optional)</label>
-          <textarea
+          <textarea aria-label="Comment (optional)"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={3}

@@ -168,7 +168,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           {customTitle && (
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Task Title *</label>
-              <input
+              <input aria-label="Task Title"
                 required
                 value={form.title}
                 onChange={e => set("title", e.target.value)}
@@ -182,7 +182,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Priority</label>
-              <select
+              <select aria-label="Priority"
                 value={form.priority}
                 onChange={e => set("priority", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
@@ -207,7 +207,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
           {/* Description */}
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Notes</label>
-            <textarea
+            <textarea aria-label="Notes"
               value={form.description}
               onChange={e => set("description", e.target.value)}
               rows={2}

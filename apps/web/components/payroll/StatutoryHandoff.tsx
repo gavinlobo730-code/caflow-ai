@@ -218,7 +218,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
             <label className="block text-3xs text-ps-label mb-0.5">
               Return type
             </label>
-            <select value={returnType} onChange={(e) => setReturnType(e.target.value)}
+            <select aria-label="Return type" value={returnType} onChange={(e) => setReturnType(e.target.value)}
               className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                          outline-none focus:border-brand">
               <option value="regular">
@@ -255,7 +255,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
             <label className="block text-3xs text-ps-label mb-0.5">
               Amount paid (₹)
             </label>
-            <input value={amount} onChange={(e) => setAmount(e.target.value)}
+            <input aria-label="Amount paid (₹)" value={amount} onChange={(e) => setAmount(e.target.value)}
               inputMode="decimal" placeholder="what left the bank"
               className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                          outline-none focus:border-brand" />
@@ -885,7 +885,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <label className="text-2xs text-ps-label">Month</label>
-        <select value={runId} onChange={(e) => setRunId(e.target.value)}
+        <select aria-label="Month" value={runId} onChange={(e) => setRunId(e.target.value)}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-sm
                      outline-none focus:border-brand">
           {runs.map((r) => (
