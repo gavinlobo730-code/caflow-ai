@@ -10,9 +10,12 @@
  */
 
 export interface LossUse {
+  /** What a take-back names: a filing's id, or `manual:<year>` for a use somebody recorded by hand. */
+  entry_id: string;
   filing_id: string;
   financial_year: string;
-  return_type: "original" | "revised";
+  /** `manual` is a use recorded by hand (POST-A-368): no return stands behind it, and `filing_found` and the number are null for it. */
+  return_type: "original" | "revised" | "manual";
   amount_paise: number;
   /** `null` when the server could not read the returns at all: it says nothing about whether the return is still on file. */
   filing_found: boolean | null;
@@ -31,9 +34,11 @@ function useOf(raw: unknown): LossUse | null {
   const u = raw as Record<string, unknown>;
   if (typeof u.filing_id !== "string" || typeof u.financial_year !== "string" || !isCount(u.amount_paise)) return null;
   return {
+    // An older server sends no `entry_id`; for a return's entry it is the filing's id, which is what the server keys it by.
+    entry_id: typeof u.entry_id === "string" && u.entry_id ? u.entry_id : u.filing_id,
     filing_id: u.filing_id,
     financial_year: u.financial_year,
-    return_type: u.return_type === "revised" ? "revised" : "original",
+    return_type: u.return_type === "revised" ? "revised" : u.return_type === "manual" ? "manual" : "original",
     amount_paise: u.amount_paise,
     filing_found: typeof u.filing_found === "boolean" ? u.filing_found : null,
     acknowledgement_number: typeof u.acknowledgement_number === "string" && u.acknowledgement_number ? u.acknowledgement_number : null,

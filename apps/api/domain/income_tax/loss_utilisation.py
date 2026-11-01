@@ -15,7 +15,8 @@ and the two totals become caches of it:
     utilized  = baseline + sum(amount of every entry)
     remaining = original - utilized
 
-`baseline` is whatever was recorded by hand through `utilize_bf_loss` (the one route that moves the total with no filing behind it). It is never
+`baseline` is whatever was recorded by hand with no year and no filing behind it (the route that did it, which carried no year, is gone: a use is
+now recorded by hand AS AN ENTRY, below). It is never
 stored: it is `utilized - sum(entries)`, so a hand edit and a filing cannot disagree about it, and the rule below leaves it exactly as found.
 
 WHAT A COMPUTATION MAY USE is the loss less the uses of OTHER years: `remaining` plus whatever THIS year's filings already took. Computing
@@ -32,6 +33,13 @@ original stays at ready-for-filing until somebody records it), and replacing by 
 that stands. Each entry therefore carries the kind of return that wrote it, an original never replaces a revised return's entry for the same year
 (`Superseded`), and a revised return replaces whatever the year holds.
 
+A YEAR'S USE CAN ALSO BE RECORDED BY HAND, AS AN ENTRY (POST-A-368). A return filed before this product, or one whose saved computation was never
+pinned, leaves no entry, and the old route that typed a use in carried no year, so it became baseline that no year is ever offered back. A hand
+entry is `{ "manual:<financial year>": { "financial_year": ..., "amount_paise": ..., "return_type": "manual" } }`: one per loss and year, SET and
+never added to. It ranks BELOW a filing: a filing's write for the same year replaces it (the return is the evidence and the hand entry was the
+stand-in), and it can never be written over a year a return already holds (`HeldByReturn`: the filing is the record, correct it there). Any entry,
+a filing's included, can be TAKEN BACK; a taken-back filing entry comes back the next time that filing's loss records are written.
+
 Nothing here reads a database. The functions take a row and return the columns to store, so the same rule serves the compute route, the filing
 write-back and a real-Postgres test, and none of them can drift from the others.
 """
@@ -40,9 +48,13 @@ from __future__ import annotations
 from typing import Any, Mapping, Optional
 
 
+#: The kind of an entry a person recorded by hand rather than a return writing it.
+MANUAL = "manual"
+
 #: Which kind of return stands over which, for the same financial year. A higher kind replaces a lower one and a lower one never replaces a
-#: higher one. `updated` is absent on purpose: nothing writes an updated return's use (owner-list S21).
-_RANK = {"original": 0, "revised": 1}
+#: higher one. `updated` is absent on purpose: nothing writes an updated return's use (owner-list S21). A hand entry ranks below both, so a
+#: filing's write replaces it and it replaces nothing.
+_RANK = {MANUAL: -1, "original": 0, "revised": 1}
 
 
 class Superseded(ValueError):
@@ -51,6 +63,26 @@ class Superseded(ValueError):
     def __init__(self, by: str):
         super().__init__(f"the use for this year is held by return {by}, which stands over this one")
         self.by = by
+
+
+class HeldByReturn(ValueError):
+    """A hand entry was asked for a year that a return's own entry already holds. `by` is that filing id; correct the use on the return."""
+
+    def __init__(self, by: str):
+        super().__init__(f"the use for this year is held by return {by}, so it is corrected on that return and not by hand")
+        self.by = by
+
+
+class MoreThanTheRecordCanTake(ValueError):
+    """A hand entry larger than what the record could still take. `room_paise` is what it could."""
+
+    def __init__(self, room_paise: int):
+        super().__init__("the record could take only a smaller amount for this year")
+        self.room_paise = room_paise
+
+
+class NoSuchEntry(KeyError):
+    """The entry asked for is not on this record (it was never there, or somebody took it back first)."""
 
 
 def _paise(value: Any) -> int:
@@ -123,17 +155,23 @@ def uses_view(row: Mapping[str, Any], filings: Optional[Mapping[str, Mapping[str
     `filings` maps a filing id to its row. `None` means the filings could not be read, and then an item says nothing about whether its return is
     still on file (`filing_found` is `None`, and so is the acknowledgement number): a failed read must not be worded as a return that is gone.
     An item whose return is not among the readable filings says `filing_found: False`. Nothing is added up here that the record does not
-    already hold: the hand-recorded part is the stored total less the entries (`baseline_paise`), and an entry of no rupees is not a use.
+    already hold: the hand-recorded part is the stored total less the entries (`baseline_paise`), and an entry of no rupees is not a use (a
+    revised return's is shown: it used none of the loss, and it holds its year).
     Each item is `{"filing_id", "financial_year", "return_type", "amount_paise", "filing_found", "acknowledgement_number"}`."""
     items = []
     for fid, e in entries_of(row).items():
-        if e["amount_paise"] <= 0:
+        # An entry of no rupees is not a use, EXCEPT a revised return's: it is kept on purpose (it is what stops the original, acknowledged later,
+        # from writing over it) and it holds its year against a hand entry, so a person has to be able to see it, and take it back.
+        if e["amount_paise"] <= 0 and e["return_type"] != "revised":
             continue
-        filing = None if filings is None else filings.get(fid)
+        by_hand = e["return_type"] == MANUAL
+        filing = None if filings is None or by_hand else filings.get(fid)
         ack = (filing or {}).get("acknowledgement_number")
         items.append({
-            "filing_id": fid, "financial_year": e["financial_year"], "return_type": e["return_type"], "amount_paise": e["amount_paise"],
-            "filing_found": None if filings is None else filing is not None,
+            "entry_id": fid, "filing_id": fid, "financial_year": e["financial_year"], "return_type": e["return_type"],
+            "amount_paise": e["amount_paise"],
+            # A hand entry has no return behind it, which is a different thing from a return that could not be read or is gone.
+            "filing_found": None if by_hand or filings is None else filing is not None,
             "acknowledgement_number": str(ack) if ack else None,
         })
     items.sort(key=lambda item: (_year_start(item["financial_year"]) or 0, item["filing_id"]))
@@ -198,3 +236,61 @@ def after_filing(row: Mapping[str, Any], filing_id: str, financial_year: str, us
         "utilized_amount_paise": utilized,
         "remaining_amount_paise": max(0, original - utilized),
     }
+
+
+def _totals(row: Mapping[str, Any], entries: Mapping[str, Mapping[str, Any]]) -> dict:
+    """The three columns for `entries`: the hand-recorded baseline is left exactly as found, and the totals are a cache of it and them."""
+    original = _paise(row.get("original_amount_paise"))
+    utilized = baseline_paise(row) + sum(e["amount_paise"] for e in entries.values())
+    return {"utilisations": dict(entries), "utilized_amount_paise": utilized, "remaining_amount_paise": max(0, original - utilized)}
+
+
+def manual_entry_id(financial_year: str) -> str:
+    """The key of the hand entry for a year: one per loss and year, so recording the year again SETS it."""
+    return f"{MANUAL}:{(financial_year or '').strip()}"
+
+
+def room_for_manual_paise(row: Mapping[str, Any], financial_year: str) -> int:
+    """What a hand entry for `financial_year` could be: the loss less the hand-recorded baseline and every OTHER entry (this year's hand entry,
+    if there is one, is the thing being replaced)."""
+    key = manual_entry_id(financial_year)
+    others = sum(e["amount_paise"] for k, e in entries_of(row).items() if k != key)
+    return max(0, _paise(row.get("original_amount_paise")) - baseline_paise(row) - others)
+
+
+def record_by_hand(row: Mapping[str, Any], financial_year: str, amount_paise: int) -> dict:
+    """The columns to store once a person has recorded that `financial_year` used `amount_paise` of this loss (POST-A-368).
+
+    - the year's hand entry is SET to the amount and never added to; an amount of nothing takes the entry away;
+    - a year that a return's entry holds (original or revised) is refused (`HeldByReturn`): the return is the record of that year's use and it is
+      corrected there, so the two can never both stand for one year;
+    - more than the record could still take is refused (`MoreThanTheRecordCanTake`), not stored as a smaller figure: the person typed a number
+      and a different one must not be saved under it;
+    - entries of other years and the baseline are untouched, and `utilized` / `remaining` are recomputed together.
+    """
+    fy = (financial_year or "").strip()
+    if _year_start(fy) is None:
+        raise ValueError("that is not a financial year")
+    entries = {k: dict(v) for k, v in entries_of(row).items()}
+    for other, e in entries.items():
+        if e["financial_year"] == fy and e["return_type"] != MANUAL:
+            raise HeldByReturn(other)
+    use = _paise(amount_paise)
+    room = room_for_manual_paise(row, fy)
+    if use > room:
+        raise MoreThanTheRecordCanTake(room)
+    key = manual_entry_id(fy)
+    entries.pop(key, None)
+    if use > 0:
+        entries[key] = {"financial_year": fy, "amount_paise": use, "return_type": MANUAL}
+    return _totals(row, entries)
+
+
+def take_back(row: Mapping[str, Any], entry_id: str) -> dict:
+    """The columns to store once the entry `entry_id` (a filing's id, or a hand entry's `manual:<year>`) is taken off this record. The baseline
+    and every other entry are untouched. `NoSuchEntry` when the record has no such entry."""
+    entries = {k: dict(v) for k, v in entries_of(row).items()}
+    if str(entry_id) not in entries:
+        raise NoSuchEntry(str(entry_id))
+    del entries[str(entry_id)]
+    return _totals(row, entries)

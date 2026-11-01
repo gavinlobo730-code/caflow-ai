@@ -8,8 +8,8 @@ this whole sweep exists to close. Every OTHER endpoint didn't: five
 query-param list endpoints (list_snapshots/list_filings/list_disallowances/
 list_deductions/list_bf_losses) took a REQUIRED client_id with no check at
 all, and six row-addressed endpoints (review_snapshot, transition_filing,
-save_version, record_acknowledgement, update_disallowance_status,
-utilize_loss) had no client check whatsoever — not even a firm check in
+save_version, record_acknowledgement, update_disallowance_status and the
+loss route that typed a total in, since removed) had no client check whatsoever — not even a firm check in
 several of the underlying domain functions' mock branches.
 
 Four new resolvers, one per client-bearing table (tax_computation_snapshots,
@@ -293,7 +293,7 @@ def test_listing_deductions_for_your_own_client_still_works(deny):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# list_bf_losses / _assert_bf_loss_scope / utilize_loss
+# list_bf_losses / _assert_bf_loss_scope / record_year_use / take_back_loss_use
 # ══════════════════════════════════════════════════════════════════════════════
 
 def test_listing_bf_losses_for_another_client_is_refused(deny):
@@ -332,18 +332,39 @@ def test_missing_and_hidden_bf_losses_use_the_identical_message(deny):
     assert missing.value.detail == hidden.value.detail == "Loss record not found"
 
 
-def test_utilizing_another_clients_loss_is_refused(deny):
+@pytest.fixture
+def audited(monkeypatch):
+    """The audit write is the service's own and has its own tests; here it is a recorder, so no test reaches a database."""
+    from services import bf_loss_service
+    seen = []
+    monkeypatch.setattr(bf_loss_service, "_write_audit_or_refuse", lambda **kw: seen.append(kw))
+    return seen
+
+
+def test_recording_a_year_on_another_clients_loss_is_refused_and_writes_nothing(deny, audited):
     _seed(_MOCK_LOSSES, "L-THEIRS", THEIRS,
-         utilized_amount_paise=0, original_amount_paise=100000)
-    with pytest.raises(HTTPException):
-        itr.utilize_loss("L-THEIRS", itr.UtilizeLossRequest(utilization_paise=5000),
-                         current_user=EXEC_USER)
-    assert _MOCK_LOSSES["L-THEIRS"]["utilized_amount_paise"] == 0
+         utilized_amount_paise=0, remaining_amount_paise=100000, original_amount_paise=100000, utilisations={})
+    with pytest.raises(HTTPException) as e:
+        itr.record_year_use("L-THEIRS", itr.YearUseRequest(financial_year="2024-25", amount_paise=5000, reason="x"),
+                            current_user=EXEC_USER)
+    assert e.value.status_code == 404
+    assert _MOCK_LOSSES["L-THEIRS"]["utilized_amount_paise"] == 0 and audited == []
 
 
-def test_utilizing_your_own_loss_still_works(deny):
+def test_taking_back_a_use_on_another_clients_loss_is_refused_and_writes_nothing(deny, audited):
+    held = {"manual:2024-25": {"financial_year": "2024-25", "amount_paise": 5000, "return_type": "manual"}}
+    _seed(_MOCK_LOSSES, "L-THEIRS", THEIRS,
+         utilized_amount_paise=5000, remaining_amount_paise=95000, original_amount_paise=100000, utilisations=held)
+    with pytest.raises(HTTPException) as e:
+        itr.take_back_loss_use("L-THEIRS", "manual:2024-25", itr.TakeBackRequest(reason="x"), current_user=EXEC_USER)
+    assert e.value.status_code == 404
+    assert _MOCK_LOSSES["L-THEIRS"]["utilisations"] == held and audited == []
+
+
+def test_recording_a_year_on_your_own_loss_still_works(deny, audited):
     _seed(_MOCK_LOSSES, "L-MINE", MINE,
-         utilized_amount_paise=0, original_amount_paise=100000)
-    out = itr.utilize_loss("L-MINE", itr.UtilizeLossRequest(utilization_paise=5000),
-                           current_user=EXEC_USER)
-    assert out["data"]["utilized_amount_paise"] == 5000
+         utilized_amount_paise=0, remaining_amount_paise=100000, original_amount_paise=100000, utilisations={})
+    out = itr.record_year_use("L-MINE", itr.YearUseRequest(financial_year="2024-25", amount_paise=5000, reason="Filed on the portal"),
+                              current_user=EXEC_USER)
+    assert out["data"]["state"] == "written" and out["data"]["recorded_paise"] == 5000
+    assert _MOCK_LOSSES["L-MINE"]["utilized_amount_paise"] == 5000 and len(audited) == 1

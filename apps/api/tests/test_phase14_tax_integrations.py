@@ -140,33 +140,6 @@ class TestBroughtForwardLosses:
         assert loss["utilized_amount_paise"] == 0
         assert loss["remaining_amount_paise"] == 200 * L
 
-    def test_utilize_loss_reduces_remaining(self):
-        from domain.income_tax.computation_workspace import create_bf_loss, utilize_bf_loss
-        loss = create_bf_loss(
-            firm_id="f1", client_id="c_loss",
-            assessment_year="2022-23",
-            loss_type="capital_long_term",
-            original_amount_paise=100 * L,
-            expiry_assessment_year="2030-31",
-            created_by="u1",
-        )
-        updated = utilize_bf_loss("f1", loss["id"], 30 * L)
-        assert updated["utilized_amount_paise"] == 30 * L
-        assert updated["remaining_amount_paise"] == 70 * L
-
-    def test_utilize_loss_cannot_exceed_original(self):
-        from domain.income_tax.computation_workspace import create_bf_loss, utilize_bf_loss
-        loss = create_bf_loss(
-            firm_id="f1", client_id="c_loss2",
-            assessment_year="2021-22",
-            loss_type="business",
-            original_amount_paise=50 * L,
-            expiry_assessment_year="2029-30",
-            created_by="u1",
-        )
-        with pytest.raises(ValueError, match="Utilization exceeds"):
-            utilize_bf_loss("f1", loss["id"], 60 * L)  # More than original
-
 
 # ── ITR Workflow ──────────────────────────────────────────────────────────────
 

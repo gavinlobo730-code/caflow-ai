@@ -294,7 +294,6 @@ routers/itr_workspace.py :: B904 :: record_acknowledgement :: 2
 routers/itr_workspace.py :: B904 :: review_snapshot :: 1
 routers/itr_workspace.py :: B904 :: save_version :: 2
 routers/itr_workspace.py :: B904 :: transition_filing :: 2
-routers/itr_workspace.py :: B904 :: utilize_loss :: 1
 routers/late_interest.py :: B904 :: LateInterestDraftIn._a_date :: 1
 routers/lifecycle.py :: B904 :: convert_lead :: 1
 routers/lifecycle.py :: C901 :: convert_lead :: 25

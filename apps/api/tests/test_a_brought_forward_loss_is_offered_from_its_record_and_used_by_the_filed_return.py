@@ -251,7 +251,7 @@ def test_the_next_years_return_adds_beside_the_first_and_leaves_it_alone():
 def test_an_updated_return_writes_nothing_and_says_why():
     loss("L1", original=10 * L)
     out = svc.write_back_filing(USER, filing(kind="updated", snapshot_id=snapshot(lines=[line("L1", 4 * L)])["id"]))
-    assert out["state"] == svc.NOT_WRITTEN and "This is an updated return" in out["message"] and "no screen yet" in out["message"]
+    assert out["state"] == svc.NOT_WRITTEN and "This is an updated return" in out["message"] and "Tax Computation screen" in out["message"]
     assert "by hand" not in out["message"], "no screen can record a loss by hand, so the sentence must not tell anyone to"
     assert _MOCK_LOSSES["L1"]["utilized_amount_paise"] == 0
 
@@ -285,7 +285,7 @@ def test_a_computation_that_set_off_nothing_says_nothing_and_one_that_names_no_r
     zero = svc.write_back_filing(USER, filing("F3", snapshot_id=snapshot("S3", lines=[{"section": "§72", "set_off_paise": 0}])["id"]))
     assert zero["state"] == svc.NO_LOSSES, "a typed-in loss that relieved nothing needs no note"
     typed_in = svc.write_back_filing(USER, filing("F2", snapshot_id=snapshot("S2", lines=[{"section": "§72", "set_off_paise": L}])["id"]))
-    assert typed_in["state"] == svc.NOT_WRITTEN and "names no loss record" in typed_in["message"] and "no screen yet" in typed_in["message"]
+    assert typed_in["state"] == svc.NOT_WRITTEN and "names no loss record" in typed_in["message"] and "Tax Computation screen" in typed_in["message"]
     assert _MOCK_LOSSES["L1"]["utilized_amount_paise"] == 0
 
 

@@ -176,11 +176,9 @@ def test_a_draft_journal_that_is_not_there_is_a_404(absent):
 
 def _domain_cases():
     from domain.gst import portal_service
-    from domain.income_tax import computation_workspace, itr_workflow, xbrl_service
+    from domain.income_tax import itr_workflow, xbrl_service
 
     return [
-        ("utilize_bf_loss", computation_workspace, "Loss record not found",
-         lambda: computation_workspace.utilize_bf_loss("firm-1", "loss-1", 100)),
         ("validate_xbrl_package", xbrl_service, "XBRL package not found",
          lambda: xbrl_service.validate_xbrl_package("firm-1", "pkg-1", None)),
         ("generate_xbrl_xml", xbrl_service, "XBRL package not found",

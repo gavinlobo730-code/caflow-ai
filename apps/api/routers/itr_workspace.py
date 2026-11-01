@@ -290,8 +290,16 @@ class BFLossRequest(BaseModel):
         return text
 
 
-class UtilizeLossRequest(BaseModel):
-    utilization_paise: int = Field(..., ge=0)
+class YearUseRequest(BaseModel):
+    """A year's use of a loss, recorded by hand (POST-A-368). The year is a typed financial-year label, the amount is a count of paise that SETS
+    the year's entry (zero takes it away), and the reason is required: it is kept with the change in the audit log."""
+    financial_year: FYLabel
+    amount_paise: int = Field(..., ge=0)
+    reason: str = Field(..., max_length=2000)
+
+
+class TakeBackRequest(BaseModel):
+    reason: str = Field(..., max_length=2000)
 
 
 # ── Computation Snapshots ──────────────────────────────────────────────────────
@@ -851,7 +859,9 @@ def _audit_the_loss_records(current_user: dict, filing: dict, loss_records: dict
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   new_data={"itr_filing_id": filing.get("id"), "financial_year": filing.get("financial_year"),
                             "return_type": filing.get("return_type") or "original", "used_paise": r.get("used_paise"),
-                            "requested_paise": r.get("requested_paise")},
+                            "requested_paise": r.get("requested_paise"),
+                            # A use a person recorded by hand for the year, which this write replaced (absent when there was none).
+                            **({"replaced_by_hand_paise": r["replaced_by_hand_paise"]} if r.get("replaced_by_hand_paise") else {})},
                   metadata={"reason": "an ITR acknowledgement was recorded; the loss record now shows what the return used"})
 
 
@@ -1117,17 +1127,38 @@ def list_bf_losses(
     return api_response(True, [{**row, **seen[str(row.get("id"))]} for row in rows])
 
 
-@router.post("/bf-losses/{loss_id}/utilize")
-def utilize_loss(
+@router.post("/bf-losses/{loss_id}/year-use")
+def record_year_use(
     loss_id: str,
-    req: UtilizeLossRequest,
+    req: YearUseRequest,
     current_user: dict = Depends(rbac("income_tax", "compute")),
 ):
-    # M2 audit finding: row-addressed by loss_id, no client check at all.
+    """Record, by hand, that a financial year used part of a brought-forward loss (POST-A-368).
+
+    For a return filed before this product, or one whose saved computation was never pinned, which leaves no entry on the record. The year's
+    entry is SET and never added to, a year that a filed return's entry holds is refused (correct it on that return), and an amount past what
+    the record could take is refused with the figure it could. Nothing is filed. CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT."""
     _assert_bf_loss_scope(current_user, loss_id)
-    from domain.income_tax.computation_workspace import utilize_bf_loss
+    from services import bf_loss_service
     try:
-        result = utilize_bf_loss(current_user["firm_id"], loss_id, req.utilization_paise)
-        return api_response(True, result)
-    except ValueError as e:
-        raise HTTPException(400, detail=str(e))
+        return api_response(True, bf_loss_service.record_year_use(
+            current_user, loss_id, req.financial_year, req.amount_paise, req.reason))
+    except bf_loss_service.UseRefused as exc:
+        raise HTTPException(exc.status, detail=exc.sentence) from None
+
+
+@router.post("/bf-losses/{loss_id}/uses/{entry_id}/take-back")
+def take_back_loss_use(
+    loss_id: str,
+    entry_id: str,
+    req: TakeBackRequest,
+    current_user: dict = Depends(rbac("income_tax", "compute")),
+):
+    """Take one entry off a brought-forward loss record: a hand entry, or the use a filed return wrote (POST-A-368). A reason is required and is
+    kept, with what the record held, in the audit log before anything changes."""
+    _assert_bf_loss_scope(current_user, loss_id)
+    from services import bf_loss_service
+    try:
+        return api_response(True, bf_loss_service.take_back_use(current_user, loss_id, entry_id, req.reason))
+    except bf_loss_service.UseRefused as exc:
+        raise HTTPException(exc.status, detail=exc.sentence) from None
