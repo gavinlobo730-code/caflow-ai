@@ -25,7 +25,8 @@ WHAT THIS DOES
     The caller must hold `compliance.approve`, the tier that undoes a filing (`POST /api/compliance/obligations/{id}/reopen`); a
     caller who does not has the months NAMED instead, with who can reopen them, and nothing is reopened for them. Each month goes
     back to Ready To File through `compliance_record_service.reopen_record` (the reason on the row, the audit log and the timeline
-    as for any reopening, in the caller's name), and a month that cannot be reopened is named with the sentence, never failing
+    as for any reopening, in the caller's name) and FORGETS what it was closed on (the challans that remain are the register's to judge
+    afresh; a record left on it would hold it open on the survivors as though a person had rejected them), and a month that cannot be reopened is named with the sentence, never failing
     the retraction. A month that reads filed in the challan's quarter with NO record of what closed it (closed before the record
     existed, or by a person from Compliance) is named and left, as before: the register cannot say whether this challan was one of
     them. A filed month that names OTHER challans only is not mentioned: this challan did not close it.
@@ -168,7 +169,7 @@ def _reopen(rec: dict, *, challan: dict, reason: str, actor: dict, firm_id: str,
     why = (f"The TDS challan {challan.get('challan_no') or 'recorded for it'} that this month was closed on was retracted: "
            f"{reason}")[:MAX_REOPEN_REASON_CHARS]
     try:
-        compliance_record_service.reopen_record(rec["id"], why, firm_id=firm_id, actor=actor)
+        compliance_record_service.reopen_record(rec["id"], why, firm_id=firm_id, actor=actor, forget_what_closed_it=True)
     except ValidationError as refusal:
         return str(getattr(refusal, "message", None) or refusal)
     except NotFoundError:
@@ -187,8 +188,9 @@ def _calendar_sentence(effect: dict[str, Any]) -> Optional[str]:
     parts = []
     if effect["reopened"]:
         parts.append(f"The monthly TDS deposit (non-salary) on the compliance calendar for {_join(effect['reopened'])} was closed on "
-                     "this challan, so it has been reopened and reads Ready To File again. It is closed again when the challans "
-                     "recorded for the quarter cover it in full and on time.")
+                     "this challan, so it has been reopened and reads Ready To File again. The register looks at it again the next "
+                     "time a challan is recorded for the quarter and closes it if the challans then recorded cover it in full and on "
+                     "time; until then it can be marked filed from Compliance.")
     if effect["named"]:
         parts.append(f"The monthly TDS deposit (non-salary) for {_join(effect['named'])} was closed on this challan and still reads "
                      f"filed on the compliance calendar. Your access does not include approving Compliance, so it was not reopened; "

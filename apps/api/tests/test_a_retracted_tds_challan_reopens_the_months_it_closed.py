@@ -399,3 +399,96 @@ def test_retract_the_wrong_challan_record_the_right_one_and_the_month_closes_aga
     assert out[0]["closed"] is True and out[0]["reference"] == "0007"
     rec = now(ob)
     assert rec["status"] == "Filed" and str(rec["filed_date"])[:10] == "2025-08-06" and rec["closing_tds_challan_ids"] == [right["id"]]
+
+
+# ── what an independent review found (1-11-2026): the record must not outlive the closure it describes ─────────────────────────────
+
+def test_a_person_who_marks_the_month_filed_from_compliance_clears_the_record(world):
+    """The closer's own 'left open' sentence tells a person to mark the month filed from Compliance. That month was then closed on a payment
+    of the person's own, so a later retraction of a challan the closer had named must not reopen it."""
+    client, db, _s, _tw, _mp = world
+    _db, ob, a = a_july_closed_on(world)
+    reopen(now(ob))
+    assert now(ob)["closing_tds_challan_ids"] == [a["id"]], "a person's reopen keeps the record"
+    from domain.compliance_record_service import compliance_record_service
+    compliance_record_service.mark_filed(ob["id"], firm_id=FIRM, actor=MANAGER, acknowledgement_no="REAL-CHALLAN", filed_date="2025-08-06")
+    rec = now(ob)
+    assert rec["status"] == "Filed" and rec["acknowledgement_no"] == "REAL-CHALLAN"
+    assert rec.get("closing_tds_challan_ids") is None, "the old ids outlived the closure they described"
+    data = retract(client, a).json()["data"]
+    assert data["reopened_obligation_ids"] == [] and now(ob)["status"] == "Filed", "a month closed by a person was reopened by a retraction"
+    assert "July 2025" in data["calendar_note"] and "does not reopen it" in data["calendar_note"], "it is named, with who can reopen it"
+
+
+def test_moving_from_filed_to_completed_keeps_the_record(world):
+    _client, _db, _s, _tw, _mp = world
+    _db, ob, a = a_july_closed_on(world)
+    from domain.compliance_record_service import compliance_record_service
+    compliance_record_service.update_record(ob["id"], {"status": "Completed"}, firm_id=FIRM, actor=MANAGER)
+    rec = now(ob)
+    assert rec["status"] == "Completed" and rec["closing_tds_challan_ids"] == [a["id"]]
+
+
+def test_a_person_s_reopen_keeps_the_record_and_a_retractions_reopen_forgets_it(world):
+    client, db, _s, _tw, _mp = world
+    _db, ob, a = a_july_closed_on(world)
+    reopen(now(ob))
+    assert now(ob)["closing_tds_challan_ids"] == [a["id"]]
+    deduction(db, "2025-08-11", 7_000_00)
+    other = obligation(2025, 8)
+    b = challan(db, 7_000_00, paid_on="2025-09-05", no="0002")
+    close(db, b)
+    assert now(other)["status"] == "Filed"
+    assert retract(client, b).json()["data"]["reopened_obligation_ids"] == [other["id"]]
+    assert now(other).get("closing_tds_challan_ids") is None, "the retraction's reopen left the old record on the month"
+
+
+def test_a_month_the_retraction_reopened_is_closed_again_on_the_challans_that_remain(world):
+    """Two challans closed July (6,000 then 10,000 against 10,000 of tax). Retracting the first reopens July. The second alone covers it in full
+    and on time, so the next challan saved for the quarter must close it again, and no sentence may call it a person's reopen."""
+    client, db, _s, _tw, _mp = world
+    deduction(db, "2025-07-10", 10_000_00)
+    ob = obligation(2025, 7)
+    a = challan(db, 6_000_00, paid_on="2025-08-04", no="0001")
+    b = challan(db, 10_000_00, paid_on="2025-08-06", no="0002")
+    out = close(db, b)
+    assert out[0]["closed"] is True and closes.closed_on(now(ob)) == frozenset({a["id"], b["id"]})
+    data = retract(client, a).json()["data"]
+    assert data["reopened_obligation_ids"] == [ob["id"]] and now(ob)["status"] == "Ready To File"
+    assert now(ob).get("closing_tds_challan_ids") is None
+    assert "the next time a challan is recorded for the quarter" in data["calendar_note"], "the note over-promised the timing"
+    deduction(db, "2025-09-10", 3_000_00)
+    c = challan(db, 3_000_00, paid_on="2025-10-05", no="0003")
+    out = close(db, c)
+    assert now(ob)["status"] == "Filed", [a_ for a_ in out]
+    assert closes.closed_on(now(ob)) == frozenset({b["id"]})
+
+
+def test_a_failed_write_of_the_new_ids_leaves_no_record_and_never_the_old_ones(world, monkeypatch):
+    client, db, _s, _tw, _mp = world
+    _db, ob, a = a_july_closed_on(world)
+    reopen(now(ob))
+    db.table("tds_challans").delete().eq("id", a["id"]).execute()
+    corrected = challan(db, 10_000_00, paid_on="2025-08-06", no="0009")
+    monkeypatch.setattr(closes, "capture_soft_failure", lambda *a_, **k: None)
+    monkeypatch.setattr(compliance_records_repo, "stamp_closing_tds_challans",
+                        lambda *a_, **k: (_ for _ in ()).throw(RuntimeError("database unavailable")))
+    out = close(db, corrected)
+    assert out[0]["closed"] is True and now(ob)["status"] == "Filed"
+    assert now(ob).get("closing_tds_challan_ids") is None, "the old ids stood in for the new ones"
+
+
+def test_the_reopen_door_does_not_forget_the_record_by_default(world):
+    _client, _db, _s, _tw, _mp = world
+    import inspect
+    from domain.compliance_record_service import compliance_record_service
+    assert inspect.signature(compliance_record_service.reopen_record).parameters["forget_what_closed_it"].default is False
+
+
+def test_update_clearing_may_clear_the_record_and_nothing_else_outside_its_lists(world):
+    ob = obligation(2025, 7, status="Filed")
+    compliance_records_repo.stamp_closing_tds_challans(ob["id"], FIRM, ["x"])
+    with pytest.raises(ValueError):
+        compliance_records_repo.update_clearing(ob["id"], FIRM, {}, clear=("status",))
+    compliance_records_repo.update_clearing(ob["id"], FIRM, {}, clear=compliance_records_repo.CLEARABLE_RECORD)
+    assert now(ob).get("closing_tds_challan_ids") is None

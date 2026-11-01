@@ -938,6 +938,9 @@ export default function TDSPage() {
       const done = await retractTdsChallan(retracting.id, reason);
       if (clientAtClick !== openClient.current) return;      // the CA moved to another client meanwhile: nothing here is theirs to show
       setRetracting(null);
+      // What became of the months a challan paid when it was RECORDED is no longer true once it is retracted: the retraction's own
+      // note says what happened to them now, so the earlier callout goes.
+      setCalendarAnswers(null);
       setRetractionNotes([done.calendar_note, done.statement_note].filter((n): n is string => !!n));
       toast({ title: "Challan retracted", description: "It is out of the register. The reason is in the audit log." });
       void loadLists(clientAtClick, false);

@@ -762,6 +762,8 @@ export interface RetractedChallan {
   payment_date: string | null;
   total_paise: number | null;
   calendar_note: string | null;
+  /** The monthly deposit obligations this retraction reopened (the months the challan closed, for a caller who may approve Compliance). */
+  reopened_obligation_ids: string[];
   /** Set when the quarter's TDS statement is recorded as filed: retracting changes the register and not that statement. */
   statement_note: string | null;
 }

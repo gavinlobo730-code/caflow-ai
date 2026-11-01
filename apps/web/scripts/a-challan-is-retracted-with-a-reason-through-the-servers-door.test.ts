@@ -79,6 +79,7 @@ test("a retraction reloads the register and the deposit position and shows the s
   assert.ok(/loadLists\(clientAtClick, false\)/.test(handler), "the register is not read again");
   assert.ok(/refreshDepositState\(clientAtClick, true\)/.test(handler), "the deposit position is not read again");
   assert.ok(/setRetractionNotes\(\[done\.calendar_note, done\.statement_note\]/.test(handler), "the server's two sentences are not kept");
+  assert.ok(/setCalendarAnswers\(null\)/.test(handler), "what became of the months when the challan was recorded stays on screen after it is retracted");
   assert.ok(/setRetractError\(/.test(handler), "a refusal is not shown");
   assert.ok(/clientAtClick !== openClient\.current\) return/.test(handler), "an answer that lands after a client switch is not dropped");
   assert.ok(!/setChallans\(/.test(handler), "the handler patches the list by hand");

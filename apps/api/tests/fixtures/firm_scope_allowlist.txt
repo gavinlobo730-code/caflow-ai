@@ -18,7 +18,6 @@ core/portal_auth.py | get_current_portal_client | call:list_portal_memberships |
 core/portal_auth.py | get_current_portal_employee | payroll_employees | read | 1 | principal-lookup
 domain/ai_copilot_service.py | AICopilotService._build_context | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/ai_copilot_v2.py::send_message via=chat
 domain/ai_copilot_service.py | AICopilotService.chat | repo:ai_copilot_repo.list_messages | read | 1 | gated-by-route | route=routers/ai_copilot_v2.py::send_message via=chat
-domain/compliance_record_service.py | ComplianceRecordService.update_record | repo:compliance_records_repo.update | update | 1 | looked-up-first | lookup=get_record
 domain/inventory_service.py | _last_ledger_row | inventory_stock_ledger | read | 1 | helper-of-allowlisted-call
 domain/memory_pipeline.py | MemoryPipeline.compute_client_profile | repo:client_repo.find_by_id | read | 1 | gated-by-route | route=routers/memory_intelligence.py::compute_client_profile
 domain/task_service.py | TaskDomainService.create | repo:client_repo.get_or_raise | read | 1 | unreachable-code | symbol=TaskDomainService.create,transition_status

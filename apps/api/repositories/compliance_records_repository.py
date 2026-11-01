@@ -132,16 +132,21 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
     #: taking a filing back needs its own way to write a NULL, and it is limited to the three columns a filing sets and the two
     #: that remember the last escalation (a reopened obligation that is overdue again must not wait out the old notice's week).
     CLEARABLE = ("filed_date", "acknowledgement_no", "completed_at", "last_escalated_tier", "last_escalated_on")
+    #: The record of which TDS challans the closer closed a month on (migration 569). Kept apart from `CLEARABLE` on purpose: a PERSON's
+    #: reopen must keep it (the closer's "same challans" rule reads it), so reopening passes `CLEARABLE` alone, and only the two things
+    #: that make it untrue ask for this one: a person (or the closer) recording the obligation filed again, and a retraction of a
+    #: challan it names.
+    CLEARABLE_RECORD = ("closing_tds_challan_ids",)
 
     def update_clearing(self, id: str, firm_id: str, data: dict, clear: tuple,
                         only_if_status: Optional[tuple] = None) -> Optional[dict]:
-        """`update` plus an explicit NULL for each column named in `clear`, which must be among `CLEARABLE`. It names the firm, so
+        """`update` plus an explicit NULL for each column named in `clear`, which must be among `CLEARABLE` and `CLEARABLE_RECORD`. It names the firm, so
         the write is confined to that firm's row whatever the caller checked before (the rows of two firms never share an id, and
         this does not rely on that). With `only_if_status` it acts only on a row still in one of those statuses, the state the
         caller saw: a row somebody changed in between is not written, and None comes back."""
-        bad = [c for c in clear if c not in self.CLEARABLE]
+        bad = [c for c in clear if c not in self.CLEARABLE + self.CLEARABLE_RECORD]
         if bad:
-            raise ValueError(f"update_clearing may only clear {self.CLEARABLE}, not {bad}")
+            raise ValueError(f"update_clearing may only clear {self.CLEARABLE + self.CLEARABLE_RECORD}, not {bad}")
         if not firm_id:
             raise ValueError("update_clearing needs the firm")
         if _USE_MOCK:
