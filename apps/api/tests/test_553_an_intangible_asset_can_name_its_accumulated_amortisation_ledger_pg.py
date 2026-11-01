@@ -95,6 +95,10 @@ def db(pg_template):
         crowded = "\n".join(_account(CROWDED, str(c), f"Other {c}") for c in range(1591, 1600))
         seed = _psql(dsn, f"""
             DROP INDEX IF EXISTS fixed_assets_accumulated_account_idx;
+            -- Migration 570 put an account check on the column; in real history 553 ran long before it, so the simulation of the older
+            -- shape drops the check first (Postgres refuses to drop a column a trigger names).
+            DROP TRIGGER IF EXISTS row_ledger_account_accumulated_account_id_ins ON fixed_assets;
+            DROP TRIGGER IF EXISTS row_ledger_account_accumulated_account_id_upd ON fixed_assets;
             ALTER TABLE fixed_assets DROP COLUMN IF EXISTS accumulated_account_id;
             DELETE FROM chart_of_accounts WHERE account_name = 'Accumulated Amortisation';
 
