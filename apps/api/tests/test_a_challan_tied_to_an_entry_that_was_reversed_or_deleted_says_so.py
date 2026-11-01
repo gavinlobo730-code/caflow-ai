@@ -274,5 +274,7 @@ def test_every_query_that_feeds_the_rule_selects_the_columns_it_reads():
     from domain.payroll import remittance_match as rm
     from services import statutory_remittance_service as esi
     assert rm.ENTRY_STATE_COLUMNS == ("is_posted", "is_reversed", "reversal_of")
-    for fn in (esi.entries_clearing_account, svc.entry_states, svc._entry):
+    for fn in (esi.entries_clearing_account, esi.entry_states, esi.link_payment, svc._entry):
         assert "ENTRY_STATE_COLUMNS" in inspect.getsource(fn), f"{fn.__name__} does not select the columns entry_state reads"
+    # the TDS challan's reader is the remittance register's one, not a second copy of it
+    assert "remittances.entry_states(" in inspect.getsource(svc.entry_states)

@@ -6224,7 +6224,37 @@ def link_remittance_payment(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not linked:
         raise HTTPException(status_code=404, detail="Remittance not found")
+    from services.audit_service import log_event
+    log_event(current_user["firm_id"], "statutory_remittance", remittance_id, "update",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data={"journal_entry_id": None}, new_data={"journal_entry_id": body.journal_entry_id},
+              metadata={"client_id": client_id, "change": "payment_linked"})
     return api_response(True, {"remittance_id": remittance_id, "linked": True})
+
+
+@router.delete("/clients/{client_id}/remittances/{remittance_id}/payment")
+def unlink_remittance_payment(
+    client_id: str,
+    remittance_id: str,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Take back the link between a remittance and a ledger entry (POST-A-272). The remittance and the entry are untouched: the remittance
+    reads "paid, not tied to an entry" again and is offered its candidates. For a link whose entry was later reversed, deleted or never
+    posted (`remittance-reconciliation` lists those in `stale_links`, in the server's words). Audited as the person who took it back.
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this edits the practice's own register and transmits nothing."""
+    db = _db()
+    if not db:
+        return api_response(True, {"remittance_id": remittance_id, "unlinked": False})
+    assert_client_access(current_user, client_id)
+    was = remittances.unlink_payment(db, firm_id=current_user["firm_id"], client_id=client_id, remittance_id=remittance_id)
+    if not was:
+        raise HTTPException(status_code=404, detail="Remittance not found, or it is not tied to a ledger entry.")
+    from services.audit_service import log_event
+    log_event(current_user["firm_id"], "statutory_remittance", remittance_id, "update",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data={"journal_entry_id": was}, new_data={"journal_entry_id": None},
+              metadata={"client_id": client_id, "change": "payment_unlinked"})
+    return api_response(True, {"remittance_id": remittance_id, "unlinked": True, "was": was})
 
 
 @router.delete("/clients/{client_id}/remittances/{remittance_id}")
@@ -6267,6 +6297,8 @@ def remittance_reconciliation(
 
     Each row comes back with the entries that could be its payment, ranked, so
     the second kind can be matched and only the first kind is left to chase.
+    A THIRD KIND is listed apart, in `stale_links`: a remittance that IS tied, to an entry that was later reversed or deleted, is still a
+    remittance whose liability the ledger shows uncleared. It says so in the server's words and the link can be taken back.
 
     NOTHING IS LINKED HERE. This endpoint reads; PATCH
     /clients/{client_id}/remittances/{id}/payment is the one that writes, and
@@ -6279,12 +6311,15 @@ def remittance_reconciliation(
     """
     db = _db()
     if not db:
-        return api_response(True, {"client_id": client_id, "unmatched": []})
+        return api_response(True, {"client_id": client_id, "unmatched": [], "stale_links": []})
     assert_client_access(current_user, client_id)
     return api_response(True, {
         "client_id": client_id,
         "unmatched": remittances.unmatched_with_candidates(
             db, firm_id=current_user["firm_id"], client_id=client_id),
+        # Remittances TIED to an entry that no longer records the payment (reversed, deleted, still a draft, a reversal, gone), each with the
+        # server's own label and note. They are not in `unmatched` (they have a link) and a live link is not listed.
+        "stale_links": remittances.stale_links(db, firm_id=current_user["firm_id"], client_id=client_id),
         "window_days": remittance_match.DEFAULT_WINDOW_DAYS,
     })
 
