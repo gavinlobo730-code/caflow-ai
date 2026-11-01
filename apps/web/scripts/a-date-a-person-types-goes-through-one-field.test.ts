@@ -252,9 +252,7 @@ const CATEGORY_REASON: Record<Category, string> = {
  * converted while still listed fails the equality below. It never gains a file
  * or a count: a new date field is a `<DateInput>`.
  */
-const FROZEN: Record<string, { count: number; category: Category; note: string }> = {
-  "components/sales/SalesCycleTab.tsx": { count: 1, category: "acts-on-change", note: "an uncontrolled field whose change IS the write: it records goods back on the date picked" },
-};
+const FROZEN: Record<string, { count: number; category: Category; note: string }> = {};
 
 /** Every problem between what the tree holds and what the list says. */
 export function frozenProblems(
