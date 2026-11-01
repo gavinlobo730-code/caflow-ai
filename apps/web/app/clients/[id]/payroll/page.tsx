@@ -1166,7 +1166,7 @@ function StatutoryTab({ clientId, initialMonth }: { clientId: string; initialMon
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
-        <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+        <input aria-label="Payroll month" type="month" value={month} onChange={e => setMonth(e.target.value)}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand" />
         <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">
           {loading ? "Loading…" : "Load"}
@@ -2037,7 +2037,7 @@ function IdentityRow({ field, value, saving, justSaved, onSave }: {
       <div className="flex-1">
         <label className="block text-2xs font-medium text-ps-body">{field.label}</label>
         <p className="text-3xs text-ps-hint mb-1">{field.used_for}</p>
-        <input
+        <input aria-label={field.label}
           value={draft}
           onChange={e => setDraft(e.target.value)}
           placeholder="Not recorded"
@@ -2086,7 +2086,7 @@ function Field({ label, value, onChange, placeholder, type = "text" }: { label: 
   return (
     <div>
       <label className="block text-2xs text-ps-label mb-0.5">{label}</label>
-      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      <input aria-label={label} type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
     </div>
   );
@@ -2555,7 +2555,7 @@ function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth
   return (
     <div className="p-5 space-y-4">
       <div className="flex items-center gap-3">
-        <input type="month" value={month} onChange={e => setMonth(e.target.value)}
+        <input aria-label="Payroll month" type="month" value={month} onChange={e => setMonth(e.target.value)}
           className="border border-ps-border rounded-lg px-3 py-1.5 text-sm outline-none focus:border-brand" />
         <button onClick={load} disabled={loading} className="px-4 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand-dark disabled:opacity-50">
           {loading ? "Loading…" : "Load Salary Register"}

@@ -32,13 +32,6 @@
       "input:noteDrafts[f.id] ?? \"\"",
       "select:ccy"
     ],
-    "app/clients/[id]/compliance/gst/page.tsx": [
-      "input:computePeriod",
-      "input:computePeriod #2",
-      "input:period",
-      "input:period #2",
-      "select:fy"
-    ],
     "app/clients/[id]/compliance/page.tsx": [
       "textarea:noticeText"
     ],
@@ -49,18 +42,6 @@
       "input:form[f.k]",
       "input:period",
       "input:toPeriod"
-    ],
-    "app/clients/[id]/knowledge/page.tsx": [
-      "input:form.tags",
-      "input:form.title",
-      "input:query",
-      "textarea:form.content"
-    ],
-    "app/clients/[id]/payroll/page.tsx": [
-      "input:draft",
-      "input:month",
-      "input:month #2",
-      "input:value"
     ],
     "app/clients/[id]/purchases/page.tsx": [
       "input:amount"
@@ -129,13 +110,6 @@
     "app/income-tax/tax-audit/form-3cd/page.tsx": [
       "textarea:manualValue"
     ],
-    "app/knowledge/page.tsx": [
-      "input:form.department",
-      "input:form.tags",
-      "input:form.title",
-      "input:query",
-      "textarea:form.content"
-    ],
     "app/mca/page.tsx": [
       "input:filedForm.srn",
       "input:srns[f.id] ?? \"\""
@@ -146,19 +120,6 @@
     "app/notifications/whatsapp/page.tsx": [
       "input:values[v] ?? \"\"",
       "textarea:values[v] ?? \"\""
-    ],
-    "app/onboarding/page.tsx": [
-      "input:form[field] as string",
-      "input:ownerName",
-      "input:pw",
-      "input:pw2",
-      "input:reauthOtp"
-    ],
-    "app/practice/billing/page.tsx": [
-      "input:form.amount_rupees",
-      "input:form.gst_rate",
-      "select:form.arrangement",
-      "select:form.cadence"
     ],
     "app/relationships/cross-client/page.tsx": [
       "input:search"
@@ -196,12 +157,6 @@
       "input:code",
       "input:reauthOtp"
     ],
-    "app/settings/statutory-values/page.tsx": [
-      "input:band.amount",
-      "input:band.from",
-      "input:band.to",
-      "input:value"
-    ],
     "app/team/assignments/page.tsx": [
       "input:filter"
     ],
@@ -230,13 +185,6 @@
     ],
     "components/accounting/FxRevaluationPanel.tsx": [
       "input:rates[r.currency] ?? \"\""
-    ],
-    "components/banking/AccountsPanel.tsx": [
-      "input:closingRs",
-      "input:openingBal",
-      "input:openingRs",
-      "select:accountId",
-      "select:mapping[f.key] ?? \"\""
     ],
     "components/banking/EntriesTab.tsx": [
       "input:rulePrompt.pattern"
@@ -277,13 +225,6 @@
     ],
     "components/purchases/PurchaseCreditNoteEditor.tsx": [
       "input#799eb62d"
-    ],
-    "components/purchases/PurchaseCycleTab.tsx": [
-      "input:l.description",
-      "input:l.gst_rate_percent",
-      "input:l.hsn_sac",
-      "input:l.quantity",
-      "input:l.rate"
     ],
     "components/purchases/RecurringBills.tsx": [
       "input:l.blocked_credit_reason"

@@ -499,7 +499,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
             <div className="space-y-2">
               {lines.map((l, i) => (
                 <div key={i} className="grid gap-2 sm:grid-cols-6">
-                  <input
+                  <input aria-label={`Line ${i + 1} description`}
                     value={l.description}
                     placeholder="Description"
                     onChange={(e) => {
@@ -509,7 +509,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm sm:col-span-2"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} HSN or SAC code`}
                     value={l.hsn_sac}
                     placeholder="HSN"
                     onChange={(e) => {
@@ -519,7 +519,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm font-mono"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} quantity`}
                     value={l.quantity}
                     placeholder="Qty"
                     onChange={(e) => {
@@ -529,7 +529,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} rate (₹)`}
                     value={l.rate}
                     placeholder="Rate ₹"
                     onChange={(e) => {
@@ -539,7 +539,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} GST rate (%)`}
                     value={l.gst_rate_percent}
                     placeholder="GST %"
                     onChange={(e) => {

@@ -102,7 +102,7 @@ function KnowledgeInner() {
       <div className="flex items-center gap-2 mb-4">
         <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus-within:ring-2 focus-within:ring-brand">
           <Search size={14} className="text-ps-hint" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()}
+          <input aria-label="Search articles" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()}
             placeholder="Search articles…" className="flex-1 text-sm outline-none" />
         </div>
       </div>
@@ -115,11 +115,11 @@ function KnowledgeInner() {
             <select aria-label="Article scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value })} className="border rounded-lg px-2 py-1.5">
               <option value="firm">Firm</option><option value="department">Department</option>
             </select>
-            <input placeholder="Department (optional)" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="border rounded-lg px-2 py-1.5 flex-1" />
+            <input aria-label="Department (optional)" placeholder="Department (optional)" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="border rounded-lg px-2 py-1.5 flex-1" />
           </div>
-          <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
-          <textarea placeholder="Content…" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={4} />
-          <input placeholder="Tags (comma-separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
+          <input aria-label="Title" required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
+          <textarea aria-label="Content" placeholder="Content…" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={4} />
+          <input aria-label="Tags, comma-separated" placeholder="Tags (comma-separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
           <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs">Create</button>
         </form>
       )}

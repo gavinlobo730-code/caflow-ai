@@ -738,7 +738,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           <RegistrationPicker state={reg} id="gstr1-compute-registration"
             disabled={actionInFlight}
             onChange={() => { setComputeResult(null); setComputeError(null); }} />
-          <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
+          <input aria-label="GSTR-1 return period to compute (MMYYYY)" placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
             onChange={(e) => setComputePeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <label className="flex items-start gap-2 text-xs text-ps-label">
@@ -831,7 +831,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       {showNew && (
         <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">New GSTR-1</p>
-          <input placeholder="Period (MMYYYY e.g. 042025)" value={period}
+          <input aria-label="New GSTR-1 return period (MMYYYY)" placeholder="Period (MMYYYY e.g. 042025)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <RegistrationPicker state={reg} id="gstr1-new-registration"
@@ -1264,7 +1264,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             disabled={actionInFlight}
             onChange={() => { setComputeResult(null); setComputeError(null); }} />
           <div className="grid grid-cols-2 gap-2">
-            <input placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
+            <input aria-label="GSTR-3B return period to compute (MMYYYY)" placeholder="Period (MMYYYY e.g. 042025)" value={computePeriod}
               onChange={(e) => setComputePeriod(e.target.value)}
               className="w-full border rounded px-3 py-1.5 text-sm" />
             <div>
@@ -1501,7 +1501,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       {showNew && (
         <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">New GSTR-3B</p>
-          <input placeholder="Period (MMYYYY)" value={period}
+          <input aria-label="New GSTR-3B return period (MMYYYY)" placeholder="Period (MMYYYY)" value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <RegistrationPicker state={reg} id="gstr3b-new-registration"
@@ -2270,7 +2270,7 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-9 Annual Return</h3>
-        <select value={fy} onChange={(e) => setFy(e.target.value)}
+        <select aria-label="Financial year of the GSTR-9" value={fy} onChange={(e) => setFy(e.target.value)}
           className="border rounded px-2 py-1.5 text-sm">
           {fyOptions.map((y) => (
             <option key={y} value={y}>FY {y}</option>

@@ -166,10 +166,10 @@ function Billing() {
             ariaLabel="Client"
             placeholder="Select client…"
           />
-          <select value={form.arrangement} onChange={(e) => setForm({ ...form, arrangement: e.target.value })} className="border rounded-lg px-2 py-1.5">
+          <select aria-label="Billing arrangement" value={form.arrangement} onChange={(e) => setForm({ ...form, arrangement: e.target.value })} className="border rounded-lg px-2 py-1.5">
             <option value="retainer">Retainer</option><option value="one_time">One-time</option><option value="package">Package</option>
           </select>
-          <select value={form.cadence} onChange={(e) => setForm({ ...form, cadence: e.target.value })} className="border rounded-lg px-2 py-1.5">
+          <select aria-label="Billing cadence" value={form.cadence} onChange={(e) => setForm({ ...form, cadence: e.target.value })} className="border rounded-lg px-2 py-1.5">
             <option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="annual">Annual</option><option value="one_time">One-time</option>
           </select>
           {internalClientId ? (
@@ -185,8 +185,8 @@ function Billing() {
               Provision the practice (internal client) before billing — see Practice settings.
             </p>
           )}
-          <input required type="number" step="0.01" placeholder="Fee (₹)" value={form.amount_rupees} onChange={(e) => setForm({ ...form, amount_rupees: e.target.value })} className="border rounded-lg px-2 py-1.5" />
-          <input type="number" step="0.01" placeholder="GST %" value={form.gst_rate} onChange={(e) => setForm({ ...form, gst_rate: e.target.value })} className="border rounded-lg px-2 py-1.5" />
+          <input aria-label="Fee (₹)" required type="number" step="0.01" placeholder="Fee (₹)" value={form.amount_rupees} onChange={(e) => setForm({ ...form, amount_rupees: e.target.value })} className="border rounded-lg px-2 py-1.5" />
+          <input aria-label="GST rate (%)" type="number" step="0.01" placeholder="GST %" value={form.gst_rate} onChange={(e) => setForm({ ...form, gst_rate: e.target.value })} className="border rounded-lg px-2 py-1.5" />
           <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white">Create</button>
         </form>
       )}
