@@ -871,7 +871,7 @@ export default function LoansAndFDPage() {
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              <FormField label="Client" required>
+              <Field label="Client" required>
                 <div className="w-full">
                   <ClientLookup
                     clients={clients}
@@ -881,45 +881,45 @@ export default function LoansAndFDPage() {
                     placeholder="Select client…"
                   />
                 </div>
-              </FormField>
-              <FormField label="Loan Type" required>
+              </Field>
+              <Field label="Loan Type" required>
                 <select value={loanForm.loan_type} onChange={(e) => setLoanForm({ ...loanForm, loan_type: e.target.value as LoanType })} className={inputCls}>
                   {Object.entries(LOAN_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
-              </FormField>
-              <FormField label="Lender Name" required>
+              </Field>
+              <Field label="Lender Name" required>
                 <input type="text" placeholder="e.g. HDFC Bank" value={loanForm.lender_name} onChange={(e) => setLoanForm({ ...loanForm, lender_name: e.target.value })} className={inputCls} />
-              </FormField>
-              <FormField label="Account Number" optional>
+              </Field>
+              <Field label="Account Number" optional>
                 <input type="text" placeholder="Loan account number" value={loanForm.account_number} onChange={(e) => setLoanForm({ ...loanForm, account_number: e.target.value })} className={inputCls} />
-              </FormField>
+              </Field>
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="Principal Amount (₹)" required>
+                <Field label="Principal Amount (₹)" required>
                   <input type="number" min="0" step="0.01" placeholder="0.00" value={loanForm.principal} onChange={(e) => setLoanForm({ ...loanForm, principal: e.target.value })} className={inputCls} />
-                </FormField>
-                <FormField label="Outstanding Amount (₹)" required>
+                </Field>
+                <Field label="Outstanding Amount (₹)" required>
                   <input type="number" min="0" step="0.01" placeholder="0.00" value={loanForm.outstanding} onChange={(e) => setLoanForm({ ...loanForm, outstanding: e.target.value })} className={inputCls} />
-                </FormField>
+                </Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="Interest Rate (% p.a.)" required>
+                <Field label="Interest Rate (% p.a.)" required>
                   <input type="number" min="0" step="0.01" placeholder="e.g. 10.5" value={loanForm.interest_rate} onChange={(e) => setLoanForm({ ...loanForm, interest_rate: e.target.value })} className={inputCls} />
-                </FormField>
-                <FormField label="EMI Amount (₹)" optional>
+                </Field>
+                <Field label="EMI Amount (₹)" optional>
                   <input type="number" min="0" step="0.01" placeholder="0.00" value={loanForm.emi} onChange={(e) => setLoanForm({ ...loanForm, emi: e.target.value })} className={inputCls} />
-                </FormField>
+                </Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="Disbursement Date" required>
+                <Field label="Disbursement Date" required>
                   <DateInput aria-label="Disbursement date" value={loanForm.disbursement_date} onChange={(v) => setLoanForm({ ...loanForm, disbursement_date: v })} onStateChange={loanDates.watch("disbursed", "Disbursement date")} className={inputCls} />
-                </FormField>
-                <FormField label="Maturity Date" optional>
+                </Field>
+                <Field label="Maturity Date" optional>
                   <DateInput aria-label="Loan maturity date" anchor={loanForm.disbursement_date || null} notBefore={loanForm.disbursement_date || null} value={loanForm.maturity_date} onChange={(v) => setLoanForm({ ...loanForm, maturity_date: v })} onStateChange={loanDates.watch("loan-maturity", "Maturity date")} className={inputCls} />
-                </FormField>
+                </Field>
               </div>
-              <FormField label="Notes" optional>
+              <Field label="Notes" optional>
                 <textarea rows={2} placeholder="Any additional notes…" value={loanForm.notes} onChange={(e) => setLoanForm({ ...loanForm, notes: e.target.value })} className={inputCls} />
-              </FormField>
+              </Field>
               {loanError && <Callout tone="problem">{loanError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
@@ -945,7 +945,7 @@ export default function LoansAndFDPage() {
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              <FormField label="Client" required>
+              <Field label="Client" required>
                 <div className="w-full">
                   <ClientLookup
                     clients={clients}
@@ -955,31 +955,31 @@ export default function LoansAndFDPage() {
                     placeholder="Select client…"
                   />
                 </div>
-              </FormField>
-              <FormField label="Bank Name" required>
+              </Field>
+              <Field label="Bank Name" required>
                 <input type="text" placeholder="e.g. State Bank of India" value={fdForm.bank_name} onChange={(e) => setFDForm({ ...fdForm, bank_name: e.target.value })} className={inputCls} />
-              </FormField>
-              <FormField label="FD Number" optional>
+              </Field>
+              <Field label="FD Number" optional>
                 <input type="text" placeholder="FD receipt/account number" value={fdForm.fd_number} onChange={(e) => setFDForm({ ...fdForm, fd_number: e.target.value })} className={inputCls} />
-              </FormField>
+              </Field>
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="Principal (₹)" required>
+                <Field label="Principal (₹)" required>
                   <input type="number" min="0" step="0.01" placeholder="0.00" value={fdForm.principal} onChange={(e) => setFDForm({ ...fdForm, principal: e.target.value })} className={inputCls} />
-                </FormField>
-                <FormField label="Interest Rate (% p.a.)" required>
+                </Field>
+                <Field label="Interest Rate (% p.a.)" required>
                   <input type="number" min="0" step="0.01" placeholder="e.g. 7.0" value={fdForm.interest_rate} onChange={(e) => setFDForm({ ...fdForm, interest_rate: e.target.value })} className={inputCls} />
-                </FormField>
+                </Field>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <FormField label="Start Date" required>
+                <Field label="Start Date" required>
                   <DateInput aria-label="Fixed deposit start date" value={fdForm.start_date} onChange={(v) => setFDForm({ ...fdForm, start_date: v })} onStateChange={fdDates.watch("fd-start", "Start date")} className={inputCls} />
-                </FormField>
-                <FormField label="Maturity Date" required>
+                </Field>
+                <Field label="Maturity Date" required>
                   <DateInput aria-label="Fixed deposit maturity date" anchor={fdForm.start_date || null} notBefore={fdForm.start_date || null} value={fdForm.maturity_date} onChange={(v) => setFDForm({ ...fdForm, maturity_date: v })} onStateChange={fdDates.watch("fd-maturity", "Maturity date")} className={inputCls} />
-                </FormField>
+                </Field>
               </div>
 
-              <FormField label="Maturity amount per the deposit receipt (₹)" optional>
+              <Field label="Maturity amount per the deposit receipt (₹)" optional>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -988,7 +988,7 @@ export default function LoansAndFDPage() {
                   onChange={(e) => setFDForm({ ...fdForm, maturity_receipt: e.target.value })}
                   className={inputCls}
                 />
-              </FormField>
+              </Field>
 
               {/* What will be stored: the receipt's amount if typed, otherwise a labelled estimate */}
               {fdForm.maturity_receipt.trim() === ""
@@ -1030,9 +1030,9 @@ export default function LoansAndFDPage() {
                   IT Act Section 194A — TDS is deducted on FD interest once it crosses the limit for the year, which depends on who pays and who is paid. TDS rate: 10% (20% if PAN not furnished).
                 </p>
               )}
-              <FormField label="Notes" optional>
+              <Field label="Notes" optional>
                 <textarea rows={2} placeholder="Any additional notes…" value={fdForm.notes} onChange={(e) => setFDForm({ ...fdForm, notes: e.target.value })} className={inputCls} />
-              </FormField>
+              </Field>
               {fdError && <Callout tone="problem">{fdError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
@@ -1101,7 +1101,10 @@ function FDStatusBadge({ status }: { status: FDStatus }) {
   );
 }
 
-function FormField({
+// A label that WRAPS its control names it. This used to draw the label BESIDE the control (no htmlFor, no id), so none of the fourteen controls
+// in the two forms had a name. It is called `Field` because that is the name the form-control ratchet (scripts/formControlNames.ts) recognises
+// for a same-file helper whose body puts {children} inside a <label>.
+function Field({
   label,
   required,
   optional,
@@ -1113,13 +1116,13 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label className="block text-xs font-medium text-ps-body mb-1.5">
+    <label className="block">
+      <span className="block text-xs font-medium text-ps-body mb-1.5">
         {label}
         {required && <span className="text-state-problem ml-0.5">*</span>}
         {optional && <span className="text-ps-hint font-normal ml-1">(optional)</span>}
-      </label>
+      </span>
       {children}
-    </div>
+    </label>
   );
 }

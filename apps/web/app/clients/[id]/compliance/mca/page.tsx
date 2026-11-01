@@ -169,15 +169,15 @@ function CompaniesTab({ clientId }: { clientId: string }) {
               { key: "authorized_capital_rupees", placeholder: "Authorised Capital (₹)" },
               { key: "paid_up_capital_rupees", placeholder: "Paid-up Capital (₹)" },
             ] as { key: string; placeholder: string; maxLength?: number }[]).map(({ key, placeholder, maxLength }) => (
-              <input key={key} placeholder={placeholder} maxLength={maxLength}
+              <input key={key} placeholder={placeholder} aria-label={placeholder} maxLength={maxLength}
                 value={(form as Record<string, string>)[key]}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                 className="border rounded px-3 py-1.5 text-sm" />
             )))}
-            <input placeholder="Registered Address" value={form.registered_address}
+            <input placeholder="Registered Address" aria-label="Registered address" value={form.registered_address}
               onChange={(e) => setForm((f) => ({ ...f, registered_address: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
-            <select value={form.company_type} onChange={(e) => setForm((f) => ({ ...f, company_type: e.target.value }))}
+            <select aria-label="Company type" value={form.company_type} onChange={(e) => setForm((f) => ({ ...f, company_type: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {["PVT", "PUB", "OPC", "LLP"].map((t) => <option key={t}>{t}</option>)}
             </select>
@@ -570,18 +570,18 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
         <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">Create Filing</p>
           <div className="grid grid-cols-2 gap-3">
-            <select value={form.form_type} onChange={(e) => setForm((f) => ({ ...f, form_type: e.target.value }))}
+            <select aria-label="Form" value={form.form_type} onChange={(e) => setForm((f) => ({ ...f, form_type: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               <option value="">Select Form</option>
               {formOptions.map((f) => <option key={f}>{f}</option>)}
             </select>
-            <input placeholder="Financial Year (e.g. 2025-26)" value={form.financial_year}
+            <input placeholder="Financial Year (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={form.financial_year}
               onChange={(e) => setForm((f) => ({ ...f, financial_year: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
-            <input placeholder="Due Date (YYYY-MM-DD)" value={form.due_date}
+            <input placeholder="Due Date (YYYY-MM-DD)" aria-label="Due date (YYYY-MM-DD)" value={form.due_date}
               onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
-            <input placeholder="Description (optional)" value={form.description}
+            <input placeholder="Description (optional)" aria-label="Description (optional)" value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
@@ -660,7 +660,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="SRN (required)" value={srn}
+            <input placeholder="SRN (required)" aria-label="SRN (required)" value={srn}
               onChange={(e) => setSrn(e.target.value)}
               className="border rounded px-3 py-1.5 text-sm font-mono" />
             <DateInput id="mca-confirm-filing-date" aria-label="Filing date" value={filingDate}
