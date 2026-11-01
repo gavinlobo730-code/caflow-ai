@@ -30,6 +30,7 @@ Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode job.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -62,6 +63,9 @@ A_G2 = "57000000-0000-0000-0000-0000000000b2"       # an account of C_G2
 A_G_FIRM = "57000000-0000-0000-0000-0000000000b3"   # a firm-level account of G (no client)
 A_F = "57000000-0000-0000-0000-0000000000b4"        # an account of C_F (firm F)
 NOWHERE = "57000000-0000-0000-0000-0000000000ff"
+A_F_FIRM = "57000000-0000-0000-0000-0000000000b5"   # a firm-level account of firm F (no client): only the FIRM clause can refuse it on a row of G
+PARTNER_G = "57000000-0000-0000-0000-00000000000b"  # a Partner of G, the signed-in caller of the row-security test
+PARTNER_AUTH = "57000000-1111-0000-0000-000000000001"
 
 #: Foreign keys to chart_of_accounts that carry no check, and why.
 EXCEPTIONS = {
@@ -114,6 +118,7 @@ def db(pg_template):
     try:
         assert MIGRATION.name not in pg_template.failed, "migration 570 did not apply, so everything below would pass vacuously"
         seed = _psql(dsn, f"""
+            INSERT INTO auth.users (id, email) VALUES ('{PARTNER_AUTH}', 'partner@m570.test');
             INSERT INTO firms (id, name, email) VALUES ('{F}', 'M570 F', 'f@m570.test'), ('{G}', 'M570 G', 'g@m570.test');
             INSERT INTO clients (id, firm_id, client_name, entity_type) VALUES
                 ('{C_F}', '{F}', 'CF', 'Private Limited'), ('{C_G}', '{G}', 'CG', 'Private Limited'), ('{C_G2}', '{G}', 'CG2', 'Private Limited');
@@ -121,7 +126,10 @@ def db(pg_template):
                 ('{A_G}', '{G}', '{C_G}', '1001', 'G cash', 'Asset'),
                 ('{A_G2}', '{G}', '{C_G2}', '1002', 'G2 cash', 'Asset'),
                 ('{A_G_FIRM}', '{G}', NULL, '1003', 'G shared', 'Asset'),
-                ('{A_F}', '{F}', '{C_F}', '2001', 'F cash', 'Asset');
+                ('{A_F}', '{F}', '{C_F}', '2001', 'F cash', 'Asset'),
+                ('{A_F_FIRM}', '{F}', NULL, '2002', 'F shared', 'Asset');
+            INSERT INTO users (id, firm_id, auth_user_id, email, full_name, role, is_active)
+                 VALUES ('{PARTNER_G}', '{G}', '{PARTNER_AUTH}', 'partner@m570.test', 'P', 'Partner', true);
         """)
         assert seed.returncode == 0, seed.stderr
         yield dsn
@@ -151,10 +159,8 @@ def test_the_clients_own_account_a_firm_level_account_and_no_account_are_accepte
 
 
 def test_another_firms_account_is_refused_even_when_it_is_firm_level_to_that_firm(db):
-    _ok(db, f"INSERT INTO chart_of_accounts (id, firm_id, client_id, account_code, account_name, account_type) "
-            f"VALUES ('57000000-0000-0000-0000-0000000000b5', '{F}', NULL, '2002', 'F shared', 'Asset');")
     assert WORDS in _psql(db, _bank(C_G, A_F)).stderr
-    assert WORDS in _psql(db, _bank(C_G, "57000000-0000-0000-0000-0000000000b5")).stderr
+    assert WORDS in _psql(db, _bank(C_G, A_F_FIRM)).stderr
 
 
 def test_a_batch_is_judged_as_a_statement_and_one_bad_row_fails_it_whole(db):
@@ -368,3 +374,99 @@ def test_the_rollback_takes_every_trigger_and_function_away_and_the_case_goes_th
     assert _ok(db, "SELECT count(*) FROM pg_proc WHERE proname IN ('guard_ledger_account', 'assert_inserted_rows_name_a_ledger_account_of_their_client', "
                    "'assert_updated_row_names_a_ledger_account_of_its_client');") == "0"
     assert _psql(db, _bank(C_G, A_G2)).returncode == 0
+
+
+# ── what the independent review of the merged migration found no test for (1-11-2026) ──────────────────────────────────
+# Five mutants of the migration passed every test above: the update path's firm clause, SECURITY DEFINER, the template-line parent table,
+# the update path's early return on two tables, the parent-path insert's firm clause, and four branches of the apply report.
+
+def _signed_in_partner(dsn: str, sql: str) -> subprocess.CompletedProcess:
+    claims = json.dumps({"sub": PARTNER_AUTH, "role": "authenticated"})
+    return _psql(dsn, f"SET request.jwt.claims = '{claims}'; SET ROLE authenticated; {sql}")
+
+
+def test_an_update_to_another_firms_firm_level_account_is_refused_by_the_firm_clause_alone(db):
+    """A firm-level account has no client, so the client clause cannot refuse it: only the firm clause of the UPDATE check can. Every other
+    update test re-points to an account that also differs by client, so removing the firm clause left them all green."""
+    _one_bank_account(db)
+    r = _psql(db, f"UPDATE public.bank_accounts SET coa_account_id = '{A_F_FIRM}';")
+    assert r.returncode != 0 and WORDS in r.stderr, r.stderr or "the update was accepted"
+    assert _ok(db, "SELECT coa_account_id FROM public.bank_accounts;") == A_G
+
+
+def test_the_check_sees_an_account_that_row_security_hides_from_the_signed_in_writer(db):
+    """The two trigger functions are SECURITY DEFINER because the writer cannot see another firm's account. As superuser nothing is ever
+    hidden, so a version without it passed. Here the writer is a signed-in Partner of firm G: the control shows the account really is
+    invisible to them, and the budget naming it is still refused in the trigger's words (not accepted, and not an opaque foreign-key error)."""
+    hidden = _signed_in_partner(db, f"SELECT count(*) FROM public.chart_of_accounts WHERE id = '{A_F}';")
+    assert hidden.returncode == 0 and hidden.stdout.strip() == "0", f"this test's premise: firm F's account is invisible to firm G's Partner ({hidden.stdout!r} {hidden.stderr!r})"
+    r = _signed_in_partner(db, f"INSERT INTO public.account_budgets (firm_id, client_id, account_id, fy) VALUES ('{G}', '{C_G}', '{A_F}', '2026-27');")
+    assert r.returncode != 0 and WORDS in r.stderr, r.stderr or "the signed-in insert was accepted"
+    own = _signed_in_partner(db, f"INSERT INTO public.account_budgets (firm_id, client_id, account_id, fy) VALUES ('{G}', '{C_G}', '{A_G}', '2026-27');")
+    assert own.returncode == 0, f"the control: a Partner's own client's account is allowed ({own.stderr})"
+
+
+def _purchase_template(db, client: str, tid: str) -> None:
+    vendor = f"57000000-0000-0000-0000-0000000000{'f3' if client == C_G else 'f4'}"
+    _ok(db, f"INSERT INTO vendors (id, firm_id, client_id, name) VALUES ('{vendor}', '{G}', '{client}', 'V');"
+            f"INSERT INTO public.recurring_purchase_bill_templates (id, firm_id, client_id, vendor_id, title, frequency, start_date, next_run_date) "
+            f"VALUES ('{tid}', '{G}', '{client}', '{vendor}', 't', 'monthly', '2026-04-01', '2026-04-01');")
+
+
+def test_a_recurring_purchase_bills_lines_are_judged_through_their_own_template(db):
+    """The line table names its parent in the migration; a mutant that judged these lines against the OTHER template table (or none) passed."""
+    t1, t2 = "57000000-0000-0000-0000-0000000000c3", "57000000-0000-0000-0000-0000000000c4"
+    _purchase_template(db, C_G, t1)
+    _purchase_template(db, C_G2, t2)
+    line = lambda tid, acct: (f"INSERT INTO public.recurring_purchase_bill_template_lines (template_id, description, expense_account_id) "  # noqa: E731
+                              f"VALUES ('{tid}', 'x', '{acct}');")
+    assert WORDS in _psql(db, line(t1, A_G2)).stderr
+    assert _psql(db, line(t1, A_G)).returncode == 0
+    assert _psql(db, line(t1, A_G_FIRM)).returncode == 0
+    assert _psql(db, line(t2, A_G2)).returncode == 0
+    assert WORDS in _psql(db, f"UPDATE public.recurring_purchase_bill_template_lines SET template_id = '{t2}' WHERE expense_account_id = '{A_G}';").stderr
+    # the parent path judges the FIRM too: a firm-level account of another firm has no client to differ by
+    assert WORDS in _psql(db, line(t1, A_F_FIRM)).stderr
+
+
+def test_a_purchase_bill_line_and_a_year_end_mapping_are_asked_on_an_update_too(db):
+    """The update trigger returned early for these two tables in a mutant and nothing noticed, because no test updated either."""
+    vendor, bill = "57000000-0000-0000-0000-0000000000f5", "57000000-0000-0000-0000-0000000000f6"
+    _ok(db, f"INSERT INTO vendors (id, firm_id, client_id, name) VALUES ('{vendor}', '{G}', '{C_G}', 'V');"
+            f"INSERT INTO purchase_bills (id, firm_id, client_id, vendor_id, bill_date) VALUES ('{bill}', '{G}', '{C_G}', '{vendor}', '2026-05-01');"
+            f"INSERT INTO public.purchase_bill_lines (bill_id, description, expense_account_id) VALUES ('{bill}', 'x', '{A_G}');"
+            f"INSERT INTO public.account_group_mappings (firm_id, account_id, schedule_line) VALUES ('{G}', '{A_G}', 'cash_and_bank');")
+    assert WORDS in _psql(db, f"UPDATE public.purchase_bill_lines SET expense_account_id = '{A_G2}';").stderr
+    assert WORDS in _psql(db, f"UPDATE public.purchase_bill_lines SET expense_account_id = '{A_F_FIRM}';").stderr
+    assert _psql(db, f"UPDATE public.purchase_bill_lines SET expense_account_id = '{A_G_FIRM}';").returncode == 0
+    assert WORDS in _psql(db, f"UPDATE public.account_group_mappings SET account_id = '{A_F}';").stderr
+    assert _psql(db, f"UPDATE public.account_group_mappings SET account_id = '{A_G2}';").returncode == 0, "a firm-wide mapping may name any client of the firm"
+
+
+def test_the_apply_report_counts_a_bad_row_in_every_kind_of_column(db):
+    """Only a bank account was planted before; the report has a branch for a plain table, a line through its parent (two kinds), a firm-wide
+    table and the two unkeyed year-end columns, and a mutant that ignored any of the four others still reported the right number for the one tested."""
+    eng = "57000000-0000-0000-0000-0000000000e2"
+    t_j, t_p = "57000000-0000-0000-0000-0000000000c5", "57000000-0000-0000-0000-0000000000c6"
+    vendor, bill = "57000000-0000-0000-0000-0000000000f7", "57000000-0000-0000-0000-0000000000f8"
+    _purchase_template(db, C_G, t_p)
+    _template(db, C_G, t_j)
+    _ok(db, f"INSERT INTO vendors (id, firm_id, client_id, name) VALUES ('{vendor}', '{G}', '{C_G}', 'V2');"
+            f"INSERT INTO purchase_bills (id, firm_id, client_id, vendor_id, bill_date) VALUES ('{bill}', '{G}', '{C_G}', '{vendor}', '2026-05-01');"
+            f"INSERT INTO year_end_engagements (id, firm_id, client_id, financial_year, fy_start, fy_end, created_by) "
+            f"VALUES ('{eng}', '{G}', '{C_G}', '2026-27', '2026-04-01', '2027-03-31', '{eng}');")
+    # Planted past the triggers (replica mode skips them for the session), one bad row in each of eight columns.
+    _ok(db, f"""SET session_replication_role = replica;
+        {_bank(C_G, A_G2, no="r1")}
+        INSERT INTO public.account_budgets (firm_id, client_id, account_id, fy) VALUES ('{G}', '{C_G}', '{A_G2}', '2026-27');
+        INSERT INTO public.recurring_journal_template_lines (template_id, account_id, debit_paise, credit_paise) VALUES ('{t_j}', '{A_G2}', 100, 0);
+        INSERT INTO public.recurring_purchase_bill_template_lines (template_id, description, expense_account_id) VALUES ('{t_p}', 'x', '{A_G2}');
+        INSERT INTO public.purchase_bill_lines (bill_id, description, expense_account_id) VALUES ('{bill}', 'x', '{A_G2}');
+        INSERT INTO public.account_group_mappings (firm_id, account_id, schedule_line) VALUES ('{G}', '{A_F}', 'cash_and_bank');
+        INSERT INTO public.year_end_adjustments (engagement_id, firm_id, client_id, adjustment_type, description, amount_paise, created_by, debit_account_id, credit_account_id)
+             VALUES ('{eng}', '{G}', '{C_G}', 'manual', 'x', 100, '{eng}', '{A_G2}', '{A_G}');
+        INSERT INTO public.year_end_adjustments (engagement_id, firm_id, client_id, adjustment_type, description, amount_paise, created_by, debit_account_id, credit_account_id)
+             VALUES ('{eng}', '{G}', '{C_G}', 'manual', 'y', 100, '{eng}', '{A_G}', '{A_G2}');""")
+    r = _run_file(db, MIGRATION)
+    assert r.returncode == 0, r.stderr
+    assert "8 existing row(s) in 8 column(s)" in r.stderr, r.stderr
