@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/compliance/overdue.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isOverdue, isUpcoming } from "./overdue.ts";
+import { isOverdue, isUpcoming, filingTrackerStatus } from "./overdue.ts";
 
 const TODAY = "2026-09-27";
 const row = (due_date: string, filing_status: string) => ({ due_date, filing_status });
@@ -64,6 +64,46 @@ test("no open obligation is in both lists or in neither, for any date", () => {
     for (const due_date of ["2026-09-01", "2026-10-19", "2026-10-20", "2026-10-21", "2027-03-31"]) {
       const e = { due_date, filing_status };
       assert.equal(Number(isOverdue(e, today)) + Number(isUpcoming(e, today)), 1, `${filing_status} ${due_date}`);
+    }
+  }
+});
+
+// ── the word the GST and MCA filing trackers print (POST-A-280) ─────────────────────────────────────────────────────────────
+const tracker = (due_date: string, filing_status: string | null, filed_date: string | null = null) =>
+  filingTrackerStatus({ due_date, filing_status, filed_date }, TODAY);
+
+test("a tracker row recorded as not applicable says so, however old its date: it is neither Overdue nor Pending", () => {
+  // The defect: the trackers decided from the dates alone, so this row read Overdue (and counted in the Overdue tile).
+  assert.equal(tracker("2025-01-01", "na"), "Not applicable");
+  assert.equal(tracker("2026-12-01", "na"), "Not applicable");
+});
+
+test("a filed word or a filed date is a filing, and wins over a not-applicable or overdue word", () => {
+  assert.equal(tracker("2025-01-01", "filed"), "Filed");
+  assert.equal(tracker("2025-01-01", "pending", "2025-02-01"), "Filed");
+  assert.equal(tracker("2025-01-01", "overdue", "2025-02-01"), "Filed");
+  assert.equal(tracker("2025-01-01", "na", "2025-02-01"), "Filed");
+});
+
+test("a row somebody moved to overdue by hand reads Overdue even with its date ahead, as on the Deadlines screen", () => {
+  assert.equal(tracker("2026-12-01", "overdue"), "Overdue");
+});
+
+test("an open obligation is Overdue strictly after its due date and Pending on it (the day is not out)", () => {
+  assert.equal(tracker("2026-09-26", "pending"), "Overdue");
+  assert.equal(tracker(TODAY, "pending"), "Pending");
+  assert.equal(tracker("2026-09-28", "in_progress"), "Pending");
+});
+
+test("no stored word is read as pending, and no due date cannot be late", () => {
+  assert.equal(tracker("2026-09-26", null), "Overdue");
+  assert.equal(tracker("", "pending"), "Pending");
+});
+
+test("the tracker and the Deadlines rule never disagree about an open obligation", () => {
+  for (const status of ["pending", "in_progress", "overdue"]) {
+    for (const due of ["2025-01-01", "2026-09-26", TODAY, "2026-09-28", "2099-01-01"]) {
+      assert.equal(tracker(due, status) === "Overdue", isOverdue(row(due, status), TODAY), `${status} due ${due}`);
     }
   }
 });

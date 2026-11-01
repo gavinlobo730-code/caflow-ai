@@ -75,6 +75,10 @@ from domain.gst.gstin import problem_with as gstin_problem
 # `domain/tds/section_rates` records as reference data this product does not
 # implement, so nothing here generates one to be late with.
 TDS_STATEMENT_TYPES: tuple[str, ...] = ("TDS24Q", "TDS26Q", "TDS27Q")
+#: The calendar's workflow words that owe nothing whatever the date: filed, and not applicable (an obligation the CA has recorded as not owed to
+#: this client). The same pair the browser's rule settles on (`apps/web/lib/compliance/overdue.SETTLED_FILING_STATUSES`); this register used to
+#: skip only "filed", so a not-applicable obligation with a past date was listed as an overdue filing (POST-A-280).
+SETTLED_FILING_STATUSES: frozenset[str] = frozenset({"filed", "na"})
 
 # A practice convention, not a statutory grading. See the module docstring.
 OVERDUE_LADDER_HIGH_DAYS = 30
@@ -204,7 +208,7 @@ def overdue_filings(
     different section and at a fixed severity."""
     rows: list[RiskRow] = []
     for entry in calendar:
-        if (entry.get("filing_status") or "") == "filed":
+        if (entry.get("filing_status") or "") in SETTLED_FILING_STATUSES:
             continue
         if (entry.get("compliance_type") or "") in TDS_STATEMENT_TYPES:
             continue
@@ -248,7 +252,7 @@ def tds_defaults(
     for entry in calendar:
         if (entry.get("compliance_type") or "") not in TDS_STATEMENT_TYPES:
             continue
-        if (entry.get("filing_status") or "") == "filed":
+        if (entry.get("filing_status") or "") in SETTLED_FILING_STATUSES:
             continue
         due = _as_date(entry.get("due_date"))
         if due is None or due >= as_at:

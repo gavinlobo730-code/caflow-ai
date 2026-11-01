@@ -27,14 +27,13 @@
  * `toISOString()` slice, which reads yesterday until 05:30 IST); callers that
  * test several rows pass it once so every row is judged against one day.
  */
-import type { ComplianceEntry } from "../data/compliance.ts";
 import { todayLocalISO } from "../dateMath.ts";
 
 /** Workflow states that owe nothing, however far past the due date. */
 export const SETTLED_FILING_STATUSES: ReadonlySet<string> = new Set(["filed", "na"]);
 
 export function isOverdue(
-  entry: Pick<ComplianceEntry, "due_date" | "filing_status">,
+  entry: { due_date?: string | null; filing_status: string },
   todayISO: string = todayLocalISO(),
 ): boolean {
   if (SETTLED_FILING_STATUSES.has(entry.filing_status)) return false;
@@ -50,10 +49,30 @@ export function isOverdue(
  * (an obligation somebody moved to "overdue" with a date ahead used to be in both, because the upcoming test asked the date alone).
  */
 export function isUpcoming(
-  entry: Pick<ComplianceEntry, "due_date" | "filing_status">,
+  entry: { due_date?: string | null; filing_status: string },
   todayISO: string = todayLocalISO(),
 ): boolean {
   if (SETTLED_FILING_STATUSES.has(entry.filing_status) || isOverdue(entry, todayISO)) return false;
   const due = (entry.due_date ?? "").slice(0, 10);
   return due !== "" && due >= todayISO;
+}
+
+/** What the GST and MCA filing trackers print against a filing. */
+export type FilingTrackerStatus = "Pending" | "Filed" | "Overdue" | "Not applicable";
+
+/**
+ * The word a filing tracker prints, from the ONE rule (POST-A-280). Those two screens used to work it out themselves from the due date and the
+ * filed date alone (`computeOverdueStatus`), which is the rule only when nobody has recorded anything else: an obligation recorded as NOT
+ * APPLICABLE with a past date read Overdue there, and one moved to Overdue by hand with a date ahead read Pending. A filed date or the filed
+ * word is a filing, whatever else is stored; "na" owes nothing and says so rather than reading Pending; every other word is `isOverdue`'s.
+ * `filing_status` is the compliance vocabulary (pending, in_progress, filed, overdue, na); a table that spells it otherwise maps first.
+ */
+export function filingTrackerStatus(
+  entry: { due_date?: string | null; filing_status?: string | null; filed_date?: string | null },
+  todayISO: string = todayLocalISO(),
+): FilingTrackerStatus {
+  const word = entry.filing_status ?? "";
+  if (word === "filed" || (entry.filed_date ?? "") !== "") return "Filed";
+  if (word === "na") return "Not applicable";
+  return isOverdue({ due_date: entry.due_date, filing_status: word || "pending" }, todayISO) ? "Overdue" : "Pending";
 }

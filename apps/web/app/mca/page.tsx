@@ -26,7 +26,8 @@ import { obligationNote } from "@/lib/compliance/obligationNote";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO, daysBetweenLocalISO, toLocalISO, computeOverdueStatus, currentFinancialYearLabel } from "@/lib/dateMath";
+import { todayLocalISO, daysBetweenLocalISO, toLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
+import { filingTrackerStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
@@ -40,7 +41,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type FilingStatus = "Pending" | "Filed" | "Overdue";
+type FilingStatus = FilingTrackerStatus;      // the table cannot hold "Not applicable" (its status words are not_started, in_progress, filed, overdue)
 
 interface MCAFiling {
   id: string;
@@ -97,6 +98,7 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
   Filed:    "bg-state-ready-surface text-state-ready",
   Pending:  "bg-state-attention-surface text-state-attention",
   Overdue:  "bg-state-problem-surface text-state-problem",
+  "Not applicable": "bg-ps-muted text-ps-label",
 };
 
 // Key annual MCA deadlines — Companies Act 2013. This is a generic "upcoming
@@ -165,7 +167,17 @@ function keyDeadlines() {
 // MCA filings, companies, and directors are loaded from the firm's real data;
 // empty until recorded (no fictional seed records shown to users).
 
-const computeStatus = computeOverdueStatus;
+/** `mca_filings.status` is stored as not_started | in_progress | filed | overdue; the one rule (lib/compliance/overdue) speaks the compliance
+ * calendar's words, so the stored word is mapped first. A row moved to "overdue" by hand with a date still ahead reads Overdue, as it does on
+ * the Deadlines screen; the date alone no longer decides (POST-A-280). A row read straight from the table still holds its STORED word in
+ * `status`, which is why this takes the row and not a pair of dates. */
+function computeStatus(row: { due_date: string; filed_date: string | null; status: string }): FilingStatus {
+  const stored = String(row.status ?? "").toLowerCase();
+  return filingTrackerStatus({
+    due_date: row.due_date, filed_date: row.filed_date,
+    filing_status: stored === "filed" ? "filed" : stored === "overdue" ? "overdue" : "pending",
+  });
+}
 
 /** Days from today until a director's KYC due date (negative once overdue). */
 function daysUntilKyc(kycDueDate: string): number {
@@ -255,7 +267,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
       }).select().single();
       if (error) throw new Error(error.message);
       const filing = data as MCAFiling;
-      filing.status = computeStatus(filing.due_date, filing.filed_date);
+      filing.status = computeStatus(filing);
       let calendar: string | undefined;
       if (status === "Filed") {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing the CA made on MCA21.
@@ -606,7 +618,7 @@ export default function MCAPage() {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? error.message);
         } else {
-          const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r.due_date, r.filed_date) }));
+          const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r) }));
           setFilings(rows);   // real data only; empty firm shows the empty state
         }
         // Companies + directors from the firm's real data (migration 038). Empty

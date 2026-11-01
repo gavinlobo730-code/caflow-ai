@@ -33,6 +33,16 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+// Every .ts and .tsx file under a directory (the walk above reads .tsx only: the screens).
+function walkAll(dir: string, out: string[] = []): string[] {
+  for (const e of fs.readdirSync(path.join(WEB, dir), { withFileTypes: true })) {
+    const rel = path.posix.join(dir, e.name);
+    if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== ".next") walkAll(rel, out); }
+    else if (/\.tsx?$/.test(e.name)) out.push(rel);
+  }
+  return out;
+}
+
 const SOURCES = [...walk("app"), ...walk("components")];
 const read = (rel: string) => stripComments(fs.readFileSync(path.join(WEB, rel), "utf8"));
 
@@ -66,6 +76,24 @@ test("the five screens import the rule and call it", () => {
   for (const f of ["app/clients/[id]/overview/page.tsx", "app/income-tax/page.tsx"]) {
     assert.match(read(f), /\bisUpcoming\(/, `${f} lists upcoming obligations without isUpcoming`);
   }
+});
+
+test("the GST and MCA trackers print the word the one rule gives, and the date-only function is gone (POST-A-280)", () => {
+  // `computeOverdueStatus(due_date, filed_date)` decided from the two dates alone, so a not-applicable obligation with a past date read Overdue
+  // and an obligation moved to Overdue by hand with a date ahead read Pending. Both trackers call `filingTrackerStatus`, which asks `isOverdue`.
+  for (const f of ["app/gst/page.tsx", "app/mca/page.tsx"]) {
+    const src = read(f);
+    assert.match(src, /from "@\/lib\/compliance\/overdue"/, `${f} does not import the rule`);
+    assert.match(src, /\bfilingTrackerStatus\(/, `${f} does not call filingTrackerStatus`);
+  }
+  const found: string[] = [];
+  const files = [...walkAll("app"), ...walkAll("components"), ...walkAll("lib")];
+  assert.ok(files.length > 400, `read only ${files.length} files`);
+  for (const f of files) {
+    if (/\.test\.tsx?$/.test(f)) continue;
+    if (/\bcomputeOverdueStatus\b|\bFilingOverdueStatus\b/.test(read(f))) found.push(f);
+  }
+  assert.deepEqual(found, [], "the date-only tracker status is back: call filingTrackerStatus from lib/compliance/overdue");
 });
 
 test("the income-tax tracker gives a not-applicable entry its own label and keeps it out of the total", () => {
