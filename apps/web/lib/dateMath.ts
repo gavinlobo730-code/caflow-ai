@@ -70,22 +70,6 @@ export function daysBetweenLocalISO(fromStr: string, toStr: string): number | nu
   return Math.round((b.getTime() - a.getTime()) / 86_400_000);
 }
 
-export type FilingOverdueStatus = "Pending" | "Filed" | "Overdue";
-
-/** Shared GST/MCA filing-tracker status: Overdue only once a full calendar
- * day has passed the due date (never on the due date itself — a direct
- * `todayInstant > dueDate` comparison flips to Overdue the moment any time
- * has passed since the due date's local midnight, up to a day early). */
-export function computeOverdueStatus(
-  dueDate: string,
-  filedDate: string | null,
-  todayISO: string = todayLocalISO(),
-): FilingOverdueStatus {
-  if (filedDate) return "Filed";
-  const daysPastDue = daysBetweenLocalISO(dueDate, todayISO) ?? 0;
-  return daysPastDue > 0 ? "Overdue" : "Pending";
-}
-
 export type DueUrgency = "overdue" | "due-soon" | "upcoming";
 
 /** How urgent an unfiled obligation is, from whole calendar days to its due
@@ -96,8 +80,8 @@ export type DueUrgency = "overdue" | "due-soon" | "upcoming";
  * both hand-rolled the day count. They agreed, which is exactly why nobody
  * would have noticed when one of them stopped agreeing.
  *
- * Distinct from computeOverdueStatus above, which answers a different question
- * (has this been FILED) and has no "soon" band. */
+ * Distinct from the filing trackers' status (`filingTrackerStatus` in lib/compliance/overdue), which answers a different question
+ * (has this been FILED, is it late) and has no "soon" band. */
 export function dueDateUrgency(
   dueISO: string,
   todayISO: string = todayLocalISO(),

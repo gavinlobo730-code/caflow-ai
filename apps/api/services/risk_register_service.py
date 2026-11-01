@@ -104,7 +104,7 @@ def build_register(db, firm_id: str, client_ids: Optional[set[str]] = None) -> d
     filed_keys = {
         f"{e.get('client_id')}|{str(e.get('due_date') or '')[:10]}"
         for e in advance
-        if (e.get("filing_status") or "") == "filed"
+        if (e.get("filing_status") or "") in rule.SETTLED_FILING_STATUSES      # filed, or recorded as not applicable: neither is a missed instalment
     }
     # The FY the register is being read in. §208's four dates are derived by
     # `compliance_engine`, never written out here — CLAUDE.md makes that module

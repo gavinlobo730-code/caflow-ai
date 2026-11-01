@@ -13,9 +13,9 @@ import {
   toLocalISO,
   todayLocalISO,
   daysBetweenLocalISO,
-  computeOverdueStatus,
   currentFinancialYearLabel,
 } from "./dateMath.ts";
+import { filingTrackerStatus } from "./compliance/overdue.ts";
 
 const ORIGINAL_TZ = process.env.TZ;
 
@@ -152,7 +152,11 @@ test("daysBetweenLocalISO: matches the pre-consolidation loans-page formula acro
   });
 });
 
-// ── computeOverdueStatus — shared GST/MCA filing-tracker status ─────────────
+// ── the GST/MCA filing-tracker status — the date boundaries (the status itself is `filingTrackerStatus`, pinned in compliance/overdue.test.ts) ─
+// (Phase 2 — Compliance & Statutory Date Correctness; these were `computeOverdueStatus`'s tests until POST-A-280 moved both trackers onto the
+// one rule, and the date boundaries they pinned are still the ones that matter.)
+const computeOverdueStatus = (due: string, filed: string | null, today?: string) =>
+  filingTrackerStatus({ due_date: due, filed_date: filed, filing_status: "pending" }, today);
 // (Phase 2 — Compliance & Statutory Date Correctness). GST's and MCA's filing
 // trackers each independently compared a live `new Date()`/module-frozen
 // instant against a due date; both are now this one function so the fix is

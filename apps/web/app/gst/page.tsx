@@ -28,7 +28,8 @@ import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO, computeOverdueStatus } from "@/lib/dateMath";
+import { todayLocalISO } from "@/lib/dateMath";
+import { filingTrackerStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
 import { useToast } from "@/components/ui/use-toast";
@@ -43,7 +44,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FilingStatus = "Pending" | "Filed" | "Overdue";
+type FilingStatus = FilingTrackerStatus;
 type ReturnType = "GSTR-1" | "GSTR-3B" | "GSTR-9";
 
 interface GSTFiling {
@@ -86,9 +87,6 @@ const DUE_DATE_FIELD: Record<ReturnType, keyof GstDueDates> = {
   "GSTR-3B": "gstr3b_due_date",
   "GSTR-9": "gstr9_due_date",
 };
-
-/** Determine status — Overdue only once a full calendar day has passed the due date */
-const computeStatus = computeOverdueStatus;
 
 // ─── Key deadlines banner ─────────────────────────────────────────────────────
 
@@ -139,6 +137,7 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
   Filed: "bg-state-ready-surface text-state-ready",
   Pending: "bg-state-attention-surface text-state-attention",
   Overdue: "bg-state-problem-surface text-state-problem",
+  "Not applicable": "bg-ps-muted text-ps-label",
 };
 
 // ─── Add Filing Modal ─────────────────────────────────────────────────────────
@@ -250,7 +249,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         return_type: returnTypeMap[r.compliance_type as string] ?? returnType,
         period: formatMonthYear(r.period_start as string),
         due_date: r.due_date as string,
-        status: computeStatus(r.due_date as string, r.filed_date as string | null),
+        status: filingTrackerStatus({ due_date: r.due_date as string, filing_status: r.filing_status as string | null, filed_date: r.filed_date as string | null }),
         filed_date: r.filed_date as string | null,
         created_at: r.created_at as string,
       };
@@ -393,8 +392,8 @@ interface BatchMarkFiledModalProps {
 }
 
 function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledModalProps) {
-  // Already-filed rows never belong in this flow — filter once, up front.
-  const [rows, setRows] = useState<GSTFiling[]>(() => selected.filter((f) => f.status !== "Filed"));
+  // Already-filed rows and rows recorded as not applicable never belong in this flow — filter once, up front.
+  const [rows, setRows] = useState<GSTFiling[]>(() => selected.filter((f) => f.status !== "Filed" && f.status !== "Not applicable"));
   const [filedDate, setFiledDate] = useState(todayLocalISO());
   const [arns, setArns] = useState<Record<string, string>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -474,7 +473,11 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
           <p className="text-sm text-ps-body font-medium">Nothing to file</p>
-          <p className="text-xs text-ps-label">All selected filings are already marked as Filed.</p>
+          <p className="text-xs text-ps-label">
+            {selected.some((f) => f.status === "Not applicable")
+              ? "Every selected filing is either already marked as Filed or recorded as not applicable."
+              : "All selected filings are already marked as Filed."}
+          </p>
           <button
             onClick={onClose}
             className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
@@ -643,7 +646,7 @@ export default function GSTPage() {
                 return_type: returnTypeMap[r.compliance_type as string] ?? (r.compliance_type as ReturnType),
                 period: formatMonthYear(r.period_start as string),
                 due_date: r.due_date as string,
-                status: computeStatus(r.due_date as string, r.filed_date as string | null),
+                status: filingTrackerStatus({ due_date: r.due_date as string, filing_status: r.filing_status as string | null, filed_date: r.filed_date as string | null }),
                 filed_date: r.filed_date as string | null,
                 created_at: r.created_at as string,
               };
@@ -831,7 +834,7 @@ export default function GSTPage() {
   const filters: FilterDef<GSTFiling>[] = useMemo(() => [
     {
       key: "status", label: "Status", type: "select", accessor: (f) => f.status,
-      options: (["Pending", "Filed", "Overdue"] as FilingStatus[]).map((s) => ({ value: s, label: s })),
+      options: (["Pending", "Filed", "Overdue", "Not applicable"] as FilingStatus[]).map((s) => ({ value: s, label: s })),
     },
     {
       key: "return_type", label: "Form Type", type: "select", accessor: (f) => f.return_type,
@@ -981,7 +984,9 @@ export default function GSTPage() {
             </EmptyStateActions>
           }
           rowActions={(f) =>
-            f.status !== "Filed" ? (
+            f.status === "Not applicable" ? (
+              <span className="text-xs text-ps-label">Not applicable</span>
+            ) : f.status !== "Filed" ? (
               <button
                 onClick={() => openMarkFiledModal(f)}
                 className="text-xs text-blue-600 hover:text-blue-800 font-medium whitespace-nowrap"

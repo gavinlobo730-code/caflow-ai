@@ -179,6 +179,50 @@ def test_a_tds_statement_is_not_also_an_ordinary_overdue_filing():
         == ["TDS Default"]
 
 
+@pytest.mark.parametrize("compliance_type, risk_type", [("GSTR3B", "Overdue Filing"), ("TDS26Q", "TDS Default")])
+def test_an_obligation_recorded_as_not_applicable_is_not_late_whatever_its_date(compliance_type, risk_type):
+    """`na` owes nothing: the register skipped only "filed", so a not-applicable obligation with a past date was listed as an overdue filing
+    (or a TDS default, charged at the top severity). The browser's one rule settles on both words (POST-A-280)."""
+    clients = [{"id": "c", "client_name": "X", "pan": "AABCU9603R"}]
+    for status, expected in (("na", 0), ("filed", 0), ("pending", 1), ("in_progress", 1)):
+        cal = [{"client_id": "c", "compliance_type": compliance_type, "due_date": "2026-01-31", "filing_status": status}]
+        rows = [r for r in _reg(calendar=cal, clients=clients).rows if r.risk_type == risk_type]
+        assert len(rows) == expected, (compliance_type, status, [r.description for r in rows])
+
+
+def test_the_service_treats_a_not_applicable_filing_and_instalment_as_settled(monkeypatch):
+    """The register service reads the calendar and hands the domain rule its rows and the set of advance-tax instalments that are settled; both
+    used to count only "filed". Run on the in-memory database with the day fixed, so the financial year the instalments belong to is known."""
+    from datetime import date
+    from services import risk_register_service as service
+    from tests.e2e_harness import FakeDB
+
+    monkeypatch.setattr(service, "ist_today", lambda: date(2026, 11, 1))
+    firm = "firm-1"
+    db = FakeDB()
+    db.seed("clients", {"id": "c1", "firm_id": firm, "client_name": "Acme Ltd", "gstin": "", "pan": "AABCU9603R"})
+    base = {"firm_id": firm, "client_id": "c1"}
+    db.seed("compliance_calendar", {**base, "id": "gst-na", "compliance_type": "GSTR3B", "due_date": "2026-09-20", "filing_status": "na"})
+    db.seed("compliance_calendar", {**base, "id": "gst-open", "compliance_type": "GSTR1", "due_date": "2026-09-11", "filing_status": "pending"})
+    db.seed("compliance_calendar", {**base, "id": "adv-na", "compliance_type": "ADVANCE_TAX", "due_date": "2026-06-15", "filing_status": "na"})
+    db.seed("compliance_calendar", {**base, "id": "adv-open", "compliance_type": "ADVANCE_TAX", "due_date": "2026-09-15", "filing_status": "pending"})
+    payload = service.build_register(db, firm, None)
+    # Both open obligations are late and neither not-applicable one is (an unfiled advance-tax instalment is also an Overdue Filing: that is how
+    # the register has always read the calendar, and is left as it was).
+    filings = sorted(r["date"] for r in payload["rows"] if r["risk_type"] == "Overdue Filing")
+    assert filings == ["2026-09-11", "2026-09-15"], filings
+    instalments = [r for r in payload["rows"] if r["risk_type"] == "Advance Tax Default"]
+    assert [r["date"] for r in instalments] == ["2026-09-15"], [r["date"] for r in instalments]
+
+
+def test_the_register_and_the_browser_settle_on_the_same_two_words():
+    """One pair, two spellings of the module: a change to one that forgets the other would make the register and the Deadlines screen disagree."""
+    src = (WEB / "lib" / "compliance" / "overdue.ts").read_text()
+    import re
+    ts = set(re.findall(r'"(\w+)"', re.search(r"SETTLED_FILING_STATUSES[^=]*=\s*new Set\(\[([^\]]*)\]", src).group(1)))
+    assert ts == set(rule.SETTLED_FILING_STATUSES), (ts, rule.SETTLED_FILING_STATUSES)
+
+
 def test_27eq_is_not_in_the_statement_list():
     """TCS under §206C, which this product records as reference data it does not
     implement — so nothing here generates one to be late with."""
