@@ -197,7 +197,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Fee (₹)</label>
-              <input type="number" min="0" step="0.01" value={feeRs} onChange={e => setFeeRs(e.target.value)}
+              <input aria-label="Fee (₹)" type="number" min="0" step="0.01" value={feeRs} onChange={e => setFeeRs(e.target.value)}
                 placeholder="5000"
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
@@ -307,7 +307,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
-              <input type="number" min="0" step="0.01" value={amountRs} onChange={e => setAmountRs(e.target.value)}
+              <input aria-label="Amount (₹)" type="number" min="0" step="0.01" value={amountRs} onChange={e => setAmountRs(e.target.value)}
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
           </div>
@@ -321,7 +321,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Reference No.</label>
-              <input type="text" value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
+              <input aria-label="Reference No." type="text" value={referenceNo} onChange={e => setReferenceNo(e.target.value)}
                 placeholder="UTR / Cheque no."
                 className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>

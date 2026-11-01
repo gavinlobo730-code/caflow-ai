@@ -380,7 +380,7 @@ function AdjustmentForm({
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Type *</label>
-          <select
+          <select aria-label="Type"
             value={type}
             onChange={(e) => setType(e.target.value as AdjustmentType)}
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
@@ -392,7 +392,7 @@ function AdjustmentForm({
         </div>
         <div className="col-span-2">
           <label className="block text-xs font-medium text-ps-label mb-1">Description *</label>
-          <input
+          <input aria-label="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g. Accrual for outstanding salary — March"
@@ -401,7 +401,7 @@ function AdjustmentForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Debit Account *</label>
-          <input
+          <input aria-label="Debit Account"
             value={debitAccount}
             onChange={(e) => setDebitAccount(e.target.value)}
             placeholder="e.g. 5001 / Salary Expense"
@@ -410,7 +410,7 @@ function AdjustmentForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Credit Account *</label>
-          <input
+          <input aria-label="Credit Account"
             value={creditAccount}
             onChange={(e) => setCreditAccount(e.target.value)}
             placeholder="e.g. 2001 / Salary Payable"
@@ -419,7 +419,7 @@ function AdjustmentForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Amount (₹) *</label>
-          <input
+          <input aria-label="Amount (₹)"
             type="text"
             inputMode="decimal"
             value={amountStr}
@@ -440,7 +440,7 @@ function AdjustmentForm({
         </div>
         <div className="col-span-2 lg:col-span-3">
           <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
-          <input
+          <input aria-label="Notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional supporting notes"

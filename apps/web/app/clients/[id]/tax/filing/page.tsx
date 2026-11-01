@@ -653,7 +653,7 @@ export default function ITRFilingPage() {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="text-3xs text-ps-label mb-1 block">Form</label>
-              <select value={form} onChange={e => setForm(e.target.value)}
+              <select aria-label="Form" value={form} onChange={e => setForm(e.target.value)}
                 className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                 {forms.map(f => <option key={f}>{f}</option>)}
               </select>
@@ -671,7 +671,7 @@ export default function ITRFilingPage() {
           </div>
           <div>
             <label className="text-3xs text-ps-label mb-1 block">Kind of return</label>
-            <select value={kind} onChange={e => setKind(e.target.value)}
+            <select aria-label="Kind of return" value={kind} onChange={e => setKind(e.target.value)}
               className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
               {kinds.map(k => (
                 <option key={k.return_type} value={k.return_type}>
@@ -732,7 +732,7 @@ export default function ITRFilingPage() {
                 <label className="text-3xs text-ps-label mb-1 block">
                   Earlier return&apos;s acknowledgement number
                 </label>
-                <input value={originalAck} onChange={e => setOriginalAck(e.target.value)}
+                <input aria-label={"Earlier return&apos;s acknowledgement number"} value={originalAck} onChange={e => setOriginalAck(e.target.value)}
                   className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg font-mono"
                   placeholder="e.g. 123456789012345" />
               </div>
@@ -981,7 +981,7 @@ export default function ITRFilingPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-3xs text-ps-label mb-1 block">Acknowledgement Number</label>
-                  <input value={ackNumber} onChange={e => setAckNumber(e.target.value)}
+                  <input aria-label="Acknowledgement Number" value={ackNumber} onChange={e => setAckNumber(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
                 <div>

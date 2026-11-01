@@ -1136,7 +1136,7 @@ export function InvoiceEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Payment Terms</label>
-              <select value={termValue} onChange={(e) => onTermChange(e.target.value)}
+              <select aria-label="Payment Terms" value={termValue} onChange={(e) => onTermChange(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 {termValue === "" && <option value="">— Select —</option>}
                 {PAYMENT_TERM_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
@@ -1174,7 +1174,7 @@ export function InvoiceEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
-              <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="PO number, ref…"
+              <input aria-label="Reference" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="PO number, ref…"
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div className="flex flex-col justify-end pb-1.5">
@@ -1296,7 +1296,7 @@ export function InvoiceEditor({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-border">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
-                <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
+                <select aria-label="Currency" value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                   <option value="">INR (default)</option>
                   {currencies.filter((c) => c.code !== "INR").map((c) => (
@@ -1307,7 +1307,7 @@ export function InvoiceEditor({
               {isForeign && (
                 <div>
                   <label className="block text-xs font-medium text-ps-label mb-1">Exchange Rate *</label>
-                  <input type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
+                  <input aria-label="Exchange Rate" type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
                     placeholder={`1 ${currency} = ? INR`}
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono" />
                   {fieldErr(validation.errors.exchangeRate)}
@@ -1573,7 +1573,7 @@ export function InvoiceEditor({
         {/* Notes */}
         <section className="bg-white rounded-xl border border-ps-border p-4">
           <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+          <textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
             placeholder="Optional notes shown on the invoice (terms, PO reference…)"
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           {isEdit && !isLocked && (

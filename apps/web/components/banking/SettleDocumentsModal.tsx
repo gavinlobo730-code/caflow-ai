@@ -288,7 +288,7 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
               <label className="block text-xs font-medium text-ps-label mb-1">
                 TDS withheld by the customer (₹)
               </label>
-              <input
+              <input aria-label="TDS withheld by the customer (₹)"
                 type="number" min="0" step="0.01" value={tds}
                 onChange={(e) => setTds(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="0.00" />

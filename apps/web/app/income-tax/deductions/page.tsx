@@ -709,7 +709,7 @@ export default function DeductionsPage() {
 
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
-          <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+          <textarea aria-label="Notes" rows={2} value={notes} onChange={e => setNotes(e.target.value)}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand resize-none"
             placeholder="Planning notes…" />
         </div>

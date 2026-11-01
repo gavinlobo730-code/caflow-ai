@@ -527,22 +527,22 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
                 dropdown arrow that read as a closed picker, and India has some
                 1,500 banks — co-operative and regional ones especially are what a
                 CA's smaller clients actually bank with. */}
-            <input value={bankName} onChange={(e) => setBankName(e.target.value)} className={inputCls} placeholder="e.g. Saraswat Co-operative Bank" />
+            <input aria-label="Bank Name" value={bankName} onChange={(e) => setBankName(e.target.value)} className={inputCls} placeholder="e.g. Saraswat Co-operative Bank" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Account Number *</label>
-              <input value={accountNo} onChange={(e) => setAccountNo(e.target.value)} disabled={editing} className={`${inputCls} font-mono ${editing ? "bg-ps-bg text-ps-hint" : ""}`} placeholder="50100XXXXXXX" />
+              <input aria-label="Account Number" value={accountNo} onChange={(e) => setAccountNo(e.target.value)} disabled={editing} className={`${inputCls} font-mono ${editing ? "bg-ps-bg text-ps-hint" : ""}`} placeholder="50100XXXXXXX" />
             </div>
             <div>
               <label className={labelCls}>IFSC</label>
-              <input value={ifsc} onChange={(e) => setIfsc(e.target.value.toUpperCase())} maxLength={11} className={`${inputCls} font-mono`} placeholder="HDFC0001234" />
+              <input aria-label="IFSC" value={ifsc} onChange={(e) => setIfsc(e.target.value.toUpperCase())} maxLength={11} className={`${inputCls} font-mono`} placeholder="HDFC0001234" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Account Type</label>
-              <select value={accountType} onChange={(e) => setAccountType(e.target.value)} className={inputCls}>
+              <select aria-label="Account Type" value={accountType} onChange={(e) => setAccountType(e.target.value)} className={inputCls}>
                 {(accountTypes.length ? accountTypes.map(t => t.value) : FALLBACK_ACCOUNT_TYPES)
                   .map((t) => <option key={t}>{t}</option>)}
               </select>
@@ -576,7 +576,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
           </div>
           <div>
             <label className={labelCls}>Ledger Account (GL link)</label>
-            <select value={coaId} onChange={(e) => setCoaId(e.target.value)} className={inputCls}>
+            <select aria-label="Ledger Account (GL link)" value={coaId} onChange={(e) => setCoaId(e.target.value)} className={inputCls}>
               <option value="">— Not linked —</option>
               {coaAccounts.map((c) => <option key={c.id} value={c.id}>{c.account_code} · {c.account_name}</option>)}
             </select>
@@ -1011,7 +1011,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Statement File * <span className="font-normal text-ps-hint">(.csv, .xlsx or .pdf)</span></label>
-                <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleFile} className="hidden" />
+                <input aria-label="Statement File * (.csv, .xlsx or .pdf)" ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.pdf,.jpg,.jpeg,.png,.webp" onChange={handleFile} className="hidden" />
                 <button onClick={() => fileRef.current?.click()} disabled={busy} className="disabled:opacity-40 w-full border-2 border-dashed border-ps-border rounded-lg py-4 text-sm text-ps-label hover:border-blue-300 hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
                   <Upload size={16} /> {file ? file.name : "Click to select a statement file"}
                 </button>

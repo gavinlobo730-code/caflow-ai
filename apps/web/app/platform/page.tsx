@@ -400,12 +400,12 @@ export default function PlatformAdminPage() {
               <p className="text-xs text-ps-hint">Login accounts in authentication are not removed — only the firm and its data.</p>
               <div>
                 <label className="text-xs font-medium text-ps-label">Type the firm name to confirm</label>
-                <input value={purgeName} onChange={(e) => setPurgeName(e.target.value)} placeholder={purgeTarget.name}
+                <input aria-label="Type the firm name to confirm" value={purgeName} onChange={(e) => setPurgeName(e.target.value)} placeholder={purgeTarget.name}
                   className="mt-1 w-full rounded-lg border border-ps-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-200" />
               </div>
               <div>
                 <label className="text-xs font-medium text-ps-label flex items-center gap-1"><KeyRound size={12} /> Authenticator code</label>
-                <input value={purgeCode} onChange={(e) => setPurgeCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="6-digit code"
+                <input aria-label="Authenticator code" value={purgeCode} onChange={(e) => setPurgeCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="6-digit code"
                   className="mt-1 w-full rounded-lg border border-ps-border px-3 py-2 text-sm tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-red-200" />
                 <p className="text-2xs text-ps-hint mt-1">From the authenticator app you enrolled for this account.</p>
               </div>

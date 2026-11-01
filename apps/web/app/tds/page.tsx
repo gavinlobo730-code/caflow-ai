@@ -352,15 +352,15 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Party / Vendor Name</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
+            <input aria-label="Party / Vendor Name" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">PAN of Party</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <input aria-label="PAN of Party" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
+            <select aria-label="TDS Section" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
               {choices.deductible.length === 0 && <option value={section}>{section}</option>}
               {choices.deductible.map(k => (
                 <option key={k} value={k}>{sectionOptionText(k, choices.labels)}</option>
@@ -369,7 +369,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Gross Payment (₹)</label>
-            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
+            <input aria-label="Gross Payment (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={grossRupees} onChange={e => setGrossRupees(e.target.value)} placeholder="0.00" />
           </div>
           {/* No TDS Rate input. The rate is not the CA's to type: it depends on
               the section, on whether the payee is an individual or a company
@@ -416,7 +416,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Challan No. (a note only)</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
+            <input aria-label="Challan No. (a note only)" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanNo} onChange={e => setChallanNo(e.target.value)} placeholder="Optional" />
           </div>
         </div>
 
@@ -691,7 +691,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">BSR Code</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
+            <input aria-label="BSR Code" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={bsrCode} onChange={e => setBsrCode(e.target.value)} placeholder="7-digit BSR code" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -700,12 +700,12 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Serial No.</label>
-              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
+              <input aria-label="Serial No." className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={serialNo} onChange={e => setSerialNo(e.target.value)} placeholder="00001" />
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Amount (₹)</label>
-            <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
+            <input aria-label="Amount (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={amtRupees} onChange={e => { setAmtRupees(e.target.value); setError(null); }} />
             <p className="text-3xs text-ps-hint mt-1">
               The TOTAL that left the bank. Tax is whatever is left after the three below.
             </p>
@@ -717,15 +717,15 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Surcharge (₹)</label>
-              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={surchargeRupees} onChange={e => { setSurchargeRupees(e.target.value); setError(null); }} placeholder="0" />
+              <input aria-label="Surcharge (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={surchargeRupees} onChange={e => { setSurchargeRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1" title="IT Act s.201(1A)">Interest (₹)</label>
-              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={interestRupees} onChange={e => { setInterestRupees(e.target.value); setError(null); }} placeholder="0" />
+              <input aria-label="Interest (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={interestRupees} onChange={e => { setInterestRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1" title="IT Act s.234E / s.271H">Fee (₹)</label>
-              <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
+              <input aria-label="Fee (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={penaltyRupees} onChange={e => { setPenaltyRupees(e.target.value); setError(null); }} placeholder="0" />
             </div>
           </div>
           <p className="text-3xs text-ps-hint -mt-1">
@@ -738,7 +738,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
             {/* 200 vs 400 is who initiated the payment, NOT company vs
                 non-company — that is the challan's major head (0020/0021) and
                 migration 037's inline comment had it the other way round. */}
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
+            <select aria-label="Minor Head" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={minorHead} onChange={e => setMinorHead(e.target.value === "400" ? "400" : "200")}>
               {(["200", "400"] as const).map(h => <option key={h} value={h}>{MINOR_HEAD_LABEL[h]}</option>)}
             </select>
           </div>
@@ -749,7 +749,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
-              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)}>
+              <select aria-label="Period" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)}>
                 {QUARTERS.map(q => <option key={q} value={q}>{QUARTER_LABEL[q]}</option>)}
               </select>
             </div>
@@ -768,7 +768,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
                 salary TDS is deposited on an ITNS 281 like any other — Payroll
                 computes it, and the CA records the challan. The deduction form
                 above deliberately excludes it. */}
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
+            <select aria-label="Section" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
               {choices.challan.length === 0 && <option value={section}>{section}</option>}
               {choices.challan.map(c => <option key={c.section} value={c.section}>{sectionOptionText(c.section, choices.labels)}</option>)}
             </select>

@@ -1257,7 +1257,7 @@ export default function IncomeTaxPage() {
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
                   ITR Form
                 </label>
-                <select
+                <select aria-label="ITR Form"
                   value={addForm.itr_form}
                   onChange={(e) =>
                     handleAddFormChange("itr_form", e.target.value)

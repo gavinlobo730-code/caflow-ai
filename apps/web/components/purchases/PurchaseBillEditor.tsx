@@ -1240,13 +1240,13 @@ export function PurchaseBillEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor Invoice No.</label>
-              <input value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" disabled={isLocked}
+              <input aria-label="Vendor Invoice No." value={billNo} onChange={(e) => setBillNo(e.target.value)} placeholder="INV-001" disabled={isLocked}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Frozen once received.</p>}
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Our Reference</label>
-              <input value={ourReference} onChange={(e) => setOurReference(e.target.value)} placeholder="Internal tracking no."
+              <input aria-label="Our Reference" value={ourReference} onChange={(e) => setOurReference(e.target.value)} placeholder="Internal tracking no."
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
@@ -1273,7 +1273,7 @@ export function PurchaseBillEditor({
             </div>
             <div className="col-span-2 lg:col-span-4">
               <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the vendor" rows={2}
+              <textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Internal notes — not shown to the vendor" rows={2}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
@@ -1282,7 +1282,7 @@ export function PurchaseBillEditor({
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 pt-3 border-t border-ps-border">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
-                <select value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
+                <select aria-label="Currency" value={currency} onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); }}
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                   <option value="">INR (default)</option>
                   {currencies.filter((c) => c.code !== "INR").map((c) => (
@@ -1293,7 +1293,7 @@ export function PurchaseBillEditor({
               {isForeign && (
                 <div>
                   <label className="block text-xs font-medium text-ps-label mb-1">Exchange Rate *</label>
-                  <input type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
+                  <input aria-label="Exchange Rate" type="number" min="0" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
                     placeholder={`1 ${currency} = ? INR`}
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand text-right font-mono" />
                   {fieldErr(validation.errors.exchangeRate)}
@@ -1335,7 +1335,7 @@ export function PurchaseBillEditor({
                 <label className="block text-xs font-medium text-ps-label mb-1">
                   Form 15CA acknowledgement no.
                 </label>
-                <input value={form15caAckNo} onChange={(e) => setForm15caAckNo(e.target.value)}
+                <input aria-label="Form 15CA acknowledgement no." value={form15caAckNo} onChange={(e) => setForm15caAckNo(e.target.value)}
                   placeholder="As shown on the filed 15CA"
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
@@ -1352,7 +1352,7 @@ export function PurchaseBillEditor({
                 <label className="block text-xs font-medium text-ps-label mb-1">
                   Form 15CB UDIN
                 </label>
-                <input value={form15cbUdin} onChange={(e) => setForm15cbUdin(e.target.value)}
+                <input aria-label="Form 15CB UDIN" value={form15cbUdin} onChange={(e) => setForm15cbUdin(e.target.value)}
                   placeholder="UDIN of the certifying member"
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                 <p className="mt-1 text-3xs text-ps-hint">

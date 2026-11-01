@@ -105,7 +105,7 @@ export function DisburseModal({ run, onClose, onDone }: {
           <>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Pay from bank account *</label>
-              <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
+              <select aria-label="Pay from bank account" value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
                 {accounts.map((a) => <option key={a.id} value={a.id}>{a.bank_name} · ····{a.account_no.slice(-4)}</option>)}
               </select>
             </div>
@@ -116,7 +116,7 @@ export function DisburseModal({ run, onClose, onDone }: {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
-                <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="NEFT / UTR no." className={inputCls} />
+                <input aria-label="Reference" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="NEFT / UTR no." className={inputCls} />
               </div>
             </div>
           </>

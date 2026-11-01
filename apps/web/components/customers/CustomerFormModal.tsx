@@ -293,11 +293,11 @@ export function CustomerFormModal({
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-2 lg:col-span-1">
           <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ABC Pvt Ltd" className={inputCls} />
+          <input aria-label="Name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ABC Pvt Ltd" className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">GSTIN</label>
-          <input
+          <input aria-label="GSTIN"
             value={gstin} onChange={(e) => handleGstinChange(e.target.value)}
             placeholder="27AABCU9603R1ZN" maxLength={15}
             className={`${inputCls} font-mono ${gstinProblem(gstin) ? "border-red-300" : ""}`}
@@ -312,7 +312,7 @@ export function CustomerFormModal({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">PAN</label>
-          <input
+          <input aria-label="PAN"
             value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())}
             placeholder="ABCDE1234F" maxLength={10}
             className={`${inputCls} font-mono ${pan && !isValidPan(pan) ? "border-red-300" : ""}`}
@@ -326,7 +326,7 @@ export function CustomerFormModal({
           <label className="block text-xs font-medium text-ps-label mb-1">
             TAN <span className="text-ps-hint font-normal">(if they deduct TDS)</span>
           </label>
-          <input
+          <input aria-label="TAN (if they deduct TDS)"
             value={tan} onChange={(e) => setTan(e.target.value.toUpperCase())}
             placeholder="MUMA12345B" maxLength={10}
             className={`${inputCls} font-mono ${tan && !isValidTan(tan) ? "border-red-300" : ""}`}
@@ -335,28 +335,28 @@ export function CustomerFormModal({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Email</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="billing@abc.com" className={inputCls} />
+          <input aria-label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="billing@abc.com" className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Phone</label>
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" className={inputCls} />
+          <input aria-label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">City</label>
-          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Mumbai" className={inputCls} />
+          <input aria-label="City" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Mumbai" className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">State</label>
-          <input value={state} onChange={(e) => setState(e.target.value)} placeholder="Maharashtra" className={inputCls} />
+          <input aria-label="State" value={state} onChange={(e) => setState(e.target.value)} placeholder="Maharashtra" className={inputCls} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Opening Balance (₹)</label>
-          <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)}
+          <input aria-label="Opening Balance (₹)" type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)}
             placeholder="0.00" className={`${inputCls} text-right font-mono`} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Payment Terms</label>
-          <select value={termValue} onChange={(e) => onTermChange(e.target.value)} className={inputCls}>
+          <select aria-label="Payment Terms" value={termValue} onChange={(e) => onTermChange(e.target.value)} className={inputCls}>
             {PAYMENT_TERM_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label}</option>)}
             <option value={CUSTOM_TERM}>Custom</option>
           </select>
@@ -372,7 +372,7 @@ export function CustomerFormModal({
             0 would put the customer on the strictest possible terms. */}
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Credit Limit (₹)</label>
-          <input type="text" inputMode="decimal" value={creditLimit}
+          <input aria-label="Credit Limit (₹)" type="text" inputMode="decimal" value={creditLimit}
             onChange={(e) => setCreditLimit(e.target.value)}
             placeholder="No limit" className={`${inputCls} text-right font-mono`} />
           <p className="mt-1 text-3xs text-ps-hint">

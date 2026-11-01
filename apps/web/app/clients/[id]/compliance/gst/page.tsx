@@ -125,7 +125,7 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-xs text-ps-body block mb-1">ARN from the portal</label>
-          <input
+          <input aria-label="ARN from the portal"
             value={arn}
             onChange={(e) => setArn(e.target.value)}
             placeholder="AA0705230000123"

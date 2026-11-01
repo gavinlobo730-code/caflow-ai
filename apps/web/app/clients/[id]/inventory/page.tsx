@@ -825,7 +825,7 @@ function AdjustStockModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Direction</label>
-              <select value={direction} onChange={(e) => onDirectionChange(e.target.value as "increase" | "decrease")}
+              <select aria-label="Direction" value={direction} onChange={(e) => onDirectionChange(e.target.value as "increase" | "decrease")}
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 <option value="decrease">Decrease (loss / write-off)</option>
                 <option value="increase">Increase (surplus found)</option>
@@ -833,14 +833,14 @@ function AdjustStockModal({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Quantity *</label>
-              <input type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)}
+              <input aria-label="Quantity" type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)}
                 placeholder="0" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
-            <select value={reason} onChange={(e) => onReasonChange(e.target.value)}
+            <select aria-label="Reason" value={reason} onChange={(e) => onReasonChange(e.target.value)}
               className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               {reasonOptions.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
@@ -864,14 +864,14 @@ function AdjustStockModal({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
-              <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. count sheet #"
+              <input aria-label="Reference" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. count sheet #"
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+            <textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
               placeholder="Details for the audit trail" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
@@ -983,7 +983,7 @@ function NrvWritedownModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Net realisable value / unit (₹) *</label>
-              <input type="text" inputMode="decimal" value={nrvPerUnit} onChange={(e) => setNrvPerUnit(e.target.value)}
+              <input aria-label="Net realisable value / unit (₹)" type="text" inputMode="decimal" value={nrvPerUnit} onChange={(e) => setNrvPerUnit(e.target.value)}
                 placeholder="0.00" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
@@ -1025,13 +1025,13 @@ function NrvWritedownModal({
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Reference</label>
-            <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. valuation note #"
+            <input aria-label="Reference" value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} placeholder="e.g. valuation note #"
               className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+            <textarea aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
               placeholder="Basis for the NRV estimate" className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 

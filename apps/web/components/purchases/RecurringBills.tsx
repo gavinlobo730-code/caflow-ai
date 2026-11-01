@@ -585,13 +585,13 @@ function RecurringBillEditor({
             </div>
             <div className="col-span-2 lg:col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)}
+              <input aria-label="Name" value={title} onChange={(e) => setTitle(e.target.value)}
                 placeholder="Office rent — Andheri"
                 className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Every *</label>
-              <select value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}
+              <select aria-label="Every" value={frequency} onChange={(e) => setFrequency(e.target.value as Frequency)}
                 className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 {FREQUENCIES.map((f) => <option key={f} value={f}>{FREQUENCY_LABEL[f]}</option>)}
               </select>
@@ -648,35 +648,35 @@ function RecurringBillEditor({
                     </div>
                     <div className="col-span-2">
                       <label className="block text-3xs text-ps-hint mb-1">Description</label>
-                      <input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })}
+                      <input aria-label="Description" value={l.description} onChange={(e) => setLine(i, { description: e.target.value })}
                         className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">Qty</label>
-                      <input value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })}
+                      <input aria-label="Qty" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })}
                         inputMode="decimal"
                         className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">Rate (₹)</label>
-                      <input value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })}
+                      <input aria-label="Rate (₹)" value={l.rate} onChange={(e) => setLine(i, { rate: e.target.value })}
                         inputMode="decimal" placeholder="0.00"
                         className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">GST %</label>
-                      <input value={l.gst_rate} onChange={(e) => setLine(i, { gst_rate: e.target.value })}
+                      <input aria-label="GST %" value={l.gst_rate} onChange={(e) => setLine(i, { gst_rate: e.target.value })}
                         inputMode="decimal"
                         className="w-full px-2 py-1 text-xs border border-ps-border rounded-md text-right font-mono focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">HSN / SAC</label>
-                      <input value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })}
+                      <input aria-label="HSN / SAC" value={l.hsn_sac} onChange={(e) => setLine(i, { hsn_sac: e.target.value })}
                         className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
                     <div>
                       <label className="block text-3xs text-ps-hint mb-1">Unit</label>
-                      <input value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })}
+                      <input aria-label="Unit" value={l.unit} onChange={(e) => setLine(i, { unit: e.target.value })}
                         placeholder="NOS"
                         className="w-full px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
                     </div>
@@ -718,14 +718,14 @@ function RecurringBillEditor({
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
-            <input value={description} onChange={(e) => setDescription(e.target.value)}
+            <input aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)}
               placeholder="What this template is for — shown in the list, not on the bill"
               className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes on every generated bill</label>
-            <input value={notes} onChange={(e) => setNotes(e.target.value)}
+            <input aria-label="Notes on every generated bill" value={notes} onChange={(e) => setNotes(e.target.value)}
               placeholder="Left on each draft — e.g. the lease reference"
               className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>

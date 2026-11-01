@@ -292,7 +292,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         {/* Return Type */}
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Return Type</label>
-          <select
+          <select aria-label="Return Type"
             value={returnType}
             onChange={(e) => setReturnType(e.target.value as ReturnType)}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
@@ -306,7 +306,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         {/* Period */}
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
-          <select
+          <select aria-label="Period"
             value={period}
             onChange={(e) => setPeriod(e.target.value)}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
@@ -344,7 +344,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         {/* Status */}
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Status</label>
-          <select
+          <select aria-label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as FilingStatus)}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"

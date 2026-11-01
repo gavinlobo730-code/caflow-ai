@@ -888,21 +888,21 @@ function RecurringEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Title</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Monthly bookkeeping fee"
+              <input aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Monthly bookkeeping fee"
                 className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Description (optional)</label>
-            <input value={description} onChange={(e) => setDescription(e.target.value)}
+            <input aria-label="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Frequency</label>
-              <select value={frequency} onChange={(e) => setFrequency(e.target.value)}
+              <select aria-label="Frequency" value={frequency} onChange={(e) => setFrequency(e.target.value)}
                 className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                 {Object.entries(FREQ_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
@@ -963,7 +963,7 @@ function RecurringEditor({
 
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Notes (optional)</label>
-            <input value={notes} onChange={(e) => setNotes(e.target.value)}
+            <input aria-label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)}
               className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand" />
           </div>
 
@@ -979,7 +979,7 @@ function RecurringEditor({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Supply type</label>
-              <select value={classification.supplyType}
+              <select aria-label="Supply type" value={classification.supplyType}
                 onChange={(e) => setClassification((c) => ({ ...c, supplyType: e.target.value as ClassificationState["supplyType"] }))}
                 className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                 {SUPPLY_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -987,7 +987,7 @@ function RecurringEditor({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Invoice type</label>
-              <select value={classification.invoiceType}
+              <select aria-label="Invoice type" value={classification.invoiceType}
                 onChange={(e) => setClassification((c) => ({ ...c, invoiceType: e.target.value as ClassificationState["invoiceType"] }))}
                 className="w-full px-3 py-2 border border-ps-border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-brand">
                 {INVOICE_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -2605,7 +2605,7 @@ function SendInvoiceModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Recipient Email</label>
-            <input
+            <input aria-label="Recipient Email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -4098,7 +4098,7 @@ function ReceiptForm({
         {!isForeign && (
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">TDS withheld (₹)</label>
-            <input
+            <input aria-label="TDS withheld (₹)"
               type="number"
               min="0"
               step="0.01"
@@ -4116,7 +4116,7 @@ function ReceiptForm({
         )}
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Payment Mode</label>
-          <select
+          <select aria-label="Payment Mode"
             value={paymentMode}
             onChange={(e) => setPaymentMode(e.target.value)}
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
@@ -4143,7 +4143,7 @@ function ReceiptForm({
         />
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Reference No.</label>
-          <input
+          <input aria-label="Reference No."
             value={referenceNo}
             onChange={(e) => setReferenceNo(e.target.value)}
             placeholder="UTR / cheque no."
@@ -4175,7 +4175,7 @@ function ReceiptForm({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">GST rate on the advance</label>
-              <input
+              <input aria-label="GST rate on the advance"
                 value={advanceRate}
                 onChange={(e) => setAdvanceRate(e.target.value)}
                 inputMode="decimal"
@@ -4222,7 +4222,7 @@ function ReceiptForm({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
-            <select
+            <select aria-label="Currency"
               value={currency}
               onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); setAllocations({}); }}
               className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
@@ -4238,7 +4238,7 @@ function ReceiptForm({
           {isForeign && (
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Cash Exchange Rate *</label>
-              <input
+              <input aria-label="Cash Exchange Rate"
                 type="number"
                 min="0"
                 step="0.0001"

@@ -308,18 +308,18 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">CIN / LLPIN</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
+            <input aria-label="CIN / LLPIN" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Form Type</label>
-            <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={formType} onChange={e => setFormType(e.target.value)}>
+            <select aria-label="Form Type" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={formType} onChange={e => setFormType(e.target.value)}>
               {FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
-              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
+              <input aria-label="Period" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
             </div>
             <div>
               <label htmlFor="mca-due-date" className="text-xs font-medium text-ps-body block mb-1">Due Date</label>
@@ -329,7 +329,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Status</label>
-              <select className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
+              <select aria-label="Status" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
                 <option value="Pending">Pending</option>
                 <option value="Filed">Filed</option>
                 <option value="Overdue">Overdue</option>
@@ -337,7 +337,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">SRN (if filed)</label>
-              <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" disabled={status !== "Filed"} />
+              <input aria-label="SRN (if filed)" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" value={srn} onChange={e => setSrn(e.target.value)} placeholder="SRN12345678" disabled={status !== "Filed"} />
             </div>
           </div>
           {status === "Filed" && (
@@ -355,7 +355,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           )}
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
-            <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
+            <input aria-label="Notes" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
         <div className="flex gap-2">

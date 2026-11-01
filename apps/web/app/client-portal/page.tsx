@@ -1146,7 +1146,7 @@ export default function ClientPortalPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Title *</label>
-                <input
+                <input aria-label="Title"
                   type="text"
                   placeholder="e.g. Upload Q4 Bank Statement"
                   value={newRequest.title}
@@ -1157,7 +1157,7 @@ export default function ClientPortalPage() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Description</label>
-                <textarea
+                <textarea aria-label="Description"
                   placeholder="e.g. For the period Jan–Mar 2026"
                   value={newRequest.description}
                   onChange={(e) => setNewRequest((p) => ({ ...p, description: e.target.value }))}

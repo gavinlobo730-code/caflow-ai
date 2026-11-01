@@ -298,14 +298,14 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           <p className="text-xs font-semibold text-ps-body">{editing === "new" ? "New rule" : "Edit rule"}</p>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Rule name *</label>
-            <input value={form.rule_name} onChange={(e) => setForm((f) => ({ ...f, rule_name: e.target.value }))}
+            <input aria-label="Rule name" value={form.rule_name} onChange={(e) => setForm((f) => ({ ...f, rule_name: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. HDFC bank charges" />
           </div>
           <p className="text-3xs font-semibold uppercase tracking-wide text-ps-hint pt-1">When</p>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Look at</label>
-              <select value={form.match_field}
+              <select aria-label="Look at" value={form.match_field}
                 onChange={(e) => setForm((f) => ({ ...f, match_field: e.target.value as typeof f.match_field }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="description">The narration</option>
@@ -319,7 +319,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Which</label>
-              <select value={form.match_operator}
+              <select aria-label="Which" value={form.match_operator}
                 onChange={(e) => setForm((f) => ({ ...f, match_operator: e.target.value as typeof f.match_operator }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="contains">contains</option>
@@ -330,13 +330,13 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Text to match</label>
-            <input value={form.description_pattern} onChange={(e) => setForm((f) => ({ ...f, description_pattern: e.target.value }))}
+            <input aria-label="Text to match" value={form.description_pattern} onChange={(e) => setForm((f) => ({ ...f, description_pattern: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. BANK CHARGES" />
             <p className="text-3xs text-ps-hint mt-1">Plain text, not case-sensitive. No wildcards.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Or any of these (one per line)</label>
-            <textarea value={form.description_patterns} rows={3}
+            <textarea aria-label="Or any of these (one per line)" value={form.description_patterns} rows={3}
               onChange={(e) => setForm((f) => ({ ...f, description_patterns: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
               placeholder={"ACME TRADERS\nACME EXPORTS\nACME PVT LTD"} />
@@ -347,17 +347,17 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Min amount (₹)</label>
-              <input type="number" min="0" step="0.01" value={form.amount_min} onChange={(e) => setForm((f) => ({ ...f, amount_min: e.target.value }))}
+              <input aria-label="Min amount (₹)" type="number" min="0" step="0.01" value={form.amount_min} onChange={(e) => setForm((f) => ({ ...f, amount_min: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="any" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Max amount (₹)</label>
-              <input type="number" min="0" step="0.01" value={form.amount_max} onChange={(e) => setForm((f) => ({ ...f, amount_max: e.target.value }))}
+              <input aria-label="Max amount (₹)" type="number" min="0" step="0.01" value={form.amount_max} onChange={(e) => setForm((f) => ({ ...f, amount_max: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="any" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Direction</label>
-              <select value={form.txn_type} onChange={(e) => setForm((f) => ({ ...f, txn_type: e.target.value as "debit" | "credit" | "any" }))}
+              <select aria-label="Direction" value={form.txn_type} onChange={(e) => setForm((f) => ({ ...f, txn_type: e.target.value as "debit" | "credit" | "any" }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="any">Either</option>
                 <option value="credit">Money in (Receipt)</option>
@@ -367,7 +367,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           </div>
           <div className="w-40">
             <label className="block text-xs font-medium text-ps-label mb-1">Priority</label>
-            <input type="number" step="1" value={form.priority}
+            <input aria-label="Priority" type="number" step="1" value={form.priority}
               onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="100" />
             <p className="text-3xs text-ps-hint mt-1">
@@ -386,7 +386,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Category</label>
-              <select value={form.suggested_category} onChange={(e) => setForm((f) => ({ ...f, suggested_category: e.target.value }))}
+              <select aria-label="Category" value={form.suggested_category} onChange={(e) => setForm((f) => ({ ...f, suggested_category: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="">— Derive from the ledger —</option>
                 {BANK_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -395,13 +395,13 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">Narration</label>
-            <input value={form.suggested_narration} onChange={(e) => setForm((f) => ({ ...f, suggested_narration: e.target.value }))}
+            <input aria-label="Narration" value={form.suggested_narration} onChange={(e) => setForm((f) => ({ ...f, suggested_narration: e.target.value }))}
               className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. Bank charges" />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">GST inside the amount</label>
-              <select value={form.suggested_gst_rate_bps} onChange={(e) => setForm((f) => ({ ...f, suggested_gst_rate_bps: e.target.value }))}
+              <select aria-label="GST inside the amount" value={form.suggested_gst_rate_bps} onChange={(e) => setForm((f) => ({ ...f, suggested_gst_rate_bps: e.target.value }))}
                 className="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="">— Don&apos;t split —</option>
                 {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}

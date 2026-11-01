@@ -205,7 +205,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
           </div>
           <div>
             <label className={lbl}>Amount Demanded (₹)</label>
-            <input type="number" min="0" step="0.01" value={form.amountDemandedRs} onChange={e => upd({ amountDemandedRs: e.target.value })} className={inputCls} placeholder="0.00" />
+            <input aria-label="Amount Demanded (₹)" type="number" min="0" step="0.01" value={form.amountDemandedRs} onChange={e => upd({ amountDemandedRs: e.target.value })} className={inputCls} placeholder="0.00" />
           </div>
           <div>
             <label className={lbl}>Status</label>
@@ -215,7 +215,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
           </div>
           <div>
             <label className={lbl}>Notes</label>
-            <textarea rows={2} value={form.notes} onChange={e => upd({ notes: e.target.value })}
+            <textarea aria-label="Notes" rows={2} value={form.notes} onChange={e => upd({ notes: e.target.value })}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand resize-none"
               placeholder="Additional details…" />
           </div>

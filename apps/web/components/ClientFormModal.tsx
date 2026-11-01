@@ -171,7 +171,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-body mb-1">Client / Business Name *</label>
-              <input
+              <input aria-label="Client / Business Name"
                 required value={form.client_name}
                 onChange={e => set("client_name", e.target.value)}
                 placeholder="e.g. Sharma Enterprises"
@@ -180,7 +180,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Entity Type *</label>
-              <select
+              <select aria-label="Entity Type"
                 required value={form.entity_type}
                 onChange={e => set("entity_type", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
@@ -190,7 +190,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">GST Filing Frequency</label>
-              <select
+              <select aria-label="GST Filing Frequency"
                 value={form.gst_filing_frequency}
                 onChange={e => set("gst_filing_frequency", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
@@ -233,7 +233,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">PAN *</label>
-              <input
+              <input aria-label="PAN"
                 required value={form.pan}
                 onChange={e => set("pan", e.target.value.toUpperCase())}
                 placeholder="ABCDE1234F"
@@ -243,7 +243,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">GSTIN</label>
-              <input
+              <input aria-label="GSTIN"
                 value={form.gstin}
                 onChange={e => set("gstin", e.target.value.toUpperCase())}
                 placeholder="27ABCDE1234F1Z0"
@@ -257,7 +257,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Mobile</label>
-              <input
+              <input aria-label="Mobile"
                 value={form.mobile}
                 onChange={e => set("mobile", e.target.value)}
                 placeholder="+91 98765 43210"
@@ -266,7 +266,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Email</label>
-              <input
+              <input aria-label="Email"
                 type="email" value={form.email}
                 onChange={e => set("email", e.target.value)}
                 placeholder="client@business.in"
@@ -278,7 +278,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           {/* Address */}
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Address</label>
-            <input
+            <input aria-label="Address"
               value={form.address_line1}
               onChange={e => set("address_line1", e.target.value)}
               placeholder="Street address"
@@ -288,7 +288,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">City</label>
-              <input
+              <input aria-label="City"
                 value={form.city}
                 onChange={e => set("city", e.target.value)}
                 placeholder="Mumbai"
@@ -297,7 +297,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">State</label>
-              <select
+              <select aria-label="State"
                 value={form.state}
                 onChange={e => handleStateChange(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
@@ -307,7 +307,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Pincode</label>
-              <input
+              <input aria-label="Pincode"
                 value={form.pincode}
                 onChange={e => set("pincode", e.target.value)}
                 placeholder="400001"
@@ -320,7 +320,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
           {/* Notes */}
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Notes</label>
-            <textarea
+            <textarea aria-label="Notes"
               value={form.notes}
               onChange={e => set("notes", e.target.value)}
               rows={2}

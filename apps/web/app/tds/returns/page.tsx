@@ -699,13 +699,13 @@ export default function TDSReturnsPage() {
             <p className="text-sm text-ps-label">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">PRN (Provisional Receipt Number) *</label>
-              <input value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
+              <input aria-label="PRN (Provisional Receipt Number)" value={prn} onChange={e => setPrn(e.target.value.toUpperCase())}
                 placeholder="Token / PRN from the e-filing portal"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Acknowledgement Number</label>
-              <input value={ackNumber} onChange={e => setAckNumber(e.target.value)}
+              <input aria-label="Acknowledgement Number" value={ackNumber} onChange={e => setAckNumber(e.target.value)}
                 placeholder="Optional acknowledgement number"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-brand" />
             </div>

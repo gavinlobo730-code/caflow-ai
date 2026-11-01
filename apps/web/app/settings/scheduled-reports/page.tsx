@@ -395,7 +395,7 @@ export default function ScheduledReportsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Recipients (comma-separated emails) *</label>
-                <input
+                <input aria-label="Recipients (comma-separated emails)"
                   type="text"
                   value={form.recipients}
                   onChange={e => setForm(f => ({ ...f, recipients: e.target.value }))}
@@ -406,7 +406,7 @@ export default function ScheduledReportsPage() {
 
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Day of month (1–28) *</label>
-                <input
+                <input aria-label="Day of month (1–28)"
                   type="number"
                   min={1}
                   max={28}

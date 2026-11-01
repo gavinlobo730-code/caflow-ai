@@ -332,7 +332,7 @@ export default function DocumentsPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Label *</label>
-                <input
+                <input aria-label="Label"
                   type="text"
                   value={uploadLabel}
                   onChange={(e) => setUploadLabel(e.target.value)}

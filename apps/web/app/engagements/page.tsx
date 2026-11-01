@@ -304,7 +304,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Title *</label>
-            <input
+            <input aria-label="Title"
               required
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -332,7 +332,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Lead / Client Name</label>
-            <input
+            <input aria-label="Lead / Client Name"
               value={form.recipient_name}
               onChange={(e) => setForm({ ...form, recipient_name: e.target.value })}
               placeholder="Recipient name"
@@ -343,7 +343,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Fee Amount (₹)</label>
-              <input
+              <input aria-label="Fee Amount (₹)"
                 type="number"
                 min="0"
                 value={form.fee_rupees}
@@ -354,7 +354,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Recipient Email</label>
-              <input
+              <input aria-label="Recipient Email"
                 type="email"
                 value={form.recipient_email}
                 onChange={(e) => setForm({ ...form, recipient_email: e.target.value })}
@@ -496,7 +496,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Template Name *</label>
-            <input
+            <input aria-label="Template Name"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -523,7 +523,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Template Content *</label>
-            <textarea
+            <textarea aria-label="Template Content"
               required
               value={form.content}
               onChange={(e) => setForm({ ...form, content: e.target.value })}
@@ -946,7 +946,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
               ) : (
                 <div className="w-full space-y-2">
                   <label className="text-xs font-medium text-ps-body">Client email</label>
-                  <input
+                  <input aria-label="Client email"
                     type="email"
                     value={sendEmail}
                     onChange={(e) => setSendEmail(e.target.value)}
@@ -1037,7 +1037,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 {showRecipientInput && (
                   <div className="w-full space-y-2">
                     <label className="text-xs font-medium text-ps-body">New recipient email</label>
-                    <input
+                    <input aria-label="New recipient email"
                       type="email"
                       value={recipientEmail}
                       onChange={(e) => setRecipientEmail(e.target.value)}
@@ -1105,7 +1105,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 {showSignInput && (
                   <div className="w-full space-y-2">
                     <label className="text-xs font-medium text-ps-body">Signed PDF URL (optional)</label>
-                    <input
+                    <input aria-label="Signed PDF URL (optional)"
                       value={signedPdfUrl}
                       onChange={(e) => setSignedPdfUrl(e.target.value)}
                       placeholder="https://… (leave blank if none)"
@@ -1130,7 +1130,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                 {showRejectInput && (
                   <div className="w-full space-y-2">
                     <label className="text-xs font-medium text-ps-body">Rejection Notes (optional)</label>
-                    <input
+                    <input aria-label="Rejection Notes (optional)"
                       value={rejectionNotes}
                       onChange={(e) => setRejectionNotes(e.target.value)}
                       placeholder="Reason for rejection…"

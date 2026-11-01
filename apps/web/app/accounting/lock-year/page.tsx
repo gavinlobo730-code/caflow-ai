@@ -147,7 +147,7 @@ function PinModal({
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">Confirm PIN</label>
-              <input
+              <input aria-label="Confirm PIN"
                 type={showPin ? "text" : "password"}
                 value={confirmPin}
                 onChange={e => setConfirmPin(e.target.value)}

@@ -121,7 +121,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Document Name</label>
-            <input type="text" value={docName} onChange={e => setDocName(e.target.value)}
+            <input aria-label="Document Name" type="text" value={docName} onChange={e => setDocName(e.target.value)}
               placeholder="e.g. PAN Card"
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
           </div>
@@ -148,7 +148,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
                 <p className="text-sm text-ps-hint">Click to select file</p>
               )}
             </div>
-            <input ref={fileRef} type="file" className="hidden"
+            <input aria-label="File" ref={fileRef} type="file" className="hidden"
               accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.csv,.doc,.docx,.txt,.zip"
               onChange={e => { if (e.target.files?.[0]) setFile(e.target.files[0]); }} />
           </div>

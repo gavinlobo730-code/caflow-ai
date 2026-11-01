@@ -522,17 +522,17 @@ export default function SuppliersPage() {
 
               <div>
                 <label className="text-xs font-medium text-ps-body block mb-1">Supplier Name *</label>
-                <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
+                <input aria-label="Supplier Name" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. ABC Contractors Pvt Ltd" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">GSTIN</label>
-                  <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AABCU9603R1ZN" maxLength={15} />
+                  <input aria-label="GSTIN" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand font-mono" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value.toUpperCase() }))} placeholder="27AABCU9603R1ZN" maxLength={15} />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">PAN</label>
-                  <input className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand font-mono" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))} placeholder="AAAAA0000A" maxLength={10} />
+                  <input aria-label="PAN" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand font-mono" value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value.toUpperCase() }))} placeholder="AAAAA0000A" maxLength={10} />
                 </div>
               </div>
 
@@ -601,12 +601,12 @@ export default function SuppliersPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Credit Limit (₹)</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="Leave blank for none" />
+                  <input aria-label="Credit Limit (₹)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={form.credit_limit_rs} onChange={e => setForm(f => ({ ...f, credit_limit_rs: e.target.value }))} placeholder="Leave blank for none" />
                   <p className="text-2xs text-ps-hint mt-1 leading-tight">Recorded only — no bill is blocked or flagged by it.</p>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-body block mb-1">Payment Terms (days)</label>
-                  <input type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={form.credit_days} onChange={e => setForm(f => ({ ...f, credit_days: e.target.value }))} placeholder="Leave blank if unconfirmed" />
+                  <input aria-label="Payment Terms (days)" type="number" min="0" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={form.credit_days} onChange={e => setForm(f => ({ ...f, credit_days: e.target.value }))} placeholder="Leave blank if unconfirmed" />
                   <p className="text-2xs text-ps-hint mt-1 leading-tight">Blank and 0 differ: 0 is Due on Receipt.</p>
                 </div>
               </div>
@@ -626,7 +626,7 @@ export default function SuppliersPage() {
                   <p className="text-xs text-state-attention">IT Act Section {form.tds_section} — deduct at source before payment to supplier</p>
                   <div>
                     <label className="text-xs font-medium text-ps-body block mb-1">Bill Amount (₹)</label>
-                    <input type="number" min="0" className="w-full border border-state-attention-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
+                    <input aria-label="Bill Amount (₹)" type="number" min="0" className="w-full border border-state-attention-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white" value={billRs} onChange={e => setBillRs(e.target.value)} placeholder="0" />
                   </div>
                   {billPaise > 0 && tdsCalcError && (
                     <p className="text-xs text-red-600">{tdsCalcError}</p>

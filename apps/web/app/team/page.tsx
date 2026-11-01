@@ -187,7 +187,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Full Name</label>
-            <input
+            <input aria-label="Full Name"
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               placeholder="e.g. Priya Sharma"
               value={name}
@@ -197,7 +197,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Email Address</label>
-            <input
+            <input aria-label="Email Address"
               type="email"
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               placeholder="priya@firm.com"
@@ -208,7 +208,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
-            <select
+            <select aria-label="Role"
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               value={role}
               onChange={e => setRole(e.target.value as Role)}
@@ -279,7 +279,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
 
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
-          <select
+          <select aria-label="Role"
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
             value={role}
             onChange={e => setRole(e.target.value as Role)}

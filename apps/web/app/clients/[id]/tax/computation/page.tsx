@@ -1348,7 +1348,7 @@ export default function TaxComputationPage() {
                     <label className="text-3xs text-ps-label mb-1 block">
                       Are the members&apos; shares determinate and known?
                     </label>
-                    <select value={aopShares}
+                    <select aria-label={"Are the members&apos; shares determinate and known?"} value={aopShares}
                       onChange={e => setAopShares(e.target.value as "" | "yes" | "no")}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       <option value="">Not stated</option>
@@ -1361,7 +1361,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         Is any member&apos;s own total income above the exemption limit?
                       </label>
-                      <select value={aopMemberOver}
+                      <select aria-label={"Is any member&apos;s own total income above the exemption limit?"} value={aopMemberOver}
                         onChange={e => setAopMemberOver(e.target.value as "" | "yes" | "no")}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                         <option value="">Not stated</option>
@@ -1503,7 +1503,7 @@ export default function TaxComputationPage() {
                 <label className="text-2xs font-semibold text-ps-body whitespace-nowrap">
                   Presumptive scheme
                 </label>
-                <select value={presumptiveScheme}
+                <select aria-label="Presumptive scheme" value={presumptiveScheme}
                   onChange={e => { setPresumptiveScheme(e.target.value);
                                    setPresResult(null); setPresError(null); }}
                   className="text-xs px-3 py-1.5 border border-ps-border rounded-lg">
@@ -1552,7 +1552,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         Income declared, if higher (₹)
                       </label>
-                      <input type="text" inputMode="decimal" value={presDeclared}
+                      <input aria-label="Income declared, if higher (₹)" type="text" inputMode="decimal" value={presDeclared}
                         onChange={e => setPresDeclared(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="Blank uses the deemed figure" />
@@ -1662,7 +1662,7 @@ export default function TaxComputationPage() {
                     <label className="text-3xs text-ps-label mb-1 block">
                       §80CCD(2) — employer NPS contribution (₹)
                     </label>
-                    <input type="text" inputMode="decimal" value={employerNps}
+                    <input aria-label="§80CCD(2) — employer NPS contribution (₹)" type="text" inputMode="decimal" value={employerNps}
                       onChange={e => setEmployerNps(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="0" />
@@ -1675,7 +1675,7 @@ export default function TaxComputationPage() {
                     <label className="text-3xs text-ps-label mb-1 block">
                       Salary for the §80CCD(2) ceiling (₹)
                     </label>
-                    <input type="text" inputMode="decimal" value={nps80ccd2Salary}
+                    <input aria-label="Salary for the §80CCD(2) ceiling (₹)" type="text" inputMode="decimal" value={nps80ccd2Salary}
                       onChange={e => setNps80ccd2Salary(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="Blank uses the gross salary above" />
@@ -1775,7 +1775,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80E — education loan interest (₹)
                       </label>
-                      <input type="text" inputMode="decimal" value={s80eInterest}
+                      <input aria-label="§80E — education loan interest (₹)" type="text" inputMode="decimal" value={s80eInterest}
                         onChange={e => setS80eInterest(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
@@ -1788,7 +1788,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80E — which of the eight years
                       </label>
-                      <input type="number" min={1} value={s80eYear}
+                      <input aria-label="§80E — which of the eight years" type="number" min={1} value={s80eYear}
                         onChange={e => setS80eYear(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="Blank if unknown" />
@@ -1801,7 +1801,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80EE / §80EEA — additional housing interest (₹)
                       </label>
-                      <input type="text" inputMode="decimal" value={housingExtraInterest}
+                      <input aria-label="§80EE / §80EEA — additional housing interest (₹)" type="text" inputMode="decimal" value={housingExtraInterest}
                         onChange={e => setHousingExtraInterest(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
@@ -1827,7 +1827,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80DDB — treatment of a specified disease (₹)
                       </label>
-                      <input type="text" inputMode="decimal" value={diseaseSpend}
+                      <input aria-label="§80DDB — treatment of a specified disease (₹)" type="text" inputMode="decimal" value={diseaseSpend}
                         onChange={e => setDiseaseSpend(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
@@ -1836,7 +1836,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80DDB — reimbursed by an insurer or employer (₹)
                       </label>
-                      <input type="text" inputMode="decimal" value={diseaseReimbursed}
+                      <input aria-label="§80DDB — reimbursed by an insurer or employer (₹)" type="text" inputMode="decimal" value={diseaseReimbursed}
                         onChange={e => setDiseaseReimbursed(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
@@ -1848,7 +1848,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         §80GG — rent paid, where no HRA is received (₹)
                       </label>
-                      <input type="text" inputMode="decimal" value={s80ggRent}
+                      <input aria-label="§80GG — rent paid, where no HRA is received (₹)" type="text" inputMode="decimal" value={s80ggRent}
                         onChange={e => setS80ggRent(e.target.value)}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                         placeholder="0" />
@@ -1899,7 +1899,7 @@ export default function TaxComputationPage() {
                     <label className="text-3xs text-ps-label mb-1 block">
                       §80CCD(1B) — own NPS (₹)
                     </label>
-                    <input type="text" inputMode="decimal" value={nps80ccd1b}
+                    <input aria-label="§80CCD(1B) — own NPS (₹)" type="text" inputMode="decimal" value={nps80ccd1b}
                       onChange={e => setNps80ccd1b(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       placeholder="0" />
@@ -2476,20 +2476,20 @@ export default function TaxComputationPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-3xs text-ps-label mb-1 block">Section</label>
-                    <select value={disallSection} onChange={e => setDisallSection(e.target.value)}
+                    <select aria-label="Section" value={disallSection} onChange={e => setDisallSection(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       {SECTION_OPTIONS.map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-3xs text-ps-label mb-1 block">Amount (₹)</label>
-                    <input type="number" value={disallAmount} onChange={e => setDisallAmount(e.target.value)}
+                    <input aria-label="Amount (₹)" type="number" value={disallAmount} onChange={e => setDisallAmount(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="0" />
                   </div>
                 </div>
                 <div>
                   <label className="text-3xs text-ps-label mb-1 block">Description</label>
-                  <input value={disallDesc} onChange={e => setDisallDesc(e.target.value)}
+                  <input aria-label="Description" value={disallDesc} onChange={e => setDisallDesc(e.target.value)}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" placeholder="Payment description" />
                 </div>
                 <div className="flex gap-2">

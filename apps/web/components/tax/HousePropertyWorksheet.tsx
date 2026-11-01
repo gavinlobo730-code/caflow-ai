@@ -213,18 +213,18 @@ export function HousePropertyWorksheet({
             <div className="flex flex-wrap items-end gap-2">
               <div className="flex-1 min-w-[10rem]">
                 <label className="text-3xs text-ps-label block mb-1">Property</label>
-                <input className={input} value={r.name} placeholder="e.g. Shop, Andheri"
+                <input aria-label="Property" className={input} value={r.name} placeholder="e.g. Shop, Andheri"
                   onChange={e => set(r.key, { name: e.target.value })} />
               </div>
               <div>
                 <label className="text-3xs text-ps-label block mb-1">Use</label>
-                <select className={input} value={r.use} onChange={e => set(r.key, { use: e.target.value })}>
+                <select aria-label="Use" className={input} value={r.use} onChange={e => set(r.key, { use: e.target.value })}>
                   {USE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                 </select>
               </div>
               <div className="w-24">
                 <label className="text-3xs text-ps-label block mb-1">Your share %</label>
-                <input className={input} inputMode="decimal" value={r.sharePct}
+                <input aria-label="Your share %" className={input} inputMode="decimal" value={r.sharePct}
                   onChange={e => set(r.key, { sharePct: e.target.value })} />
               </div>
               <button type="button" aria-label="Remove this property"
@@ -276,24 +276,24 @@ export function HousePropertyWorksheet({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div>
                 <label className="text-3xs text-ps-label block mb-1">Interest — your own share (₹)</label>
-                <input className={input} inputMode="decimal" value={r.interest}
+                <input aria-label="Interest — your own share (₹)" className={input} inputMode="decimal" value={r.interest}
                   onChange={e => set(r.key, { interest: e.target.value })} />
               </div>
               <div>
                 <label className="text-3xs text-ps-label block mb-1">Interest before completion — total (₹)</label>
-                <input className={input} inputMode="decimal" value={r.preConstruction}
+                <input aria-label="Interest before completion — total (₹)" className={input} inputMode="decimal" value={r.preConstruction}
                   onChange={e => set(r.key, { preConstruction: e.target.value })} />
               </div>
               <div>
                 <label className="text-3xs text-ps-label block mb-1">Year of completion (e.g. 2023-24)</label>
-                <input className={input} value={r.completionFy} placeholder="2023-24"
+                <input aria-label="Year of completion (e.g. 2023-24)" className={input} value={r.completionFy} placeholder="2023-24"
                   onChange={e => set(r.key, { completionFy: e.target.value })} />
               </div>
               {own && (
                 <>
                   <div>
                     <label className="text-3xs text-ps-label block mb-1">The loan was taken</label>
-                    <select className={input} value={r.loanPurpose}
+                    <select aria-label="The loan was taken" className={input} value={r.loanPurpose}
                       onChange={e => set(r.key, { loanPurpose: e.target.value })}>
                       {PURPOSE_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                     </select>

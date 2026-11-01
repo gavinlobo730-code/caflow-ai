@@ -90,7 +90,7 @@ function CapacityModal({ member, onClose, onSaved }: {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Weekly Hours</label>
-            <input
+            <input aria-label="Weekly Hours"
               type="number" min="1" max="100"
               value={weeklyHours}
               onChange={e => setWeeklyHours(e.target.value)}
@@ -99,7 +99,7 @@ function CapacityModal({ member, onClose, onSaved }: {
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Max Concurrent Tasks</label>
-            <input
+            <input aria-label="Max Concurrent Tasks"
               type="number" min="1" max="100"
               value={maxTasks}
               onChange={e => setMaxTasks(e.target.value)}

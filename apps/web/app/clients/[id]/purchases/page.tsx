@@ -2166,27 +2166,27 @@ function Vendors({ clientId }: { clientId: string }) {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">GSTIN</label>
-              <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1ZU" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono" />
+              <input aria-label="GSTIN" value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27AABCS1429B1ZU" maxLength={15} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">PAN</label>
-              <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono" />
+              <input aria-label="PAN" value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input aria-label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Phone</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input aria-label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Opening Balance (₹ payable)</label>
-              <input type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input aria-label="Opening Balance (₹ payable)" type="number" min="0" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
           </div>
 
@@ -2996,7 +2996,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
             {mcActive && (
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Currency</label>
-                <select
+                <select aria-label="Currency"
                   value={currency}
                   onChange={(e) => { setCurrency(e.target.value); setExchangeRate(""); setBillId(""); }}
                   className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
@@ -3013,7 +3013,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
             {isForeign && (
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Cash Exchange Rate *</label>
-                <input
+                <input aria-label="Cash Exchange Rate"
                   type="number"
                   min="0"
                   step="0.0001"
@@ -3054,13 +3054,13 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Mode</label>
-              <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
+              <select aria-label="Mode" value={mode} onChange={(e) => setMode(e.target.value)} className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
                 {PAYMENT_MODES.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Reference No.</label>
-              <input value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input aria-label="Reference No." value={refNo} onChange={(e) => setRefNo(e.target.value)} placeholder="UTR / cheque no." className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <PaymentAccountPicker
               clientId={clientId}
