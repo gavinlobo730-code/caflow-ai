@@ -27,7 +27,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, toLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
-import { filingTrackerStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
+import { filingTrackerStatus, calendarWordForMcaStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
@@ -41,7 +41,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type FilingStatus = FilingTrackerStatus;      // the table cannot hold "Not applicable" (its status words are not_started, in_progress, filed, overdue)
+type FilingStatus = FilingTrackerStatus;      // nothing in the product writes "Not applicable" to this table (the API allows not_started, in_progress, filed, overdue), but the table's own CHECK in migration 038 still names not_applicable, so it is read
 
 interface MCAFiling {
   id: string;
@@ -167,16 +167,12 @@ function keyDeadlines() {
 // MCA filings, companies, and directors are loaded from the firm's real data;
 // empty until recorded (no fictional seed records shown to users).
 
-/** `mca_filings.status` is stored as not_started | in_progress | filed | overdue; the one rule (lib/compliance/overdue) speaks the compliance
- * calendar's words, so the stored word is mapped first. A row moved to "overdue" by hand with a date still ahead reads Overdue, as it does on
+/** `mca_filings.status` is written as not_started | in_progress | filed | overdue, and migration 038's CHECK also names not_applicable; the one
+ * rule (lib/compliance/overdue) speaks the compliance calendar's words, so the stored word is mapped first (`calendarWordForMcaStatus`). A row moved to "overdue" by hand with a date still ahead reads Overdue, as it does on
  * the Deadlines screen; the date alone no longer decides (POST-A-280). A row read straight from the table still holds its STORED word in
  * `status`, which is why this takes the row and not a pair of dates. */
 function computeStatus(row: { due_date: string; filed_date: string | null; status: string }): FilingStatus {
-  const stored = String(row.status ?? "").toLowerCase();
-  return filingTrackerStatus({
-    due_date: row.due_date, filed_date: row.filed_date,
-    filing_status: stored === "filed" ? "filed" : stored === "overdue" ? "overdue" : "pending",
-  });
+  return filingTrackerStatus({ due_date: row.due_date, filed_date: row.filed_date, filing_status: calendarWordForMcaStatus(row.status) });
 }
 
 /** Days from today until a director's KYC due date (negative once overdue). */

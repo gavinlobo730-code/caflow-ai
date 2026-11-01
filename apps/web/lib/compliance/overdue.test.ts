@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/compliance/overdue.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isOverdue, isUpcoming, filingTrackerStatus } from "./overdue.ts";
+import { isOverdue, isUpcoming, filingTrackerStatus, calendarWordForMcaStatus } from "./overdue.ts";
 
 const TODAY = "2026-09-27";
 const row = (due_date: string, filing_status: string) => ({ due_date, filing_status });
@@ -106,4 +106,23 @@ test("the tracker and the Deadlines rule never disagree about an open obligation
       assert.equal(tracker(due, status) === "Overdue", isOverdue(row(due, status), TODAY), `${status} due ${due}`);
     }
   }
+});
+
+test("the MCA table's stored words map to the calendar's, in any case, and an unknown word is the open state", () => {
+  assert.equal(calendarWordForMcaStatus("filed"), "filed");
+  assert.equal(calendarWordForMcaStatus("Overdue"), "overdue");
+  assert.equal(calendarWordForMcaStatus("not_applicable"), "na");
+  assert.equal(calendarWordForMcaStatus("NA"), "na");
+  for (const open of ["not_started", "in_progress", "pending", "", null, undefined, "something new"]) {
+    assert.equal(calendarWordForMcaStatus(open as string | null | undefined), "pending", String(open));
+  }
+});
+
+test("an MCA filing recorded as not applicable is not printed Overdue by its date, and one marked overdue by hand is, with its date ahead", () => {
+  const print = (stored: string, due: string, filed: string | null = null) =>
+    filingTrackerStatus({ due_date: due, filing_status: calendarWordForMcaStatus(stored), filed_date: filed }, TODAY);
+  assert.equal(print("not_applicable", "2025-01-01"), "Not applicable");
+  assert.equal(print("overdue", "2026-12-01"), "Overdue");
+  assert.equal(print("not_started", "2026-09-26"), "Overdue");
+  assert.equal(print("filed", "2025-01-01"), "Filed");
 });

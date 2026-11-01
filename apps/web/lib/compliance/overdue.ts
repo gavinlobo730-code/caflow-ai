@@ -76,3 +76,16 @@ export function filingTrackerStatus(
   if (word === "na") return "Not applicable";
   return isOverdue({ due_date: entry.due_date, filing_status: word || "pending" }, todayISO) ? "Overdue" : "Pending";
 }
+
+/**
+ * The compliance calendar's word for a stored `mca_filings.status` (written as not_started | in_progress | filed | overdue; migration 038's
+ * CHECK also names not_applicable and pending). Anything that is not one of the words with a meaning of its own is "pending", the open state.
+ * Read from the STORED word, in any case, before a page overwrites the row's status with the word it prints.
+ */
+export function calendarWordForMcaStatus(stored: string | null | undefined): string {
+  const word = String(stored ?? "").toLowerCase();
+  if (word === "filed") return "filed";
+  if (word === "overdue") return "overdue";
+  if (word === "not_applicable" || word === "na") return "na";
+  return "pending";
+}

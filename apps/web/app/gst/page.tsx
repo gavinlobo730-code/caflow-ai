@@ -88,8 +88,6 @@ const DUE_DATE_FIELD: Record<ReturnType, keyof GstDueDates> = {
   "GSTR-9": "gstr9_due_date",
 };
 
-/** Determine status — Overdue only once a full calendar day has passed the due date */
-
 // ─── Key deadlines banner ─────────────────────────────────────────────────────
 
 // FUNCTIONS, not module constants, and the difference is a filing period.
@@ -394,7 +392,7 @@ interface BatchMarkFiledModalProps {
 }
 
 function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledModalProps) {
-  // Already-filed rows never belong in this flow — filter once, up front.
+  // Already-filed rows and rows recorded as not applicable never belong in this flow — filter once, up front.
   const [rows, setRows] = useState<GSTFiling[]>(() => selected.filter((f) => f.status !== "Filed" && f.status !== "Not applicable"));
   const [filedDate, setFiledDate] = useState(todayLocalISO());
   const [arns, setArns] = useState<Record<string, string>>({});
@@ -475,7 +473,11 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
           <p className="text-sm text-ps-body font-medium">Nothing to file</p>
-          <p className="text-xs text-ps-label">All selected filings are already marked as Filed.</p>
+          <p className="text-xs text-ps-label">
+            {selected.some((f) => f.status === "Not applicable")
+              ? "Every selected filing is either already marked as Filed or recorded as not applicable."
+              : "All selected filings are already marked as Filed."}
+          </p>
           <button
             onClick={onClose}
             className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
