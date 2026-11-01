@@ -10,22 +10,6 @@
     "app/accounting/coa-import/page.tsx": [
       "input#ca9ad21c"
     ],
-    "app/accounting/loans/page.tsx": [
-      "input:fdForm.bank_name",
-      "input:fdForm.fd_number",
-      "input:fdForm.interest_rate",
-      "input:fdForm.maturity_receipt",
-      "input:fdForm.principal",
-      "input:loanForm.account_number",
-      "input:loanForm.emi",
-      "input:loanForm.interest_rate",
-      "input:loanForm.lender_name",
-      "input:loanForm.outstanding",
-      "input:loanForm.principal",
-      "select:loanForm.loan_type",
-      "textarea:fdForm.notes",
-      "textarea:loanForm.notes"
-    ],
     "app/accounting/lock-year/page.tsx": [
       "input:newPin",
       "input:pin"
@@ -55,40 +39,8 @@
       "input:period #2",
       "select:fy"
     ],
-    "app/clients/[id]/compliance/mca/page.tsx": [
-      "input:(form as Record<string, string>)[key]",
-      "input:form.description",
-      "input:form.due_date",
-      "input:form.financial_year",
-      "input:form.registered_address",
-      "input:srn",
-      "select:form.company_type",
-      "select:form.form_type"
-    ],
     "app/clients/[id]/compliance/page.tsx": [
       "textarea:noticeText"
-    ],
-    "app/clients/[id]/compliance/tds/page.tsx": [
-      "input:(form as Record<string, string>)[key]",
-      "input:(form as Record<string, string>)[key] #2",
-      "input:computeForm.deductor_address",
-      "input:computeForm.deductor_name",
-      "input:computeForm.deductor_pan",
-      "input:computeForm.financial_year",
-      "input:computeForm.tan",
-      "input:form.ceiling_rupees",
-      "input:form.certificate_no",
-      "input:form.financial_year",
-      "input:form.rate_percent",
-      "select:computeForm.quarter",
-      "select:computeForm.return_type",
-      "select:form.certificate_type",
-      "select:form.quarter",
-      "select:form.quarter #2",
-      "select:form.return_type",
-      "select:form.section",
-      "select:form.vendor_id",
-      "textarea:jsonText"
     ],
     "app/clients/[id]/documents/page.tsx": [
       "input#b1a1b8dd"
@@ -342,22 +294,6 @@
       "input:amounts[d.id] ?? \"\"",
       "input:checked.has(d.id)",
       "input:exchangeRate"
-    ],
-    "components/invoices/CompliancePanel.tsx": [
-      "input:ack",
-      "input:distance",
-      "input:from",
-      "input:goods",
-      "input:hsn",
-      "input:irn",
-      "input:lut",
-      "input:num",
-      "input:reason",
-      "input:to",
-      "select:t",
-      "select:transportMode",
-      "select:vehicleType",
-      "textarea:qr"
     ],
     "components/knowledge/ClientInstructions.tsx": [
       "input:form.title",

@@ -363,7 +363,9 @@ function Actions({ onClose, onSubmit, busy, label, disabled }: { onClose: () => 
     </div>
   );
 }
-function L({ label, children }: { label: string; children: React.ReactNode }) {
+// A label that WRAPS its control names it. It is called `Field` because that is the name the form-control ratchet (scripts/formControlNames.ts)
+// recognises for a same-file helper whose body puts {children} inside a <label>.
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="block text-xs font-medium text-ps-label">{label}</span>{children}</label>;
 }
 
@@ -372,7 +374,7 @@ function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; 
   const [lut, setLut] = useState("");
   return (
     <ModalShell title="Prepare IRN" note="This only creates the record. You generate the IRN on the IRP portal — nothing is auto-submitted." onClose={onClose}>
-      <L label="GST treatment">
+      <Field label="GST treatment">
         {derived ? (
           <>
             <p className="px-3 py-1.5 text-xs border border-ps-border rounded-lg bg-ps-bg text-ps-body">{treatmentLabel(derived)}</p>
@@ -386,9 +388,9 @@ function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; 
             {TREATMENTS.map((x) => <option key={x} value={x}>{treatmentLabel(x)}</option>)}
           </select>
         )}
-      </L>
+      </Field>
       {WITHOUT_PAYMENT.has(t) && (
-        <L label="LUT / Bond number"><input value={lut} onChange={(e) => setLut(e.target.value)} placeholder="LUT/2026/001" className={inputCls} /></L>
+        <Field label="LUT / Bond number"><input value={lut} onChange={(e) => setLut(e.target.value)} placeholder="LUT/2026/001" className={inputCls} /></Field>
       )}
       <Actions onClose={onClose} onSubmit={() => onSubmit(t, lut)} busy={busy} label="Prepare record" />
     </ModalShell>
@@ -408,10 +410,10 @@ function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: (
   const refusal = useDateRefusal(problem);
   return (
     <ModalShell title="Record IRN" note="Enter the IRN details from the IRP portal (# CA REVIEW REQUIRED — recorded, not submitted)." onClose={onClose}>
-      <L label="IRN"><input value={irn} onChange={(e) => setIrn(e.target.value)} placeholder="64-char IRN" className={inputCls} /></L>
-      <L label="Acknowledgement no."><input value={ack} onChange={(e) => setAck(e.target.value)} className={inputCls} /></L>
-      <L label="Acknowledgement date"><DateInput aria-label="Acknowledgement date" value={date} onChange={setDate} onStateChange={dates.watch("ack", "Acknowledgement date")} className={inputCls} /></L>
-      <L label="Signed QR payload (optional)"><textarea value={qr} onChange={(e) => setQr(e.target.value)} rows={2} className={inputCls} /></L>
+      <Field label="IRN"><input value={irn} onChange={(e) => setIrn(e.target.value)} placeholder="64-char IRN" className={inputCls} /></Field>
+      <Field label="Acknowledgement no."><input value={ack} onChange={(e) => setAck(e.target.value)} className={inputCls} /></Field>
+      <Field label="Acknowledgement date"><DateInput aria-label="Acknowledgement date" value={date} onChange={setDate} onStateChange={dates.watch("ack", "Acknowledgement date")} className={inputCls} /></Field>
+      <Field label="Signed QR payload (optional)"><textarea value={qr} onChange={(e) => setQr(e.target.value)} rows={2} className={inputCls} /></Field>
       {refusal.shown && <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>}
       {/* The write's promise is handed back so the shared Button holds a second click while it runs. */}
       <Actions onClose={onClose} onSubmit={() => {
@@ -439,31 +441,31 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
   return (
     <ModalShell title="Prepare E-Way Bill" note={`Taxable value ${fmt(invoice.taxable_amount_paise)}. This creates the record; you generate the EWB on the NIC portal.`} onClose={onClose}>
       <div className="grid grid-cols-2 gap-2">
-        <L label="Dispatch from (state)"><input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="27" className={inputCls} /></L>
-        <L label="Ship to (state)"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="29" className={inputCls} /></L>
+        <Field label="Dispatch from (state)"><input value={from} onChange={(e) => setFrom(e.target.value)} placeholder="27" className={inputCls} /></Field>
+        <Field label="Ship to (state)"><input value={to} onChange={(e) => setTo(e.target.value)} placeholder="29" className={inputCls} /></Field>
       </div>
-      <L label="Goods description"><input value={goods} onChange={(e) => setGoods(e.target.value)} placeholder="Goods per invoice" className={inputCls} /></L>
-      <L label="HSN (optional)"><input value={hsn} onChange={(e) => setHsn(e.target.value)} className={inputCls} /></L>
+      <Field label="Goods description"><input value={goods} onChange={(e) => setGoods(e.target.value)} placeholder="Goods per invoice" className={inputCls} /></Field>
+      <Field label="HSN (optional)"><input value={hsn} onChange={(e) => setHsn(e.target.value)} className={inputCls} /></Field>
       <div className="grid grid-cols-3 gap-2">
-        <L label="Distance (km)">
+        <Field label="Distance (km)">
           <input value={distance} inputMode="numeric"
             onChange={(e) => setDistance(e.target.value.replace(/[^0-9]/g, ""))}
             placeholder="e.g. 480" className={inputCls} />
-        </L>
-        <L label="Vehicle type">
+        </Field>
+        <Field label="Vehicle type">
           <select value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} className={inputCls}>
             <option value="regular">Regular</option>
             <option value="over_dimensional">Over Dimensional Cargo</option>
           </select>
-        </L>
-        <L label="Transport mode">
+        </Field>
+        <Field label="Transport mode">
           <select value={transportMode} onChange={(e) => setTransportMode(e.target.value)} className={inputCls}>
             <option value="road">Road</option>
             <option value="rail">Rail</option>
             <option value="air">Air</option>
             <option value="ship">Ship</option>
           </select>
-        </L>
+        </Field>
       </div>
       <p className="text-3xs text-ps-hint">
         Distance decides how long the bill is valid — one day per 200 km, or per 20 km
@@ -517,15 +519,15 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
   const disagrees = Boolean(computed?.valid_upto && valid && computed.valid_upto !== valid);
   return (
     <ModalShell title="Record E-Way Bill" note="Enter the EWB details from the NIC portal." onClose={onClose}>
-      <L label="E-Way Bill number"><input value={num} onChange={(e) => setNum(e.target.value)} placeholder="12-digit EWB no." className={inputCls} /></L>
+      <Field label="E-Way Bill number"><input value={num} onChange={(e) => setNum(e.target.value)} placeholder="12-digit EWB no." className={inputCls} /></Field>
       <div className="grid grid-cols-2 gap-2">
-        <L label="EWB date"><DateInput aria-label="EWB date" value={date} onChange={setDate} onStateChange={dates.watch("ewb", "EWB date")} className={inputCls} /></L>
-        <L label="Valid upto">
+        <Field label="EWB date"><DateInput aria-label="EWB date" value={date} onChange={setDate} onStateChange={dates.watch("ewb", "EWB date")} className={inputCls} /></Field>
+        <Field label="Valid upto">
           <DateInput aria-label="Valid upto" anchor={date || null} notBefore={date || null} value={valid}
             onChange={(v) => { setValidTouched(true); setValid(v); }}
             onStateChange={dates.watch("valid", "Valid upto")}
             className={inputCls} />
-        </L>
+        </Field>
       </div>
       {computed?.gap && <p className="text-3xs text-state-attention">{computed.gap}</p>}
       {computed?.valid_upto && (
@@ -557,7 +559,7 @@ function CancelModal({ title, note, busy, onClose, onSubmit }: { title: string; 
   const [reason, setReason] = useState("");
   return (
     <ModalShell title={title} note={note} onClose={onClose}>
-      <L label="Cancellation reason"><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" className={inputCls} /></L>
+      <Field label="Cancellation reason"><input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" className={inputCls} /></Field>
       <Actions onClose={onClose} onSubmit={() => reason.trim() && onSubmit(reason)} busy={busy} disabled={!reason.trim()} label={title} />
     </ModalShell>
   );

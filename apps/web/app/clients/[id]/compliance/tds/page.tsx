@@ -321,12 +321,12 @@ function ChallansTab({ clientId }: { clientId: string }) {
               { key: "amount_rupees", placeholder: "Amount (₹)" },
               { key: "financial_year", placeholder: "FY (e.g. 2025-26)" },
             ].map(({ key, placeholder }) => (
-              <input key={key} placeholder={placeholder}
+              <input key={key} placeholder={placeholder} aria-label={placeholder}
                 value={(form as Record<string, string>)[key]}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                 className="border rounded px-3 py-1.5 text-sm" />
             ))}
-            <select value={form.quarter} onChange={(e) => setForm((f) => ({ ...f, quarter: e.target.value }))}
+            <select aria-label="Quarter" value={form.quarter} onChange={(e) => setForm((f) => ({ ...f, quarter: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q}>{q}</option>)}
             </select>
@@ -575,29 +575,29 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             General Ledger.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <select value={computeForm.return_type} onChange={(e) => setComputeForm((f) => ({ ...f, return_type: e.target.value }))}
+            <select aria-label="Return type" value={computeForm.return_type} onChange={(e) => setComputeForm((f) => ({ ...f, return_type: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               <option value="26Q">26Q — Vendor / Non-Salary (residents)</option>
               <option value="27Q">27Q — Payments to Non-Residents</option>
               <option value="24Q">24Q — Salary</option>
             </select>
-            <select value={computeForm.quarter} onChange={(e) => setComputeForm((f) => ({ ...f, quarter: e.target.value }))}
+            <select aria-label="Quarter" value={computeForm.quarter} onChange={(e) => setComputeForm((f) => ({ ...f, quarter: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q}>{q}</option>)}
             </select>
-            <input placeholder="FY (e.g. 2025-26)" value={computeForm.financial_year}
+            <input placeholder="FY (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={computeForm.financial_year}
               onChange={(e) => setComputeForm((f) => ({ ...f, financial_year: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
-            <input placeholder="TAN (10 chars)" value={computeForm.tan}
+            <input placeholder="TAN (10 chars)" aria-label="TAN (10 characters)" value={computeForm.tan}
               onChange={(e) => setComputeForm((f) => ({ ...f, tan: e.target.value.toUpperCase() }))}
               className="border rounded px-3 py-1.5 text-sm font-mono" />
-            <input placeholder="Deductor Name" value={computeForm.deductor_name}
+            <input placeholder="Deductor Name" aria-label="Deductor name" value={computeForm.deductor_name}
               onChange={(e) => setComputeForm((f) => ({ ...f, deductor_name: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
-            <input placeholder="Deductor PAN" value={computeForm.deductor_pan}
+            <input placeholder="Deductor PAN" aria-label="Deductor PAN" value={computeForm.deductor_pan}
               onChange={(e) => setComputeForm((f) => ({ ...f, deductor_pan: e.target.value.toUpperCase() }))}
               className="border rounded px-3 py-1.5 text-sm font-mono" />
-            <input placeholder="Deductor Address" value={computeForm.deductor_address}
+            <input placeholder="Deductor Address" aria-label="Deductor address" value={computeForm.deductor_address}
               onChange={(e) => setComputeForm((f) => ({ ...f, deductor_address: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
           </div>
@@ -724,15 +724,15 @@ function ReturnsTab({ clientId }: { clientId: string }) {
         <div className="border rounded p-4 bg-ps-bg space-y-3">
           <p className="text-sm font-medium">New TDS Return</p>
           <div className="grid grid-cols-3 gap-3">
-            <select value={form.return_type} onChange={(e) => setForm((f) => ({ ...f, return_type: e.target.value }))}
+            <select aria-label="Return type" value={form.return_type} onChange={(e) => setForm((f) => ({ ...f, return_type: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {["24Q", "26Q", "27Q"].map((t) => <option key={t}>{t}</option>)}
             </select>
-            <select value={form.quarter} onChange={(e) => setForm((f) => ({ ...f, quarter: e.target.value }))}
+            <select aria-label="Quarter" value={form.quarter} onChange={(e) => setForm((f) => ({ ...f, quarter: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q}>{q}</option>)}
             </select>
-            <input placeholder="FY (e.g. 2025-26)" value={form.financial_year}
+            <input placeholder="FY (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={form.financial_year}
               onChange={(e) => setForm((f) => ({ ...f, financial_year: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
@@ -896,6 +896,7 @@ function Form26ASTab({ clientId }: { clientId: string }) {
             line, and it cannot tell a placeholder from a default. The shape is
             described instead. */}
         <textarea
+          aria-label="Deductee rows as JSON"
           placeholder={'[{"pan": "<deductee PAN>", "section": "194C", "amount_paise": 10000}]'}
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
@@ -1025,12 +1026,12 @@ function CertificatesTab({ clientId }: { clientId: string }) {
               { key: "section", placeholder: "Section (e.g. 194C)" },
               { key: "tds_amount_rupees", placeholder: "TDS Amount (₹)" },
             ].map(({ key, placeholder }) => (
-              <input key={key} placeholder={placeholder}
+              <input key={key} placeholder={placeholder} aria-label={placeholder}
                 value={(form as Record<string, string>)[key]}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                 className="border rounded px-3 py-1.5 text-sm" />
             ))}
-            <select value={form.certificate_type}
+            <select aria-label="Certificate type" value={form.certificate_type}
               onChange={(e) => setForm((f) => ({ ...f, certificate_type: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {/* The VALUE is the stored key; the label is what a CA calls it.
@@ -1348,20 +1349,20 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
         <div className="border rounded p-4 bg-ps-bg space-y-3">
           {saveError && <p className="text-sm text-state-problem">{saveError}</p>}
           <div className="grid grid-cols-3 gap-3">
-            <select value={form.vendor_id} onChange={(e) => setForm((f) => ({ ...f, vendor_id: e.target.value }))}
+            <select aria-label="Vendor" value={form.vendor_id} onChange={(e) => setForm((f) => ({ ...f, vendor_id: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               <option value="">Vendor…</option>
               {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
-            <select value={form.section} onChange={(e) => setForm((f) => ({ ...f, section: e.target.value }))}
+            <select aria-label="Section" value={form.section} onChange={(e) => setForm((f) => ({ ...f, section: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm">
               {sections.length === 0 && <option value="">Section…</option>}
               {sections.map((s) => <option key={s} value={s}>§{s}</option>)}
             </select>
-            <input placeholder="Certificate no." value={form.certificate_no}
+            <input placeholder="Certificate no." aria-label="Certificate number" value={form.certificate_no}
               onChange={(e) => setForm((f) => ({ ...f, certificate_no: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
-            <input placeholder="Certified rate % (0 for nil)" value={form.rate_percent}
+            <input placeholder="Certified rate % (0 for nil)" aria-label="Certified rate in percent (0 for nil)" value={form.rate_percent}
               onChange={(e) => setForm((f) => ({ ...f, rate_percent: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
             <DateInput aria-label="Valid from" value={form.valid_from}
@@ -1372,7 +1373,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
               onChange={(v) => setForm((f) => ({ ...f, valid_to: v }))}
               onStateChange={certDates.watch("to", "Valid to")}
               className="w-full border rounded px-3 py-1.5 text-sm" />
-            <input placeholder="Amount it applies up to (₹)" value={form.ceiling_rupees}
+            <input placeholder="Amount it applies up to (₹)" aria-label="Amount the certificate applies up to, in rupees" value={form.ceiling_rupees}
               onChange={(e) => setForm((f) => ({ ...f, ceiling_rupees: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
           </div>
