@@ -98,3 +98,12 @@ test("a write reads the register again, shows the server's refusal and drops an 
   const open = bodyFrom(PAGE, "async function openMatch", "  ");
   assert.ok(/seq !== matchSeq\.current\) return/.test(open), "an answer for a challan opened earlier is not dropped");
 });
+
+test("a link to an entry that was reversed or deleted is worded by the server, in the column and in the dialog", () => {
+  assert.ok(/c\.ledger_link\?\.label \?\? "Tied to an entry"/.test(PAGE), "the column does not show the server's label");
+  assert.ok(/c\.ledger_link && c\.ledger_link\.state !== "live" \? "text-state-attention" : "text-state-ready"/.test(PAGE),
+    "a link that is not live is drawn as a plain tie");
+  assert.ok(/answer\?\.ledger_link\?\.note &&/.test(MODAL) && /\{answer\.ledger_link\.note\}/.test(MODAL), "the dialog does not show the server's note");
+  assert.ok(/ledger_link: ChallanLedgerLink \| null;/.test(DATA), "the candidates answer does not carry the link");
+  assert.ok(!/is_reversed|deleted_at/.test(PAGE + MODAL + DATA), "the browser decides for itself whether an entry was reversed or deleted");
+});

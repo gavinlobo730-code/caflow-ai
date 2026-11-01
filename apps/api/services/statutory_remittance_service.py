@@ -317,12 +317,15 @@ def entries_clearing_account(db, *, firm_id: str, client_id: str, account_id: st
     lo = (centre - timedelta(days=window_days)).isoformat()
     hi = (centre + timedelta(days=window_days)).isoformat()
 
+    # Only an entry that can still BE the payment: not a draft, not a reversed original, not a reversal (`remittance_match.entry_state`).
+    # Offering a reversed entry undid the recovery for a challan whose entry was reversed, which is to take the link back and tie it
+    # again: the first candidate it was shown was the entry that had just been undone.
     entries = (db.table("journal_entries")
-               .select("id, entry_date, reference_no, narration")
+               .select("id, entry_date, reference_no, narration, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
                .eq("firm_id", firm_id).eq("client_id", client_id)
                .gte("entry_date", lo).lte("entry_date", hi)
                .is_("deleted_at", "null").execute().data) or []
-    entries = [e for e in entries if e.get("id")]
+    entries = [e for e in entries if e.get("id") and remittance_match.entry_state(e) == remittance_match.ENTRY_LIVE]
     if not entries:
         return []
 

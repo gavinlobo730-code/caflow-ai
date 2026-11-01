@@ -793,11 +793,21 @@ export interface ChallanLedgerCandidate {
 /** `GET /challans/{id}/ledger-candidates`: the entries inside a week of the payment date that debited the right TDS Payable account, best
  *  first. `gap` is the server's sentence when it could not look (no such account, no payment date); `journal_entry_id` is set when the
  *  challan is already tied. Nothing is tied by reading this. */
+/** A tied challan's entry, as the server read it: `live`, `reversed`, `deleted`, `missing` (no such entry of this client) or `unknown` (the
+ *  ledger could not be read). `label` is what the Ledger column says and `note` what the CA is told to do (null for a live link). */
+export interface ChallanLedgerLink {
+  state: "live" | "reversed" | "deleted" | "missing" | "unknown";
+  label: string;
+  note: string | null;
+}
+
 export interface ChallanLedgerCandidates {
   challan_id: string;
   account_name: string;
   window_days: number;
   journal_entry_id: string | null;
+  /** Whether the entry the challan is tied to still records the payment, in the server's words (null when the challan is not tied). */
+  ledger_link: ChallanLedgerLink | null;
   candidates: ChallanLedgerCandidate[];
   gap: string | null;
 }

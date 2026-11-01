@@ -64,6 +64,33 @@ EXACT = "exact"
 NEAR = "near"
 
 
+#: What a journal entry IS, as far as "could this be the payment" goes. One rule for the candidates a screen offers, the entry a link is
+#: refused on and the state shown beside a tied challan, so they cannot disagree. Only LIVE is a payment; the others record nothing.
+ENTRY_LIVE, ENTRY_DRAFT, ENTRY_REVERSED, ENTRY_REVERSAL, ENTRY_DELETED = "live", "draft", "reversed", "reversal", "deleted"
+
+#: The columns `entry_state` reads. A query that feeds it must select all three, and the filter reads an ABSENT key as an ordinary
+#: posted entry (the direction that does not hide a real payment; a test double that omits them still works), so a narrow select would
+#: turn the rule off without a sound.
+ENTRY_STATE_COLUMNS = ("is_posted", "is_reversed", "reversal_of")
+
+
+def entry_state(row: dict) -> str:
+    """Whether a journal entry (a row with `deleted_at`, `is_posted`, `is_reversed`, `reversal_of`) can be the payment of a liability.
+
+    Deleted wins over reversed, reversed over a draft or a reversal. A DRAFT is off the books until a human posts it; a REVERSED original
+    no longer records anything (its reversal undoes it); a REVERSAL is the entry that undid another, never a payment itself.
+    """
+    if row.get("deleted_at"):
+        return ENTRY_DELETED
+    if row.get("is_reversed"):
+        return ENTRY_REVERSED
+    if row.get("reversal_of"):
+        return ENTRY_REVERSAL
+    if row.get("is_posted") is False:
+        return ENTRY_DRAFT
+    return ENTRY_LIVE
+
+
 @dataclass(frozen=True)
 class Candidate:
     """One journal entry that could be the payment, and why it is offered."""

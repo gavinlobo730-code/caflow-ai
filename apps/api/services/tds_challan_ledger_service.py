@@ -14,14 +14,23 @@ WHAT THIS DOES
     the same ranking the remittances use, with a reason sentence and never a score), ties one to the challan (`link_payment`) and
     takes it back (`unlink_payment`). Nothing is linked automatically.
 
-    A link is refused in words unless: the challan has none already; the entry is a live entry of THIS client; the entry debits the
+    A link is refused in words unless: the challan has none already; the entry is a live entry of THIS client (posted, not deleted, not
+    reversed, not itself a reversal: `remittance_match.entry_state`); the entry debits the
     TDS Payable account the challan's section belongs to (a salary challan clears "TDS Payable - Salary", every other section clears
     "TDS Payable": two distinct accounts, and a substring lookup of one finds the other); and no other challan of the client is tied to
     the same entry (one bank debit cannot be the payment of two challans). The update names "no link yet" as its condition, so two
     people linking at the same moment tie it once and the second is told.
 
+A LINK CAN GO STALE, AND THE SCREEN SAYS SO. `journal_entry_id` is cleared when the entry is hard-deleted (ON DELETE SET NULL), but a
+    posted entry is not hard-deleted: it is REVERSED (a reversal entry is appended and the original is flagged) or soft-deleted. The
+    link then still points at an entry that no longer records the payment, and "Tied to an entry" would be a false statement about the
+    ledger. `ledger_link` reads the entry's state for each tied challan (live, reversed, deleted, or no longer found) and carries the
+    server's own words; the link is never cleared by this, because whether the challan should be tied to a different entry or to none
+    is the CA's decision (Take the link back, then tie it again).
+
 WHAT IT DOES NOT DO
-    It does not propose from the bank queue, and it does not raise an exception for a challan with no entry after some days: both
+    It does not re-check that a LIVE tied entry still debits the TDS Payable account (a manual journal can be edited in place after the
+    link), and it does not propose from the bank queue, and it does not raise an exception for a challan with no entry after some days: both
     stay on the ledger line (POST-A-272). It does not backfill: which entry paid which challan is the CA's answer.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this edits the practice's own register. It transmits nothing.
@@ -43,6 +52,38 @@ SALARY_ACCOUNT = "TDS Payable - Salary"
 OTHER_ACCOUNT = "TDS Payable"
 
 
+#: The state of the entry a tied challan points at, and what the screen says about it. The words are the server's.
+LIVE, DRAFT, REVERSED, REVERSAL, DELETED = (remittance_match.ENTRY_LIVE, remittance_match.ENTRY_DRAFT, remittance_match.ENTRY_REVERSED,
+                                            remittance_match.ENTRY_REVERSAL, remittance_match.ENTRY_DELETED)
+MISSING, UNKNOWN = "missing", "unknown"
+
+_LABEL = {
+    LIVE: "Tied to an entry",
+    REVERSED: "Tied to an entry that was reversed",
+    DRAFT: "Tied to an entry that is still a draft",
+    REVERSAL: "Tied to an entry that is itself a reversal",
+    DELETED: "Tied to an entry that was deleted",
+    MISSING: "Tied to an entry that can no longer be found",
+    UNKNOWN: "Tied to an entry (not checked just now)",
+}
+_NOTE = {
+    REVERSED: "The ledger entry this challan is tied to was reversed, so it no longer records the payment. The challan stays: the tax was "
+              "deposited. Take the link back and tie the challan to the entry that now records the payment, if there is one.",
+    DELETED: "The ledger entry this challan is tied to was deleted, so it no longer records the payment. The challan stays: the tax was "
+             "deposited. Take the link back and tie the challan to the entry that now records the payment, if there is one.",
+    DRAFT: "The ledger entry this challan is tied to is still a draft, so it is not in the books and does not yet record the payment. The "
+           "challan stays: the tax was deposited. Post the entry, or take the link back and tie the challan to the entry that records it.",
+    REVERSAL: "The ledger entry this challan is tied to is the entry that undid another one, so it does not record the payment. The "
+              "challan stays: the tax was deposited. Take the link back and tie the challan to the entry that records the payment.",
+    MISSING: "The ledger entry this challan is tied to could not be found for this client. Take the link back and tie the challan to the "
+             "entry that records the payment, if there is one.",
+    UNKNOWN: "The ledger could not be read just now, so whether the entry this challan is tied to still records the payment is not known.",
+}
+
+#: Entry ids asked for in one request (they ride in the URL).
+_ENTRY_CHUNK = 100
+
+
 class LinkRefused(Exception):
     """A link or unlink that must not go ahead, with the sentence to show. `status` is the HTTP status the route answers."""
 
@@ -50,6 +91,39 @@ class LinkRefused(Exception):
         super().__init__(sentence)
         self.sentence = sentence
         self.status = status
+
+
+def _link(state: str) -> dict:
+    return {"state": state, "label": _LABEL[state], "note": _NOTE.get(state)}
+
+
+def entry_states(db, *, firm_id: str, client_id: str, entry_ids: list[str]) -> dict[str, str]:
+    """The state of each entry in `entry_ids` for this firm and client: LIVE, DRAFT, REVERSED, REVERSAL, DELETED, or MISSING (no such
+    entry of this client, which includes an id that belongs to another client). The first five are `remittance_match.entry_state`'s, the
+    one rule the candidates and the link refusal use. Reads only; raises what the database raises."""
+    wanted = sorted({str(i) for i in entry_ids if i})
+    found: dict[str, dict] = {}
+    for at in range(0, len(wanted), _ENTRY_CHUNK):
+        rows = (db.table("journal_entries").select("id, deleted_at, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
+                .eq("firm_id", firm_id).eq("client_id", client_id).in_("id", wanted[at:at + _ENTRY_CHUNK]).execute().data) or []
+        found.update({str(r["id"]): r for r in rows})
+    return {i: MISSING if found.get(i) is None else remittance_match.entry_state(found[i]) for i in wanted}
+
+
+def annotate_links(db, *, firm_id: str, client_id: str, rows: list[dict]) -> None:
+    """Put `ledger_link` (`{state, label, note}`) on each challan in `rows` that is tied to an entry; an untied challan gets none. A
+    failure to read the ledger is reported and every tied challan is marked UNKNOWN: a failed read is not a live link."""
+    tied = [r for r in rows if r.get("journal_entry_id")]
+    if not tied:
+        return
+    try:
+        states = entry_states(db, firm_id=firm_id, client_id=client_id, entry_ids=[r["journal_entry_id"] for r in tied])
+    except Exception as exc:                                    # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="tds_challan_ledger_service.annotate_links", firm_id=firm_id, client_id=client_id)
+        states = {}
+    for r in tied:
+        r["ledger_link"] = _link(states.get(str(r["journal_entry_id"]), UNKNOWN))
 
 
 def account_name_for(section: Optional[str]) -> str:
@@ -77,7 +151,11 @@ def payment_candidates(db, *, firm_id: str, client_id: str, challan: dict,
     account = account_name_for(challan.get("section"))
     paid_on = str(challan.get("payment_date") or "")[:10]
     base = {"challan_id": challan.get("id"), "account_name": account, "window_days": window_days,
-            "journal_entry_id": challan.get("journal_entry_id")}
+            "journal_entry_id": challan.get("journal_entry_id"), "ledger_link": None}
+    if challan.get("journal_entry_id"):
+        tied = {**challan}
+        annotate_links(db, firm_id=firm_id, client_id=client_id, rows=[tied])
+        base["ledger_link"] = tied.get("ledger_link")
     if not paid_on:
         return {**base, "candidates": [], "gap": "The challan has no payment date, so there is no window to look in."}
     account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
@@ -90,11 +168,20 @@ def payment_candidates(db, *, firm_id: str, client_id: str, challan: dict,
     return {**base, "candidates": found, "gap": None}
 
 
-def _live_entry(db, *, firm_id: str, client_id: str, journal_entry_id: str) -> Optional[dict]:
-    rows = (db.table("journal_entries").select("id, entry_date, reference_no")
-            .eq("id", journal_entry_id).eq("firm_id", firm_id).eq("client_id", client_id)
-            .is_("deleted_at", "null").limit(1).execute().data) or []
+def _entry(db, *, firm_id: str, client_id: str, journal_entry_id: str) -> Optional[dict]:
+    """The entry for this firm and client, deleted or not, with the columns `entry_state` reads; None when it is not this client's."""
+    rows = (db.table("journal_entries").select("id, entry_date, reference_no, deleted_at, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
+            .eq("id", journal_entry_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data) or []
     return rows[0] if rows else None
+
+
+#: Why an entry that is not LIVE cannot be tied, in words.
+_NOT_A_PAYMENT = {
+    DELETED: "That journal entry was deleted, so it cannot be the payment of this challan.",
+    REVERSED: "That journal entry was reversed, so it no longer records a payment and cannot be the payment of this challan.",
+    REVERSAL: "That journal entry is the one that undid another entry, so it cannot be the payment of this challan.",
+    DRAFT: "That journal entry is still a draft, not yet in the books, so it cannot be the payment of this challan.",
+}
 
 
 def link_payment(db, *, firm_id: str, client_id: str, challan: dict, journal_entry_id: str) -> dict:
@@ -102,9 +189,12 @@ def link_payment(db, *, firm_id: str, client_id: str, challan: dict, journal_ent
     `LinkRefused`."""
     if challan.get("journal_entry_id"):
         raise LinkRefused("This challan is already tied to a ledger entry. Take that link back first if it is the wrong one.", 409)
-    entry = _live_entry(db, firm_id=firm_id, client_id=client_id, journal_entry_id=journal_entry_id)
+    entry = _entry(db, firm_id=firm_id, client_id=client_id, journal_entry_id=journal_entry_id)
     if not entry:
         raise LinkRefused("That journal entry is not an entry of this client.")
+    state = remittance_match.entry_state(entry)
+    if state != LIVE:
+        raise LinkRefused(_NOT_A_PAYMENT[state])
     account = account_name_for(challan.get("section"))
     account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
     if not account_id:

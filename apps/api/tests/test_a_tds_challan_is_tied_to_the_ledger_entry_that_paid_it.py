@@ -129,7 +129,7 @@ def test_linking_ties_the_challan_and_posts_nothing(world):
 
 @pytest.mark.parametrize("what, entry, challan, status, words", [
     ("another client's entry", JE_B, CH_194C, 422, "not an entry of this client"),
-    ("a deleted entry", JE_DEL, CH_194C, 422, "not an entry of this client"),
+    ("a deleted entry", JE_DEL, CH_194C, 422, "was deleted, so it cannot be the payment"),
     ("an entry that does not exist", _id(99), CH_194C, 422, "not an entry of this client"),
     ("an entry that debits something else", JE_RENT, CH_194C, 422, 'does not debit "TDS Payable"'),
     ("the salary entry for a non-salary challan", JE_SAL, CH_194C, 422, 'does not debit "TDS Payable"'),

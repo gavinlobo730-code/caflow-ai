@@ -96,6 +96,10 @@ def challans(db, firm_id: str, client_id: str, *, from_date: Optional[str], to_d
     rows, has_more = _read_window(
         lambda: narrow(db.table("tds_challans").select("*").eq("firm_id", firm_id).eq("client_id", client_id)),
         "payment_date", limit, offset)
+    # A challan tied to a ledger entry says whether that entry still records the payment (POST-A-272): a posted entry is reversed or
+    # soft-deleted, never hard-deleted, so the link outlives it.
+    from services import tds_challan_ledger_service as ledger_link
+    ledger_link.annotate_links(db, firm_id=firm_id, client_id=client_id, rows=rows)
     return _window(rows, limit, has_more, "challans")
 
 

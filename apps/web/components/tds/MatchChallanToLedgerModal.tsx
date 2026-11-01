@@ -63,7 +63,10 @@ export function MatchChallanToLedgerModal({
 
         {answer && !loading && tied && (
           <div className="rounded-md border border-ps-border bg-ps-bg px-3 py-2 space-y-2">
-            <p className="text-xs text-ps-ink">This challan is tied to a ledger entry.</p>
+            <p className="text-xs text-ps-ink">{answer?.ledger_link?.label ?? "This challan is tied to a ledger entry."}</p>
+            {answer?.ledger_link?.note && (
+              <p role="status" className="text-xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">{answer.ledger_link.note}</p>
+            )}
             {canTie && (
               <Button
                 type="button"
