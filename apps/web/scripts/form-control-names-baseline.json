@@ -23,11 +23,6 @@
     "app/ai-assistant/page.tsx": [
       "textarea:input"
     ],
-    "app/client-portal/page.tsx": [
-      "input#ff74fca4",
-      "input:uploadLabel",
-      "textarea:newMessageText"
-    ],
     "app/clients/[id]/accounting/page.tsx": [
       "input:noteDrafts[f.id] ?? \"\"",
       "select:ccy"
@@ -38,18 +33,8 @@
     "app/clients/[id]/documents/page.tsx": [
       "input#b1a1b8dd"
     ],
-    "app/clients/[id]/fixed-assets/page.tsx": [
-      "input:form[f.k]",
-      "input:period",
-      "input:toPeriod"
-    ],
     "app/clients/[id]/purchases/page.tsx": [
       "input:amount"
-    ],
-    "app/clients/[id]/reports/ageing/page.tsx": [
-      "input:note",
-      "select:a.unbilled_dues_side ?? \"\"",
-      "select:value"
     ],
     "app/clients/[id]/reports/ratios/page.tsx": [
       "textarea:draft"
@@ -77,11 +62,6 @@
       "input#5ad526c9",
       "select:docType"
     ],
-    "app/engagements/page.tsx": [
-      "input:`${typeof window !== \"undefined\" ? window.location.origin : \"\"}/sign/?t=${letter.sign_token}`",
-      "select:form.service_type",
-      "select:form.template_id"
-    ],
     "app/gst/page.tsx": [
       "input:arns[f.id] ?? \"\"",
       "input:filedForm.arn"
@@ -89,23 +69,8 @@
     "app/income-tax/advance-tax/page.tsx": [
       "input:editChallan[n] ?? \"\""
     ],
-    "app/income-tax/ais/page.tsx": [
-      "input#70f87110",
-      "input:books[line.id] ?? \"\"",
-      "input:notes[line.id] ?? \"\""
-    ],
-    "app/income-tax/deductions/page.tsx": [
-      "input:d.amountPaise / 100",
-      "input:d.description",
-      "input:raw"
-    ],
     "app/income-tax/notices/page.tsx": [
       "input#fd36fe30"
-    ],
-    "app/income-tax/page.tsx": [
-      "input:arns[entry.id] ?? \"\"",
-      "input:filedForm.arn",
-      "select:addForm.client_id"
     ],
     "app/income-tax/tax-audit/form-3cd/page.tsx": [
       "textarea:manualValue"
@@ -169,11 +134,6 @@
     "app/workflows/page.tsx": [
       "input:search"
     ],
-    "components/ClientTimeline.tsx": [
-      "input:search",
-      "select:catFilter",
-      "select:sevFilter"
-    ],
     "components/CsvImportModal.tsx": [
       "input#d303c005"
     ],
@@ -194,16 +154,6 @@
     ],
     "components/banking/PaymentAccountPicker.tsx": [
       "select:value"
-    ],
-    "components/banking/ReconcileTab.tsx": [
-      "input:adj",
-      "input:adjReason",
-      "select:selectedId"
-    ],
-    "components/banking/SettleDocumentsModal.tsx": [
-      "input:amounts[d.id] ?? \"\"",
-      "input:checked.has(d.id)",
-      "input:exchangeRate"
     ],
     "components/knowledge/ClientInstructions.tsx": [
       "input:form.title",

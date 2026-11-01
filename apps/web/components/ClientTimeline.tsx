@@ -231,7 +231,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* Search */}
-        <input
+        <input aria-label="Search events"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search events…"
@@ -239,7 +239,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
         />
         {/* Category filter */}
         <div className="relative">
-          <select
+          <select aria-label="Filter events by category"
             value={catFilter}
             onChange={(e) => setCatFilter(e.target.value as EventCategory | "all")}
             className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-brand cursor-pointer"
@@ -252,7 +252,7 @@ export function ClientTimeline({ clientId, financialYear }: ClientTimelineProps)
         </div>
         {/* Severity filter */}
         <div className="relative">
-          <select
+          <select aria-label="Filter events by severity"
             value={sevFilter}
             onChange={(e) => setSevFilter(e.target.value)}
             className="appearance-none bg-ps-bg border border-ps-border rounded-lg pl-2.5 pr-6 py-1 text-2xs text-ps-label outline-none focus:border-brand cursor-pointer"

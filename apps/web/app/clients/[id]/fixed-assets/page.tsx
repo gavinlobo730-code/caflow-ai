@@ -632,7 +632,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
         ].map(f => (
           <div key={f.k}>
             <label className="block text-2xs font-medium text-ps-label mb-1">{f.label}</label>
-            <input
+            <input aria-label={f.label}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light"
               value={form[f.k]}
               onChange={e => set(f.k, e.target.value)}
@@ -1433,14 +1433,14 @@ function DepreciationTab({ clientId }: { clientId: string }) {
           <p className="text-2xs text-ps-hint">Posts journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation (an intangible asset on its own ledger: Cr Accumulated Amortisation). Idempotent per period.</p>
         </div>
         <div className="flex items-center gap-3">
-          <input
+          <input aria-label="Depreciate from month"
             type="month"
             className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light"
             value={period}
             onChange={e => setPeriod(e.target.value)}
           />
           <span className="text-2xs text-ps-hint">to</span>
-          <input
+          <input aria-label="Depreciate up to month"
             type="month"
             className="border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light"
             value={toPeriod}
