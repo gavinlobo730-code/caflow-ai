@@ -109,7 +109,7 @@ KINDS: dict[str, tuple[re.Pattern, set[str], set[str]]] = {
     # needs the lookup to be made on the value the request carried.
     "member": (re.compile(r"(^|_)(assigned_to|assignee_id|assignee|reviewer_id|approver_id|preparer_id|partner_id|user_id)$"), set(), set()),
 }
-MEMBER_ASKING_FUNCTIONS = {"member_is_the_firms"}
+MEMBER_ASKING_FUNCTIONS = {"member_is_the_firms", "member_auth_id_is_the_firms"}
 # A call that looks one member up under the firm although it is not the function above: the user repository's own lookup (scoped by firm).
 MEMBER_ASKING_CALLS = {("user_repo", "find_by_id")}
 MEMBER_DEPTH = 3
@@ -120,6 +120,10 @@ DEPTH = 5
 
 # A door the rule flags that is safe, and why. Shrink-only: each key must still be flagged.
 REVIEWED: dict[tuple[str, str, str], str] = {
+    ("assignments", "remove_assignment", "member"):
+        "a DELETE: it stores no person. The row it removes is matched on the firm, the client AND the person together, so a `user_id` that is "
+        "another firm's, or invented, matches nothing and the answer is 'Assignment not found'. (Counted as asked until the first review of the "
+        "member scan found that `.execute()` was resolved to the MFA reset's function, whose own lookup of a `user_id` it did not make.)",
     ("purchase_bills", "probe_near_duplicates", "vendor"):
         "a read-only probe (POST only because an invoice number does not belong in a URL): it lists the bills of THIS client that carry the "
         "vendor id, so a vendor of another client matches no bill of this one and the answer is the empty list a missing vendor gets.",
@@ -290,7 +294,8 @@ def _member_lookup(call: ast.Call) -> bool:
             table = link.args[0].value
         if method in ("eq", "in_") and link.args and isinstance(link.args[0], ast.Constant):
             columns.add(link.args[0].value)
-    return table == "users" and {"id", "firm_id"} <= columns
+    # By the member's own id, or by the auth id (a lead's assignee is keyed to auth.users), and in both cases under the firm.
+    return table == "users" and "firm_id" in columns and bool({"id", "auth_user_id"} & columns)
 
 
 def _asks_member(self, key, names: set[str], depth: int = MEMBER_DEPTH, seen: frozenset = frozenset()) -> bool:
@@ -305,8 +310,13 @@ def _asks_member(self, key, names: set[str], depth: int = MEMBER_DEPTH, seen: fr
     if depth <= 0:
         return False
     for call, targets in self.calls_of(key):
-        if not _mentions(ast.unparse(call), names):
-            continue                                            # the value is not handed on: nothing the callee does is about this member
+        handed = [ast.unparse(a) for a in call.args] + [ast.unparse(k.value) for k in call.keywords]
+        if not any(_mentions(text, names) for text in handed):
+            # The value is not handed on: nothing the callee does is about this member. Judged on the ARGUMENTS and not on the whole call's
+            # text, because a fluent chain (`db.table("t").insert({"user_id": body.user_id}).execute()`) carries the field in its receiver, and
+            # `.execute()` is resolved by its bare name to the one function of that name in the tree (the MFA reset's), whose own lookup of a
+            # `user_id` then counted for a door that asked nothing (found by the review of the first version, 1-11-2026).
+            continue
         for target in targets:
             if target in seen:
                 continue
@@ -650,6 +660,52 @@ def test_a_check_in_a_function_that_is_not_handed_the_value_does_not_count(tmp_p
         db.table("things").insert({"assignee_id": data.assignee_id}).execute()''', service) == {"member"}
 
 
+def test_a_field_called_user_id_is_not_asked_because_the_one_function_called_execute_looks_a_user_up(tmp_path):
+    """The review of the first version: `.execute()` ends every Supabase write, the call graph resolves it by its bare name to the one function
+    called `execute` in the tree, and when that function (the MFA reset's) looks a `user_id` up, a door that stored a `user_id` and asked nothing
+    was read as asked. Only a field literally called `user_id` was masked, because only that text matched the lookup inside."""
+    for d in ("models", "routers", "services"):
+        (tmp_path / d).mkdir(exist_ok=True)
+    (tmp_path / "models" / "m.py").write_text(textwrap.dedent('''
+        from typing import Optional
+        from pydantic import BaseModel
+        class PersonIn(BaseModel):
+            user_id: Optional[str] = None
+    '''))
+    (tmp_path / "services" / "mfa.py").write_text(textwrap.dedent('''
+        def execute(payload):
+            return _member("f", payload.get("user_id"))
+        def _member(firm_id, user_id):
+            return user_repo.find_by_id(user_id, firm_id=firm_id)
+    '''))
+    (tmp_path / "routers" / "r.py").write_text(textwrap.dedent('''
+        from fastapi import APIRouter
+        from models.m import PersonIn
+        router = APIRouter()
+        @router.post("/x")
+        def make(data: PersonIn):
+            db.table("things").insert({"user_id": data.user_id}).execute()
+        @router.post("/y")
+        def make_through_a_variable(data: PersonIn):
+            query = db.table("things").insert({"user_id": data.user_id})
+            query.execute()
+    '''))
+    assert sorted((h, sorted(missing)) for _r, h, _n, missing in doors(tmp_path)) == [("make", ["member"]), ("make_through_a_variable", ["member"])]
+
+
+def test_a_lookup_of_the_auth_id_under_the_firm_counts_and_so_does_its_own_function(tmp_path):
+    assert _member_verdict(tmp_path, '''
+        named_row_ownership.member_auth_id_is_the_firms(db, "f", data.assignee_id)
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == set()
+    assert _member_verdict(tmp_path, '''
+        db.table("users").select("id").eq("auth_user_id", data.assignee_id).eq("firm_id", "f").execute()
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == set()
+    # By the auth id alone, with no firm, it is a lookup of anybody's row.
+    assert _member_verdict(tmp_path, '''
+        db.table("users").select("id").eq("auth_user_id", data.assignee_id).execute()
+        db.table("things").insert({"assignee_id": data.assignee_id}).execute()''') == {"member"}
+
+
 def test_two_models_of_one_name_are_not_mixed(tmp_path):
     """A router whose own `AssignIn` names nobody is not a door because ANOTHER module's `AssignIn` names a person."""
     for d in ("models", "routers", "services"):
@@ -924,8 +980,10 @@ STRANGER_WORDS = "That team member was not found."
 def staff(monkeypatch):
     """A firm with one member, another firm with one, and the request's database pointed at them."""
     db = FakeDB()
-    db.seed("users", {"id": "member-own", "firm_id": FIRM, "full_name": "Asha Rao"})
-    db.seed("users", {"id": "member-other-firm", "firm_id": OTHER_FIRM, "full_name": "Stranger"})
+    db.seed("users", {"id": "member-own", "auth_user_id": "auth-own", "firm_id": FIRM, "full_name": "Asha Rao"})
+    db.seed("users", {"id": "member-other-firm", "auth_user_id": "auth-other-firm", "firm_id": OTHER_FIRM, "full_name": "Stranger"})
+    db.seed("users", {"id": "member-gone", "auth_user_id": "auth-gone", "firm_id": FIRM, "full_name": "Left the firm",
+                      "deleted_at": "2026-09-01T00:00:00+00:00"})
     wire_e2e(monkeypatch, db, [])
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     import services.audit_service as audit
@@ -933,7 +991,7 @@ def staff(monkeypatch):
     return db
 
 
-STRANGERS = ["member-other-firm", "no-such-member"]
+STRANGERS = ["member-other-firm", "no-such-member", "member-gone"]        # another firm's, invented, and one of this firm's who was deleted
 
 
 def test_the_ownership_function_answers_a_stranger_a_missing_member_and_an_invented_one_alike(staff):
@@ -947,6 +1005,33 @@ def test_the_ownership_function_answers_a_stranger_a_missing_member_and_an_inven
     with pytest.raises(Exception) as e:
         nro.member_is_the_firms(staff, OTHER_FIRM, "member-own")
     assert e.value.detail == STRANGER_WORDS
+
+
+def test_a_suspended_member_can_be_named_and_a_deleted_one_cannot(staff):
+    """The task door has always allowed a member who is only suspended, and its own lookup leaves out a member who was deleted."""
+    from services import named_row_ownership as nro
+    staff.seed("users", {"id": "member-suspended", "firm_id": FIRM, "full_name": "On leave", "is_active": False})
+    assert nro.member_is_the_firms(staff, FIRM, "member-suspended") is None
+    with pytest.raises(Exception) as e:
+        nro.member_is_the_firms(staff, FIRM, "member-gone")
+    assert (e.value.status_code, e.value.detail) == (404, STRANGER_WORDS)
+
+
+def test_the_auth_id_function_answers_for_a_column_keyed_to_auth_users(staff):
+    """A lead's assignee is keyed to auth.users(id): the value is a member's AUTH id, and a `users.id` is not an answer."""
+    from fastapi import HTTPException
+    from services import named_row_ownership as nro
+    assert nro.member_auth_id_is_the_firms(staff, FIRM, "auth-own") is None
+    for named in ("auth-other-firm", "no-such-member", "auth-gone", "member-own"):
+        with pytest.raises(Exception) as e:
+            nro.member_auth_id_is_the_firms(staff, FIRM, named)
+        assert (e.value.status_code, e.value.detail) == (404, STRANGER_WORDS), named
+    with pytest.raises(HTTPException) as other_firm:
+        nro.member_auth_id_is_the_firms(staff, OTHER_FIRM, "auth-own")
+    assert other_firm.value.detail == STRANGER_WORDS
+    for named in (None, "", "   "):
+        assert nro.member_auth_id_is_the_firms(staff, FIRM, named) is None
+    assert nro.member_auth_id_is_the_firms(None, FIRM, "auth-other-firm") is None
 
 
 def test_nothing_named_and_no_database_ask_nothing(staff):
@@ -1004,15 +1089,47 @@ def test_a_fee_engagement_names_its_assignee_reviewer_and_partner_from_its_own_f
     assert [r[field] for r in engagement_repo_calls["create"]] == ["member-own"]
 
 
-def test_a_lead_names_an_assignee_of_its_own_firm_only(staff, monkeypatch):
+def test_a_lead_names_an_assignee_of_its_own_firm_only_by_the_auth_id_its_column_is_keyed_to(staff, monkeypatch):
+    """`leads.assigned_to` is keyed to auth.users(id) (migration 059). The first version of this check asked for a `users.id`, so an auth id
+    was refused and a `users.id` passed the check and failed the key as a 500: no value could be assigned. And create_lead stored None whatever
+    it was given, so its check protected nothing."""
     monkeypatch.setattr(lifecycle_router, "_db", lambda: staff)
+    monkeypatch.setattr(lifecycle_router, "timeline_service", type("T", (), {"log": staticmethod(lambda *a, **k: None)}))
+    staff.seed("leads", {"id": "lead-1", "firm_id": FIRM, "company_name": "Acme", "stage": "Lead", "assigned_to": None})
     client = _client(lifecycle_router)
-    for named in STRANGERS:
+    # Another firm's, invented, deleted, and (the one the first version let through) a member's users.id, which is not an auth id.
+    for named in ("auth-other-firm", "no-such-member", "auth-gone", "member-own"):
         _refused(client.post("/api/lifecycle/leads", json={"company_name": "Acme", "assigned_to": named}), STRANGER_WORDS)
         _refused(client.patch("/api/lifecycle/leads/lead-1", json={"assigned_to": named}), STRANGER_WORDS)
-    assert staff.rows("leads") == [], "a lead was stored for a person of another firm"
-    own = client.post("/api/lifecycle/leads", json={"company_name": "Acme", "assigned_to": "member-own"})
-    assert own.json().get("detail") != STRANGER_WORDS, own.text
+    assert [r["id"] for r in staff.rows("leads")] == ["lead-1"], "a lead was stored for a person who is not this firm's"
+    assert staff.rows("leads")[0]["assigned_to"] is None
+    own = client.post("/api/lifecycle/leads", json={"company_name": "Acme", "assigned_to": "auth-own"})
+    assert own.status_code == 200, own.text
+    assert sorted(r["assigned_to"] for r in staff.rows("leads") if r["id"] != "lead-1") == ["auth-own"], "the named assignee was dropped on create"
+    moved = client.patch("/api/lifecycle/leads/lead-1", json={"assigned_to": "auth-own"})
+    assert moved.status_code == 200, moved.text
+    assert staff.rows("leads")[0]["assigned_to"] == "auth-own"
+    assert client.post("/api/lifecycle/leads", json={"company_name": "No owner"}).status_code == 200, "no assignee is still allowed"
+
+
+def test_an_assignment_rule_target_is_asked_about_when_the_rule_is_already_fixed_user(staff, monkeypatch):
+    """A PATCH that changes only `target_value` of a rule that is already `fixed_user` names a person without saying `rule_type`; the check ran
+    only when the request itself carried the type, so any value was stored (it did nothing when the rule was evaluated, but it was kept)."""
+    monkeypatch.setattr(task_recurring_router, "_get_db", lambda: staff)
+    monkeypatch.setattr(task_recurring_router, "_assert_config_scope", lambda *a, **k: None)
+    staff.seed("assignment_rules", {"id": "rule-user", "firm_id": FIRM, "recurring_config_id": "cfg-1", "rule_type": "fixed_user", "target_value": "member-own"})
+    staff.seed("assignment_rules", {"id": "rule-role", "firm_id": FIRM, "recurring_config_id": "cfg-1", "rule_type": "by_role", "target_value": "Manager"})
+    client = _client(task_recurring_router)
+    url = "/api/task-recurring/cfg-1/rules/{}"
+    for named in ("member-other-firm", "no-such-member"):
+        refused = client.patch(url.format("rule-user"), json={"target_value": named})
+        assert refused.status_code == 400 and "Invalid user_id for fixed_user rule" in refused.text, refused.text
+    assert staff.rows("assignment_rules")[0]["target_value"] == "member-own"
+    assert client.patch(url.format("rule-user"), json={"target_value": "member-own"}).status_code == 200
+    # A rule that is not fixed_user takes a role or a team as its target, which is not a person.
+    assert client.patch(url.format("rule-role"), json={"target_value": "Executive"}).status_code == 200
+    # Changing the type to fixed_user in the same request is still asked, as before.
+    assert client.patch(url.format("rule-role"), json={"rule_type": "fixed_user", "target_value": "no-such-member"}).status_code == 400
 
 
 def test_an_obligation_names_its_preparer_reviewer_and_approver_from_its_own_firm_only(staff, monkeypatch):

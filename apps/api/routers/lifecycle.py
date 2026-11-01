@@ -753,9 +753,10 @@ def create_lead(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     db = _db()
-    # The assignee is a member of the caller's firm: the column is keyed, but the database's refusal of a stranger comes back as a failure
-    # nobody can read, so the person is asked about here.
-    named_row_ownership.member_is_the_firms(db, current_user["firm_id"], data.assigned_to)
+    # The assignee is a member of the caller's firm. `leads.assigned_to` is keyed to AUTH.USERS(id) (migration 059), unlike every other person
+    # column, so the value is a member's auth id and is asked about as one: a stranger's would otherwise come back from the database as a
+    # failure nobody can read.
+    named_row_ownership.member_auth_id_is_the_firms(db, current_user["firm_id"], data.assigned_to)
     lead_no = _next_lead_no(db, current_user["firm_id"])  # for mock only
     now = datetime.now(timezone.utc).isoformat()
 
@@ -823,7 +824,7 @@ def create_lead(
         "source":                data.source,
         "stage":                 data.stage,
         "estimated_value_paise": int(data.estimated_value_paise),
-        "assigned_to":           None,   # frontend no longer sends entityType here
+        "assigned_to":           data.assigned_to,   # asked about above; the screen no longer sends an entity type here (test_lead_creation)
         "expected_close_date":   data.expected_close_date,
         "notes":                 data.notes,
         "is_converted":          False,
@@ -865,7 +866,7 @@ def update_lead(
     db = _db()
     update = {k: v for k, v in data.model_dump().items() if v is not None}
     update["updated_at"] = datetime.now(timezone.utc).isoformat()
-    named_row_ownership.member_is_the_firms(db, current_user["firm_id"], update.get("assigned_to"))
+    named_row_ownership.member_auth_id_is_the_firms(db, current_user["firm_id"], update.get("assigned_to"))   # keyed to auth.users: see create_lead
 
     if not db:
         for lead in _MOCK_LEADS:

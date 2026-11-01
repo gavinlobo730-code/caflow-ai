@@ -267,7 +267,7 @@ def update_assignment_rule(config_id: str, rule_id: str, body: AssignmentRuleUpd
     _assert_config_scope(current_user, config_id)
 
     # Verify rule exists and belongs to firm
-    rule_result = db.table("assignment_rules").select("id").eq("id", rule_id).eq("firm_id", firm_id).eq("recurring_config_id", config_id).maybe_single().execute()
+    rule_result = db.table("assignment_rules").select("id, rule_type").eq("id", rule_id).eq("firm_id", firm_id).eq("recurring_config_id", config_id).maybe_single().execute()
     if not rule_result.data:
         raise HTTPException(status_code=404, detail="Assignment rule not found")
 
@@ -275,8 +275,11 @@ def update_assignment_rule(config_id: str, rule_id: str, body: AssignmentRuleUpd
     if body.rule_type and body.rule_type not in VALID_RULE_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid rule_type. Must be one of: {', '.join(VALID_RULE_TYPES)}")
 
-    # For fixed_user type, verify the user exists and belongs to firm
-    if body.rule_type == "fixed_user" and body.target_value:
+    # For fixed_user type, verify the user exists and belongs to firm. The type that counts is the one the rule WILL have: a request that
+    # changes only the target of a rule that is already fixed_user names a person too, and used to be stored as typed (it matched no member
+    # when the rule was evaluated, so it did nothing, but it was kept).
+    effective_type = body.rule_type or rule_result.data.get("rule_type")
+    if effective_type == "fixed_user" and body.target_value:
         user_result = db.table("users").select("id").eq("id", body.target_value).eq("firm_id", firm_id).maybe_single().execute()
         if not user_result.data:
             raise HTTPException(status_code=400, detail="Invalid user_id for fixed_user rule")

@@ -186,8 +186,8 @@ def assign_obligation(record_id: str, body: AssignBody,
                       current_user: dict = Depends(rbac("compliance", "write"))):
     """Set preparer / reviewer / approver on an obligation (audited + timelined)."""
     _assert_obligation_scope(current_user, record_id)
-    # Each person named is a member of the caller's firm; the three columns are keyed, but the refusal of a stranger would come back as a
-    # failure nobody can read.
+    # Each person named is a member of the caller's firm. Only `assigned_to` (which this route sets to the preparer) is keyed, to `users`;
+    # `preparer_id`, `reviewer_id` and `approver_id` are bare uuids (migration 108), so for them this check is the only one.
     _db = db_provider.request_db_or_none()
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.preparer_id)
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.reviewer_id)
