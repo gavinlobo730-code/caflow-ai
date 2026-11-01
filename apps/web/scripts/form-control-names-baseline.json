@@ -73,34 +73,8 @@
     "app/clients/[id]/reports/ratios/page.tsx": [
       "textarea:draft"
     ],
-    "app/clients/[id]/sales/page.tsx": [
-      "input:allocations[inv.id] ?? \"\"",
-      "input:amount",
-      "input:l.description",
-      "input:l.hsn_sac",
-      "input:l.quantity",
-      "input:l.rate",
-      "select:l.gst"
-    ],
     "app/clients/[id]/tax/26as/page.tsx": [
       "textarea:rawText"
-    ],
-    "app/clients/[id]/tax/computation/page.tsx": [
-      "input:bookProfit",
-      "input:d.amount",
-      "input:d.description",
-      "input:turnoverRefYear",
-      "input:v.months",
-      "input:v.weight",
-      "input:value",
-      "input:value #2",
-      "input:value #3",
-      "input:value #4",
-      "select:companyRegime",
-      "select:d.paidInCash",
-      "select:d.pct",
-      "select:fy",
-      "select:regime"
     ],
     "app/clients/[id]/year-end/[engagementId]/checklist/_page.tsx": [
       "input:editingNotes[item.id]"
@@ -179,18 +153,6 @@
       "input:pw",
       "input:pw2",
       "input:reauthOtp"
-    ],
-    "app/payroll/attendance/page.tsx": [
-      "input:editLeaveForm.casual_leave_balance ?? \"\"",
-      "input:editLeaveForm.earned_leave_balance ?? \"\"",
-      "input:editLeaveForm.sick_leave_balance ?? \"\"",
-      "input:r.amount_rs",
-      "input:r.label",
-      "input:r.payment_interval_months ?? \"\"",
-      "input:r[f]",
-      "input:row[field]",
-      "select:r.employee_id",
-      "select:r.kind"
     ],
     "app/practice/billing/page.tsx": [
       "input:form.amount_rupees",
@@ -326,28 +288,8 @@
     "components/purchases/RecurringBills.tsx": [
       "input:l.blocked_credit_reason"
     ],
-    "components/sales/SalesCycleTab.tsx": [
-      "input#d4a5d747",
-      "input:l.description",
-      "input:l.gst_rate_percent",
-      "input:l.hsn_sac",
-      "input:l.quantity",
-      "input:l.rate"
-    ],
     "components/tax/HousePropertyWorksheet.tsx": [
       "input:r[field] as string"
-    ],
-    "components/tax/SalaryWorksheet.tsx": [
-      "input:e[field] as string",
-      "input:hra[field]",
-      "input:x.amount",
-      "input:x.amount #2",
-      "input:x.description",
-      "input:x.fmv",
-      "input:x.price",
-      "input:x.shares",
-      "select:x.kind",
-      "select:x.kind #2"
     ],
     "components/ui/combobox.tsx": [
       "input:query"

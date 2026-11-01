@@ -491,7 +491,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             <div className="space-y-2">
               {lines.map((l, i) => (
                 <div key={i} className="grid gap-2 sm:grid-cols-6">
-                  <input
+                  <input aria-label={`Line ${i + 1} description`}
                     value={l.description}
                     placeholder="Description"
                     onChange={(e) => {
@@ -501,7 +501,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm sm:col-span-2"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} HSN or SAC code`}
                     value={l.hsn_sac}
                     placeholder="HSN"
                     onChange={(e) => {
@@ -511,7 +511,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm font-mono"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} quantity`}
                     value={l.quantity}
                     placeholder="Qty"
                     onChange={(e) => {
@@ -521,7 +521,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} rate (₹)`}
                     value={l.rate}
                     placeholder="Rate ₹"
                     onChange={(e) => {
@@ -531,7 +531,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
-                  <input
+                  <input aria-label={`Line ${i + 1} GST rate (%)`}
                     value={l.gst_rate_percent}
                     placeholder="GST %"
                     onChange={(e) => {
@@ -667,7 +667,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                   .map((c) => (
                     <div key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
                       <span className="font-mono">{c.document_no}</span>
-                      <input
+                      <input aria-label={`Date the goods came back, challan ${c.document_no}`}
                         type="date"
                         onChange={(e) => {
                           if (e.target.value) void markBack(c, e.target.value);
