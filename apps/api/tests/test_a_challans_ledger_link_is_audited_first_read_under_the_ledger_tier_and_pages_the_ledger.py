@@ -209,18 +209,50 @@ def test_a_write_that_loses_to_the_unique_index_is_the_same_409_as_the_read(worl
     assert [e["action"] for e in _rows(world, "audit_log")] == ["link_payment", "link_payment_not_applied"]
 
 
-def test_any_other_failure_of_the_write_is_still_a_failure(world, monkeypatch):
-    monkeypatch.setattr(svc, "privileged_for", lambda db: _UpdateRaises(RuntimeError("connection reset")))
+def test_any_other_failure_of_the_write_is_still_a_failure_and_the_log_says_it_failed(world, monkeypatch):
+    class _Dropped(RuntimeError):
+        code = "08006"
+    monkeypatch.setattr(svc, "privileged_for", lambda db: _UpdateRaises(_Dropped("connection reset")))
     with pytest.raises(RuntimeError):
         svc.link_payment(world, firm_id=FIRM, client_id=A, challan=_row(world, CH_1), journal_entry_id=JE_PAY, actor=USER)
+    rows = _rows(world, "audit_log")
+    assert [e["action"] for e in rows] == ["link_payment", "link_payment_failed"], "an entry that asked and nothing that says what became of it"
+    assert rows[1]["new_data"] == {"sqlstate": "08006", "error": "_Dropped"} and rows[1]["actor_id"] == "au1"
+    assert _link_of(world, CH_1) is None
 
 
-@pytest.mark.parametrize("text, expected", [
-    ("23505", True), ("duplicate key value violates unique constraint", True), ("permission denied for table x 42501", False),
-    ("connection reset", False),
+def test_a_failed_take_back_is_a_failure_and_the_log_says_it_failed(world, monkeypatch):
+    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=_row(world, CH_1), journal_entry_id=JE_PAY, actor=USER)
+    monkeypatch.setattr(svc, "privileged_for", lambda db: _UpdateRaises(RuntimeError("statement timeout")))
+    with pytest.raises(RuntimeError):
+        svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=_row(world, CH_1), actor=USER)
+    assert [e["action"] for e in _rows(world, "audit_log")][-2:] == ["unlink_payment", "unlink_payment_failed"]
+    assert _link_of(world, CH_1) == JE_PAY
+
+
+class _Coded(Exception):
+    def __init__(self, code, text):
+        super().__init__(text)
+        self.code = code
+
+
+@pytest.mark.parametrize("exc, expected", [
+    (_Coded("23505", "duplicate key value violates unique constraint"), True),
+    (Exception({"code": "23505", "message": "x"}), True),
+    # A foreign-key violation (23503) whose key text happens to hold the digits of 23505: a search of the message would call it a duplicate.
+    (_Coded("23503", 'insert or update violates foreign key: Key (journal_entry_id)=(a1b2c3d4-23505-4e5f) is not present'), False),
+    (_Coded("42501", "permission denied for table tds_challans"), False),
+    (_Coded("08006", "connection reset"), False),
+    (RuntimeError("connection reset"), False),
+    # No state kept at all: only then are the words Postgres uses believed.
+    (RuntimeError('duplicate key value violates unique constraint "uq_tds_challans_journal_entry"'), True),
+    (RuntimeError("boom!"), False),                      # five characters, but not a SQLSTATE's shape
+    # A short first argument that is not a state must not be taken for one, or the words after it are never read.
+    (Exception("error", 'duplicate key value violates unique constraint "uq_tds_challans_journal_entry"'), True),
+    (RuntimeError("23505"), True),                       # a state is a state wherever the driver put it
 ])
-def test_a_unique_violation_is_told_from_any_other_failure(text, expected):
-    assert svc._is_unique_violation(RuntimeError(text)) is expected
+def test_a_unique_violation_is_told_from_any_other_failure_by_its_state(exc, expected):
+    assert svc._is_unique_violation(exc) is expected
 
 
 # ───────────────────────────── the five assertions the first tests did not make ─────────────────────────────

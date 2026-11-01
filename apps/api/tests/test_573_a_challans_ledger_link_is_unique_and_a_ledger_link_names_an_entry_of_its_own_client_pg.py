@@ -237,6 +237,25 @@ def test_moving_a_tied_challan_to_another_client_is_refused(db):
     assert r.returncode != 0 and WORDS in r.stderr
 
 
+def test_moving_a_tied_challan_to_another_firm_is_refused_by_the_firm_column_alone(db):
+    """The update trigger's own firm disjunct, and `OF firm_id`: the link and the client stay as they were and only the firm moves. Migration
+    565's client-in-firm check would refuse this first, so it is set aside here to leave the check under test the only one standing."""
+    assert _tie(db, JE1).returncode == 0
+    if _ok(db, "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.tds_challans'::regclass AND tgname = 'row_client_in_firm_upd';") == "1":
+        assert _psql(db, "ALTER TABLE public.tds_challans DISABLE TRIGGER row_client_in_firm_upd;").returncode == 0
+    r = _psql(db, f"UPDATE tds_challans SET firm_id = '{G}' WHERE id = '{CH1}';")
+    assert r.returncode != 0 and WORDS in r.stderr, r.stderr or "it succeeded"
+    assert _ok(db, f"SELECT firm_id FROM tds_challans WHERE id = '{CH1}';") == F
+
+
+def test_a_guard_whose_column_argument_is_stale_refuses_instead_of_passing(db):
+    """FAILS CLOSED: a trigger argument that names a column the row does not have (a later rename) must not turn the guard into a pass."""
+    assert _psql(db, "CREATE TRIGGER row_journal_entry_stale BEFORE INSERT ON public.tds_challans FOR EACH ROW "
+                     "EXECUTE FUNCTION public.assert_row_names_a_journal_entry_of_its_client('a_column_that_was_renamed');").returncode == 0
+    r = _psql(db, _challan("57300000-0000-0000-0000-0000000000b3", C1, "00101"))
+    assert r.returncode != 0 and "has no column a_column_that_was_renamed" in r.stderr, r.stderr or "it succeeded"
+
+
 def test_an_edit_that_touches_neither_the_link_nor_the_firm_nor_the_client_is_not_asked_anything(db):
     """A row that already breaks the rule (planted past the trigger) can still be edited, and repaired by clearing its link."""
     assert _psql(db, f"SET session_replication_role = replica; UPDATE tds_challans SET journal_entry_id = '{JE_G}' WHERE id = '{CH1}';").returncode == 0
@@ -282,6 +301,28 @@ def test_the_installer_refuses_what_it_cannot_judge(db):
 def test_nobody_signed_in_may_run_the_installer(db):
     for role in ("anon", "authenticated"):
         assert _ok(db, f"SELECT has_function_privilege('{role}', 'public.guard_journal_entry(regclass, text)', 'EXECUTE');") == "f", role
+
+
+def test_the_trigger_function_is_not_executable_by_anyone_signed_in_and_pins_its_search_path(db):
+    sig = "public.assert_row_names_a_journal_entry_of_its_client()"
+    for role in ("anon", "authenticated"):
+        assert _ok(db, f"SELECT has_function_privilege('{role}', '{sig}', 'EXECUTE');") == "f", role
+    assert _ok(db, f"SELECT prosecdef::text || '|' || coalesce(array_to_string(proconfig, ','), '') FROM pg_proc WHERE oid = '{sig}'::regprocedure;") == \
+        "true|search_path=pg_catalog, public"
+
+
+def test_the_revokes_hold_where_the_platform_grants_execute_on_every_new_function(db):
+    """Supabase gives `anon` and `authenticated` EXECUTE on each function created in `public`, which a database built from the migrations does not,
+    so the checks above would pass without the REVOKE statements. Grant it the way the platform does, drop both functions, run the file again,
+    and the file's own REVOKEs are what stand between a signed-in role and them."""
+    assert _psql(db, "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;").returncode == 0
+    assert _psql(db, "DROP FUNCTION public.guard_journal_entry(regclass, text); "
+                     "DROP FUNCTION public.assert_row_names_a_journal_entry_of_its_client() CASCADE;").returncode == 0
+    r = _run_file(db, MIGRATION)
+    assert r.returncode == 0, r.stderr
+    for sig in ("public.assert_row_names_a_journal_entry_of_its_client()", "public.guard_journal_entry(regclass, text)"):
+        for role in ("anon", "authenticated"):
+            assert _ok(db, f"SELECT has_function_privilege('{role}', '{sig}', 'EXECUTE');") == "f", (sig, role)
 
 
 def test_both_columns_carry_both_triggers(db):

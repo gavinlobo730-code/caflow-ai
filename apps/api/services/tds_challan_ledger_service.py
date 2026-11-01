@@ -29,8 +29,9 @@ ONE ENTRY PAYS ONE CHALLAN IN THE DATABASE, NOT ONLY IN THIS READ. The "no other
 A LINK OR ITS REMOVAL IS RECORDED BEFORE IT IS MADE, OR NOT MADE. Both write the audit log first, as the person (the AUTH id, the audit log's
     flavour of actor), and refuse in words with a 503 and "Nothing changed" when the log cannot be written: `audit_service.log_event` swallows
     its failures, and a link the ledger reads as "the tax was paid" with no account of who said so is the thing the log is for. The entry says
-    what was ASKED; a write that then loses a race is refused afterwards and a second entry says it was not applied, so the log is a true
-    account of both (the shape `bf_loss_service` uses for a hand correction).
+    what was ASKED; a write that then loses a race is refused afterwards and a second entry says it was not applied (`link_payment_not_applied`),
+    and one that raises leaves a second entry saying it failed with the SQLSTATE (`link_payment_failed`; not "not applied", because after a
+    timeout nobody knows), so the log is a true account of every outcome (the shape `bf_loss_service` uses for a hand correction).
 
 A LINK CAN GO STALE, AND THE SCREEN SAYS SO. `journal_entry_id` is cleared when the entry is hard-deleted (ON DELETE SET NULL), but a
     posted entry is not hard-deleted: it is REVERSED (a reversal entry is appended and the original is flagged) or soft-deleted. The
@@ -49,6 +50,7 @@ WHAT IT DOES NOT DO
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Mapping, Optional
 
 from core.db_provider import privileged_for
@@ -185,10 +187,29 @@ _NOT_A_PAYMENT = {
 }
 
 
+#: A SQLSTATE is five characters from 0-9 and A-Z.
+_SQLSTATE_SHAPE = re.compile(r"^[0-9A-Z]{5}$")
+
+
+def _sqlstate(exc: Exception) -> Optional[str]:
+    """The five-character SQLSTATE the driver kept on `exc` (its `code`, or the `code` of the dict PostgREST puts in `args`), or None."""
+    for got in (getattr(exc, "code", None), (getattr(exc, "args", None) or [None])[0]):
+        if isinstance(got, dict):
+            got = got.get("code")
+        if isinstance(got, str) and _SQLSTATE_SHAPE.match(got.strip()):
+            return got.strip()
+    return None
+
+
 def _is_unique_violation(exc: Exception) -> bool:
-    """True when `exc` is Postgres's unique-violation (23505), however the driver wrapped it."""
-    text = f"{getattr(exc, 'code', '')} {getattr(exc, 'args', '')} {exc}".lower()
-    return "23505" in text or "duplicate key" in text
+    """True when `exc` is Postgres's unique-violation (23505).
+
+    THE STATE IS READ, NOT SEARCHED FOR. A substring match for "23505" over the whole message also matches a foreign-key violation whose key
+    text happens to hold those digits (a uuid can). Only an error that carries no state at all falls back to the words Postgres uses."""
+    state = _sqlstate(exc)
+    if state is not None:
+        return state == "23505"
+    return "duplicate key value violates unique constraint" in str(exc).lower()
 
 
 def _write_audit_or_refuse(*, firm_id: str, client_id: str, challan: dict, action: str, old: Mapping[str, Any], new: Mapping[str, Any],
@@ -214,13 +235,28 @@ def _write_audit_or_refuse(*, firm_id: str, client_id: str, challan: dict, actio
                           "only account of who tied or untied it. Nothing changed; try again in a moment.", 503) from exc
 
 
-def _say_not_applied(*, firm_id: str, client_id: str, challan: dict, action: str, actor: Mapping[str, Any]) -> None:
-    """The write that followed an audit entry did not apply (another request got there first): say so in the log. Non-fatal by design, since
-    the person is already being told and this entry only keeps the log true."""
+def _say_in_log(*, firm_id: str, client_id: str, challan: dict, action: str, actor: Mapping[str, Any],
+                detail: Optional[Mapping[str, Any]] = None) -> None:
+    """Add a second entry to the audit log saying what became of the request an earlier entry recorded. Non-fatal by design: the person is
+    already being told, and this entry only keeps the log true."""
     from services.audit_service import log_event
-    log_event(firm_id=firm_id, entity_type="tds_challan", entity_id=str(challan.get("id")), action=f"{action}_not_applied",
+    log_event(firm_id=firm_id, entity_type="tds_challan", entity_id=str(challan.get("id")), action=action,
               actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
+              new_data=dict(detail) if detail else None,
               metadata={"client_id": client_id, "challan_no": challan.get("challan_no")})
+
+
+def _say_not_applied(*, firm_id: str, client_id: str, challan: dict, action: str, actor: Mapping[str, Any]) -> None:
+    """The write that followed an audit entry matched nothing (another request got there first): `<action>_not_applied`."""
+    _say_in_log(firm_id=firm_id, client_id=client_id, challan=challan, action=f"{action}_not_applied", actor=actor)
+
+
+def _say_failed(*, firm_id: str, client_id: str, challan: dict, action: str, actor: Mapping[str, Any], exc: Exception) -> None:
+    """The write that followed an audit entry RAISED: `<action>_failed`, with the SQLSTATE if the driver kept one. This is deliberately not
+    "not applied": a timeout or a dropped connection leaves it unknown whether the database did the work, and the log must not claim more
+    than is known. The row-level edit log (migration 111) records what the table really did."""
+    _say_in_log(firm_id=firm_id, client_id=client_id, challan=challan, action=f"{action}_failed", actor=actor,
+                detail={"sqlstate": _sqlstate(exc), "error": type(exc).__name__})
 
 
 def link_payment(db, *, firm_id: str, client_id: str, challan: dict, journal_entry_id: str, actor: Mapping[str, Any]) -> dict:
@@ -257,6 +293,7 @@ def link_payment(db, *, firm_id: str, client_id: str, challan: dict, journal_ent
                 .is_("journal_entry_id", "null").execute().data)
     except Exception as exc:                                # noqa: BLE001
         if not _is_unique_violation(exc):
+            _say_failed(firm_id=firm_id, client_id=client_id, challan=challan, action="link_payment", actor=actor, exc=exc)
             raise
         # Another request tied this entry to another challan between the read above and this write: the unique index (migration 573) decides.
         _say_not_applied(firm_id=firm_id, client_id=client_id, challan=challan, action="link_payment", actor=actor)
@@ -275,9 +312,13 @@ def unlink_payment(db, *, firm_id: str, client_id: str, challan: dict, actor: Ma
         raise LinkRefused("This challan is not tied to a ledger entry.", 409)
     _write_audit_or_refuse(firm_id=firm_id, client_id=client_id, challan=challan, action="unlink_payment", actor=actor,
                            old={"journal_entry_id": was}, new={"journal_entry_id": None})
-    done = (privileged_for(db).table("tds_challans").update({"journal_entry_id": None})
-            .eq("id", challan["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("journal_entry_id", was).execute().data)
+    try:
+        done = (privileged_for(db).table("tds_challans").update({"journal_entry_id": None})
+                .eq("id", challan["id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("journal_entry_id", was).execute().data)
+    except Exception as exc:                                # noqa: BLE001
+        _say_failed(firm_id=firm_id, client_id=client_id, challan=challan, action="unlink_payment", actor=actor, exc=exc)
+        raise
     if not done:
         _say_not_applied(firm_id=firm_id, client_id=client_id, challan=challan, action="unlink_payment", actor=actor)
         raise LinkRefused("This challan's link was changed just now by somebody else. Reload it.", 409)

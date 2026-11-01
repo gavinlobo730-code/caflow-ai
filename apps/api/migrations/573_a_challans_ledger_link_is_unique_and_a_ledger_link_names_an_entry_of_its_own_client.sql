@@ -37,7 +37,10 @@
 --     `statutory_remittances.journal_entry_id`.
 --     SECURITY DEFINER, because the check has to SEE the other client's entry, which row security hides from the writer; the search path is
 --     pinned. A refusal is P0001, a business rule written for a person (core/exceptions surfaces its message as it is).
---     An entry id that does not exist is NOT this function's to report: the foreign key says it in its own words.
+--     An entry id that does not exist is NOT this function's to report: the foreign key says it in its own words. An entry with NO client
+--     (a firm-level entry) is refused for a client's row, which is stricter than 565 and 570 ("refuse only what provably crosses") and is
+--     what the API already requires of the link (the entry's client equals the challan's); no such entry exists today.
+--     The function FAILS CLOSED: a trigger argument that names a column the row no longer has (a later rename) raises instead of passing.
 --   * Reports (`RAISE WARNING 'migration 573: ...'`, which the runner keeps) how many existing rows tie an entry of another client or
 --     firm, and changes none of them: a row found that way is a finding for a person.
 --
@@ -87,7 +90,7 @@ CREATE OR REPLACE FUNCTION public.assert_row_names_a_journal_entry_of_its_client
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog'
+SET search_path TO 'pg_catalog', 'public'
 AS $$
 DECLARE
     v_col text := TG_ARGV[0];
@@ -98,6 +101,10 @@ DECLARE
     v_efirm uuid;
     v_eclient uuid;
 BEGIN
+    IF NOT (v_row ? v_col) THEN
+        -- A trigger argument that names a column the row no longer has (a rename) must not turn the guard into a pass.
+        RAISE EXCEPTION 'guard_journal_entry: % has no column %', TG_TABLE_NAME, v_col;
+    END IF;
     IF v_entry IS NULL THEN
         RETURN NEW;
     END IF;
@@ -115,6 +122,12 @@ END $$;
 COMMENT ON FUNCTION public.assert_row_names_a_journal_entry_of_its_client() IS
     'POST-A-272. Row-level check: the journal entry a row names (the column in its first trigger argument) belongs to the row''s own firm and '
     'client. An entry that does not exist is left to the foreign key. Installed by guard_journal_entry. Migration 573.';
+
+-- Only the trigger machinery runs it. A trigger function cannot be called directly, but a role holding TRIGGER on some table could attach it
+-- with its own argument, so nobody signed in is given EXECUTE (the installer runs as the owner).
+REVOKE ALL ON FUNCTION public.assert_row_names_a_journal_entry_of_its_client() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.assert_row_names_a_journal_entry_of_its_client() FROM anon;
+REVOKE ALL ON FUNCTION public.assert_row_names_a_journal_entry_of_its_client() FROM authenticated;
 
 -- 3. The installer. Idempotent. The column must be a uuid and, if it is a foreign key, a key to journal_entries; the table must carry its
 --    own uuid firm_id and client_id.
