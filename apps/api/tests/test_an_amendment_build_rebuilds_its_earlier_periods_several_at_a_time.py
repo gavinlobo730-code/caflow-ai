@@ -11,8 +11,10 @@ WHAT THIS PINS
     SAME ANSWER   built from a seeded client with filed months that have since drifted, the outstanding amendments are identical whether the
                   rebuilds run one at a time or four at a time, and the case is not vacuous (several periods really do propose amendments);
     ORDER         the reports come back in the order of the periods asked for, whichever finishes first, so the lists are built oldest first;
-    BOUND         several run at once, never more than the ceiling, and a single period or a ceiling of one runs inline;
-    FAILURE       a period that raises raises from the build, and the FIRST failing period in order is the one reported;
+    BOUND         several run at once, never more than the ceiling, ACROSS REQUESTS (the pool is the process's), and a single period or a
+                  ceiling of one runs inline;
+    FAILURE       a period that raises stops the rest as it did when they ran one after another (those not yet started are cancelled), and
+                  the FIRST failing period in order is the one reported;
     CONTEXT       the caller's context (request id, error scope) is visible inside each rebuild.
 
 WHAT IT DOES NOT DO
@@ -33,6 +35,16 @@ import services.gst_return_service as grs
 from tests.e2e_harness import FakeDB, wire_e2e, seed_standard_coa
 
 FIRM, CLIENT, GSTIN = "FIRM-A", "CLI", "27AAAAA0000A1Z2"
+
+
+@pytest.fixture(autouse=True)
+def _a_fresh_pool():
+    """The pool is made on first use at the ceiling then in force; each test gets its own."""
+    svc._REBUILD_POOL = None
+    yield
+    if svc._REBUILD_POOL is not None:
+        svc._REBUILD_POOL.shutdown(wait=True)
+    svc._REBUILD_POOL = None
 
 
 @pytest.fixture
@@ -161,3 +173,44 @@ def test_the_callers_context_is_visible_inside_each_rebuild(monkeypatch):
     monkeypatch.setattr(svc, "gstr1_exceptions", lambda db, f, c, p: {"status": "ok", "period": p, "request_id": var.get()})
     got = svc._exception_reports(None, FIRM, CLIENT, PERIODS)
     assert {r["request_id"] for r in got} == {"req-123"}
+
+
+def test_the_ceiling_holds_across_requests_because_the_pool_is_the_processs(monkeypatch):
+    """Three requests at once, each with nine periods: the process never has more than the ceiling in flight."""
+    live, peak, lock = 0, 0, threading.Lock()
+
+    def counted(db, firm, client, period):
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        time.sleep(0.03)
+        with lock:
+            live -= 1
+        return {"status": "ok", "period": period}
+    monkeypatch.setattr(svc, "gstr1_exceptions", counted)
+    outs: list = []
+    threads = [threading.Thread(target=lambda: outs.append(svc._exception_reports(None, FIRM, CLIENT, PERIODS))) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(outs) == 3 and all([r["period"] for r in o] == PERIODS for o in outs)
+    assert 2 <= peak <= svc._MAX_PARALLEL_REBUILDS, f"{peak} in flight across three requests"
+
+
+def test_a_failure_cancels_the_periods_not_yet_started(monkeypatch):
+    ran, lock = [], threading.Lock()
+
+    def one_fails(db, firm, client, period):
+        with lock:
+            ran.append(period)
+        if period == PERIODS[3]:
+            raise RuntimeError("boom")
+        time.sleep(0.15)
+        return {"status": "ok", "period": period}
+    monkeypatch.setattr(svc, "gstr1_exceptions", one_fails)
+    with pytest.raises(RuntimeError, match="boom"):
+        svc._exception_reports(None, FIRM, CLIENT, PERIODS)
+    assert PERIODS[3] in ran and PERIODS[0] in ran, "the periods before the failing one have started (they are taken in order)"
+    assert PERIODS[-1] not in ran and len(ran) < len(PERIODS), f"the build went on to {len(ran)} of {len(PERIODS)} periods after one failed"

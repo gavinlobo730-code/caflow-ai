@@ -28,7 +28,8 @@ from __future__ import annotations
 
 import contextvars
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from datetime import date
 from typing import Optional
 
@@ -43,9 +44,9 @@ _logger = logging.getLogger("caflow.gst_amendments")
 _SUBMITTED = "submitted"
 PAGE = 1000
 
-#: How many earlier periods are rebuilt from the books at once (POST-A-265). Each rebuild is a few dozen reads from a host a continent
-#: from its database, about a second apiece, and they are independent of one another; the number is a ceiling on the connections one
-#: request may hold, not a tuning knob, so it is small.
+#: How many earlier periods are rebuilt from the books at once, IN THIS PROCESS (POST-A-265). Each rebuild is a few dozen reads from a host a
+#: continent from its database, about a second apiece, and they are independent of one another; the number is a ceiling on the connections
+#: the process may hold for this, shared by every request, not a tuning knob, so it is small.
 _MAX_PARALLEL_REBUILDS = 4
 
 
@@ -127,26 +128,51 @@ def annual_returns_filed_safely(db, firm_id: str, client_id: str) -> dict:
         return {}
 
 
+_REBUILD_POOL: Optional[ThreadPoolExecutor] = None
+_REBUILD_POOL_LOCK = threading.Lock()
+
+
+def _rebuild_pool() -> ThreadPoolExecutor:
+    """The ONE pool the earlier-period rebuilds of every request in this process share, so `_MAX_PARALLEL_REBUILDS` bounds the reads the
+    process has in flight and not the reads of each request (ten partners pressing Build at once would otherwise hold forty)."""
+    global _REBUILD_POOL
+    with _REBUILD_POOL_LOCK:
+        if _REBUILD_POOL is None:
+            _REBUILD_POOL = ThreadPoolExecutor(max_workers=_MAX_PARALLEL_REBUILDS, thread_name_prefix="gstr1-rebuild")
+        return _REBUILD_POOL
+
+
 def _exception_reports(db, firm_id: str, client_id: str, periods: list[str]) -> list[dict]:
     """`gstr1_exceptions` for each of `periods`, IN THE ORDER GIVEN, several at a time.
 
     THE ANSWER IS THE SEQUENTIAL ONE. The caller reads the reports oldest first and builds its lists in that order, so the reports are
-    returned in the order asked for whichever finishes first, and a period that raises raises from here as the FIRST failing period
-    in order (the later ones may have run; they only read). Every report is the one `gstr1_exceptions` gives, and the rebuild behind it
+    returned in the order asked for whichever finishes first. Every report is the one `gstr1_exceptions` gives, and the rebuild behind it
     is `drift_since_filing`, the single comparison the tie-out shares, so nothing about WHAT is compared changes; only how long it waits.
+
+    A FAILURE STOPS THE REST, AS IT DID WHEN THE PERIODS RAN ONE AFTER ANOTHER. Tasks are taken from the pool's queue in the order they were
+    submitted, so when one raises, every period before it has already started: the ones not yet started are cancelled, the ones in flight
+    are waited for (they only read), and the exception raised is the lowest-numbered period's, the one a sequential walk would have hit.
 
     The reads are independent (a different period each, no shared state) and the client is the one `httpx` documents as safe to share
     across threads, the pattern `domain/reporting/sources.py` and `hub_service` already use. Each task runs in a copy of the caller's
-    context so the request id and the error-tracking scope follow the work into the thread.
+    context so the request id and the error-tracking scope follow the work into the thread. The pool is the process's, not the request's.
 
     This shortens the wall clock of a build with many earlier filed periods from the sum of their rebuilds to roughly a quarter of it;
     it does NOT reduce the reads (each period is still rebuilt once per build), which is the remainder of POST-A-265.
     """
     if len(periods) <= 1 or _MAX_PARALLEL_REBUILDS <= 1:
         return [gstr1_exceptions(db, firm_id, client_id, p) for p in periods]
-    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_REBUILDS, len(periods))) as ex:
-        futures = [ex.submit(contextvars.copy_context().run, gstr1_exceptions, db, firm_id, client_id, p) for p in periods]
-        return [f.result() for f in futures]
+    pool = _rebuild_pool()
+    futures = [pool.submit(contextvars.copy_context().run, gstr1_exceptions, db, firm_id, client_id, p) for p in periods]
+    wait(futures, return_when=FIRST_EXCEPTION)
+    if any(f.done() and not f.cancelled() and f.exception() is not None for f in futures):
+        for f in futures:
+            f.cancel()
+        wait([f for f in futures if not f.cancelled()])
+        for f in futures:
+            if not f.cancelled() and f.exception() is not None:
+                raise f.exception()
+    return [f.result() for f in futures]
 
 
 def _earlier_filed_periods(db, firm_id: str, client_id: str, period: str) -> list[str]:
