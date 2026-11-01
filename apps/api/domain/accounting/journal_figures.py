@@ -45,11 +45,19 @@ class EntryCannotBeReused(ValueError):
         self.unreadable = unreadable
 
 
-def unreadable(*, what: str) -> str:
-    """The sentence for an existing entry that could not be read to compare. Refusing is the only honest answer: a check that cannot
-    look is not a check, and 'the same' is a claim."""
-    return (f"An entry for {what} on this date is already in the ledger, and it could not be read just now to check that it carries "
-            f"the figures {what} has. Nothing was changed. Try again in a moment.")
+def unreadable(*, what: str, known_entry: bool = True) -> str:
+    """The sentence for a ledger that could not be read to answer. Refusing is the only honest answer: a check that cannot look is not
+    a check, and 'the same' is a claim.
+
+    `known_entry` says whether an entry is KNOWN to be there. It is when the lookup by number and date has found one and it is the
+    lines of that entry that could not be read; it is not when the lookup itself failed, or the lookup by source did, because then
+    nothing is known to exist, and a sentence that says an entry is in the ledger would be a sentence the books do not support (the
+    first version of this said it for both, found by the independent review of 8364b95f)."""
+    if known_entry:
+        return (f"An entry for {what} on this date is already in the ledger, and it could not be read just now to check that it carries "
+                f"the figures {what} has. Nothing was changed. Try again in a moment.")
+    return (f"The ledger could not be checked just now for an earlier entry of {what}, so nothing was done. Nothing was changed. "
+            f"Try again in a moment.")
 
 
 def _paise(value) -> int:
@@ -106,6 +114,17 @@ def elsewhere(*, what: str, number: str, date: str) -> str:
     twice, so nothing is posted."""
     return (
         f"An entry for {what} is already in the ledger, left by an earlier issue that did not finish, but under number {number} "
-        f"dated {date}, which is not what the draft says now. Posting it again would count it twice. Nothing was changed. "
+        f"dated {date}, which is not the number and date {what} has now. Posting it again would count it twice. Nothing was changed. "
         f"{_WHAT_NEXT}"
+    )
+
+
+def kept_by_delete(*, what: str, number: str, date: str) -> str:
+    """The sentence for a draft that cannot be deleted because an earlier issue that did not finish left an entry for it in the ledger.
+    Deleting the draft would leave that entry live with nothing behind it, and the next draft to take the same number on another date
+    would post a second one beside it (the document counted twice)."""
+    return (
+        f"{what[:1].upper()}{what[1:]} cannot be deleted yet: an earlier issue that did not finish left an entry for it in the ledger "
+        f"(number {number} dated {date}), and deleting the draft would leave that entry with nothing behind it. Nothing was changed. "
+        f"A Partner can reverse that entry from the ledger first; then the draft can be deleted."
     )
