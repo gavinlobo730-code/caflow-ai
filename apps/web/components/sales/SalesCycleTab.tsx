@@ -61,6 +61,10 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   const [saving, setSaving] = useState(false);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
   const dates = useDateProblems();
+  // The date each open challan was recorded back on, typed and not yet sent, and the unreadable ones: a box of its own for each challan, so
+  // one challan's unreadable date holds that challan's button and nothing else.
+  const [backOn, setBackOn] = useState<Record<string, string>>({});
+  const backDates = useDateProblems();
   const [detail, setDetail] = useState<ChallanParticulars | null>(null);
   const [position, setPosition] = useState<OrderPosition | null>(null);
 
@@ -194,13 +198,34 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     }
   }
 
-  async function markBack(challan: DeliveryChallan, on: string) {
-    const res = await api.salesCycle.updateChallan(challan.id, clientId,
-      { received_back_on: on });
-    if (!res.success) {
-      setMsg({ type: "err", text: res.error || "That was refused." });
+  async function markBack(challan: DeliveryChallan) {
+    // Recording goods back stops the s.143 clock for the whole challan, so it is a button the person presses on a date they can read, and
+    // not the act of picking a date (the box used to write the moment a date was chosen, and a half-typed one was a write).
+    const unreadable = backDates.problems[`back-${challan.id}`];
+    if (unreadable) { setMsg({ type: "err", text: unreadable }); return; }
+    const on = backOn[challan.id] ?? "";
+    if (!on) {
+      setMsg({ type: "err", text: `Enter the date the goods on ${challan.document_no} came back.` });
       return;
     }
+    // A refusal arrives as a thrown sentence (the API answers it with an error status), and it used to escape here unshown: the person pressed
+    // the box, nothing happened and nothing said why. `save()` above has always caught it; this did not.
+    try {
+      const res = await api.salesCycle.updateChallan(challan.id, clientId,
+        { received_back_on: on });
+      if (!res.success) {
+        setMsg({ type: "err", text: res.error || "That was refused." });
+        return;
+      }
+    } catch (e) {
+      setMsg({ type: "err", text: e instanceof Error ? e.message : "That was refused." });
+      return;
+    }
+    setBackOn((prev) => {
+      const next = { ...prev };
+      delete next[challan.id];
+      return next;
+    });
     await load();
   }
 
@@ -667,13 +692,21 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                   .map((c) => (
                     <div key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
                       <span className="font-mono">{c.document_no}</span>
-                      <input aria-label={`Date the goods came back, challan ${c.document_no}`}
-                        type="date"
-                        onChange={(e) => {
-                          if (e.target.value) void markBack(c, e.target.value);
-                        }}
+                      <DateInput
+                        aria-label={`Date the goods came back, challan ${c.document_no}`}
+                        value={backOn[c.id] ?? ""}
+                        onChange={(v) => setBackOn((prev) => ({ ...prev, [c.id]: v }))}
+                        onStateChange={backDates.watch(`back-${c.id}`, `Date back, ${c.document_no}`)}
+                        anchor={c.document_date}
+                        notBefore={c.document_date}
                         className="rounded border border-ps-border px-2 py-1"
                       />
+                      <Button variant="plain" size="none"
+                        onClick={() => markBack(c)}
+                        className="rounded bg-brand px-3 py-1 text-xs text-white disabled:opacity-50"
+                      >
+                        Record goods back
+                      </Button>
                     </div>
                   ))}
               </div>
