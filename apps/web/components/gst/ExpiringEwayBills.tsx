@@ -111,7 +111,7 @@ function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () 
           onStateChange={dates.watch("valid", "New valid upto")}
           className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
       </label>
-      <input aria-label="New valid upto" type="text" value={reason} placeholder="Reason recorded on the portal"
+      <input aria-label="Reason for the extension" type="text" value={reason} placeholder="Reason recorded on the portal"
         onChange={(e) => setReason(e.target.value)}
         className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
       {error && <p className="text-xs text-state-problem">{error}</p>}

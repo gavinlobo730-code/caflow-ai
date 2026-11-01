@@ -1348,7 +1348,7 @@ export default function TaxComputationPage() {
                     <label className="text-3xs text-ps-label mb-1 block">
                       Are the members&apos; shares determinate and known?
                     </label>
-                    <select aria-label={"Are the members&apos; shares determinate and known?"} value={aopShares}
+                    <select aria-label={"Are the members' shares determinate and known?"} value={aopShares}
                       onChange={e => setAopShares(e.target.value as "" | "yes" | "no")}
                       className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                       <option value="">Not stated</option>
@@ -1361,7 +1361,7 @@ export default function TaxComputationPage() {
                       <label className="text-3xs text-ps-label mb-1 block">
                         Is any member&apos;s own total income above the exemption limit?
                       </label>
-                      <select aria-label={"Is any member&apos;s own total income above the exemption limit?"} value={aopMemberOver}
+                      <select aria-label={"Is any member's own total income above the exemption limit?"} value={aopMemberOver}
                         onChange={e => setAopMemberOver(e.target.value as "" | "yes" | "no")}
                         className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
                         <option value="">Not stated</option>

@@ -732,7 +732,7 @@ export default function ITRFilingPage() {
                 <label className="text-3xs text-ps-label mb-1 block">
                   Earlier return&apos;s acknowledgement number
                 </label>
-                <input aria-label={"Earlier return&apos;s acknowledgement number"} value={originalAck} onChange={e => setOriginalAck(e.target.value)}
+                <input aria-label={"Earlier return's acknowledgement number"} value={originalAck} onChange={e => setOriginalAck(e.target.value)}
                   className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg font-mono"
                   placeholder="e.g. 123456789012345" />
               </div>

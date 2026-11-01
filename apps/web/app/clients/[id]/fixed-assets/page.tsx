@@ -1033,7 +1033,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
             </Field>
           </div>
 
-          <Field label="Depreciation Method">
+          <Field label="Depreciation Method" group>
             <div className="flex gap-3">
               {(["WDV", "SL"] as const).map(m => (
                 <label key={m} className="flex items-center gap-1.5 cursor-pointer">
@@ -1177,7 +1177,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
             {(Number(form.igst_paise || 0) + Number(form.cgst_paise || 0)
               + Number(form.sgst_paise || 0)) > 0 && (
               <>
-                <Field label="Is the input credit available? *">
+                <Field label="Is the input credit available? *" group>
                   <div className="space-y-1.5">
                     {([
                       ["yes", "Yes — claim it", "The tax goes to GST Input and is not depreciated."],
@@ -1901,7 +1901,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
                 <option value="2800">28%</option>
               </select>
             </Field>
-            <Field label="Head">
+            <Field label="Head" group>
               <label className="flex items-center gap-2 text-xs text-ps-body h-[38px]">
                 <input type="checkbox" checked={interstate} disabled={!gstRateBps || gstRateBps === "0"}
                        onChange={e => setInterstate(e.target.checked)} />
@@ -2406,11 +2406,11 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
 
 const INPUT = "w-full border border-ps-border rounded-lg px-3 py-1.5 text-xs text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand-light bg-white";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-2xs font-medium text-ps-label">{label}</label>
-      {children}
-    </div>
-  );
+// A label that WRAPS its control names it. This one used to draw the label BESIDE the control (no htmlFor, no id), so none of the 28 controls it
+// held had a name. A group of radio buttons is labelled one by one and a label may not contain another label, so those three are named as a
+// group instead (`group`).
+function Field({ label, children, group }: { label: string; children: React.ReactNode; group?: boolean }) {
+  const text = <span className="block text-2xs font-medium text-ps-label">{label}</span>;
+  if (group) return <div role="group" aria-label={label} className="space-y-1">{text}{children}</div>;
+  return <label className="block space-y-1">{text}{children}</label>;
 }

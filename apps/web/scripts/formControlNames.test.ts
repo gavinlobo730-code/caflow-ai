@@ -37,9 +37,35 @@ test("an id with no label pointing at it, a label pointing at another id, and a 
   assert.deepEqual(verdicts(wrap(`<label>Amount</label><input />`)), ["input:unnamed"], "a bare sibling label names nothing");
 });
 
-test("a Field parent names its control", () => {
-  assert.deepEqual(verdicts(wrap(`<Field label="Amount"><input /></Field>`)), ["input:named(inside Field)"]);
+test("a Field names its control only when it is the shared one or ties its own label to its children", () => {
+  const imported = (jsx: string) => `import { Field } from "@/components/ui/field";\n${wrap(jsx)}`;
+  assert.deepEqual(verdicts(imported(`<Field label="Amount"><input /></Field>`)), ["input:named(inside Field)"]);
+  // a Field declared in the file whose body wraps {children} in a <label>
+  const wrapping = `function Field({ label, children }) { return <label><span>{label}</span>{children}</label>; }\n${wrap(`<Field label="Amount"><input /></Field>`)}`;
+  assert.deepEqual(verdicts(wrapping), ["input:named(inside Field)"]);
+  const arrow = `const Field = ({ label, children }) => <label>{label}{children}</label>;\n${wrap(`<Field label="Amount"><input /></Field>`)}`;
+  assert.deepEqual(verdicts(arrow), ["input:named(inside Field)"]);
+  // a Field declared in the file that draws its label BESIDE the children names nothing (the fixed-assets screen's was this)
+  const sibling = `function Field({ label, children }) { return <div><label>{label}</label>{children}</div>; }\n${wrap(`<Field label="Amount"><input /></Field>`)}`;
+  assert.deepEqual(verdicts(sibling), ["input:unnamed"]);
+  // a Field the file neither imports from ui/field nor declares, or imports from somewhere else, is nobody's promise
+  assert.deepEqual(verdicts(wrap(`<Field label="Amount"><input /></Field>`)), ["input:unnamed"]);
+  assert.deepEqual(verdicts(`import { Field } from "@/components/other";\n${wrap(`<Field label="Amount"><input /></Field>`)}`), ["input:unnamed"]);
+  // a primitive imported under another name is not the one this reads
+  assert.deepEqual(verdicts(`import { Field as F } from "@/components/ui/field";\n${wrap(`<Field label="Amount"><input /></Field>`)}`), ["input:unnamed"]);
 });
+
+test("a control's key is its tag and what it is bound to, so it survives a restyle and tells two controls apart", () => {
+  const key = (jsx: string) => findControls(wrap(jsx)).map((c) => c.key);
+  assert.deepEqual(key(`<input className="a" value={form.name} onChange={f} />`), ["input:form.name"]);
+  assert.deepEqual(key(`<input className="b px-3" value={ form.name } />`), ["input:form.name"], "a restyle or reformat changed the key");
+  assert.deepEqual(key(`<select value={form.kind}></select><input value={form.name} />`), ["select:form.kind", "input:form.name"]);
+  assert.deepEqual(key(`<input type="checkbox" checked={on} />`), ["input:on"]);
+  const unbound = key(`<input type="file" />`)[0];
+  assert.match(unbound, /^input#[0-9a-f]{8}$/);
+  assert.notEqual(unbound, key(`<input type="date" />`)[0], "two different unbound controls share a key");
+});
+
 
 test("a button-like or hidden input needs no label of its own", () => {
   for (const t of ["hidden", "submit", "button", "reset", "image"]) assert.deepEqual(verdicts(wrap(`<input type="${t}" />`)), [`input:named(type=${t})`]);
