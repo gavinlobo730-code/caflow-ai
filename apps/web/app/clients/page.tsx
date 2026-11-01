@@ -579,7 +579,7 @@ export default function ClientsPage() {
       {/* Search */}
       <div className="relative">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ps-hint" />
-        <input
+        <input aria-label="Search clients"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Search by name, PAN, GSTIN, email, city…"
@@ -936,7 +936,7 @@ export default function ClientsPage() {
                 <label className="block text-xs font-medium text-ps-label mb-1">
                   Type <span className="font-mono font-bold">{deleteTarget.client_name}</span> to confirm
                 </label>
-                <input
+                <input aria-label={`Type ${deleteTarget.client_name} to confirm`}
                   value={deleteConfirmName}
                   onChange={e => setDeleteConfirmName(e.target.value)}
                   placeholder={deleteTarget.client_name}

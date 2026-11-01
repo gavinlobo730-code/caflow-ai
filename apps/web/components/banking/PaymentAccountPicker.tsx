@@ -87,7 +87,7 @@ export function PaymentAccountPicker({
   return (
     <div className={className}>
       <label className="block text-xs font-medium text-ps-label mb-1">{label}</label>
-      <select
+      <select aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"

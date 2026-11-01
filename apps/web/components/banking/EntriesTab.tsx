@@ -857,7 +857,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
             Those lines all contain <span className="font-mono">{rulePrompt.pattern}</span>. Keep this as a rule, so the next ones arrive proposed?
           </p>
           <div className="flex items-center gap-2">
-            <input value={rulePrompt.pattern} disabled={ruleSaving}
+            <input aria-label="Text the rule looks for in the narration" value={rulePrompt.pattern} disabled={ruleSaving}
               onChange={(e) => setRulePrompt((r) => (r ? { ...r, pattern: e.target.value } : r))}
               className="px-2 py-1 text-xs font-mono border border-brand-light rounded bg-white min-w-[16rem] flex-1" />
             <Button variant="plain" size="none" onClick={createRuleFromPrompt} disabled={actionInFlight} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{ruleSaving ? "Saving…" : "Create rule"}</Button>

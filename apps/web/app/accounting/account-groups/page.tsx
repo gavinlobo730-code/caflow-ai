@@ -124,7 +124,7 @@ function LedgerDialog({ account, onClose, onSaved }:
               // of the trial balance this account falls on.
               <p className="text-xs text-ps-label py-2">{account.account_type}</p>
             ) : (
-              <select id={typeId} name="account_type"
+              <select aria-label="Account type" id={typeId} name="account_type"
                       className="w-full border border-ps-border rounded-lg px-3 py-2 text-xs"
                       value={form.account_type}
                       onChange={e => setForm(f => ({ ...f, account_type: e.target.value }))}>

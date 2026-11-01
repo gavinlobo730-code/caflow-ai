@@ -246,7 +246,7 @@ export function HousePropertyWorksheet({
                 ] as [string, keyof Row][]).map(([label, field]) => (
                   <div key={field}>
                     <label className="text-3xs text-ps-label block mb-1">{label}</label>
-                    <input className={input} inputMode="decimal" value={r[field] as string}
+                    <input aria-label={label} className={input} inputMode="decimal" value={r[field] as string}
                       onChange={e => set(r.key, { [field]: e.target.value } as Partial<Row>)} />
                   </div>
                 ))}

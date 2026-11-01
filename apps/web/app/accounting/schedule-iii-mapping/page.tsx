@@ -192,7 +192,7 @@ export default function ScheduleIIIMappingPage() {
   if (error) return <div className="p-6"><div className="bg-state-problem-surface text-state-problem rounded-lg px-5 py-4 text-sm">{error}</div></div>;
 
   const picker = (acc: CoaRow) => (
-    <select
+    <select aria-label={`Schedule III caption — ${acc.account_code} ${acc.account_name}`}
       value={acc.schedule_iii_mapping && allCaptions.includes(acc.schedule_iii_mapping)
         ? acc.schedule_iii_mapping : UNMAPPED}
       disabled={saving === acc.id}

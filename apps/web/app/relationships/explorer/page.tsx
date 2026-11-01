@@ -111,7 +111,7 @@ export default function RelationshipExplorerPage() {
         <div className="md:col-span-1 space-y-3">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
+            <input aria-label="Search entities"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search entities…"

@@ -181,7 +181,7 @@ export default function FxRevaluationPanel({
                 <td className="px-3 py-2 text-right font-mono text-ps-body">{r.foreign_outstanding}</td>
                 <td className="px-3 py-2 text-right font-mono text-ps-body">{formatPaise(r.carrying_base_paise)}</td>
                 <td className="px-3 py-2 text-right">
-                  <input
+                  <input aria-label={`Closing rate for ${r.currency} (${r.item_type})`}
                     id={`fx-rate-${r.currency}`}
                     inputMode="decimal"
                     className="w-24 border border-ps-border rounded px-2 py-1 text-right font-mono"

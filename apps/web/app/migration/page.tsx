@@ -626,7 +626,7 @@ export default function MigrationPage() {
               <p className="text-2xs text-ps-label">
                 In Tally: Gateway of Tally → Export → XML. Paste the exported XML content below.
               </p>
-              <textarea value={xmlContent} onChange={e => setXmlContent(e.target.value)} rows={12}
+              <textarea aria-label="Tally XML export" value={xmlContent} onChange={e => setXmlContent(e.target.value)} rows={12}
                 className="w-full text-xs px-3 py-2 border border-ps-border rounded-lg font-mono focus:outline-none focus:ring-2 focus:ring-brand"
                 placeholder='<?xml version="1.0"?><ENVELOPE>...</ENVELOPE>' />
               <button onClick={handleParse} disabled={working || !xmlContent.trim()}

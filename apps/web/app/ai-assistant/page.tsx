@@ -344,7 +344,7 @@ export default function AIAssistantPage() {
             is chosen (PRE-A-006). */}
         <AiDisclosure surface="assistant" className="max-w-4xl mx-auto mb-2" />
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
-          <textarea
+          <textarea aria-label="Your question for the assistant"
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}

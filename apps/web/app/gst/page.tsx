@@ -532,7 +532,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
                   <label className="block text-3xs font-medium text-ps-body mb-1">
                     Acknowledgement Number (ARN) <span className="text-state-problem">*</span>
                   </label>
-                  <input
+                  <input aria-label={`Acknowledgement number (ARN) — ${f.client_name}, ${f.return_type} ${f.period}`}
                     type="text"
                     placeholder="e.g. AA270125001234A"
                     value={arns[f.id] ?? ""}
@@ -1067,7 +1067,7 @@ export default function GSTPage() {
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Acknowledgement Number (ARN) <span className="text-state-problem">*</span>
                 </label>
-                <input
+                <input aria-label="Acknowledgement number (ARN)"
                   type="text"
                   placeholder="e.g. AA270125001234A"
                   value={filedForm.arn}

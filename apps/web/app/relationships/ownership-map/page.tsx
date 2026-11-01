@@ -113,7 +113,7 @@ export default function OwnershipMapPage() {
         <div className="lg:col-span-1 space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ps-hint" />
-            <input
+            <input aria-label="Search entity"
               className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-900 placeholder:text-ps-hint focus:outline-none focus:border-brand"
               placeholder="Search entity…"
               value={search}

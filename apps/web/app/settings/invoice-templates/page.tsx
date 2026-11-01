@@ -102,7 +102,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           {error && <Callout tone="problem">{error}</Callout>}
           <div>
             <label className="text-xs font-medium text-ps-label block mb-1">Template Name <span className="text-state-problem">*</span></label>
-            <input
+            <input aria-label="Template name"
               autoFocus
               type="text"
               value={name}

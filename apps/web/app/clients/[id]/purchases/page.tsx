@@ -3050,7 +3050,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Amount ({isForeign ? currency : "₹"}) *</label>
-              <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+              <input aria-label={`Amount (${isForeign ? currency : "₹"})`} type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Mode</label>

@@ -510,7 +510,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                       <label className="block text-xs font-medium text-ps-body mb-1">
                         SRN (Service Request Number) <span className="text-state-problem">*</span>
                       </label>
-                      <input
+                      <input aria-label={`SRN (Service Request Number) — ${f.company_cin}, ${f.form_type}`}
                         type="text"
                         placeholder="SRN12345678"
                         value={srns[f.id] ?? ""}
@@ -1069,7 +1069,7 @@ export default function MCAPage() {
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
                   SRN (Service Request Number) <span className="text-state-problem">*</span>
                 </label>
-                <input
+                <input aria-label="SRN (Service Request Number)"
                   type="text"
                   placeholder="SRN12345678"
                   value={filedForm.srn}

@@ -254,7 +254,7 @@ export default function ApprovalsPage() {
                   {/* Response section for pending */}
                   {approval.status === "pending" && (
                     <div className="mt-4 pt-4 border-t border-ps-border">
-                      <textarea
+                      <textarea aria-label="Notes on your decision (optional)"
                         placeholder="Optional notes..."
                         value={notes[approval.id] || ""}
                         onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes((prev: Record<string, string>) => ({ ...prev, [approval.id]: e.target.value }))}

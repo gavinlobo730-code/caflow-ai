@@ -60,7 +60,7 @@ function ClauseRow({ clause, manualValue, onManualChange }: {
             {renderValue(clause.value)}
           </pre>
         ) : (
-          <textarea
+          <textarea aria-label={`The CA's own answer for clause ${clause.code}`}
             className="w-full min-w-[16rem] text-xs border border-ps-border rounded p-2"
             rows={2}
             placeholder="Record the CA's own answer for this clause…"

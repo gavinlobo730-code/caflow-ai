@@ -278,7 +278,7 @@ export default function BrandingPage() {
                     <Upload size={13} />
                     {uploading ? "Uploading…" : "Upload Logo"}
                   </button>
-                  <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  <input aria-label="Logo image to upload" ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-ps-label block mb-1">Or paste a URL</label>
@@ -338,7 +338,7 @@ export default function BrandingPage() {
                 {(["linkedin", "twitter", "facebook", "instagram"] as const).map((platform) => (
                   <div key={platform}>
                     <label className="text-xs font-medium text-ps-label block mb-1 capitalize">{platform}</label>
-                    <input
+                    <input aria-label={`${platform} address`}
                       type="url"
                       value={(branding.social_links ?? {})[platform] ?? ""}
                       onChange={(e) =>

@@ -132,7 +132,7 @@ function PinModal({
             <div>
               <label className="block text-xs font-medium text-ps-body mb-1">New PIN</label>
               <div className="relative">
-                <input
+                <input aria-label="New PIN"
                   type={showPin ? "text" : "password"}
                   value={newPin}
                   onChange={e => setNewPin(e.target.value)}
@@ -159,7 +159,7 @@ function PinModal({
           </div>
         ) : (
           <div className="relative">
-            <input
+            <input aria-label="PIN"
               autoFocus
               type={showPin ? "text" : "password"}
               value={pin}

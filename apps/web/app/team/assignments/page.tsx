@@ -138,7 +138,7 @@ export default function AssignmentsPage() {
               <>
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-ps-border focus-within:ring-2 focus-within:ring-inset focus-within:ring-brand">
                   <Search size={14} className="text-ps-hint" />
-                  <input
+                  <input aria-label="Filter clients"
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     placeholder="Filter clients…"

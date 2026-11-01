@@ -428,7 +428,7 @@ export default function CopilotPage() {
                 <AiDisclosure surface="copilot" className="max-w-3xl mx-auto mb-2" />
                 <div className="max-w-3xl mx-auto flex items-end gap-3">
                   <div className="flex-1 relative">
-                    <textarea
+                    <textarea aria-label="Your question for the copilot"
                       value={input}
                       onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
                       onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}

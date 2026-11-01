@@ -237,7 +237,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           <label className="block text-3xs text-ps-label mb-0.5">
             {isEpf ? "TRRN" : "Challan number"}
           </label>
-          <input value={reference} onChange={(e) => setReference(e.target.value)}
+          <input aria-label={isEpf ? "TRRN" : "Challan number"} value={reference} onChange={(e) => setReference(e.target.value)}
             placeholder={isEpf ? "as shown on the receipt" : "from the challan"}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                        outline-none focus:border-brand" />
@@ -346,7 +346,7 @@ function MappedIpCheck({ runId }: { runId: string }) {
             screen. Names alongside the numbers are fine. Nothing is stored —
             this is compared and discarded.
           </p>
-          <textarea value={pasted} onChange={(e) => setPasted(e.target.value)}
+          <textarea aria-label="Insured persons mapped at ESIC" value={pasted} onChange={(e) => setPasted(e.target.value)}
             rows={4} placeholder={"3113456789 ASHA KUMARI\n3113456790 BIMAL ROY"}
             className="w-full border border-ps-border rounded-lg px-2.5 py-2 text-xs
                        font-mono outline-none focus:border-brand" />

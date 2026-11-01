@@ -292,7 +292,7 @@ export default function FirmHsnLibraryPage() {
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ps-hint" />
-            <input
+            <input aria-label="Search by code or description"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by code or description…"

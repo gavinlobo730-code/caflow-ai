@@ -123,8 +123,8 @@ export function ClientInstructions({
       {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
       {showForm && canWrite && (
         <form onSubmit={create} className="mb-3 bg-white border border-gray-200 rounded-lg p-3 space-y-2 text-sm">
-          <input required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
-          <textarea placeholder="Standing instruction…" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={2} />
+          <input aria-label="Title" required placeholder="Title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" />
+          <textarea aria-label="Standing instruction" placeholder="Standing instruction…" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} className="w-full border rounded-lg px-2 py-1.5" rows={2} />
           <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={form.is_pinned} onChange={(e) => setForm({ ...form, is_pinned: e.target.checked })} /> Pin to top</label>
           <button type="submit" className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs">Save</button>
         </form>

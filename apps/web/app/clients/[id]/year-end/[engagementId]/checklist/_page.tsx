@@ -260,7 +260,7 @@ export default function ChecklistPage() {
                       {/* Notes */}
                       {isEditing ? (
                         <div className="mt-1.5 flex gap-2">
-                          <input
+                          <input aria-label={`Note on ${item.item_label}`}
                             value={editingNotes[item.id]}
                             onChange={(e) => setEditingNotes((prev) => ({ ...prev, [item.id]: e.target.value }))}
                             onKeyDown={(e) => { if (e.key === "Enter") saveNotes(item); if (e.key === "Escape") setEditingNotes((prev) => { const n = { ...prev }; delete n[item.id]; return n; }); }}

@@ -698,7 +698,7 @@ function RecurringBillEditor({
                       Credit blocked — CGST §17(5)
                     </label>
                     {!l.itc_eligible && (
-                      <input value={l.blocked_credit_reason}
+                      <input aria-label={`Which clause of §17(5) blocks the credit — line ${i + 1}`} value={l.blocked_credit_reason}
                         onChange={(e) => setLine(i, { blocked_credit_reason: e.target.value })}
                         placeholder="Which clause of §17(5)?"
                         className="flex-1 min-w-[12rem] px-2 py-1 text-xs border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />

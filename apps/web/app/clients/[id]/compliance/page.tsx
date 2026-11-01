@@ -209,7 +209,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
           <div className="border rounded p-4 bg-ps-bg space-y-3">
             <p className="text-xs font-medium text-state-attention">⚠ CA Review Required — AI extraction only. The notice is held for review: no task is created and nobody is alerted until a CA approves it.</p>
             <AiDisclosure surface="notice_extraction" />
-            <textarea placeholder="Paste government notice text here…"
+            <textarea aria-label="Government notice text" placeholder="Paste government notice text here…"
               value={noticeText} onChange={(e) => setNoticeText(e.target.value)}
               rows={6} className="w-full border rounded px-3 py-2 text-sm" />
             {extractError && (

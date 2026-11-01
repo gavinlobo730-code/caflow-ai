@@ -200,7 +200,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
             <label className="mb-1 block text-sm font-medium text-ps-body">
               Document Type <span className="text-state-problem">*</span>
             </label>
-            <select
+            <select aria-label="Document type"
               value={docType}
               onChange={(e) => setDocType(e.target.value as DocTypeValue)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
@@ -236,7 +236,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
                   : "border-ps-border hover:border-blue-300 hover:bg-ps-bg"
               } ${uploading ? "pointer-events-none opacity-60" : ""}`}
             >
-              <input
+              <input aria-label="File to upload"
                 ref={fileRef}
                 type="file"
                 className="hidden"

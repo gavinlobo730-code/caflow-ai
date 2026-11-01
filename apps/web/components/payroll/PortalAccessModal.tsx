@@ -126,7 +126,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
               it works once and expires in 14 days.
             </p>
             <div className="flex gap-2 mb-4">
-              <input readOnly value={link}
+              <input aria-label="Invitation link" readOnly value={link}
                      className="flex-1 border border-ps-border rounded-lg px-3 py-2 text-xs font-mono" />
               <Button variant="outline" onClick={() => {
                 navigator.clipboard?.writeText(link);

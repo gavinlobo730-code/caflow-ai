@@ -186,7 +186,7 @@ function Field({
         {label}
         {required && <span className="text-state-problem ml-0.5">*</span>}
       </label>
-      <input
+      <input aria-label={label}
         type={type}
         value={form[field]}
         onChange={(e) => onChange(field, e.target.value)}
@@ -430,7 +430,7 @@ export default function SettingsPage() {
             <label className="text-xs font-medium text-ps-label block mb-1">
               Full Name<span className="text-state-problem ml-0.5">*</span>
             </label>
-            <input
+            <input aria-label="Full name"
               type="text"
               value={personalName}
               onChange={(e) => setPersonalName(e.target.value)}

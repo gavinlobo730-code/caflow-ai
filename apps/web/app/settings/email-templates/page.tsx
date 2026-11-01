@@ -197,7 +197,7 @@ function TemplateEditor({
 
       <div>
         <label className="text-xs font-medium text-ps-label block mb-1">Subject <span className="text-state-problem">*</span></label>
-        <input
+        <input aria-label="Subject"
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
