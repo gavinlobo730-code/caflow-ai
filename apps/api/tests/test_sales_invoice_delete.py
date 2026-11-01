@@ -114,6 +114,8 @@ class TestDeleteDraft:
         def _ctl(event):
             if event["table"] == "client_sales_invoices" and event["op"] == "select":
                 return _Resp(data=[_invoice_row("draft")])
+            if event["table"] == "journal_entries":
+                return _Resp(data=[])               # nothing posted for this draft (an entry behind it refuses the delete, POST-A-092)
             return _Resp(data=[{"id": "INV-1"}])
 
         holder["controller"] = _ctl

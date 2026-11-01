@@ -20,7 +20,7 @@ from fastapi import HTTPException
 
 import routers.sales_invoices as si
 import services.phase2_journal_service as pjs
-from domain.accounting import journal_figures as jf
+from domain.accounting import journal_figures as jf, journal_source as JS
 from domain.sales import issue_readiness as ir
 from models.invoices import InvoiceLineIn, SalesInvoiceIn, SalesInvoiceUpdateIn
 from tests.e2e_harness import FakeDB, seed_standard_coa, wire_e2e
@@ -50,6 +50,16 @@ def test_two_equal_lines_are_two_lines_and_not_one():
     once = [_l("AR", 100), _l("S", 0, 50)]
     assert jf.difference(twice, once, what="invoice A/1") is not None
     assert jf.difference(twice, [_l("S", 0, 50), _l("AR", 100), _l("S", 0, 50)], what="invoice A/1") is None
+
+
+def test_the_same_accounts_with_the_sides_swapped_are_other_figures():
+    """A debit where a credit was is not the same entry, whatever the amounts: the side is part of the figure."""
+    assert jf.difference([_l("AR", 100), _l("S", 0, 100)], [_l("AR", 0, 100), _l("S", 100, 0)], what="invoice A/1") is not None
+
+
+def test_one_paise_is_a_difference():
+    """Nothing is rounded and nothing has a tolerance: a tolerance on a posted figure is a posted figure that is wrong by that much."""
+    assert jf.difference([_l("AR", 11_800), _l("S", 0, 11_800)], [_l("AR", 11_801), _l("S", 0, 11_801)], what="invoice A/1") is not None
 
 
 def test_a_different_total_is_worded_in_rupees_for_both_sides():
@@ -86,6 +96,25 @@ def test_an_entry_held_elsewhere_is_worded_with_its_number_and_date_and_says_it_
 def test_an_entry_that_could_not_be_read_has_a_sentence_that_says_so():
     said = jf.unreadable(what="invoice A/1")
     assert "could not be read" in said and "Nothing was changed" in said
+
+
+def test_a_lookup_that_failed_does_not_say_an_entry_is_in_the_ledger():
+    """Two different facts, two sentences: the lines of an entry that IS there could not be read, or the ledger could not be asked and
+    nothing is known to be there. Only the first may say an entry exists."""
+    known, unknown = jf.unreadable(what="invoice A/1"), jf.unreadable(what="invoice A/1", known_entry=False)
+    assert "already in the ledger" in known
+    assert "already in the ledger" not in unknown and "could not be checked" in unknown and "Nothing was changed" in unknown, unknown
+
+
+def test_the_held_elsewhere_sentence_does_not_say_the_draft_when_the_invoice_is_issued():
+    said = jf.elsewhere(what="invoice A/2", number="A/1", date="2026-04-05")
+    assert "what the draft says now" not in said and "invoice A/2 has now" in said, said
+
+
+def test_the_sentence_for_a_draft_that_cannot_be_deleted_names_the_entry_and_the_remedy():
+    said = jf.kept_by_delete(what="invoice A/1", number="A/1", date="2026-04-05")
+    assert said.startswith("Invoice A/1 cannot be deleted") and "A/1" in said and "2026-04-05" in said, said
+    assert "A Partner can reverse that entry" in said and "Nothing was changed" in said
 
 
 def test_the_refusal_is_a_value_error_so_every_caller_that_stops_on_a_refusal_stops():
@@ -199,7 +228,8 @@ def test_a_header_lookup_that_fails_refuses_and_does_not_fall_through_to_the_dat
     monkeypatch.setattr(db, "table", table)
     with pytest.raises(jf.EntryCannotBeReused) as refused:
         _post(db, rent, bank, 700_000, must_match="invoice INV-1")
-    assert "could not be read" in str(refused.value)
+    # The lookup itself failed, so no entry is KNOWN to be there: the sentence must not say one is (found by the independent review).
+    assert "could not be checked" in str(refused.value) and "already in the ledger" not in str(refused.value), str(refused.value)
     monkeypatch.setattr(db, "table", real_table)
     assert [e["id"] for e in _live(db)] == [first]
 
@@ -261,6 +291,27 @@ def test_another_documents_entry_or_a_reversed_or_discarded_one_does_not_block(m
     _post(db, rent, bank, 500_000, must_match="invoice INV-4", ref="INV-4", source_id="DOC-1")
 
 
+def test_the_cost_of_goods_entry_of_an_invoice_is_not_read_as_the_invoice_held_under_another_number(monkeypatch):
+    """The COGS journal of an invoice carries the invoice's source type and id (that is how a ledger row finds its document) under the
+    number '<no>-COGS' and the entry type Journal. It is not the document's posting. Read as one, an invoice with stock lines and no
+    link refused to be reposted, and the sentence advised reversing the cost of goods sold (found by the independent review)."""
+    db, rent, bank = _kernel_setup(monkeypatch)
+    db.seed("journal_entries", {"firm_id": FIRM, "client_id": "CLI", "reference_no": "INV-1-COGS", "entry_date": "2026-04-05",
+                                "entry_type": "Journal", "source_type": "SalesInvoice", "source_id": "DOC-1", "is_reversed": False,
+                                "deleted_at": None, "reversal_of": None})
+    assert _post(db, rent, bank, must_match="invoice INV-1", source_id="DOC-1"), "the cost-of-goods entry blocked the invoice's posting"
+    assert pjs.phase2_journal_service.live_entry_of_source(
+        db, firm_id=FIRM, client_id="CLI", source_type="SalesInvoice", source_id="DOC-1", entry_type="Sales")["reference_no"] == "INV-1"
+
+
+def test_an_entry_of_another_source_type_with_the_same_source_id_does_not_block(monkeypatch):
+    db, rent, bank = _kernel_setup(monkeypatch)
+    db.seed("journal_entries", {"firm_id": FIRM, "client_id": "CLI", "reference_no": "RCPT-9", "entry_date": "2026-04-06",
+                                "entry_type": "Sales", "source_type": "Receipt", "source_id": "DOC-1", "is_reversed": False,
+                                "deleted_at": None, "reversal_of": None})
+    assert _post(db, rent, bank, must_match="invoice INV-1", source_id="DOC-1")
+
+
 def test_another_clients_entry_with_the_same_source_id_does_not_block(monkeypatch):
     """The source lookup is the client's own: an id is unique in practice, but a lookup that is not tied to the client would let one
     client's entry refuse another client's posting."""
@@ -285,7 +336,7 @@ def test_a_source_lookup_that_fails_refuses(monkeypatch):
     monkeypatch.setattr(db, "table", table)
     with pytest.raises(jf.EntryCannotBeReused) as refused:
         _post(db, rent, bank, 500_000, must_match="invoice INV-1", source_id="DOC-1")
-    assert "could not be read" in str(refused.value)
+    assert "could not be checked" in str(refused.value) and "already in the ledger" not in str(refused.value), str(refused.value)
     monkeypatch.setattr(db, "table", real_table)
     assert db.rows("journal_entries") == []
 
@@ -492,11 +543,90 @@ def test_a_draft_with_nothing_left_behind_has_no_such_blocker_and_a_missing_char
 
 
 def test_a_preflight_whose_lines_cannot_be_built_does_not_stop_a_draft_the_posting_would_accept(monkeypatch):
+    """Needs an entry to compare with, because the lines are only built when one is found; with none the patched failure never fires and
+    the test would pass for no reason (found by the independent review)."""
     db = _route_setup(monkeypatch)
     invoice_id = _new_invoice()
-    monkeypatch.setattr(pjs.phase2_journal_service, "sales_invoice_lines",
-                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("unreadable")))
+    _issue_that_fails_after_posting(monkeypatch, invoice_id)
+    assert len(_entries(db, "INV-1")) == 1, "this test's premise: an entry is there, so the lines are asked for"
+    calls = {"n": 0}
+
+    def cannot_build(*a, **k):
+        calls["n"] += 1
+        raise RuntimeError("unreadable")
+
+    monkeypatch.setattr(pjs.phase2_journal_service, "sales_invoice_lines", cannot_build)
     assert pjs.phase2_journal_service.entry_left_behind_problem(db, FIRM, "CLI", _row(db, invoice_id)) is None
+    assert calls["n"] >= 1, "the lines were never asked for, so the failure under test never happened"
+
+
+def test_a_pre_flight_does_not_name_the_cost_of_goods_entry_as_a_stranded_sale(monkeypatch):
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    db.seed("journal_entries", {"firm_id": FIRM, "client_id": "CLI", "reference_no": "INV-1-COGS", "entry_date": "2025-06-01",
+                                "entry_type": "Journal", "source_type": JS.SALES_INVOICE, "source_id": invoice_id, "is_reversed": False,
+                                "deleted_at": None, "reversal_of": None})
+    assert pjs.phase2_journal_service.entry_left_behind_problem(db, FIRM, "CLI", _row(db, invoice_id)) is None
+
+
+# ── a draft with an entry behind it is not deleted ─────────────────────────────────────────────────────────────────
+
+def test_a_draft_with_a_live_entry_behind_it_cannot_be_deleted_until_the_entry_is_reversed(monkeypatch):
+    """The sequence the reviewer found: issue draft A, the posting succeeds and the second write fails; delete A (a draft may be
+    deleted); create B with the same number on another date and issue it. Nothing is found under that number and date and nothing
+    under B's source, so a second live entry posted and the sale was counted twice. The delete is refused while the entry is live."""
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    _issue_that_fails_after_posting(monkeypatch, invoice_id)
+    [left] = _entries(db, "INV-1")
+
+    with pytest.raises(HTTPException) as refused:
+        si.delete_invoice(invoice_id, CALLER)
+    assert refused.value.status_code == 409 and "cannot be deleted yet" in refused.value.detail, refused.value.detail
+    assert "INV-1" in refused.value.detail and "2025-06-01" in refused.value.detail and "Nothing was changed" in refused.value.detail
+    assert _row(db, invoice_id)["status"] == "draft", "the draft was deleted although the entry is still live"
+
+    pjs.phase2_journal_service.reverse_entry(db, FIRM, left["id"], "2025-06-02", created_by=None)
+    done = si.delete_invoice(invoice_id, CALLER)
+    assert done["success"] is True and done["data"]["deleted"] is True
+    assert [r for r in db.rows("client_sales_invoices") if r["id"] == invoice_id] == []
+
+
+def test_a_draft_with_nothing_behind_it_is_deleted_as_it_always_was(monkeypatch):
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    done = si.delete_invoice(invoice_id, CALLER)
+    assert done["success"] is True and done["data"]["deleted"] is True
+    assert [r for r in db.rows("client_sales_invoices") if r["id"] == invoice_id] == []
+
+
+def test_a_draft_whose_ledger_cannot_be_read_is_not_deleted(monkeypatch):
+    """A check that cannot look is not a check: the delete refuses, in words that do not claim an entry exists."""
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    real_table = db.table
+
+    def table(name):
+        if name == "journal_entries":
+            raise RuntimeError("ledger unreadable")
+        return real_table(name)
+
+    monkeypatch.setattr(db, "table", table)
+    with pytest.raises(HTTPException) as refused:
+        si.delete_invoice(invoice_id, CALLER)
+    assert refused.value.status_code == 409 and "could not be checked" in refused.value.detail, refused.value.detail
+    assert "already in the ledger" not in refused.value.detail
+    monkeypatch.setattr(db, "table", real_table)
+    assert _row(db, invoice_id)["status"] == "draft"
+
+
+def test_the_cost_of_goods_entry_does_not_stop_a_draft_being_deleted(monkeypatch):
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    db.seed("journal_entries", {"firm_id": FIRM, "client_id": "CLI", "reference_no": "INV-1-COGS", "entry_date": "2025-06-01",
+                                "entry_type": "Journal", "source_type": JS.SALES_INVOICE, "source_id": invoice_id, "is_reversed": False,
+                                "deleted_at": None, "reversal_of": None})
+    assert si.delete_invoice(invoice_id, CALLER)["data"]["deleted"] is True
 
 
 def test_reversing_the_stranded_entry_clears_the_blocker_and_the_draft_can_be_issued(monkeypatch):
@@ -544,7 +674,8 @@ def test_a_ledger_that_cannot_be_read_makes_the_preflight_silent_and_the_posting
     assert pjs.phase2_journal_service.entry_left_behind_problem(db, FIRM, "CLI", _row(db, invoice_id)) is None
     assert _preflight_codes(invoice_id)[0] == []
     res = si.issue_invoice(invoice_id, CALLER)
-    assert res["success"] is False and "could not be read" in res["error"], res
+    # A first-ever issue: nothing is in the ledger, so the refusal must not claim an entry is.
+    assert res["success"] is False and "could not be checked" in res["error"] and "already in the ledger" not in res["error"], res
     monkeypatch.setattr(db, "table", real_table)
     assert _row(db, invoice_id)["status"] == "draft" and _entries(db, "INV-1") == []
 
@@ -571,7 +702,9 @@ def test_each_read_the_check_makes_is_silent_in_the_preflight_and_refuses_in_the
     assert pjs.phase2_journal_service.entry_left_behind_problem(db, FIRM, "CLI", _row(db, invoice_id)) is None
     entries_reads["n"] = 0
     res = si.issue_invoice(invoice_id, CALLER)
-    assert res["success"] is False and "could not be read" in res["error"], res
+    # Unreadable LINES of an entry that is known to be there say so; a failed lookup says only that the ledger could not be checked.
+    words = "could not be read" if which == "the entry's lines" else "could not be checked"
+    assert res["success"] is False and words in res["error"], res
 
 
 def test_a_clean_draft_costs_the_preflight_two_ledger_reads_and_no_chart_lookups(monkeypatch):
@@ -634,3 +767,26 @@ def test_the_builder_for_the_sales_invoice_asks_and_the_others_do_not():
                         and any(k.arg == "must_match" for k in call.keywords):
                     asking.add(fn.name)
     assert asking == {"journal_for_sales_invoice"}, asking
+
+
+def test_no_other_caller_of_the_kernel_anywhere_asks():
+    """The scan above reads the `journal_for_*` builders of one module. The opt-in must also be absent from every other call of
+    `_create_journal` in the backend (a reversal, the cost-of-goods journal, a job), whose retries keep the kernel's default."""
+    import ast
+    import pathlib
+    root = pathlib.Path(pjs.__file__).resolve().parents[1]
+    asking = set()
+    for folder in ("services", "routers", "domain", "repositories", "jobs", "core"):
+        for path in (root / folder).rglob("*.py"):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for call in ast.walk(fn):
+                    if isinstance(call, ast.Call) and getattr(call.func, "attr", "") == "_create_journal" \
+                            and any(k.arg == "must_match" for k in call.keywords):
+                        asking.add((path.relative_to(root).as_posix(), fn.name))
+    assert asking == {("services/phase2_journal_service.py", "journal_for_sales_invoice")}, asking

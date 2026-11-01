@@ -245,7 +245,7 @@ class Phase2JournalService:
             self._live_entry_for(
                 db, firm_id=firm_id, client_id=client_id, entry_date=invoice.get("invoice_date") or str(ist_today()),
                 reference_no=number, lines=lambda: self.sales_invoice_lines(db, invoice, firm_id, client_id),
-                must_match=f"invoice {number}", source_type=JS.SALES_INVOICE, source_id=invoice.get("id"))
+                must_match=f"invoice {number}", source_type=JS.SALES_INVOICE, source_id=invoice.get("id"), entry_type="Sales")
         except journal_figures.EntryCannotBeReused as refusal:
             return None if refusal.unreadable else str(refusal)
         except ValueError:
@@ -2268,7 +2268,7 @@ class Phase2JournalService:
 
     def _live_entry_for(self, db, *, firm_id: str, client_id: str, entry_date: str, reference_no: str, lines: list[dict],
                         must_match: Optional[str], source_type: Optional[str] = None,
-                        source_id: Optional[str] = None) -> Optional[str]:
+                        source_id: Optional[str] = None, entry_type: Optional[str] = None) -> Optional[str]:
         """The id of the entry already live under this number and date, or None. The kernel's idempotency fast path.
 
         Idempotency fast path (firm-scoped): same firm+client+reference_no+entry_date
@@ -2314,12 +2314,14 @@ class Phase2JournalService:
                 firm_id=firm_id, client_id=client_id, reference_no=reference_no, entry_date=entry_date,
             )
             if must_match:
-                raise journal_figures.EntryCannotBeReused(journal_figures.unreadable(what=must_match), unreadable=True) from e
+                # The lookup itself failed, so no entry is known to exist: the sentence must not say one does.
+                raise journal_figures.EntryCannotBeReused(
+                    journal_figures.unreadable(what=must_match, known_entry=False), unreadable=True) from e
             return None
         if not existing.data:
             if must_match and source_id:
                 self._assert_not_held_elsewhere(db, firm_id=firm_id, client_id=client_id, source_type=source_type,
-                                                source_id=source_id, what=must_match)
+                                                source_id=source_id, what=must_match, entry_type=entry_type)
             return None
         _logger.warning(
             "Duplicate journal detected for firm=%s ref=%s date=%s client=%s — skipping",
@@ -2331,31 +2333,51 @@ class Phase2JournalService:
                                        reference_no=reference_no, entry_date=entry_date)
         return entry_id
 
-    def _assert_not_held_elsewhere(self, db, *, firm_id: str, client_id: str, source_type: Optional[str], source_id: str,
-                                   what: str) -> None:
-        """Raise `EntryCannotBeReused` if a live, unreversed entry whose SOURCE is this document is held under some other number or
-        date. The draft's number or date can be corrected after an issue that did not finish, and the retry then builds a different
-        key from the entry the first attempt left, finds nothing, and posts a second live entry: the document counted twice in the
-        ledger, the output tax and the customer's balance. A read that fails refuses, as the others here do."""
+    def live_entry_of_source(self, db, *, firm_id: str, client_id: str, source_type: Optional[str], source_id: str,
+                             entry_type: Optional[str] = None) -> Optional[dict]:
+        """The live, unreversed entry (id, number, date) whose SOURCE is this document, or None; a read that fails raises
+        `EntryCannotBeReused` with `unreadable` set, because a question that cannot be asked is not answered 'no'.
+
+        `entry_type` narrows it to the entry the document's own posting makes ('Sales' for an invoice). It matters: the cost-of-goods
+        journal of an invoice carries the same source type and id (it is how a ledger row finds its document) and is not the document's
+        posting, so without it a sales invoice with stock lines read its own COGS entry as 'the invoice, held under another number'
+        (found by the independent review of 8364b95f). A REVERSAL copies the document's source onto itself (`reverse_entry`) and is not
+        itself marked reversed, so it is left out, or the entry that undid a stranded one would be read as another posting of the
+        document and the remedy the refusal advises would block the draft for ever."""
         try:
             query = (db.table("journal_entries").select("id,reference_no,entry_date")
                      .eq("firm_id", firm_id).eq("client_id", client_id).eq("source_id", source_id)
                      .eq("is_reversed", False).is_("deleted_at", "null")
-                     # A REVERSAL copies the document's source onto itself (reverse_entry) and is not itself marked reversed, so without
-                     # this the entry that undid a stranded one would be read as another posting of the document, and reversing the
-                     # stranded entry, which is the remedy the refusal advises, would block the draft for ever.
                      .is_("reversal_of", "null"))
             if source_type:
                 query = query.eq("source_type", source_type)
+            if entry_type:
+                query = query.eq("entry_type", entry_type)
             held = query.limit(1).execute().data or []
         except Exception as read_error:
             capture_posting_failure(
                 read_error, operation="_create_journal.held_elsewhere_read",
                 firm_id=firm_id, client_id=client_id, source_id=source_id)
-            raise journal_figures.EntryCannotBeReused(journal_figures.unreadable(what=what), unreadable=True) from read_error
+            raise journal_figures.EntryCannotBeReused(
+                journal_figures.unreadable(what="this document", known_entry=False), unreadable=True) from read_error
+        return held[0] if held else None
+
+    def _assert_not_held_elsewhere(self, db, *, firm_id: str, client_id: str, source_type: Optional[str], source_id: str,
+                                   what: str, entry_type: Optional[str] = None) -> None:
+        """Raise `EntryCannotBeReused` if a live, unreversed entry whose SOURCE is this document is held under some other number or
+        date. The draft's number or date can be corrected after an issue that did not finish, and the retry then builds a different
+        key from the entry the first attempt left, finds nothing, and posts a second live entry: the document counted twice in the
+        ledger, the output tax and the customer's balance. A read that fails refuses, as the others here do."""
+        try:
+            held = self.live_entry_of_source(db, firm_id=firm_id, client_id=client_id, source_type=source_type,
+                                             source_id=source_id, entry_type=entry_type)
+        except journal_figures.EntryCannotBeReused as refusal:
+            # The reading says which document it was about; this one names it.
+            raise journal_figures.EntryCannotBeReused(
+                journal_figures.unreadable(what=what, known_entry=False), unreadable=True) from refusal
         if held:
             raise journal_figures.EntryCannotBeReused(journal_figures.elsewhere(
-                what=what, number=str(held[0].get("reference_no") or ""), date=str(held[0].get("entry_date") or "")))
+                what=what, number=str(held.get("reference_no") or ""), date=str(held.get("entry_date") or "")))
 
     def _assert_entry_carries(self, db, entry_id: str, lines: list[dict], *, what: str, firm_id: str, client_id: str,
                               reference_no: str, entry_date: str) -> None:
@@ -2536,7 +2558,7 @@ class Phase2JournalService:
         # Idempotency fast path: an entry already live under this number and date answers for it (see `_live_entry_for`).
         already = self._live_entry_for(
             db, firm_id=firm_id, client_id=client_id, entry_date=entry_date, reference_no=reference_no,
-            lines=lines, must_match=must_match, source_type=source_type, source_id=source_id)
+            lines=lines, must_match=must_match, source_type=source_type, source_id=source_id, entry_type=entry_type)
         if already:
             return already
 

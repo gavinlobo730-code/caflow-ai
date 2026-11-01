@@ -18,7 +18,7 @@ from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
 from domain.sales.line_tax import compute_line_gst
 from domain.sales import credit_limit
-from domain.accounting import journal_figures
+from domain.accounting import journal_figures, journal_source as JS
 from domain.inventory import stock_effect as stock_effects
 from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
@@ -2460,6 +2460,22 @@ def delete_invoice(
                 status_code=422,
                 detail=f"Cannot delete {_DELETE_BLOCKED.get(st, st)} invoice — only drafts can be deleted",
             )
+
+        # A draft whose first issue posted its entry and then failed to mark the invoice issued has a LIVE entry behind it. Deleting the
+        # draft would leave that entry with nothing behind it, and the next draft to take the same number on another date would post a
+        # second live entry beside it: the sale counted twice in the ledger, the output tax and the customer's balance. The entry has to
+        # be reversed first (a Partner's step, in the ledger), and a ledger that cannot be asked refuses as the issue does.
+        from services.phase2_journal_service import phase2_journal_service
+        try:
+            left_behind = phase2_journal_service.live_entry_of_source(
+                db, firm_id=current_user.get("firm_id"), client_id=inv.get("client_id"), source_type=JS.SALES_INVOICE,
+                source_id=invoice_id, entry_type="Sales")
+        except journal_figures.EntryCannotBeReused as refusal:
+            raise HTTPException(status_code=409, detail=str(refusal)) from refusal
+        if left_behind:
+            raise HTTPException(status_code=409, detail=journal_figures.kept_by_delete(
+                what=f"invoice {inv.get('invoice_no')}", number=str(left_behind.get("reference_no") or ""),
+                date=str(left_behind.get("entry_date") or "")))
 
         # Hard delete — draft-only, so client_sales_invoice_lines cascades
         # automatically (FK ON DELETE CASCADE); nothing else can reference a
