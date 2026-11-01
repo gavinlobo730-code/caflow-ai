@@ -174,7 +174,7 @@ def test_reading_the_link_posts_nothing_and_changes_no_challan(world):
 
 def test_a_stale_link_can_be_taken_back_and_the_challan_tied_again(world):
     ch = _challan(world, _id(501), REVERSED)
-    done = svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=ch)
+    done = svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=ch, actor=USER)
     assert done["was"] == REVERSED
     fresh = next(r for r in world.rows("tds_challans") if r["id"] == ch["id"])
     assert fresh["journal_entry_id"] is None
@@ -226,10 +226,10 @@ def test_the_recovery_after_a_reversal_is_offered_the_replacement_and_not_the_en
     _debiting(ledger, GOOD)
     ch = _challan(ledger, _id(602), OLD)
     assert svc.payment_candidates(ledger, firm_id=FIRM, client_id=A, challan=ch)["ledger_link"]["state"] == "reversed"
-    svc.unlink_payment(ledger, firm_id=FIRM, client_id=A, challan=ch)
+    svc.unlink_payment(ledger, firm_id=FIRM, client_id=A, challan=ch, actor=USER)
     fresh = next(r for r in ledger.rows("tds_challans") if r["id"] == ch["id"])
     assert _offered(ledger, fresh) == [GOOD]
-    svc.link_payment(ledger, firm_id=FIRM, client_id=A, challan=fresh, journal_entry_id=GOOD)
+    svc.link_payment(ledger, firm_id=FIRM, client_id=A, challan=fresh, journal_entry_id=GOOD, actor=USER)
     tied = next(r for r in ledger.rows("tds_challans") if r["id"] == ch["id"])
     assert tied["journal_entry_id"] == GOOD
 
@@ -244,7 +244,7 @@ def test_naming_an_entry_that_records_no_payment_is_refused_in_words_and_changes
     _debiting(ledger, je, **flags)
     ch = _challan(ledger, _id(603), None)
     with pytest.raises(svc.LinkRefused) as e:
-        svc.link_payment(ledger, firm_id=FIRM, client_id=A, challan=ch, journal_entry_id=je)
+        svc.link_payment(ledger, firm_id=FIRM, client_id=A, challan=ch, journal_entry_id=je, actor=USER)
     assert words in e.value.sentence and e.value.status == 422
     assert next(r for r in ledger.rows("tds_challans") if r["id"] == ch["id"])["journal_entry_id"] is None
 

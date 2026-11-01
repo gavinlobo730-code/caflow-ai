@@ -26,6 +26,7 @@ from typing import Optional
 from core.ist_clock import ist_now, ist_today
 from domain.payroll import remittance_match
 from domain.payroll.statutory import esi_contribution_period
+from core.db_paging import fetch_all, fetch_all_in
 from core.db_provider import privileged_for
 
 ESIC = "esic"
@@ -428,39 +429,56 @@ def entries_clearing_account(db, *, firm_id: str, client_id: str, account_id: st
     # Only an entry that can still BE the payment: not a draft, not a reversed original, not a reversal (`remittance_match.entry_state`).
     # Offering a reversed entry undid the recovery for a challan whose entry was reversed, which is to take the link back and tie it
     # again: the first candidate it was shown was the entry that had just been undone.
-    entries = (db.table("journal_entries")
-               .select("id, entry_date, reference_no, narration, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
-               .eq("firm_id", firm_id).eq("client_id", client_id)
-               .gte("entry_date", lo).lte("entry_date", hi)
-               .is_("deleted_at", "null").execute().data) or []
+    # EVERY entry in the window, read in keyset pages: PostgREST answers at most a thousand rows to one request and says nothing when it cuts
+    # a response short, so a busy client's month would have been offered only the first thousand entries, and a candidate list that silently
+    # lacks the entry that paid the challan reads as "nothing paid it". `fetch_all` pages by `id`.
+    entries = fetch_all(
+        lambda: (db.table("journal_entries")
+                 .select("id, entry_date, reference_no, narration, " + ", ".join(remittance_match.ENTRY_STATE_COLUMNS))
+                 .eq("firm_id", firm_id).eq("client_id", client_id)
+                 .gte("entry_date", lo).lte("entry_date", hi)
+                 .is_("deleted_at", "null")),
+        "id", label="statutory_remittance_service.entries_clearing_account.entries")
     entries = [e for e in entries if e.get("id") and remittance_match.entry_state(e) == remittance_match.ENTRY_LIVE]
     if not entries:
         return []
 
-    lines = (db.table("journal_lines")
-             .select("journal_entry_id, account_id, debit_paise, credit_paise")
-             .in_("journal_entry_id", [e["id"] for e in entries])
-             .execute().data) or []
-
+    # Which of those entries DEBIT the account: only the lines of this one account with a debit are read, however many entries the window
+    # holds (the id list rides in chunks, `fetch_all_in`). Only then are the whole entries read, and only the shortlisted ones, because the
+    # figure a challan matches is the entry's total.
+    debit_lines = fetch_all_in(
+        lambda: (db.table("journal_lines").select("id, journal_entry_id, debit_paise")
+                 .eq("account_id", account_id).gt("debit_paise", 0)),
+        "journal_entry_id", [e["id"] for e in entries], "id",
+        label="statutory_remittance_service.entries_clearing_account.debits")
     debited: dict = {}
+    for ln in debit_lines:
+        eid = ln.get("journal_entry_id")
+        debited[eid] = debited.get(eid, 0) + int(ln.get("debit_paise") or 0)
+    entries = [e for e in entries if debited.get(e["id"], 0) > 0]
+    if not entries:
+        return []
+
+    lines = fetch_all_in(
+        lambda: db.table("journal_lines").select("id, journal_entry_id, credit_paise"),
+        "journal_entry_id", [e["id"] for e in entries], "id",
+        label="statutory_remittance_service.entries_clearing_account.totals")
     total: dict = {}
     for ln in lines:
-        eid = ln.get("journal_entry_id")
         # The entry TOTAL is its credit side, which for a payment entry is what
         # left the bank — see domain/payroll/remittance_match.py for why that,
         # and not the liability debit, is the figure a challan matches.
+        eid = ln.get("journal_entry_id")
         total[eid] = total.get(eid, 0) + int(ln.get("credit_paise") or 0)
-        if ln.get("account_id") == account_id:
-            debited[eid] = debited.get(eid, 0) + int(ln.get("debit_paise") or 0)
 
-    # Only entries that actually CLEARED this liability. An entry in the window
-    # that never touched the account is not a candidate for paying it.
+    # `entries` holds only those that actually CLEARED this liability (narrowed above): an entry in the window that never touched the
+    # account is not a candidate for paying it.
     shortlist = [
         {"journal_entry_id": e["id"], "entry_date": e.get("entry_date"),
          "reference_no": e.get("reference_no"), "narration": e.get("narration"),
          "liability_debit_paise": debited.get(e["id"], 0),
          "entry_total_paise": total.get(e["id"], 0)}
-        for e in entries if debited.get(e["id"], 0) > 0
+        for e in entries
     ]
     return [c.to_dict() for c in remittance_match.candidates(
         amount_paise=int(amount_paise or 0),

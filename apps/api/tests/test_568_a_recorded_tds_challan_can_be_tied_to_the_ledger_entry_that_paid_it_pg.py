@@ -9,7 +9,8 @@ WHAT IS BEING PROVED
        `statutory_remittances` has done since 365.
     4. The conditional update the service makes ("no link yet") ties a challan once and matches no row the second time, and the one that
        takes a link back names the link it read and matches no row once it has changed.
-    5. The file is re-runnable and its rollback takes the column and its index away.
+    5. The file is re-runnable and its rollback takes the column and its index away (after migration 573's rollback, which takes away the
+       guards that name the column; 573 also replaces the plain index with a unique one).
 
 NEGATIVE CONTROL
     Drop the REFERENCES from the migration and the not-an-entry case writes straight in; drop `ON DELETE SET NULL` and deleting the entry
@@ -153,6 +154,11 @@ def test_the_file_can_be_run_again(db):
 
 
 def test_the_rollback_takes_the_column_and_its_index_away(db):
+    # Migration 573 guards the column with triggers whose WHEN clause names it, and a column such a trigger names cannot be dropped, so 573's
+    # rollback runs first (its own test holds that the order is needed).
+    later = next((API_ROOT / "migrations").glob("573_*_rollback.sql"))
+    r = subprocess.run(["psql", db, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", str(later)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
     r = subprocess.run(["psql", db, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", str(ROLLBACK)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert _one(db, "SELECT count(*) FROM information_schema.columns WHERE table_name = 'tds_challans' "

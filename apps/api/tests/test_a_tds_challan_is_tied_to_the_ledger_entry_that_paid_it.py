@@ -121,7 +121,7 @@ def test_an_already_tied_challan_says_which_entry(world):
 
 def test_linking_ties_the_challan_and_posts_nothing(world):
     before = (len(world.rows("journal_entries")), len(world.rows("journal_lines")))
-    done = svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS)
+    done = svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS, actor=USER)
     assert done["journal_entry_id"] == JE_TDS and done["entry_date"] == "2026-07-07"
     assert get(world, CH_194C)["journal_entry_id"] == JE_TDS
     assert (len(world.rows("journal_entries")), len(world.rows("journal_lines"))) == before, "a link is never a posting"
@@ -137,7 +137,7 @@ def test_linking_ties_the_challan_and_posts_nothing(world):
 ])
 def test_a_link_that_cannot_be_the_payment_is_refused_in_words_and_changes_nothing(world, what, entry, challan, status, words):
     with pytest.raises(svc.LinkRefused) as refused:
-        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, challan), journal_entry_id=entry)
+        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, challan), journal_entry_id=entry, actor=USER)
     assert refused.value.status == status and words in refused.value.sentence, what
     assert get(world, challan)["journal_entry_id"] is None
 
@@ -145,72 +145,71 @@ def test_a_link_that_cannot_be_the_payment_is_refused_in_words_and_changes_nothi
 def test_a_challan_that_is_already_tied_is_refused_with_a_409(world):
     get(world, CH_194C)["journal_entry_id"] = JE_TDS
     with pytest.raises(svc.LinkRefused) as refused:
-        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_FAR)
+        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_FAR, actor=USER)
     assert refused.value.status == 409 and "already tied" in refused.value.sentence
     assert get(world, CH_194C)["journal_entry_id"] == JE_TDS
 
 
 def test_one_entry_cannot_be_the_payment_of_two_challans(world):
     _challan(world, _id(15), A, "194J", 100_000_00, "2026-07-07", no="CH-194J")
-    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS)
+    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS, actor=USER)
     with pytest.raises(svc.LinkRefused) as refused:
-        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, _id(15)), journal_entry_id=JE_TDS)
+        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, _id(15)), journal_entry_id=JE_TDS, actor=USER)
     assert refused.value.status == 409 and "CH-194C" in refused.value.sentence
     assert get(world, _id(15))["journal_entry_id"] is None
 
 
 def test_the_second_of_two_simultaneous_links_ties_nothing(world):
     stale = dict(get(world, CH_194C))                              # the second request read the challan before the first tied it
-    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS)
+    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS, actor=USER)
     with pytest.raises(svc.LinkRefused) as refused:
-        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=stale, journal_entry_id=JE_FAR)
+        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=stale, journal_entry_id=JE_FAR, actor=USER)
     assert refused.value.status == 409
     assert get(world, CH_194C)["journal_entry_id"] == JE_TDS, "the first link stands"
 
 
 def test_a_challan_of_another_client_is_not_tied_through_this_client(world):
     with pytest.raises(svc.LinkRefused):
-        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_B), journal_entry_id=JE_B)
+        svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_B), journal_entry_id=JE_B, actor=USER)
     assert get(world, CH_B)["journal_entry_id"] is None
 
 
 # ───────────────────────────── unlink ─────────────────────────────
 
 def test_unlinking_takes_the_link_back_and_leaves_the_entry(world):
-    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS)
-    done = svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C))
+    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS, actor=USER)
+    done = svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), actor=USER)
     assert done["was"] == JE_TDS and get(world, CH_194C)["journal_entry_id"] is None
     assert any(e["id"] == JE_TDS for e in world.rows("journal_entries")), "the entry is untouched"
 
 
 def test_unlinking_a_challan_with_no_link_is_refused(world):
     with pytest.raises(svc.LinkRefused) as refused:
-        svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C))
+        svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), actor=USER)
     assert refused.value.status == 409
 
 
 def test_a_stale_unlink_changes_nothing(world):
-    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS)
+    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_TDS, actor=USER)
     stale = dict(get(world, CH_194C))
-    svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C))
-    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_FAR)
+    svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), actor=USER)
+    svc.link_payment(world, firm_id=FIRM, client_id=A, challan=get(world, CH_194C), journal_entry_id=JE_FAR, actor=USER)
     with pytest.raises(svc.LinkRefused) as refused:
-        svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=stale)       # it still believes JE_TDS is the link
+        svc.unlink_payment(world, firm_id=FIRM, client_id=A, challan=stale, actor=USER)       # it still believes JE_TDS is the link
     assert refused.value.status == 409
     assert get(world, CH_194C)["journal_entry_id"] == JE_FAR
 
 
 # ───────────────────────────── routes ─────────────────────────────
 
-def test_the_routes_link_unlink_and_audit_as_the_person(world, monkeypatch):
-    events = []
-    monkeypatch.setattr(tw, "log_event", lambda **k: events.append(k))
-    got = tw.challan_ledger_candidates(uuid.UUID(CH_194C), USER)
+def test_the_routes_link_unlink_and_audit_as_the_person(world):
+    got = tw.challan_ledger_candidates(uuid.UUID(CH_194C), USER, USER)
     assert got["success"] and [c["journal_entry_id"] for c in got["data"]["candidates"]] == [JE_TDS]
-    linked = tw.link_challan_payment(uuid.UUID(CH_194C), tw.LinkChallanPaymentRequest(journal_entry_id=uuid.UUID(JE_TDS)), USER)
+    linked = tw.link_challan_payment(uuid.UUID(CH_194C), tw.LinkChallanPaymentRequest(journal_entry_id=uuid.UUID(JE_TDS)), USER, USER)
     assert linked["data"]["journal_entry_id"] == JE_TDS and get(world, CH_194C)["journal_entry_id"] == JE_TDS
     tw.unlink_challan_payment(uuid.UUID(CH_194C), USER)
     assert get(world, CH_194C)["journal_entry_id"] is None
+    events = world.rows("audit_log")
     assert [(e["action"], e["actor_id"], e["entity_id"]) for e in events] == [
         ("link_payment", "au1", CH_194C), ("unlink_payment", "au1", CH_194C)], "audited as the AUTH id, the audit log's flavour of actor"
     assert events[0]["old_data"] == {"journal_entry_id": None} and events[0]["new_data"] == {"journal_entry_id": JE_TDS}
@@ -219,16 +218,16 @@ def test_the_routes_link_unlink_and_audit_as_the_person(world, monkeypatch):
 def test_a_missing_challan_and_one_the_caller_may_not_see_say_the_same_words(world, monkeypatch):
     missing = HTTPException
     with pytest.raises(missing) as a:
-        tw.challan_ledger_candidates(uuid.UUID(_id(404)), USER)
+        tw.challan_ledger_candidates(uuid.UUID(_id(404)), USER, USER)
     monkeypatch.setattr(tw, "can_access_client", lambda user, client_id: client_id != B)
     with pytest.raises(missing) as b:
-        tw.challan_ledger_candidates(uuid.UUID(CH_B), USER)
+        tw.challan_ledger_candidates(uuid.UUID(CH_B), USER, USER)
     assert (a.value.status_code, a.value.detail) == (b.value.status_code, b.value.detail) == (404, "Not found")
 
 
 def test_a_refusal_reaches_the_caller_as_the_services_status_and_sentence(world):
     with pytest.raises(HTTPException) as refused:
-        tw.link_challan_payment(uuid.UUID(CH_194C), tw.LinkChallanPaymentRequest(journal_entry_id=uuid.UUID(JE_RENT)), USER)
+        tw.link_challan_payment(uuid.UUID(CH_194C), tw.LinkChallanPaymentRequest(journal_entry_id=uuid.UUID(JE_RENT)), USER, USER)
     assert refused.value.status_code == 422 and 'does not debit "TDS Payable"' in refused.value.detail
 
 
@@ -241,5 +240,5 @@ def test_a_malformed_id_is_a_422_before_anything_is_read():
 def test_mock_mode_keeps_no_ledger_and_says_so(monkeypatch):
     monkeypatch.setattr(tw, "_USE_MOCK", True)
     with pytest.raises(HTTPException) as refused:
-        tw.link_challan_payment(uuid.UUID(CH_194C), tw.LinkChallanPaymentRequest(journal_entry_id=uuid.UUID(JE_TDS)), USER)
+        tw.link_challan_payment(uuid.UUID(CH_194C), tw.LinkChallanPaymentRequest(journal_entry_id=uuid.UUID(JE_TDS)), USER, USER)
     assert refused.value.status_code == 409 and "Mock mode keeps no ledger" in refused.value.detail
