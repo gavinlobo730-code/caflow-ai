@@ -21,6 +21,8 @@ WHAT IS ASSERTED
     * a row that is in the window AND overdue is returned once;
     * the dates are the engine's, untouched: a QRMP client's GSTR-3B comes back on
       the 22nd or 24th `compliance_engine` computes for their state, never the 20th;
+    * THE BUCKET IS THE ONE RULE'S (POST-A-280): an obligation somebody moved to "Overdue" by hand is overdue whatever its date, an
+      obligation due today is not, and a settled one never is;
     * the assignment scope still applies to every bucket;
     * with no window the answer is what it always was.
 """
@@ -77,6 +79,36 @@ def _ids(payload, bucket):
 def _get(**params):
     res = _client().get("/api/compliance/obligations/calendar", params=params)
     return res
+
+
+# ── the bucket is the one rule's ─────────────────────────────────────────────
+
+def test_a_hand_set_overdue_with_a_date_ahead_is_overdue_and_due_today_is_not():
+    _row("by-date", "2026-10-09")
+    _row("by-hand-ahead", "2026-12-20", status="Overdue")
+    _row("due-today", "2026-10-10")
+    _row("settled-hand", "2026-09-01", status="Completed")
+    res = _get().json()
+    assert _ids(res, "overdue") == ["by-date", "by-hand-ahead"]
+    assert _ids(res, "upcoming") == ["due-today"]
+    assert _ids(res, "completed") == ["settled-hand"]
+
+
+def test_a_hand_set_overdue_dated_outside_the_window_is_not_fetched_which_is_the_named_limit():
+    """The separate read of what is late asks the date, and only the rule's own module may ask the stored word, so a hand-set Overdue with a
+    date ahead and OUTSIDE the window is not in a windowed answer (without a window it is). The docstring of `calendar` says so."""
+    _row("hand-far", "2027-03-20", status="Overdue")
+    _row("late", "2026-09-20")
+    windowed = _get(date_from="2026-11-01", date_to="2026-11-30").json()
+    assert _ids(windowed, "overdue") == ["late"]
+    assert _ids(_get().json(), "overdue") == ["hand-far", "late"]
+    assert "ONE LIMIT" in (ob.calendar.__doc__ or "")
+
+
+def test_a_hand_set_overdue_inside_the_window_is_overdue_too():
+    _row("by-hand-in-window", "2026-12-20", status="Overdue")
+    res = _get(date_from="2026-12-01", date_to="2026-12-31").json()
+    assert _ids(res, "overdue") == ["by-hand-in-window"] and _ids(res, "upcoming") == []
 
 
 # ── the window ───────────────────────────────────────────────────────────────

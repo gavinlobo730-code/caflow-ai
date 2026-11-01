@@ -14,7 +14,7 @@ import { ReopenObligationModal } from "@/components/compliance/ReopenObligationM
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
 import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
-import { isOverdue } from "@/lib/compliance/overdue";
+import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { formatRangeLabel } from "@/lib/dates/periods";
 import { getComplianceCalendar, getReopenRule, markFiled as markObligationFiled, reopenObligation } from "@/lib/data/compliance";
@@ -295,7 +295,7 @@ function DeadlinesContent() {
   );
 
   const overdue     = typeRecords.filter(r => isOverdue(r, today)).length;
-  const dueThisWeek = typeRecords.filter(r => r.due_date >= today && r.due_date <= in7Days && r.filing_status !== "filed").length;
+  const dueThisWeek = typeRecords.filter(r => isUpcoming(r, today) && r.due_date <= in7Days).length;
   const inProgress  = typeRecords.filter(r => r.filing_status === "in_progress").length;
   const filed       = typeRecords.filter(r => r.filing_status === "filed").length;
   const pending     = typeRecords.filter(r => r.filing_status === "pending").length;

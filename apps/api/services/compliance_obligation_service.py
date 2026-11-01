@@ -1592,10 +1592,15 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
     make navigating to another month read as "nothing is late", which is the false
     calm this screen exists to prevent. So with a window the overdue bucket is
     read on its own: every unfiled obligation due before today. Upcoming and
-    completed are the window's.
+    completed are the window's. ONE LIMIT, named: an obligation somebody moved to
+    "Overdue" by hand with a due date AHEAD is overdue by the one rule
+    (`domain/practice/compliance_overdue`) wherever it is returned, but with a
+    window it is returned only when its date is inside the window, because the
+    separate read of what is late asks the date and cannot ask the stored word
+    (the rule's own module is the only place that may). Without a window every
+    such row is returned.
     """
     today = today or ist_today()
-    today_s = today.isoformat()
     if date_from is None and date_to is None:
         records = _records_for(firm_id, client_id)
     else:
@@ -1613,10 +1618,9 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
         records = list(by_id.values())
     upcoming, overdue, completed = [], [], []
     for r in records:
-        due = str(r.get("due_date", ""))[:10]
         if r.get("status") in ("Filed", "Completed"):
             completed.append(r)
-        elif due and due < today_s:
+        elif is_overdue(r, today):          # the one rule (POST-A-280): by its date, or moved to "Overdue" by hand, whatever the date
             overdue.append(r)
         else:
             upcoming.append(r)
