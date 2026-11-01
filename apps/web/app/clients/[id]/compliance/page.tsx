@@ -17,6 +17,7 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
+import { isOverdue } from "@/lib/compliance/overdue";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
 import { EditNoticeReadingModal } from "@/components/compliance/EditNoticeReadingModal";
@@ -766,7 +767,7 @@ export default function CompliancePage() {
                     </td>
                     <td
                       className={`px-3 py-3 text-xs whitespace-nowrap ${
-                        c.due_date < today && c.filing_status !== "filed"
+                        isOverdue(c, today)
                           ? "text-state-problem font-medium"
                           : "text-ps-label"
                       }`}

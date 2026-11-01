@@ -43,3 +43,17 @@ export function isOverdue(
   const due = (entry.due_date ?? "").slice(0, 10);
   return due !== "" && due < todayISO;
 }
+
+/**
+ * Whether an obligation is OPEN AND NOT YET LATE: not settled, not moved to "overdue" by hand, and due today or later. The complement of
+ * `isOverdue` among the open ones, so a screen that lists "overdue" and "upcoming" side by side puts each obligation in exactly one list
+ * (an obligation somebody moved to "overdue" with a date ahead used to be in both, because the upcoming test asked the date alone).
+ */
+export function isUpcoming(
+  entry: Pick<ComplianceEntry, "due_date" | "filing_status">,
+  todayISO: string = todayLocalISO(),
+): boolean {
+  if (SETTLED_FILING_STATUSES.has(entry.filing_status) || isOverdue(entry, todayISO)) return false;
+  const due = (entry.due_date ?? "").slice(0, 10);
+  return due !== "" && due >= todayISO;
+}

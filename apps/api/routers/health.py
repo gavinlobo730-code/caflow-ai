@@ -50,6 +50,7 @@ from services.timeline_service import timeline_service
 from core.ist_clock import IST, ist_date_of, ist_today
 from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, is_at_risk, is_critical, weighted_score
 from domain.health.overrides import apply_overrides, as_payload
+from domain.practice.compliance_overdue import overdue_records
 from core import db_provider
 from core.db_provider import privileged_for
 
@@ -368,11 +369,13 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
     # B) is being retired, and these queries referenced a "Pending" status
     # value and a filed_late column that never existed on it.
     try:
-        overdue_returns = (db.table("compliance_records").select("id")
-                           .eq("firm_id", firm_id).eq("client_id", client_id)
-                           .not_.in_("status", ["Filed", "Completed"])
-                           .lt("due_date", ist_today().isoformat()).execute().data or [])
-        score -= len(overdue_returns) * 25
+        # THE ONE RULE (`domain/practice/compliance_overdue`, POST-A-280): the date alone missed an obligation somebody moved to "Overdue"
+        # by hand with a date ahead or none, which every other reader counts. The unsettled ones are read and the rule judges them: a
+        # client has a few dozen obligations a year, so this is not a read that grows with the ledger.
+        unsettled = (db.table("compliance_records").select("id, status, due_date")
+                     .eq("firm_id", firm_id).eq("client_id", client_id)
+                     .not_.in_("status", ["Filed", "Completed"]).execute().data or [])
+        score -= len(overdue_records(unsettled, ist_today())) * 25
     except Exception as exc:
         capture_soft_failure(exc, operation="health.dim_compliance_health_db.1", firm_id=firm_id, client_id=client_id)
 
@@ -768,14 +771,15 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
     if dimension == "compliance_health":
         # R3.13d: reads compliance_records (System A) — see _dim_compliance_health_db.
         try:
-            overdue = (db.table("compliance_records").select("id, period_label, compliance_type, due_date")
-                      .eq("firm_id", firm_id).eq("client_id", client_id)
-                      .not_.in_("status", ["Filed", "Completed"])
-                      .lt("due_date", today.isoformat()).execute().data or [])
+            # The one rule (POST-A-280), not the date alone: the unsettled obligations are read and `overdue_records` judges them.
+            overdue = overdue_records((db.table("compliance_records").select("id, status, period_label, compliance_type, due_date")
+                                       .eq("firm_id", firm_id).eq("client_id", client_id)
+                                       .not_.in_("status", ["Filed", "Completed"]).execute().data or []), today)
             for t in overdue[:5]:
                 label = t.get("period_label") or t.get("compliance_type") or "Return"
                 factors.append({
-                    "label": f"{label} overdue since {t.get('due_date', '')}",
+                    # a hand-set Overdue may have no date, and then the label does not claim one
+                    "label": f"{label} overdue" + (f" since {t['due_date']}" if t.get("due_date") else ""),
                     "impact": -25,
                     "action_label": "File Now",
                     "action_url": f"/clients/{client_id}/compliance",

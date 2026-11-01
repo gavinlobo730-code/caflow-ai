@@ -1595,7 +1595,6 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
     completed are the window's.
     """
     today = today or ist_today()
-    today_s = today.isoformat()
     if date_from is None and date_to is None:
         records = _records_for(firm_id, client_id)
     else:
@@ -1613,10 +1612,9 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
         records = list(by_id.values())
     upcoming, overdue, completed = [], [], []
     for r in records:
-        due = str(r.get("due_date", ""))[:10]
         if r.get("status") in ("Filed", "Completed"):
             completed.append(r)
-        elif due and due < today_s:
+        elif is_overdue(r, today):          # the one rule (POST-A-280): by its date, or moved to "Overdue" by hand, whatever the date
             overdue.append(r)
         else:
             upcoming.append(r)

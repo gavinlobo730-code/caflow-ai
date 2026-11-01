@@ -57,6 +57,7 @@ import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
+import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 import { useToast } from "@/components/ui/use-toast";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, GapList } from "@/components/ui/callout";
@@ -540,16 +541,12 @@ export default function IncomeTaxPage() {
 
   const totalDue = entries.length;
   const filed = entries.filter((e) => e.filing_status === "filed").length;
-  const overdue = entries.filter(
-    (e) => e.filing_status !== "filed" && e.due_date < today
-  ).length;
-  const pending = entries.filter(
-    (e) => e.filing_status !== "filed" && e.due_date >= today
-  ).length;
+  const overdue = entries.filter((e) => isOverdue(e, today)).length;
+  const pending = entries.filter((e) => isUpcoming(e, today)).length;
 
   // Next deadline — earliest non-filed entry
   const nextDeadlineEntry = entries
-    .filter((e) => e.filing_status !== "filed" && e.due_date >= today)
+    .filter((e) => isUpcoming(e, today))
     .sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
 
   // ---------------------------------------------------------------------------
@@ -714,7 +711,7 @@ export default function IncomeTaxPage() {
   // Effective status: an unfiled entry past its due date reads as "overdue".
   const effectiveStatusOf = useCallback(
     (entry: ITREntry): string =>
-      entry.filing_status !== "filed" && entry.due_date < today ? "overdue" : entry.filing_status,
+      isOverdue(entry, today) ? "overdue" : entry.filing_status,
     [today],
   );
 

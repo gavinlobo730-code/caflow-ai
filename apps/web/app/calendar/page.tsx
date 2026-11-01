@@ -58,6 +58,7 @@ import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { useToast } from "@/components/ui/use-toast";
 import type { Client } from "@/lib/types";
 import { todayLocalISO, toLocalISO, fromLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { isOverdue } from "@/lib/compliance/overdue";
 import { formatDate } from "@/lib/services/formatting";
 import { PageHeader } from "@/components/ui/page-header";
 
@@ -445,7 +446,7 @@ export default function CalendarPage() {
                         {g.entries.map((e) => {
                           const done = e.filing_status === "filed";
                           const na = e.filing_status === "na";
-                          const late = !done && !na && e.due_date < todayISO;
+                          const late = isOverdue(e, todayISO);
                           return (
                             <li key={e.id} className="flex items-center gap-2 text-xs">
                               {done ? (

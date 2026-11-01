@@ -28,6 +28,7 @@ import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { isOverdue } from "@/lib/compliance/overdue";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
@@ -682,9 +683,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
             of_type(type).filter((e: ComplianceEntry) => e.filing_status === "filed").length;
           const pending = (type: string) =>
             of_type(type).filter((e: ComplianceEntry) => e.filing_status !== "filed").length;
-          const hasOverdue = es.some(
-            (e: ComplianceEntry) => e.filing_status !== "filed" && e.due_date < today
-          );
+          const hasOverdue = es.some((e: ComplianceEntry) => isOverdue(e, today));
           rows.push({
             clientId,
             clientName: name,

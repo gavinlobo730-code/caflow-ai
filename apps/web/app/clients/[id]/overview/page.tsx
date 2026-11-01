@@ -19,6 +19,7 @@ import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { Skeleton, SkeletonText, MetricCardSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 export default function OverviewPage() {
   const { clientId } = useClientNav();
   // The activity feed is the only thing on this page scoped to a year, so
@@ -103,9 +104,7 @@ export default function OverviewPage() {
   }, [clientId, reloadKey]);
 
   const today = todayLocalISO();
-  const overdueFiling = compliance.filter(
-    (c) => c.due_date < today && c.filing_status !== "filed"
-  );
+  const overdueFiling = compliance.filter((c) => isOverdue(c, today));
   const filedCount = compliance.filter((c) => c.filing_status === "filed").length;
   // apex-overview-practice-07(a): loading/error/loadFailed/no-client used to
   // be EARLY RETURNS for the whole page, which is what put `<Hub>` behind
@@ -293,14 +292,14 @@ export default function OverviewPage() {
         </div>
 
         {/* Upcoming deadlines */}
-        {compliance.filter((c) => c.filing_status !== "filed" && c.due_date >= today).length > 0 && (
+        {compliance.filter((c) => isUpcoming(c, today)).length > 0 && (
           <div className="bg-white rounded-xl border border-ps-border p-3 space-y-2">
             <p className="text-3xs font-semibold uppercase tracking-widest text-ps-hint">
               Upcoming
             </p>
             <div className="space-y-2">
               {compliance
-                .filter((c) => c.filing_status !== "filed" && c.due_date >= today)
+                .filter((c) => isUpcoming(c, today))
                 .slice(0, 4)
                 .map((c) => (
                   <div key={c.id} className="flex items-center justify-between gap-2">
