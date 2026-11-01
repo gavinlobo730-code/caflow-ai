@@ -11,7 +11,9 @@ name: Backend CI
 #
 # The filter has moved INSIDE, to the `scope` job below: both required jobs now
 # always run and always report, and only their expensive steps are skipped when
-# nothing under apps/api changed. A frontend-only PR pays a few seconds instead
+# the change touches ONLY the two frontends (apps/web, apps/marketing): the suite
+# also reads CLAUDE.md, docs/, render.yaml and shared/, so a change to any of
+# those runs it. A frontend-only PR pays a few seconds instead
 # of ~7 minutes, so the minute budget this file worries about is preserved.
 #
 # `paths-ignore` is NOT the fix. It is not the inverse of `paths` — a PR
@@ -73,14 +75,23 @@ jobs:
             echo "No usable base commit — running the full backend suite."
             exit 0
           fi
-          changed="$(git diff --name-only "$base" "$head")"
-          if printf '%s\n' "$changed" \
-             | grep -qE '^(apps/api/|\.github/workflows/backend-ci\.yml$)'; then
+          # --no-renames: with rename detection (git's default) a file moved out of apps/api into apps/web lists only its NEW path, so a diff
+          # that DELETES a backend file would read as confined to the frontends and skip the suite.
+          changed="$(git diff --name-only --no-renames "$base" "$head")"
+          # THE BACKEND SUITE READS THE WHOLE REPOSITORY, NOT ONLY apps/api: CLAUDE.md (its size limit and the design-record index), docs/
+          # (the open-items ledger, the design records, the compliance notes), render.yaml, shared/ (the parity vectors) and the workflows
+          # are all opened by tests. Skipping the suite for a change to any of them reported green on a diff nothing had checked: the
+          # Trial Balance change took CLAUDE.md over its 200,000-character limit and three merges went through before a change that
+          # touched the backend ran the test. So the one diff that cannot break a backend test is a diff that touches ONLY the two
+          # frontends (the python guards that read those run in `browser-contract` below).
+          # A here-string and not `printf | grep -q`: under `pipefail` grep -q quits at the first line it wants, printf then dies of SIGPIPE
+          # on a long list, the pipeline reports 141, and the `if` would read a changed backend as "no match" and skip the suite.
+          if grep -qvE '^apps/(web|marketing)/' <<<"$changed"; then
             echo "api=true" >> "$GITHUB_OUTPUT"
-            echo "Backend files changed — running the full backend suite."
+            echo "Something outside the two frontends changed — running the full backend suite."
           else
             echo "api=false" >> "$GITHUB_OUTPUT"
-            echo "No backend files changed — the required jobs will report green without running."
+            echo "Only a frontend changed — the required jobs will report green without running."
           fi
           # A frontend-only diff used to leave EVERY python guard unrun, which
           # is how `browser-contract` below came to exist. See its header.
@@ -90,7 +101,7 @@ jobs:
           # as an apps/web diff did, and
           # test_the_marketing_site_says_what_the_product_does.py would never
           # run on the change it exists to check.
-          if printf '%s\n' "$changed" | grep -qE '^apps/(web|marketing)/'; then
+          if grep -qE '^apps/(web|marketing)/' <<<"$changed"; then
             echo "web=true" >> "$GITHUB_OUTPUT"
             echo "A frontend changed — the browser-contract guards will run."
           else

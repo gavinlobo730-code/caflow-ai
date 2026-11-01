@@ -62,8 +62,11 @@ jobs:
             echo "No usable base commit — running the full frontend suite."
             exit 0
           fi
-          if git diff --name-only "$base" "$head" \
-             | grep -qE '^(apps/web/|\.github/workflows/frontend-ci\.yml$)'; then
+          # shared/ holds the parity vectors the frontend tests READ (gst, e-way, IRN, money grouping, entity type), so a change there is a
+          # frontend change: without it a vector edited to fit the backend could leave the browser's copy of the rule failing unrun.
+          # --no-renames and a here-string for the reasons given in backend-ci.yml's detect step.
+          changed="$(git diff --name-only --no-renames "$base" "$head")"
+          if grep -qE '^(apps/web/|shared/|\.github/workflows/frontend-ci\.yml$)' <<<"$changed"; then
             echo "web=true" >> "$GITHUB_OUTPUT"
             echo "Frontend files changed — running the full frontend suite."
           else
