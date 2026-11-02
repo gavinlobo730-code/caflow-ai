@@ -50,9 +50,14 @@ tzdata>=2026.5
 reportlab>=4.0.0
 xhtml2pdf>=0.2.16
 # pypdf is xhtml2pdf's, not ours: the product never reads a PDF with it. The floor is here only because 6.19.0
-# carries five advisories (CVE-2026-113786, -113792, -113793, -113794, -113795; fixes 6.20.0 to 6.21.1) that
-# the audit gate reports as new, and a floor in this file is how a transitive pin is moved.
-pypdf>=6.21.1
+# carries five advisories (CVE-2026-113786, -113792, -113793, -113794, -113795; fixes 6.20.0 to 6.21.1) and 6.21.2
+# seven more (CVE-2026-119203 to -119209; fixes 6.21.3 and 6.21.4) that the audit gate reports as new, and a floor
+# in this file is how a transitive pin is moved.
+pypdf>=6.21.4
+# pyasn1 is pyasn1-modules', which is a dependency of the Google client libraries: the product decodes no ASN.1 itself.
+# The floor is here for the same reason as pypdf's: 0.6.4 carries four advisories (CVE-2026-119194 to -119197, BER/DER
+# decoding resource exhaustion; fix 0.6.5) that the audit gate reports as new.
+pyasn1>=0.6.5
 openpyxl>=3.1.0
 pandas>=2.0.0
 pdfplumber>=0.10.0
