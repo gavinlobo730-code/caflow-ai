@@ -38,6 +38,7 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { selectAll } from "@/lib/supabase/selectAll";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -566,9 +567,21 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
+/** The annual forms the server's walk-through covers (services/filing_demo/mca.py); another form has no walk-through, so no control is drawn for it. */
+const DEMO_MCA_FORMS = ["AOC-4", "MGT-7", "MGT-7A", "ADT-1"];
+
 export default function MCAPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState(0);
+  // The filing walk-through (a SIMULATION that transmits and files nothing). Offered only where the SERVER says the flow exists, and only on an
+  // annual form not yet filed: a control the server would refuse is a dead control (POST-A-003).
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ clientId: string; filingId: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => { if (!cancelled) setDemoFlows(c.enabled ? c.flows : []); });
+    return () => { cancelled = true; };
+  }, []);
   const [firmId, setFirmId] = useState("");
   const [filings, setFilings] = useState<MCAFiling[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -862,6 +875,9 @@ export default function MCAPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
+      {demo && (
+        <FilingDemoWizard flow="mca" clientId={demo.clientId} refData={{ filing_id: demo.filingId }} onClose={() => setDemo(null)} />
+      )}
       <PageHeader
         title="MCA / ROC Module"
         subtitle="Ministry of Corporate Affairs — Companies Act 2013 compliance tracker"
@@ -973,7 +989,13 @@ export default function MCAPage() {
               f.status === "Not applicable" ? (
                 <span className="text-xs text-ps-hint">Not applicable</span>
               ) : f.status !== "Filed" ? (
-                <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+                <span className="inline-flex items-center gap-3">
+                  <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+                  {demoFlows.includes("mca") && DEMO_MCA_FORMS.includes(f.form_type) && f.client_id && (
+                    <button onClick={() => setDemo({ clientId: f.client_id, filingId: f.id })}
+                      className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention font-medium">File (demo)</button>
+                  )}
+                </span>
               ) : (
                 <span className="text-xs text-ps-hint">Done</span>
               )

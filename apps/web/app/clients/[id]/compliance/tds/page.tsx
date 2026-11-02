@@ -20,6 +20,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { minorHeadLabel } from "@/lib/tds/minorHead";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -403,6 +404,16 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ return_type: "26Q", quarter: "Q1", financial_year: "" });
 
+  // The filing walk-through (a SIMULATION that transmits and files nothing). Offered only where the SERVER says the flow exists, and only on a
+  // statement the CA has approved: a control the server would refuse is a dead control (POST-A-003).
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => { if (!cancelled) setDemoFlows(c.enabled ? c.flows : []); });
+    return () => { cancelled = true; };
+  }, []);
+
   const [showCompute, setShowCompute] = useState(false);
   const [computeForm, setComputeForm] = useState({
     return_type: "26Q", quarter: "Q1", financial_year: "",
@@ -551,6 +562,9 @@ function ReturnsTab({ clientId }: { clientId: string }) {
 
   return (
     <div className="space-y-4">
+      {demo && (
+        <FilingDemoWizard flow="tds" clientId={clientId} refData={{ return_id: demo.id }} onClose={() => setDemo(null)} />
+      )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Returns</h3>
         <div className="flex gap-2">
@@ -785,6 +799,13 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   {r.status === "prepared" && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
+                  )}
+                  {/* Only on an approved statement, and only where the server says the walk-through exists — the dead-control rule. */}
+                  {r.status === "ca_approved" && demoFlows.includes("tds") && (
+                    <button onClick={() => setDemo({ id: r.id as string })}
+                      className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention">
+                      File (demo)
+                    </button>
                   )}
                 </td>
               </tr>

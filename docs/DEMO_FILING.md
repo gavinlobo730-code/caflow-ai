@@ -71,40 +71,33 @@ already happened twice and been undone twice:
 
 ## Where a CA reaches it
 
-On the five module screens where the return actually lives — each gated on
-`fetchFilingDemoCapabilities()`:
+On the screens where the return actually lives — each gated on
+`fetchFilingDemoCapabilities()`, on the flow appearing in the flows the server lists, and on the status the flow itself needs:
 
-| Screen | Flows |
-|---|---|
-| `app/clients/[id]/compliance/gst/page.tsx` | `gstr1`, `gstr3b`, `gstr9` |
-| `app/clients/[id]/compliance/mca/page.tsx` | `mca` |
-| `app/clients/[id]/payroll/page.tsx` | `pf`, `esi` |
-| `app/clients/[id]/tax/filing/page.tsx` | `itr` |
-| `app/tds/returns/page.tsx` | `tds` |
+| Screen | Flows | Offered when |
+|---|---|---|
+| `app/clients/[id]/compliance/gst/page.tsx` | `gstr1`, `gstr3b`, `gstr9` | the return is `ca_approved` |
+| `app/gst/gstr1/page.tsx` (firm-level workspace) | `gstr1` | the return is `ca_approved` |
+| `app/gst/gstr3b/page.tsx` (firm-level workspace) | `gstr3b` | the return is `ca_approved` |
+| `app/clients/[id]/compliance/mca/page.tsx` | `mca` | an annual form not yet filed |
+| `app/mca/page.tsx` (firm-level tracker) | `mca` | an annual form (AOC-4, MGT-7, MGT-7A, ADT-1) not yet filed |
+| `app/clients/[id]/payroll/page.tsx` | `pf`, `esi` | the run is `finalized` or `paid` |
+| `app/payroll/page.tsx` (firm-level statutory tab) | `pf`, `esi` | the run is `finalized` or `paid`, with employees to report |
+| `app/clients/[id]/tax/filing/page.tsx` | `itr` | |
+| `app/tds/returns/page.tsx` | `tds` | the statement is `ca_approved` |
+| `app/clients/[id]/compliance/tds/page.tsx` (returns tab) | `tds` | the statement is `ca_approved` |
 
 **Not from `/deadlines`.** A deadline row is a calendar obligation, not a saved
 return, so there is nothing for a flow to walk through; the CA opens the client
 and demos it where the figures are.
 
-**Five screens hold the same returns and do NOT offer it yet** — a gap, not a
-rule, and each is a small wiring change (probe capabilities, pass the record
-id) rather than anything new:
-
-| Screen | Flow it should offer | The id it already has |
-|---|---|---|
-| `app/gst/gstr1/page.tsx` | `gstr1` | `getGSTR1Return(clientId, period).id` |
-| `app/gst/gstr3b/page.tsx` | `gstr3b` | `getGSTR3BReturn(clientId, period).id` |
-| `app/clients/[id]/compliance/tds/page.tsx` | `tds` | the `tds_returns` row's `id` |
-| `app/mca/page.tsx` | `mca` | the `mca_filings` row's `id` |
-| `app/payroll/page.tsx` | `pf`, `esi` | `run.id` |
-
-The two `app/gst/*` workspaces are arguably the PRIMARY screens for those
-returns — compute, CA Approve, Download JSON, Mark as Filed all live there —
-so the demo being absent from them is the largest of the five gaps. Whichever
-is wired, the rule holds: probe `fetchFilingDemoCapabilities()` first, gate the
-control on the flow appearing in `flows`, and gate it on the same status the
-flow does (`ca_approved` for the GST and TDS returns, `finalized`/`paid` for a
-payroll run).
+**The five firm-level or tab screens that used to be a dead end** (the two `app/gst/*` workspaces, which are the primary screens for those
+returns because compute, CA Approve, Download JSON and Mark as Filed live there, the TDS returns tab, the firm-level MCA tracker and the
+firm-level payroll statutory tab) were wired on 1-11-2026 (POST-A-003). A guard
+(`apps/web/scripts/one-filing-demo-and-the-kill-switch-reaches-it.test.ts`) reads that each probes the server first and gates the control on
+the flow and on the status above; three scenarios driven in Chromium (`scripts/drive/scenarios/filingDemoWiring.mjs`) show the firm-level MCA
+tracker offering the walk-through on an unfiled AOC-4 only, none when the server switches it off, and none when the probe fails.
+The GSTR-1, GSTR-3B, TDS-tab and payroll controls are held by the source guard and a type check, and were not driven in a browser.
 
 ## The kill switch
 
