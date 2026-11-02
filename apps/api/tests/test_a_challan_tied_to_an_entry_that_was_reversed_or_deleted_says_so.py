@@ -31,6 +31,7 @@ FIRM = "11111111-1111-1111-1111-111111111111"
 A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 USER = {"id": "u1", "firm_id": FIRM, "auth_user_id": "au1", "role": "Partner", "email": "p@example.test"}
+ACC_TDS, ACC_BANK = "acc-tds", "acc-bank"
 
 
 def _id(n: int) -> str:
@@ -43,6 +44,16 @@ LIVE, REVERSED, DELETED, OTHER_CLIENT, GONE = (_id(i) for i in (1, 2, 3, 4, 5))
 def _entry(db, je, client, *, reversed_=False, deleted=None):
     db.seed("journal_entries", {"id": je, "firm_id": FIRM, "client_id": client, "entry_date": "2026-07-07", "reference_no": f"R-{je[-2:]}",
                                 "narration": "TDS paid", "is_reversed": reversed_, "deleted_at": deleted})
+
+
+def _make_live_a_real_payment(db):
+    """A "live" link is one whose entry is in the books AND still debits the account the challan clears, so the chart must hold the account
+    and the entry must debit it. In a chart with no such account the link is NOT checked and reads "unknown"
+    (tests/test_a_tied_entry_that_stopped_debiting_the_liability_says_so.py)."""
+    db.seed("chart_of_accounts", {"id": ACC_TDS, "firm_id": FIRM, "client_id": A, "account_name": "TDS Payable", "is_active": True})
+    db.seed("chart_of_accounts", {"id": ACC_BANK, "firm_id": FIRM, "client_id": A, "account_name": "Bank", "is_active": True})
+    db.seed("journal_lines", {"journal_entry_id": LIVE, "account_id": ACC_TDS, "debit_paise": 100_000_00, "credit_paise": 0})
+    db.seed("journal_lines", {"journal_entry_id": LIVE, "account_id": ACC_BANK, "debit_paise": 0, "credit_paise": 100_000_00})
 
 
 def _challan(db, cid, link, client=A, no="CH"):
@@ -104,6 +115,7 @@ def rows_for(db, *links):
 
 
 def test_a_live_link_says_tied_and_has_no_note(world):
+    _make_live_a_real_payment(world)
     row, = rows_for(world, LIVE)
     assert row["ledger_link"] == {"state": "live", "label": "Tied to an entry", "note": None}
 
@@ -148,6 +160,7 @@ def test_no_tied_challan_means_no_read_of_the_ledger(world, monkeypatch):
 # ── the surfaces ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_the_challan_list_carries_the_link_on_each_tied_row_over_the_whole_window(world):
+    _make_live_a_real_payment(world)
     _challan(world, _id(201), LIVE, no="L"); _challan(world, _id(202), REVERSED, no="R"); _challan(world, _id(203), None, no="N")
     out = lists.challans(world, FIRM, A, from_date=None, to_date=None, limit=50, offset=0)
     by_no = {c["challan_no"]: c for c in out["challans"]}
@@ -185,7 +198,6 @@ def test_a_stale_link_can_be_taken_back_and_the_challan_tied_again(world):
 
 # ── an entry that no longer records a payment is never the payment ─────────────────────────────────────────────────────
 
-ACC_TDS, ACC_BANK = "acc-tds", "acc-bank"
 DRAFT, REVERSAL, GOOD, OLD = (_id(i) for i in (11, 12, 13, 14))
 
 
