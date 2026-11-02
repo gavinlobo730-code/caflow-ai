@@ -7,6 +7,7 @@ import { request } from "@/lib/api";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -673,31 +674,26 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={onClose}>
-      <div className="bg-white rounded-xl max-w-sm w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex gap-2">
-          <Trash2 size={15} className="text-red-600 shrink-0 mt-0.5" />
-          <div>
-            <h3 className="text-sm font-semibold text-ps-ink">Delete {asset.asset_code ?? asset.asset_name}?</h3>
-            <p className="text-2xs text-ps-label mt-1">
-              For an asset created by mistake. Its acquisition journal is reversed and the
-              asset leaves the register — its code is kept so no later asset can take it.
-              An asset with depreciation posted against it cannot be deleted; reverse the
-              months first.
-            </p>
-          </div>
-        </div>
-
-        {error && <Callout tone="problem">{error}</Callout>}
-
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
-          <Button variant="plain" size="none" onClick={remove} disabled={working} className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 disabled:opacity-50">
-            {working ? "Deleting…" : "Delete asset"}
-          </Button>
-        </div>
+    <Modal title={`Delete ${asset.asset_code ?? asset.asset_name}?`} onClose={() => { if (!working) onClose(); }}>
+      <div className="flex gap-2">
+        <Trash2 size={15} className="text-red-600 shrink-0 mt-0.5" />
+        <p className="text-2xs text-ps-label">
+          For an asset created by mistake. Its acquisition journal is reversed and the
+          asset leaves the register — its code is kept so no later asset can take it.
+          An asset with depreciation posted against it cannot be deleted; reverse the
+          months first.
+        </p>
       </div>
-    </div>
+
+      {error && <Callout tone="problem">{error}</Callout>}
+
+      <div className="flex gap-2">
+        <button onClick={onClose} disabled={working} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <Button variant="plain" size="none" onClick={remove} disabled={working} className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 disabled:opacity-50">
+          {working ? "Deleting…" : "Delete asset"}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

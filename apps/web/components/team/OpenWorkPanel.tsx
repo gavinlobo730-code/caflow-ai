@@ -19,7 +19,8 @@
  * many are not shown rather than implying the list is the whole of their work.
  */
 import { useState } from "react";
-import { UserX, X } from "lucide-react";
+import { UserX } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,27 +79,21 @@ function ReassignModal({ task, members, onClose, onReassigned }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Reassign task</h3>
-          <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-        <p className="text-sm text-ps-label">{task.title ?? "Untitled task"}</p>
-        {error && <Callout tone="problem">{error}</Callout>}
-        <div>
-          <label htmlFor="reassign-to" className="text-xs font-medium text-ps-body block mb-1">Reassign to:</label>
-          <select id="reassign-to" value={targetId} onChange={(e) => setTargetId(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-            {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.user_name} ({m.role})</option>)}
-          </select>
-        </div>
-        <div className="flex gap-2 justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={confirm} disabled={saving || !targetId}>{saving ? "Saving…" : "Confirm"}</Button>
-        </div>
+    <Modal title="Reassign task" onClose={() => { if (!saving) onClose(); }}>
+      <p className="text-sm text-ps-label">{task.title ?? "Untitled task"}</p>
+      {error && <Callout tone="problem">{error}</Callout>}
+      <div>
+        <label htmlFor="reassign-to" className="text-xs font-medium text-ps-body block mb-1">Reassign to:</label>
+        <select id="reassign-to" value={targetId} onChange={(e) => setTargetId(e.target.value)}
+          className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
+          {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.user_name} ({m.role})</option>)}
+        </select>
       </div>
-    </div>
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button size="sm" onClick={confirm} disabled={saving || !targetId}>{saving ? "Saving…" : "Confirm"}</Button>
+      </div>
+    </Modal>
   );
 }
 

@@ -2,7 +2,7 @@
 // script that rewrites the baseline, so the two cannot read different populations.
 import fs from "node:fs";
 import path from "node:path";
-import { findControls } from "./formControlNames.ts";
+import { findControls, findSharedUses, type SharedUse } from "./formControlNames.ts";
 
 export const WEB = path.resolve(import.meta.dirname, "..");
 
@@ -46,6 +46,17 @@ export function spreadByFile(): Record<string, number> {
   for (const f of SOURCES) {
     const n = findControls(fs.readFileSync(path.join(WEB, f), "utf8"), f).filter((c) => c.verdict === "spread").length;
     if (n > 0) out[f] = n;
+  }
+  return out;
+}
+
+/** Every use of a shared form component in a file that is not itself a shared primitive or a lookup, by file, with the verdict the rule reached. */
+export function sharedUsesByFile(): Record<string, SharedUse[]> {
+  const out: Record<string, SharedUse[]> = {};
+  for (const f of SOURCES) {
+    if (f.startsWith("components/ui/")) continue;
+    const uses = findSharedUses(fs.readFileSync(path.join(WEB, f), "utf8"), f);
+    if (uses.length > 0) out[f] = uses;
   }
   return out;
 }

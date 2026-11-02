@@ -99,7 +99,15 @@ function keyOf(el: Opening): string {
   return `${tagName(el)}#${createHash("sha1").update(collapse(el.getText())).digest("hex").slice(0, 8)}`;
 }
 
-export function findControls(source: string, fileName = "x.tsx"): Control[] {
+/** What the naming checks need to know about one source file: which labels point at which ids, and whether its `Field` can be trusted. */
+interface FileFacts {
+  sf: ts.SourceFile;
+  fieldNames: boolean;
+  labelFor: Set<string>;
+  openings: Opening[];
+}
+
+function factsOf(source: string, fileName: string): FileFacts {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const fieldNames = fieldNamesItsChildren(sf);
   const labelFor = new Set<string>();
@@ -115,31 +123,121 @@ export function findControls(source: string, fileName = "x.tsx"): Control[] {
     ts.forEachChild(n, visit);
   };
   visit(sf);
+  return { sf, fieldNames, labelFor, openings };
+}
 
+/**
+ * How an element is named, or null: one of `aria` (any of `ariaProps`), `inside label`, `inside Field`, `id+htmlFor`. The order is the order the
+ * rule has always checked in; a spread is the caller's to judge, because what a spread means differs between a native control and a component.
+ */
+function namedBy(el: Opening, facts: FileFacts, ariaProps: readonly string[]): string | null {
+  if (ariaProps.some((a) => attr(el, a))) return "aria";
+  // The element itself is the opening's parent, or the self-closing node; walk up through its JSX ancestors for a label or a Field.
+  const self: ts.Node = ts.isJsxOpeningElement(el) ? el.parent : el;
+  for (let p: ts.Node | undefined = self.parent; p; p = p.parent) {
+    if (ts.isJsxElement(p)) {
+      const t = tagName(p.openingElement);
+      if (t === "label") return "inside label";
+      if (t === "Field" && facts.fieldNames) return "inside Field";
+    }
+  }
+  const id = valueText(attr(el, "id"));
+  if (id !== null && facts.labelFor.has(id)) return "id+htmlFor";
+  return null;
+}
+
+const spreads = (el: Opening) => el.attributes.properties.some((p) => ts.isJsxSpreadAttribute(p));
+
+export function findControls(source: string, fileName = "x.tsx"): Control[] {
+  const facts = factsOf(source, fileName);
   const out: Control[] = [];
-  for (const el of openings) {
+  for (const el of facts.openings) {
     const tag = tagName(el);
     if (!CONTROL_TAGS.has(tag)) continue;
-    const line = sf.getLineAndCharacterOfPosition(el.getStart()).line + 1;
+    const line = facts.sf.getLineAndCharacterOfPosition(el.getStart()).line + 1;
     const key = keyOf(el);
     const type = valueText(attr(el, "type"));
     if (tag === "input" && type !== null && UNNAMED_TYPES.has(type)) { out.push({ tag, line, key, verdict: "named", via: `type=${type}` }); continue; }
-    if (attr(el, "aria-label") || attr(el, "aria-labelledby")) { out.push({ tag, line, key, verdict: "named", via: "aria" }); continue; }
-    // The element itself is the opening's parent, or the self-closing node; walk up through its JSX ancestors for a label or a Field.
-    const self: ts.Node = ts.isJsxOpeningElement(el) ? el.parent : el;
-    let inside: string | null = null;
-    for (let p: ts.Node | undefined = self.parent; p; p = p.parent) {
-      if (ts.isJsxElement(p)) {
-        const t = tagName(p.openingElement);
-        if (t === "label") { inside = "label"; break; }
-        if (t === "Field" && fieldNames) { inside = "Field"; break; }
-      }
-    }
-    if (inside) { out.push({ tag, line, key, verdict: "named", via: `inside ${inside}` }); continue; }
-    const id = valueText(attr(el, "id"));
-    if (id !== null && labelFor.has(id)) { out.push({ tag, line, key, verdict: "named", via: "id+htmlFor" }); continue; }
-    if (el.attributes.properties.some((p) => ts.isJsxSpreadAttribute(p))) { out.push({ tag, line, key, verdict: "spread" }); continue; }
+    const via = namedBy(el, facts, ["aria-label", "aria-labelledby"]);
+    if (via) { out.push({ tag, line, key, verdict: "named", via: via === "aria" ? "aria" : via }); continue; }
+    if (spreads(el)) { out.push({ tag, line, key, verdict: "spread" }); continue; }
     out.push({ tag, line, key, verdict: "unnamed" });
+  }
+  return out;
+}
+
+// ── The second half of the rule: the shared components that render a control, judged where they are USED ─────────────────────────────────
+//
+// A native `<input>` is judged where it is written. `Input`, `DateInput`, `Combobox` and the entity lookups render one from inside, so the
+// native rule reads their file and passes, and a screen that drops one in with a bare `<label>` beside it (no `htmlFor`, no `id`) got a field
+// a screen reader announces as "edit text". The names below are the call sites the rule did not see. A component is the one meant only when
+// the file IMPORTS it from the module that defines it (a local `Select` is nobody's), whatever it is called there.
+//
+// What names one: the prop that component takes for it (`aria-label` / `aria-labelledby` on the three that render a bare control and on
+// `DateInput`, whose props are an input's; `ariaLabel` on `Combobox` and the lookups, which do not take the others), a `<label>` that wraps
+// it, a `Field` that ties its label to its children, or an `id` a `<label htmlFor>` in the file points at. `YearPicker` and
+// `ServiceCataloguePicker` are not here on purpose: each supplies a name of its own when the caller gives none.
+//
+// WHAT IT DOES NOT SEE: a component imported under a module path other than the one listed, a name passed through a spread (counted apart),
+// and whether the name is a good one.
+export interface SharedControl { module: RegExp; aria: readonly string[] }
+
+const NATIVE_ARIA = ["aria-label", "aria-labelledby"] as const;
+const PROP_ARIA = ["ariaLabel"] as const;
+const lookup = (file: string): SharedControl => ({ module: new RegExp(`(^|/)lookups/${file}$`), aria: PROP_ARIA });
+
+export const SHARED_CONTROLS: Readonly<Record<string, SharedControl>> = {
+  Input: { module: /(^|\/)ui\/field$/, aria: NATIVE_ARIA },
+  Textarea: { module: /(^|\/)ui\/field$/, aria: NATIVE_ARIA },
+  Select: { module: /(^|\/)ui\/field$/, aria: NATIVE_ARIA },
+  DateInput: { module: /(^|\/)ui\/date-input$/, aria: NATIVE_ARIA },
+  Combobox: { module: /(^|\/)ui\/combobox$/, aria: PROP_ARIA },
+  ClientLookup: lookup("ClientLookup"),
+  CustomerLookup: lookup("CustomerLookup"),
+  VendorLookup: lookup("VendorLookup"),
+  StateLookup: lookup("StateLookup"),
+  AccountLookup: lookup("AccountLookup"),
+  HsnLookup: lookup("HsnLookup"),
+  EntityLookup: lookup("EntityLookup"),
+};
+
+export interface SharedUse {
+  /** The component, under its own name (an alias in the file is resolved back to it). */
+  component: string;
+  line: number;
+  verdict: "named" | "spread" | "unnamed";
+  via?: string;
+}
+
+/** The local names under which a file imports the shared components, mapped back to the component. */
+function importedShared(sf: ts.SourceFile): Map<string, string> {
+  const local = new Map<string, string>();
+  sf.forEachChild((n) => {
+    if (!ts.isImportDeclaration(n) || !ts.isStringLiteral(n.moduleSpecifier)) return;
+    const named = n.importClause?.namedBindings;
+    if (!named || !ts.isNamedImports(named)) return;
+    for (const e of named.elements) {
+      const original = e.propertyName?.text ?? e.name.text;
+      const shared = SHARED_CONTROLS[original];
+      if (shared && shared.module.test((n.moduleSpecifier as ts.StringLiteral).text)) local.set(e.name.text, original);
+    }
+  });
+  return local;
+}
+
+export function findSharedUses(source: string, fileName = "x.tsx"): SharedUse[] {
+  const facts = factsOf(source, fileName);
+  const local = importedShared(facts.sf);
+  if (local.size === 0) return [];
+  const out: SharedUse[] = [];
+  for (const el of facts.openings) {
+    const component = local.get(tagName(el));
+    if (!component) continue;
+    const line = facts.sf.getLineAndCharacterOfPosition(el.getStart()).line + 1;
+    const via = namedBy(el, facts, SHARED_CONTROLS[component].aria);
+    if (via) out.push({ component, line, verdict: "named", via });
+    else if (spreads(el)) out.push({ component, line, verdict: "spread" });
+    else out.push({ component, line, verdict: "unnamed" });
   }
   return out;
 }

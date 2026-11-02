@@ -17,3 +17,14 @@ export function afterTab(args: { isLastDataCell: boolean; rowIndex: number; rowC
   if (rowIndex < rowCount - 1) return { kind: "next" };
   return lastLineHasContent ? { kind: "add" } : { kind: "default" };
 }
+
+/**
+ * A copy of a bill line for Ctrl+D (POST-A-128): the same fields under a new key, with the not-stated flags KEPT.
+ *
+ * `unread` lists the fields an extraction left for the CA because the document did not state them (AI-01), and the flag is what makes the save
+ * refuse a line whose rate or quantity nobody chose; `gst_rate: 0` on such a line is a placeholder and not a 0% rate. Typing into the field
+ * is what clears the flag, so a copy, which types nothing, carries it (as its own array: the two lines clear their flags independently).
+ */
+export function copyOfLine<T extends { _k: number; unread?: readonly string[] }>(line: T, key: number): T {
+  return { ...line, _k: key, unread: line.unread ? [...line.unread] : undefined };
+}

@@ -140,7 +140,7 @@ export default function DeclarationsPage() {
         <CardContent className="pt-5 flex flex-wrap items-end gap-3">
           <div className="min-w-[260px]">
             <label className="block text-xs text-ps-label mb-1">Client</label>
-            <ClientLookup clients={clients} value={clientId} onChange={setClientId} />
+            <ClientLookup ariaLabel="Client" clients={clients} value={clientId} onChange={setClientId} />
           </div>
           <div>
             <label className="block text-xs text-ps-label mb-1">Financial year</label>

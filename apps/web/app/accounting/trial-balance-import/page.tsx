@@ -174,7 +174,7 @@ export default function TrialBalanceImportPage() {
           <CardContent className="pt-5 pb-5 flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[220px]">
               <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
-              <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
+              <ClientLookup ariaLabel="Client" clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
             </div>
             <div className="min-w-[180px]">
               <label htmlFor="tb-opening-date" className="block text-xs font-medium text-ps-label mb-1">Opening date</label>

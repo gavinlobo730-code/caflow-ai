@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Upload, Download, Trash2, FolderOpen, X } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
@@ -376,59 +377,48 @@ export default function DocumentsPage() {
 
       {/* Version Prompt Modal */}
       {versionPromptDoc && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h3 className="text-sm font-semibold text-ps-ink">Document already exists</h3>
-            <p className="text-xs text-ps-label">
-              A document with the label <strong>{docLabel(versionPromptDoc)}</strong> already exists (v{versionPromptDoc.version ?? 1}).
-              Upload as a new version?
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setVersionPromptDoc(null)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
-                Cancel
-              </button>
-              <button
-                onClick={() => { setVersionPromptDoc(null); handleUploadDocument(false, null); }}
-                className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
-              >
-                Upload as New
-              </button>
-              <button
-                onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(true, doc); }}
-                className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark"
-              >
-                New Version
-              </button>
-            </div>
+        <Modal title="Document already exists" onClose={() => setVersionPromptDoc(null)}>
+          <p className="text-xs text-ps-label">
+            A document with the label <strong>{docLabel(versionPromptDoc)}</strong> already exists (v{versionPromptDoc.version ?? 1}).
+            Upload as a new version?
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button onClick={() => setVersionPromptDoc(null)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
+              Cancel
+            </button>
+            <button
+              onClick={() => { setVersionPromptDoc(null); handleUploadDocument(false, null); }}
+              className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
+            >
+              Upload as New
+            </button>
+            <button
+              onClick={() => { const doc = versionPromptDoc; setVersionPromptDoc(null); handleUploadDocument(true, doc); }}
+              className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark"
+            >
+              New Version
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Version History Modal */}
       {showVersionHistory && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-ps-ink">Version History — {showVersionHistory}</h3>
-              <button onClick={() => setShowVersionHistory(null)} className="text-ps-hint hover:text-ps-label">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="space-y-2">
-              {versionHistory.map((v) => (
-                <div key={v.id} className="flex items-center justify-between py-2 border-b border-ps-border last:border-0">
-                  <div>
-                    <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
-                    <span className="text-xs text-ps-label">{v.file_name}</span>
-                  </div>
-                  <span className="text-xs text-ps-hint">
-                    {formatDate(v.created_at)}
-                  </span>
+        <Modal title={`Version History — ${showVersionHistory}`} maxWidthClass="max-w-lg" onClose={() => setShowVersionHistory(null)}>
+          <div className="space-y-2">
+            {versionHistory.map((v) => (
+              <div key={v.id} className="flex items-center justify-between py-2 border-b border-ps-border last:border-0">
+                <div>
+                  <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-mono mr-2">v{v.version ?? 1}</span>
+                  <span className="text-xs text-ps-label">{v.file_name}</span>
                 </div>
-              ))}
-            </div>
+                <span className="text-xs text-ps-hint">
+                  {formatDate(v.created_at)}
+                </span>
+              </div>
+            ))}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

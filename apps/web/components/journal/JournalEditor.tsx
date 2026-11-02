@@ -46,6 +46,7 @@ import {
   applyJournalDraft, validateJournalDraft, type JournalDraftFields,
 } from "@/lib/journal/journalDraft";
 import { afterEnter, afterTab, balancingLeg, isAmountless } from "@/lib/journal/lineFlow";
+import { isDuplicateLineKey, isMacPlatform, withCopyAfter } from "@/lib/ui/duplicateLineKey";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 // The totals are a RENDERING, not an input: Indian grouping (D6) from the one
 // authority, the same one the Journal list reads. `rupeeInputFromPaise` is the
@@ -296,6 +297,17 @@ export function JournalEditor({
     setPendingFocus(line.key);
   }
 
+  /** Ctrl+D (Command+D on a Mac) copies the line the person is on: the account, both amounts and the narration, placed right after it, with
+   *  focus on the copy's Account cell. It is the spreadsheet's fill-down, so the entry is out of balance by the copied amount until the CA
+   *  edits it, which the editor already says and the server would refuse to post (lib/ui/duplicateLineKey has the key and why). */
+  function onRowKeyDown(e: React.KeyboardEvent, idx: number) {
+    if (readOnly || !isDuplicateLineKey(e, isMacPlatform())) return;
+    e.preventDefault();
+    const copy = newLine();
+    setLines((prev) => withCopyAfter(prev, idx, (l) => ({ ...l, key: copy.key })));
+    setPendingFocus(copy.key);
+  }
+
   /** Enter finishes a line: on to the next one, or — on the last, while the
    *  entry still does not balance — a new one. See lib/journal/lineFlow. */
   function onLineEnter(e: React.KeyboardEvent, idx: number) {
@@ -544,7 +556,7 @@ export function JournalEditor({
                   `w-full px-2 py-1 border rounded focus:outline-none focus:ring-1 text-right text-xs disabled:bg-ps-bg ${
                     bad(side) ? "border-red-400 focus:ring-red-500 bg-state-problem-surface" : "border-ps-border focus:ring-brand"}`;
                 return (
-                  <tr key={line.key}>
+                  <tr key={line.key} onKeyDown={(e) => onRowKeyDown(e, idx)}>
                     <td className="py-1.5 pr-2">
                       <AccountLookup
                         accounts={allAccounts}
@@ -619,10 +631,13 @@ export function JournalEditor({
         </div>
 
         {!readOnly && (
-          <button type="button" onClick={addLine}
-                  className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-            <Plus size={12} /> Add line
-          </button>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button type="button" onClick={addLine}
+                    className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+              <Plus size={12} /> Add line
+            </button>
+            <span className="text-3xs text-ps-hint print:hidden">Ctrl+D (⌘D on a Mac) copies the line you are on.</span>
+          </div>
         )}
 
         {quickAdd && clientId && (

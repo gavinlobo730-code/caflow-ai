@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
+import { Modal } from "@/components/ui/modal";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -470,22 +471,19 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
 
   if (rows.length === 0) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 backdrop-blur-sm p-4">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
-          <p className="text-sm text-ps-body font-medium">Nothing to file</p>
-          <p className="text-xs text-ps-label">
-            {selected.some((f) => f.status === "Not applicable")
-              ? "Every selected filing is either already marked as Filed or recorded as not applicable."
-              : "All selected filings are already marked as Filed."}
-          </p>
-          <button
-            onClick={onClose}
-            className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
-          >
-            Close
-          </button>
-        </div>
-      </div>
+      <Modal title="Nothing to file" onClose={onClose}>
+        <p className="text-xs text-ps-label">
+          {selected.some((f) => f.status === "Not applicable")
+            ? "Every selected filing is either already marked as Filed or recorded as not applicable."
+            : "All selected filings are already marked as Filed."}
+        </p>
+        <button
+          onClick={onClose}
+          className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
+        >
+          Close
+        </button>
+      </Modal>
     );
   }
 
@@ -1030,20 +1028,17 @@ export default function GSTPage() {
       )}
 
       {showAddModal && clients.length === 0 && (
-        <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
-            <p className="text-sm text-ps-body font-medium">No clients found</p>
-            <p className="text-xs text-ps-label">
-              Add clients in the Clients section before adding GST filings.
-            </p>
-            <button
-              onClick={() => setShowAddModal(false)}
-              className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <Modal title="No clients found" onClose={() => setShowAddModal(false)}>
+          <p className="text-xs text-ps-label">
+            Add clients in the Clients section before adding GST filings.
+          </p>
+          <button
+            onClick={() => setShowAddModal(false)}
+            className="w-full border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg"
+          >
+            Close
+          </button>
+        </Modal>
       )}
 
       {/* ================================================================== */}

@@ -91,4 +91,32 @@ export const scenarios = [
       assert.match(await focusedLabel(page), /^Line 1 /, "Tab from the quantity left the line it is on");
     },
   },
+  {
+    id: "ctrl-d-copies-the-line-and-moves-to-the-same-cell-of-the-copy",
+    title: "Ctrl+D in a bill line's rate puts a copy of the line right after it and moves to the copy's rate; Ctrl+Shift+D does nothing",
+    async run(env) {
+      const { page } = env;
+      await openBill(env);
+      await page.fill('input[aria-label="Line 1 description"]', "Printer paper");
+      await page.fill('input[aria-label="Line 1 rate"]', "500");
+      await page.locator('input[aria-label="Line 1 rate"]').focus();
+      await page.keyboard.press("Control+Shift+D");
+      await page.waitForTimeout(250);
+      assert.equal(await lineCount(page), 1, "Ctrl+Shift+D copied the line");
+      // Ctrl+D on the Add line button, which is outside the grid's cells, copies nothing
+      await page.getByRole("button", { name: "Add line" }).focus();
+      await page.keyboard.press("Control+d");
+      await page.waitForTimeout(250);
+      assert.equal(await lineCount(page), 1, "Ctrl+D outside a cell of the grid copied a line");
+      await page.locator('input[aria-label="Line 1 rate"]').focus();
+      await page.keyboard.press("Control+d");
+      await until(async () => (await lineCount(page)) === 2, "the copy to appear");
+      assert.equal(await page.inputValue('input[aria-label="Line 2 description"]'), "Printer paper", "the copy did not carry the description");
+      assert.equal(await page.inputValue('input[aria-label="Line 2 rate"]'), "500", "the copy did not carry the rate");
+      await until(async () => (await focusedLabel(page)) === "Line 2 rate", "focus to move to the copy's rate");
+      // a copy is a line of its own: changing it leaves the first as it was
+      await page.fill('input[aria-label="Line 2 rate"]', "750");
+      assert.equal(await page.inputValue('input[aria-label="Line 1 rate"]'), "500", "the original followed the copy");
+    },
+  },
 ];

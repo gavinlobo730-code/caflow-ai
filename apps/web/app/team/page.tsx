@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
-import { Users, UserPlus, Shield, Mail, MoreVertical, X, AlertCircle, Lock, SlidersHorizontal, Smartphone } from "lucide-react";
+import { Users, UserPlus, Shield, Mail, MoreVertical, AlertCircle, Lock, SlidersHorizontal, Smartphone } from "lucide-react";
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import ResetAuthenticatorModal from "@/components/team/ResetAuthenticatorModal";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { formatDate } from "@/lib/dates/format";
 import { inviteEmailNotSentMessage, inviteEmailProblem } from "@/lib/auth/authErrorMessage";
 import { PageHeader } from "@/components/ui/page-header";
+import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -133,104 +134,99 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
     }
   }
 
+  // Each of the three states is a dialog of the shared Modal, which names it, closes it on Escape, moves focus in and gives it back, and keeps
+  // Tab inside it. While the invitation is being sent neither Escape, a click outside nor Cancel closes it, so a request in flight is not
+  // abandoned behind the person. The three states are ONE Modal instance (same element type in the same place), so its focus-in runs once, when
+  // the form opens; the form is gone by the time a result is shown, so the button that replaces it takes focus itself (`autoFocus`).
+  const closeUnlessSaving = () => { if (!saving) onClose(); };
+
   if (success && emailProblem) {
     return (
-      <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-          <h3 className="text-sm font-semibold text-ps-ink">Invite created — email not sent</h3>
-          <div role="alert" className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 flex gap-2 text-xs text-ps-body">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>{inviteEmailNotSentMessage(name, email, emailProblem)}</span>
-          </div>
-          <button onClick={onClose} className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
-            Close
-          </button>
+      <Modal title="Invite created — email not sent" onClose={onClose}>
+        <div role="alert" className="bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 flex gap-2 text-xs text-ps-body">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>{inviteEmailNotSentMessage(name, email, emailProblem)}</span>
         </div>
-      </div>
+        <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
+          Close
+        </button>
+      </Modal>
     );
   }
 
   if (success) {
     return (
-      <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 text-center">
+      <Modal title="Invitation Sent" onClose={onClose}>
+        <div className="space-y-4 text-center">
           <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
             <Mail className="w-6 h-6 text-green-600" />
           </div>
-          <h3 className="text-sm font-semibold text-ps-ink">Invitation Sent</h3>
           <p className="text-xs text-ps-label">
             Invite sent! {name} will receive a magic link at {email}. They&apos;ll be added as {role}.
           </p>
-          <button onClick={onClose} className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
+          <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
             Done
           </button>
         </div>
-      </div>
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Invite Team Member</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
+    <Modal title="Invite Team Member" onClose={closeUnlessSaving}>
+      {error && (
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 flex gap-2 text-xs text-state-problem">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>{error}</span>
         </div>
+      )}
 
-        {error && (
-          <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 flex gap-2 text-xs text-state-problem">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Full Name</label>
-            <input aria-label="Full Name"
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-              placeholder="e.g. Priya Sharma"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Email Address</label>
-            <input aria-label="Email Address"
-              type="email"
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-              placeholder="priya@firm.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
-            <select aria-label="Role"
-              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-              value={role}
-              onChange={e => setRole(e.target.value as Role)}
-            >
-              {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || !name.trim() || !email.trim()}
-              className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Send Invitation"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-ps-body block mb-1">Full Name</label>
+          <input aria-label="Full Name"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            placeholder="e.g. Priya Sharma"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-ps-body block mb-1">Email Address</label>
+          <input aria-label="Email Address"
+            type="email"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            placeholder="priya@firm.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
+          <select aria-label="Role"
+            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            value={role}
+            onChange={e => setRole(e.target.value as Role)}
+          >
+            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !name.trim() || !email.trim()}
+            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Send Invitation"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -262,43 +258,35 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-ps-ink">Edit Role</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
+    <Modal title="Edit Role" note={`${member.full_name} · ${member.email}`} onClose={() => { if (!saving) onClose(); }}>
+      {error && (
+        <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 flex gap-2 text-xs text-state-problem">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>{error}</span>
         </div>
-        <p className="text-xs text-ps-label">{member.full_name} · {member.email}</p>
+      )}
 
-        {error && (
-          <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-3 py-2 flex gap-2 text-xs text-state-problem">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <div>
-          <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
-          <select aria-label="Role"
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-            value={role}
-            onChange={e => setRole(e.target.value as Role)}
-          >
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-        <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
-          <button
-            disabled={saving || role === member.role}
-            onClick={handleSave}
-            className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
+      <div>
+        <label className="text-xs font-medium text-ps-body block mb-1">Role</label>
+        <select aria-label="Role"
+          className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+          value={role}
+          onChange={e => setRole(e.target.value as Role)}
+        >
+          {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
       </div>
-    </div>
+      <div className="flex gap-2 pt-2">
+        <button onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
+        <button
+          disabled={saving || role === member.role}
+          onClick={handleSave}
+          className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

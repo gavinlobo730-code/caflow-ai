@@ -38,7 +38,8 @@ import {
   lineIsItcEligible, reasonForHintLabel, supplySplitPreview,
   type PurchaseBillLine,
 } from "@/lib/purchases/billEditor";
-import { afterTab as tabFromGrid } from "@/lib/purchases/billGridFlow";
+import { afterTab as tabFromGrid, copyOfLine } from "@/lib/purchases/billGridFlow";
+import { isDuplicateLineKey, isMacPlatform, withCopyAfter } from "@/lib/ui/duplicateLineKey";
 import {
   lineFromExtraction, unreadAfterEdit, type ExtractedLine,
 } from "@/lib/purchases/extractedLine";
@@ -715,6 +716,23 @@ export function PurchaseBillEditor({
   }, [focusCell]);
 
   function onLineGridKeyDown(e: React.KeyboardEvent<HTMLTableSectionElement>) {
+    // Ctrl+D (Command+D on a Mac) copies the line the person is on and moves to the copy's same cell (POST-A-128; the key and why it is that
+    // one are lib/ui/duplicateLineKey). Only from one of the grid's own cells, as Enter and Tab are: the catalogue, HSN and account pickers
+    // (and the HSN library's quick-add dialog that a cell renders inline) keep their keys. The copy of an EXTRACTED line keeps its
+    // not-stated flags (`copyOfLine`): a placeholder the document did not fill is still a placeholder on the copy, and only typing into the
+    // field clears it. A copy that dropped the flag turned a GST rate nobody chose into a chosen 0%.
+    if (isDuplicateLineKey(e, isMacPlatform())) {
+      const target = e.target as HTMLElement;
+      const cell = target instanceof HTMLInputElement ? target.dataset.cell : undefined;
+      const rowEl = target.closest("tr");
+      if (!cell || !rowEl || !gridRef.current) return;
+      const row = Array.prototype.indexOf.call(gridRef.current.children, rowEl);
+      if (row < 0) return;
+      e.preventDefault();
+      setLines((prev) => withCopyAfter(prev, row, (l) => copyOfLine(l, nextKey())));
+      setFocusCell({ row: row + 1, cell });
+      return;
+    }
     if ((e.key !== "Enter" && e.key !== "Tab") || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
     const target = e.target as HTMLElement;
     const cell = target instanceof HTMLInputElement ? target.dataset.cell : undefined;
@@ -1645,9 +1663,12 @@ export function PurchaseBillEditor({
               </tbody>
             </table>
           </div>
-          <button type="button" onClick={addLine} className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
-            <Plus size={13} /> Add line
-          </button>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button type="button" onClick={addLine} className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              <Plus size={13} /> Add line
+            </button>
+            {!isLocked && <span className="text-3xs text-ps-hint print:hidden">Ctrl+D (⌘D on a Mac) copies the line you are on.</span>}
+          </div>
           </fieldset>
           {lines.some((l) => l.unread?.length) && (
             <p className="mt-2 text-3xs text-state-attention">

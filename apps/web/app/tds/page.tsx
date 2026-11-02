@@ -1180,7 +1180,7 @@ export default function TDSPage() {
                 can be recorded or listed. */}
             <div className="min-w-[240px]">
               <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
-              <ClientLookup clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
+              <ClientLookup ariaLabel="Client" clients={clients} value={selectedClientId} onChange={setSelectedClientId} />
             </div>
           </>
         }

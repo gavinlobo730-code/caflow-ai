@@ -123,7 +123,6 @@ const FROZEN_BARE: Record<string, Frozen> = {
   "app/clients/[id]/year-end/[engagementId]/financial-statements/_page.tsx": nym(2, "'Refresh from ledger': the refresh control is in the same panel"),
   "app/clients/[id]/year-end/[engagementId]/notes/_page.tsx": ntd(1, "one note with no generated content; the editor above it is the action"),
   "app/copilot/page.tsx": ntd(1, "a sidebar of past conversations; the composer beside it is the action"),
-  "app/gst/page.tsx": nym(1, "a modal telling a firm with no clients to add some first; the way out is a link to Clients"),
   "app/health/[client_id]/HealthDetailClient.tsx": ntd(1, "a history of overrides"),
   "app/knowledge/page.tsx": nym(1, "article authoring (knowledge:write) is the form on the same page"),
   "app/memory/page.tsx": ntd(1, "client profiles are derived by the product"),
