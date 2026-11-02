@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/accounting/trialBalanceFilter.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NO_FILTER, accountCounts, filterNotice, filterRows, isFiltering, typeChoices } from "./trialBalanceFilter.ts";
+import { NO_FILTER, accountCounts, filterNotice, filterRows, filterStatementRows, isFiltering, typeChoices } from "./trialBalanceFilter.ts";
 
 const row = (id: string, code: string, name: string, type: string) => ({ account_id: id, account_code: code, account_name: name, account_type: type });
 const ROWS = [
@@ -55,4 +55,29 @@ test("the notice says what the totals are totals of, only while a filter is on",
   assert.equal(filterNotice(2, 5, { query: "tds", type: "" }), "Showing 2 of 5 accounts. The totals below are for all 5, not only the ones shown.");
   assert.equal(filterNotice(1, 1, { query: "cash", type: "" }), "Showing 1 of 1 account. The totals below are for all 1, not only the ones shown.");
   assert.equal(filterNotice(0, 5, { query: "zzz", type: "" }), "Showing 0 of 5 accounts. The totals below are for all 5, not only the ones shown.");
+});
+
+// ── the statements keep a derived line under every filter (the review of 2-11-2026) ───────────────────────────────
+
+const BS = [
+  { account_id: "a1", account_code: "1001", account_name: "Cash in hand", account_type: "Asset" },
+  { account_id: "e1", account_code: "3001", account_name: "Share capital", account_type: "Equity" },
+  { account_id: "__retained__", account_code: "", account_name: "Retained Earnings / Net Profit", account_type: "Equity" },
+];
+
+test("a statement draws its derived line under every filter, because it is part of its caption's figure", () => {
+  for (const filter of [{ query: "cash", type: "" }, { query: "", type: "Asset" }, { query: "nothing matches", type: "" }, { query: "retained", type: "" }]) {
+    assert.ok(filterStatementRows(BS, filter).some((r) => r.account_id === "__retained__"), `hidden under ${JSON.stringify(filter)}`);
+  }
+});
+
+test("a statement still narrows the real accounts exactly as the trial balance does, and with no filter draws everything", () => {
+  const shown = filterStatementRows(BS, { query: "cash", type: "" }).map((r) => r.account_id);
+  assert.deepEqual(shown, ["a1", "__retained__"]);
+  assert.deepEqual(filterRows(BS, { query: "cash", type: "" }).map((r) => r.account_id), ["a1"], "the trial balance's own helper still hides a derived row");
+  assert.deepEqual(filterStatementRows(BS, NO_FILTER).map((r) => r.account_id), ["a1", "e1", "__retained__"]);
+});
+
+test("the derived line is not an account and is not counted among them", () => {
+  assert.deepEqual(accountCounts(BS, { query: "cash", type: "" }), { shown: 1, total: 2 });
 });

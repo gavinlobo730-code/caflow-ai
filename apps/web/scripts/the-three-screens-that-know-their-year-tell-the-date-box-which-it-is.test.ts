@@ -36,11 +36,17 @@ test("the year-end adjustment's date box is told the engagement's year, through 
   assert.ok(/createContext<string \| undefined>\(undefined\)/.test(ctx), "the year is not optional while the engagement loads");
 });
 
-test("ITC-04's two dates are told the statement's financial year", () => {
+test("ITC-04's two dates are told the statement's financial year, and the one anchored to the return takes its year from the return", () => {
   const panel = read("components/gst/Itc04Panel.tsx");
   const boxes = panel.match(/<DateInput\b[^>]*>/g) ?? [];
   assert.ok(boxes.length >= 2, "the panel's date boxes were not found");
-  for (const box of boxes) assert.ok(/financialYear=\{year\}/.test(box), `an ITC-04 date box is not told the year: ${box.slice(0, 80)}`);
+  const anchored = boxes.filter((b) => /anchor=\{lot\.returned_on/.test(b));
+  const free = boxes.filter((b) => !/anchor=\{lot\.returned_on/.test(b));
+  assert.ok(anchored.length >= 1 && free.length >= 1, "the anchored and the unanchored date boxes were not both found");
+  for (const box of free) assert.ok(/financialYear=\{year\}/.test(box), `an ITC-04 date box is not told the year: ${box.slice(0, 80)}`);
+  // A short date typed beside a return date that is set belongs to THAT return's year, which can differ from the year shown above the panel;
+  // the panel's year applies only while the return date is blank (a review of 2-11-2026 found the explicit year overriding the anchor's).
+  for (const box of anchored) assert.ok(/financialYear=\{lot\.returned_on \? undefined : year\}/.test(box), `the anchored ITC-04 date box overrides its anchor's year: ${box.slice(0, 120)}`);
 });
 
 test("the renewal date is read inside the financial year the renewal form chose", () => {

@@ -8,10 +8,11 @@ each is small enough that a phase apiece would be ceremony. What each needed:
   reminders (3)           one gap — PATCH /{id}/sent checked only the firm.
   engagements (7)         five gaps — every row-addressed endpoint was firm-only,
                           and update's destination-client check was firm-only.
-  compliance_records (6)  already fully guarded (task #238); the list/get/create/
-                          update guards were already tested elsewhere. The two
-                          router guards nothing pinned — /firm/summary's
-                          narrowing and /client/{id}/health — are pinned here.
+  compliance_records (5)  already fully guarded (task #238); the list/get/create/
+                          update guards were already tested elsewhere. The one
+                          router guard nothing pinned — /client/{id}/health — is
+                          pinned here (/firm/summary, which was pinned here too,
+                          was deleted on 2-11-2026 with POST-A-208).
   task_templates (6)      the firm-template pattern: five EXEMPT template routes
                           (firm_id nullable, no client_id — migration 063), and
                           /instantiate, the one route that names a client.

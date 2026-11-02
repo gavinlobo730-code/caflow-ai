@@ -59,7 +59,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { DateInput } from "@/components/ui/date-input";
-import { NO_FILTER, accountCounts, filterNotice, filterRows, isFiltering, typeChoices, type TrialBalanceFilter } from "@/lib/accounting/trialBalanceFilter";
+import { NO_FILTER, accountCounts, filterNotice, filterRows, filterStatementRows, isFiltering, typeChoices, type TrialBalanceFilter } from "@/lib/accounting/trialBalanceFilter";
 import { StatementFilterBar } from "@/components/accounting/StatementFilterBar";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
@@ -2704,7 +2704,7 @@ function PLSection({
   const [open, setOpen] = useState(true);
   // The caption's figure is the sum of ALL its accounts; the filter chooses only which account rows are drawn under it (POST-A-136).
   const totals = columnMaps.map((m) => items.reduce((s, item) => s + (m.get(item.account_id) ?? 0), 0));
-  const drawn = filterRows(items, filter);
+  const drawn = filterStatementRows(items, filter);
   return (
     <>
       <tr className="cursor-pointer hover:bg-ps-bg" onClick={() => setOpen((o) => !o)}>
@@ -3080,7 +3080,7 @@ function BSSectionRows({
   const [open, setOpen] = useState(true);
   // The caption's figure is the sum of ALL its accounts; the filter chooses only which account rows are drawn under it (POST-A-136).
   const totals = columnMaps.map((m) => items.reduce((s, b) => s + (m.get(b.account_id) ?? 0), 0));
-  const drawn = filterRows(items, filter);
+  const drawn = filterStatementRows(items, filter);
   return (
     <>
       <tr className="cursor-pointer hover:bg-ps-bg" onClick={() => setOpen((o) => !o)}>

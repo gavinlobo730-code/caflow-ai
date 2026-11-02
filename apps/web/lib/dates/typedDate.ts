@@ -152,7 +152,8 @@ export type TypedDate =
 
 const BARE_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const BARE_MONTH = /^(\d{4})-(\d{2})$/;
-const FY_LABEL = /^(\d{4})-(\d{2})$/;
+// The spellings the server's `normalise_fy_label` accepts (core/ist_clock.py): YYYY-YY or YYYY-YYYY, a dash or a slash, spaces around it.
+const FY_LABEL = /^(\d{4})\s*[-/]\s*(\d{2}|\d{4})$/;
 
 function pad(n: number, width = 2): string {
   return String(n).padStart(width, "0");
@@ -203,14 +204,18 @@ interface FinancialYear {
   startMonth: number;
 }
 
-/** A real financial-year label: `YYYY-YY` whose second half FOLLOWS the first
- *  (`2026-28` passes a shape regex and is not a year — models/fy.py's rule). */
+/** A real financial-year label: `YYYY-YY` or `YYYY-YYYY` (a dash or a slash, spaces allowed, as the server's `normalise_fy_label` reads
+ *  it) whose second half FOLLOWS the first (`2026-28` passes a shape regex and is not a year — models/fy.py's rule). A spelling this does
+ *  not read used to be dropped silently and the date read against the year of today; a free-text Financial Year box (the renewal form's)
+ *  writes `2025-2026` as readily as `2025-26`. */
 function readFinancialYear(label: string | null | undefined): FinancialYear | null {
   const hit = FY_LABEL.exec((label ?? "").trim());
   if (!hit) return null;
   const y = Number(hit[1]);
-  if (y < MIN_YEAR || y >= MAX_YEAR || (y + 1) % 100 !== Number(hit[2])) return null;
-  const { start, end } = fyRangeFor(`${hit[1]}-${hit[2]}`);
+  const tail = hit[2];
+  const follows = tail.length === 4 ? Number(tail) === y + 1 : (y + 1) % 100 === Number(tail);
+  if (y < MIN_YEAR || y >= MAX_YEAR || !follows) return null;
+  const { start, end } = fyRangeFor(`${y}-${pad((y + 1) % 100)}`);
   return { start, end, startYear: y, startMonth: Number(start.slice(5, 7)) };
 }
 

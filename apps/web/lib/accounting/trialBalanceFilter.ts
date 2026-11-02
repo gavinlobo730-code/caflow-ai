@@ -47,6 +47,18 @@ export function typeChoices(rows: readonly FilterableRow[]): string[] {
   return Array.from(seen);
 }
 
+/**
+ * The rows to draw under a Profit and Loss or Balance Sheet caption. The same filter as the trial balance's for the accounts, but a DERIVED
+ * row (the computed retained earnings / net profit line, the cash-basis advance lines) is drawn under EVERY filter: on these statements it is
+ * a component of its caption's figure and of the total beside it, not an account to search for, so hiding it would leave a caption whose drawn
+ * rows do not reconcile to its figure and no filter that could show the line (a review of 2-11-2026 found exactly that). It is still not
+ * counted among the accounts.
+ */
+export function filterStatementRows<T extends FilterableRow>(rows: readonly T[], filter: TrialBalanceFilter): T[] {
+  if (!isFiltering(filter)) return [...rows];
+  return rows.filter((row) => isDerived(row) || filterRows([row], filter).length === 1);
+}
+
 /** How many of the accounts the filter lets through, and how many there are. Derived rows are not accounts and are not counted. */
 export function accountCounts<T extends FilterableRow>(rows: readonly T[], filter: TrialBalanceFilter): { shown: number; total: number } {
   const accounts = rows.filter((row) => !isDerived(row));

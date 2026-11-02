@@ -51,7 +51,7 @@ for (const [section, items] of [["PLSection", "item"], ["BSSectionRows", "b"]] a
     const src = fn(section);
     assert.ok(new RegExp(`const totals = columnMaps\\.map\\(\\(m\\) => items\\.reduce\\(\\(s, ${items}\\) => s \\+ \\(m\\.get\\(${items}\\.account_id\\) \\?\\? 0\\), 0\\)\\)`).test(src),
       `${section}'s caption figure is no longer the sum of every account under it`);
-    assert.ok(/const drawn = filterRows\(items, filter\)/.test(src), `${section} does not draw the filter's rows`);
+    assert.ok(/const drawn = filterStatementRows\(items, filter\)/.test(src), `${section} does not draw the filter's rows (the statements' own, which keeps a derived line under every filter)`);
     assert.ok(/\{open && drawn\.map\(/.test(src), `${section} still draws every row`);
     assert.ok(!/drawn\.reduce|drawn\.filter\(|drawn\.length/.test(src), `${section} takes something from the rows drawn`);
     assert.ok(/filter = NO_FILTER/.test(src), `${section} is not unfiltered by default`);

@@ -490,3 +490,20 @@ test("the same table reads the same under every timezone, because a calendar day
     assert.deepEqual(JSON.parse(out), expected, `TZ=${tz} moved a date`);
   }
 });
+
+// ── a financial year the server reads, read the same way (the review of 2-11-2026) ─────────────────────
+const isoOf = (text: string, ctx: Parameters<typeof parseTypedDate>[1]): string | null => {
+  const r = parseTypedDate(text, ctx);
+  return r.kind === "date" ? r.iso : null;
+};
+test("a financial year is read in every spelling the server's normalise_fy_label reads", () => {
+  for (const label of ["2025-26", "2025-2026", "2025/26", "2025/2026", " 2025 - 2026 ", "2025 / 26"]) {
+    assert.equal(isoOf("15/3", { today: "2026-11-02", financialYear: label }), "2026-03-15", `not read: ${JSON.stringify(label)}`);
+  }
+});
+
+test("a financial year whose second half does not follow the first is still not one, in either width", () => {
+  for (const label of ["2025-27", "2025-2027", "2025-99", "2025", "", "FY 2025-26", "2025-2"]) {
+    assert.equal(isoOf("15/3", { today: "2026-11-02", financialYear: label }), "2027-03-15", `read as a year: ${JSON.stringify(label)}`);
+  }
+});
