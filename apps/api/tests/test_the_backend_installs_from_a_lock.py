@@ -75,6 +75,14 @@ def _pins(path: Path) -> dict[str, tuple[str, list[str]]]:
 RUNTIME = API / "requirements.txt"
 DEV = API / "requirements-dev.txt"
 
+#: The fewest packages the runtime lock can hold and still have been parsed. It exists to catch a parse that found
+#: almost nothing, not to count the lock: it was 80 against 86 locked packages, and xhtml2pdf 0.2.28 stopped depending
+#: on pyHanko (its PDF-signing toolkit) and with it on aiohttp, oscrypto, asn1crypto, python-bidi, uritools, yarl,
+#: multidict, frozenlist, propcache, aiosignal, aiohappyeyeballs, attrs and pyhanko-certvalidator, which took the lock to
+#: 73 on 2 Nov 2026 with no import of any of the fourteen in this tree. A floor tied to the count fails on every
+#: dependency that sheds its own dependencies, so it sits well below the count.
+RUNTIME_LOCK_FLOOR = 70
+
 
 def test_the_lock_files_exist_beside_the_files_they_are_compiled_from():
     for name in ("requirements.in", "requirements.txt", "requirements-dev.in", "requirements-dev.txt"):
@@ -84,7 +92,7 @@ def test_the_lock_files_exist_beside_the_files_they_are_compiled_from():
 @pytest.mark.parametrize("lock", [RUNTIME, DEV], ids=lambda p: p.name)
 def test_every_requirement_is_pinned_exactly_and_carries_a_hash_of_every_file(lock):
     pins = _pins(lock)
-    assert len(pins) >= (80 if lock is RUNTIME else 4), "the parse found almost nothing"
+    assert len(pins) >= (RUNTIME_LOCK_FLOOR if lock is RUNTIME else 4), "the parse found almost nothing"
     unhashed = [n for n, (_, hashes) in pins.items() if not hashes]
     assert not unhashed, f"pinned but not hashed (pip --require-hashes would refuse the file): {unhashed}"
     bad = [(n, h) for n, (_, hs) in pins.items() for h in hs if not re.fullmatch(r"[0-9a-f]{64}", h)]
@@ -124,7 +132,10 @@ def test_the_ranges_the_old_file_had_are_the_ranges_the_in_file_has():
     ranges (2 Oct 2026). An exact pin moves by editing the file and recompiling; a range moving is the thing
     worth stopping."""
     text = "\n".join(_logical_lines(API / "requirements.in"))
-    for line in ("httpx>=0.27.0,<0.28.0", "pydantic>=2.0.0", "pandas>=2.0.0", "reportlab>=4.0.0",
+    # pydantic, pandas and reportlab are quoted at the minimums Dependabot's python group moved them to on 2 Nov 2026,
+    # each the version that bump locks (pydantic 2.14.2, pandas 3.1.0, reportlab 5.1.0). The lock held pandas 3.0.6 and
+    # reportlab 5.0.1 before, so no major version moved; the owner approved the change of minimums.
+    for line in ("httpx>=0.27.0,<0.28.0", "pydantic>=2.14.2", "pandas>=3.1.0", "reportlab>=5.1.0",
                  "google-genai>=1.0.0,<2.0.0"):
         assert line in text, f"{line} changed: a range the lock was introduced with moved"
 
@@ -259,7 +270,7 @@ def _freeze_of(pins: dict[str, str]) -> str:
 def test_a_freeze_that_is_exactly_the_lock_passes():
     cmp = _compare_module()
     lock = cmp.pins_in_lock(RUNTIME.read_text(encoding="utf-8"))
-    assert len(lock) >= 80
+    assert len(lock) >= RUNTIME_LOCK_FLOOR
     assert cmp.compare(lock, cmp.pins_in_freeze(_freeze_of(lock))) == []
 
 
