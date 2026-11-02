@@ -282,6 +282,20 @@ def not_debiting_view(account: str, what: str, why_it_stays: str = "it was paid"
     }
 
 
+def no_account_view(account: str, what: str, why_it_stays: str = "it was paid") -> dict:
+    """The server's words for a link that cannot be judged because the client's chart holds no ACTIVE account of the name the payment clears
+    (never added, renamed, or made inactive). It is the state UNKNOWN with its own words: not a failed read, and not a clean bill. No take-back
+    is offered, for the reason a failed read offers none: a missing account is no reason to undo a link, and with the account gone the screen
+    lists no entries that could replace it. What brings the check back is putting the account right, and the note says so."""
+    return {
+        "state": UNKNOWN,
+        "label": "Tied to an entry (not checked)",
+        "note": (f"This client's chart of accounts has no active {account} account, so whether the entry this {what} is tied to records the payment "
+                 f"could not be checked. The {what} stays: {why_it_stays}. Add the account, or make it active again, and the link will be checked."),
+        "can_take_back": False,
+    }
+
+
 #: Why an entry that is not LIVE cannot be tied, in words.
 NOT_A_PAYMENT = {
     DELETED: "That journal entry was deleted, so it cannot be the payment of this remittance.",
@@ -366,9 +380,9 @@ _ACCOUNT_SHOWN = {ESIC: "ESI Payable", PROFESSIONAL_TAX: "PT Payable"}
 def _that_stopped_debiting(db, *, firm_id: str, client_id: str, live: list) -> list:
     """Of the remittances tied to a LIVE entry, those whose entry does not debit the scheme's liability account, each with its `ledger_link`.
     The remittance's door does not ask that of the entry, so the entry may never have debited it. A scheme whose account the client's chart
-    does not hold cannot be judged, and it is listed as UNKNOWN with its own words (the remittance's door does not ask that the account exists,
-    so the link can be made in such a chart and an unlisted row would read as a link that was checked); when the lines cannot be read every one
-    is listed as UNKNOWN, as a failed read of the entries is."""
+    does not hold an ACTIVE account of that name cannot be judged, and it is listed as UNKNOWN with its own words (`no_account_view`): the
+    remittance's door does not ask that the account exists, and an account can be renamed or made inactive after any link, so an unlisted row
+    would read as a link that was checked; when the lines cannot be read every one is listed as UNKNOWN, as a failed read of the entries is."""
     if not live:
         return []
     try:
@@ -384,11 +398,7 @@ def _that_stopped_debiting(db, *, firm_id: str, client_id: str, live: list) -> l
         account_id = account_of.get(r["id"])
         shown = _ACCOUNT_SHOWN.get(r.get("scheme"), "the liability account")
         if not account_id:
-            out.append({**r, "ledger_link": {**link_view(UNKNOWN), "can_take_back": True,
-                                             "label": "Tied to an entry (not checked)",
-                                             "note": (f"This client's chart of accounts has no {shown} account, so whether the entry this remittance is tied to "
-                                                      f"records the payment could not be checked. Take the link back and tie it to the entry that records the "
-                                                      f"payment, if you know which it is.")}})
+            out.append({**r, "ledger_link": no_account_view(shown, "remittance")})
         elif (str(r["journal_entry_id"]), str(account_id)) not in debiting:
             out.append({**r, "ledger_link": link_view(NOT_DEBITING, shown)})
     return out

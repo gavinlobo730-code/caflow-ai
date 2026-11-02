@@ -13,8 +13,9 @@ WHAT THIS PINS
               credit side or was deleted; an entry that still debits it stays `live`;
     WORDS     the label names the account, the note says the entry is still in the books, that the document stays because the payment was made,
               and what to do (take the link back and tie the entry that records it); the remittance side says the same of its own account;
-    CANNOT    a challan in a chart that does not hold the account is left as it was (its door refuses the link without the account); a remittance
-              in such a chart is listed as UNKNOWN, "not checked", with the reason, because its door does not ask and the link can exist;
+    CANNOT    a challan or a remittance in a chart that holds no ACTIVE account of that name (never added, renamed, or made inactive after the
+              link; a remittance's door never asked, a challan's asked only at the time) is UNKNOWN, "not checked", with the reason and no
+              take-back, never a link that looks checked;
     FAILED    when the lines cannot be read the live rows are UNKNOWN, never live, and an entry that is not live keeps the state it already had;
     NEVER     reading changes nothing: the link is not cleared and nothing is posted.
 """
@@ -104,11 +105,24 @@ def test_an_entry_that_is_not_live_keeps_the_state_it_already_had(world):
     assert row["ledger_link"]["state"] == "reversed"
 
 
-def test_a_client_whose_chart_has_no_such_account_cannot_be_judged_and_stays_live():
+def test_a_challan_in_a_chart_without_its_account_is_not_checked_and_never_passed_as_checked():
     db = FakeDB()
     _entry(db, GOOD, ACC_TDS)
     row, = annotated(db, GOOD)
-    assert row["ledger_link"]["state"] == "live"
+    link = row["ledger_link"]
+    assert link["state"] == "unknown" and link["label"] == "Tied to an entry (not checked)"
+    assert "no active TDS Payable account" in link["note"] and "The challan stays: the tax was deposited." in link["note"]
+    assert "make it active again" in link["note"] and "could not be read" not in link["note"], "a missing account is not a failed read"
+
+
+@pytest.mark.parametrize("after_the_link", ["renamed", "made inactive"])
+def test_an_account_renamed_or_made_inactive_after_the_link_leaves_the_challan_not_checked(world, after_the_link):
+    """The door asked for the account at the time of the link; nothing stops the chart changing after it."""
+    change = {"account_name": "Statutory dues"} if after_the_link == "renamed" else {"is_active": False}
+    world.table("chart_of_accounts").update(change).eq("id", ACC_TDS).execute()
+    row, = annotated(world, MOVED)           # an entry that does not debit TDS Payable, which a working check would have caught
+    assert row["ledger_link"]["state"] == "unknown", after_the_link
+    assert row["journal_entry_id"] == MOVED, "reading the link does not clear it"
 
 
 def test_a_failed_read_of_the_lines_marks_the_live_rows_unknown_and_leaves_the_others(world, monkeypatch):
@@ -212,10 +226,20 @@ def test_a_remittance_in_a_chart_without_its_account_is_listed_not_checked_and_n
     _remittance(esi, "JE-X")
     stale, = rem.stale_links(esi, firm_id=FIRM, client_id=A)
     link = stale["ledger_link"]
-    assert link["state"] == "unknown" and link["can_take_back"] is True
-    assert link["label"] == "Tied to an entry (not checked)"
-    assert "no ESI Payable account" in link["note"] and "could not be checked" in link["note"]
+    assert link["state"] == "unknown" and link["label"] == "Tied to an entry (not checked)"
+    assert link["can_take_back"] is False, "with the account gone the screen lists no entry to tie instead, so taking the link back would lose it"
+    assert "no active ESI Payable account" in link["note"] and "could not be checked" in link["note"]
+    assert "Add the account, or make it active again" in link["note"]
     assert "could not be read" not in link["note"], "a missing account is not a failed read"
+
+
+def test_a_remittance_whose_account_was_made_inactive_is_told_the_account_is_not_active_and_not_that_it_is_missing(esi):
+    esi.table("chart_of_accounts").update({"is_active": False}).eq("id", ESI_ACC).execute()
+    _esi_entry(esi, "JE-Y", ACC_OTHER)
+    _remittance(esi, "JE-Y")
+    stale, = rem.stale_links(esi, firm_id=FIRM, client_id=A)
+    assert stale["ledger_link"]["state"] == "unknown"
+    assert "no active ESI Payable account" in stale["ledger_link"]["note"] and "make it active again" in stale["ledger_link"]["note"]
 
 
 def test_the_challan_words_keep_no_longer_because_its_door_does_refuse_an_entry_with_no_debit(world):

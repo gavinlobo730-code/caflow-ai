@@ -141,10 +141,10 @@ def annotate_links(db, *, firm_id: str, client_id: str, rows: list[dict]) -> Non
 
 def _flag_entries_that_stopped_debiting(db, *, firm_id: str, client_id: str, rows: list[dict]) -> None:
     """Of the challans tied to a LIVE entry, mark those whose entry no longer debits the TDS Payable account their section clears (a manual
-    journal edited in place after the link, POST-A-272). A client whose chart does not hold the account cannot be judged and is left as it
-    was: the challan's link door refuses the link without the account, so there is no such link to judge (a remittance's door does not, and
-    its reader lists the row as not checked). When the lines cannot be read the live rows are marked UNKNOWN, as a failed read of the
-    entries marks all of them."""
+    journal edited in place after the link, POST-A-272). A client whose chart holds no ACTIVE account of that name cannot be judged: the
+    challan's door refused the link without the account, but an account can be renamed or made inactive afterwards, and then the challan is
+    marked not checked, with the reason (`remittances.no_account_view`), like a remittance in such a chart. When the lines cannot be read the
+    live rows are marked UNKNOWN, as a failed read of the entries marks all of them."""
     if not rows:
         return
     try:
@@ -160,7 +160,9 @@ def _flag_entries_that_stopped_debiting(db, *, firm_id: str, client_id: str, row
     for r in rows:
         name = account_name_for(r.get("section"))
         account_id = account_of.get(name)
-        if account_id and (str(r["journal_entry_id"]), str(account_id)) not in debiting:
+        if not account_id:
+            r["ledger_link"] = remittances.no_account_view(name, "challan", "the tax was deposited")
+        elif (str(r["journal_entry_id"]), str(account_id)) not in debiting:
             r["ledger_link"] = _link(NOT_DEBITING, name)
 
 
