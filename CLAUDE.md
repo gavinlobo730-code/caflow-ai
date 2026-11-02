@@ -2117,7 +2117,7 @@ _Longer design records for this area were moved to `docs/design-record/filing-an
   EMPTY allowlist. **What it sees and what it does not is written in
   `docs/design-record/ledger-and-money.md`**: it sees a calendar date, year or
   month taken from the server's or the UTC clock in the same function, and does
-  not see the first ten characters of a stored stamp read off a row (POST-A-251)
+  not see a stored stamp that is passed through a call or unpacked from a tuple before it is cut (POST-A-251)
   or SQL's `CURRENT_DATE` (POST-A-252).
 - **A METRIC AND THE GUARD THAT ENFORCES IT MUST COUNT THE SAME POPULATION.**
   `docs/plan/THE-PLAN.md`'s hex metric is a coarse `grep` over `app/` and
