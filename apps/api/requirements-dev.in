@@ -9,7 +9,7 @@
 # runtime library from the one the image installs. Compile this one AFTER requirements.txt; the command is in
 # requirements.in.
 -c requirements.txt
-pytest>=8.0.0
+pytest>=9.2.0
 
 # THE TOOLS ONLY THE TEST AND LINT JOB USES (engineering-01, -21, -23), none of them a dependency of the product
 # and none of them in requirements.txt: shipping a linter, a property-testing engine and a coverage tool to
@@ -22,7 +22,7 @@ pytest>=8.0.0
 #   pytest-cov    the coverage floor in scripts/ci/coverage_floor.py is measured, and its engine moves.
 #   pytest-xdist  the backend job runs the suite in parallel (`-n auto --dist loadfile`, see backend-ci.yml for
 #                 why that mode and what was measured before it was turned on).
-ruff==0.16.10
-hypothesis==6.168.4
+ruff==0.17.3
+hypothesis==6.170.13
 pytest-cov==7.1.0
 pytest-xdist==3.8.0
