@@ -85,6 +85,14 @@ test("rendered: an unknown wait and a missing date are dashes, never zero", () =
   assert.ok((html.match(/>—</g) ?? []).length >= 3, "the missing challan number, date and wait are not dashes");
 });
 
+test("rendered: a challan dated in the future has a date and an unknown wait: a dash, never a negative or a zero", () => {
+  // The server answers `days_since_payment: null` for a payment date after today (a mistyped year), so the wait is not a number to draw.
+  const html = render({ rows: [row({ payment_date: "2099-07-07", days_since_payment: null, waiting_long: false })], hasMore: false, total: 1, totalPaise: 100_000_00 });
+  assert.ok(!/-\d+ day|\b0 days?\b/.test(html), html);
+  assert.ok(!html.includes("(over 30 days)"), "a challan with no known wait was marked as waiting long");
+  assert.ok((html.match(/>—</g) ?? []).length >= 1, "the unknown wait is not a dash");
+});
+
 test("rendered: nothing to list is one sentence and no table", () => {
   const html = render({ rows: [], hasMore: false, total: 0, totalPaise: 0 });
   assert.ok(html.includes("Every challan recorded for your clients is tied to a ledger entry."));

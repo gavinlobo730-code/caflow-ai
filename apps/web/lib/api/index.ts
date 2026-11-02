@@ -8684,7 +8684,7 @@ export type UnmatchedRemittance = Remittance & {
  *  words: the screen draws `label` and `note` and decides nothing. */
 export type StaleRemittanceLink = Remittance & {
   ledger_link: {
-    state: "reversed" | "deleted" | "draft" | "reversal" | "missing" | "unknown";
+    state: "reversed" | "deleted" | "draft" | "reversal" | "missing" | "unknown" | "not_debiting";
     label: string;
     note: string | null;
     /** The server's judgement that taking the link back is worth offering (false when the ledger could not be read). */

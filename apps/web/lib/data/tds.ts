@@ -838,7 +838,7 @@ export interface ChallanLedgerCandidate {
 /** A tied challan's entry, as the server read it: `live`, `reversed`, `deleted`, `missing` (no such entry of this client) or `unknown` (the
  *  ledger could not be read). `label` is what the Ledger column says and `note` what the CA is told to do (null for a live link). */
 export interface ChallanLedgerLink {
-  state: "live" | "reversed" | "deleted" | "missing" | "unknown";
+  state: "live" | "reversed" | "deleted" | "draft" | "reversal" | "missing" | "unknown" | "not_debiting";
   label: string;
   note: string | null;
 }

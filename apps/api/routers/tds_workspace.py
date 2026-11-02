@@ -975,8 +975,9 @@ def list_unlinked_challans(
 ):
     """Challans recorded in the register that are tied to no ledger entry, across the caller's clients, oldest payment first (POST-A-272).
 
-    A Partner sees the whole firm; anyone else the clients assigned to them, and a client outside that scope answers as an empty list. It is
-    a worklist (`{challans, total_unlinked, total_unlinked_paise, has_more, limit, max_limit}`): a recorded challan nobody has tied to the
+    A Partner sees the whole firm; anyone else the clients assigned to them. A `client_id` outside the caller's scope (or another firm's)
+    answers the same 404 "Not found" as a missing client, at the door; the service's empty list for it is a second layer that only mock mode
+    reaches. The population is the client picker's: soft-deleted, archived and internal clients are not counted or listed. It is a worklist (`{challans, total_unlinked, total_unlinked_paise, has_more, limit, max_limit}`): a recorded challan nobody has tied to the
     entry that paid it is a liability the ledger may still show as owing, and nothing is posted or changed by reading it."""
     if client_id:
         assert_client_access(current_user, client_id)

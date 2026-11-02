@@ -41,8 +41,9 @@ A LINK CAN GO STALE, AND THE SCREEN SAYS SO. `journal_entry_id` is cleared when 
     is the CA's decision (Take the link back, then tie it again).
 
 WHAT IT DOES NOT DO
-    It does not propose from the bank queue, and it does not raise an exception for a challan with no entry after some days: both stay on
-    the ledger line (POST-A-272). It does not backfill: which entry paid which challan is the CA's answer.
+    It does not propose from the bank queue: that stays on the ledger line (POST-A-272). The challan with no entry after some days is the
+    firm-wide worklist's (`tds_register_lists_service.unlinked_challans`, `LONG_WAIT_DAYS`), not an exception raised from here. It does not
+    backfill: which entry paid which challan is the CA's answer.
 
 A LIVE LINK IS RE-CHECKED AGAINST THE ACCOUNT IT CLEARS. A manual journal can be edited in place after the link, and an entry that still
     stands but no longer debits "TDS Payable" (or "TDS Payable - Salary") records no payment of this challan; `annotate_links` reads the lines of

@@ -123,16 +123,21 @@ _UNLINKED_COLUMNS = "id, client_id, challan_no, section, total_paise, payment_da
 LONG_WAIT_DAYS = 30
 
 
+def _days_since(payment_date, today) -> Optional[int]:
+    """Indian days from the payment to today, or None when the date cannot be read OR lies in the future: a payment dated after today has
+    waited for nothing, and a negative wait is not a wait."""
+    paid = str(payment_date or "")[:10]
+    try:
+        days = (today - date.fromisoformat(paid)).days if paid else None
+    except ValueError:
+        return None
+    return days if days is not None and days >= 0 else None
+
+
 def _waiting_long(rows: list, today) -> int:
-    """How many of ALL the untied challans have waited more than `LONG_WAIT_DAYS` Indian days; a payment with no readable date is not counted."""
-    n = 0
-    for r in rows:
-        try:
-            if (today - date.fromisoformat(str(r.get("payment_date") or "")[:10])).days > LONG_WAIT_DAYS:
-                n += 1
-        except ValueError:
-            continue
-    return n
+    """How many of ALL the untied challans have waited more than `LONG_WAIT_DAYS` Indian days; a payment with no readable or a future date is
+    not counted."""
+    return sum(1 for r in rows if (_days_since(r.get("payment_date"), today) or 0) > LONG_WAIT_DAYS)
 
 
 def _unlinked_window(rows: list, names: dict, *, limit: int, offset: int, today) -> dict:
@@ -142,22 +147,29 @@ def _unlinked_window(rows: list, names: dict, *, limit: int, offset: int, today)
     window, has_more = _cut(ordered, limit, offset)
     shown = []
     for r in window:
-        paid = str(r.get("payment_date") or "")[:10]
-        try:
-            days = (today - date.fromisoformat(paid)).days if paid else None
-        except ValueError:
-            days = None
-        shown.append({**r, "client_name": names.get(str(r.get("client_id"))), "days_since_payment": days, "waiting_long": days is not None and days > LONG_WAIT_DAYS})
+        days = _days_since(r.get("payment_date"), today)
+        shown.append({**r, "client_name": names.get(str(r.get("client_id"))), "days_since_payment": days,
+                      "waiting_long": days is not None and days > LONG_WAIT_DAYS})
     return _window(shown, limit, has_more, "challans", total_unlinked=len(rows),
                    total_unlinked_paise=sum(int(r.get("total_paise") or 0) for r in rows),
                    long_wait_days=LONG_WAIT_DAYS, total_waiting_long=_waiting_long(rows, today))
 
 
+def _openable(client: dict) -> bool:
+    """Whether the firm-level screens can open this client: not soft-deleted, not the practice's own internal client and not archived, which
+    is the population the page's client picker lists and the per-client Challans read answers for. A client row with none of those columns
+    (the in-memory store) is openable."""
+    return not client.get("deleted_at") and not client.get("is_internal") and client.get("status") != "archived"
+
+
 def unlinked_challans(db, firm_id: str, *, client_ids: Optional[set], client_id: Optional[str], limit: int, offset: int) -> dict:
     """Challans recorded in the register that are tied to NO ledger entry (POST-A-272), across the caller's clients. `client_ids` is the
     caller's scope (`core.authz.effective_client_ids`): None means the whole firm (a Partner), a set means those clients and an EMPTY set means
-    nothing, never 'no filter'. `client_id` narrows to one client of that scope. A challan tied to an entry that no longer records the payment
-    is NOT listed here: it is tied, and the Challans tab says in words what became of the entry."""
+    nothing, never 'no filter'. `client_id` narrows to one client of that scope. THE POPULATION IS THE PICKER'S: a challan of a soft-deleted,
+    archived or internal client is not counted or listed, because Open could not show that client (a deleted one answers 404) and the
+    headline would count work the screen cannot do; the practice's own internal client is excluded from every client population
+    (docs/architecture/11, guardrail G2). A challan tied to an entry that no longer records the payment is NOT listed here either: it is
+    tied, and the Challans tab says in words what became of the entry."""
     if client_ids is not None and not client_ids:
         return _unlinked_window([], {}, limit=limit, offset=offset, today=ist_today())
     if client_id and client_ids is not None and client_id not in client_ids:
@@ -169,12 +181,14 @@ def unlinked_challans(db, firm_id: str, *, client_ids: Optional[set], client_id:
     rows = fetch_all(base, label="tds.lists.unlinked_challans")
     if client_ids is not None:
         rows = [r for r in rows if str(r.get("client_id")) in client_ids]
-    names: dict = {}
-    wanted = sorted({str(r["client_id"]) for r in _cut(sorted(rows, key=lambda r: (str(r.get("payment_date") or "9999-12-31"), str(r.get("id") or ""))), limit, offset)[0]
-                     if r.get("client_id")})
+    wanted = sorted({str(r["client_id"]) for r in rows if r.get("client_id")})
+    clients: dict = {}
     for at in range(0, len(wanted), 100):
-        for c in (db.table("clients").select("id, client_name").eq("firm_id", firm_id).in_("id", wanted[at:at + 100]).execute().data) or []:
-            names[str(c["id"])] = c.get("client_name")
+        for c in (db.table("clients").select("id, client_name, deleted_at, is_internal, status")
+                  .eq("firm_id", firm_id).in_("id", wanted[at:at + 100]).execute().data) or []:
+            clients[str(c["id"])] = c
+    rows = [r for r in rows if str(r.get("client_id")) in clients and _openable(clients[str(r["client_id"])])]
+    names = {k: v.get("client_name") for k, v in clients.items()}
     return _unlinked_window(rows, names, limit=limit, offset=offset, today=ist_today())
 
 

@@ -6,8 +6,11 @@ WHAT WAS MISSING
     it is exactly the liability the ledger may still show as owing (the register says the tax was deposited; TDS Payable still holds it).
 
 WHAT THIS PINS
-    SCOPE     a Partner sees the whole firm, anyone else the clients assigned to them; a client outside that scope answers as an empty list and
-              an EMPTY scope is nothing, never "no filter"; another firm's challan is never in the answer;
+    SCOPE     a Partner sees the whole firm, anyone else the clients assigned to them; a client outside that scope is a 404 at the route (the
+              service's empty list for it is a second layer); an EMPTY scope is nothing, never "no filter"; another firm's challan is never in
+              the answer;
+    POPULATION the client picker's: a soft-deleted, an archived and the practice's own internal client are not counted or listed, because
+              Open could not show them;
     SHAPE     oldest payment first (the one that has waited longest), the id as the tiebreak, a window with the server's `has_more`, the
               figures over ALL unlinked challans and not over the window, each row's client name and days since the payment (Indian days);
     MEANING   a challan tied to an entry that no longer records the payment is NOT listed: it is tied, and the Challans tab says in words what
@@ -121,6 +124,37 @@ def test_a_payment_with_no_date_is_not_called_long_waiting(world):
     out = listed(world)
     assert next(c for c in out["challans"] if c["challan_no"] == "CH-8")["waiting_long"] is False
     assert out["total_waiting_long"] == 3
+
+
+def test_a_payment_dated_in_the_future_has_waited_for_nothing(world):
+    _challan(world, 12, client=A, paid="2026-12-25", no="CH-12")             # after TODAY
+    out = listed(world)
+    row = next(c for c in out["challans"] if c["challan_no"] == "CH-12")
+    assert row["days_since_payment"] is None and row["waiting_long"] is False, "a negative wait was served"
+    assert out["total_waiting_long"] == 3 and out["total_unlinked"] == 4, "it is still an untied challan, and not a long wait"
+
+
+# ── the population is the client picker's ───────────────────────────────────────────────────────────────────────────────
+
+def test_a_deleted_an_archived_and_the_internal_client_are_not_counted_or_listed(world):
+    for cid, name, extra in (("dddddddd-dddd-dddd-dddd-dddddddddddd", "Deleted Co", {"deleted_at": "2026-09-01T00:00:00+00:00"}),
+                             ("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", "Archived Co", {"status": "archived"}),
+                             ("ffffffff-ffff-ffff-ffff-ffffffffffff", "Our Practice", {"is_internal": True})):
+        world.seed("clients", {"id": cid, "firm_id": FIRM, "client_name": name, **extra})
+        _challan(world, 20 + len(name), client=cid, paid="2026-01-01", no=f"CH-{name[:3]}")
+    out = listed(world)
+    assert [c["challan_no"] for c in out["challans"]] == ["CH-2", "CH-1", "CH-3"], "a client the picker cannot show was listed"
+    assert out["total_unlinked"] == 3 and out["total_unlinked_paise"] == 175_000_00 and out["total_waiting_long"] == 3
+    # and an ordinary client with the same columns present is still listed
+    world.seed("clients", {"id": "99999999-9999-9999-9999-999999999999", "firm_id": FIRM, "client_name": "Plain Co", "deleted_at": None,
+                           "is_internal": False, "status": "active"})
+    _challan(world, 40, client="99999999-9999-9999-9999-999999999999", paid="2026-06-01", no="CH-PLAIN")
+    assert "CH-PLAIN" in [c["challan_no"] for c in listed(world)["challans"]]
+
+
+def test_a_challan_whose_client_row_cannot_be_found_is_not_listed(world):
+    _challan(world, 41, client="12121212-1212-1212-1212-121212121212", paid="2026-06-01", no="CH-ORPHAN")
+    assert "CH-ORPHAN" not in [c["challan_no"] for c in listed(world)["challans"]]
 
 
 def test_a_client_can_be_asked_for_on_its_own(world):

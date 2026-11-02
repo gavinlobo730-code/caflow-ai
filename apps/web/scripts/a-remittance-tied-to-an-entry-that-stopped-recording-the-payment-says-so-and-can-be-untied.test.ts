@@ -39,7 +39,7 @@ test("the API client asks for the stale links and takes a link back with a DELET
   assert.ok(/stale_links\?: StaleRemittanceLink\[\]/.test(API), "the reconciliation answer does not type stale_links (optional: an older server sends none)");
   assert.ok(/unlinkRemittancePayment: \(clientId: string, remittanceId: string\) =>[\s\S]{0,260}\/remittances\/\$\{remittanceId\}\/payment`,\s*\{ method: "DELETE" \}/.test(API),
     "the take-back is not a DELETE on the remittance's payment path");
-  assert.ok(/state: "reversed" \| "deleted" \| "draft" \| "reversal" \| "missing" \| "unknown";\s*label: string;\s*note: string \| null;/.test(API),
+  assert.ok(/state: "reversed" \| "deleted" \| "draft" \| "reversal" \| "missing" \| "unknown" \| "not_debiting";\s*label: string;\s*note: string \| null;/.test(API),
     "the stale link's reading is not the server's state, label and note");
 });
 

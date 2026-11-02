@@ -188,8 +188,10 @@ def test_a_remittance_whose_entry_no_longer_debits_its_account_is_listed_in_word
     stale, = rem.stale_links(esi, firm_id=FIRM, client_id=A)
     link = stale["ledger_link"]
     assert link["state"] == "not_debiting" and link["can_take_back"] is True
-    assert link["label"] == "Tied to an entry that no longer debits ESI Payable"
-    assert "still in the books" in link["note"] and "The remittance stays: it was paid." in link["note"]
+    # The remittance's door does not ask that the entry debits the account, so the words claim no history: it "does not", not "no longer".
+    assert link["label"] == "Tied to an entry that does not debit ESI Payable"
+    assert "still in the books" in link["note"] and "may never have" in link["note"] and "The remittance stays: it was paid." in link["note"]
+    assert "no longer" not in link["label"] + link["note"]
     assert stale["journal_entry_id"] == "JE-MOVED"
 
 
@@ -199,6 +201,72 @@ def test_a_remittance_whose_lines_cannot_be_read_is_listed_unknown_and_never_cle
     monkeypatch.setattr(rem, "entries_debiting", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     stale, = rem.stale_links(esi, firm_id=FIRM, client_id=A)
     assert stale["ledger_link"]["state"] == "unknown" and stale["ledger_link"]["can_take_back"] is False
+
+
+def test_the_challan_words_keep_no_longer_because_its_door_does_refuse_an_entry_with_no_debit(world):
+    row, = annotated(world, MOVED)
+    assert row["ledger_link"]["label"] == 'Tied to an entry that no longer debits "TDS Payable"'
+    assert "may never have" not in row["ledger_link"]["note"]
+
+
+def test_one_account_lookup_per_scheme_however_many_remittances_are_tied(esi, monkeypatch):
+    for n in range(5):
+        _esi_entry(esi, f"JE-{n}", ESI_ACC)
+        _remittance(esi, f"JE-{n}", month=f"2026-0{n + 1}")
+    calls = []
+    real = rem._liability_account_id
+    monkeypatch.setattr(rem, "_liability_account_id", lambda db, **k: (calls.append(k["scheme"]), real(db, **k))[1])
+    assert rem.stale_links(esi, firm_id=FIRM, client_id=A) == []
+    assert calls == [rem.ESIC], f"the account was looked up {len(calls)} times for one scheme: {calls}"
+
+
+class _CappedLines:
+    """`journal_lines` behind PostgREST's 1,000-row cap: it answers at most 1,000 rows to one request and says nothing when it cuts one short.
+    It supports the filters the paged debit read uses (`in_`, `gt` on two columns, `order`, `limit`) and counts its requests."""
+
+    CAP = 1000
+
+    def __init__(self, rows):
+        self._rows, self.requests = rows, 0
+
+    def table(self, name):
+        assert name == "journal_lines"
+        outer = self
+
+        class Q:
+            def __init__(self):
+                self._in, self._gt, self._order, self._limit = [], [], None, None
+            def select(self, *_a, **_k): return self
+            def in_(self, col, vals): self._in.append((col, set(vals))); return self
+            def gt(self, col, v): self._gt.append((col, v)); return self
+            def order(self, col, desc=False): self._order = col; return self
+            def limit(self, n): self._limit = n; return self
+            def execute(self):
+                outer.requests += 1
+                rows = [r for r in outer._rows if all(r[c] in vs for c, vs in self._in) and all(r[c] > v for c, v in self._gt)]
+                if self._order:
+                    rows.sort(key=lambda r: r[self._order])
+                class R:
+                    pass
+                out = R()
+                out.data = rows[:min(self._limit or _CappedLines.CAP, _CappedLines.CAP)]
+                return out
+        return Q()
+
+
+def test_a_hundred_entries_with_twelve_debit_lines_each_are_all_judged_past_the_row_cap():
+    """1,200 debit lines for one chunk of 100 entries: one unpaged request would have returned 1,000 and flagged the last 17 entries' good links."""
+    rows, n = [], 0
+    for e in range(100):
+        for _ in range(12):
+            n += 1
+            rows.append({"id": f"{n:06d}", "journal_entry_id": f"JE{e:03d}", "account_id": "ACC", "debit_paise": 100})
+        n += 1
+        rows.append({"id": f"{n:06d}", "journal_entry_id": f"JE{e:03d}", "account_id": "BANK", "debit_paise": 0})   # not a debit
+    db = _CappedLines(rows)
+    found = rem.entries_debiting(db, entry_ids=[f"JE{e:03d}" for e in range(100)], account_ids=["ACC", "BANK"])
+    assert found == {(f"JE{e:03d}", "ACC") for e in range(100)}, f"{100 - len(found)} good links would have read as not debiting"
+    assert db.requests >= 2, "one request cannot have read 1,200 rows past a 1,000-row cap"
 
 
 def test_the_reader_judges_only_debits_and_only_the_accounts_asked(esi):

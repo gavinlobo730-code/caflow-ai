@@ -263,14 +263,22 @@ LINK_NOTE = {
     UNKNOWN: "The ledger could not be read just now, so whether the entry this remittance is tied to still records the payment is not known.",
 }
 
-def not_debiting_view(account: str, what: str, why_it_stays: str = "it was paid") -> dict:
-    """The server's words for a live entry that no longer debits `account`. `what` is the register's own noun ("remittance", "challan") and
-    `why_it_stays` the register's own reason the document is kept ("it was paid", "the tax was deposited")."""
+def not_debiting_view(account: str, what: str, why_it_stays: str = "it was paid", *, door_checked: bool = True) -> dict:
+    """The server's words for a live entry that does not debit `account`. `what` is the register's own noun ("remittance", "challan") and
+    `why_it_stays` the register's own reason the document is kept ("it was paid", "the tax was deposited"). `door_checked` is whether the
+    door that made the link refused an entry with no debit to the account: the challan's does, so for a challan the entry DID debit it once and
+    "no longer" is true; the ESI and professional-tax remittance's door asks only that the entry is this client's and live, so for a remittance
+    the entry may never have debited it, and the words say "does not" and do not claim a history they cannot know."""
+    if door_checked:
+        label = f"Tied to an entry that no longer debits {account}"
+        why = f"is still in the books but no longer debits {account} (it may have been edited in place after it was tied)"
+    else:
+        label = f"Tied to an entry that does not debit {account}"
+        why = f"is still in the books but does not debit {account} (it may have been edited in place after it was tied, or it may never have)"
     return {
-        "label": f"Tied to an entry that no longer debits {account}",
-        "note": (f"The ledger entry this {what} is tied to is still in the books but no longer debits {account} (it may have been edited in place "
-                 f"after it was tied), so it no longer records the payment. The {what} stays: {why_it_stays}. Take the link back and tie it to the "
-                 f"entry that records the payment, if there is one."),
+        "label": label,
+        "note": (f"The ledger entry this {what} is tied to {why}, so it does not record the payment. The {what} stays: {why_it_stays}. Take the link "
+                 f"back and tie it to the entry that records the payment, if there is one."),
     }
 
 
@@ -304,7 +312,7 @@ def link_view(state: str, account: Optional[str] = None) -> dict:
     (UNKNOWN), because a failed read is no reason to undo a link. The screen shows the button on it and reads no state word. `account` names
     the liability account for NOT_DEBITING, whose words depend on it."""
     if state == NOT_DEBITING:
-        return {"state": state, **not_debiting_view(account or "the liability account", "remittance"), "can_take_back": True}
+        return {"state": state, **not_debiting_view(account or "the liability account", "remittance", door_checked=False), "can_take_back": True}
     return {"state": state, "label": LINK_LABEL[state], "note": LINK_NOTE.get(state), "can_take_back": state != UNKNOWN}
 
 
@@ -314,14 +322,15 @@ def entries_debiting(db, *, entry_ids: list, account_ids: list) -> set:
     repeated here: a line belongs to its entry. Shared with the TDS challan's link."""
     wanted = sorted({str(i) for i in entry_ids if i})
     accounts = sorted({str(a) for a in account_ids if a})
-    found: set = set()
     if not wanted or not accounts:
-        return found
-    for at in range(0, len(wanted), _ENTRY_CHUNK):
-        rows = (db.table("journal_lines").select("journal_entry_id, account_id, debit_paise")
-                .in_("journal_entry_id", wanted[at:at + _ENTRY_CHUNK]).in_("account_id", accounts).execute().data) or []
-        found.update((str(r["journal_entry_id"]), str(r["account_id"])) for r in rows if int(r.get("debit_paise") or 0) > 0)
-    return found
+        return set()
+    from core.db_paging import fetch_all_in
+    # Paged by the repo's own helper: PostgREST answers at most 1,000 rows to one request and says nothing when it cuts one short, so a chunk of
+    # entries with many lines on the account would have under-read and flagged a good link. Debit lines only are asked for.
+    rows = fetch_all_in(lambda: db.table("journal_lines").select("id, journal_entry_id, account_id, debit_paise")
+                        .in_("account_id", accounts).gt("debit_paise", 0),
+                        "journal_entry_id", wanted, "id", label="statutory_remittance_service.entries_debiting")
+    return {(str(r["journal_entry_id"]), str(r["account_id"])) for r in rows if int(r.get("debit_paise") or 0) > 0}
 
 
 def stale_links(db, *, firm_id: str, client_id: str) -> list:
@@ -355,13 +364,15 @@ _ACCOUNT_SHOWN = {ESIC: "ESI Payable", PROFESSIONAL_TAX: "PT Payable"}
 
 
 def _that_stopped_debiting(db, *, firm_id: str, client_id: str, live: list) -> list:
-    """Of the remittances tied to a LIVE entry, those whose entry no longer debits the scheme's liability account, each with its
-    `ledger_link`. A scheme whose account the client's chart does not hold cannot be judged and is left out (the link could not have been made
-    without it); when the lines cannot be read every one is listed as UNKNOWN, as a failed read of the entries is."""
+    """Of the remittances tied to a LIVE entry, those whose entry does not debit the scheme's liability account, each with its `ledger_link`.
+    The remittance's door does not ask that of the entry, so the entry may never have debited it. A scheme whose account the client's chart
+    does not hold cannot be judged and is left out; when the lines cannot be read every one is listed as UNKNOWN, as a failed read of the
+    entries is."""
     if not live:
         return []
     try:
-        account_of = {r["id"]: _liability_account_id(db, firm_id=firm_id, client_id=client_id, scheme=r.get("scheme")) for r in live}
+        by_scheme = {sch: _liability_account_id(db, firm_id=firm_id, client_id=client_id, scheme=sch) for sch in {r.get("scheme") for r in live}}
+        account_of = {r["id"]: by_scheme[r.get("scheme")] for r in live}
         debiting = entries_debiting(db, entry_ids=[r["journal_entry_id"] for r in live], account_ids=[a for a in account_of.values() if a])
     except Exception as exc:                                        # noqa: BLE001
         from core.observability import capture_soft_failure
