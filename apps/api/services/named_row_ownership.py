@@ -269,10 +269,11 @@ def service_is_the_practices(db, firm_id: str, service_id) -> None:
         return
     from services.internal_client_service import get_internal_client_id
     internal = get_internal_client_id(firm_id)
-    rows = []
-    if internal:
-        rows = _find(db.table("service_catalogue").select("id").eq("id", named)
-                .eq("firm_id", firm_id).eq("client_id", internal).limit(1))
+    if not internal:
+        # No practice client yet, so there is no catalogue to name a service of: the sentence `billing_service.generate_for_schedule` gives.
+        raise HTTPException(status_code=409, detail="Provision the firm's practice (internal client) before billing.")
+    rows = _find(db.table("service_catalogue").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", internal).limit(1))
     if not rows:
         raise _not_found("service")
 

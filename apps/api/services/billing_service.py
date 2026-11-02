@@ -439,8 +439,13 @@ def update_schedule(firm_id: str, schedule_id: str, data: dict,
         return row
 
     if "service_id" in fields:
+        # Asked only when the service CHANGES: the retainer screen sends the stored one back on every edit, and a schedule that already names
+        # a service must still have its fee edited (POST-A-353).
         from services import named_row_ownership
-        named_row_ownership.service_is_the_practices(db or _db(), firm_id, fields["service_id"])
+        handle = db or _db()
+        stored = (handle.table("billing_schedules").select("service_id").eq("id", schedule_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
+        if str(stored.get("service_id") or "") != str(fields["service_id"]):
+            named_row_ownership.service_is_the_practices(handle, firm_id, fields["service_id"])
     fields["updated_at"] = datetime.now(timezone.utc).isoformat()
     # ONE mechanism, not two. The `.eq("firm_id", …)` on the UPDATE is what
     # scopes this — a schedule belonging to another firm matches no row, so

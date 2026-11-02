@@ -27,7 +27,9 @@ def _assert_task_scope(current_user: dict, task: dict) -> None:
     Takes the ROW, not an id, because every caller has one by this point.
     Re-fetching would be a second query for an answer already on the desk.
     """
-    assert_client_access(current_user, task.get("client_id"))
+    # "Task not found" is what a missing task answers at every door of this file: the default "Not found" for a task of a client the caller
+    # is not assigned told them which ids exist (POST-A-353).
+    assert_client_access(current_user, task.get("client_id"), detail="Task not found")
 
 
 # ── Tags ─────────────────────────────────────────────────────────────────────

@@ -138,7 +138,7 @@ def writes_in(source: str, relpath: str) -> list[tuple[str, str, str, str, str, 
         seen.add(id(write_call))
         fn = _function_of(write_call, parents)
         dicts, subs = _payload_dicts(write_call.args[0], fn)
-        pairs = [(k.value, v) for d in dicts for k, v in zip(d.keys, d.values) if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+        pairs = [(k.value, v) for d in dicts for k, v in zip(d.keys, d.values, strict=True) if isinstance(k, ast.Constant) and isinstance(k.value, str)]
         for column, value in pairs + subs:
             if (table, column) in HOLDS:
                 out.append((relpath, fn.name if fn is not None else "<module>", table, column, kind_of(value), value.lineno))

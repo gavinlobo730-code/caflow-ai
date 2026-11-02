@@ -132,13 +132,15 @@ _NOT_TRANSIENT = {
 #: Migrations 360, 418, 565, 566, 570 and 573 make the database refuse a row that names a ledger account, a cost centre, a ledger entry,
 #: a client, a customer, a supplier or a member that belongs to another client or firm. Each raises a sentence written for a log: it
 #: names the table, the column and the OTHER client's id ("a row of recurring_invoices names customer 3f2a... that belongs to another
-#: client"), and five of the six raise it as a permission fault (42501), which a caller is told is a server configuration problem. All of
-#: that reached a person, because the failure surfaces wherever a row is written and the 26-odd doors that store such a link had no
-#: question of their own. Asking at each door is the extra courtesy of POST-A-350; the database is the control. This says it ONCE: the
-#: same 404 sentence a per-door check gives a stranger ("That ledger account was not found."), so the answer does not say whether the row
-#: exists elsewhere, and it repeats neither the table, the column nor the id. The two SQLSTATEs are the ones the guards use (the three
-#: later ones raise 42501 and the ledger-account and ledger-entry ones P0001: a guard is recognised by its WORDS, and the state only keeps
-#: this from speaking about an error that is not a database refusal). A guard added later that says it belongs to another client or firm
+#: client"), and four of the six (360, 418, 565 and 566) raise it as a permission fault (42501), which a caller is told is a server
+#: configuration problem; 570 and 573 raise P0001. All of that reached a person, because the failure surfaces wherever a row is written and
+#: the 26-odd doors that store such a link had no question of their own. Asking at each door is the extra courtesy of POST-A-350; the
+#: database is the control. This says it ONCE: the same 404 sentence a per-door check gives a stranger ("That ledger account was not
+#: found."), and it repeats neither the table, the column nor the id. IT DOES NOT HIDE WHETHER A ROW EXISTS ELSEWHERE AT A DOOR THAT HAS NO
+#: QUESTION OF ITS OWN: an id that exists nowhere reaches the foreign key first and is refused in the foreign key's words (23503, 400), and
+#: only an id that exists under another client reaches the guard. That tell needs a guessable uuid; a door that must not give it asks
+#: first (`services/named_row_ownership`). A guard is recognised by its WORDS, and the SQLSTATE (42501 or P0001) only keeps this from
+#: speaking about an error that is not a database refusal. A guard added later that says it belongs to another client or firm
 #: and is not listed here is found by `tests/test_the_database_tenant_guards_are_worded_for_a_person.py`, which reads every migration.
 _TENANT_GUARD_STATES = frozenset({"P0001", "42501"})
 _TENANT_GUARDS = (
@@ -411,7 +413,7 @@ def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
     if not state:
         return None
 
-    # A tenant guard of the database (migrations 360, 565, 566, 570) says it once for every door that stores a link: the same 404
+    # A tenant guard of the database (migrations 360, 418, 565, 566, 570, 573) says it once for every door that stores a link: the same 404
     # sentence a per-door check gives, with no table, column or id in it (POST-A-353). Before the SQLSTATE branches because the
     # journal-line guard raises 42501, which is otherwise a server configuration fault.
     guard = tenant_guard_sentence(exc)

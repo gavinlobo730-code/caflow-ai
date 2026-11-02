@@ -257,7 +257,6 @@ def test_a_billing_schedule_cannot_be_re_pointed_at_another_firms_service(world)
 def test_a_task_dependency_on_a_task_the_caller_cannot_reach_answers_in_the_words_of_a_missing_one(world, monkeypatch):
     """The first lookup answers 'Dependency task not found' for an id that does not exist; a task of a client the caller is not assigned
     to answered the default 'Not found', which told the caller the id exists."""
-    import repositories.task_repository as repo_module
     rows = {"t-1": {"id": "t-1", "client_id": A, "title": "mine"}, "t-hidden": {"id": "t-hidden", "client_id": B, "title": "hidden"}}
     monkeypatch.setattr(task_extras_router.task_repo, "find_by_id", lambda tid, firm_id=None, **k: rows.get(tid))
     caller = {**PARTNER, "role": "Executive", "assigned_client_ids": [A], "allowed_client_ids": [A]}
@@ -298,3 +297,43 @@ def test_a_time_entry_with_no_client_names_a_task_the_caller_can_reach_only(worl
     _refused(client.post("/api/time-entries", json={**body, "task_id": "no-such-task"}), "That task was not found.")
     assert world.rows("time_entries") == []
     _not_stopped(client.post("/api/time-entries", json={**body, "task_id": "task-a"}), "That task was not found.")
+
+
+# ── what the independent review of the first version asked for ───────────────────────────────────────
+
+def test_a_billing_edit_that_sends_back_the_stored_service_is_not_asked_again(world):
+    """The retainer screen re-sends the stored `service_id` on every edit. A schedule that already names a service (written before the
+    check, or of a catalogue that is not the practice's) must still have its fee edited; only a CHANGE of service is asked."""
+    world.seed("billing_schedules", {"id": "sched-legacy", "firm_id": FIRM, "client_id": A, "service_id": "svc-client-b", "arrangement": "retainer",
+                                     "cadence": "monthly", "amount_paise": 100_000, "is_active": True})
+    client = _client(billing_router)
+    edit = client.patch("/api/billing/schedules/sched-legacy", json={"service_id": "svc-client-b", "amount_paise": 150_000})
+    assert edit.status_code == 200, edit.text
+    assert world.rows("billing_schedules")[0]["amount_paise"] == 150_000
+    _refused(client.patch("/api/billing/schedules/sched-legacy", json={"service_id": "svc-other-firm"}), "That service was not found.")
+    assert world.rows("billing_schedules")[0]["service_id"] == "svc-client-b"
+
+
+def test_a_firm_with_no_practice_client_is_told_to_provision_it_and_not_that_the_service_is_missing(world):
+    world.seed("firms", {"id": "firm-without-practice", "internal_client_id": None})
+    with pytest.raises(HTTPException) as caught:
+        own.service_is_the_practices(world, "firm-without-practice", "svc-practice")
+    assert caught.value.status_code == 409 and "Provision the firm's practice" in caught.value.detail
+
+
+def test_an_original_return_discards_an_earlier_filing_and_so_is_not_asked_about_it(world):
+    body = {"client_id": A, "financial_year": "2025-26", "assessment_year": "2026-27", "itr_form": "ITR-3", "return_type": "original",
+            "original_filing_id": "filing-b"}
+    res = _client(itr_router).post("/api/itr/filings", json=body)
+    assert res.json().get("detail") != "That filing was not found.", res.text
+
+
+def test_every_task_door_answers_a_task_the_caller_cannot_reach_as_a_missing_one(world, monkeypatch):
+    rows = {"t-hidden": {"id": "t-hidden", "client_id": B, "title": "hidden"}}
+    monkeypatch.setattr(task_extras_router.task_repo, "find_by_id", lambda tid, firm_id=None, **k: rows.get(tid))
+    monkeypatch.setattr(task_extras_router, "assert_client_access",
+                        lambda user, cid, detail="Not found": (_ for _ in ()).throw(HTTPException(404, detail)) if cid != A else None)
+    http = _client(task_extras_router)
+    hidden, missing = http.get("/api/tasks/t-hidden/tags"), http.get("/api/tasks/t-nothing/tags")
+    assert hidden.status_code == missing.status_code == 404
+    assert hidden.json()["detail"] == missing.json()["detail"] == "Task not found", (hidden.text, missing.text)
