@@ -737,7 +737,7 @@ class _Rpc:
         return header
 
     def _fn_settle_receipt_atomic(self):
-        """Mirror migrations/160+162 settle_receipt_atomic: insert the journal
+        """Mirror migrations/160+162+235+574 settle_receipt_atomic: insert the journal
         header+lines, the receipt row, and every allocation's invoice update
         (trivially atomic in-memory — a real exception here would need to undo
         prior appends to be a faithful mirror, but no test exercises a
@@ -748,7 +748,13 @@ class _Rpc:
         genuine collision must roll back and surface as an error, not silently
         attribute the request to someone else's committed row). Mirrors 162's
         balance/zero guard and per-invoice allocation aggregation too."""
-        receipt = dict(self.params["p_receipt"])
+        # The real function stores the columns of ITS INSERT INTO receipts and nothing else (migration 574 added id, bank_account_id and the three
+        # Table 11A columns to a list that had dropped them for months while this double stored the whole payload, so no mock test could see it).
+        # The list is read from the last migration that defines the function's body, so a key the service sends that the function drops is dropped
+        # here too and a test reading it fails the way production would.
+        from tests import _receipt_function_source
+        stored_columns = set(_receipt_function_source.current_columns()[1])
+        receipt = {k: v for k, v in self.params["p_receipt"].items() if k in stored_columns}
         entry = {k: v for k, v in self.params["p_journal_entry"].items() if k != "audit_actor"}     # migration 545 removes it first
         lines = self.params["p_journal_lines"]
         allocations = self.params["p_allocations"]

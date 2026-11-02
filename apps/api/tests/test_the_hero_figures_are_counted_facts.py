@@ -11,8 +11,8 @@ order, and holds the one figure whose truth is a fact about the code.
 WHAT "1 LEDGER" MAY SAY. The first draft of the replacement figure was "one path that
 every posting goes through", pinned by a scan for the one caller of `post_journal_atomic`.
 That is NOT true and the scan would have passed anyway: an ordinary rupee receipt is
-posted by the `settle_receipt_atomic` database function (migration 160, last restated by
-235), which inserts its own `journal_entries` and `journal_lines` inside the transaction
+posted by the `settle_receipt_atomic` database function (migration 160; its body last restated by 574,
+after 235 and the rename of 486), which inserts its own `journal_entries` and `journal_lines` inside the transaction
 that also writes the receipt and settles its invoices, and never reaches
 `post_journal_atomic` or `_create_journal`. Both doors write the SAME two tables and both
 refuse an unbalanced entry, so "one ledger" is true and "one path" is not. The figure
@@ -317,7 +317,10 @@ def sql_ledger_writers(sql: str) -> dict[str | None, set[str]]:
                 # the body belongs to the last CREATE FUNCTION only if no statement ended
                 # between that header and the opening quote (a DO block has no header)
                 if header and ";" not in sql[header[-1].start():start]:
-                    owner = header[-1].group(1)
+                    # `X__unguarded` is the body of `X` after migration 486 renamed it behind a wrapper that asks who is calling: the same
+                    # writer, not a fourth one, so a migration that re-defines the body (574) is credited to the function it belongs to. A new
+                    # `foo__unguarded` still shows up, as `foo`, and is not on the list.
+                    owner = header[-1].group(1).removesuffix("__unguarded")
                 break
         out.setdefault(owner, set()).add(m.group(1).lower())
     return out

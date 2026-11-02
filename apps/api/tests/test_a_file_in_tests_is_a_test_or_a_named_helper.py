@@ -74,6 +74,9 @@ HELPERS = {
     # Two test modules read the model a route takes, so the spelling is here once (POST-A-171).
     "_fastapi_compat.py",
     "e2e_harness.py",
+    # What the receipt-recording database function stores, read from the migrations (the last definer of its body, found by number): the rule
+    # test compares it with what the service sends and `e2e_harness` stores no more than it (migration 574, POST-A-369's review).
+    "_receipt_function_source.py",
     # A stand-in for the health engine's stored scores (`repositories/health_scores_repository`) for the tests whose fixture clients carry a
     # `health_score`; five test files use it, so none of them grows its own copy.
     "health_double.py",

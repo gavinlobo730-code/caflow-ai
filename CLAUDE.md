@@ -172,7 +172,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 
-### `docs/design-record/documents-sales-purchase.md` (16 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (17 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+- A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS PAID INTO AND THE TABLE 11A FIELDS, AND A TEST COMPARES WHAT THE SERVICE SENDS WITH WHAT THE FUNCTION STORES
 
 - THE DEMO SEEDER HAS BEEN RUN OVER A REAL DATABASE, AND EVERY DEFECT IT EXPOSED IS A RULE NOW
 - A TEMPLATE CHANGES THE LAYOUT AND NEVER THE PARTICULARS, AND THE PRACTICE'S TEMPLATE REACHES THE PRACTICE'S OWN DOCUMENT ONLY
@@ -628,7 +629,7 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   fixed assets, opening balances, manual journals and reversals all route through it. Do
   not add a second write path. ⚠️ **"All route through it" is exact for the Python kernel and
   not for the database**: an ordinary rupee receipt posts its journal inside the receipt's own
-  transaction through the `settle_receipt_atomic` database function (migrations 160 and 235)
+  transaction through the `settle_receipt_atomic` database function (migrations 160 and 235, its body renamed `settle_receipt_atomic__unguarded` by 486 and restated by 574)
   and not through `post_journal_atomic`, and a manual journal's lines are rewritten by
   `edit_posted_journal`, so three database functions write the ledger. The public site
   therefore says "one ledger" and never "one posting path";
