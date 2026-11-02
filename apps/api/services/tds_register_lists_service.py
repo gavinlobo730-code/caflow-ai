@@ -114,9 +114,6 @@ def challans_in_memory(all_rows: list, *, from_date: Optional[str], to_date: Opt
 
 # ── challans with no ledger entry, across clients ───────────────────────────
 
-#: The columns the worklist shows. A narrow read, kept by keyset, because the answer IS every unlinked challan the caller may see.
-_UNLINKED_COLUMNS = "id, client_id, challan_no, section, total_paise, payment_date, financial_year, quarter"
-
 #: A challan that has waited more than this many Indian days with no ledger entry is flagged as waiting long. A product default and not a
 #: statutory period (nothing in the Act dates the tying of a challan to a bank line): a deposit reaches the bank the day it is paid and a
 #: statement is imported at least monthly, so a month with no entry behind a challan is long enough to ask. Decided 2-11-2026.
@@ -177,7 +174,10 @@ def unlinked_challans(db, firm_id: str, *, client_ids: Optional[set], client_id:
         return _unlinked_window([], {}, limit=limit, offset=offset, today=ist_today())
 
     def base():
-        q = db.table("tds_challans").select(_UNLINKED_COLUMNS).eq("firm_id", firm_id).is_("journal_entry_id", "null")
+        # A narrow read, kept by keyset, because the answer IS every unlinked challan the caller may see. The select list is a literal here and
+        # not a constant, so the backend's columns-exist check can read it (a list held in a variable is counted as unreadable).
+        q = (db.table("tds_challans").select("id, client_id, challan_no, section, total_paise, payment_date, financial_year, quarter")
+             .eq("firm_id", firm_id).is_("journal_entry_id", "null"))
         return q.eq("client_id", client_id) if client_id else q
     rows = fetch_all(base, label="tds.lists.unlinked_challans")
     if client_ids is not None:
