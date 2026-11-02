@@ -31,6 +31,7 @@ import {
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr3bFindings } from "@/components/gst/Gstr3bFindings";
 import { Gstr3bCreditLedger } from "@/components/gst/Gstr3bCreditLedger";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
@@ -143,6 +144,16 @@ export default function GSTR3BPage() {
   const dates = useDateProblems();
   const [filingStatus, setFilingStatus] = useState<GSTReturnStatus | null>(null);
 
+  // The filing walk-through (a SIMULATION that transmits and files nothing). Offered only where the SERVER says the flow exists, and only
+  // on a return the CA has approved: a control the server would refuse is a dead control (POST-A-003).
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => { if (!cancelled) setDemoFlows(c.enabled ? c.flows : []); });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     const sb = getSupabaseClient();
     // Paged: a firm past the ~1000-row cap would otherwise lose clients from this pick-list without a word (POST-A-135).
@@ -246,6 +257,19 @@ export default function GSTR3BPage() {
     setFiledError(null);
   }
 
+  async function handleStartDemo() {
+    if (!clientId || !yearMonth || !result) return;
+    try {
+      // The walk-through is addressed by the SAVED return, for the registration this screen built it for.
+      const saved = await getGSTR3BReturn(clientId, toPeriod(yearMonth), result.gstin);
+      const id = (saved as { id?: string } | null)?.id;
+      if (!id) { setError(`No GSTR-3B is saved for ${formatMonthYear(yearMonth)}, so there is nothing to walk through.`); return; }
+      setDemo({ id });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start the walk-through.");
+    }
+  }
+
   function handleDownload() {
     if (!result || !clientId) return;
     // The registration the RETURN was built for — the server's answer, not the
@@ -266,6 +290,9 @@ export default function GSTR3BPage() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
+      {demo && (
+        <FilingDemoWizard flow="gstr3b" clientId={clientId} refData={{ return_id: demo.id }} onClose={() => setDemo(null)} />
+      )}
 
       {/* Header */}
       <PageHeader
@@ -365,6 +392,14 @@ export default function GSTR3BPage() {
                   Download JSON
                 </button>
               ) : null}
+              {filingStatus === "ca_approved" && demoFlows.includes("gstr3b") && (
+                <button
+                  onClick={handleStartDemo}
+                  className="flex items-center gap-2 px-4 py-2 border border-state-attention-border text-state-attention hover:bg-state-attention-hover text-sm font-medium rounded-lg transition-colors"
+                >
+                  File (demo)
+                </button>
+              )}
               {filingStatus === "ca_approved" && (
                 <button
                   onClick={() => setShowFiledModal(true)}
