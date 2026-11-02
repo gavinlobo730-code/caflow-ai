@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -101,7 +102,8 @@ def _payload(receipt_no: str, amount: int, allocations: list[tuple[str, int]], e
     allocated = sum(a for _, a in allocations)
     receipt = {
         "firm_id": FIRM, "client_id": CLIENT, "customer_id": CUSTOMER, "receipt_no": receipt_no, "receipt_date": "2026-04-05",
-        "amount_paise": amount, "tds_paise": 0, "unallocated_paise": amount - allocated, "payment_mode": "bank", "reference_no": "", "notes": "",
+        "amount_paise": amount, "tds_paise": 1250, "unallocated_paise": amount - allocated, "payment_mode": "upi", "reference_no": f"UTR-{receipt_no}",
+        "notes": f"note for {receipt_no}", "created_at": "2026-04-05T10:30:00+00:00",
         **(extra or {}),
     }
     if with_id:
@@ -116,11 +118,11 @@ def _payload(receipt_no: str, amount: int, allocations: list[tuple[str, int]], e
     return {"receipt": receipt, "entry": entry, "lines": lines, "allocs": allocs}
 
 
-def _settle(dsn: str, p: dict) -> subprocess.CompletedProcess:
-    """The call the API's plain receipt makes (the wrapper, as the owner)."""
+def _settle(dsn: str, p: dict, *, scalar: bool = False) -> subprocess.CompletedProcess:
+    """The call the API's plain receipt makes (the wrapper, as the owner). With `scalar`, stdout is the returned JSON text alone."""
     j = lambda x: json.dumps(x).replace("'", "''")          # noqa: E731
     return _run(dsn, f"SELECT public.settle_receipt_atomic('{j(p['receipt'])}'::jsonb,'{j(p['entry'])}'::jsonb,"
-                     f"'{j(p['lines'])}'::jsonb,'{j(p['allocs'])}'::jsonb);")
+                     f"'{j(p['lines'])}'::jsonb,'{j(p['allocs'])}'::jsonb)::text;", scalar=scalar)
 
 
 def _row(dsn: str, receipt_no: str) -> dict:
@@ -128,6 +130,25 @@ def _row(dsn: str, receipt_no: str) -> dict:
                        "r.is_interstate, r.journal_entry_id::text, j.source_id::text AS entry_source_id, j.source_type AS entry_source_type "
                        f"FROM receipts r JOIN journal_entries j ON j.id = r.journal_entry_id WHERE r.receipt_no = '{receipt_no}') r;")
     return json.loads(out)
+
+
+def _entries_but_the_link(dsn: str) -> str:
+    """A hash of every column of every ledger entry except the link 575 repairs (and the stamp the platform's own trigger moves with it)."""
+    return _scalar(dsn, "SELECT coalesce(md5(string_agg((to_jsonb(j) - 'source_id' - 'updated_at')::text, ',' ORDER BY j.id)), '') FROM journal_entries j;")
+
+
+def _lines_hash(dsn: str) -> str:
+    return _scalar(dsn, "SELECT coalesce(md5(string_agg(to_jsonb(l)::text, ',' ORDER BY l.id)), '') FROM journal_lines l;")
+
+
+def _receipts_hash(dsn: str) -> str:
+    return _scalar(dsn, "SELECT coalesce(md5(string_agg(to_jsonb(r)::text, ',' ORDER BY r.id)), '') FROM receipts r;")
+
+
+def _audit_rows(dsn: str) -> list[dict]:
+    return json.loads(_scalar(dsn, "SELECT coalesce(json_agg(json_build_object('entry', entity_id, 'firm', firm_id::text, 'old', old_data->>'source_id', "
+                                   "'new', new_data->>'source_id', 'actor', actor_id, 'action', action) ORDER BY entity_id), '[]'::json)::text "
+                                   "FROM audit_log WHERE entity_type = 'journal_entry' AND metadata->>'source' = 'migration 575';"))
 
 
 @pytest.fixture()
@@ -159,6 +180,32 @@ def test_the_receipt_keeps_its_id_its_bank_account_and_its_advance_fields_and_it
     assert row["id"] == p["receipt"]["id"], "the receipt was stored under another id than the one its journal entry carries"
     assert row["entry_source_id"] == row["id"] and row["entry_source_type"] == "receipt"
     assert (row["bank_account_id"], row["gst_rate_bps"], row["place_of_supply"], row["is_interstate"]) == (BANK_ROW, 1800, "27", False)
+
+
+def test_every_column_the_function_stored_before_is_still_stored_as_sent(db):
+    """The function is replaced WHOLE, so a column the old INSERT stored and the new one forgot would vanish without an error: read every one back."""
+    p = _payload("R-574-0", 100000, [(INV_A, 40000)], ADVANCE)
+    assert _settle(db, p).returncode == 0
+    stored = json.loads(_scalar(db, "SELECT row_to_json(r)::text FROM receipts r WHERE receipt_no = 'R-574-0';"))
+    sent = p["receipt"]
+    for column in ("id", "firm_id", "client_id", "customer_id", "receipt_no", "receipt_date", "amount_paise", "tds_paise", "unallocated_paise",
+                   "payment_mode", "reference_no", "notes", "bank_account_id", "gst_rate_bps", "place_of_supply", "is_interstate"):
+        assert stored[column] == sent[column], f"{column}: sent {sent[column]!r}, stored {stored[column]!r}"
+    assert stored["created_at"].startswith("2026-04-05T10:30:00"), "the creation stamp the caller sent is not kept"
+    assert stored["allocated_paise"] == 40000 and stored["journal_entry_id"] is not None
+
+
+def test_the_returned_json_carries_the_stored_row_and_the_allocations(db):
+    """`create_receipt_core` audits and answers from what the function returns, so the new columns must be in it, not only in the table."""
+    p = _payload("R-574-0B", 100000, [(INV_A, 40000)], ADVANCE)
+    r = _settle(db, p, scalar=True)
+    assert r.returncode == 0, r.stderr
+    returned = json.loads(r.stdout)
+    receipt = returned["receipt"]
+    assert returned["receipt_id"] == receipt["id"] == p["receipt"]["id"] and returned["journal_entry_id"] == receipt["journal_entry_id"]
+    assert (receipt["bank_account_id"], receipt["gst_rate_bps"], receipt["place_of_supply"], receipt["is_interstate"]) == (BANK_ROW, 1800, "27", False)
+    assert [(a["sales_invoice_id"], a["allocated_paise"], a["new_paid_paise"], a["new_status"]) for a in returned["allocations"]] == \
+        [(INV_A, 40000, 40000, "partially_paid")]
 
 
 def test_the_same_call_loses_all_five_through_the_function_before_574_and_so_the_test_sees_the_hole(db):
@@ -233,9 +280,12 @@ def test_the_attributes_are_exactly_the_previous_functions(db):
         assert _scalar(db, f"SELECT has_function_privilege('{role}', '{FUNCTION}', 'EXECUTE');") == "f", role
 
 
-def test_the_wrapper_passes_the_receipt_through_unchanged(db):
-    src = _scalar(db, "SELECT prosrc FROM pg_proc WHERE oid = 'public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb)'::regprocedure;")
-    assert "settle_receipt_atomic__unguarded(p_receipt" in src.replace("\n", " ").replace("  ", " ") or "settle_receipt_atomic__unguarded(" in src
+def test_the_wrapper_is_the_one_door_and_hands_the_receipt_to_the_body_whole(db):
+    """The privileged wrapper (migrations 533, 545, 546) is not rewritten by 574: it still ends in a call to the unguarded body with the
+    receipt argument as it received it, and it holds no INSERT INTO receipts of its own (a second place that dropped a key would hide this)."""
+    src = " ".join(_scalar(db, "SELECT prosrc FROM pg_proc WHERE oid = 'public.settle_receipt_atomic(jsonb, jsonb, jsonb, jsonb)'::regprocedure;").split())
+    assert re.search(r"settle_receipt_atomic__unguarded\(\s*p_receipt\s*,", src), src
+    assert "INSERT INTO" not in src.upper().replace("INSERT INTO PUBLIC.AUDIT_LOG", ""), "the wrapper stores something itself"
 
 
 # ── 574: the file ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -262,10 +312,11 @@ def _old_receipts(db, numbers):
 
 
 def test_the_repair_points_each_receipt_entry_at_its_receipt_and_changes_only_the_link(db):
+    # a decoy firm that is older than the real one, so an edit-log row that names the wrong firm cannot pass by being the only firm
+    assert _run(db, "INSERT INTO firms (id, name, email, created_at) VALUES "
+                    f"('{uuid.uuid4()}','Decoy','decoy574@test.in','2000-01-01T00:00:00+00');").returncode == 0
     _old_receipts(db, ["R-575-1", "R-575-2"])
-    before = _scalar(db, "SELECT md5(string_agg(j.id::text || j.entry_date || j.reference_no || j.narration || j.entry_type || j.status || "
-                         "coalesce(j.is_reversed::text, '') || coalesce(j.reversal_of::text, ''), ',' ORDER BY j.id)) FROM journal_entries j;")
-    lines_before = _scalar(db, "SELECT md5(string_agg(l.id::text || l.account_id || l.debit_paise || l.credit_paise, ',' ORDER BY l.id)) FROM journal_lines l;")
+    entries_before, lines_before, receipts_before = _entries_but_the_link(db), _lines_hash(db), _receipts_hash(db)
     stale = {n: _row(db, n)["entry_source_id"] for n in ("R-575-1", "R-575-2")}
     r = _file(db, F575)
     assert r.returncode == 0, r.stderr
@@ -273,27 +324,33 @@ def test_the_repair_points_each_receipt_entry_at_its_receipt_and_changes_only_th
     for no in ("R-575-1", "R-575-2"):
         row = _row(db, no)
         assert row["entry_source_id"] == row["id"], no
-    assert _scalar(db, "SELECT md5(string_agg(j.id::text || j.entry_date || j.reference_no || j.narration || j.entry_type || j.status || "
-                       "coalesce(j.is_reversed::text, '') || coalesce(j.reversal_of::text, ''), ',' ORDER BY j.id)) FROM journal_entries j;") == before
-    assert _scalar(db, "SELECT md5(string_agg(l.id::text || l.account_id || l.debit_paise || l.credit_paise, ',' ORDER BY l.id)) FROM journal_lines l;") == lines_before
-    logged = json.loads(_scalar(db, "SELECT coalesce(json_agg(json_build_object('entry', entity_id, 'old', old_data->>'source_id', 'new', new_data->>'source_id', "
-                                    "'by', metadata->>'source', 'actor', actor_id) ORDER BY entity_id), '[]'::json)::text FROM audit_log "
-                                    "WHERE entity_type = 'journal_entry' AND metadata->>'source' = 'migration 575';"))
+    # EVERY other column of every entry, every line and every receipt is as it was (the link is the one thing that moved)
+    assert _entries_but_the_link(db) == entries_before, "the repair changed a column of a ledger entry other than the link"
+    assert _lines_hash(db) == lines_before and _receipts_hash(db) == receipts_before
+    logged = _audit_rows(db)
     assert len(logged) == 2, "the edit log must record each repaired entry (the row-level trigger writes nothing for a migration)"
     for no in ("R-575-1", "R-575-2"):
         row = _row(db, no)
         mine = next(e for e in logged if e["entry"] == row["journal_entry_id"])
-        assert (mine["old"], mine["new"], mine["actor"]) == (stale[no], row["id"], None)
+        assert (mine["old"], mine["new"], mine["actor"], mine["firm"], mine["action"]) == (stale[no], row["id"], None, FIRM, "update")
 
 
-def test_the_allowance_does_not_outlive_the_file_and_a_second_run_changes_nothing(db):
+def test_the_allowance_does_not_outlive_the_file_not_even_in_the_same_session_and_a_second_run_changes_nothing(db, tmp_path):
     _old_receipts(db, ["R-575-3"])
-    assert _file(db, F575).returncode == 0
     row = _row(db, "R-575-3")
+    probe = tmp_path / "probe.sql"
+    probe.write_text(f"UPDATE journal_entries SET narration = 'edited after 575' WHERE id = '{row['journal_entry_id']}';\n", encoding="utf-8")
+    # ONE psql session runs the file and then tries to edit a posted entry: the file's `set_config(..., true)` must not leak past its COMMIT
+    same = subprocess.run(["psql", db, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-f", str(F575), "-f", str(probe)], capture_output=True, text=True,
+                          env={**os.environ, "PGOPTIONS": "-c client_min_messages=warning"})
+    assert same.returncode != 0 and "Cannot modify a posted journal entry" in same.stderr, "a posted entry stayed editable in the session that ran 575"
+    assert _row(db, "R-575-3")["entry_source_id"] == row["id"], "575 itself must have committed before the probe"
     r = _run(db, f"UPDATE journal_entries SET source_id = '{uuid.uuid4()}' WHERE id = '{row['journal_entry_id']}';")
     assert r.returncode != 0 and "Cannot modify a posted journal entry" in r.stderr, "a posted entry became editable"
+    logged = _audit_rows(db)
     again = _file(db, F575)
     assert again.returncode == 0 and "migration 575: 0 receipt ledger entr(ies) now name their receipt; 0 receipt entr(ies) still name no receipt" in again.stderr, again.stderr
+    assert _audit_rows(db) == logged, "a second run wrote edit-log rows for entries it did not change"
 
 
 def test_what_must_not_be_touched_is_not_touched_and_is_counted(db):
@@ -320,6 +377,7 @@ def test_what_must_not_be_touched_is_not_touched_and_is_counted(db):
     assert r.returncode == 0, r.stderr
     assert "migration 575: 1 receipt ledger entr(ies) now name their receipt; 2 receipt entr(ies) still name no receipt" in r.stderr, r.stderr
     assert _row(db, "R-575-4")["entry_source_id"] == r4["id"], "the one honest candidate was not repaired"
+    assert [e["entry"] for e in _audit_rows(db)] == [_row(db, "R-575-4")["journal_entry_id"]], "an edit-log row exists for an entry that was not changed"
     assert _scalar(db, "SELECT string_agg(id::text || ':' || coalesce(source_type, '') || ':' || coalesce(source_id::text, ''), ',' ORDER BY id) "
                        f"FROM journal_entries WHERE id IN ('{r5['journal_entry_id']}','{r6['journal_entry_id']}','{r7['journal_entry_id']}') "
                        "OR reference_no = 'ORPHAN';") == snapshot
@@ -343,6 +401,7 @@ def test_a_receipt_of_another_firm_or_client_is_never_followed(db):
     assert r.returncode == 0, r.stderr
     assert "migration 575: 0 receipt ledger entr(ies) now name their receipt; 1 receipt entr(ies) still name no receipt" in r.stderr, r.stderr
     assert _scalar(db, f"SELECT source_id::text FROM journal_entries WHERE id = '{row['journal_entry_id']}';") == before
+    assert _audit_rows(db) == [], "an edit-log row exists for an entry that was left alone"
 
 
 def test_the_customer_wise_breakdown_attributes_the_receipt_only_after_the_repair(db):
@@ -373,6 +432,8 @@ def test_a_reversal_of_a_receipt_entry_follows_its_original(db):
     assert "now name their receipt" in r.stderr and "0 receipt entr(ies) still name no receipt" in r.stderr, r.stderr
     assert _scalar(db, "SELECT source_id::text FROM journal_entries WHERE reference_no = 'REV-R-575-8';") == row["id"]
     assert _row(db, "R-575-8")["entry_source_id"] == row["id"]
+    assert sorted(e["entry"] for e in _audit_rows(db)) == sorted([row["journal_entry_id"], _scalar(db, "SELECT id::text FROM journal_entries WHERE reference_no = 'REV-R-575-8';")]), \
+        "the original and its reversal are both logged, and nothing else"
 
 
 def test_the_rollback_of_575_is_a_noop_that_runs(db):

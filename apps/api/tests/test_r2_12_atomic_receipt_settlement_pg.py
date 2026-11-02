@@ -438,13 +438,11 @@ def test_returns_full_receipt_row_for_audit_logging(migrated_db):
     reconstruct one from the Python-side payload, silently missing DB-default
     columns (allocated_paise, updated_at). Migration 162 returns it.
 
-    Note: the receipts INSERT never references p_receipt->>'id' (the column
-    isn't in its column list — id is DB-generated via gen_random_uuid()), so
-    the pre-generated id the Python layer sends is never actually the row's
-    real id for this path; services/receipt_service.py already treats the
-    RPC's returned receipt_id as authoritative rather than assuming otherwise
-    — this test checks the SAME returned id is embedded in 'receipt', not
-    that it matches whatever id the caller happened to send."""
+    Note: until migration 574 the receipts INSERT never referenced p_receipt->>'id'
+    (id was DB-generated), so the pre-generated id the Python layer sends was never
+    the row's real id; 574 stores it, and `test_574_..._pg.py` holds that the stored
+    id is the one the journal entry carries. This test checks the SAME returned id is
+    embedded in 'receipt', whatever id the caller happened to send."""
     dsn = migrated_db
     invoice_id = str(uuid.uuid4())
     seed = _psql(dsn, _seed_sql(invoice_id, total_paise=100000))

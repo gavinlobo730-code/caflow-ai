@@ -629,7 +629,7 @@ _Longer design records for this area were moved to `docs/design-record/ai.md`; s
   fixed assets, opening balances, manual journals and reversals all route through it. Do
   not add a second write path. ⚠️ **"All route through it" is exact for the Python kernel and
   not for the database**: an ordinary rupee receipt posts its journal inside the receipt's own
-  transaction through the `settle_receipt_atomic` database function (migrations 160 and 235)
+  transaction through the `settle_receipt_atomic` database function (migrations 160 and 235, its body renamed `settle_receipt_atomic__unguarded` by 486 and restated by 574)
   and not through `post_journal_atomic`, and a manual journal's lines are rewritten by
   `edit_posted_journal`, so three database functions write the ledger. The public site
   therefore says "one ledger" and never "one posting path";
