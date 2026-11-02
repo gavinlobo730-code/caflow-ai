@@ -29,15 +29,15 @@
 #
 # NOT IN HERE: pytest and anything else only the test suite needs. That is requirements-dev.in, installed by
 # CI and never by the Docker image.
-fastapi==0.141.1
+fastapi==0.162.0
 uvicorn==0.54.0
 uvicorn-worker==0.4.0
 gunicorn==22.0.0
 httpx>=0.27.0,<0.28.0
 python-dotenv==1.2.4
 python-multipart==0.0.32
-pydantic>=2.0.0
-pydantic[email]>=2.0.0
+pydantic>=2.14.2
+pydantic[email]>=2.14.2
 email-validator>=2.1.0
 supabase==2.10.0
 groq==1.7.0
@@ -46,14 +46,14 @@ PyJWT[crypto]==2.15.1
 cryptography>=41.0.0
 python-dateutil>=2.8.2
 apscheduler>=3.10.0
-tzdata>=2026.5
-reportlab>=4.0.0
-xhtml2pdf>=0.2.16
+tzdata>=2026.6
+reportlab>=5.1.0
+xhtml2pdf>=0.2.28
 # pypdf is xhtml2pdf's, not ours: the product never reads a PDF with it. The floor is here only because 6.19.0
 # carries five advisories (CVE-2026-113786, -113792, -113793, -113794, -113795; fixes 6.20.0 to 6.21.1) that
 # the audit gate reports as new, and a floor in this file is how a transitive pin is moved.
-pypdf>=6.21.1
+pypdf>=6.21.4
 openpyxl>=3.1.0
-pandas>=2.0.0
+pandas>=3.1.0
 pdfplumber>=0.10.0
-sentry-sdk[fastapi]==2.71.0
+sentry-sdk[fastapi]==2.73.0
