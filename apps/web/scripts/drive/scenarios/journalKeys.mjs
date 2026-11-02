@@ -83,4 +83,36 @@ export const scenarios = [
       assert.equal(await credit.inputValue(), "90000", "typing did not replace the selected figure");
     },
   },
+  {
+    id: "ctrl-d-copies-the-line-and-focuses-the-copys-account",
+    title: "Ctrl+D in a line's cell puts a copy of the line (account, amount) right after it and focuses the copy's Account; Ctrl+Shift+D and Ctrl+D outside the lines do nothing",
+    async run(env) {
+      const { page } = env;
+      await openJournal(env);
+      await pick(page, page.locator("#je-account-l0"), "Cash in Hand");
+      await page.locator('input[aria-label="Debit"]').first().fill("125000");
+      await page.locator('input[aria-label="Line narration"]').first().fill("Counter sale");
+      const before = await lineCount(page);
+      // outside a line's cell, and with Shift held, nothing is copied
+      await page.locator("#je-narration").focus();
+      await page.keyboard.press("Control+d");
+      await page.locator('input[aria-label="Debit"]').first().focus();
+      await page.keyboard.press("Control+Shift+D");
+      await page.waitForTimeout(250);
+      assert.equal(await lineCount(page), before, "a copy was made by a key that is not the chord, or outside a line");
+      await page.locator('input[aria-label="Debit"]').first().focus();
+      await page.keyboard.press("Control+d");
+      await until(async () => (await lineCount(page)) === before + 1, "the copy to appear");
+      // the copy sits right after the line it came from, carries its amount and narration, and focus is in its Account cell
+      const debits = await page.locator('input[aria-label="Debit"]').evaluateAll((els) => els.map((e) => e.value));
+      assert.equal(debits[0], "125000", "the original changed");
+      assert.equal(debits[1], "125000", "the copy did not carry the amount, or is not the next line");
+      const narrations = await page.locator('input[aria-label="Line narration"]').evaluateAll((els) => els.map((e) => e.value));
+      assert.equal(narrations[1], "Counter sale", "the copy did not carry the narration");
+      // the Account cells are the pickers whose id is `je-account-<line key>`; the copy's is the second one
+      const accountIds = await page.evaluate(() => [...document.querySelectorAll('[id^="je-account-"]')].map((e) => e.id).filter((id) => /^je-account-l\d+$/.test(id)));
+      assert.equal(accountIds.length, before + 1, `expected ${before + 1} Account cells, found ${accountIds.join(", ")}`);
+      await until(async () => (await page.evaluate(() => document.activeElement?.id ?? "")) === accountIds[1], "focus to go to the copy's Account cell");
+    },
+  },
 ];

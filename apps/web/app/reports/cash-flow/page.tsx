@@ -126,7 +126,7 @@ export default function CashFlowForecastPage() {
       <div className="bg-white rounded-xl border border-ps-border p-5 flex flex-wrap items-end gap-4">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-ps-label mb-1">Client *</label>
-          <ClientLookup clients={clients} value={clientId} onChange={setClientId} />
+          <ClientLookup ariaLabel="Client" clients={clients} value={clientId} onChange={setClientId} />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Months</label>

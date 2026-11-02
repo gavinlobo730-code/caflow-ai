@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Plus, AlertCircle, Info, HardHat, CheckCircle2, PauseCircle, PlayCircle } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
 import { request } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
@@ -81,26 +82,19 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
   onSave: () => unknown; saving: boolean; error: string; cta: string;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
-        <div className="px-5 py-4 border-b border-ps-border">
-          <h3 className="text-sm font-semibold text-ps-ink">{title}</h3>
-        </div>
-        <div className="px-5 py-4 space-y-3">
-          {error && <Callout tone="problem">{error}</Callout>}
-          {children}
-        </div>
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
-            Cancel
-          </button>
-          <Button variant="plain" size="none" onClick={onSave} disabled={saving}
-            className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
-            {cta}
-          </Button>
-        </div>
+    <Modal title={title} maxWidthClass="max-w-lg" onClose={() => { if (!saving) onClose(); }}>
+      {error && <Callout tone="problem">{error}</Callout>}
+      {children}
+      <div className="border-t border-ps-border pt-3 flex justify-end gap-2">
+        <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
+          Cancel
+        </button>
+        <Button variant="plain" size="none" onClick={onSave} disabled={saving}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs disabled:opacity-40">
+          {cta}
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

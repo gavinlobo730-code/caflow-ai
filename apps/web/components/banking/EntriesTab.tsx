@@ -46,6 +46,7 @@ import { commonNarrationPattern, MIN_PATTERN_LENGTH } from "@/lib/banking/narrat
 import { useToast } from "@/components/ui/use-toast";
 import { type Account, type BankAccount, fmt } from "@/components/banking/shared";
 import { EntryDetailModal } from "@/components/banking/EntryDetailModal";
+import { Modal } from "@/components/ui/modal";
 import { BankAccounts, BankImportModal } from "@/components/banking/AccountsPanel";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -906,17 +907,14 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       </p>
 
       {bookUnder && (
-        <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4" onClick={() => !bookBusy && setBookUnder(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Book under a ledger">
-            <h3 className="text-sm font-semibold text-ps-ink">Book {bookUnder.length} line{bookUnder.length === 1 ? "" : "s"} under…</h3>
-            <AccountLookup accounts={orderedAccounts} value={bookAccountId} onChange={setBookAccountId} ariaLabel="Ledger" placeholder="Choose a ledger…" />
-            <p className="text-3xs text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
-              <Button variant="plain" size="none" onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</Button>
-            </div>
+        <Modal title={`Book ${bookUnder.length} line${bookUnder.length === 1 ? "" : "s"} under…`} maxWidthClass="max-w-md" onClose={() => { if (!bookBusy) setBookUnder(null); }}>
+          <AccountLookup accounts={orderedAccounts} value={bookAccountId} onChange={setBookAccountId} ariaLabel="Ledger" placeholder="Choose a ledger…" />
+          <p className="text-3xs text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+            <Button variant="plain" size="none" onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</Button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {showImport && (
