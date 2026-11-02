@@ -317,7 +317,10 @@ def sql_ledger_writers(sql: str) -> dict[str | None, set[str]]:
                 # the body belongs to the last CREATE FUNCTION only if no statement ended
                 # between that header and the opening quote (a DO block has no header)
                 if header and ";" not in sql[header[-1].start():start]:
-                    owner = header[-1].group(1)
+                    # `X__unguarded` is the body of `X` after migration 486 renamed it behind a wrapper that asks who is calling: the same
+                    # writer, not a fourth one, so a migration that re-defines the body (574) is credited to the function it belongs to. A new
+                    # `foo__unguarded` still shows up, as `foo`, and is not on the list.
+                    owner = header[-1].group(1).removesuffix("__unguarded")
                 break
         out.setdefault(owner, set()).add(m.group(1).lower())
     return out

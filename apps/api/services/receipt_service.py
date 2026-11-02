@@ -322,6 +322,9 @@ def create_foreign_receipt(firm_id: str, data: dict, actor: dict, db) -> dict:
         "amount_paise": cash_base, "tds_paise": 0, "unallocated_paise": unalloc_base,
         "payment_mode": data.get("payment_mode", ""), "reference_no": data.get("reference_no", ""),
         "notes": data.get("notes", ""), "journal_entry_id": entry_id,
+        # The account the money was paid into: the journal above resolved its cash leg from it, so the receipt row has to say so too, or
+        # the Receipts tab tells a CA the receipt went to the general Bank ledger when the journal debited the bank they chose.
+        "bank_account_id": data.get("bank_account_id"),
         # GSTR-1 Table 11A — see the note on the other receipt payload. A
         # foreign-currency advance can bear tax under s.13(2) exactly as a
         # rupee one can, so this path carries them too.
