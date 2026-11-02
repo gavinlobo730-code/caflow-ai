@@ -255,9 +255,11 @@ def _compute_risk_score(record: dict) -> int:
         return 75  # HIGH
 
     if status == "Awaiting Documents":
-        # The Indian day the status last changed. `updated[:10]` is the UTC day, a day early for a change made between 00:00 and 05:30
-        # IST, which made a record that had waited 13 days read as 14 and tip to AT RISK a day early (POST-A-251: the stamp was copied into
-        # `updated` first, which is why the rule that reads the name at the slice did not see it).
+        # The Indian day the row was last updated. `updated[:10]` is the UTC day, a day early for an update made between 00:00 and 05:30
+        # IST, which made a record untouched for 13 days read as 14 and tip to AT RISK a day early (POST-A-251: the stamp was copied into
+        # `updated` first, which is why the rule that reads the name at the slice did not see it). `updated_at` moves on EVERY edit of the
+        # row and not only on a status change, so this is "days since the record was last touched"; a true days-in-this-status rule would
+        # need a status-change column that does not exist.
         updated_d = ist_date_of(updated)
         if updated_d is not None and (today_d - updated_d).days >= 14:
             return 60  # AT RISK

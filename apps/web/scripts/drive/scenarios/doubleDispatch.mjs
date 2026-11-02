@@ -49,6 +49,19 @@ async function invoiceReady({ page, stub, at }) {
   await page.locator("[role=listbox] [role=option]", { hasText: "Consulting" }).first().click();
 }
 
+// ── the purchase bill editor ────────────────────────────────────────────────────────────────────────────
+
+async function billReady({ page, stub, at }) {
+  stub.route({ method: "POST", re: /purchase-bills\/$/, reply: () => ok({ id: "b-new" }) });
+  await page.goto(at("/purchases/bills/new/edit/"), { waitUntil: "networkidle" });
+  await pick(page, page.locator('button[aria-label="Vendor"]'), "Gamma Supplies");
+  await page.fill('input[placeholder="INV-001"]', "GS/2026/114");
+  await pick(page, page.locator('button[aria-label="Line 1 product or service"]'), "Consulting");
+  await page.fill('input[aria-label="Line 1 rate"]', "1180");
+}
+
+const BILL_WRITE = /purchase-bills\/$/;
+
 // ── the document drawers' second-step buttons ───────────────────────────────────────────────────────────
 
 /** Open Record Payment over an issued invoice and return the modal's dialog. */
@@ -91,6 +104,17 @@ export const scenarios = [
       await journalReady(env);
       await sameTick(env.page.getByRole("button", { name: "Save Draft" }), env.page.getByRole("button", { name: "Post Entry" }));
       await expectWrites(env.stub, JOURNAL_WRITE, 1, "Save Draft and Post Entry together");
+    },
+  },
+  {
+    id: "bill-save-draft",
+    title: "two clicks on Save Draft in the purchase bill editor write one bill, with the typed rate as integer paise",
+    async run(env) {
+      await billReady(env);
+      await sameTickDouble(env.page.getByRole("button", { name: "Save Draft" }));
+      await expectWrites(env.stub, BILL_WRITE, 1, "Save Draft pressed twice on a purchase bill", "POST");
+      const body = env.stub.writesTo(BILL_WRITE, "POST")[0].body;
+      assert.ok(body.includes("118000"), `the rate did not reach the server as 118000 paise: ${body.slice(0, 400)}`);
     },
   },
   {

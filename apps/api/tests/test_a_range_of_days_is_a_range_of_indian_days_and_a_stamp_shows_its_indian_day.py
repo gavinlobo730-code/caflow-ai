@@ -224,31 +224,95 @@ def _stamp_key(node: ast.AST, aliases: dict[str, str] | None = None) -> str | No
     return None
 
 
-def _stamp_aliases(fn: ast.AST) -> dict[str, str]:
+_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+
+def _names_bound_by(target: ast.AST):
+    """Every plain name a binding target (a name, a tuple or list of them, a starred one) sets."""
+    if isinstance(target, ast.Name):
+        yield target.id
+    elif isinstance(target, (ast.Tuple, ast.List)):
+        for elt in target.elts:
+            yield from _names_bound_by(elt)
+    elif isinstance(target, ast.Starred):
+        yield from _names_bound_by(target.value)
+
+
+def _own_bindings(fn: ast.AST) -> list[ast.AST]:
+    """The binding statements of ONE scope in source order, without entering a nested function, lambda or class."""
+    found: list[ast.AST] = []
+
+    def walk(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, _NESTED_SCOPES):
+                continue
+            if isinstance(child, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor)):
+                found.append(child)
+            walk(child)
+    walk(fn)
+    return sorted(found, key=lambda n: (n.lineno, n.col_offset))
+
+
+def _stamp_aliases(fn: ast.AST, inherited: dict[str, str] | None = None) -> dict[str, str]:
     """POST-A-251: the names a function copies a stamp INTO. `ts = row["created_at"]` then `ts[:10]` is the same cut under another name,
-    and the rule used to read only the name at the slice. A name assigned (once or more, never a tuple) from an expression that denotes
-    a stamp, or from another alias, is an alias of that stamp; followed to a fixed point inside the one function, never across calls."""
-    aliases: dict[str, str] = {}
-    assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)]
-    for _ in range(4):
-        grew = False
-        for n in assigns:
-            key = _stamp_key(n.value, aliases)
-            if key and aliases.get(n.targets[0].id) != key:
-                aliases[n.targets[0].id] = key
-                grew = True
-        if not grew:
-            break
+    and the rule used to read only the name at the slice. The function's OWN statements are read in source order: a name assigned from an
+    expression that denotes a stamp, or from another alias, is an alias of that stamp from there on, and a name assigned from anything else
+    (`ts = ist_date_of(ts)`), unpacked, looped over or augmented is not one any more. A nested function starts from its enclosing function's
+    aliases (a closure reads them) less its own parameters, which shadow; the scan never follows a stamp across a call."""
+    aliases: dict[str, str] = dict(inherited or {})
+    if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs, fn.args.vararg, fn.args.kwarg]:
+            if arg is not None:
+                aliases.pop(arg.arg, None)
+    for n in _own_bindings(fn):
+        if isinstance(n, ast.Assign):
+            if len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
+                key = _stamp_key(n.value, aliases)
+                if key:
+                    aliases[n.targets[0].id] = key
+                else:
+                    aliases.pop(n.targets[0].id, None)
+            else:
+                for t in n.targets:
+                    for name in _names_bound_by(t):
+                        aliases.pop(name, None)
+        elif isinstance(n, ast.AnnAssign):
+            if isinstance(n.target, ast.Name):
+                key = _stamp_key(n.value, aliases) if n.value is not None else None
+                if key:
+                    aliases[n.target.id] = key
+                else:
+                    aliases.pop(n.target.id, None)
+        else:                                   # augmented assignment and for-loops rebind their targets to something else
+            for name in _names_bound_by(n.target):
+                aliases.pop(name, None)
     return aliases
 
 
 def _scopes_with_aliases(tree: ast.AST) -> dict[ast.AST, dict[str, str]]:
     """node -> the alias map of the function that contains it (the innermost one); module-level code has none."""
     out: dict[ast.AST, dict[str, str]] = {}
-    for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
-        aliases = _stamp_aliases(fn)
-        for child in ast.walk(fn):
-            out[child] = aliases            # an inner function walks later and overwrites its own nodes: the innermost wins
+
+    def visit(scope: ast.AST, inherited: dict[str, str]) -> None:
+        aliases = _stamp_aliases(scope, inherited)
+
+        def mark(node: ast.AST) -> None:
+            for child in ast.iter_child_nodes(node):
+                out[child] = aliases
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    visit(child, aliases)
+                elif not isinstance(child, _NESTED_SCOPES):
+                    mark(child)
+        mark(scope)
+
+    def definitions(body: list[ast.stmt]) -> None:
+        for top in body:
+            if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(top, {})
+            elif isinstance(top, ast.ClassDef):
+                definitions(top.body)             # a method starts from nothing: a class body is not a closure over a name
+
+    definitions(tree.body if isinstance(tree, ast.Module) else [])
     return out
 
 
@@ -394,13 +458,21 @@ def test_negative_control_a_stamp_copied_into_a_variable_is_still_a_stamp():
         "copied twice": "def f(r):\n    a = r['approved_at']\n    b = a\n    return b[:10]\n",
         "a schema timestamptz copied": "def f(r):\n    when = str(r.get('ack_date') or '')\n    return when[:10]\n",
         "formatted": "def f(r):\n    when = r['started_at']\n    return when.strftime('%d-%m-%Y')\n",
+        "an annotated copy": "def f(r):\n    ts: str = r['created_at']\n    return ts[:10]\n",
+        "a copy read by a closure": "def f(r):\n    ts = r['created_at']\n    def g():\n        return ts[:10]\n    return g\n",
+        "a method": "class C:\n    def f(self, r):\n        ts = r['created_at']\n        return ts[:10]\n",
     }
     for why, source in bad.items():
         assert list(_first_ten_characters_of_a_stamp(source)) or list(_other_cuts_of_a_stamp(source)), why
     fine = {
         "a date column copied": "def f(r):\n    d = r['invoice_date']\n    return d[:10]\n",
         "a name reused in another function": "def f(r):\n    ts = r['created_at']\n    return ts\ndef g(ts):\n    return ts[:10]\n",
-        "an alias that is converted first": "def f(r):\n    ts = r['created_at']\n    return ist_date_of(ts)\n",
+        "an alias converted first and then formatted": "def f(r):\n    ts = r['created_at']\n    d = ist_date_of(ts)\n    return d.strftime('%d-%m-%Y')\n",
+        "a name rebound to its converted value": "def f(r):\n    approved = r['approved_at']\n    approved = ist_date_of(approved)\n    return approved.strftime('%d-%m-%Y')\n",
+        "a name rebound and then cut": "def f(r):\n    ts = r['created_at']\n    ts = ist_day_iso(ts)\n    return ts[:10]\n",
+        "a parameter that shadows an outer alias": "def f(r):\n    ts = r['created_at']\n    def g(ts):\n        return ts[:10]\n    return g\n",
+        "a name unpacked from something else": "def f(r):\n    ts = r['created_at']\n    ts, other = r['a'], r['b']\n    return ts[:10]\n",
+        "a loop variable over other values": "def f(rows):\n    ts = rows[0]['created_at']\n    for ts in rows:\n        print(ts[:10])\n",
         "another width": "def f(r):\n    ts = r['created_at']\n    return ts[:7]\n",
     }
     for why, source in fine.items():
