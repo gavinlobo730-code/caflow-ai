@@ -27,7 +27,9 @@ def _assert_task_scope(current_user: dict, task: dict) -> None:
     Takes the ROW, not an id, because every caller has one by this point.
     Re-fetching would be a second query for an answer already on the desk.
     """
-    assert_client_access(current_user, task.get("client_id"))
+    # "Task not found" is what a missing task answers at every door of this file: the default "Not found" for a task of a client the caller
+    # is not assigned told them which ids exist (POST-A-353).
+    assert_client_access(current_user, task.get("client_id"), detail="Task not found")
 
 
 # ── Tags ─────────────────────────────────────────────────────────────────────
@@ -108,7 +110,9 @@ def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = D
         raise HTTPException(status_code=404, detail="Dependency task not found")
     # The dependency's own client too: the response and the timeline event echo
     # dep_task["title"], so linking to another client's task discloses it.
-    _assert_task_scope(current_user, dep_task)
+    # The same words as a missing task: "Dependency task not found" for one that does not exist and "Not found" for one in a client the caller
+    # cannot reach told them which ids exist (POST-A-353).
+    assert_client_access(current_user, dep_task.get("client_id"), detail="Dependency task not found")
     try:
         dep = task_extras_repo.add_dependency(task_id, body.depends_on_task_id, firm_id=firm_id)
     except ValueError as e:

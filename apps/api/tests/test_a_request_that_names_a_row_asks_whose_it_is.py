@@ -103,6 +103,15 @@ KINDS: dict[str, tuple[re.Pattern, set[str], set[str]]] = {
     "godown": (re.compile(r"(^|_)godown_id$"), set(), {"godowns"}),
     "batch": (re.compile(r"(^|_)batch_id$"), set(), {"inventory_batches"}),
     "cost_centre": (re.compile(r"(^|_)cost_centre_id$"), set(), {"cost_centres"}),
+    # THE FOURTH FAMILY (POST-A-353, the survey of the fields no kind read): an MCA company, a task, a lead (the FIRM's, so asked of the firm
+    # alone), a year-end engagement, a payroll run, an income-tax filing and a service of the practice's own catalogue.
+    "company": (re.compile(r"(^|_)company_id$"), {"mca_company_is_the_clients"}, {"mca_companies"}),
+    "task": (re.compile(r"(^|_)task_id$"), {"task_is_the_clients"}, {"tasks"}),
+    "lead": (re.compile(r"(^|_)lead_id$"), {"lead_is_the_firms"}, set()),
+    "year_end_engagement": (re.compile(r"(^|_)year_end_engagement_id$"), {"year_end_engagement_is_the_clients"}, {"year_end_engagements"}),
+    "payroll_run": (re.compile(r"(^|_)run_id$"), {"payroll_run_is_the_clients"}, {"payroll_runs"}),
+    "filing": (re.compile(r"(^|_)filing_id$"), {"itr_filing_is_the_clients"}, {"itr_filings"}),
+    "service": (re.compile(r"(^|_)service_id$"), {"service_is_the_practices"}, set()),
     # THE THIRD FAMILY (POST-A-361, part 2): a MEMBER of the firm named by a request (an assignee, a reviewer, a capacity row's person).
     # A member is the FIRM's and not a client's, and a call graph that guesses a callee by its bare name reaches a user lookup from almost
     # any route (an audit write ends in the MFA reset's lookup), so this kind is not asked through `_own_kinds`: `_Tree.asks_member`
@@ -142,6 +151,12 @@ REVIEWED: dict[tuple[str, str, str], str] = {
         "the payload's client_id is asserted for the caller before the run starts and the run is created for that client; the other keys "
         "are the trigger's data, compared with the template's conditions and stored on the run. The one step that reads a client takes the "
         "instance's asserted client before the payload's, and checks it belongs to the firm.",
+    # THE FOURTH FAMILY (POST-A-353).
+    ("task_extras", "add_dependency", "task"):
+        "the dependency task is loaded under the FIRM and the caller's reach of its OWN client is asked (assert_client_access, with the words of "
+        "a missing task) before anything is written, so a task of a client the caller cannot reach answers as a missing one. A dependency "
+        "between two clients' tasks that the caller reaches BOTH of is deliberate (the ledger's decision of 2-11-2026): the timeline event "
+        "echoes the dependency's title, which is why its client is asked and not only the firm.",
     # THE SECOND FAMILY (POST-A-353).
     ("banking", "remove_transaction_attachment", "document"):
         "the id only selects an entry to take out of the attachment list of THIS bank line (a comparison in domain/banking/attachments), and "

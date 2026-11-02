@@ -119,12 +119,16 @@ def add_document(
                                    **data.model_dump()})
     from core.supabase_client import get_supabase
     from services.audit_service import log_event
+    # `client_sales_invoices.created_by` holds the AUTH id on every invoice the product writes (5,664 of 5,664 on production,
+    # 2-11-2026), and the invoice detail reads it back through the auth id first (POST-A-361). The internal id went here
+    # until the person-column guard found it: an opening receivable then named its creator differently from every other
+    # invoice of the client.
     row = svc.create(
         get_supabase(), current_user.get("firm_id"), data.client_id,
         kind=data.kind, party_id=data.party_id, document_no=data.document_no,
         document_date=data.document_date, due_date=data.due_date,
         outstanding_paise=data.outstanding_paise, notes=data.notes,
-        actor_id=current_user.get("id"))
+        actor_id=current_user.get("auth_user_id"))
     log_event(current_user.get("firm_id") or "", "opening_document",
               str(row.get("id") or ""), "create",
               actor_id=current_user.get("auth_user_id"),
@@ -164,7 +168,7 @@ def bulk_import(
     from services.audit_service import log_event
     out = svc.bulk_create(
         get_supabase(), current_user.get("firm_id"), data.client_id,
-        kind=data.kind, rows=rows, actor_id=current_user.get("id"),
+        kind=data.kind, rows=rows, actor_id=current_user.get("auth_user_id"),
         dry_run=data.dry_run)
     if not data.dry_run and out["created"]:
         # One entry for the import, with row numbers and no amounts beyond the

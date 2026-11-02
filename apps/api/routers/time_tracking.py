@@ -60,6 +60,23 @@ def _assert_entry_scope(current_user: dict, entry: Optional[dict]) -> dict:
     return entry
 
 
+def _the_task_is_the_callers(current_user: dict, firm_id: str, client_id: Optional[str], task_id: Optional[str]) -> None:
+    """A time entry that names a task names one of the entry's own client (`time_entries.task_id` is a global foreign key, POST-A-353). An
+    entry with no client names a task of the firm, and the caller must reach that task's client: a task they cannot reach answers as a
+    missing one. Nothing named, or no database, asks nothing."""
+    if not task_id:
+        return
+    from core import db_provider
+    from services import named_row_ownership
+    db = db_provider.request_db_or_none()
+    if client_id:
+        named_row_ownership.task_is_the_clients(db, firm_id, client_id, task_id)
+        return
+    task = named_row_ownership.task_of_the_firm(db, firm_id, task_id)
+    if task:
+        assert_client_access(current_user, task.get("client_id"), detail="That task was not found.")
+
+
 class ManualEntryCreate(BaseModel):
     task_id: Optional[str] = None
     client_id: Optional[str] = None
@@ -186,6 +203,7 @@ def start_timer(body: StartTimerBody, current_user: dict = Depends(rbac("time_en
     assert_client_access(current_user, body.client_id)
     firm_id = current_user.get("firm_id")
     user_id = current_user.get("id")
+    _the_task_is_the_callers(current_user, firm_id, body.client_id, body.task_id)
 
     # Stop any currently running timer first
     running = time_tracking_repo.find_running(firm_id=firm_id, user_id=user_id)
@@ -250,6 +268,7 @@ def create_manual_entry(body: ManualEntryCreate, current_user: dict = Depends(rb
     assert_client_access(current_user, body.client_id)
     firm_id = current_user.get("firm_id")
     user_id = current_user.get("id")
+    _the_task_is_the_callers(current_user, firm_id, body.client_id, body.task_id)
 
     duration = body.duration_minutes
     if not duration and body.ended_at:

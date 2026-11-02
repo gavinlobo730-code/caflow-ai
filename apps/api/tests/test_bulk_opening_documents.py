@@ -585,3 +585,38 @@ def test_a_dry_run_through_the_door_writes_nothing_and_audits_nothing(client, mo
                       document_date="01-03-2026", outstanding_paise=100_000)]})
     assert res.status_code == 200, res.text
     assert db.inserts == [] and res.json()["data"]["would_create"] == 1
+
+
+# ── who the opening receivable names as its creator (POST-A-361, part 2) ─────
+
+def _door(client, monkeypatch):
+    http, _app = client
+    db = _db()
+    monkeypatch.setenv("SUPABASE_URL", "http://fake")
+    import core.supabase_client as sc
+    monkeypatch.setattr(sc, "get_supabase", lambda: db)
+    import core.db_provider as db_provider
+    monkeypatch.setattr(db_provider, "service_db_or_none", lambda: None)
+    import services.audit_service as aud
+    monkeypatch.setattr(aud, "log_event", lambda *a, **k: None)
+    return http, db
+
+
+def test_a_bulk_opening_receivable_names_the_auth_id_as_its_creator(client, monkeypatch):
+    """`client_sales_invoices.created_by` holds the auth id on every invoice (the fixture's user is internal id `u1`, auth id `auth-1`)."""
+    http, db = _door(client, monkeypatch)
+    res = http.post("/api/opening-documents/bulk", json={"client_id": "K1", "kind": "receivable", "rows": [
+        dict(row=1, party="Customer 1", document_no="INV/1", document_date="01-03-2026", outstanding_paise=100_000)]})
+    assert res.status_code == 200 and res.json()["data"]["created"] == 1, res.text
+    rows = [r for t, batch in db.inserts if t == "client_sales_invoices" for r in batch]
+    assert [r["created_by"] for r in rows] == ["auth-1"], rows
+
+
+def test_a_single_opening_receivable_names_the_auth_id_as_its_creator(client, monkeypatch):
+    http, db = _door(client, monkeypatch)
+    res = http.post("/api/opening-documents", json={
+        "client_id": "K1", "kind": "receivable", "party_id": "C1", "document_no": "INV/9",
+        "document_date": "2026-03-01", "outstanding_paise": 100_000})
+    assert res.status_code == 200, res.text
+    rows = [r for t, batch in db.inserts if t == "client_sales_invoices" for r in batch]
+    assert [r["created_by"] for r in rows] == ["auth-1"], rows

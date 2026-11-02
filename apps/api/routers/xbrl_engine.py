@@ -68,6 +68,11 @@ def create_package(
 ):
     """Create XBRL package for a client financial year."""
     assert_client_access(current_user, req.client_id)
+    # `xbrl_packages.year_end_engagement_id` is a global foreign key (POST-A-353).
+    from core import db_provider
+    from services import named_row_ownership
+    named_row_ownership.year_end_engagement_is_the_clients(
+        db_provider.request_db_or_none(), current_user["firm_id"], req.client_id, req.year_end_engagement_id)
     from domain.income_tax.xbrl_service import create_xbrl_package
     try:
         pkg = create_xbrl_package(

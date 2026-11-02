@@ -6183,6 +6183,9 @@ def record_remittance(
         return api_response(True, {"client_id": client_id, "recorded": False,
                                    "reason": "mock mode: nothing is stored"})
     assert_client_access(current_user, client_id)
+    # `statutory_remittances.run_id` is a global foreign key: another client's run id was stored on this client's remittance (POST-A-353).
+    from services import named_row_ownership
+    named_row_ownership.payroll_run_is_the_clients(db, current_user["firm_id"], client_id, body.run_id)
     try:
         row = remittances.record(
             db, firm_id=current_user["firm_id"], client_id=client_id,

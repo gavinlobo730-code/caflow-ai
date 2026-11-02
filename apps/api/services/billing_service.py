@@ -348,6 +348,10 @@ def create_schedule(firm_id: str, data: dict, created_by: Optional[str]) -> dict
     }
     # The cadence is measured from the day the schedule starts on (migration 511).
     payload["anchor_date"] = payload["next_run_date"]
+    if not _USE_MOCK:
+        # `billing_schedules.service_id` is a global foreign key: a service of another firm pinned that firm's service as in use (POST-A-353).
+        from services import named_row_ownership
+        named_row_ownership.service_is_the_practices(_db(), firm_id, payload["service_id"])
     if _USE_MOCK:
         payload["id"] = str(uuid.uuid4())
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -434,6 +438,14 @@ def update_schedule(firm_id: str, schedule_id: str, data: dict,
         row["updated_at"] = datetime.now(timezone.utc).isoformat()
         return row
 
+    if "service_id" in fields:
+        # Asked only when the service CHANGES: the retainer screen sends the stored one back on every edit, and a schedule that already names
+        # a service must still have its fee edited (POST-A-353).
+        from services import named_row_ownership
+        handle = db or _db()
+        stored = (handle.table("billing_schedules").select("service_id").eq("id", schedule_id).eq("firm_id", firm_id).limit(1).execute().data or [{}])[0]
+        if str(stored.get("service_id") or "") != str(fields["service_id"]):
+            named_row_ownership.service_is_the_practices(handle, firm_id, fields["service_id"])
     fields["updated_at"] = datetime.now(timezone.utc).isoformat()
     # ONE mechanism, not two. The `.eq("firm_id", …)` on the UPDATE is what
     # scopes this — a schedule belonging to another firm matches no row, so
