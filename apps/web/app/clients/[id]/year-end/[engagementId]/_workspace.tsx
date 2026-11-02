@@ -43,6 +43,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "./_engagementId";
 import { EngagementRefreshProvider } from "./_engagementRefresh";
+import { EngagementYearProvider } from "./_engagementYear";
 
 import DashboardStage from "./dashboard/_page";
 import ChecklistStage from "./checklist/_page";
@@ -225,7 +226,9 @@ function YearEndWorkspaceInner() {
         <main className="flex-1 overflow-auto">
           {hasEngagementId ? (
             <EngagementRefreshProvider value={loadEngagement}>
-              <ActiveStage />
+              <EngagementYearProvider value={engagement?.financial_year || undefined}>
+                <ActiveStage />
+              </EngagementYearProvider>
             </EngagementRefreshProvider>
           ) : engagementId === "_placeholder" ? (
             // Not transient: the address itself names no engagement. Say so

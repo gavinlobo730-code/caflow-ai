@@ -59,3 +59,13 @@ export function filterNotice(shown: number, total: number, filter: TrialBalanceF
   const word = (n: number) => `${n} account${n === 1 ? "" : "s"}`;
   return `Showing ${shown} of ${word(total)}. The totals below are for all ${total}, not only the ones shown.`;
 }
+
+/**
+ * The sentence above a Profit and Loss or Balance Sheet while a filter is on. The statements are laid out by Schedule III caption, so the
+ * figures that stay whole are the CAPTIONS' as well as the totals; null when nothing is filtered.
+ */
+export function statementFilterNotice(shown: number, total: number, filter: TrialBalanceFilter): string | null {
+  if (!isFiltering(filter)) return null;
+  const word = (n: number) => `${n} account${n === 1 ? "" : "s"}`;
+  return `Showing ${shown} of ${word(total)}. Each caption's figure and every total are for all ${total}, not only the ones shown.`;
+}

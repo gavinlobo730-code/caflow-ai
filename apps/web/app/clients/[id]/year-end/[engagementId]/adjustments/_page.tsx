@@ -7,6 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
+import { useEngagementFinancialYear } from "../_engagementYear";
 
 import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
@@ -68,6 +69,8 @@ const ADJ_TYPES: AdjustmentType[] = [
 ];
 
 export default function AdjustmentsPage() {
+  // The engagement's year: a short date typed in the adjustment's date box is read inside it (POST-A-126).
+  const financialYear = useEngagementFinancialYear();
   // window.location, not useParams(): on the deployed static export every
   // dynamic segment is "_placeholder" (see ../_engagementId.ts).
   const engagementId = useEngagementId();
@@ -176,6 +179,7 @@ export default function AdjustmentsPage() {
       {showForm && (
         <AdjustmentForm
           engagementId={engagementId}
+          financialYear={financialYear}
           onSaved={(adj) => {
             setAdjustments((prev) => [adj, ...prev]);
             setShowForm(false);
@@ -314,10 +318,12 @@ function AdjActions({
 
 function AdjustmentForm({
   engagementId,
+  financialYear,
   onSaved,
   onCancel,
 }: {
   engagementId: string;
+  financialYear?: string;
   onSaved: (adj: Adjustment) => void;
   onCancel: () => void;
 }) {
@@ -433,6 +439,7 @@ function AdjustmentForm({
           <DateInput
             aria-label="Adjustment date"
             value={adjDate}
+            financialYear={financialYear}
             onChange={setAdjDate}
             onStateChange={dates.watch("adj", "Date")}
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"

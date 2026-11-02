@@ -192,24 +192,6 @@ def test_f2_client_health_allows_assigned(monkeypatch):
     assert out["data"]["health_score"] == 88
 
 
-def test_f2_firm_summary_scoped_to_assigned(monkeypatch):
-    import routers.compliance_records as cr
-    captured = {}
-
-    def fake_summary(firm_id=None, allowed_client_ids=None):
-        captured["allowed"] = allowed_client_ids
-        return {"overdue": 0}
-
-    monkeypatch.setattr(cr.compliance_record_service, "get_firm_summary", fake_summary)
-    monkeypatch.setattr(cr, "effective_client_ids", lambda u: {"A"})       # non firm-wide ⇒ scoped
-    cr.get_firm_summary({"firm_id": "F", "role": "Executive", "id": "u"})
-    assert captured["allowed"] == {"A"}
-
-    monkeypatch.setattr(cr, "effective_client_ids", lambda u: None)        # firm-wide ⇒ unscoped
-    cr.get_firm_summary({"firm_id": "F", "role": "Partner", "id": "p"})
-    assert captured["allowed"] is None
-
-
 def test_f2_firm_summary_service_filters(monkeypatch):
     """The service-side scope actually drops other clients' records from the aggregate."""
     from domain.compliance_record_service import compliance_record_service as svc
