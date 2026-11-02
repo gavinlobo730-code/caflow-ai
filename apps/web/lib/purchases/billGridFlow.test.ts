@@ -35,7 +35,9 @@ import { lineFromExtraction } from "./extractedLine.ts";
 import { isValidBillLine } from "./billEditor.ts";
 
 test("a copy of an extracted line keeps its not-stated flags, so the copy still blocks the save until the CA states the rate", () => {
-  const original = { ...lineFromExtraction({ description: "Freight", hsn_sac: "9965", quantity: 1, unit: "NOS", rate_paise: 100_000, gst_rate_bps: null }), _k: 1 };
+  // The editor's own line: the extraction's fields plus the two the CA picks (an account and a catalogue item) and the row key.
+  const original = { ...lineFromExtraction({ description: "Freight", hsn_sac: "9965", quantity: 1, unit: "NOS", rate_paise: 100_000, gst_rate_bps: null }),
+    expense_account_id: "", service_catalogue_id: "", _k: 1 };
   assert.deepEqual(original.unread, ["gst_rate"], "the fixture no longer leaves the GST rate unstated");
   assert.equal(isValidBillLine(original), false, "the original must block the save");
   const copy = copyOfLine(original, 2);
@@ -53,6 +55,7 @@ test("the copy's flags are its own: clearing one line's does not clear the other
 });
 
 test("a typed line has no flags and its copy has none", () => {
-  assert.equal(copyOfLine({ _k: 1 }, 2).unread, undefined);
-  assert.equal(copyOfLine({ _k: 1, unread: undefined }, 2).unread, undefined);
+  type Keyed = { _k: number; unread?: readonly string[] };
+  assert.equal(copyOfLine<Keyed>({ _k: 1 }, 2).unread, undefined);
+  assert.equal(copyOfLine<Keyed>({ _k: 1, unread: undefined }, 2).unread, undefined);
 });
