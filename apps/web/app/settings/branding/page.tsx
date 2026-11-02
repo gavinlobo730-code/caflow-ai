@@ -136,8 +136,16 @@ function BrandingPreview({ branding, firmName }: { branding: Branding; firmName:
 
         <div className="flex justify-between items-center border-t border-ps-border pt-3">
           <span className="text-sm font-semibold text-ps-ink">Total Due</span>
-          <span className="text-base font-bold" style={{ color: branding.accent_color, fontFamily: branding.font_family }}>₹59,000.00</span>
+          <span className="text-base font-bold text-ps-ink" style={{ fontFamily: branding.font_family }}>₹59,000.00</span>
         </div>
+
+        {/* The accent colour is a saved setting that no printed document reads: the invoice PDF draws its title in the PRIMARY colour. The
+            preview used to draw the total in it, so it showed a colour the real invoice never has (and the default accent is 3.67:1 on
+            white, which the accessibility scan flagged: POST-A-140). It is shown as a swatch with that fact beside it. */}
+        <p className="flex items-center gap-2 text-xs text-ps-label">
+          <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border border-ps-border" style={{ backgroundColor: branding.accent_color }} />
+          Accent colour: kept on file. The invoice PDF does not print it.
+        </p>
 
         {/* Accent bar */}
         <div className="rounded-lg px-3 py-2 text-xs text-white" style={{ backgroundColor: branding.secondary_color, fontFamily: branding.font_family }}>

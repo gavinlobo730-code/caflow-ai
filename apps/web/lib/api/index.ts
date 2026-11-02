@@ -5528,7 +5528,6 @@ export const api = {
     create: (data: unknown) => request("/api/compliance-records", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: unknown) => request(`/api/compliance-records/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     clientHealth: (clientId: string) => request(`/api/compliance-records/client/${clientId}/health`),
-    firmSummary: () => request("/api/compliance-records/firm/summary"),
   },
   // Phase 4.4 — Compliance & Engagement operations (canonical = compliance_records).
   // Thin wrappers; all due-date/aggregation/workflow logic is server-side.

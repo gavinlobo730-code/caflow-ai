@@ -898,6 +898,14 @@ export default function IncomeTaxPage() {
         </div>
       </PageHeader>
 
+      {/* What this list is (POST-A-208). The product keeps obligations in two stores: this tracker reads the filing calendar, and the
+          Deadlines screen, the hub, the dashboard and the health score read the obligation records. A person who finds fewer rows here
+          than on Deadlines is told why, in words, rather than left to think something was lost. */}
+      <p className="text-xs text-ps-label" data-testid="tracker-source-note">
+        This tracker lists the income-tax returns recorded in the filing calendar. It is not the full list of what is due:{" "}
+        <Link href="/deadlines" className="text-brand underline">Deadlines</Link> lists every obligation.
+      </p>
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard

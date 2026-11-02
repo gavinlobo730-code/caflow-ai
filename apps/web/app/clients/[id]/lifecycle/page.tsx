@@ -479,6 +479,7 @@ export default function ClientLifecyclePage() {
                 <DateInput
                   aria-label="Renewal date"
                   value={renewalForm.renewal_date}
+                  financialYear={renewalForm.financial_year || undefined}
                   onChange={(v) => setRenewalForm({ ...renewalForm, renewal_date: v })}
                   onStateChange={renewalDates.watch("renewal", "Renewal date")}
                   className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"

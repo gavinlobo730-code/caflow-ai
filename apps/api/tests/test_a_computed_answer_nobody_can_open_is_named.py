@@ -57,11 +57,6 @@ ANSWER_WORDS = (
 #: Statements tab), and `/banking/reconciliations/{id}/items` was DELETED as a
 #: byte-identical duplicate of `/report`, which the screen already calls.
 UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
-    "/api/compliance-records/firm/summary":
-        "The firm-level compliance roll-up. `/deadlines` and the hub's Compliance "
-        "tile answer the same question from `compliance_calendar`; this reads "
-        "`compliance_records`, which is a different table with a different "
-        "population. Whether the two agree has not been checked.",
     "/api/memory/year-end-reports":
         "The copilot's stored year-end summaries. The year-end pack itself is "
         "live and is the document a CA works from; this is the AI's own "

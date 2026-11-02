@@ -10,11 +10,5 @@
     "serious",
     "critical"
   ],
-  "entries": [
-    {
-      "route": "/settings/branding",
-      "rule": "color-contrast",
-      "nodes": 1
-    }
-  ]
+  "entries": []
 }

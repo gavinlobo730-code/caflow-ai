@@ -229,27 +229,10 @@ def test_creating_an_engagement_for_another_client_is_refused(deny, monkeypatch)
 # compliance_records — the two guards nothing pinned
 # ══════════════════════════════════════════════════════════════════════════════
 
-def test_the_firm_summary_is_narrowed_to_the_callers_clients(monkeypatch):
-    """/firm/summary hands effective_client_ids into the service (the F2 fix).
-    The list/get/create/update guards are pinned in test_audit_remediation_5_1a
-    and test_r238; this one and /health had no router-level test."""
-    captured = {}
-    monkeypatch.setattr(cr.compliance_record_service, "get_firm_summary",
-                        lambda firm_id, allowed_client_ids: captured.update(
-                            {"firm": firm_id, "allowed": allowed_client_ids}) or {})
-    monkeypatch.setattr(cr, "effective_client_ids", lambda _u: {MINE})
-    cr.get_firm_summary(current_user=USER)
-    assert captured == {"firm": FIRM, "allowed": {MINE}}
-
-
-def test_the_firm_summary_stays_unscoped_for_a_firmwide_role(monkeypatch):
-    captured = {}
-    monkeypatch.setattr(cr.compliance_record_service, "get_firm_summary",
-                        lambda firm_id, allowed_client_ids: captured.update(
-                            {"allowed": allowed_client_ids}) or {})
-    monkeypatch.setattr(cr, "effective_client_ids", lambda _u: None)
-    cr.get_firm_summary(current_user={"id": "p", "firm_id": FIRM, "role": "Partner"})
-    assert captured == {"allowed": None}
+def test_the_firm_summary_route_is_gone():
+    """POST-A-208: nothing opened it, so it was deleted; the service function the assistant reads stays and keeps its scope tests."""
+    assert not any(getattr(r, "path", "") == "/api/compliance-records/firm/summary" for r in cr.router.routes)
+    assert not hasattr(cr, "get_firm_summary")
 
 
 def test_another_clients_health_score_is_refused(deny, monkeypatch):

@@ -60,6 +60,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { DateInput } from "@/components/ui/date-input";
 import { NO_FILTER, accountCounts, filterNotice, filterRows, isFiltering, typeChoices, type TrialBalanceFilter } from "@/lib/accounting/trialBalanceFilter";
+import { StatementFilterBar } from "@/components/accounting/StatementFilterBar";
 // ── Tab definitions ────────────────────────────────────────────────────────
 
 type AccountingTab =
@@ -2526,6 +2527,9 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
 
   const revenue = unionAccounts.filter((b) => b.account_type === "Revenue");
   const expenses = unionAccounts.filter((b) => b.account_type === "Expense");
+  // Search by code or name; chooses which account rows are drawn and nothing else (POST-A-136).
+  const [filter, setFilter] = useState<TrialBalanceFilter>(NO_FILTER);
+  useEffect(() => { setFilter(NO_FILTER); }, [clientId]);
   // Prefer the backend's own Schedule III caption (single source of truth —
   // see PLApiLine above); plBucket() is only a fallback for the brief window
   // where the frontend has redeployed ahead of the backend.
@@ -2630,6 +2634,10 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
 
       {loading && <StatementSkeleton sections={2} rowsPerSection={3} />}
 
+      {!loading && loaded && unionAccounts.length > 0 && (
+        <StatementFilterBar idPrefix="pl" accounts={unionAccounts} filter={filter} onChange={setFilter} />
+      )}
+
       {!loading && loaded && (
         <div className="bg-white rounded-xl border border-ps-border overflow-x-auto print:border-0">
           <div className="px-5 py-4 bg-ps-bg border-b border-ps-border print:bg-white">
@@ -2650,7 +2658,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
               {[...PL_REV_ORDER, ...revExtraBuckets].map((bucket) => {
                 const items = revBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
-                return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />;
+                return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} filter={filter} />;
               })}
               <tr className="border-t border-ps-border font-semibold">
                 <td className="px-5 py-2.5 text-ps-ink">Total Revenue (I)</td>
@@ -2660,7 +2668,7 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
               {[...PL_EXP_ORDER, ...expExtraBuckets].map((bucket) => {
                 const items = expBuckets[bucket] ?? [];
                 if (items.length === 0) return null;
-                return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />;
+                return <PLSection key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} filter={filter} />;
               })}
               <tr className="border-t border-ps-border font-semibold">
                 <td className="px-5 py-2.5 text-ps-ink">Total Expenses (II)</td>
@@ -2689,19 +2697,21 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
 }
 
 function PLSection({
-  label, items, columnMaps, onDrillDown,
+  label, items, columnMaps, onDrillDown, filter = NO_FILTER,
 }: {
-  label: string; items: AccountBalance[]; columnMaps: Map<string, number>[]; onDrillDown: (accountId: string) => void;
+  label: string; items: AccountBalance[]; columnMaps: Map<string, number>[]; onDrillDown: (accountId: string) => void; filter?: TrialBalanceFilter;
 }) {
   const [open, setOpen] = useState(true);
+  // The caption's figure is the sum of ALL its accounts; the filter chooses only which account rows are drawn under it (POST-A-136).
   const totals = columnMaps.map((m) => items.reduce((s, item) => s + (m.get(item.account_id) ?? 0), 0));
+  const drawn = filterRows(items, filter);
   return (
     <>
       <tr className="cursor-pointer hover:bg-ps-bg" onClick={() => setOpen((o) => !o)}>
         <td className="px-5 py-2 text-ps-body font-medium pl-8">{label}</td>
         {totals.map((t, i) => <td key={i} className="px-4 py-2 text-right font-mono text-ps-body">{fmt(t)}</td>)}
       </tr>
-      {open && items.map((item) => (
+      {open && drawn.map((item) => (
         <tr key={item.account_id} className="text-ps-hint hover:bg-ps-bg cursor-pointer" onClick={() => onDrillDown(item.account_id)}>
           <td className="px-5 py-1.5 pl-14 hover:text-blue-700 hover:underline">{item.account_name}</td>
           {columnMaps.map((m, i) => <td key={i} className="px-4 py-1.5 text-right font-mono hover:text-blue-700 hover:underline">{fmt(m.get(item.account_id) ?? 0)}</td>)}
@@ -2885,6 +2895,10 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
   const assetBuckets = groupBy(assets, captionOf);
   const liabBuckets = groupBy(liabilities, captionOf);
   const equityBuckets = groupBy(equity, captionOf);
+  // Search by code or name; chooses which account rows are drawn and nothing else (POST-A-136).
+  const [filter, setFilter] = useState<TrialBalanceFilter>(NO_FILTER);
+  useEffect(() => { setFilter(NO_FILTER); }, [clientId]);
+  const everyAccount = [...assets, ...liabilities, ...equity];
 
   // Same defence-in-depth as the P&L tab (see ProfitAndLoss above): the Total
   // Assets/Liabilities/Equity figures are the backend's own totals, computed
@@ -2977,6 +2991,10 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
 
       {loading && <StatementSkeleton sections={3} rowsPerSection={3} />}
 
+      {!loading && loaded && everyAccount.length > 0 && (
+        <StatementFilterBar idPrefix="bs" accounts={everyAccount} filter={filter} onChange={setFilter} />
+      )}
+
       {!loading && loaded && (
         <div className="space-y-4">
           {columns.length > 1 && (
@@ -2997,13 +3015,13 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
               </thead>
               <tbody>
                 <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-3xs uppercase tracking-wide">(A) Equity</td></tr>
-                {[...BS_EQ_ORDER, ...eqExtraBuckets].map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                {[...BS_EQ_ORDER, ...eqExtraBuckets].map((bucket) => { const items = equityBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} filter={filter} />; })}
                 <tr className="border-t border-ps-border font-semibold">
                   <td className="px-5 py-2.5 text-ps-ink">Total Equity</td>
                   {totalEquityByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-ps-ink">{fmt(v)}</td>)}
                 </tr>
                 <tr><td colSpan={columns.length + 1} className="px-5 py-2 font-semibold text-ps-body bg-ps-bg text-3xs uppercase tracking-wide">(B) Liabilities</td></tr>
-                {[...BS_LIAB_ORDER, ...liabExtraBuckets].map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                {[...BS_LIAB_ORDER, ...liabExtraBuckets].map((bucket) => { const items = liabBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} filter={filter} />; })}
                 <tr className="border-t border-ps-border font-semibold">
                   <td className="px-5 py-2.5 text-ps-ink">Total Liabilities</td>
                   {totalLiabByCol.map((v, i) => <td key={i} className="px-4 py-2.5 text-right font-mono text-ps-ink">{fmt(v)}</td>)}
@@ -3027,7 +3045,7 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
                 </tr>
               </thead>
               <tbody>
-                {[...BS_ASSET_ORDER, ...assetExtraBuckets].map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} />; })}
+                {[...BS_ASSET_ORDER, ...assetExtraBuckets].map((bucket) => { const items = assetBuckets[bucket] ?? []; if (!items.length) return null; return <BSSectionRows key={bucket} label={bucket} items={items} columnMaps={columnMaps} onDrillDown={onDrillDown} filter={filter} />; })}
                 <tr className="border-t-2 border-gray-300 font-bold bg-ps-bg">
                   <td className="px-5 py-3 text-ps-ink text-sm">Total Assets</td>
                   {totalAssetsByCol.map((v, i) => <td key={i} className="px-4 py-3 text-right font-mono text-ps-ink text-sm">{fmt(v)}</td>)}
@@ -3055,19 +3073,21 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
 }
 
 function BSSectionRows({
-  label, items, columnMaps, onDrillDown,
+  label, items, columnMaps, onDrillDown, filter = NO_FILTER,
 }: {
-  label: string; items: AccountBalance[]; columnMaps: Map<string, number>[]; onDrillDown: (accountId: string) => void;
+  label: string; items: AccountBalance[]; columnMaps: Map<string, number>[]; onDrillDown: (accountId: string) => void; filter?: TrialBalanceFilter;
 }) {
   const [open, setOpen] = useState(true);
+  // The caption's figure is the sum of ALL its accounts; the filter chooses only which account rows are drawn under it (POST-A-136).
   const totals = columnMaps.map((m) => items.reduce((s, b) => s + (m.get(b.account_id) ?? 0), 0));
+  const drawn = filterRows(items, filter);
   return (
     <>
       <tr className="cursor-pointer hover:bg-ps-bg" onClick={() => setOpen((o) => !o)}>
         <td className="px-5 py-2 text-ps-body font-medium pl-8">{label}</td>
         {totals.map((t, i) => <td key={i} className="px-4 py-2 text-right font-mono text-ps-body">{fmt(t)}</td>)}
       </tr>
-      {open && items.map((item) => {
+      {open && drawn.map((item) => {
         const drillable = isDrillableAccount(item.account_id);
         return (
           <tr key={item.account_id} className={drillable ? "text-ps-hint hover:bg-ps-bg cursor-pointer" : "text-ps-hint"} onClick={drillable ? () => onDrillDown(item.account_id) : undefined}>

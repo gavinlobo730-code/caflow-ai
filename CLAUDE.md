@@ -301,7 +301,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE ASSIGNMENT SCOPE READS THE CALLER'S CLIENTS ONCE PER QUERY, AND THE DRIFT GUARD FOLDS THE REWRITE BACK TO THE CALL IT REPLACED
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 
-### `docs/design-record/screens-and-site.md` (25 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (26 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -328,6 +328,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PRACTICE'S WORDING REACHES THE TWO MAILS IT SENDS IN ITS OWN NAME, THE SCREEN OFFERS ONLY WHAT EACH CAN FILL, AND A SHIPPED DEFAULT IS
 - FIVE MORE LISTS ANSWER A WINDOW, AND THE LAST SCREEN THAT GUESSED A LIST WAS CUT SHORT FROM A ROW COUNT IS GONE
 - A DATE A TABLE PRINTS GOES THROUGH THE ONE MODULE, AND THE RULE READS WHAT A JSX CHILD RENDERS
+- THE STATEMENTS' FILTER CHOOSES ROWS AND NOTHING ELSE, THE BRANDING PREVIEW SHOWS ONLY WHAT AN INVOICE PRINTS, AND A DATE BOX IS TOLD THE YEAR ITS SCREEN IS ABOUT, AND THE FILING TRACKERS SAY WHICH LIST THEY SHOW
 
 ### `docs/design-record/tax-gst.md` (39 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 

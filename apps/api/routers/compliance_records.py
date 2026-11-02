@@ -4,7 +4,7 @@ Compliance Records router.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from core.permissions import rbac
-from core.authz import filter_by_client, assert_client_access, effective_client_ids  # H2/F2: assignment-scope (same engine as compliance_ops)
+from core.authz import filter_by_client, assert_client_access  # H2/F2: assignment-scope (same engine as compliance_ops)
 from typing import Optional, Any
 from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
@@ -73,16 +73,9 @@ def create_compliance_record(data: ComplianceRecordIn, current_user: dict = Depe
         raise HTTPException(status_code=422, detail=str(e))
 
 
-@router.get("/firm/summary")
-def get_firm_summary(current_user: dict = Depends(rbac("compliance_record", "read"))):
-    # F2 fix: scope the aggregate to the caller's assigned clients (None ⇒ firm-wide
-    # role ⇒ unscoped). Reuses effective_client_ids — no second authorization model.
-    summary = compliance_record_service.get_firm_summary(
-        firm_id=current_user.get("firm_id"),
-        allowed_client_ids=effective_client_ids(current_user),
-    )
-    return api_response(True, summary)
-
+# There was a GET /firm/summary here: the firm-level roll-up over compliance_records. No screen ever opened it (the Deadlines screen, the
+# hub and the dashboard answer from their own readers) and the service function behind it is still read by the assistant, so only the route
+# and its browser method were deleted (POST-A-208, 2-11-2026; recoverable from git).
 
 @router.get("/client/{client_id}/health")
 def get_client_health(client_id: str, current_user: dict = Depends(rbac("compliance_record", "read"))):
