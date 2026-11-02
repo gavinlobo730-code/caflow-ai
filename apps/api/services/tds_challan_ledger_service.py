@@ -142,7 +142,8 @@ def annotate_links(db, *, firm_id: str, client_id: str, rows: list[dict]) -> Non
 def _flag_entries_that_stopped_debiting(db, *, firm_id: str, client_id: str, rows: list[dict]) -> None:
     """Of the challans tied to a LIVE entry, mark those whose entry no longer debits the TDS Payable account their section clears (a manual
     journal edited in place after the link, POST-A-272). A client whose chart does not hold the account cannot be judged and is left as it
-    was: the link could not have been made without it. When the lines cannot be read the live rows are marked UNKNOWN, as a failed read of the
+    was: the challan's link door refuses the link without the account, so there is no such link to judge (a remittance's door does not, and
+    its reader lists the row as not checked). When the lines cannot be read the live rows are marked UNKNOWN, as a failed read of the
     entries marks all of them."""
     if not rows:
         return

@@ -157,7 +157,8 @@ def _unlinked_window(rows: list, names: dict, *, limit: int, offset: int, today)
 
 def _openable(client: dict) -> bool:
     """Whether the firm-level screens can open this client: not soft-deleted, not the practice's own internal client and not archived, which
-    is the population the page's client picker lists and the per-client Challans read answers for. A client row with none of those columns
+    is the population the page's client picker lists. (The per-client Challans read still answers for an archived or internal client, because the
+    client door excludes only soft-deleted ones; this list leaves them out because Open starts from the picker.) A client row with none of those columns
     (the in-memory store) is openable."""
     return not client.get("deleted_at") and not client.get("is_internal") and client.get("status") != "archived"
 

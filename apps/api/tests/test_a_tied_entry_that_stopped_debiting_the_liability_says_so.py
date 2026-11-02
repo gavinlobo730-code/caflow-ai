@@ -2,8 +2,8 @@
 
 WHAT WAS WRONG
     A challan (`tds_challans.journal_entry_id`) and an ESI or professional-tax remittance (`statutory_remittances.journal_entry_id`) are tied to the
-    ledger entry that paid them, and the link door refuses an entry that does not debit the liability account the payment clears. After the
-    link nothing asked again. A manual journal can be edited in place while its period is open (migration 266), so the entry that was tied
+    ledger entry that paid them, and the CHALLAN's link door refuses an entry that does not debit the liability account the payment clears (the
+    remittance's door asks only that the entry is the client's own and live). After the link nothing asked again. A manual journal can be edited in place while its period is open (migration 266), so the entry that was tied
     because it debited "TDS Payable" could be rewritten to debit something else, and the register went on saying "Tied to an entry": a false
     statement about the ledger, on a statutory register, with the entry live and nothing to tell it from a good link.
 
@@ -13,7 +13,8 @@ WHAT THIS PINS
               credit side or was deleted; an entry that still debits it stays `live`;
     WORDS     the label names the account, the note says the entry is still in the books, that the document stays because the payment was made,
               and what to do (take the link back and tie the entry that records it); the remittance side says the same of its own account;
-    CANNOT    a client whose chart does not hold the account cannot be judged and is left as it was: the link could not have been made without it;
+    CANNOT    a challan in a chart that does not hold the account is left as it was (its door refuses the link without the account); a remittance
+              in such a chart is listed as UNKNOWN, "not checked", with the reason, because its door does not ask and the link can exist;
     FAILED    when the lines cannot be read the live rows are UNKNOWN, never live, and an entry that is not live keeps the state it already had;
     NEVER     reading changes nothing: the link is not cleared and nothing is posted.
 """
@@ -201,6 +202,20 @@ def test_a_remittance_whose_lines_cannot_be_read_is_listed_unknown_and_never_cle
     monkeypatch.setattr(rem, "entries_debiting", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     stale, = rem.stale_links(esi, firm_id=FIRM, client_id=A)
     assert stale["ledger_link"]["state"] == "unknown" and stale["ledger_link"]["can_take_back"] is False
+
+
+def test_a_remittance_in_a_chart_without_its_account_is_listed_not_checked_and_never_passed_as_checked(esi):
+    """The remittance door does not ask that the account exists, so the link can be made in such a chart. Leaving the row out of the list would
+    show it as a link that was checked."""
+    esi.table("chart_of_accounts").delete().eq("id", ESI_ACC).execute()
+    _esi_entry(esi, "JE-X", ACC_OTHER)
+    _remittance(esi, "JE-X")
+    stale, = rem.stale_links(esi, firm_id=FIRM, client_id=A)
+    link = stale["ledger_link"]
+    assert link["state"] == "unknown" and link["can_take_back"] is True
+    assert link["label"] == "Tied to an entry (not checked)"
+    assert "no ESI Payable account" in link["note"] and "could not be checked" in link["note"]
+    assert "could not be read" not in link["note"], "a missing account is not a failed read"
 
 
 def test_the_challan_words_keep_no_longer_because_its_door_does_refuse_an_entry_with_no_debit(world):
