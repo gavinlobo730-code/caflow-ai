@@ -421,6 +421,10 @@ def create_filing(
     """Create ITR filing in draft state."""
     assert_client_access(current_user, req.client_id)
     _the_computation_is_this_clients_for_this_year(current_user, req.client_id, req.financial_year, req.computation_snapshot_id)
+    # A revised or updated return copies the earlier return's acknowledgement number and filing date from the filing it names (read by firm
+    # alone), so a sibling client's receipt was copied into this client's return (POST-A-353).
+    from services import named_row_ownership
+    named_row_ownership.itr_filing_is_the_clients(db_provider.request_db_or_none(), current_user["firm_id"], req.client_id, req.original_filing_id)
     from domain.income_tax.itr_workflow import create_itr_filing
     try:
         filing = create_itr_filing(

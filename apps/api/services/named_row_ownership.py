@@ -173,3 +173,106 @@ def journal_entry_is_the_clients(db, firm_id: str, client_id: str, journal_entry
             .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
     if not rows:
         raise _not_found("journal entry")
+
+
+def mca_company_is_the_clients(db, firm_id: str, client_id: str, company_id) -> None:
+    """404 "That company was not found." unless the MCA company (`mca_companies`) is this client's.
+
+    A director and a filing each name a company by a plain foreign key, which any company in the database satisfies: a director of client
+    A stored under client B's company then shows in B's company view, which lists directors by company and firm (POST-A-353)."""
+    named = _named(company_id)
+    if db is None or named is None:
+        return
+    rows = _find(db.table("mca_companies").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    if not rows:
+        raise _not_found("company")
+
+
+def task_is_the_clients(db, firm_id: str, client_id: str, task_id) -> None:
+    """404 "That task was not found." unless the task (not deleted) is this client's."""
+    named = _named(task_id)
+    if db is None or named is None:
+        return
+    rows = _find(db.table("tasks").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).is_("deleted_at", "null").limit(1))
+    if not rows:
+        raise _not_found("task")
+
+
+def task_of_the_firm(db, firm_id: str, task_id) -> Optional[dict]:
+    """The task (`id`, `client_id`) when it is this firm's and not deleted, else 404 "That task was not found."; None when nothing is named or
+    there is no database. For a request that names a task and no client: the CALLER's reach of the task's own client is then the question
+    (see `routers/time_tracking._the_task_is_the_callers`)."""
+    named = _named(task_id)
+    if db is None or named is None:
+        return None
+    rows = _find(db.table("tasks").select("id, client_id").eq("id", named).eq("firm_id", firm_id).is_("deleted_at", "null").limit(1))
+    if not rows:
+        raise _not_found("task")
+    return rows[0]
+
+
+def lead_is_the_firms(db, firm_id: str, lead_id) -> None:
+    """404 "That lead was not found." unless the lead is this firm's. A lead belongs to the FIRM (it has no client yet), so the question is
+    asked of the firm alone; the foreign key on a proposal's `lead_id` is satisfied by any firm's lead."""
+    named = _named(lead_id)
+    if db is None or named is None:
+        return
+    rows = _find(db.table("leads").select("id").eq("id", named).eq("firm_id", firm_id).limit(1))
+    if not rows:
+        raise _not_found("lead")
+
+
+def year_end_engagement_is_the_clients(db, firm_id: str, client_id: str, engagement_id) -> None:
+    """404 "That year-end engagement was not found." unless the year-end engagement is this client's."""
+    named = _named(engagement_id)
+    if db is None or named is None:
+        return
+    rows = _find(db.table("year_end_engagements").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    if not rows:
+        raise _not_found("year-end engagement")
+
+
+def payroll_run_is_the_clients(db, firm_id: str, client_id: str, run_id) -> None:
+    """404 "That payroll run was not found." unless the payroll run is this client's."""
+    named = _named(run_id)
+    if db is None or named is None:
+        return
+    # A payroll table is read with the privileged client, after the caller's firm and client are asserted (POST-A-339); the filter below is
+    # that assertion, so the run has to be this firm's and this client's whoever is asking.
+    rows = _find(privileged_for(db).table("payroll_runs").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    if not rows:
+        raise _not_found("payroll run")
+
+
+def itr_filing_is_the_clients(db, firm_id: str, client_id: str, filing_id) -> None:
+    """404 "That filing was not found." unless the income-tax filing (`itr_filings`) is this client's. A revised or updated return copies
+    the earlier return's acknowledgement number and filing date from the filing it names, so a sibling client's filing would have had its
+    receipt copied into this client's return (POST-A-353)."""
+    named = _named(filing_id)
+    if db is None or named is None:
+        return
+    rows = _find(db.table("itr_filings").select("id").eq("id", named)
+            .eq("firm_id", firm_id).eq("client_id", client_id).limit(1))
+    if not rows:
+        raise _not_found("filing")
+
+
+def service_is_the_practices(db, firm_id: str, service_id) -> None:
+    """404 "That service was not found." unless the service (`service_catalogue`) is one of the practice's own, which is the firm's
+    INTERNAL client's (a retainer is billed out of the practice's catalogue, not out of the client being billed)."""
+    named = _named(service_id)
+    if db is None or named is None:
+        return
+    from services.internal_client_service import get_internal_client_id
+    internal = get_internal_client_id(firm_id)
+    rows = []
+    if internal:
+        rows = _find(db.table("service_catalogue").select("id").eq("id", named)
+                .eq("firm_id", firm_id).eq("client_id", internal).limit(1))
+    if not rows:
+        raise _not_found("service")
+

@@ -35,6 +35,10 @@ def create_reminder_endpoint(body: ReminderCreate, current_user: dict = Depends(
     from core.authz import assert_client_access
     assert_client_access(current_user, body.client_id)  # M6 #7: body client_id guard
     firm_id = current_user.get("firm_id")
+    # `reminders.task_id` is a global foreign key: without this, another client's task id is stored on this client's reminder (POST-A-353).
+    from core import db_provider
+    from services import named_row_ownership
+    named_row_ownership.task_is_the_clients(db_provider.request_db_or_none(), firm_id, body.client_id, body.task_id)
     reminder_data = create_reminder(
         client_id=body.client_id,
         reminder_type=body.reminder_type,

@@ -1,4 +1,5 @@
 """Domain exceptions for CAflow AI."""
+import re
 
 
 class CAflowError(Exception):
@@ -126,6 +127,50 @@ _NOT_TRANSIENT = {
 }
 
 
+#: THE DATABASE'S TENANT GUARDS, SAID ONCE FOR EVERY DOOR (POST-A-353).
+#:
+#: Migrations 360, 418, 565, 566, 570 and 573 make the database refuse a row that names a ledger account, a cost centre, a ledger entry,
+#: a client, a customer, a supplier or a member that belongs to another client or firm. Each raises a sentence written for a log: it
+#: names the table, the column and the OTHER client's id ("a row of recurring_invoices names customer 3f2a... that belongs to another
+#: client"), and five of the six raise it as a permission fault (42501), which a caller is told is a server configuration problem. All of
+#: that reached a person, because the failure surfaces wherever a row is written and the 26-odd doors that store such a link had no
+#: question of their own. Asking at each door is the extra courtesy of POST-A-350; the database is the control. This says it ONCE: the
+#: same 404 sentence a per-door check gives a stranger ("That ledger account was not found."), so the answer does not say whether the row
+#: exists elsewhere, and it repeats neither the table, the column nor the id. The two SQLSTATEs are the ones the guards use (the three
+#: later ones raise 42501 and the ledger-account and ledger-entry ones P0001: a guard is recognised by its WORDS, and the state only keeps
+#: this from speaking about an error that is not a database refusal). A guard added later that says it belongs to another client or firm
+#: and is not listed here is found by `tests/test_the_database_tenant_guards_are_worded_for_a_person.py`, which reads every migration.
+_TENANT_GUARD_STATES = frozenset({"P0001", "42501"})
+_TENANT_GUARDS = (
+    # (what the message says, what the person is told was not found)
+    (re.compile(r"^That ledger account belongs to another client or firm\b"), "ledger account"),
+    (re.compile(r"^That ledger entry belongs to another client or firm\b"), "ledger entry"),
+    (re.compile(r"^journal line account\(s\) .* do not belong to this entry's firm and client"), "ledger account"),
+    (re.compile(r"^journal line cost centre\(s\) .* do not belong to this entry's firm and client"), "cost centre"),
+    (re.compile(r"^a row of \S+ names client(?:\(s\))? .* belongs? to another firm$"), "client"),
+    (re.compile(r"^a row of \S+ names customer(?:\(s\))? .* belongs? to another client$"), "customer"),
+    (re.compile(r"^a row of \S+ names vendor(?:\(s\))? .* belongs? to another client$"), "vendor"),
+    (re.compile(r"^a row of \S+ names member(?:\(s\))? .* belongs? to another firm$"), "team member"),
+)
+
+
+def tenant_guard_sentence(exc: Exception) -> "str | None":
+    """"That <row> was not found." when the exception is one of the database's tenant guards, else None.
+
+    Reads the SQLSTATE AND the message: 42501 on its own is a configuration fault and P0001 on its own is any business rule, so the
+    words are what say it is a guard. Every read is guarded because this runs while reporting a failure."""
+    try:
+        if _sqlstate(exc) not in _TENANT_GUARD_STATES:
+            return None
+        message = postgres_message(exc)
+    except Exception:                                           # noqa: BLE001
+        return None
+    for pattern, what in _TENANT_GUARDS:
+        if pattern.search(message):
+            return f"That {what} was not found."
+    return None
+
+
 def document_failure_detail(exc: Exception, *, action: str) -> str:
     """A sentence a CA can act on, for a document that would not save.
 
@@ -148,6 +193,9 @@ def document_failure_detail(exc: Exception, *, action: str) -> str:
         is only honest here because this branch really might be transient.
     """
     state = _sqlstate(exc)
+    guard = tenant_guard_sentence(exc)
+    if guard:
+        return f"Could not {action}: {guard}"
     if state in _NOT_TRANSIENT:
         return f"Could not {action}. {_NOT_TRANSIENT[state]}"
 
@@ -362,6 +410,13 @@ def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
     state = _sqlstate(exc)
     if not state:
         return None
+
+    # A tenant guard of the database (migrations 360, 565, 566, 570) says it once for every door that stores a link: the same 404
+    # sentence a per-door check gives, with no table, column or id in it (POST-A-353). Before the SQLSTATE branches because the
+    # journal-line guard raises 42501, which is otherwise a server configuration fault.
+    guard = tenant_guard_sentence(exc)
+    if guard:
+        return 404, guard
 
     if state in _NOT_TRANSIENT:
         # Still a 500 — the server really is misconfigured — but say which

@@ -1302,6 +1302,9 @@ def create_proposal(
 ):
     assert_client_access(current_user, data.client_id)
     db = _db()
+    # A lead belongs to the firm and `proposals.lead_id` is a global foreign key (POST-A-353).
+    from services import named_row_ownership
+    named_row_ownership.lead_is_the_firms(db, current_user["firm_id"], data.lead_id)
     proposal_no = _next_proposal_no(db, current_user["firm_id"])
     now = datetime.now(timezone.utc).isoformat()
 

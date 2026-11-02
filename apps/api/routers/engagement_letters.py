@@ -1120,13 +1120,8 @@ def create_engagement(
     # real client or lead by supplying/guessing its id.
     assert_client_access(current_user, body.client_id)
     if body.lead_id and db:
-        lead = (
-            db.table("leads").select("id")
-            .eq("id", body.lead_id).eq("firm_id", firm_id)
-            .limit(1).execute().data
-        )
-        if not lead:
-            raise HTTPException(status_code=404, detail="Lead not found")
+        from services import named_row_ownership
+        named_row_ownership.lead_is_the_firms(db, firm_id, body.lead_id)
 
     now = datetime.now(timezone.utc).isoformat()
     engagement_id = str(uuid.uuid4())

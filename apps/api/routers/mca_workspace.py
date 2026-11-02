@@ -294,6 +294,11 @@ def create_director(
     try:
         assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
+        if not _USE_MOCK:
+            # `company_id` is a plain foreign key to `mca_companies`, which any company in the database satisfies (POST-A-353).
+            from core.supabase_client import get_supabase
+            from services import named_row_ownership
+            named_row_ownership.mca_company_is_the_clients(get_supabase(), firm_id, body.client_id, body.company_id)
         din = body.din.strip()
         err = validate_din(din)
         if err:
@@ -443,6 +448,10 @@ def create_filing(
     try:
         assert_client_access(current_user, body.client_id)
         firm_id = current_user["firm_id"]
+        if not _USE_MOCK:
+            from core.supabase_client import get_supabase
+            from services import named_row_ownership
+            named_row_ownership.mca_company_is_the_clients(get_supabase(), firm_id, body.client_id, body.company_id)
         valid_forms = _ANNUAL_FORMS | _EVENT_FORMS
         if body.form_type not in valid_forms:
             return api_response(False, None, f"Invalid form_type. Must be one of: {sorted(valid_forms)}")

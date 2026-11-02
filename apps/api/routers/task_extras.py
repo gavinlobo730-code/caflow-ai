@@ -108,7 +108,9 @@ def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = D
         raise HTTPException(status_code=404, detail="Dependency task not found")
     # The dependency's own client too: the response and the timeline event echo
     # dep_task["title"], so linking to another client's task discloses it.
-    _assert_task_scope(current_user, dep_task)
+    # The same words as a missing task: "Dependency task not found" for one that does not exist and "Not found" for one in a client the caller
+    # cannot reach told them which ids exist (POST-A-353).
+    assert_client_access(current_user, dep_task.get("client_id"), detail="Dependency task not found")
     try:
         dep = task_extras_repo.add_dependency(task_id, body.depends_on_task_id, firm_id=firm_id)
     except ValueError as e:
