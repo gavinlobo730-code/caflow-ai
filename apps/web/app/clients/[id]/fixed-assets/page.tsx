@@ -688,7 +688,7 @@ function DeleteAssetDialog({ asset, onClose, onSaved }: { asset: Asset; onClose:
       {error && <Callout tone="problem">{error}</Callout>}
 
       <div className="flex gap-2">
-        <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
+        <button onClick={onClose} disabled={working} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg disabled:opacity-50">Cancel</button>
         <Button variant="plain" size="none" onClick={remove} disabled={working} className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 hover:bg-red-700 disabled:opacity-50">
           {working ? "Deleting…" : "Delete asset"}
         </Button>

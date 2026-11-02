@@ -86,7 +86,7 @@ function Shell({ title, children, onClose, onSave, saving, error, cta }: {
       {error && <Callout tone="problem">{error}</Callout>}
       {children}
       <div className="border-t border-ps-border pt-3 flex justify-end gap-2">
-        <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
+        <button onClick={onClose} disabled={saving} className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
           Cancel
         </button>
         <Button variant="plain" size="none" onClick={onSave} disabled={saving}

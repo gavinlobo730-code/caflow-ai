@@ -90,7 +90,7 @@ function ReassignModal({ task, members, onClose, onReassigned }: {
         </select>
       </div>
       <div className="flex gap-2 justify-end">
-        <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+        <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
         <Button size="sm" onClick={confirm} disabled={saving || !targetId}>{saving ? "Saving…" : "Confirm"}</Button>
       </div>
     </Modal>

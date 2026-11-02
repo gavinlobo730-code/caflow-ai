@@ -103,6 +103,12 @@ export const scenarios = [
       await page.keyboard.press("Control+Shift+D");
       await page.waitForTimeout(250);
       assert.equal(await lineCount(page), 1, "Ctrl+Shift+D copied the line");
+      // Ctrl+D on the Add line button, which is outside the grid's cells, copies nothing
+      await page.getByRole("button", { name: "Add line" }).focus();
+      await page.keyboard.press("Control+d");
+      await page.waitForTimeout(250);
+      assert.equal(await lineCount(page), 1, "Ctrl+D outside a cell of the grid copied a line");
+      await page.locator('input[aria-label="Line 1 rate"]').focus();
       await page.keyboard.press("Control+d");
       await until(async () => (await lineCount(page)) === 2, "the copy to appear");
       assert.equal(await page.inputValue('input[aria-label="Line 2 description"]'), "Printer paper", "the copy did not carry the description");

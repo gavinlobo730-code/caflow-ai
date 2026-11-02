@@ -135,7 +135,9 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
   }
 
   // Each of the three states is a dialog of the shared Modal, which names it, closes it on Escape, moves focus in and gives it back, and keeps
-  // Tab inside it. While the invitation is being sent the dialog does not close, so a request in flight is not abandoned behind the person.
+  // Tab inside it. While the invitation is being sent neither Escape, a click outside nor Cancel closes it, so a request in flight is not
+  // abandoned behind the person. The three states are ONE Modal instance (same element type in the same place), so its focus-in runs once, when
+  // the form opens; the form is gone by the time a result is shown, so the button that replaces it takes focus itself (`autoFocus`).
   const closeUnlessSaving = () => { if (!saving) onClose(); };
 
   if (success && emailProblem) {
@@ -145,7 +147,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span>{inviteEmailNotSentMessage(name, email, emailProblem)}</span>
         </div>
-        <button onClick={onClose} className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
+        <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
           Close
         </button>
       </Modal>
@@ -162,7 +164,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
           <p className="text-xs text-ps-label">
             Invite sent! {name} will receive a magic link at {email}. They&apos;ll be added as {role}.
           </p>
-          <button onClick={onClose} className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
+          <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
             Done
           </button>
         </div>
@@ -212,7 +214,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
           </select>
         </div>
         <div className="flex gap-2 pt-2">
-          <button type="button" onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
+          <button type="button" onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50">
             Cancel
           </button>
           <button
@@ -275,7 +277,7 @@ function EditRoleModal({ member, onClose, onSave }: EditRoleModalProps) {
         </select>
       </div>
       <div className="flex gap-2 pt-2">
-        <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
+        <button onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
         <button
           disabled={saving || role === member.role}
           onClick={handleSave}

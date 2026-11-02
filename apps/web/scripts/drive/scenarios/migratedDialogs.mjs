@@ -81,6 +81,12 @@ export const scenarios = [
         return dialog;
       };
       let dialog = await open();
+      // Tab and Shift+Tab never leave it, and the page behind it is locked while it is open
+      assert.equal(await page.evaluate(() => document.body.style.overflow), "hidden", "the page behind the role dialog can still scroll");
+      for (const key of ["Tab", "Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
+        await page.keyboard.press(key);
+        assert.equal(await insideDialog(page), true, `${key} left the role dialog`);
+      }
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "detached" });
       dialog = await open();
