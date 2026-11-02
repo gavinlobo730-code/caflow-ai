@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/accounting/trialBalanceFilter.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NO_FILTER, accountCounts, filterNotice, filterRows, filterStatementRows, isFiltering, typeChoices } from "./trialBalanceFilter.ts";
+import { NO_FILTER, SYNTHETIC_ACCOUNT_IDS, accountCounts, filterNotice, filterRows, filterStatementRows, isFiltering, typeChoices } from "./trialBalanceFilter.ts";
 
 const row = (id: string, code: string, name: string, type: string) => ({ account_id: id, account_code: code, account_name: name, account_type: type });
 const ROWS = [
@@ -80,4 +80,40 @@ test("a statement still narrows the real accounts exactly as the trial balance d
 
 test("the derived line is not an account and is not counted among them", () => {
   assert.deepEqual(accountCounts(BS, { query: "cash", type: "" }), { shown: 1, total: 2 });
+});
+
+// ── the cash-basis advance accounts are accounts: a search finds them (the review of 2-11-2026) ─────────────────────
+
+const CASH_BASIS = [
+  row("a1", "1001", "Cash in Hand", "Asset"),
+  row("l1", "2003", "Trade Payables", "Liability"),
+  row("__advance_customers__", "", "Advance from Customers", "Liability"),
+  row("__advance_to_vendors__", "", "Advance to Vendors", "Asset"),
+  row("__surplus_bf__", "", "Surplus brought forward", "Equity"),
+];
+
+test("the two advance accounts are found by their name and by their type, and are counted", () => {
+  assert.deepEqual(filterRows(CASH_BASIS, { query: "advance", type: "" }).map((r) => r.account_id), ["__advance_customers__", "__advance_to_vendors__"]);
+  assert.deepEqual(filterRows(CASH_BASIS, { query: "", type: "Liability" }).map((r) => r.account_id), ["l1", "__advance_customers__"]);
+  assert.deepEqual(accountCounts(CASH_BASIS, { query: "advance", type: "" }), { shown: 2, total: 4 });
+  assert.deepEqual(accountCounts(CASH_BASIS, NO_FILTER), { shown: 4, total: 4 });
+  assert.equal(filterNotice(2, 4, { query: "advance", type: "" }), "Showing 2 of 4 accounts. The totals below are for all 4, not only the ones shown.");
+});
+
+test("the computed surplus line is still not an account beside them, and the type choices include the advance accounts' types", () => {
+  assert.equal(filterRows(CASH_BASIS, { query: "surplus", type: "" }).length, 0);
+  assert.equal(filterRows(CASH_BASIS, { query: "", type: "Equity" }).length, 0);
+  assert.deepEqual(typeChoices(CASH_BASIS), ["Asset", "Liability"]);
+  assert.deepEqual(typeChoices([row("__advance_customers__", "", "Advance from Customers", "Liability")]), ["Liability"], "a type only an advance account has is still offered");
+});
+
+test("on a statement an advance account follows the filter like any account, and a computed line is still drawn under every filter", () => {
+  const rows = [CASH_BASIS[0], CASH_BASIS[2], CASH_BASIS[3], row("__retained__", "", "Retained Earnings / Net Profit", "Equity")];
+  assert.deepEqual(filterStatementRows(rows, { query: "from customers", type: "" }).map((r) => r.account_id), ["__advance_customers__", "__retained__"]);
+  assert.deepEqual(filterStatementRows(rows, { query: "", type: "Asset" }).map((r) => r.account_id), ["a1", "__advance_to_vendors__", "__retained__"]);
+});
+
+test("the list of synthetic accounts is the two the engine registers, and no computed line is on it", () => {
+  assert.deepEqual([...SYNTHETIC_ACCOUNT_IDS].sort(), ["__advance_customers__", "__advance_to_vendors__"]);
+  assert.ok(!SYNTHETIC_ACCOUNT_IDS.includes("__surplus_bf__") && !SYNTHETIC_ACCOUNT_IDS.includes("__retained__"));
 });
