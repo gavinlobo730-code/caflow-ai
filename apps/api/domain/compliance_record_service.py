@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from core.exceptions import ValidationError, NotFoundError
-from core.ist_clock import ist_now, ist_today
+from core.ist_clock import ist_date_of, ist_now, ist_today
 from core.observability import capture_soft_failure
 from repositories.compliance_records_repository import compliance_records_repo
 from repositories.client_repository import client_repo
@@ -255,13 +255,12 @@ def _compute_risk_score(record: dict) -> int:
         return 75  # HIGH
 
     if status == "Awaiting Documents":
-        try:
-            updated_d = date.fromisoformat(updated[:10])
-            days_waiting = (today_d - updated_d).days
-            if days_waiting >= 14:
-                return 60  # AT RISK
-        except (ValueError, TypeError):
-            pass
+        # The Indian day the status last changed. `updated[:10]` is the UTC day, a day early for a change made between 00:00 and 05:30
+        # IST, which made a record that had waited 13 days read as 14 and tip to AT RISK a day early (POST-A-251: the stamp was copied into
+        # `updated` first, which is why the rule that reads the name at the slice did not see it).
+        updated_d = ist_date_of(updated)
+        if updated_d is not None and (today_d - updated_d).days >= 14:
+            return 60  # AT RISK
 
     if status in ("Not Started", "In Progress"):
         if days_until_due <= 14:

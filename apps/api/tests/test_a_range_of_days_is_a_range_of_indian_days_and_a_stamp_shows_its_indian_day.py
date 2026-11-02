@@ -29,7 +29,11 @@ THE RULE'S KEYS ARE THE SCHEMA'S, NOT A SUFFIX (POST-A-251, 31-10-2026). A stamp
     Indian-day helpers now, and the doors that write them (`RecordEWBGeneratedRequest`, `RecordIRNRequest`) store the day the portal
     printed as a bare date through `core.ist_clock.portal_day`, so a reader no longer has to guess whether a longer value was Indian
     wall-clock labelled UTC or a true instant.
-    STILL A BLIND SPOT: a stamp sliced after being copied into a variable with another name. CLOSED on 28-10-2026: a `.split("T")[0]` /
+    CLOSED on 2-11-2026: a stamp sliced after being copied into a variable with another name (`ts = row["created_at"]` then `ts[:10]`), followed
+    inside the one function through plain `name = <stamp or another alias>` assignments to a fixed point; its first run found one real site
+    (`compliance_record_service._compute_risk_score`, which aged an awaiting-documents record a day early between 00:00 and 05:30 IST).
+    STILL A BLIND SPOT: a stamp that is passed to another function or returned from one and cut there, one unpacked from a tuple, and one held on an
+    attribute; the scan never crosses a call. CLOSED on 28-10-2026: a `.split("T")[0]` /
     `.partition("T")[0]` of a stamp and a `.strftime(...)` called on a value that names one (the server holds none of either), and the
     four private copies of the stamp-to-day conversion: three are folded onto `ist_date_of` and the fourth
     (`domain/health/overrides._ist_date`) stays because it reads a naive value as Indian and raises on junk, which the helper does not,
@@ -195,13 +199,13 @@ def _is_stamp_name(name: str) -> bool:
     return name.endswith("_at") or name in STAMP_NAMES
 
 
-def _stamp_key(node: ast.AST) -> str | None:
+def _stamp_key(node: ast.AST, aliases: dict[str, str] | None = None) -> str | None:
     """The stamp key a value denotes, or None: `x["started_at"]`, `x.get("started_at", "")`, `str(...)` of either,
     `(... or "")`, and a bare name or attribute that names a stamp column (`..._at`, or one the schema types timestamptz)."""
     if isinstance(node, ast.Call):
         func = node.func
         if isinstance(func, ast.Name) and func.id == "str" and node.args:
-            return _stamp_key(node.args[0])
+            return _stamp_key(node.args[0], aliases)
         if (isinstance(func, ast.Attribute) and func.attr == "get" and node.args
                 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
                 and _is_stamp_name(node.args[0].value)):
@@ -210,12 +214,42 @@ def _stamp_key(node: ast.AST) -> str | None:
     if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
         return node.slice.value if _is_stamp_name(node.slice.value) else None
     if isinstance(node, ast.BoolOp):
-        return next((k for k in (_stamp_key(v) for v in node.values) if k), None)
+        return next((k for k in (_stamp_key(v, aliases) for v in node.values) if k), None)
     if isinstance(node, ast.Attribute):
         return node.attr if _is_stamp_name(node.attr) else None
     if isinstance(node, ast.Name):
+        if aliases and node.id in aliases:
+            return aliases[node.id]
         return node.id if _is_stamp_name(node.id) else None
     return None
+
+
+def _stamp_aliases(fn: ast.AST) -> dict[str, str]:
+    """POST-A-251: the names a function copies a stamp INTO. `ts = row["created_at"]` then `ts[:10]` is the same cut under another name,
+    and the rule used to read only the name at the slice. A name assigned (once or more, never a tuple) from an expression that denotes
+    a stamp, or from another alias, is an alias of that stamp; followed to a fixed point inside the one function, never across calls."""
+    aliases: dict[str, str] = {}
+    assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)]
+    for _ in range(4):
+        grew = False
+        for n in assigns:
+            key = _stamp_key(n.value, aliases)
+            if key and aliases.get(n.targets[0].id) != key:
+                aliases[n.targets[0].id] = key
+                grew = True
+        if not grew:
+            break
+    return aliases
+
+
+def _scopes_with_aliases(tree: ast.AST) -> dict[ast.AST, dict[str, str]]:
+    """node -> the alias map of the function that contains it (the innermost one); module-level code has none."""
+    out: dict[ast.AST, dict[str, str]] = {}
+    for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        aliases = _stamp_aliases(fn)
+        for child in ast.walk(fn):
+            out[child] = aliases            # an inner function walks later and overwrites its own nodes: the innermost wins
+    return out
 
 
 def _first_ten_characters_of_a_stamp(source: str):
@@ -225,10 +259,11 @@ def _first_ten_characters_of_a_stamp(source: str):
     for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
         for child in ast.walk(fn):
             owner.setdefault(child, fn.name)
+    scope = _scopes_with_aliases(tree)
     for node in ast.walk(tree):
         if (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice) and node.slice.lower is None
                 and node.slice.step is None and isinstance(node.slice.upper, ast.Constant) and node.slice.upper.value == 10):
-            key = _stamp_key(node.value)
+            key = _stamp_key(node.value, scope.get(node))
             if key:
                 yield owner.get(node, "<module>"), node.lineno, key
 
@@ -290,15 +325,16 @@ def _other_cuts_of_a_stamp(source: str):
     for fn in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
         for child in ast.walk(fn):
             owner.setdefault(child, fn.name)
+    scope = _scopes_with_aliases(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             if node.func.attr == "strftime":
-                key = _stamp_key(node.func.value)
+                key = _stamp_key(node.func.value, scope.get(node))
                 if key:
                     yield owner.get(node, "<module>"), node.lineno, key, "strftime"
             elif (node.func.attr in {"split", "partition"} and node.args and isinstance(node.args[0], ast.Constant)
                   and node.args[0].value in {"T", " "}):
-                key = _stamp_key(node.func.value)
+                key = _stamp_key(node.func.value, scope.get(node))
                 if key:
                     yield owner.get(node, "<module>"), node.lineno, key, node.func.attr
 
@@ -347,3 +383,39 @@ def test_three_private_copies_of_the_stamp_to_day_conversion_are_folded_onto_the
     # the one copy that stays says why, and keeps its two differences
     kept = (API_ROOT / "domain/health/overrides.py").read_text(encoding="utf-8")
     assert "KEPT AS ITS OWN FUNCTION" in kept and "except ValueError:\n        raise" in kept
+
+
+# ── POST-A-251: a stamp copied into a variable with another name ─────────────────────────────────────
+
+def test_negative_control_a_stamp_copied_into_a_variable_is_still_a_stamp():
+    bad = {
+        "a get copied then cut": "def f(r):\n    updated = r.get('updated_at', '')\n    return updated[:10]\n",
+        "a subscript copied then split": "def f(r):\n    ts = r['created_at']\n    return ts.split('T')[0]\n",
+        "copied twice": "def f(r):\n    a = r['approved_at']\n    b = a\n    return b[:10]\n",
+        "a schema timestamptz copied": "def f(r):\n    when = str(r.get('ack_date') or '')\n    return when[:10]\n",
+        "formatted": "def f(r):\n    when = r['started_at']\n    return when.strftime('%d-%m-%Y')\n",
+    }
+    for why, source in bad.items():
+        assert list(_first_ten_characters_of_a_stamp(source)) or list(_other_cuts_of_a_stamp(source)), why
+    fine = {
+        "a date column copied": "def f(r):\n    d = r['invoice_date']\n    return d[:10]\n",
+        "a name reused in another function": "def f(r):\n    ts = r['created_at']\n    return ts\ndef g(ts):\n    return ts[:10]\n",
+        "an alias that is converted first": "def f(r):\n    ts = r['created_at']\n    return ist_date_of(ts)\n",
+        "another width": "def f(r):\n    ts = r['created_at']\n    return ts[:7]\n",
+    }
+    for why, source in fine.items():
+        assert not list(_first_ten_characters_of_a_stamp(source)) and not list(_other_cuts_of_a_stamp(source)), why
+
+
+def test_a_record_awaiting_documents_is_at_risk_after_fourteen_indian_days_not_fourteen_utc_days(monkeypatch):
+    """The cut this found: `updated[:10]` read 31 March for a change at 01:40 IST on 1 April, so on 14 April (13 Indian days later) the
+    record read as 14 days old and tipped to AT RISK a day early."""
+    import domain.compliance_record_service as crs
+    import datetime as dt
+    record = {"status": "Awaiting Documents", "due_date": "2026-09-30", "created_at": "2026-03-01T00:00:00+00:00",
+              "updated_at": "2026-03-31T20:10:00+00:00"}
+    monkeypatch.setattr(crs, "ist_today", lambda: dt.date(2026, 4, 14))
+    assert crs._compute_risk_score(record) == 30, "13 Indian days waiting is not yet AT RISK"
+    monkeypatch.setattr(crs, "ist_today", lambda: dt.date(2026, 4, 15))
+    assert crs._compute_risk_score(record) == 60, "14 Indian days waiting is AT RISK"
+    assert crs._compute_risk_score({**record, "updated_at": "not a stamp"}) == 30, "an unreadable stamp is skipped, not guessed"
