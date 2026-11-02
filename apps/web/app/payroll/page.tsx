@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api, type ApiResp, type PayrollRunSummary } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 // Moved into a shared module when the roster became its own screen (People).
 // One definition, two pages — copying them is how the salary register and the
 // ECR each ended up implemented twice, with only one of them right.
@@ -635,6 +636,16 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
   // Group runs by client for the "Generate" section
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id ?? "");
   const [statutoryBusy, setStatutoryBusy] = useState<string | null>(null);
+  // The filing walk-through (a SIMULATION that transmits and files nothing). Offered only where the SERVER says the flow exists, and only on a
+  // run that is finalised or paid, because both returns report contributions actually made: a control the server would refuse is a dead
+  // control (POST-A-003).
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ flow: "pf" | "esi"; clientId: string; runId: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => { if (!cancelled) setDemoFlows(c.enabled ? c.flows : []); });
+    return () => { cancelled = true; };
+  }, []);
   const { toast } = useToast();
 
   // ONE call for the whole table, and only for the selected client. The five
@@ -776,6 +787,9 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
 
   return (
     <div className="space-y-6">
+      {demo && (
+        <FilingDemoWizard flow={demo.flow} clientId={demo.clientId} refData={{ run_id: demo.runId }} onClose={() => setDemo(null)} />
+      )}
       {/* Due Date Checklist */}
       <Card>
         <CardHeader>
@@ -929,6 +943,18 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
                                 <Download size={12} />
                                 {statutoryBusy === `${run.id}:esic` ? "…" : "ESI"}
                               </Button>
+                              {isFiled(run) && pfCount > 0 && demoFlows.includes("pf") && (
+                                <Button size="sm" variant="outline" className="text-xs"
+                                  onClick={() => setDemo({ flow: "pf", clientId: run.client_id, runId: run.id })}>
+                                  PF ECR (demo)
+                                </Button>
+                              )}
+                              {isFiled(run) && esiCount > 0 && demoFlows.includes("esi") && (
+                                <Button size="sm" variant="outline" className="text-xs"
+                                  onClick={() => setDemo({ flow: "esi", clientId: run.client_id, runId: run.id })}>
+                                  ESI (demo)
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"

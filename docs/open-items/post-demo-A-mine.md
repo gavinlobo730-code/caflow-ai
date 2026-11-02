@@ -4,7 +4,6 @@ IDs `POST-A-NNN` are stable: never renumber; add new items at the next free numb
 
 ## Demo and onboarding
 
-- **POST-A-003** · `demo-and-onboarding` · low · days — **Wire the demo filing walk-through onto the five firm-level return screens.** FilingDemoWizard is wired on five client or module screens only (clients/[id]/compliance/gst, compliance/mca, payroll, tax/filing, app/tds/returns). Five screens that hold the same returns do not probe fetchFilingDemoCapabilities() and show no control: app/gst/gstr1/page.tsx (flow gstr1, id getGSTR1Return(clientId, period).id), app/gst/gstr3b/page.tsx (gstr3b), app/clients/[id]/compliance/tds/page.tsx (tds, the tds_returns row id), app/mca/page.tsx (mca, the mca_filings row id) and app/payroll/page.tsx (pf, esi, run.id); the two app/gst/* workspaces are arguably the primary screens (compute, CA Approve, Download JSON, Mark as Filed live there). Rule when wiring: probe capabilities first, gate on the flow appearing in `flows` and on the flow's own status (ca_approved for GST and TDS, finalized or paid for a payroll run). Re-confirmed on 02-10-2026: the wizard is not imported by those five files. _When: The walk-through is already reachable from each client's Compliance and Tax tab; wiring the firm-level screens removes a dead end._ — _Sources:_ docs/DEMO_FILING.md 'Where a CA reaches it' (five-screen table)
 
 ## Security, access and RLS
 
