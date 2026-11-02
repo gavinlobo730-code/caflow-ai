@@ -119,6 +119,48 @@ test("every screen that offers a filing demo asks the server first", () => {
   }
 });
 
+test("the firm-level GST workspaces offer the walk-through, for an approved return and only in the flow the server lists (POST-A-003)", () => {
+  // Until now the walk-through was reachable only from each client's Compliance tab, so the two screens where a CA computes, approves, downloads
+  // and marks a return as filed (the primary ones) had no control for it: a dead end for the demonstration the product relies on.
+  for (const [file, flow, lookup] of [
+    ["app/gst/gstr1/page.tsx", "gstr1", "getGSTR1Return"],
+    ["app/gst/gstr3b/page.tsx", "gstr3b", "getGSTR3BReturn"],
+  ] as const) {
+    const src = read(path.join(WEB, file));
+    assert.match(src, /fetchFilingDemoCapabilities\(\)\.then\(\(c\) => \{[^}]*c\.enabled \? c\.flows : \[\]/s, `${file} does not read the flows the server offers`);
+    assert.match(src, new RegExp(`filingStatus === "ca_approved" && demoFlows\\.includes\\("${flow}"\\)`), `${file} offers the demo on something other than an approved return in the ${flow} flow`);
+    assert.match(src, new RegExp(`<FilingDemoWizard flow="${flow}" clientId=\\{clientId\\} refData=\\{\\{ return_id: demo\\.id \\}\\}`), `${file} does not address the walk-through by the saved return`);
+    assert.match(src, new RegExp(`await ${lookup}\\(clientId, toPeriod\\(yearMonth\\), result\\.gstin\\)`), `${file} does not look the saved return up for the registration it built`);
+    assert.match(src, /File \(demo\)/, `${file} lost the control's label`);
+  }
+});
+
+test("the TDS returns tab, the MCA tracker and the payroll statutory tab offer it too, each on its own flow and status (POST-A-003)", () => {
+  const tds = read(path.join(WEB, "app/clients/[id]/compliance/tds/page.tsx"));
+  assert.match(tds, /r\.status === "ca_approved" && demoFlows\.includes\("tds"\)/, "the TDS returns tab offers the demo on something other than an approved statement");
+  assert.match(tds, /<FilingDemoWizard flow="tds" clientId=\{clientId\} refData=\{\{ return_id: demo\.id \}\}/);
+
+  const mca = read(path.join(WEB, "app/mca/page.tsx"));
+  assert.match(mca, /demoFlows\.includes\("mca"\) && DEMO_MCA_FORMS\.includes\(f\.form_type\) && f\.client_id/, "the MCA tracker offers the demo on a form the server has no walk-through for");
+  assert.match(mca, /DEMO_MCA_FORMS = \["AOC-4", "MGT-7", "MGT-7A", "ADT-1"\]/, "the forms the walk-through covers drifted from services/filing_demo/mca.py");
+  assert.match(mca, /<FilingDemoWizard flow="mca" clientId=\{demo\.clientId\} refData=\{\{ filing_id: demo\.filingId \}\}/);
+
+  const payroll = read(path.join(WEB, "app/payroll/page.tsx"));
+  for (const flow of ["pf", "esi"]) {
+    assert.match(payroll, new RegExp(`isFiled\\(run\\) && \\w+ > 0 && demoFlows\\.includes\\("${flow}"\\)`), `the payroll tab offers the ${flow} demo on a run that is not finalised or paid`);
+  }
+  assert.match(payroll, /<FilingDemoWizard flow=\{demo\.flow\} clientId=\{demo\.clientId\} refData=\{\{ run_id: demo\.runId \}\}/);
+});
+
+test("the MCA tracker's walk-through forms are the ones the server's flow covers", () => {
+  const server = fs.readFileSync(path.join(WEB, "..", "api", "services", "filing_demo", "mca.py"), "utf8");
+  const forms = [...(/_ANNUAL_FORMS = \(([^)]*)\)/.exec(server)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const page = read(path.join(WEB, "app/mca/page.tsx"));
+  const browser = [...(/DEMO_MCA_FORMS = \[([^\]]*)\]/.exec(page)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(forms.length >= 4, "the server's list was not read");
+  assert.deepEqual(browser, forms);
+});
+
 test("the wizard cannot render a result without its SPECIMEN badge and truth lines", () => {
   const src = read(path.join(WEB, "components/FilingDemoWizard.tsx"));
   assert.match(src, /SPECIMEN/, "the wizard lost its SPECIMEN badge");

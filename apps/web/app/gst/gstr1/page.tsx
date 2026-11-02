@@ -29,6 +29,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
+import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { formatPaise } from "@/lib/services/formatting";
 import { formatMonthYear } from "@/lib/dates/format";
@@ -38,6 +39,7 @@ import {
   approveGSTR1,
   markGSTR1Filed,
   downloadGSTR1JSON,
+  getGSTR1Return,
   toPeriod,
   type GSTR1BuildResult,
   type GSTReturnStatus,
@@ -105,6 +107,16 @@ export default function GSTR1Page() {
   const [result, setResult] = useState<GSTR1BuildResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filingStatus, setFilingStatus] = useState<GSTReturnStatus | null>(null);
+
+  // The filing walk-through (a SIMULATION that transmits and files nothing). Offered only where the SERVER says the flow exists, and only
+  // on a return the CA has approved: a control the server would refuse is a dead control (POST-A-003).
+  const [demoFlows, setDemoFlows] = useState<string[]>([]);
+  const [demo, setDemo] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingDemoCapabilities().then((c) => { if (!cancelled) setDemoFlows(c.enabled ? c.flows : []); });
+    return () => { cancelled = true; };
+  }, []);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("summary");
 
@@ -200,6 +212,19 @@ export default function GSTR1Page() {
     setFiledError(null);
   }
 
+  async function handleStartDemo() {
+    if (!clientId || !yearMonth || !result) return;
+    try {
+      // The walk-through is addressed by the SAVED return, for the registration this screen built it for.
+      const saved = await getGSTR1Return(clientId, toPeriod(yearMonth), result.gstin);
+      const id = (saved as { id?: string } | null)?.id;
+      if (!id) { setError(`No GSTR-1 is saved for ${formatMonthYear(yearMonth)}, so there is nothing to walk through.`); return; }
+      setDemo({ id });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start the walk-through.");
+    }
+  }
+
   function handleDownload() {
     if (!result || !clientId) return;
     // The registration the RETURN was built for, which is what the server
@@ -232,6 +257,9 @@ export default function GSTR1Page() {
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-6">
+      {demo && (
+        <FilingDemoWizard flow="gstr1" clientId={clientId} refData={{ return_id: demo.id }} onClose={() => setDemo(null)} />
+      )}
 
       {/* Header */}
       <PageHeader
@@ -360,6 +388,14 @@ export default function GSTR1Page() {
                 >
                   <Download className="w-4 h-4" />
                   Download JSON
+                </button>
+              )}
+              {filingStatus === "ca_approved" && demoFlows.includes("gstr1") && (
+                <button
+                  onClick={handleStartDemo}
+                  className="flex items-center gap-2 px-4 py-2 border border-state-attention-border text-state-attention hover:bg-state-attention-hover text-sm font-medium rounded-lg transition-colors"
+                >
+                  File (demo)
                 </button>
               )}
               {filingStatus === "ca_approved" && (
