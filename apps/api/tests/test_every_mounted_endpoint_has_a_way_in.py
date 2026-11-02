@@ -143,7 +143,9 @@ BUDGET: dict[str, int] = {
     # grouping already says from the same tasks and capacities, and a
     # second authority on who is overloaded is how two figures come to
     # disagree. The two journal-suggestion doors remain unreached.
-    "/api/compliance-records": 6, "/api/intelligence": 2, "/api/payroll": 6,
+    # /api/compliance-records 6 -> 5 on 2-11-2026 (POST-A-208): `GET /firm/summary` had no screen and its only reader was the firm tracker
+    # pages, which read the filing calendar; the route, its browser method and its frozen-list entry were deleted.
+    "/api/compliance-records": 5, "/api/intelligence": 2, "/api/payroll": 6,
     # /api/analytics 5 -> 3 on 25-09-2026 (Phase 3a-2): `profitability` and
     # `revenue-vs-effort` were built, in integer paise, assignment-scoped
     # and tested, with no screen at all — the plan's own "you already own
