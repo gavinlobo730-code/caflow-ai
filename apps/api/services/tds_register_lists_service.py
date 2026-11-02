@@ -27,6 +27,7 @@ browser, so it asks for the ceiling, as the entity register does; it is the one 
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Callable, Optional
 
 from core.db_paging import fetch_all, fetch_window
@@ -109,6 +110,78 @@ def challans_in_memory(all_rows: list, *, from_date: Optional[str], to_date: Opt
             and (not to_date or str(c.get("payment_date") or "") <= to_date)]
     window, has_more = _cut(_sorted_latest_first(rows, "payment_date"), limit, offset)
     return _window(window, limit, has_more, "challans")
+
+
+# ── challans with no ledger entry, across clients ───────────────────────────
+
+#: The columns the worklist shows. A narrow read, kept by keyset, because the answer IS every unlinked challan the caller may see.
+_UNLINKED_COLUMNS = "id, client_id, challan_no, section, total_paise, payment_date, financial_year, quarter"
+
+#: A challan that has waited more than this many Indian days with no ledger entry is flagged as waiting long. A product default and not a
+#: statutory period (nothing in the Act dates the tying of a challan to a bank line): a deposit reaches the bank the day it is paid and a
+#: statement is imported at least monthly, so a month with no entry behind a challan is long enough to ask. Decided 2-11-2026.
+LONG_WAIT_DAYS = 30
+
+
+def _waiting_long(rows: list, today) -> int:
+    """How many of ALL the untied challans have waited more than `LONG_WAIT_DAYS` Indian days; a payment with no readable date is not counted."""
+    n = 0
+    for r in rows:
+        try:
+            if (today - date.fromisoformat(str(r.get("payment_date") or "")[:10])).days > LONG_WAIT_DAYS:
+                n += 1
+        except ValueError:
+            continue
+    return n
+
+
+def _unlinked_window(rows: list, names: dict, *, limit: int, offset: int, today) -> dict:
+    """The oldest payment first (the one that has waited longest is the first to chase), then the id, cut to a window, with the figures over ALL
+    of `rows` and not over the window, and each row's client name and days since the payment (Indian days)."""
+    ordered = sorted(sorted(rows, key=lambda r: str(r.get("id") or "")), key=lambda r: str(r.get("payment_date") or "9999-12-31"))
+    window, has_more = _cut(ordered, limit, offset)
+    shown = []
+    for r in window:
+        paid = str(r.get("payment_date") or "")[:10]
+        try:
+            days = (today - date.fromisoformat(paid)).days if paid else None
+        except ValueError:
+            days = None
+        shown.append({**r, "client_name": names.get(str(r.get("client_id"))), "days_since_payment": days, "waiting_long": days is not None and days > LONG_WAIT_DAYS})
+    return _window(shown, limit, has_more, "challans", total_unlinked=len(rows),
+                   total_unlinked_paise=sum(int(r.get("total_paise") or 0) for r in rows),
+                   long_wait_days=LONG_WAIT_DAYS, total_waiting_long=_waiting_long(rows, today))
+
+
+def unlinked_challans(db, firm_id: str, *, client_ids: Optional[set], client_id: Optional[str], limit: int, offset: int) -> dict:
+    """Challans recorded in the register that are tied to NO ledger entry (POST-A-272), across the caller's clients. `client_ids` is the
+    caller's scope (`core.authz.effective_client_ids`): None means the whole firm (a Partner), a set means those clients and an EMPTY set means
+    nothing, never 'no filter'. `client_id` narrows to one client of that scope. A challan tied to an entry that no longer records the payment
+    is NOT listed here: it is tied, and the Challans tab says in words what became of the entry."""
+    if client_ids is not None and not client_ids:
+        return _unlinked_window([], {}, limit=limit, offset=offset, today=ist_today())
+    if client_id and client_ids is not None and client_id not in client_ids:
+        return _unlinked_window([], {}, limit=limit, offset=offset, today=ist_today())
+
+    def base():
+        q = db.table("tds_challans").select(_UNLINKED_COLUMNS).eq("firm_id", firm_id).is_("journal_entry_id", "null")
+        return q.eq("client_id", client_id) if client_id else q
+    rows = fetch_all(base, label="tds.lists.unlinked_challans")
+    if client_ids is not None:
+        rows = [r for r in rows if str(r.get("client_id")) in client_ids]
+    names: dict = {}
+    wanted = sorted({str(r["client_id"]) for r in _cut(sorted(rows, key=lambda r: (str(r.get("payment_date") or "9999-12-31"), str(r.get("id") or ""))), limit, offset)[0]
+                     if r.get("client_id")})
+    for at in range(0, len(wanted), 100):
+        for c in (db.table("clients").select("id, client_name").eq("firm_id", firm_id).in_("id", wanted[at:at + 100]).execute().data) or []:
+            names[str(c["id"])] = c.get("client_name")
+    return _unlinked_window(rows, names, limit=limit, offset=offset, today=ist_today())
+
+
+def unlinked_challans_in_memory(all_rows: list, *, client_ids: Optional[set], client_id: Optional[str], limit: int, offset: int) -> dict:
+    rows = [r for r in all_rows if not r.get("journal_entry_id") and (not client_id or r.get("client_id") == client_id)
+            and (client_ids is None or str(r.get("client_id")) in client_ids)]
+    return _unlinked_window(rows, {}, limit=limit, offset=offset, today=ist_today())
 
 
 # ── returns ──────────────────────────────────────────────────────────────────

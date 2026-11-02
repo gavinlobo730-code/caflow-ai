@@ -740,6 +740,46 @@ async function readTdsWindow<T, F>(path: string, rowsField: string, figuresField
 
 const clientQuery = (clientId: string) => `client_id=${encodeURIComponent(clientId)}`;
 
+/** A recorded challan tied to no ledger entry, as the worklist shows it (`GET /api/tds-workspace/challans/unlinked`). */
+export interface UnlinkedChallan {
+  id: string;
+  client_id: string;
+  client_name: string | null;
+  challan_no: string | null;
+  section: string | null;
+  total_paise: number;
+  payment_date: string | null;
+  financial_year: string | null;
+  quarter: string | null;
+  /** Indian days since the payment, or null when the challan carries no date the server can read. */
+  days_since_payment: number | null;
+  /** The server's judgement that the challan has waited longer than `longWaitDays` for an entry. */
+  waiting_long: boolean;
+}
+
+/** The oldest challans with no ledger entry across the caller's clients, and the figures over ALL of them. The server decides which clients the
+ *  caller sees and does the counting; the browser adds nothing up (POST-A-272). */
+export interface UnlinkedChallans {
+  rows: UnlinkedChallan[]; hasMore: boolean; total: number; totalPaise: number;
+  /** The server's threshold in Indian days and how many of ALL the untied challans have passed it. */
+  longWaitDays: number; totalWaitingLong: number;
+}
+
+export async function listUnlinkedTdsChallans(limit = 25): Promise<UnlinkedChallans> {
+  const resp = await authedFetch<unknown>(`/api/tds-workspace/challans/unlinked?limit=${limit}`);
+  if (!resp.success) throw new Error(resp.error ?? "Could not read the challans that are tied to no ledger entry");
+  const win = readWindow<UnlinkedChallan>(resp.data, "challans", limit);
+  const raw = objectOrNull<{ total_unlinked?: unknown; total_unlinked_paise?: unknown; long_wait_days?: unknown; total_waiting_long?: unknown }>(resp.data);
+  const total = Number(raw?.total_unlinked);
+  const totalPaise = Number(raw?.total_unlinked_paise);
+  const longWaitDays = Number(raw?.long_wait_days);
+  const totalWaitingLong = Number(raw?.total_waiting_long);
+  if (!win || !raw || ![total, totalPaise, longWaitDays, totalWaitingLong].every(Number.isFinite)) {
+    throw new Error("The list of challans with no ledger entry came back in a form this screen cannot read.");
+  }
+  return { rows: win.rows, hasMore: win.hasMore, total, totalPaise, longWaitDays, totalWaitingLong };
+}
+
 /** A client's deductions, latest first. `financialYear` asks for that year's rows only (and the totals over them): a client whose register
  *  passes the ceiling reaches the older years this way (POST-A-294). Null or omitted is every year. */
 export const listTdsDeductions = (clientId: string, financialYear: string | null = null) =>

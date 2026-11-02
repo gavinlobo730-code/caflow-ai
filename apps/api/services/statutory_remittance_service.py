@@ -236,6 +236,9 @@ def link_payment(db, *, firm_id: str, client_id: str, remittance_id: str,
 LIVE, DRAFT, REVERSED, REVERSAL, DELETED = (remittance_match.ENTRY_LIVE, remittance_match.ENTRY_DRAFT, remittance_match.ENTRY_REVERSED,
                                             remittance_match.ENTRY_REVERSAL, remittance_match.ENTRY_DELETED)
 MISSING, UNKNOWN = "missing", "unknown"
+#: A tied entry that is still in the books but no longer debits the liability account the payment cleared: a manual journal edited in place
+#: after the link (POST-A-272). A different fact from the entry's own state, so it is a state of its own and not a flavour of LIVE.
+NOT_DEBITING = "not_debiting"
 
 LINK_LABEL = {
     LIVE: "Tied to an entry",
@@ -259,6 +262,17 @@ LINK_NOTE = {
              "to the entry that records the payment, if there is one.",
     UNKNOWN: "The ledger could not be read just now, so whether the entry this remittance is tied to still records the payment is not known.",
 }
+
+def not_debiting_view(account: str, what: str, why_it_stays: str = "it was paid") -> dict:
+    """The server's words for a live entry that no longer debits `account`. `what` is the register's own noun ("remittance", "challan") and
+    `why_it_stays` the register's own reason the document is kept ("it was paid", "the tax was deposited")."""
+    return {
+        "label": f"Tied to an entry that no longer debits {account}",
+        "note": (f"The ledger entry this {what} is tied to is still in the books but no longer debits {account} (it may have been edited in place "
+                 f"after it was tied), so it no longer records the payment. The {what} stays: {why_it_stays}. Take the link back and tie it to the "
+                 f"entry that records the payment, if there is one."),
+    }
+
 
 #: Why an entry that is not LIVE cannot be tied, in words.
 NOT_A_PAYMENT = {
@@ -285,10 +299,29 @@ def entry_states(db, *, firm_id: str, client_id: str, entry_ids: list) -> dict:
     return {i: MISSING if found.get(i) is None else remittance_match.entry_state(found[i]) for i in wanted}
 
 
-def link_view(state: str) -> dict:
+def link_view(state: str, account: Optional[str] = None) -> dict:
     """`can_take_back` is the server's judgement that taking the link back is a sensible thing to offer: not when the ledger could not be read
-    (UNKNOWN), because a failed read is no reason to undo a link. The screen shows the button on it and reads no state word."""
+    (UNKNOWN), because a failed read is no reason to undo a link. The screen shows the button on it and reads no state word. `account` names
+    the liability account for NOT_DEBITING, whose words depend on it."""
+    if state == NOT_DEBITING:
+        return {"state": state, **not_debiting_view(account or "the liability account", "remittance"), "can_take_back": True}
     return {"state": state, "label": LINK_LABEL[state], "note": LINK_NOTE.get(state), "can_take_back": state != UNKNOWN}
+
+
+def entries_debiting(db, *, entry_ids: list, account_ids: list) -> set:
+    """Of the entries asked for, the (entry id, account id) pairs where the entry has a line that DEBITS the account. Reads only; raises what the
+    database raises. The caller has already established that the entries are the client's own (`entry_states`), so no firm or client filter is
+    repeated here: a line belongs to its entry. Shared with the TDS challan's link."""
+    wanted = sorted({str(i) for i in entry_ids if i})
+    accounts = sorted({str(a) for a in account_ids if a})
+    found: set = set()
+    if not wanted or not accounts:
+        return found
+    for at in range(0, len(wanted), _ENTRY_CHUNK):
+        rows = (db.table("journal_lines").select("journal_entry_id, account_id, debit_paise")
+                .in_("journal_entry_id", wanted[at:at + _ENTRY_CHUNK]).in_("account_id", accounts).execute().data) or []
+        found.update((str(r["journal_entry_id"]), str(r["account_id"])) for r in rows if int(r.get("debit_paise") or 0) > 0)
+    return found
 
 
 def stale_links(db, *, firm_id: str, client_id: str) -> list:
@@ -306,10 +339,39 @@ def stale_links(db, *, firm_id: str, client_id: str) -> list:
         capture_soft_failure(exc, operation="statutory_remittance_service.stale_links", firm_id=firm_id, client_id=client_id)
         states = {}
     out = []
+    live = []
     for r in tied:
         state = states.get(str(r["journal_entry_id"]), UNKNOWN)
         if state != LIVE:
             out.append({**r, "ledger_link": link_view(state)})
+        else:
+            live.append(r)
+    out.extend(_that_stopped_debiting(db, firm_id=firm_id, client_id=client_id, live=live))
+    return out
+
+
+#: The names the screen shows for each scheme's liability account.
+_ACCOUNT_SHOWN = {ESIC: "ESI Payable", PROFESSIONAL_TAX: "PT Payable"}
+
+
+def _that_stopped_debiting(db, *, firm_id: str, client_id: str, live: list) -> list:
+    """Of the remittances tied to a LIVE entry, those whose entry no longer debits the scheme's liability account, each with its
+    `ledger_link`. A scheme whose account the client's chart does not hold cannot be judged and is left out (the link could not have been made
+    without it); when the lines cannot be read every one is listed as UNKNOWN, as a failed read of the entries is."""
+    if not live:
+        return []
+    try:
+        account_of = {r["id"]: _liability_account_id(db, firm_id=firm_id, client_id=client_id, scheme=r.get("scheme")) for r in live}
+        debiting = entries_debiting(db, entry_ids=[r["journal_entry_id"] for r in live], account_ids=[a for a in account_of.values() if a])
+    except Exception as exc:                                        # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="statutory_remittance_service.stale_links.debits", firm_id=firm_id, client_id=client_id)
+        return [{**r, "ledger_link": link_view(UNKNOWN)} for r in live]
+    out = []
+    for r in live:
+        account_id = account_of.get(r["id"])
+        if account_id and (str(r["journal_entry_id"]), str(account_id)) not in debiting:
+            out.append({**r, "ledger_link": link_view(NOT_DEBITING, _ACCOUNT_SHOWN.get(r.get("scheme"), "the liability account"))})
     return out
 
 

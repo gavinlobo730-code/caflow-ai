@@ -11,6 +11,8 @@
 //   * nothing in apps/web writes a VCALENDAR: a second implementation of the format is how the screen and the file would disagree;
 //   * a refusal is said in words and never swallowed.
 //
+// The client's own Compliance tab offers the same file for that one client (POST-A-142, the client half): held at the end.
+//
 // The same page also saves the server's SPREADSHEET of the same obligations (`calendar.csv`, POST-A-142's second half): held below.
 //
 // The backend half is `apps/api/tests/test_the_compliance_calendar_can_be_downloaded_as_an_ical_file.py` (and `..._as_a_spreadsheet.py`).
@@ -72,4 +74,13 @@ test("the page also saves the server's spreadsheet of the same obligations, buil
   // The browser writes no CSV for this: the formula guard, the byte-order mark and the order are the server's, in one place.
   const callBody = PAGE.slice(PAGE.indexOf("async function downloadCalendarFile"), PAGE.indexOf("async function downloadCalendarFile") + 900);
   assert.ok(!/toCsvRows|downloadCsv|new Blob/.test(callBody), "the calendar page builds a CSV itself");
+});
+
+test("a client's own Compliance tab saves the same server file for that client alone", () => {
+  const TAB = stripComments(fs.readFileSync(path.join(WEB, "app/clients/[id]/compliance/page.tsx"), "utf8"));
+  assert.ok(/api\.complianceOps\.exportCalendar\(\{ client_id: clientId \}\)/.test(TAB), "the tab sends more than the client, or does not call the export");
+  assert.ok(TAB.includes("Calendar file (.ics)"), "the tab does not offer the file");
+  assert.ok(TAB.includes("Could not download the calendar file"), "a refusal is not said on the tab");
+  assert.ok(/disabled=\{savingCalendar\}/.test(TAB), "a second click while the file is being prepared is not ignored");
+  assert.ok(!/BEGIN:VCALENDAR|BEGIN:VEVENT/.test(TAB), "the tab builds a calendar file itself");
 });

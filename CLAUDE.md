@@ -208,7 +208,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WINDOW IS READ IN REQUESTS THE DATABASE WILL HONOUR, AND AN ID IT CANNOT READ IS A 422 WITH A SENTENCE, SAID BY THE ONE SPEAKER
 - A TEST STUBS A JOURNAL METHOD THROUGH MONKEYPATCH, NEVER BY ASSIGNING IT
 
-### `docs/design-record/filing-and-compliance.md` (7 entries): Filing to government portals, trackers and the period lock
+### `docs/design-record/filing-and-compliance.md` (8 entries): Filing to government portals, trackers and the period lock
+- A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT
 
 - AND THE PRODUCT WORDS THAT POSITION ONCE
 - THERE ARE TWO TRACKERS AND BOTH LOCK THE PERIOD

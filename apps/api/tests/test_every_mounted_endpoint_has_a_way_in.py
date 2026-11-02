@@ -203,6 +203,11 @@ BUDGET: dict[str, int] = {
     "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
     "/api/tds-workspace": 1,
+    # /api/gst-workspace 0 -> 1 and /api/workload 0 -> 1 on 2-11-2026 (POST-A-374): not new routes. `GET /gstr1/{return_id}` (read one
+    # return) and `GET /api/workload/{user_id}` (read one member's workload) have no screen that calls them; their static siblings
+    # (`/gstr1/advances`, `/gstr1/exceptions`, `/gstr1/amendments`; `/capacity`, `/capacity-risk`) had been counting as their callers
+    # until the scan learnt that a URL naming a static sibling reaches the sibling (`_literal_siblings`).
+    "/api/gst-workspace": 1, "/api/workload": 1,
     "/api/time-entries": 1,
     # GONE on 24-09-2026, four prefixes at once — the first sweep through this
     # list's own tail rather than through a module:
@@ -582,8 +587,11 @@ def _sources(roots: tuple = ()) -> str:
     return "\n".join(live)
 
 
-def _pattern(path: str) -> re.Pattern:
-    """The path's static chunks in order, with anything between them.
+def _pattern(path: str, literal_siblings: tuple[str, ...] = ()) -> re.Pattern:
+    """The path's static chunks in order, with anything between them. `literal_siblings` are the last segments of the static routes that
+    sit beside a path ending in a parameter (`unlinked` beside `/challans/{challan_id}`): a URL that names one of them reaches THAT route
+    and not the parameterised one, and without this a new static sibling made the old parameterised route read as reached (POST-A-272: the
+    worklist `GET /challans/unlinked` satisfied `GET /challans/{challan_id}`, which nothing calls).
 
     Matching only the last segment would be far too loose — "settlement" and
     "loans" occur in screens that have nothing to do with the endpoint.
@@ -597,6 +605,9 @@ def _pattern(path: str) -> re.Pattern:
         # with no slash, then the end of the string; or an id concatenated on after a closing quote (`"/api/x/" + id`).
         head = lazy.join(re.escape(c) for c in chunks[:-1])
         segment = r"(?:\$\{[^}]*\}|[^\s\"'`/?$])+(?=[\s\"'`?)]|$)"
+        if literal_siblings:
+            named = "|".join(re.escape(x) for x in literal_siblings)
+            segment = r"(?!(?:" + named + r")(?=[\s\"'`?)]|$))" + segment
         concatenated = r"[\"'`]\s*\+"
         return re.compile(head + "(?:" + segment + "|" + concatenated + ")")
     return re.compile(lazy.join(re.escape(c) for c in chunks))
@@ -614,6 +625,15 @@ def _routes() -> set[tuple[str, str]]:
     return out
 
 
+def _literal_siblings(path: str, method: str) -> tuple[str, ...]:
+    """For a path that ends in a parameter, the final segments of the mounted static routes of the same method under the same parent."""
+    if not path.endswith("}"):
+        return ()
+    parent = path.rsplit("/", 1)[0]
+    return tuple(sorted({other.rsplit("/", 1)[1] for m, other in _routes()
+                         if m == method and other.rsplit("/", 1)[0] == parent and not other.endswith("}")}))
+
+
 @pytest.fixture(scope="module")
 def unreached() -> dict[str, list[str]]:
     blob = _sources()
@@ -621,7 +641,7 @@ def unreached() -> dict[str, list[str]]:
     for method, path in sorted(_routes()):
         if (method, path) in NOT_REACHED_BY_A_SCREEN:
             continue
-        if not _pattern(path).search(blob):
+        if not _pattern(path, _literal_siblings(path, method)).search(blob):
             by_prefix.setdefault("/".join(path.split("/")[:3]), []).append(
                 f"{method} {path}")
     return by_prefix
@@ -637,6 +657,21 @@ def test_a_route_ending_in_a_parameter_is_not_reached_by_a_longer_url():
         assert route.search(url), f"a URL that does reach the route was not matched: {url}"
     middle = _pattern("/api/x/{a}/lines")                  # a parameter that is NOT last keeps the old, looser reading
     assert middle.search("`/api/x/${id}/lines`")
+
+
+def test_a_static_route_beside_a_parameterised_one_does_not_make_it_look_reached():
+    """POST-A-272. `GET /challans/unlinked` (the worklist) is a URL that also fits `GET /challans/{challan_id}`, so the route nothing calls read
+    as reached the day the worklist was wired to a screen and its budget went stale. A URL naming a static sibling reaches the sibling."""
+    param = "/api/tds-workspace/challans/{challan_id}"
+    sib = _literal_siblings(param, "GET")
+    assert "unlinked" in sib, f"the static sibling was not found among {sib}"
+    pat = _pattern(param, sib)
+    assert not pat.search("`/api/tds-workspace/challans/unlinked?limit=${n}`"), "a static sibling's URL reached the parameterised route"
+    assert not pat.search('"/api/tds-workspace/challans/unlinked"')
+    for url in ("`/api/tds-workspace/challans/${id}`", '"/api/tds-workspace/challans/" + id', '"/api/tds-workspace/challans/abc"',
+                '"/api/tds-workspace/challans/unlinked-1"'):
+        assert pat.search(url), f"a URL that does reach the parameterised route was not matched: {url}"
+    assert _literal_siblings("/api/tds-workspace/challans", "GET") == (), "only a path ending in a parameter has literal siblings"
 
 
 def test_the_route_scan_still_sees_the_app(unreached):

@@ -27,7 +27,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatRangeLabel } from "@/lib/dates/periods";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
-import { errorMessage } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -324,6 +324,19 @@ export default function CompliancePage() {
   // Whether the bulk prompt (ONE filing date for the selection) is open.
   const [bulkPromptOpen, setBulkPromptOpen] = useState(false);
   const { toast } = useToast();
+  const [savingCalendar, setSavingCalendar] = useState(false);
+  /** This client's obligations as a calendar file (POST-A-142). The server picks and builds it (overdue ones are in it, filed ones are not,
+   *  and with no window it is today and a year ahead); this saves it, and says so in words if the server refused. */
+  async function saveCalendarFile() {
+    setSavingCalendar(true);
+    try {
+      await api.complianceOps.exportCalendar({ client_id: clientId });
+    } catch (e: unknown) {
+      toast({ title: "Could not download the calendar file", description: e instanceof Error ? e.message : "Try again." });
+    } finally {
+      setSavingCalendar(false);
+    }
+  }
   // Reopening a recorded filing (POST-A-267, item 3): offered only to a person who holds compliance.approve and only on the
   // obligation types the SERVER says it will reopen, so the browser holds no list of them.
   const { can } = usePermissions();
@@ -696,13 +709,23 @@ export default function CompliancePage() {
             <CardTitle className="text-sm">
               Compliance Calendar ({loading ? "…" : `${filtered.length} deadlines`})
             </CardTitle>
-            <button
-              onClick={() => downloadCsv("compliance-calendar.csv", toCsv(filtered, complianceExportColumns))}
-              disabled={filtered.length === 0}
-              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-2.5 py-1 rounded-md hover:bg-ps-bg disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Download size={12} /> Export
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void saveCalendarFile()}
+                disabled={savingCalendar}
+                title="Save this client's obligations as a calendar file for Outlook, Google Calendar or a phone. Overdue ones are included and filed ones are not; it covers today and the next twelve months."
+                className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-2.5 py-1 rounded-md hover:bg-ps-bg disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download size={12} /> {savingCalendar ? "Preparing…" : "Calendar file (.ics)"}
+              </button>
+              <button
+                onClick={() => downloadCsv("compliance-calendar.csv", toCsv(filtered, complianceExportColumns))}
+                disabled={filtered.length === 0}
+                className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-2.5 py-1 rounded-md hover:bg-ps-bg disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download size={12} /> Export
+              </button>
+            </div>
           </div>
         </CardHeader>
         {loading ? (
