@@ -93,8 +93,10 @@ export const scenarios = [
       await sameTickDouble(env.page.getByRole("button", { name: "Post Entry" }));
       await expectWrites(env.stub, JOURNAL_WRITE, 1, "Post Entry pressed twice");
       const body = env.stub.writesTo(JOURNAL_WRITE)[0].body;
-      // The amount is typed in rupees and goes over the wire as integer paise.
-      assert.ok(body.includes("12500000"), `the debit did not reach the server as 12500000 paise: ${body.slice(0, 300)}`);
+      // The amount is typed in rupees and goes over the wire as integer paise. Read the field and compare it whole: a substring of the
+      // raw body would also be found in 125000000, a tenfold error.
+      const debits = (JSON.parse(body).lines ?? []).map((l) => l.debit_paise).filter((p) => p);
+      assert.deepStrictEqual(debits, [12500000], `the debit did not reach the server as exactly 12500000 paise: ${body.slice(0, 300)}`);
     },
   },
   {
@@ -114,7 +116,9 @@ export const scenarios = [
       await sameTickDouble(env.page.getByRole("button", { name: "Save Draft" }));
       await expectWrites(env.stub, BILL_WRITE, 1, "Save Draft pressed twice on a purchase bill", "POST");
       const body = env.stub.writesTo(BILL_WRITE, "POST")[0].body;
-      assert.ok(body.includes("118000"), `the rate did not reach the server as 118000 paise: ${body.slice(0, 400)}`);
+      // The field, compared whole: "118000" is also inside 1180000 and 11800000.
+      const rates = (JSON.parse(body).lines ?? []).map((l) => l.rate_paise);
+      assert.deepStrictEqual(rates, [118000], `the rate did not reach the server as exactly 118000 paise: ${body.slice(0, 400)}`);
     },
   },
   {

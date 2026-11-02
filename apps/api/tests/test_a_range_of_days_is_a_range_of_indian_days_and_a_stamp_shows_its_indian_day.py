@@ -29,11 +29,21 @@ THE RULE'S KEYS ARE THE SCHEMA'S, NOT A SUFFIX (POST-A-251, 31-10-2026). A stamp
     Indian-day helpers now, and the doors that write them (`RecordEWBGeneratedRequest`, `RecordIRNRequest`) store the day the portal
     printed as a bare date through `core.ist_clock.portal_day`, so a reader no longer has to guess whether a longer value was Indian
     wall-clock labelled UTC or a true instant.
-    CLOSED on 2-11-2026: a stamp sliced after being copied into a variable with another name (`ts = row["created_at"]` then `ts[:10]`), followed
-    inside the one function through plain `name = <stamp or another alias>` assignments to a fixed point; its first run found one real site
-    (`compliance_record_service._compute_risk_score`, which aged an awaiting-documents record a day early between 00:00 and 05:30 IST).
-    STILL A BLIND SPOT: a stamp that is passed to another function or returned from one and cut there, one unpacked from a tuple, and one held on an
-    attribute; the scan never crosses a call. CLOSED on 28-10-2026: a `.split("T")[0]` /
+    CLOSED on 2-11-2026: a stamp sliced after being copied into a variable with another name (`ts = row["created_at"]` then `ts[:10]`); its
+    first run found one real site (`compliance_record_service._compute_risk_score`, which aged an awaiting-documents record a day early
+    between 00:00 and 05:30 IST). The copy is followed IN THE ORDER THE CODE RUNS, which the first version was not (it read a function's names as
+    they stood at its END, so a cut before a later rebinding was missed and a rebinding to a converted value was forgotten by a name ending in
+    `_at`): plain, annotated, chained and `:=` assignments, a conditional expression and an `or` chain; an `if` and its `else`, the arms of a `try`,
+    a `with` and a `match` JOIN (a name that is a stamp on either path is one afterwards, because a cut that can be a stamp is the one to look
+    at); a loop is read until the state at its top stops growing, so a name bound late in the body is seen at the top of the next trip; a
+    function, a lambda and a comprehension start from the names around them less their own parameters and targets; a name read inside a
+    function defined EARLIER than the copy still counts, because a closure reads a name when it is called; module-level code is a scope.
+    A name assigned something that is not a stamp (`ts = ist_date_of(ts)`, even `approved_at = ist_date_of(approved_at)`) is cleared; one that is
+    unpacked, looped over, bound by `as` or augmented goes back to being judged by its own spelling.
+    STILL A BLIND SPOT: a stamp that is passed to another function or returned from one and cut there (the scan never crosses a call), one
+    unpacked from a tuple (`a, b = r["created_at"], r["x"]` binds both names as unknown), one held on an attribute (`self.ts = ...`), one put
+    in a container and read back (`d["k"] = r["created_at"]`), and one written through `global` or `nonlocal`. `break`, `continue` and
+    `return` are not followed, so a path that cannot reach a cut is still counted as if it could. CLOSED on 28-10-2026: a `.split("T")[0]` /
     `.partition("T")[0]` of a stamp and a `.strftime(...)` called on a value that names one (the server holds none of either), and the
     four private copies of the stamp-to-day conversion: three are folded onto `ist_date_of` and the fourth
     (`domain/health/overrides._ist_date`) stays because it reads a naive value as Indian and raises on junk, which the helper does not,
@@ -199,7 +209,7 @@ def _is_stamp_name(name: str) -> bool:
     return name.endswith("_at") or name in STAMP_NAMES
 
 
-def _stamp_key(node: ast.AST, aliases: dict[str, str] | None = None) -> str | None:
+def _stamp_key(node: ast.AST, aliases: dict[str, str | None] | None = None) -> str | None:
     """The stamp key a value denotes, or None: `x["started_at"]`, `x.get("started_at", "")`, `str(...)` of either,
     `(... or "")`, and a bare name or attribute that names a stamp column (`..._at`, or one the schema types timestamptz)."""
     if isinstance(node, ast.Call):
@@ -215,16 +225,24 @@ def _stamp_key(node: ast.AST, aliases: dict[str, str] | None = None) -> str | No
         return node.slice.value if _is_stamp_name(node.slice.value) else None
     if isinstance(node, ast.BoolOp):
         return next((k for k in (_stamp_key(v, aliases) for v in node.values) if k), None)
+    if isinstance(node, ast.IfExp):
+        return _stamp_key(node.body, aliases) or _stamp_key(node.orelse, aliases)
     if isinstance(node, ast.Attribute):
         return node.attr if _is_stamp_name(node.attr) else None
     if isinstance(node, ast.Name):
-        if aliases and node.id in aliases:
-            return aliases[node.id]
+        if aliases is not None and node.id in aliases:
+            return aliases[node.id]               # a stamp's key, or None: assigned something that is not a stamp (even if named `..._at`)
         return node.id if _is_stamp_name(node.id) else None
     return None
 
 
-_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+#: What the scan knows about the names in scope at one point: name -> the stamp key it holds, or None when it was just assigned something
+#: that is not a stamp (a converted day, whatever it is called). A name that is NOT in the map is unknown, and is judged by its own spelling
+#: (`..._at`, or a column the schema types timestamptz). A map is never changed in place: every binding makes a new one, because the nodes
+#: already read under the old one keep it.
+State = dict
 
 
 def _names_bound_by(target: ast.AST):
@@ -238,81 +256,168 @@ def _names_bound_by(target: ast.AST):
         yield from _names_bound_by(target.value)
 
 
-def _own_bindings(fn: ast.AST) -> list[ast.AST]:
-    """The binding statements of ONE scope in source order, without entering a nested function, lambda or class."""
-    found: list[ast.AST] = []
-
-    def walk(node: ast.AST) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, _NESTED_SCOPES):
-                continue
-            if isinstance(child, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.For, ast.AsyncFor)):
-                found.append(child)
-            walk(child)
-    walk(fn)
-    return sorted(found, key=lambda n: (n.lineno, n.col_offset))
+def _param_names(args: ast.arguments) -> list[str]:
+    return [a.arg for a in [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg] if a is not None]
 
 
-def _stamp_aliases(fn: ast.AST, inherited: dict[str, str] | None = None) -> dict[str, str]:
-    """POST-A-251: the names a function copies a stamp INTO. `ts = row["created_at"]` then `ts[:10]` is the same cut under another name,
-    and the rule used to read only the name at the slice. The function's OWN statements are read in source order: a name assigned from an
-    expression that denotes a stamp, or from another alias, is an alias of that stamp from there on, and a name assigned from anything else
-    (`ts = ist_date_of(ts)`), unpacked, looped over or augmented is not one any more. A nested function starts from its enclosing function's
-    aliases (a closure reads them) less its own parameters, which shadow; the scan never follows a stamp across a call."""
-    aliases: dict[str, str] = dict(inherited or {})
-    if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        for arg in [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs, fn.args.vararg, fn.args.kwarg]:
-            if arg is not None:
-                aliases.pop(arg.arg, None)
-    for n in _own_bindings(fn):
-        if isinstance(n, ast.Assign):
-            if len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
-                key = _stamp_key(n.value, aliases)
-                if key:
-                    aliases[n.targets[0].id] = key
-                else:
-                    aliases.pop(n.targets[0].id, None)
-            else:
-                for t in n.targets:
-                    for name in _names_bound_by(t):
-                        aliases.pop(name, None)
-        elif isinstance(n, ast.AnnAssign):
-            if isinstance(n.target, ast.Name):
-                key = _stamp_key(n.value, aliases) if n.value is not None else None
-                if key:
-                    aliases[n.target.id] = key
-                else:
-                    aliases.pop(n.target.id, None)
-        else:                                   # augmented assignment and for-loops rebind their targets to something else
-            for name in _names_bound_by(n.target):
-                aliases.pop(name, None)
-    return aliases
+def _without(state: State, names) -> State:
+    """`state` with these names unknown again: a parameter, a loop variable, an `as` name or an unpacked name could hold anything."""
+    names = [n for n in names if n in state]
+    return {k: v for k, v in state.items() if k not in names} if names else state
 
 
-def _scopes_with_aliases(tree: ast.AST) -> dict[ast.AST, dict[str, str]]:
-    """node -> the alias map of the function that contains it (the innermost one); module-level code has none."""
-    out: dict[ast.AST, dict[str, str]] = {}
+def _merge(a: State, b: State) -> State:
+    """The state where two paths join (an if and its else, the end of a loop body and its start): a name is a stamp if it is one on
+    EITHER path, because a cut that can be a stamp is the one to look at; it is cleared only if it is cleared on both."""
+    out: State = {}
+    for name in a.keys() | b.keys():
+        key = a.get(name) or b.get(name)
+        if key:
+            out[name] = key
+        elif name in a and name in b:
+            out[name] = None
+    return out
 
-    def visit(scope: ast.AST, inherited: dict[str, str]) -> None:
-        aliases = _stamp_aliases(scope, inherited)
 
-        def mark(node: ast.AST) -> None:
-            for child in ast.iter_child_nodes(node):
-                out[child] = aliases
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    visit(child, aliases)
-                elif not isinstance(child, _NESTED_SCOPES):
-                    mark(child)
-        mark(scope)
+def _mark(root: ast.AST, state: State, out: dict) -> None:
+    """Record, for every node under the expression `root`, the state it is read under. A lambda's parameters and a comprehension's targets
+    shadow the names of the scope around them; the first iterable of a comprehension is read in that scope."""
+    stack = [(root, state)]
+    while stack:
+        node, st = stack.pop()
+        out[node] = st
+        if isinstance(node, ast.Lambda):
+            stack.extend((d, st) for d in [*node.args.defaults, *[d for d in node.args.kw_defaults if d is not None]])
+            stack.append((node.body, _without(st, _param_names(node.args))))
+        elif isinstance(node, _COMPREHENSIONS):
+            inner = st
+            for i, g in enumerate(node.generators):
+                stack.append((g.iter, st if i == 0 else inner))
+                inner = _without(inner, _names_bound_by(g.target))
+                stack.append((g.target, inner))
+                stack.extend((cond, inner) for cond in g.ifs)
+            stack.extend((e, inner) for e in ([node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]))
+        else:
+            stack.extend((child, st) for child in ast.iter_child_nodes(node))
 
-    def definitions(body: list[ast.stmt]) -> None:
-        for top in body:
-            if isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                visit(top, {})
-            elif isinstance(top, ast.ClassDef):
-                definitions(top.body)             # a method starts from nothing: a class body is not a closure over a name
 
-    definitions(tree.body if isinstance(tree, ast.Module) else [])
+def _read(exprs, state: State, out: dict) -> State:
+    """Mark the expressions a statement evaluates, then apply the names a `:=` inside them bound."""
+    exprs = [e for e in exprs if e is not None]
+    for e in exprs:
+        _mark(e, state, out)
+    walruses = sorted((n for e in exprs for n in ast.walk(e) if isinstance(n, ast.NamedExpr) and isinstance(n.target, ast.Name)),
+                      key=lambda n: (n.lineno, n.col_offset))
+    for n in walruses:
+        state = {**state, n.target.id: _stamp_key(n.value, state)}
+    return state
+
+
+def _looped(entry: State, run) -> State:
+    """Run a loop body until the state coming round to its top stops growing: a name bound late in the body is seen at the top of the next
+    trip. `run(top)` marks the body under `top` and returns the state at its end; the state after the loop is zero trips or more."""
+    top = entry
+    for _ in range(4):
+        merged = _merge(entry, run(top))
+        if merged == top:
+            break
+        top = merged
+    return top
+
+
+def _flow(stmts: list[ast.stmt], state: State, out: dict, defer: dict, pin: State | None = None) -> State:
+    """Read a list of statements in the order they run and return the state at their end. `defer` collects the functions defined on the
+    way (node -> the state where the LAST pass over it saw it defined): their bodies are read afterwards, because a closure reads a name
+    when it is called. `pin` is set inside a class body, whose own names are not visible to its methods."""
+    for s in stmts:
+        state = _statement(s, state, out, defer, pin)
+    return state
+
+
+def _statement(s: ast.stmt, state: State, out: dict, defer: dict, pin: State | None) -> State:
+    if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        _read([*s.decorator_list, *s.args.defaults, *s.args.kw_defaults, s.returns], state, out)
+        defer[s] = pin if pin is not None else state
+        return {**state, s.name: None}
+    if isinstance(s, ast.ClassDef):
+        _read([*s.decorator_list, *s.bases, *[k.value for k in s.keywords]], state, out)
+        _flow(s.body, state, out, defer, pin if pin is not None else state)
+        return {**state, s.name: None}
+    if isinstance(s, ast.Assign):
+        state = _read([s.value, *s.targets], state, out)
+        key = _stamp_key(s.value, state)
+        for t in s.targets:
+            state = {**state, t.id: key} if isinstance(t, ast.Name) else _without(state, _names_bound_by(t))
+        return state
+    if isinstance(s, ast.AnnAssign):
+        state = _read([s.value, s.target, s.annotation], state, out)
+        if s.value is not None and isinstance(s.target, ast.Name):
+            return {**state, s.target.id: _stamp_key(s.value, state)}
+        return state
+    if isinstance(s, ast.AugAssign):
+        state = _read([s.value, s.target], state, out)
+        return _without(state, _names_bound_by(s.target))
+    if isinstance(s, ast.If):
+        state = _read([s.test], state, out)
+        return _merge(_flow(s.body, state, out, defer, pin), _flow(s.orelse, state, out, defer, pin))
+    if isinstance(s, (ast.For, ast.AsyncFor)):
+        state = _read([s.iter], state, out)
+        bound = list(_names_bound_by(s.target))
+
+        def trip(top: State) -> State:
+            inside = _without(top, bound)
+            _mark(s.target, inside, out)
+            return _flow(s.body, inside, out, defer, pin)
+        return _flow(s.orelse, _looped(state, trip), out, defer, pin)
+    if isinstance(s, ast.While):
+        def trip(top: State) -> State:
+            _mark(s.test, top, out)
+            return _flow(s.body, top, out, defer, pin)
+        return _flow(s.orelse, _looped(state, trip), out, defer, pin)
+    if isinstance(s, (ast.With, ast.AsyncWith)):
+        for item in s.items:
+            state = _read([item.context_expr], state, out)
+            if item.optional_vars is not None:
+                _mark(item.optional_vars, state, out)
+                state = _without(state, _names_bound_by(item.optional_vars))
+        return _flow(s.body, state, out, defer, pin)
+    if isinstance(s, (ast.Try, getattr(ast, "TryStar", ast.Try))):
+        body_end = _flow(s.body, state, out, defer, pin)
+        into_handler = _merge(state, body_end)
+        ends = [_flow(s.orelse, body_end, out, defer, pin)]
+        for h in s.handlers:
+            _read([h.type], into_handler, out)
+            ends.append(_flow(h.body, _without(into_handler, [h.name] if h.name else []), out, defer, pin))
+        joined = ends[0]
+        for e in ends[1:]:
+            joined = _merge(joined, e)
+        return _flow(s.finalbody, _merge(joined, into_handler), out, defer, pin)
+    if isinstance(s, getattr(ast, "Match", ())):
+        state = _read([s.subject], state, out)
+        ends = [state]
+        for case in s.cases:
+            ends.append(_flow(case.body, _read([case.guard], state, out), out, defer, pin))
+        joined = ends[0]
+        for e in ends[1:]:
+            joined = _merge(joined, e)
+        return joined
+    # Expr, Return, Raise, Assert, Delete and the rest: they read, and bind nothing the scan follows.
+    return _read([c for c in ast.iter_child_nodes(s) if isinstance(c, ast.expr)], state, out)
+
+
+def _scopes_with_aliases(tree: ast.AST) -> dict[ast.AST, State]:
+    """node -> the names it is read under: flow-sensitive within a scope (an `if` and its `else` join, a loop is run until its top stops
+    growing), and a function starts from what its enclosing scope held where it was defined JOINED with what that scope holds at its
+    end, less its own parameters, which shadow. Module-level code is a scope too. The scan never follows a stamp across a call."""
+    out: dict[ast.AST, State] = {}
+
+    def scope(body: list[ast.stmt], state: State) -> None:
+        defer: dict = {}
+        end = _flow(body, state, out, defer)
+        for fn, at_def in defer.items():
+            scope(fn.body, _without(_merge(at_def, end), _param_names(fn.args)))
+
+    scope(tree.body if isinstance(tree, ast.Module) else [], {})
     return out
 
 
@@ -462,6 +567,26 @@ def test_negative_control_a_stamp_copied_into_a_variable_is_still_a_stamp():
         "a copy read by a closure": "def f(r):\n    ts = r['created_at']\n    def g():\n        return ts[:10]\n    return g\n",
         "a method": "class C:\n    def f(self, r):\n        ts = r['created_at']\n        return ts[:10]\n",
     }
+    # The 2-11-2026 review: the first version read a function's names as they stood at its END, so each of these was missed.
+    bad |= {
+        "a cut and THEN a rebinding to its converted value": "def f(r):\n    ts = r['created_at']\n    label = ts[:10]\n    ts = ist_date_of(ts)\n    return label, ts\n",
+        "a cut and then a rebinding to a date column": "def f(r):\n    d = r['created_at']\n    a = d[:10]\n    d = r['invoice_date']\n    return a, d\n",
+        "a stamp in one branch only": "def f(r, x):\n    if x:\n        ts = r['created_at']\n    else:\n        ts = r['invoice_date']\n    return ts[:10]\n",
+        "a stamp in the else branch only": "def f(r, x):\n    if x:\n        ts = r['invoice_date']\n    else:\n        ts = r['created_at']\n    return ts.split('T')[0]\n",
+        "bound late in a loop and cut at the top of the next trip": "def f(rows):\n    ts = ''\n    for r in rows:\n        print(ts[:10])\n        ts = r['created_at']\n",
+        "a conditional-expression copy": "def f(r):\n    ts = r['created_at'] if r else ''\n    return ts[:10]\n",
+        "a walrus copy": "def f(r):\n    if (ts := r['created_at']):\n        return ts[:10]\n",
+        "a chained copy": "def f(r):\n    a = b = r['created_at']\n    return b[:10]\n",
+        "a copy read inside a lambda": "def f(r, rows):\n    ts = r['created_at']\n    return sorted(rows, key=lambda x: ts[:10])\n",
+        "a copy read inside a comprehension": "def f(r, rows):\n    ts = r['created_at']\n    return [ts[:10] for _ in rows]\n",
+        "a copy at module level read in a function": "ts = ROW['created_at']\ndef f():\n    return ts[:10]\n",
+        "a function defined under an if": "if True:\n    def f(r):\n        ts = r['created_at']\n        return ts[:10]\n",
+        "a function defined inside a try": "try:\n    def f(r):\n        ts = r['created_at']\n        return ts[:10]\nexcept Exception:\n    pass\n",
+        "a closure defined BEFORE the copy is made": "def f(r):\n    def g():\n        return ts[:10]\n    ts = r['created_at']\n    return g\n",
+        "a copy in a with block": "def f(r, lock):\n    with lock:\n        ts = r['created_at']\n    return ts[:10]\n",
+        "a copy in a try block": "def f(r):\n    try:\n        ts = r['created_at']\n    except KeyError:\n        ts = None\n    return ts[:10]\n",
+        "a named parameter that is a stamp": "def f(created_at):\n    return created_at[:10]\n",
+    }
     for why, source in bad.items():
         assert list(_first_ten_characters_of_a_stamp(source)) or list(_other_cuts_of_a_stamp(source)), why
     fine = {
@@ -474,6 +599,23 @@ def test_negative_control_a_stamp_copied_into_a_variable_is_still_a_stamp():
         "a name unpacked from something else": "def f(r):\n    ts = r['created_at']\n    ts, other = r['a'], r['b']\n    return ts[:10]\n",
         "a loop variable over other values": "def f(rows):\n    ts = rows[0]['created_at']\n    for ts in rows:\n        print(ts[:10])\n",
         "another width": "def f(r):\n    ts = r['created_at']\n    return ts[:7]\n",
+    }
+    fine |= {
+        # a variable whose OWN name ends in `_at` and was assigned its converted value is the commonest spelling of a correct rebinding
+        "an _at name rebound to its converted value": "def f(r):\n    approved_at = r['approved_at']\n    approved_at = ist_date_of(approved_at)\n    return approved_at.strftime('%d-%m-%Y')\n",
+        "an _at name assigned a converted day and cut": "def f(r):\n    created_at = ist_day_iso(r['created_at'])\n    return created_at[:10]\n",
+        "an _at parameter converted first": "def f(created_at):\n    created_at = ist_day_iso(created_at)\n    return created_at[:10]\n",
+        # the cut comes BEFORE the name becomes a stamp
+        "converted when it is cut and a stamp only afterwards": "def f(r, x):\n    ts = ist_date_of(x)\n    a = ts[:10]\n    ts = r['created_at']\n    return a, ts\n",
+        "both branches convert": "def f(r, x):\n    if x:\n        ts = ist_date_of(r['created_at'])\n    else:\n        ts = ist_day_iso(r['updated_at'])\n    return ts[:10]\n",
+        "a loop that converts before it cuts": "def f(rows):\n    for r in rows:\n        ts = r['created_at']\n        ts = ist_day_iso(ts)\n        print(ts[:10])\n",
+        # names that shadow an alias without being plain assignments
+        "a comprehension variable that shadows an alias": "def f(r, dates):\n    ts = r['created_at']\n    return [ts[:10] for ts in dates]\n",
+        "a lambda parameter that shadows an alias": "def f(r, rows):\n    ts = r['created_at']\n    return sorted(rows, key=lambda ts: ts[:10])\n",
+        "a with-as name that shadows an alias": "def f(r, path):\n    ts = r['created_at']\n    with open(path) as ts:\n        return ts[:10]\n",
+        "an except-as name that shadows an alias": "def f(r):\n    ts = r['created_at']\n    try:\n        pass\n    except ValueError as ts:\n        return str(ts)[:10]\n",
+        "a function name that shadows an alias": "def f(r):\n    ts = r['created_at']\n    def ts():\n        return 'x'\n    return ts()[:10]\n",
+        "a closure whose parameter shadows an alias defined later": "def f(r):\n    def g(ts):\n        return ts[:10]\n    ts = r['created_at']\n    return g, ts\n",
     }
     for why, source in fine.items():
         assert not list(_first_ten_characters_of_a_stamp(source)) and not list(_other_cuts_of_a_stamp(source)), why
