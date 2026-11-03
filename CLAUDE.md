@@ -208,7 +208,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WINDOW IS READ IN REQUESTS THE DATABASE WILL HONOUR, AND AN ID IT CANNOT READ IS A 422 WITH A SENTENCE, SAID BY THE ONE SPEAKER
 - A TEST STUBS A JOURNAL METHOD THROUGH MONKEYPATCH, NEVER BY ASSIGNING IT
 
-### `docs/design-record/filing-and-compliance.md` (6 entries): Filing to government portals, trackers and the period lock
+### `docs/design-record/filing-and-compliance.md` (8 entries): Filing to government portals, trackers and the period lock
+- A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT
 
 - AND THE PRODUCT WORDS THAT POSITION ONCE
 - THERE ARE TWO TRACKERS AND BOTH LOCK THE PERIOD
@@ -216,6 +217,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN MCA FILING RECORDED AS FILED CLOSES ITS CALENDAR OBLIGATION, AND THE OBLIGATION IS THE CLIENT'S WHILE THE FILINGS ARE THE COMPANIES'
 - A COMPLIANCE OBLIGATION IS OVERDUE BY ITS DATE, BECAUSE NOTHING WRITES THE WORD, AND ONE FUNCTION SAYS SO FOR EVERY READER
 - AN MCA FILING'S DATE IS JUDGED BEFORE IT IS STORED, BY THE RULE THE ITR ACKNOWLEDGEMENT USES
+- A WRONG TDS CHALLAN IS CORRECTED BY RETRACTING IT AND RECORDING IT AGAIN, NEVER EDITED IN PLACE, AND A MONTH CLOSED BEFORE THE RECORD EXISTED IS NAMED AND LEFT
 
 ### `docs/design-record/fixed-assets-and-inventory.md` (18 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 

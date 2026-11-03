@@ -76,6 +76,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { RetractChallanModal } from "@/components/tds/RetractChallanModal";
 import { MatchChallanToLedgerModal } from "@/components/tds/MatchChallanToLedgerModal";
+import { UnlinkedChallansPanel } from "@/components/tds/UnlinkedChallansPanel";
 import { Button } from "@/components/ui/button";
 // The engine, reached through the API. Rates, thresholds, the
 // individual-vs-company split, §206AA and the year's aggregate are all
@@ -794,6 +795,8 @@ export default function TDSPage() {
   // NULL, and the backend's tds_repository scopes every read by firm + client.
   const { clients, clientId: selectedClientId, setClientId: setSelectedClientId } = useClientPicker();
   const [activeTab, setActiveTab] = useState(0);
+  // Bumped when a challan is recorded, retracted, tied or untied, so the firm-wide list of challans with no ledger entry is read again.
+  const [unlinkedKey, setUnlinkedKey] = useState(0);
   const [deductions, setDeductions] = useState<TDSDeduction[]>([]);
   const [challans, setChallans] = useState<TDSChallan[]>([]);
   // The financial year the deductions are listed for; "" is every year, as before. A client whose register passes the server's ceiling
@@ -943,6 +946,7 @@ export default function TDSPage() {
       setCalendarAnswers(null);
       setRetractionNotes([done.calendar_note, done.statement_note].filter((n): n is string => !!n));
       toast({ title: "Challan retracted", description: "It is out of the register. The reason is in the audit log." });
+      setUnlinkedKey((k) => k + 1);
       void loadLists(clientAtClick, false);
       void refreshDepositState(clientAtClick, true);
     } catch (e) {
@@ -991,6 +995,7 @@ export default function TDSPage() {
       if (clientAtClick !== openClient.current) return;
       closeMatchAfterWrite();
       toast({ title: "Challan tied to the ledger entry", description: "Nothing was posted. The challan now points at the entry that paid it." });
+      setUnlinkedKey((k) => k + 1);
       void loadLists(clientAtClick, false);
     } catch (e) {
       setMatchError(e instanceof Error && e.message ? e.message : "Could not tie the challan to that entry.");
@@ -1008,6 +1013,7 @@ export default function TDSPage() {
       if (clientAtClick !== openClient.current) return;
       closeMatchAfterWrite();
       toast({ title: "Link taken back", description: "The challan reads \"not tied to an entry\" again. The entry is untouched." });
+      setUnlinkedKey((k) => k + 1);
       void loadLists(clientAtClick, false);
     } catch (e) {
       setMatchError(e instanceof Error && e.message ? e.message : "Could not take the link back.");
@@ -1300,6 +1306,10 @@ export default function TDSPage() {
         </Callout>
       )}
 
+      {/* Recorded challans no ledger entry is tied to, across the caller's clients (POST-A-272). Opening one selects its client and shows the
+          Challans tab, where the Match dialog offers the entries that could be the payment. */}
+      <UnlinkedChallansPanel reloadKey={unlinkedKey} onOpenClient={(id) => { setSelectedClientId(id); setActiveTab(1); }} />
+
       {/* Tabs */}
       <div className="flex gap-1 border-b border-ps-border">
         {TABS.map((tab, i) => (
@@ -1584,6 +1594,7 @@ export default function TDSPage() {
       {showAddChallan && selectedClientId && (
         <AddChallanModal clientId={selectedClientId} choices={choices} onClose={() => setShowAddChallan(false)}
           onAdded={c => {
+            setUnlinkedKey((k) => k + 1);
             void loadLists(selectedClientId, false);
             setCalendarAnswers(c.compliance_obligations ?? null);
             void refreshDepositState(selectedClientId, true);

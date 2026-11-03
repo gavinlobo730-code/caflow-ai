@@ -61,7 +61,7 @@ test("a page's own apiFetch hands a refusal back as the server's sentence", () =
     assert.match(body, /if \(!res\.ok\) return \{ success: false, data: null, error: await errorMessage\(res\) \}/,
       `${page}'s apiFetch returns a refusal's raw body, whose sentence is under ` +
       "`detail` — so every `res.error ?? \"Failed\"` on the page shows \"Failed\".");
-    assert.match(src, /import \{ errorMessage \} from "@\/lib\/api"/,
+    assert.match(src, /import \{[^}]*\berrorMessage\b[^}]*\} from "@\/lib\/api"/,
       `${page} must read the sentence through lib/api's errorMessage, not a copy of it`);
   }
 });

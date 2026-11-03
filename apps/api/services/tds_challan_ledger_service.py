@@ -41,9 +41,15 @@ A LINK CAN GO STALE, AND THE SCREEN SAYS SO. `journal_entry_id` is cleared when 
     is the CA's decision (Take the link back, then tie it again).
 
 WHAT IT DOES NOT DO
-    It does not re-check that a LIVE tied entry still debits the TDS Payable account (a manual journal can be edited in place after the
-    link), and it does not propose from the bank queue, and it does not raise an exception for a challan with no entry after some days: both
-    stay on the ledger line (POST-A-272). It does not backfill: which entry paid which challan is the CA's answer.
+    It does not propose from the bank queue: that stays on the ledger line (POST-A-272). The challan with no entry after some days is the
+    firm-wide worklist's (`tds_register_lists_service.unlinked_challans`, `LONG_WAIT_DAYS`), not an exception raised from here. It does not
+    backfill: which entry paid which challan is the CA's answer.
+
+A LIVE LINK IS RE-CHECKED AGAINST THE ACCOUNT IT CLEARS. A manual journal can be edited in place after the link, and an entry that still
+    stands but no longer debits "TDS Payable" (or "TDS Payable - Salary") records no payment of this challan; `annotate_links` reads the lines of
+    every live-tied entry in one query and says so in its own words (state `not_debiting`), on the challan list and in the candidates answer.
+    The link is never cleared by reading it, as for every other state. The ESI and professional-tax remittances take the same check in
+    `statutory_remittance_service.stale_links`.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this edits the practice's own register. It transmits nothing.
 """
@@ -69,6 +75,7 @@ OTHER_ACCOUNT = "TDS Payable"
 LIVE, DRAFT, REVERSED, REVERSAL, DELETED = (remittance_match.ENTRY_LIVE, remittance_match.ENTRY_DRAFT, remittance_match.ENTRY_REVERSED,
                                             remittance_match.ENTRY_REVERSAL, remittance_match.ENTRY_DELETED)
 MISSING, UNKNOWN = remittances.MISSING, remittances.UNKNOWN
+NOT_DEBITING = remittances.NOT_DEBITING
 
 _LABEL = {
     LIVE: "Tied to an entry",
@@ -102,7 +109,9 @@ class LinkRefused(Exception):
         self.status = status
 
 
-def _link(state: str) -> dict:
+def _link(state: str, account: Optional[str] = None) -> dict:
+    if state == NOT_DEBITING:
+        return {"state": state, **remittances.not_debiting_view(f'"{account or OTHER_ACCOUNT}"', "challan", "the tax was deposited")}
     return {"state": state, "label": _LABEL[state], "note": _NOTE.get(state)}
 
 
@@ -127,6 +136,34 @@ def annotate_links(db, *, firm_id: str, client_id: str, rows: list[dict]) -> Non
         states = {}
     for r in tied:
         r["ledger_link"] = _link(states.get(str(r["journal_entry_id"]), UNKNOWN))
+    _flag_entries_that_stopped_debiting(db, firm_id=firm_id, client_id=client_id, rows=[r for r in tied if r["ledger_link"]["state"] == LIVE])
+
+
+def _flag_entries_that_stopped_debiting(db, *, firm_id: str, client_id: str, rows: list[dict]) -> None:
+    """Of the challans tied to a LIVE entry, mark those whose entry no longer debits the TDS Payable account their section clears (a manual
+    journal edited in place after the link, POST-A-272). A client whose chart holds no ACTIVE account of that name cannot be judged: the
+    challan's door refused the link without the account, but an account can be renamed or made inactive afterwards, and then the challan is
+    marked not checked, with the reason (`remittances.no_account_view`), like a remittance in such a chart. When the lines cannot be read the
+    live rows are marked UNKNOWN, as a failed read of the entries marks all of them."""
+    if not rows:
+        return
+    try:
+        account_of = {name: liability_account_id(db, firm_id=firm_id, client_id=client_id, section=section)
+                      for name, section in {account_name_for(r.get("section")): r.get("section") for r in rows}.items()}
+        debiting = remittances.entries_debiting(db, entry_ids=[r["journal_entry_id"] for r in rows], account_ids=[a for a in account_of.values() if a])
+    except Exception as exc:                                    # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="tds_challan_ledger_service.annotate_links.debits", firm_id=firm_id, client_id=client_id)
+        for r in rows:
+            r["ledger_link"] = _link(UNKNOWN)
+        return
+    for r in rows:
+        name = account_name_for(r.get("section"))
+        account_id = account_of.get(name)
+        if not account_id:
+            r["ledger_link"] = remittances.no_account_view(name, "challan", "the tax was deposited")
+        elif (str(r["journal_entry_id"]), str(account_id)) not in debiting:
+            r["ledger_link"] = _link(NOT_DEBITING, name)
 
 
 def account_name_for(section: Optional[str]) -> str:

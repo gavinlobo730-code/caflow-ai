@@ -10,7 +10,9 @@
  *      "Take the link back" send ONE DELETE for that remittance; the lists are read again and the remittance reads as unmatched, with its candidate;
  *   2. a refusal raised as an HTTP error is shown above both lists in the server's words and the link stays listed;
  *   3. a link the server could not read (state unknown) is drawn with its label and note and offers no take-back;
- *   4. an answer without `stale_links` (an older server) draws only the unmatched list.
+ *   4. a link in a chart with no active account of the name the payment clears (unknown, "not checked", no take-back) is drawn with the
+ *      server's words under the same heading, which says "or that could not be checked" and counts it;
+ *   5. an answer without `stale_links` (an older server) draws only the unmatched list.
  */
 import assert from "node:assert/strict";
 import { ok, refuse } from "../stub.mjs";
@@ -60,7 +62,7 @@ export const scenarios = [
       await page.getByText("Tied to an entry that was reversed").first().waitFor();
       const body = await text(page);
       assert.ok(body.includes(STALE_NOTE), "the server's note was not shown as written");
-      assert.ok(/Tied to an entry that no longer records the payment \(1\)/.test(body), "the panel was not drawn for a stale link alone");
+      assert.ok(/Tied to an entry that no longer records the payment, or that could not be checked \(1\)/.test(body), "the panel was not drawn for a stale link alone");
 
       await sameTickDouble(page.getByRole("button", { name: "Take the link back" }));
       await expectWrites(stub, UNLINK, 1, "two same-tick clicks on Take the link back", "DELETE");
@@ -98,13 +100,28 @@ export const scenarios = [
     },
   },
   {
+    id: "a-link-in-a-chart-without-its-account-is-not-checked-and-offers-no-take-back",
+    title: "a link the server could not judge because the chart has no active account to compare with is drawn in the server's words, counted under the heading, and offers no Take the link back",
+    async run(env) {
+      const { page } = env;
+      const NOTE = "This client's chart of accounts has no active ESI Payable account, so whether the entry this remittance is tied to records the payment could not be checked. The remittance stays: it was paid. Add the account, or make it active again, and the link will be checked.";
+      const notChecked = stale("unknown", "Tied to an entry (not checked)", NOTE, false);
+      await atTheHandoff(env, () => ok({ client_id: CLIENT_ROW.id, window_days: 14, unmatched: [], stale_links: [notChecked] }));
+      await page.getByText("Tied to an entry (not checked)", { exact: true }).first().waitFor();
+      const body = await text(page);
+      assert.ok(body.includes("no active ESI Payable account") && body.includes("make it active again"), "the server's note was not shown as written");
+      assert.ok(/or that could not be checked \(1\)/.test(body), "the heading did not count the link that could not be checked");
+      assert.equal(await page.getByRole("button", { name: "Take the link back" }).count(), 0, "a link that could not be judged was offered for take-back");
+    },
+  },
+  {
     id: "an-older-server-without-stale-links-draws-only-the-unmatched-list",
     title: "an answer with no stale_links key draws the unmatched list alone and no stale block",
     async run(env) {
       const { page } = env;
       await atTheHandoff(env, () => ok({ client_id: CLIENT_ROW.id, window_days: 14, unmatched: [{ ...REMITTANCE, journal_entry_id: null, candidates: [CANDIDATE] }] }));
       await page.getByText("Paid, but not yet matched to a bank payment (1)").first().waitFor();
-      assert.doesNotMatch(await text(page), /no longer records the payment \(/, "a stale block was drawn from an answer that had none");
+      assert.doesNotMatch(await text(page), /Tied to an entry that no longer records the payment/, "a stale block was drawn from an answer that had none");
     },
   },
 ];

@@ -2,7 +2,7 @@
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
-**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (20, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
+**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (24, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
 
 **How many ledger items wait on you:** the ledger README's "Who must act" line counts them and is generated from the ledger itself. It is every item lettered B (you decide first) or C (only you or someone outside can do), plus the items lettered A that carry the `waits on owner` marker. Those marked items are the ones whose question is in section 4 below: S14 (POST-A-343), S15 (POST-A-348), S16 (POST-A-055), S17 (POST-A-059 and POST-A-064), S18 (POST-A-067), S19 (POST-A-114) and S20 (POST-A-063). Answering a question removes the marker and Claude builds the item.
 
@@ -244,6 +244,22 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
 - **Stays unbuilt meanwhile:** The two loss types (a migration widening the stored loss types, the matching list in the set-off engine, and a representation of "never expires" in the carry-forward rule). The form keeps naming them, and recording one as "other" stays refused.
 - **Ledger:** POST-A-074
+
+### S23. The EPF deposit: its due date, and what counts as paid in time
+
+- **Question:** By what date must a wage month's provident-fund contribution (both shares and the administrative charges) be deposited, and does the Code on Social Security 2020, which the product already applies to the PF wage base from 21-11-2025, change the date the EPF Scheme 1952 gave? The product has the Scheme's "15th of the next month, with a short grace" only as a recollection and has not read it from a primary text. And what is the record that proves the deposit was made (the challan or TRRN and its date)?
+- **Needed:** The EPF Scheme 1952 paragraph on payment of contributions and the Code's corresponding provision, with the notification that brings it into force; EPFO's circular on the due date and on any grace.
+- **Who can supply it:** Claude once the government sites are reachable (section 1); a practising CA or payroll consultant for the reading.
+- **Stays unbuilt meanwhile:** The EPF deposit record (the ECR upload holds the return, no payment date or amount) and its obligation on the compliance calendar. The salary (section 192) deposit obligation also waits, on a month-wise challan record.
+- **Ledger:** POST-A-267
+
+### S24. Form 27EQ (tax collected at source): the statement's due dates, and its form number from 1-4-2026
+
+- **Question:** What are the due dates of the quarterly statement of tax collected at source? The product holds the 1961 Act's pattern (fifteen days after the quarter, so 15 July, 15 October, 15 January and 15 May) only as a recollection and has not read it, and it is not the TDS statements' pattern (31 July, 31 October, 31 January, 31 May). From 1-4-2026, what is the statement's form number and which section and rule of the Income-tax Act 2025 and its Rules set its due dates (the product already carries Form 140 for a 26Q of 2026-27)?
+- **Needed:** The Rule of the 1961 Rules that sets the TCS statement's due date (the product cites Rule 31A(2) for the TDS statements) and the corresponding section and rule of the 2025 Act and Rules, with the form number.
+- **Who can supply it:** Claude once the government sites are reachable (section 1); a practising CA for the reading.
+- **Stays unbuilt meanwhile:** A Form 27EQ obligation on the compliance calendar. A 27EQ statement recorded as filed answers that nothing was closed, in words.
+- **Ledger:** POST-A-267
 
 ## 5. Wait-until-asked items the goal probably needs
 

@@ -750,9 +750,9 @@ function UnmatchedRemittances({ clientId, onLinked }: {
           : "bg-state-problem-surface text-state-problem"}`}>{note.text}</p>
       )}
       {stale.length > 0 && (
-        <div className="space-y-2" aria-label="Remittances tied to an entry that no longer records the payment">
+        <div className="space-y-2" aria-label="Remittances tied to an entry that no longer records the payment, or that could not be checked">
           <p className="text-sm font-semibold text-ps-ink">
-            Tied to an entry that no longer records the payment ({stale.length})
+            Tied to an entry that no longer records the payment, or that could not be checked ({stale.length})
           </p>
           {stale.map((r) => (
             <div key={r.id} className="border-t border-ps-border pt-2">

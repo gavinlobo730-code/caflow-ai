@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from models.common import api_response
 from core.permissions import can_user, rbac
-from core.authz import assert_client_access, can_access_client
+from core.authz import assert_client_access, can_access_client, effective_client_ids
 from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -964,6 +964,35 @@ def list_challans(
         return api_response(True, out)
     except Exception as e:
         return _could_not(e, "list the TDS challans")
+
+
+@router.get("/challans/unlinked")
+def list_unlinked_challans(
+    client_id: Optional[str] = Query(None, description="Narrow to one client of the caller's"),
+    limit: int = Query(50, ge=1, le=TDS_LIST_MAX),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(rbac("tds", "read")),
+):
+    """Challans recorded in the register that are tied to no ledger entry, across the caller's clients, oldest payment first (POST-A-272).
+
+    A Partner sees the whole firm; anyone else the clients assigned to them. A `client_id` outside the caller's scope (or another firm's)
+    answers the same 404 "Not found" as a missing client, at the door; the service also answers an empty list for it, a second layer
+    that is reached only if the caller's assignments change between the door's read and the service's. The population is the client picker's: soft-deleted, archived and internal clients are not counted or listed. It is a worklist (`{challans, total_unlinked, total_unlinked_paise, has_more, limit, max_limit}`): a recorded challan nobody has tied to the
+    entry that paid it is a liability the ledger may still show as owing, and nothing is posted or changed by reading it."""
+    if client_id:
+        assert_client_access(current_user, client_id)
+    try:
+        firm_id = current_user["firm_id"]
+        scope = effective_client_ids(current_user)
+        if _USE_MOCK:
+            out = lists.unlinked_challans_in_memory(list(_MOCK_CHALLANS.values()), client_ids=scope, client_id=client_id,
+                                                    limit=limit, offset=offset)
+        else:
+            from core.supabase_client import get_supabase
+            out = lists.unlinked_challans(get_supabase(), firm_id, client_ids=scope, client_id=client_id, limit=limit, offset=offset)
+        return api_response(True, out)
+    except Exception as e:
+        return _could_not(e, "list the TDS challans that are tied to no ledger entry")
 
 
 def _close_the_deposit_obligations(current_user: dict, challan: dict) -> list[dict]:
