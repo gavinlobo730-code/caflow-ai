@@ -380,7 +380,7 @@ routers/search.py :: C901 :: global_search :: 39
 routers/search.py :: PLR0915 :: global_search :: 112
 routers/service_catalogue.py :: B007 :: bulk_create_services :: 1
 routers/service_catalogue.py :: C901 :: bulk_create_services :: 26
-routers/service_catalogue.py :: C901 :: update_service :: 19
+routers/service_catalogue.py :: C901 :: update_service :: 18
 routers/service_catalogue.py :: PLR0915 :: bulk_create_services :: 105
 routers/tally_migration.py :: B904 :: create_job :: 1
 routers/tally_migration.py :: B904 :: execute_import :: 2

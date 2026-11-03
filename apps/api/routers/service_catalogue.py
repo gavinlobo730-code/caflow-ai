@@ -145,7 +145,7 @@ def _default_opening_balance_date(db, client_id: str) -> str:
     return _fy_start_or_april_default(fy_start)
 
 
-def _opening_stock_answer(db, firm_id: str, payloads: list) -> dict:
+def _opening_stock_answer(db, firm_id: str, payloads: list, *, edited: bool = False) -> dict:
     """What a bulk import did NOT do about the opening stock its file asked for (POST-A-092, the bulk-import half).
 
     The seeding never raises, so the response says which of the items that came with an opening balance have no opening row in the
@@ -157,7 +157,53 @@ def _opening_stock_answer(db, firm_id: str, payloads: list) -> dict:
              if p.get("kind") == "good" and p.get("opening_balance_date")
              and _has_seedable_opening_balance(p.get("opening_qty_units"), p.get("opening_cost_paise"))]
     landed = items_with_an_opening_row(db, firm_id=firm_id, item_ids=[a["id"] for a in asked]) if asked else set()
-    return opening_stock_report.report(asked, landed)
+    return opening_stock_report.report(asked, landed, edited=edited)
+
+
+def _opening_stock_answer_for_one(db, firm_id: str, row: dict, *, opening_date, qty, cost_paise, edited: bool = False) -> dict:
+    """What ONE product's create or edit did NOT do about the opening stock it asked for (POST-A-092, the single-product half).
+
+    The same answer the bulk import gives, for the one item: the seeding is fail-soft here too (the product row already exists, so a failure
+    is logged and not raised), which used to leave a catalogue row holding `opening_qty_units` and `opening_cost_paise` over a stock
+    ledger with no opening row and a response that said "created". Asked of the stock ledger and not inferred from the seeding having
+    returned. A check that itself fails is "could not check" and never "recorded": this never raises, because the product is saved either
+    way and an answer that vanished with an exception would read as a clean one."""
+    from domain.inventory import opening_stock_report
+    asked = [{"id": row.get("id"), "name": row.get("name")}]
+    try:
+        return _opening_stock_answer(db, firm_id, [{
+            "id": row.get("id"), "name": row.get("name"), "kind": "good", "opening_balance_date": opening_date,
+            "opening_qty_units": qty, "opening_cost_paise": cost_paise,
+        }], edited=edited)
+    except Exception as e:  # the check must not fail the save, and must not read as a clean one
+        _logger.error("opening stock check failed for %s: %s", row.get("id"), e, exc_info=True)
+        return opening_stock_report.report(asked, None, edited=edited)
+
+
+def _seed_the_edited_opening_stock(db, *, firm_id: str, current_user: dict, service_id: str, owned_row: dict, updated: dict,
+                                   opening_date, qty, cost_paise) -> dict:
+    """Seed an edited product's opening stock and say whether it landed (POST-A-092, the single-product half).
+
+    The seeding is a no-op for an item that already has an opening row (the form may re-save without changing the stock), so an edit
+    can only be the one that RECORDS the opening stock when there was none: that is asked BEFORE the seeding runs, and only then does the
+    response carry `opening_stock`. An edit of the quantity on an item that already has an opening row is not applied and is not
+    answered here (named on POST-A-092). The product is saved whatever happens here: a failure is logged, never raised."""
+    from domain.inventory_service import items_with_an_opening_row, seed_opening_balance
+    before = items_with_an_opening_row(db, firm_id=firm_id, item_ids=[service_id])
+    had_opening_row = before is not None and str(service_id) in before
+    try:
+        seed_opening_balance(
+            db, firm_id=firm_id, client_id=owned_row["client_id"], service_catalogue_id=service_id,
+            movement_date=opening_date, opening_qty=qty, opening_cost_paise=cost_paise,
+            # journal_entries.created_by FK references users(id), not auth_user_id.
+            created_by=current_user.get("id"),
+        )
+    except Exception as e:
+        _logger.error("update_service: opening balance seeding failed for %s: %s", service_id, e, exc_info=True)
+    if had_opening_row:
+        return updated
+    return {**updated, "opening_stock": _opening_stock_answer_for_one(
+        db, firm_id, updated, opening_date=opening_date, qty=qty, cost_paise=cost_paise, edited=True)}
 
 
 def _has_seedable_opening_balance(qty, cost) -> bool:
@@ -421,6 +467,11 @@ def create_service(
                 )
             except Exception as e:
                 _logger.error("create_service: opening balance seeding failed for %s: %s", created.get("id"), e, exc_info=True)
+            # The product is saved whatever the seeding did; the response says whether its opening stock landed, in the server's own
+            # sentence, which the screen shows as written (POST-A-092, the single-product half).
+            created = {**created, "opening_stock": _opening_stock_answer_for_one(
+                db, firm_id, created, opening_date=resolved_opening_date,
+                qty=payload.get("opening_qty_units"), cost_paise=payload.get("opening_cost_paise"))}
 
         return api_response(True, created)
     except Exception as e:
@@ -802,17 +853,9 @@ def update_service(
         updated = resp.data[0] if resp.data else {**owned_row, **patch}
 
         if seedable and resolved_opening_date:
-            try:
-                from domain.inventory_service import seed_opening_balance
-                seed_opening_balance(
-                    db, firm_id=firm_id, client_id=owned_row["client_id"], service_catalogue_id=service_id,
-                    movement_date=resolved_opening_date,
-                    opening_qty=effective_qty, opening_cost_paise=effective_cost,
-                    # journal_entries.created_by FK references users(id), not auth_user_id.
-                    created_by=current_user.get("id"),
-                )
-            except Exception as e:
-                _logger.error("update_service: opening balance seeding failed for %s: %s", service_id, e, exc_info=True)
+            updated = _seed_the_edited_opening_stock(
+                db, firm_id=firm_id, current_user=current_user, service_id=service_id, owned_row=owned_row, updated=updated,
+                opening_date=resolved_opening_date, qty=effective_qty, cost_paise=effective_cost)
 
         return api_response(True, updated)
     except HTTPException:

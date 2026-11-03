@@ -45,10 +45,11 @@ def _names(rows: list) -> str:
     return ", ".join(shown) + (f" and {more} more" if more > 0 else "")
 
 
-def report(asked: list, landed: Optional[set]) -> dict:
+def report(asked: list, landed: Optional[set], *, edited: bool = False) -> dict:
     """The answer for a batch. `asked` is the items that came with an opening balance the seeding would take (each a dict with
     an `id` and a `name`); `landed` is the ids among them that have an opening row in the stock ledger, or None when the
-    ledger could not be read."""
+    ledger could not be read. `edited` is for a product that already existed and was saved again: it was not "created", and the Stock
+    column need not read 0 (other movements may exist), so the sentence says only what is true of it."""
     count = len(asked)
     if count == 0:
         return {"asked": 0, "recorded": 0, "not_recorded": [], "checked": True, "message": None}
@@ -67,5 +68,6 @@ def report(asked: list, landed: Optional[set]) -> dict:
         "asked": count, "recorded": recorded, "checked": True,
         "not_recorded": [{"id": r.get("id"), "name": r.get("name")} for r in missing],
         "message": (f"Opening stock was not recorded for {len(missing)} of {count} {_plural(count)}: {_names(missing)}. "
-                    f"{'The product was' if len(missing) == 1 else 'These products were'} created without it, so the Stock column shows 0. {REMEDY}"),
+                    + (f"The product was saved without it, so it has no opening stock row. {REMEDY}" if edited else
+                       f"{'The product was' if len(missing) == 1 else 'These products were'} created without it, so the Stock column shows 0. {REMEDY}")),
     }

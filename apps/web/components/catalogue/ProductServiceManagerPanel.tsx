@@ -65,7 +65,7 @@ export function ProductServiceManagerPanel({
   // a date would have dated every opening balance in the file to a day nobody chose: Continue refuses it in the date's own sentence (frontend_ux-19).
   const openingDates = useDateProblems();
   const openingRefusal = useDateRefusal(openingDates.first);
-  const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" | "warning" } | null>(null);
   // This row's request is in flight. These handlers had no loading state at
   // all, so the button was never disabled and a second click sent it again.
   const [rowBusy, setRowBusy] = useState(false);
@@ -75,10 +75,11 @@ export function ProductServiceManagerPanel({
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  function showToast(msg: string, kind: "success" | "error") {
+  function showToast(msg: string, kind: "success" | "error" | "warning") {
     setToast({ msg, kind });
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 3500);
+    // A warning carries a sentence to read (what the save did not do), so it stays longer than a confirmation.
+    toastTimer.current = setTimeout(() => setToast(null), kind === "warning" ? 15000 : 3500);
   }
 
   // Whole catalogue, once per client — DataTable owns search/sort/filter/
@@ -255,14 +256,16 @@ export function ProductServiceManagerPanel({
     return { imported, errors, skipped, skippedDetail };
   }
 
-  function handlePick(item: ServiceCatalogueItem) {
+  function handlePick(item: ServiceCatalogueItem, opts?: { stayOpen?: boolean }) {
     if (!onPick) return;
     onPick(item);
     // Fire-and-forget usage bump, same as ServiceCataloguePicker's direct
     // search-result pick — keeps recent/frequent ranking accurate regardless
     // of whether the CA picked via the fast dropdown or this panel.
     api.serviceCatalogue.recordUsed(item.id).catch(() => {});
-    onClose();
+    // A product created from an invoice or bill line is handed to that line and the panel closes, which would take the panel's own toast
+    // with it: when the server has a sentence about the opening stock that was not recorded, the panel stays open so it can be read.
+    if (!opts?.stayOpen) onClose();
   }
 
   // ── DataTable columns / filters ───────────────────────────────────────────
@@ -305,7 +308,7 @@ export function ProductServiceManagerPanel({
   const body = (
     <div className="space-y-5">
       {toast && (
-        <div className={`fixed top-4 right-4 z-[70] px-4 py-2 rounded-lg text-sm shadow-lg ${toast.kind === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
+        <div className={`fixed top-4 right-4 z-[70] max-w-sm px-4 py-2 rounded-lg text-sm shadow-lg ${toast.kind === "success" ? "bg-emerald-600 text-white" : toast.kind === "warning" ? "bg-state-attention-surface border border-state-attention-border text-amber-800" : "bg-red-600 text-white"}`}>
           {toast.msg}
         </div>
       )}
@@ -421,9 +424,10 @@ export function ProductServiceManagerPanel({
             load();
             // A fresh create in picker mode is almost always meant for THIS
             // line — hand it straight back, same as the old create-only flow.
-            if (onPick && editing === "new") handlePick(item);
+            if (onPick && editing === "new") handlePick(item, { stayOpen: Boolean(item.opening_stock?.message) });
           }}
           onError={(msg) => showToast(msg, "error")}
+          onNotice={(msg) => showToast(msg, "warning")}
         />
       )}
 
