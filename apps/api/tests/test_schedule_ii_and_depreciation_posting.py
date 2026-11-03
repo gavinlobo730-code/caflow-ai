@@ -452,11 +452,25 @@ def test_month_end_is_the_date_the_journal_carries(monkeypatch):
     monkeypatch.setattr(fa.period_validation_service, "validate_posting_date", lambda *a: None)
     seen = {}
     monkeypatch.setattr(fa._journal_svc, "journal_for_depreciation",
-                        lambda asset, amount, period, firm, client: seen.setdefault("period", period) or "je-1")
+                        lambda asset, amount, period, firm, client, created_by=None: seen.setdefault("period", period) or "je-1")
 
     fa.post_depreciation("asset-1", DepreciationIn(period="2026-06"), USER)
     row = db.store["fixed_assets"][0]
     assert row["depreciation_posted_through"] == fa._period_end_date(seen["period"])
+
+
+def test_the_depreciation_entry_is_posted_as_the_person_who_pressed_the_button(monkeypatch):
+    """POST-A-376: the helper that builds the entry is handed the INTERNAL id of the caller, so the entry's poster and creator are not
+    NULL. `USER["id"]` is the internal id; the sign-in id is a different key and is never what the column holds."""
+    db = TypeCheckedFakeDB()
+    _seed_asset(db)
+    monkeypatch.setattr(fa, "_db", lambda: db)
+    monkeypatch.setattr(fa.period_validation_service, "validate_posting_date", lambda *a: None)
+    seen = {}
+    monkeypatch.setattr(fa._journal_svc, "journal_for_depreciation",
+                        lambda asset, amount, period, firm, client, created_by=None: seen.update(created_by=created_by) or "je-1")
+    fa.post_depreciation("asset-1", DepreciationIn(period="2026-06"), {**USER, "auth_user_id": "auth-u1"})
+    assert seen == {"created_by": "u1"}
 
 
 def test_the_month_is_read_back_out_of_the_stored_date():

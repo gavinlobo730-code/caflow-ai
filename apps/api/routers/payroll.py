@@ -3733,8 +3733,8 @@ def finalize_run(
 
     # Post the payroll journal FIRST; only mark the run finalized if it posted.
     from services.phase2_journal_service import Phase2JournalService
-    svc = Phase2JournalService()
-    journal_id = svc.journal_for_payroll(run, firm_id, client_id)
+    journal_svc = Phase2JournalService()
+    journal_id = journal_svc.journal_for_payroll(run, firm_id, client_id, created_by=current_user.get("id"))
     if not journal_id:
         # As of task #103, journal_for_payroll re-raises unexpected posting
         # failures instead of swallowing them into a None return — so a
@@ -3933,7 +3933,7 @@ def disburse_run(
                    "see where it stands before paying it again.")
 
     from services.phase2_journal_service import Phase2JournalService
-    svc = Phase2JournalService()
+    journal_svc = Phase2JournalService()
     try:
         # A retry after a crash or a timeout may carry a different date than the attempt that did post; the kernel
         # would not see them as the same payment, so look for it first and say where it is.
@@ -3943,8 +3943,9 @@ def disburse_run(
                 status_code=409,
                 detail=f"An entry for this payroll's payment, dated {earlier}, is already in the books. Pay with that "
                        "date to record it against the run, or reverse that entry first. Nothing new was posted.")
-        journal_id = svc.journal_for_payroll_disbursement(
-            run, bank["coa_account_id"], run["firm_id"], run["client_id"], payment_date)
+        journal_id = journal_svc.journal_for_payroll_disbursement(
+            run, bank["coa_account_id"], run["firm_id"], run["client_id"], payment_date,
+            created_by=current_user.get("id"))
     except Exception:
         _release_disbursement_claim(db, run["firm_id"], run_id, stamp)
         raise
@@ -8332,7 +8333,7 @@ def record_settlement(
                                           + max(0, body.other_recoveries_paise)),
                 "employee_name": emp.get("name") or "",
             },
-            firm_id=current_user["firm_id"], client_id=body.client_id)
+            firm_id=current_user["firm_id"], client_id=body.client_id, created_by=current_user.get("id"))
         if journal_id:
             db.table("payroll_settlements").update(
                 {"journal_entry_id": journal_id}).eq("id", settlement_id).execute()

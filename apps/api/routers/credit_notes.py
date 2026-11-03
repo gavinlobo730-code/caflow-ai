@@ -647,6 +647,7 @@ def issue_credit_note(
                         MOCK_CREDIT_NOTES[i],
                         current_user.get("firm_id", ""),
                         MOCK_CREDIT_NOTES[i]["client_id"],
+                        created_by=current_user.get("id"),
                     )
                     return api_response(True, MOCK_CREDIT_NOTES[i])
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
@@ -757,7 +758,7 @@ def issue_credit_note(
         # never go partial; the credit note stays a re-tryable draft.
         try:
             journal_id = phase2_journal_service.journal_for_credit_note(
-                cn=cn, firm_id=firm_id or "", client_id=client_id,
+                cn=cn, firm_id=firm_id or "", client_id=client_id, created_by=current_user.get("id"),
             )
             if not journal_id:
                 raise RuntimeError("credit-note journal posting returned no id")

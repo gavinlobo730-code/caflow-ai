@@ -640,6 +640,10 @@ class BankingService:
 
         journal_entry_id = phase2_journal_service.journal_for_bank_transaction(
             db, firm_id, client_id, txn, account_id, bank_coa_account_id,
+            # Deliberately nobody: nothing calls this method, it hands `actor_id` only to the timeline log, and nothing says which id a
+            # caller would give it, so it does not guess at a foreign-keyed poster column (POST-A-376;
+            # tests/test_every_caller_of_a_posting_helper_names_the_person.py).
+            created_by=None,
         )
 
         # Posting records the journal link only; reconciliation (B.4) is a separate

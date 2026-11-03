@@ -730,7 +730,8 @@ def create_asset(
     asset = (row.data or [{}])[0]
 
     # Auto-post acquisition journal — CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-    journal_id = _journal_svc.journal_for_asset_acquisition(asset, current_user["firm_id"], client_id)
+    journal_id = _journal_svc.journal_for_asset_acquisition(
+        asset, current_user["firm_id"], client_id, created_by=current_user.get("id"))
     if journal_id:
         db.table("fixed_assets").update({"journal_entry_id": journal_id}).eq("id", asset["id"]).execute()
         asset["journal_entry_id"] = journal_id
@@ -847,7 +848,7 @@ def import_opening_register(
     return api_response(True, out)
 
 
-def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
+def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Optional[str] = None) -> dict:
     """Post ONE month's depreciation for one asset, or refuse and say why.
 
     Extracted from `post_depreciation` so the range runner below charges months
@@ -971,7 +972,7 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
     # Post journal — CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     try:
         journal_id = _journal_svc.journal_for_depreciation(
-            asset, monthly, period, firm_id, asset["client_id"]
+            asset, monthly, period, firm_id, asset["client_id"], created_by=created_by,
         )
     except AccumulatedLedgerUnavailable as e:
         # The ledger this asset's history is kept in cannot be used. Nothing was posted, and it is never replaced by the shared
@@ -1009,7 +1010,7 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str) -> dict:
             _reverse_tolerating_already_reversed(
                 db, firm_id, journal_id, entry_date,
                 f"Reversal of depreciation on {asset.get('asset_code')} for {period}: the asset's accumulated-depreciation ledger changed "
-                "while it was being posted", None)
+                "while it was being posted", created_by)
         except Exception as exc:
             from core.observability import capture_posting_failure
             capture_posting_failure(exc, operation="fixed_assets.post_depreciation.lost_race_reversal", firm_id=firm_id,
@@ -1082,7 +1083,7 @@ def post_depreciation(
     if not can_access_client(current_user, asset.get("client_id")):
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    out = _post_one_month(db, asset, period, current_user["firm_id"])
+    out = _post_one_month(db, asset, period, current_user["firm_id"], current_user.get("id"))
     out.pop("posted", None)
     return api_response(True, out)
 
@@ -1168,7 +1169,7 @@ def run_depreciation(
             if period < asset["purchase_date"][:7]:
                 continue                      # before the asset existed
             try:
-                out = _post_one_month(db, asset, period, current_user["firm_id"])
+                out = _post_one_month(db, asset, period, current_user["firm_id"], current_user.get("id"))
             except HTTPException as e:
                 # Stop THIS asset at the first refusal and keep its reason. Going
                 # on would either skip a month (which the next call then refuses
@@ -1439,7 +1440,7 @@ def dispose_asset(
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         journal_id = _journal_svc.journal_for_asset_disposal(
             asset, sale_proceeds, current_user["firm_id"], asset["client_id"],
-            output_tax=output_tax)
+            output_tax=output_tax, created_by=current_user.get("id"))
     except AccumulatedLedgerUnavailable as e:
         # The ledger this asset's accumulated depreciation is kept in cannot be used (POST-A-345): undo the claim and say what to repair.
         _rollback_claim()
@@ -1878,7 +1879,7 @@ def correct_asset(
 
         try:
             new_journal = _journal_svc.journal_for_asset_acquisition(
-                merged, firm_id, client_id, reference_suffix=f"-R{revision}")
+                merged, firm_id, client_id, reference_suffix=f"-R{revision}", created_by=current_user.get("id"))
         except Exception:
             raise
         if journal_id and new_journal is None:

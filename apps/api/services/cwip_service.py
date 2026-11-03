@@ -289,7 +289,7 @@ def add_cost(db, *, firm_id: str, client_id: str, cwip_id: str,
     if journal is not None and row:
         entry_id = journal.journal_for_cwip_addition(
             addition={**row, "project_name": rows[0].get("project_name")},
-            firm_id=firm_id, client_id=client_id)
+            firm_id=firm_id, client_id=client_id, created_by=actor_id)
         if entry_id:
             db.table("cwip_additions").update(
                 {"journal_entry_id": entry_id}).eq("id", row["id"]).execute()
@@ -378,7 +378,7 @@ def capitalise(db, *, firm_id: str, client_id: str, cwip_id: str,
     if journal is not None and asset:
         entry_id = journal.journal_for_cwip_capitalisation(
             project={**project, "id": cwip_id}, asset=asset, cost_paise=cost,
-            entry_date=put_to_use_date, firm_id=firm_id, client_id=client_id)
+            entry_date=put_to_use_date, firm_id=firm_id, client_id=client_id, created_by=actor_id)
 
     db.table("capital_work_in_progress").update({
         "status": "capitalised",

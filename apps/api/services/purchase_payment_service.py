@@ -185,7 +185,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         from services.phase2_journal_service import phase2_journal_service
-        phase2_journal_service.journal_for_purchase_payment(payment, firm_id or "", client_id)
+        phase2_journal_service.journal_for_purchase_payment(payment, firm_id or "", client_id, created_by=(actor or {}).get("id"))
         return {**payment, "allocations": allocations}
 
     # Ownership + status guard — validated BEFORE any posting (mirrors receipt_service's F1).
@@ -282,7 +282,7 @@ def create_payment_core(firm_id: str, data: dict, actor: dict, db) -> dict:
          "tds_paise": tds_paise, "tds_section": tds_cols.get("tds_section"),
          "bank_account_id": data.get("bank_account_id"),
          "payment_mode": data.get("payment_mode", "bank")},
-        firm_id or "", client_id,
+        firm_id or "", client_id, created_by=(actor or {}).get("id"),
     )
     if journal_id:
         payment_payload["journal_entry_id"] = journal_id

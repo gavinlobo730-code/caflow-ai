@@ -77,7 +77,7 @@ class Phase2JournalService:
     # ------------------------------------------------------------------ #
 
     def journal_for_sales_invoice(
-        self, invoice: dict, firm_id: str, client_id: str, *, issue_at: Optional[str] = None
+        self, invoice: dict, firm_id: str, client_id: str, *, issue_at: Optional[str] = None, created_by: Optional[str] = None
     ) -> Optional[str]:
         """
         Create journal entry for a posted sales invoice.
@@ -108,6 +108,7 @@ class Phase2JournalService:
                 db, firm_id, client_id, "customers", invoice.get("customer_id"), "customer"
             )
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -359,7 +360,8 @@ class Phase2JournalService:
         return lines
 
     def journal_for_receipt(
-        self, receipt: dict, firm_id: str, client_id: str
+        self, receipt: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """Build the receipt's journal lines and post them via post_journal_atomic
         (the single-document atomic path — see receipt_journal_lines' docstring for
@@ -378,6 +380,7 @@ class Phase2JournalService:
             lines = self.receipt_journal_lines(db, receipt, firm_id, client_id)
             _ccy = self._currency_kwargs(db, receipt, firm_id, client_id, lines)
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -399,7 +402,8 @@ class Phase2JournalService:
             raise
 
     def journal_for_credit_note(
-        self, cn: dict, firm_id: str, client_id: str
+        self, cn: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Dr Sales Returns (Sales Revenue account) = taxable_amount_paise
@@ -472,6 +476,7 @@ class Phase2JournalService:
             })
 
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -492,7 +497,8 @@ class Phase2JournalService:
             raise
 
     def journal_for_debit_note(
-        self, dn: dict, firm_id: str, client_id: str
+        self, dn: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Vendor-side purchase return (mirror of the credit note on the AP side):
@@ -541,6 +547,7 @@ class Phase2JournalService:
                 })
 
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -560,7 +567,8 @@ class Phase2JournalService:
             raise
 
     def journal_for_sales_debit_note(
-        self, dn: dict, firm_id: str, client_id: str
+        self, dn: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Sales-side value/tax INCREASE — the mirror image of journal_for_credit_note:
@@ -629,6 +637,7 @@ class Phase2JournalService:
                 })
 
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -648,7 +657,8 @@ class Phase2JournalService:
             raise
 
     def journal_for_purchase_credit_note(
-        self, cn: dict, firm_id: str, client_id: str
+        self, cn: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Purchase-side value/tax INCREASE — the mirror image of journal_for_debit_note
@@ -701,6 +711,7 @@ class Phase2JournalService:
             })
 
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -720,7 +731,8 @@ class Phase2JournalService:
             raise
 
     def journal_for_purchase_bill(
-        self, bill: dict, firm_id: str, client_id: str
+        self, bill: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Dr Purchases/Expense account = taxable_amount_paise
@@ -961,6 +973,7 @@ class Phase2JournalService:
 
             _ccy = self._currency_kwargs(db, bill, firm_id, client_id, lines)
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -983,7 +996,8 @@ class Phase2JournalService:
             raise
 
     def journal_for_purchase_payment(
-        self, payment: dict, firm_id: str, client_id: str
+        self, payment: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Dr Trade Payables = amount_paise
@@ -1051,6 +1065,7 @@ class Phase2JournalService:
 
             _ccy = self._currency_kwargs(db, payment, firm_id, client_id, lines)
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -1284,7 +1299,8 @@ class Phase2JournalService:
         ]
 
     def journal_for_payroll(
-        self, run: dict, firm_id: str, client_id: str
+        self, run: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Create payroll accrual journal on finalization.
@@ -1360,6 +1376,7 @@ class Phase2JournalService:
             )
 
             return self._create_journal(
+                created_by=created_by,
                 db=db,
                 firm_id=firm_id,
                 client_id=client_id,
@@ -1457,7 +1474,8 @@ class Phase2JournalService:
         return lines
 
     def journal_for_settlement(
-        self, settlement: dict, firm_id: str, client_id: str
+        self, settlement: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """Post a leaver's settlement to the general ledger.
 
@@ -1483,6 +1501,7 @@ class Phase2JournalService:
             }
             lines = self._build_settlement_lines(ids, settlement)
             return self._create_journal(
+                created_by=created_by,
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=str(settlement.get("payment_date")
                                or settlement.get("leaving_date")),
@@ -1501,6 +1520,7 @@ class Phase2JournalService:
     def journal_for_payroll_disbursement(
         self, run: dict, bank_gl_account_id: str, firm_id: str, client_id: str,
         payment_date: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """Salary disbursement journal — posted when a finalized run is marked paid.
         Clears the Net Salary Payable liability raised at finalization against the
@@ -1520,6 +1540,7 @@ class Phase2JournalService:
             lines = self._build_payroll_disbursement_lines(
                 net_sal_id, bank_gl_account_id, int(run.get("total_net_paise") or 0))
             return self._create_journal(
+                created_by=created_by,
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=payment_date,
                 reference_no=f"PAY-DISB-{run['month']}",
@@ -1537,7 +1558,8 @@ class Phase2JournalService:
             raise
 
     def journal_for_asset_acquisition(
-        self, asset: dict, firm_id: str, client_id: str, reference_suffix: str = ""
+        self, asset: dict, firm_id: str, client_id: str, reference_suffix: str = "",
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Asset acquisition journal.
@@ -1598,6 +1620,7 @@ class Phase2JournalService:
                 # touching neither the payable nor any cash account.
                 expense_id = self._find_account(db, firm_id, client_id, "%Purchase%")
                 return self._create_journal(
+                    created_by=created_by,
                     db=db, firm_id=firm_id, client_id=client_id,
                     entry_date=asset["purchase_date"],
                     # `or`, NOT `dict.get`'s default. A default substitutes only
@@ -1653,6 +1676,7 @@ class Phase2JournalService:
                           "narration": credit_narration})
 
             return self._create_journal(
+                created_by=created_by,
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=asset["purchase_date"],
                 reference_no=f"FA-ACQ-{(asset.get('asset_code') or asset['id'][:8])}{reference_suffix}",
@@ -1710,7 +1734,8 @@ class Phase2JournalService:
         return row["id"]
 
     def journal_for_depreciation(
-        self, asset: dict, depreciation_paise: int, period: str, firm_id: str, client_id: str
+        self, asset: dict, depreciation_paise: int, period: str, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Monthly/annual depreciation journal.
@@ -1736,6 +1761,7 @@ class Phase2JournalService:
             entry_date = month_end_date(period)
 
             return self._create_journal(
+                created_by=created_by,
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=entry_date,
                 reference_no=f"FA-DEPN-{(asset.get('asset_code') or asset['id'][:8])}-{period}",
@@ -1810,7 +1836,8 @@ class Phase2JournalService:
     # depreciating something that is still being built.
 
     def journal_for_cwip_addition(
-        self, addition: dict, firm_id: str, client_id: str
+        self, addition: dict, firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """One tranche of construction cost.
 
@@ -1861,6 +1888,7 @@ class Phase2JournalService:
             if mode == "from_bill":
                 expense_id = self._find_account(db, firm_id, client_id, "%Purchase%")
                 return self._create_journal(
+                    created_by=created_by,
                     db=db, firm_id=firm_id, client_id=client_id,
                     entry_date=addition["incurred_on"],
                     reference_no=f"CWIP-{str(addition['id'])[:8]}",
@@ -1898,6 +1926,7 @@ class Phase2JournalService:
                           "narration": credit_narration})
 
             return self._create_journal(
+                created_by=created_by,
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=addition["incurred_on"],
                 reference_no=f"CWIP-{str(addition['id'])[:8]}",
@@ -1916,7 +1945,8 @@ class Phase2JournalService:
 
     def journal_for_cwip_capitalisation(
         self, project: dict, asset: dict, cost_paise: int, entry_date: str,
-        firm_id: str, client_id: str
+        firm_id: str, client_id: str,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """The project becomes the asset.
 
@@ -1944,6 +1974,7 @@ class Phase2JournalService:
                 system_key="cwip")
 
             return self._create_journal(
+                created_by=created_by,
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=entry_date,
                 reference_no=f"CWIP-CAP-{str(project['id'])[:8]}",
@@ -1967,6 +1998,7 @@ class Phase2JournalService:
     def journal_for_asset_disposal(
         self, asset: dict, sale_proceeds_paise: int, firm_id: str, client_id: str,
         output_tax: Optional[dict] = None,
+        *, created_by: Optional[str] = None,
     ) -> Optional[str]:
         """
         Asset disposal journal.
@@ -2061,6 +2093,7 @@ class Phase2JournalService:
                                "narration": "Loss on disposal of fixed asset"})
 
             return self._create_journal(
+                created_by=created_by,
                 db=db, firm_id=firm_id, client_id=client_id,
                 entry_date=asset.get("disposal_date", str(ist_today())),
                 reference_no=f"FA-DISP-{(asset.get('asset_code') or asset['id'][:8])}",
@@ -2122,6 +2155,7 @@ class Phase2JournalService:
         txn: dict,
         account_id: str,
         bank_coa_account_id: str,
+        *, created_by: Optional[str] = None,
     ) -> str:
         """
         Create a balanced journal entry for a posted bank transaction, reusing the
@@ -2139,7 +2173,7 @@ class Phase2JournalService:
         ref = f"{(txn.get('reference_no') or 'BANK')}-{str(txn.get('id', ''))[:8]}"
         narration = f"Bank import: {txn.get('description', '')}".strip()
         return self._create_journal(
-            db, firm_id=firm_id, client_id=client_id,
+            db, firm_id=firm_id, client_id=client_id, created_by=created_by,
             entry_date=str(txn["transaction_date"])[:10],
             reference_no=ref, narration=narration, entry_type=entry_type, lines=lines,
             source_type=JS.BANK_TRANSACTION, source_id=txn.get("id"),

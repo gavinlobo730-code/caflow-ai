@@ -564,7 +564,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
 
         # ── Post the GL journal; roll back the sub-ledger on failure. ──
         try:
-            journal_id = phase2_journal_service.journal_for_debit_note(dn, firm_id or "", client_id)
+            journal_id = phase2_journal_service.journal_for_debit_note(dn, firm_id or "", client_id, created_by=current_user.get("id"))
             if not journal_id:
                 raise RuntimeError("debit-note journal posting returned no id")
         except Exception as jerr:

@@ -120,8 +120,8 @@ def test_a_request_that_loses_the_race_to_release_the_run_writes_nothing(db, mon
     from services.phase2_journal_service import Phase2JournalService
     real = Phase2JournalService.journal_for_payroll
 
-    def post_then_lose_the_race(self, run, firm_id, client_id):
-        journal_id = real(self, run, firm_id, client_id)
+    def post_then_lose_the_race(self, run, firm_id, client_id, created_by=None):
+        journal_id = real(self, run, firm_id, client_id, created_by=created_by)
         _row(db, run_id).update({"status": "finalized", "journal_entry_id": journal_id})      # the other request
         return journal_id
 
@@ -176,12 +176,12 @@ def test_a_second_payment_with_another_date_is_refused_while_the_first_is_postin
     real = Phase2JournalService.journal_for_payroll_disbursement
     second: dict = {}
 
-    def post_while_the_other_request_arrives(self, run, bank_account, firm_id, client_id, payment_date):
+    def post_while_the_other_request_arrives(self, run, bank_account, firm_id, client_id, payment_date, created_by=None):
         try:
             _pay(db, run_id, on="2026-07-02")
         except HTTPException as refused:
             second["status"] = refused.status_code
-        return real(self, run, bank_account, firm_id, client_id, payment_date)
+        return real(self, run, bank_account, firm_id, client_id, payment_date, created_by=created_by)
 
     monkeypatch.setattr(Phase2JournalService, "journal_for_payroll_disbursement", post_while_the_other_request_arrives)
 
@@ -236,8 +236,8 @@ def test_a_run_reversed_while_its_payment_was_posting_is_not_marked_paid_and_the
     real = Phase2JournalService.journal_for_payroll_disbursement
     undone: list = []
 
-    def post_then_get_reversed(self, run, bank_account, firm_id, client_id, payment_date):
-        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date)
+    def post_then_get_reversed(self, run, bank_account, firm_id, client_id, payment_date, created_by=None):
+        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date, created_by=created_by)
         _row(db, run_id).update({"status": "review", "journal_entry_id": None})              # reverse_run, mid-flight
         return journal_id
 
@@ -319,8 +319,8 @@ def test_a_payment_whose_lease_was_taken_over_and_paid_by_another_request_is_not
     from services.phase2_journal_service import Phase2JournalService
     real = Phase2JournalService.journal_for_payroll_disbursement
 
-    def post_and_let_another_request_finish_first(self, run, bank_account, firm_id, client_id, payment_date):
-        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date)
+    def post_and_let_another_request_finish_first(self, run, bank_account, firm_id, client_id, payment_date, created_by=None):
+        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date, created_by=created_by)
         _row(db, run_id).update({"status": "paid", "disbursement_journal_entry_id": journal_id,
                                  "disbursement_claimed_at": None})
         return journal_id
@@ -342,8 +342,8 @@ def test_a_payment_whose_lease_was_taken_over_while_the_other_request_is_still_p
     from services.phase2_journal_service import Phase2JournalService
     real = Phase2JournalService.journal_for_payroll_disbursement
 
-    def post_and_lose_the_lease(self, run, bank_account, firm_id, client_id, payment_date):
-        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date)
+    def post_and_lose_the_lease(self, run, bank_account, firm_id, client_id, payment_date, created_by=None):
+        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date, created_by=created_by)
         _row(db, run_id)["disbursement_claimed_at"] = datetime.now(timezone.utc).isoformat() + "-other"
         return journal_id
 
@@ -363,8 +363,8 @@ def test_a_reopened_runs_posted_entry_is_really_reversed_by_the_undo(db, monkeyp
     from services.phase2_journal_service import Phase2JournalService
     real = Phase2JournalService.journal_for_payroll_disbursement
 
-    def post_then_get_reversed(self, run, bank_account, firm_id, client_id, payment_date):
-        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date)
+    def post_then_get_reversed(self, run, bank_account, firm_id, client_id, payment_date, created_by=None):
+        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date, created_by=created_by)
         _row(db, run_id).update({"status": "review", "journal_entry_id": None})
         return journal_id
 
@@ -381,8 +381,8 @@ def test_when_the_undo_cannot_reverse_the_entry_the_screen_says_it_is_still_in_t
     from services.phase2_journal_service import Phase2JournalService, phase2_journal_service
     real = Phase2JournalService.journal_for_payroll_disbursement
 
-    def post_then_get_reversed(self, run, bank_account, firm_id, client_id, payment_date):
-        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date)
+    def post_then_get_reversed(self, run, bank_account, firm_id, client_id, payment_date, created_by=None):
+        journal_id = real(self, run, bank_account, firm_id, client_id, payment_date, created_by=created_by)
         _row(db, run_id).update({"status": "review", "journal_entry_id": None})
         return journal_id
 

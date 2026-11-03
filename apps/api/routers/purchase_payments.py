@@ -639,7 +639,7 @@ def create_purchase_payment(
                 "payment_mode": payment_mode,
             }
             journal_entry_id = phase2_journal_service.journal_for_purchase_payment(
-                payment_dict, firm_id, client_id
+                payment_dict, firm_id, client_id, created_by=current_user.get("id"),
             )
 
             payload = {
