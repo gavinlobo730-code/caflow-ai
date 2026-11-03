@@ -32,11 +32,12 @@
  */
 
 import * as React from "react";
-import { X, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { api } from "@/lib/api";
+import { Modal } from "@/components/ui/modal";
 import {
   rupeesToPaise, filledLegs, unallocatedPaise, splitBlock, takeTheRestPaise,
   type SplitLeg, type SplitBlock,
@@ -171,99 +172,17 @@ export function SplitAcrossLedgersModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-ps-ink">Split across ledgers</h3>
-            <p className="text-xs text-ps-label mt-0.5 truncate" title={description}>
-              {description} · {formatPaise(amountPaise)} {isCredit ? "received" : "spent"}
-            </p>
-          </div>
-          <button onClick={onClose} aria-label="Close"
-            className="text-ps-hint hover:text-ps-label shrink-0"><X size={16} /></button>
-        </div>
-
-        {modeSwitch && <div className="px-5 pt-3">{modeSwitch}</div>}
-
-        <div className="px-5 py-4 space-y-2 overflow-y-auto flex-1">
-          {loading ? (
-            <p className="text-xs text-ps-hint py-6 text-center">Loading the current split…</p>
-          ) : (
-            <>
-              {!editable && (
-                <p className="text-2xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
-                  This line already has a journal, so its split is frozen. Undo the posting first.
-                </p>
-              )}
-              {legs.map((l, i) => (
-                <div key={l.key} className="flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <AccountLookup
-                      accounts={accounts}
-                      value={l.account_id}
-                      onChange={(id) => update(l.key, { account_id: id })}
-                      disabled={!editable || saving}
-                      size="sm"
-                      ariaLabel={`Ledger for line ${i + 1}`}
-                      placeholder="Choose a ledger…"
-                    />
-                    <input
-                      type="text"
-                      value={l.narration}
-                      disabled={!editable || saving}
-                      onChange={(e) => update(l.key, { narration: e.target.value })}
-                      placeholder="What this part was for (optional)"
-                      aria-label={`Note for line ${i + 1}`}
-                      className="mt-1 w-full border border-ps-border rounded px-2 py-1 text-2xs"
-                    />
-                  </div>
-                  <div className="w-32 shrink-0">
-                    <input
-                      type="number" min="0" step="0.01" inputMode="decimal"
-                      value={l.amount}
-                      disabled={!editable || saving}
-                      onChange={(e) => update(l.key, { amount: e.target.value })}
-                      aria-label={`Amount for line ${i + 1}`}
-                      className="w-full border border-ps-border rounded px-2 py-1.5 text-xs text-right font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => takeTheRest(l.key)}
-                      disabled={!editable || saving}
-                      className="mt-1 w-full text-3xs text-brand hover:underline disabled:opacity-40">
-                      Take the rest
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setLegs((ls) => (ls.length > 2 ? ls.filter((x) => x.key !== l.key) : ls))}
-                    disabled={!editable || saving || legs.length <= 2}
-                    aria-label={`Remove line ${i + 1}`}
-                    title={legs.length <= 2 ? "A split needs at least two ledgers" : "Remove this line"}
-                    className="mt-1.5 text-ps-disabled hover:text-state-problem disabled:opacity-30 shrink-0">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={() => { setLegs((ls) => [...ls, blankLeg(seq)]); setSeq((n) => n + 1); }}
-                disabled={!editable || saving}
-                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50">
-                <Plus size={12} /> Add a ledger
-              </button>
-            </>
-          )}
-
-          {error && <p className="text-2xs text-state-problem">{error}</p>}
-        </div>
-
-        <div className="px-5 py-3 border-t border-ps-border flex items-center gap-3">
+    <Modal
+      title="Split across ledgers"
+      note={<span className="block truncate" title={description}>{description} · {formatPaise(amountPaise)} {isCredit ? "received" : "spent"}</span>}
+      // A request in flight ignores Escape, a click outside and the X as it ignores Cancel (the shared dialog's rule since POST-A-130).
+      onClose={() => { if (!saving) onClose(); }}
+      maxWidthClass="max-w-2xl"
+      footer={
+        <>
           {/* The figure that has to reach zero, kept in front of the reader
               rather than produced as a validation error on Save. */}
-          <p className={`text-xs font-mono ${left === 0 ? "text-state-ready" : "text-state-attention"}`}>
+          <p className={`mr-auto text-xs font-mono ${left === 0 ? "text-state-ready" : "text-state-attention"}`}>
             {left === 0 ? "Fully allocated" : left > 0
               ? `${formatPaise(left)} unallocated`
               : `${formatPaise(-left)} over`}
@@ -292,8 +211,84 @@ export function SplitAcrossLedgersModal({
               {saving ? "Saving…" : "Save the split"}
             </Button>
           </div>
-        </div>
+        </>
+      }
+    >
+      {modeSwitch && <div>{modeSwitch}</div>}
+
+      <div className="space-y-2">
+        {loading ? (
+          <p className="text-xs text-ps-hint py-6 text-center">Loading the current split…</p>
+        ) : (
+          <>
+            {!editable && (
+              <p className="text-2xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
+                This line already has a journal, so its split is frozen. Undo the posting first.
+              </p>
+            )}
+            {legs.map((l, i) => (
+              <div key={l.key} className="flex items-start gap-2">
+                <div className="flex-1 min-w-0">
+                  <AccountLookup
+                    accounts={accounts}
+                    value={l.account_id}
+                    onChange={(id) => update(l.key, { account_id: id })}
+                    disabled={!editable || saving}
+                    size="sm"
+                    ariaLabel={`Ledger for line ${i + 1}`}
+                    placeholder="Choose a ledger…"
+                  />
+                  <input
+                    type="text"
+                    value={l.narration}
+                    disabled={!editable || saving}
+                    onChange={(e) => update(l.key, { narration: e.target.value })}
+                    placeholder="What this part was for (optional)"
+                    aria-label={`Note for line ${i + 1}`}
+                    className="mt-1 w-full border border-ps-border rounded px-2 py-1 text-2xs"
+                  />
+                </div>
+                <div className="w-32 shrink-0">
+                  <input
+                    type="number" min="0" step="0.01" inputMode="decimal"
+                    value={l.amount}
+                    disabled={!editable || saving}
+                    onChange={(e) => update(l.key, { amount: e.target.value })}
+                    aria-label={`Amount for line ${i + 1}`}
+                    className="w-full border border-ps-border rounded px-2 py-1.5 text-xs text-right font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => takeTheRest(l.key)}
+                    disabled={!editable || saving}
+                    className="mt-1 w-full text-3xs text-brand hover:underline disabled:opacity-40">
+                    Take the rest
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLegs((ls) => (ls.length > 2 ? ls.filter((x) => x.key !== l.key) : ls))}
+                  disabled={!editable || saving || legs.length <= 2}
+                  aria-label={`Remove line ${i + 1}`}
+                  title={legs.length <= 2 ? "A split needs at least two ledgers" : "Remove this line"}
+                  className="mt-1.5 text-ps-disabled hover:text-state-problem disabled:opacity-30 shrink-0">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => { setLegs((ls) => [...ls, blankLeg(seq)]); setSeq((n) => n + 1); }}
+              disabled={!editable || saving}
+              className="inline-flex items-center gap-1 text-xs px-2.5 py-1 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label disabled:opacity-50">
+              <Plus size={12} /> Add a ledger
+            </button>
+          </>
+        )}
+
+        {error && <p className="text-2xs text-state-problem">{error}</p>}
       </div>
-    </div>
+    </Modal>
   );
 }

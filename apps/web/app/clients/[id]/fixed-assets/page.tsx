@@ -8,6 +8,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Drawer } from "@/components/ui/drawer";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -568,7 +569,10 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   // simply what differs from it. A SUCCESSFUL save closes the drawer directly.
   const { dirty } = useDirtyFields(form);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
-  const leave = async () => { if (await confirmLeave()) onClose(); };
+  // A save in flight holds the drawer open: Escape, the backdrop and Cancel are ignored until it answers, as the split, settle and match dialogs
+  // ignore them (the shared dialogs' rule since POST-A-130). `confirmLeave` cannot hold it: it reads `dirty && !saving` and so resolves true,
+  // without a question, the moment a save starts, and a drawer closed mid-request loses a refusal or, on success, closes the NEXT drawer.
+  const leave = async () => { if (submittingRef.current) return; if (await confirmLeave()) onClose(); };
 
   const set = (k: keyof CorrectionForm, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -604,8 +608,8 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex justify-end" onClick={leave}>
-      <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
+    <Drawer open onClose={leave} ariaLabel={`Correct ${asset.asset_code ?? asset.asset_name}`} widthClass="sm:max-w-md">
+      <div className="p-6 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Correct {asset.asset_code ?? asset.asset_name}</h3>
           <p className="text-2xs text-ps-hint mt-1">
@@ -650,7 +654,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           </Button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -777,7 +781,10 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     "asset_category", "schedule_ii_class", "wdv_rate_percent", "useful_life_years",
   ]));
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
-  const leave = async () => { if (await confirmLeave()) onClose(); };
+  // A save in flight holds the drawer open: Escape, the backdrop and Cancel are ignored until it answers, as the split, settle and match dialogs
+  // ignore them (the shared dialogs' rule since POST-A-130). `confirmLeave` cannot hold it: it reads `dirty && !saving` and so resolves true,
+  // without a question, the moment a save starts, and a drawer closed mid-request loses a refusal or, on success, closes the NEXT drawer.
+  const leave = async () => { if (submittingRef.current) return; if (await confirmLeave()) onClose(); };
 
   // Picking a category (or one of its Schedule II classes) pre-fills BOTH the
   // life and the rate from the same served row — they are one figure and its
@@ -958,8 +965,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && leave()}>
-      <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
+    <Drawer open onClose={leave} ariaLabel="Add fixed asset" widthClass="sm:max-w-[440px]">
+      <div className="flex min-h-full flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Fixed Asset</h2>
           <button onClick={leave} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
@@ -1263,7 +1270,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           </Button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 

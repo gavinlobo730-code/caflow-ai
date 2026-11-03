@@ -115,4 +115,51 @@ export const scenarios = [
       await until(async () => (await page.evaluate(() => document.activeElement?.id ?? "")) === accountIds[1], "focus to go to the copy's Account cell");
     },
   },
+  {
+    id: "a-five-line-journal-is-entered-from-the-keyboard-alone-and-posts-once",
+    title: "a five-line balanced journal is entered with typed values, Tab and Enter alone (no mouse), and Enter on Post Entry sends exactly one entry whose debits equal its credits",
+    async run(env) {
+      const { page, stub } = env;
+      await openJournal(env);
+      // The balancing leg is carried onto each new line, so lines two to four are overtyped as debits and line five keeps the credit.
+      const DEBITS = [["Purchases", "100"], ["Purchases", "200"], ["Purchases", "300"], ["Cash in Hand", "400"]];
+      const typeAccount = async (line, name) => {
+        // A line the keyboard added has a generated id, so the line is found by its place: the Account pickers, in order.
+        await page.locator('[id^="je-account-"]').nth(line).focus();
+        await page.keyboard.press("Enter");                               // the picker opens with its search box focused
+        await page.keyboard.type(name);
+        await page.keyboard.press("Enter");                               // the highlighted match is chosen
+      };
+      for (let i = 0; i < DEBITS.length; i += 1) {
+        await typeAccount(i, DEBITS[i][0]);
+        await page.keyboard.press("Tab");                                  // Account -> Debit (selected on focus)
+        await page.keyboard.type(DEBITS[i][1]);
+        await page.keyboard.press("Tab");                                  // Debit -> Credit
+        await page.keyboard.press("Tab");                                  // Credit -> narration
+        await page.keyboard.press("Tab");                                  // narration of the last line, out of balance: adds the next line
+        await until(async () => (await lineCount(page)) === i + 2, `line ${i + 2} to be added by Tab`);
+      }
+      // Line five arrives with the balancing credit of 1,000.00; its account is the only thing left to say.
+      await typeAccount(4, "Sales");
+      assert.equal(await page.locator('input[aria-label="Credit"]').nth(4).inputValue(), "1000.00", "the balancing credit was not carried onto line five");
+      // Tab to Post Entry and press Enter on it: nothing but the keyboard has touched the page since the narration was typed.
+      let onPost = false;
+      for (let i = 0; i < 40 && !onPost; i += 1) {
+        await page.keyboard.press("Tab");
+        onPost = await page.evaluate(() => /^\s*Post Entry\s*$/.test(document.activeElement?.textContent ?? ""));
+      }
+      assert.ok(onPost, "Tab never reached Post Entry");
+      await page.keyboard.press("Enter");
+      await until(() => stub.writesTo(/accounting\/journal$/, "POST").length >= 1, "the entry to be posted");
+      await page.waitForTimeout(500);
+      const posted = stub.writesTo(/accounting\/journal$/, "POST");
+      assert.equal(posted.length, 1, `the entry was posted ${posted.length} times, not once`);
+      const body = JSON.parse(posted[0].body);
+      const lines = body.lines ?? body.entries ?? [];
+      assert.equal(lines.length, 5, `the posted entry has ${lines.length} lines, not five: ${posted[0].body.slice(0, 300)}`);
+      const sum = (key) => lines.reduce((n, l) => n + Number(l[key] ?? 0), 0);
+      assert.equal(sum("debit_paise"), 100000, `debits came to ${sum("debit_paise")} paise`);
+      assert.equal(sum("credit_paise"), 100000, `credits came to ${sum("credit_paise")} paise`);
+    },
+  },
 ];

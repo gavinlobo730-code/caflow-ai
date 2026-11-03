@@ -4,8 +4,9 @@
  * A typed-date box commits on BLUR, not per keystroke (components/ui/date-input.tsx). An overlay that hears Escape and asks "you have
  * unsaved changes" reads its dirty flag from the render it is in, and that render has not yet seen a date that is still sitting in the box:
  * the question would be skipped and the date lost. The employee drawer was fixed by hand. The shared Modal and Drawer, which the hand-built
- * overlays are moving onto (POST-A-130), do it here, once, so the first overlay that asks before closing does not have to remember. NO
- * overlay on them asks before closing today, so this has not been seen in a browser; the unit tests hold the order (leave the box, then
+ * overlays are moving onto (POST-A-130), do it here, once, so an overlay that asks before closing does not have to remember. The fixed-asset
+ * Add and Correct drawers are the first on the shared Drawer that ask, and the browser drive of Add Asset holds it end to end (Escape over a
+ * half-typed purchase date asks first; a Drawer that skips this closes with no question); the unit tests hold the order (leave the box, then
  * close on the next tick).
  *
  * WHAT IT DOES. If the focused element is a typed-date box (it carries `TYPED_DATE_MARKER`), the box is left first, which commits it to

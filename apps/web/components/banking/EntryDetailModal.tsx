@@ -28,7 +28,7 @@
  * able to hide the thing it enriches.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ExternalLink, Paperclip, Search, Split, X } from "lucide-react";
+import { ExternalLink, Paperclip, Search, Split } from "lucide-react";
 import { api } from "@/lib/api";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { SplitAcrossLedgersModal } from "@/components/banking/SplitAcrossLedgersModal";
@@ -40,6 +40,7 @@ import {
 } from "@/components/banking/shared";
 import type { Entry } from "@/components/banking/EntriesTab";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 
 interface EntryDetail extends Entry {
@@ -619,22 +620,14 @@ export function EntryDetailModal({ clientId, txnId, initial, accounts, onClose, 
   );
 }
 
+/** The dialog around one entry: the SHARED Modal (POST-A-128), so it has a role, a name, Escape, focus in and back, a Tab trap and a page lock,
+ *  and the three dialogs it opens from inside itself (split, settle, find a match) stack over it, so one Escape closes only the top one. */
 function Shell({ title, note, footer, onClose, children }: {
   title: string; note?: ReactNode; footer?: ReactNode; onClose: () => void; children: ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
-        <div className="flex items-start justify-between px-5 py-4 border-b border-ps-border">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-ps-ink truncate" title={title}>{title}</h3>
-            {note && <p className="text-xs text-ps-label mt-0.5">{note}</p>}
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label shrink-0"><X size={16} /></button>
-        </div>
-        <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">{children}</div>
-        {footer && <div className="px-5 py-3 border-t border-ps-border flex items-center justify-end gap-2">{footer}</div>}
-      </div>
-    </div>
+    <Modal title={title} note={note} footer={footer} onClose={onClose} maxWidthClass="max-w-xl">
+      <div className="space-y-4">{children}</div>
+    </Modal>
   );
 }

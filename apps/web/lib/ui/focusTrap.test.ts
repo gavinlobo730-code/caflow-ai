@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test lib/ui/focusTrap.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tabTarget } from "./focusTrap.ts";
+import { tabTarget, canTakeFocusOnOpen } from "./focusTrap.ts";
 import { lockBodyScroll } from "./scrollLock.ts";
 
 const items = ["close", "name", "save"];
@@ -86,3 +86,12 @@ test("with no document (server render) locking is a no-op that can still be rele
     (globalThis as { document?: unknown }).document = saved;
   }
 });
+
+test("a dialog moves focus to a control a person can focus, never to a hidden or disabled one", () => {
+  assert.equal(canTakeFocusOnOpen({ disabled: false, type: "text", offsetParent: {} }), true);
+  assert.equal(canTakeFocusOnOpen({ disabled: false, type: "file", offsetParent: null }), false, "a `class=hidden` file input is display:none: focus() on it does nothing");
+  assert.equal(canTakeFocusOnOpen({ disabled: true, type: "text", offsetParent: {} }), false);
+  assert.equal(canTakeFocusOnOpen({ disabled: false, type: "hidden", offsetParent: {} }), false);
+  assert.equal(canTakeFocusOnOpen({ disabled: false, offsetParent: {} }), true, "a select or textarea has no input type");
+});
+

@@ -33,6 +33,7 @@
  */
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
+import { openOverlay } from "@/lib/ui/overlayStack";
 
 export type ConfirmOptions = {
   title?: string;
@@ -191,11 +192,14 @@ export function ConfirmDialogHost() {
 
   React.useEffect(() => {
     if (!state) return;
+    // A question shown over a dialog is the TOP one: the dialog beneath it sees the same Escape and stays, and this answers it (POST-A-128).
+    // Before the stack the Modal's capture-phase listener stopped the press, so the question never heard it and the dialog closed instead.
+    const overlay = openOverlay();
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") dismiss();
+      if (e.key === "Escape" && overlay.isTop()) dismiss();
     }
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); overlay.close(); };
   }, [state]);
 
   if (!state) return null;

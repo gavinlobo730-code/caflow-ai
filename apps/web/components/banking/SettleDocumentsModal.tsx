@@ -7,7 +7,6 @@
 // is its own file now. Behaviour here is unchanged by the move.
 
 import { useEffect, useState, ReactNode } from "react";
-import { X } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
@@ -16,6 +15,7 @@ import { api } from "@/lib/api";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import { fmt, rsToP, QueueTxn } from "@/components/banking/shared";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { formatDate } from "@/lib/dates/format";
 
 // ── Bank settlement modal ───────────────────────────────────────────────────
@@ -233,99 +233,97 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
   }
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <div>
-            <h3 className="text-sm font-semibold text-ps-ink">Settle {docLabel}s</h3>
-            <p className="text-xs text-ps-label mt-0.5">{txn.description} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}</p>
-          </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-        {modeSwitch && <div className="px-5 pt-3">{modeSwitch}</div>}
-        <div className="px-5 py-4 space-y-3 overflow-y-auto flex-1">
-          <div>
-            <label className="block text-xs font-medium text-ps-label mb-1">{isCredit ? "Customer" : "Vendor"} *</label>
-            {isCredit ? (
-              <CustomerLookup customers={parties} value={partyId} onChange={setPartyId} ariaLabel="Customer" placeholder={`Select customer…`} />
-            ) : (
-              <VendorLookup vendors={parties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
-            )}
-            <p className="text-3xs text-ps-hint mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
-          </div>
-
-          {partyId && (
-            loadingDocs ? (
-              <TransactionListSkeleton rows={3} />
-            ) : docs.length === 0 ? (
-              <p className="text-xs text-ps-hint text-center py-6">No open {docLabel}s for this {isCredit ? "customer" : "vendor"}.</p>
-            ) : (
-              <div className="border border-ps-border rounded-lg divide-y divide-ps-border">
-                {docs.map((d) => (
-                  <div key={d.id} className="flex items-center gap-2 px-3 py-2">
-                    <input aria-label={`Settle ${d.no}`} type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-ps-ink truncate">{d.no}</p>
-                      <p className="text-3xs text-ps-hint">{formatDate(d.date)} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
-                    </div>
-                    {checked.has(d.id) && (
-                      <input aria-label={`Amount to settle on ${d.no}`}
-                        type="number" min="0" step="0.01" value={amounts[d.id] ?? ""}
-                        onChange={(e) => setAmounts((a) => ({ ...a, [d.id]: e.target.value }))}
-                        className="w-24 border rounded px-2 py-1 text-xs text-right font-mono"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )
-          )}
-
-          {/* TDS — receipts only. On a vendor payment the withholding is already
-              inside the bill's net payable, so adding it here would double it. */}
-          {isCredit && (
-            <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">
-                TDS withheld by the customer (₹)
-              </label>
-              <input aria-label="TDS withheld by the customer (₹)"
-                type="number" min="0" step="0.01" value={tds}
-                onChange={(e) => setTds(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="0.00" />
-              <p className="text-3xs text-ps-hint mt-1">
-                {tdsPaise > 0
-                  ? `Invoices totalling ${fmt(settlementCap)} can be settled from this ${fmt(txnAmount)} receipt — the ${fmt(tdsPaise)} withheld clears the receivable too.`
-                  : "Leave blank unless the customer deducted tax at source. Enter the amount deducted, not the rate."}
-              </p>
-            </div>
-          )}
-
-          {isForeign && (
-            <div>
-              <label className="block text-xs font-medium text-ps-label mb-1">Exchange rate ({currency} → INR) *</label>
-              <input aria-label={`Exchange rate (${currency} to INR)`} type="number" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. 83.25" />
-            </div>
-          )}
-
-          {checked.size > 0 && (
-            <div className={`rounded-lg px-3 py-2 text-xs ${remaining < 0 ? "bg-state-problem-surface text-state-problem" : "bg-ps-bg text-ps-label"}`}>
-              Allocated {fmt(totalAllocatedPaise)} of {fmt(settlementCap)}
-              {tdsPaise > 0 && ` (${fmt(txnAmount)} received + ${fmt(tdsPaise)} TDS)`}
-              {remaining > 0 && ` — ${fmt(remaining)} will remain unallocated on the ${isCredit ? "receipt" : "payment"}.`}
-              {remaining < 0 && (tdsPaise > 0 ? " — exceeds the receipt plus TDS." : " — exceeds the transaction amount.")}
-            </div>
-          )}
-          {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
-        </div>
-        <div className="flex gap-3 justify-end px-5 py-4 border-t border-ps-border">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+    <Modal
+      title={`Settle ${docLabel}s`}
+      note={<>{txn.description} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}</>}
+      // A request in flight ignores Escape, a click outside and the X as it ignores Cancel (the shared dialog's rule since POST-A-130).
+      onClose={() => { if (!saving) onClose(); }}
+      maxWidthClass="max-w-lg"
+      footer={
+        <>
+          <button onClick={onClose} disabled={saving} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving || checked.size === 0 || remaining < 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Settling…" : `Confirm allocation`}
           </Button>
+        </>
+      }
+    >
+      {modeSwitch && <div>{modeSwitch}</div>}
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-medium text-ps-label mb-1">{isCredit ? "Customer" : "Vendor"} *</label>
+          {isCredit ? (
+            <CustomerLookup customers={parties} value={partyId} onChange={setPartyId} ariaLabel="Customer" placeholder={`Select customer…`} />
+          ) : (
+            <VendorLookup vendors={parties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
+          )}
+          <p className="text-3xs text-ps-hint mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
         </div>
+
+        {partyId && (
+          loadingDocs ? (
+            <TransactionListSkeleton rows={3} />
+          ) : docs.length === 0 ? (
+            <p className="text-xs text-ps-hint text-center py-6">No open {docLabel}s for this {isCredit ? "customer" : "vendor"}.</p>
+          ) : (
+            <div className="border border-ps-border rounded-lg divide-y divide-ps-border">
+              {docs.map((d) => (
+                <div key={d.id} className="flex items-center gap-2 px-3 py-2">
+                  <input aria-label={`Settle ${d.no}`} type="checkbox" checked={checked.has(d.id)} onChange={() => toggle(d)} className="h-3.5 w-3.5 rounded border-ps-disabled shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-ps-ink truncate">{d.no}</p>
+                    <p className="text-3xs text-ps-hint">{formatDate(d.date)} · Outstanding {fmt(d.outstanding_paise)} {d.currency !== "INR" ? d.currency : ""}</p>
+                  </div>
+                  {checked.has(d.id) && (
+                    <input aria-label={`Amount to settle on ${d.no}`}
+                      type="number" min="0" step="0.01" value={amounts[d.id] ?? ""}
+                      onChange={(e) => setAmounts((a) => ({ ...a, [d.id]: e.target.value }))}
+                      className="w-24 border rounded px-2 py-1 text-xs text-right font-mono"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* TDS — receipts only. On a vendor payment the withholding is already
+            inside the bill's net payable, so adding it here would double it. */}
+        {isCredit && (
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">
+              TDS withheld by the customer (₹)
+            </label>
+            <input aria-label="TDS withheld by the customer (₹)"
+              type="number" min="0" step="0.01" value={tds}
+              onChange={(e) => setTds(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm font-mono" placeholder="0.00" />
+            <p className="text-3xs text-ps-hint mt-1">
+              {tdsPaise > 0
+                ? `Invoices totalling ${fmt(settlementCap)} can be settled from this ${fmt(txnAmount)} receipt — the ${fmt(tdsPaise)} withheld clears the receivable too.`
+                : "Leave blank unless the customer deducted tax at source. Enter the amount deducted, not the rate."}
+            </p>
+          </div>
+        )}
+
+        {isForeign && (
+          <div>
+            <label className="block text-xs font-medium text-ps-label mb-1">Exchange rate ({currency} → INR) *</label>
+            <input aria-label={`Exchange rate (${currency} to INR)`} type="number" step="0.0001" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="e.g. 83.25" />
+          </div>
+        )}
+
+        {checked.size > 0 && (
+          <div className={`rounded-lg px-3 py-2 text-xs ${remaining < 0 ? "bg-state-problem-surface text-state-problem" : "bg-ps-bg text-ps-label"}`}>
+            Allocated {fmt(totalAllocatedPaise)} of {fmt(settlementCap)}
+            {tdsPaise > 0 && ` (${fmt(txnAmount)} received + ${fmt(tdsPaise)} TDS)`}
+            {remaining > 0 && ` — ${fmt(remaining)} will remain unallocated on the ${isCredit ? "receipt" : "payment"}.`}
+            {remaining < 0 && (tdsPaise > 0 ? " — exceeds the receipt plus TDS." : " — exceeds the transaction amount.")}
+          </div>
+        )}
+        {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
       </div>
-    </div>
+    </Modal>
   );
 }
-

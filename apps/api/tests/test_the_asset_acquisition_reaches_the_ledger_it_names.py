@@ -189,7 +189,8 @@ _DRAWER = _strip_comments(
 #: marker moved with it.
 _POST = 'request<ApiEnvelope>("/api/fixed-assets"'
 _PAYLOAD = _DRAWER[_DRAWER.index("const body = {"):_DRAWER.index(_POST)]
-_RENDER = _DRAWER[_DRAWER.index("  return (\n    <div className=\"fixed inset-0"):]
+# The drawer's render starts at the shared Drawer since POST-A-130 (it was a hand-built `fixed inset-0` overlay).
+_RENDER = _DRAWER[_DRAWER.index("  return (\n    <Drawer "):]
 
 
 @pytest.mark.parametrize("field", [
