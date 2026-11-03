@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
+import { goodsReturnedWords } from "@/lib/inventory/goodsReturned";
 import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import {
@@ -222,6 +223,7 @@ export function DebitNoteViewDrawer({
               <DetailRow label="DN date" value={dn.debit_note_date} />
               <DetailRow label="Applied to bill" value={dn.purchase_bill_id ? "Yes" : "Standalone"} />
               <DetailRow label="Reason" value={dn.reason ?? "—"} />
+              {dn.goods_returned != null && <DetailRow label="Goods returned" value={goodsReturnedWords(dn.goods_returned)} />}
               <DetailRow label="Notes" value={dn.notes ?? "—"} />
             </div>
           </section>

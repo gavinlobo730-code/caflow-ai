@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, 
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from models.invoices import InvoiceLineIn
+from domain.inventory import note_goods
 from domain.inventory import stock_effect as stock_effects
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
@@ -57,6 +58,8 @@ class DebitNoteIn(BaseModel):
     lines: list[InvoiceLineIn]
     purchase_bill_id: str | None = None
     reason: str | None = None
+    #: Did the goods on this note physically go back to the supplier? Required to ISSUE a note that names goods (domain/inventory/note_goods).
+    goods_returned: bool | None = None
     is_interstate: bool = False
     is_reverse_charge: bool = False
 
@@ -73,6 +76,7 @@ class DebitNoteUpdateIn(BaseModel):
     debit_note_date: str | None = None
     purchase_bill_id: str | None = None
     reason: str | None = None
+    goods_returned: bool | None = None
     is_interstate: bool | None = None
     is_reverse_charge: bool | None = None
     lines: list[InvoiceLineIn] | None = None
@@ -238,6 +242,7 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
             "total_gst_paise": total_cgst + total_sgst + total_igst,
             "status": "draft", "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        payload.update(note_goods.stated_column(data))   # written only when stated (domain/inventory/note_goods)
         if _USE_MOCK:
             import uuid
             payload["id"] = str(uuid.uuid4())
@@ -486,6 +491,8 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
             raise HTTPException(status_code=404, detail=f"Debit note {dn_id} not found")
         dn = resp.data[0]
         draft_integrity_service.assert_a_draft(dn, not_a_draft="Only draft debit notes can be issued")
+        # POST-A-371: a note that names goods says whether they went back BEFORE anything is posted, so the stock effect is never assumed.
+        names_goods = note_goods.refuse_unless_stated(db, "debit_note", dn, firm_id=firm_id or "", note_id=dn_id)
         if dn.get("debit_note_date"):
             period_validation_service.validate_posting_date(firm_id or "", dn["debit_note_date"])
             # Re-checked at ISSUE, not only at create: a draft raised in June
@@ -497,9 +504,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
         # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
         # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
         draft_integrity_service.assert_draft_adds_up(db, draft_integrity.DEBIT_NOTE, dn)
-        client_id = dn.get("client_id", "")
-        dn_total = int(dn.get("total_paise") or 0)
-        bill_id = dn.get("purchase_bill_id")
+        client_id, dn_total, bill_id = dn.get("client_id", ""), int(dn.get("total_paise") or 0), dn.get("purchase_bill_id")
 
         # ── Apply to the linked bill's payable sub-ledger (CGST Act §34), with rollback. ──
         prior_bill = None
@@ -664,6 +669,7 @@ def issue_debit_note(dn_id: str, current_user: dict = Depends(rbac("accounting",
 
         updated["journal_entry_id"] = journal_id
         stock_effects.attach(updated, stock)
+        note_goods.attach_declined(updated, "debit_note", names_goods)
         return api_response(True, updated)
     except HTTPException:
         raise

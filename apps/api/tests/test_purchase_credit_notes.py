@@ -169,7 +169,7 @@ def test_debit_note_after_credit_note_uses_effective_payable(monkeypatch):
     # the new effective payable (141600) must be accepted, not rejected as
     # "exceeds outstanding" against the stale pre-credit-note net_payable.
     dn_res = dn.create_debit_note(dn.DebitNoteIn(
-        client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-06",
+        goods_returned=True, client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-06",
         purchase_bill_id=bill_id, reason="Partial return",
         lines=[InvoiceLineIn(description="return", quantity=1, rate_paise=130000,
                               gst_rate_percent=0.0, service_catalogue_id="SVC-1")],

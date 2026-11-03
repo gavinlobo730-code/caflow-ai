@@ -15,6 +15,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from core import db_provider
 from core.authz import assert_client_access, can_access_client
+from domain.inventory import note_goods
 from domain.inventory import stock_effect as stock_effects
 from services import named_row_ownership
 from services import draft_document_lines
@@ -42,6 +43,8 @@ class CreditNoteIn(BaseModel):
     lines: list[InvoiceLineIn]
     sales_invoice_id: str | None = None
     reason: str | None = None
+    #: Did the goods on this note physically come back? Required to ISSUE a note that names goods (domain/inventory/note_goods).
+    goods_returned: bool | None = None
     is_interstate: bool = False
 
     @field_validator("lines")
@@ -57,6 +60,7 @@ class CreditNoteUpdateIn(BaseModel):
     credit_note_date: str | None = None
     sales_invoice_id: str | None = None
     reason: str | None = None
+    goods_returned: bool | None = None
     is_interstate: bool | None = None
     lines: list[InvoiceLineIn] | None = None
     notes: str | None = None
@@ -411,6 +415,7 @@ def create_credit_note(
                 "credit_note_no":       cn_no,
                 "credit_note_date":     data["credit_note_date"],
                 "reason":               data.get("reason", ""),
+                "goods_returned":       data.get("goods_returned"),
                 "is_interstate":        is_interstate,
                 "taxable_amount_paise": total_taxable,
                 "cgst_paise":           total_cgst,
@@ -449,6 +454,7 @@ def create_credit_note(
             "status":               "draft",
             "created_at":           datetime.now(timezone.utc).isoformat(),
         }
+        cn_payload.update(note_goods.stated_column(data))   # written only when stated (domain/inventory/note_goods)
 
         from services.numbering import insert_numbered_document_with_lines
         cn = insert_numbered_document_with_lines(
@@ -662,6 +668,8 @@ def issue_credit_note(
             raise HTTPException(status_code=404, detail=f"Credit note {cn_id} not found")
         cn = resp.data[0]
         draft_integrity_service.assert_a_draft(cn, not_a_draft="Only draft credit notes can be issued")
+        # POST-A-371: a note that names goods says whether they came back BEFORE anything is posted, so the stock effect is never assumed.
+        names_goods = note_goods.refuse_unless_stated(db, "credit_note", cn, firm_id=firm_id or "", note_id=cn_id)
         # FY-lock: issuing posts a dated journal — block if the year was locked after
         # the draft was created (deferred-posting gap).
         if cn.get("credit_note_date"):
@@ -675,9 +683,7 @@ def issue_credit_note(
         # POST-A-335: the stored figures are what the journal posts, and a draft is a row a member's own token can still change,
         # so the draft is asked whether it adds up to its own lines (and is not flagged as carried over) before anything is posted.
         draft_integrity_service.assert_draft_adds_up(db, draft_integrity.CREDIT_NOTE, cn)
-        client_id = cn.get("client_id", "")
-        cn_total  = int(cn.get("total_paise") or 0)
-        inv_id    = cn.get("sales_invoice_id")
+        client_id, cn_total, inv_id = cn.get("client_id", ""), int(cn.get("total_paise") or 0), cn.get("sales_invoice_id")
 
         # ── (C1) Apply the credit note to the linked invoice's SUB-LEDGER before
         # posting to the GL, capturing prior values for rollback. A credit note may
@@ -844,6 +850,7 @@ def issue_credit_note(
 
         updated_cn["journal_entry_id"] = journal_id
         stock_effects.attach(updated_cn, stock)
+        note_goods.attach_declined(updated_cn, "credit_note", names_goods)
         # §34(2), said again at the moment it bites. Create warns when the note
         # is drafted; this is when the reduction reaches the ledger and the
         # return, and a draft raised inside the window can be issued outside it.
