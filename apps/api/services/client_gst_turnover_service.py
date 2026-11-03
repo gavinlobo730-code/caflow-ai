@@ -26,6 +26,7 @@ from typing import Optional
 
 from core.ist_clock import normalise_fy_label
 from domain.gst import hsn_digits, irn_scope
+from services import gst_read_memo
 
 #: The table, for a caller that wants to name it. Every query below writes the
 #: name out as a LITERAL instead of reaching through this: a dynamic table name
@@ -55,6 +56,12 @@ def list_for_client(db, firm_id: str, client_id: str) -> list[dict]:
 
 
 def _rows_for_fy(db, firm_id: str, client_id: str, financial_year: str) -> list[dict]:
+    # Remembered for the length of one amendment build (POST-A-265): the same year's figure for every earlier period it rebuilds.
+    return gst_read_memo.remember(("turnover.fy", firm_id, client_id, financial_year),
+                                  lambda: _read_rows_for_fy(db, firm_id, client_id, financial_year))
+
+
+def _read_rows_for_fy(db, firm_id: str, client_id: str, financial_year: str) -> list[dict]:
     return (db.table("client_gst_turnover")
             .select("id, firm_id, client_id, financial_year, "
                     "aggregate_turnover_paise, source_note, recorded_by, updated_at")

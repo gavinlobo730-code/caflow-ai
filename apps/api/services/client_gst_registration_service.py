@@ -18,6 +18,7 @@ from typing import Any, Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from services import gst_read_memo
 from domain.gst import registrations as reg
 
 _logger = logging.getLogger("caflow.client_gst_registrations")
@@ -54,17 +55,22 @@ def _client(db, firm_id: str, client_id: str) -> dict:
     # scanner (tests/test_backend_columns_exist_pg.py) resolves a literal
     # .select() string and nothing reached through a variable, so a projection
     # built from the constant would be invisible to it.
-    row = _first(db.table("clients").select(
+    # Remembered for the length of one amendment build (POST-A-265): it is the same client for every earlier period it rebuilds.
+    row = gst_read_memo.remember(("registration.client", firm_id, client_id), lambda: _first(db.table("clients").select(
         "id, firm_id, client_name, legal_name, gstin, state_code, "
         "gst_filing_frequency, gst_registration_date, gst_registration_type, "
         "composition_category")
-        .eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data)
+        .eq("id", client_id).eq("firm_id", firm_id).limit(1).execute().data))
     if not row:
         raise HTTPException(status_code=404, detail="Client not found.")
     return row
 
 
 def _rows(db, firm_id: str, client_id: str) -> list[dict]:
+    return gst_read_memo.remember(("registration.rows", firm_id, client_id), lambda: _read_rows(db, firm_id, client_id))
+
+
+def _read_rows(db, firm_id: str, client_id: str) -> list[dict]:
     return fetch_all(
         lambda: db.table("client_gst_registrations").select(
             "id, firm_id, client_id, gstin, state_code, registration_type, "
