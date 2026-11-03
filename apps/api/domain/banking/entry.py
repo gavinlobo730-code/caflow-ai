@@ -15,7 +15,8 @@ THREE THINGS LIVE HERE AND NOWHERE ELSE
                 database; tests/test_bank_entry_state_parity_pg.py holds the two
                 identical. Change both or neither.
   choose        Which proposal goes on the row, and at what grade. A rule
-                outranks a document match outranks a transfer outranks history,
+                outranks a document match outranks a TDS challan outranks a
+                transfer outranks history,
                 and within each a READY grade outranks a PROPOSED one from a
                 stronger source — the CA's time is spent on what the machine is
                 least sure of, so the sure things must come first.
@@ -33,6 +34,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
+from datetime import date
+
+from domain.payroll.remittance_match import DEFAULT_WINDOW_DAYS as CHALLAN_WINDOW_DAYS
 from .rules import RuleSuggestion
 from .history import HistorySuggestion, describe as describe_history
 from .matcher import _rupees, _rate_label
@@ -50,7 +54,9 @@ OPEN_STATES = (NEEDS_YOU, PROPOSED, READY)
 
 SOURCE_RULE, SOURCE_DOCUMENT, SOURCE_HISTORY, SOURCE_TRANSFER = (
     "rule", "document", "history", "transfer")
-SOURCES = (SOURCE_RULE, SOURCE_DOCUMENT, SOURCE_HISTORY, SOURCE_TRANSFER)
+# POST-A-272, migration 578. A bank debit that equals the total of exactly one recorded TDS challan not yet tied to the ledger.
+SOURCE_CHALLAN = "challan"
+SOURCES = (SOURCE_RULE, SOURCE_DOCUMENT, SOURCE_HISTORY, SOURCE_TRANSFER, SOURCE_CHALLAN)
 GRADE_READY, GRADE_PROPOSED = "ready", "proposed"
 
 # A document match is READY when the amounts agree exactly, the ranker scored
@@ -269,19 +275,77 @@ def from_transfer(pair: Optional[dict], this_id: str, other_account_name: Option
     )
 
 
+def _day(value) -> Optional[date]:
+    """A date from a stored value ('2026-04-07' or '2026-04-07T00:00:00+00:00'), or None when it cannot be read."""
+    try:
+        return date.fromisoformat(str(value or "")[:10])
+    except ValueError:
+        return None
+
+
+def from_challan(txn: dict, challans: Iterable[dict]) -> Optional[Draft]:
+    """A debit whose amount is the total of EXACTLY ONE recorded TDS challan that is tied to nothing in the ledger, paid within a week
+    of the line's date (POST-A-272).
+
+    WHY IT EXISTS. The tax a deductor deposits leaves the bank on a statement line, and the product's one path for that money is passing
+    the line (the ordinary bank-line posting writes Dr <liability> / Cr Bank). The challan the CA records from the portal carries the
+    deposit's own facts and no ledger entry, so TDS Payable kept its whole credit until somebody coded the line by hand and nothing
+    offered the line whose amount equals a recorded challan. This is that offer, and only that: it POSTS NOTHING from the challan (which
+    would debit the liability twice) and it ties the challan to the entry only when the line is passed.
+
+    PROPOSED, NEVER READY. An amount is not a payment: two challans of one amount are a question, and a debit of a round figure can be
+    something else. So the grade is always `proposed` ("Pass N ready" never reaches it), and a line that more than one challan fits gets
+    no draft at all rather than a guess between them (the CA ties it from the Challans tab, which lists the entries that could be the
+    payment). The window is `CHALLAN_WINDOW_DAYS`, the one the challan's own candidate list uses: a product tolerance between the day the
+    CA says the tax was paid and the day the bank shows it, not a statutory period.
+
+    Each row of `challans` carries `id`, `challan_no`, `payment_date`, `total_paise` and the ledger account its section clears
+    (`account_id`, `account_name`); the service resolves the account, so a client whose chart has none never reaches here.
+    """
+    debit, credit = int(txn.get("debit_paise") or 0), int(txn.get("credit_paise") or 0)
+    if debit <= 0 or credit != 0:
+        return None
+    on = _day(txn.get("transaction_date"))
+    if on is None:
+        return None
+    fits = []
+    for c in challans or []:
+        paid = _day(c.get("payment_date"))
+        if (paid is not None and int(c.get("total_paise") or 0) == debit and c.get("account_id")
+                and abs((on - paid).days) <= CHALLAN_WINDOW_DAYS):
+            fits.append(c)
+    if len(fits) != 1:
+        return None
+    c = fits[0]
+    number = str(c.get("challan_no") or "").strip()
+    named = f"challan {number}" if number else "a recorded challan"
+    return Draft(
+        source=SOURCE_CHALLAN, grade=GRADE_PROPOSED,
+        label=f"TDS {named}",
+        reason=(f"exactly the total of TDS {named} (paid {str(c.get('payment_date'))[:10]}), which is not tied to the ledger yet — "
+                f"is this its payment? Passing it posts Dr {c.get('account_name') or 'TDS Payable'} / Cr Bank and ties the challan."),
+        account_id=c["account_id"], entity_type="tds_challan", entity_id=c["id"],
+    )
+
+
 # ── choosing ─────────────────────────────────────────────────────────────────
 
 def choose(rule: Optional[Draft], document: Optional[Draft],
-           transfer: Optional[Draft], history: Optional[Draft]) -> Optional[Draft]:
+           transfer: Optional[Draft], history: Optional[Draft],
+           challan: Optional[Draft] = None) -> Optional[Draft]:
     """One draft per row. READY from any source beats PROPOSED from any
-    source; within a grade, rule > document > transfer > history.
+    source; within a grade, rule > document > challan > transfer > history.
 
     Why a rule first: a human wrote it for this narration. Why a document
     before a transfer: settling a specific invoice is a stronger claim than
-    "the same amount arrived in another account". Why history last: it is
-    the only source that is an inference rather than a fact.
+    "the same amount arrived in another account". Why a challan between the
+    two: a recorded statutory deposit of exactly this amount is a stronger
+    claim than a same-amount movement between own accounts, and weaker than
+    an invoice the line settles (and it is only ever PROPOSED, so it never
+    outranks a READY draft of any source). Why history last: it is the only
+    source that is an inference rather than a fact.
     """
-    ranked = [d for d in (rule, document, transfer, history) if d is not None]
+    ranked = [d for d in (rule, document, challan, transfer, history) if d is not None]
     for grade in (GRADE_READY, GRADE_PROPOSED):
         for d in ranked:
             if d.grade == grade:

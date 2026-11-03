@@ -43,6 +43,8 @@ from services.bank_transfer_service import bank_transfer_service
 from services import trusted_rule_authority
 from services.bank_posting_service import bank_posting_service
 from services.banking_service import banking_service
+from services import bank_draft_staleness
+from services import tds_challan_ledger_service as challan_ledger
 from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.bank_entries")
@@ -447,11 +449,8 @@ class BankEntryService:
         """After a rule changes: every open line is re-proposed for on the next
         redraft. Writes drafted_at = NULL rather than recomputing here, so a
         rule edit costs one UPDATE and the redraft happens in chunks, with
-        progress, when the screen next asks."""
-        rows = (privileged_for(db).table("bank_transactions").update({"drafted_at": None})
-                .eq("firm_id", firm_id).eq("client_id", client_id)
-                .in_("entry_state", list(E.OPEN_STATES)).execute().data or [])
-        return len(rows)
+        progress, when the screen next asks. The one UPDATE is `bank_draft_staleness.mark_stale`, which the TDS register also calls."""
+        return bank_draft_staleness.mark_stale(db, firm_id, client_id)
 
     def _pick_for_redraft(self, db, firm_id, client_id, *, limit, stale_before, txn_ids):
         if txn_ids:
@@ -515,6 +514,7 @@ class BankEntryService:
             pairs = self._pairs_by_txn(db, firm_id, client_id, rows)
             bank_names = self._bank_account_names(db, firm_id, client_id)
             account_names = self._account_names(db, firm_id, rules, index)
+            challans = self._untied_challans(db, firm_id, client_id, rows)
             now = _now()
             # A document already chosen as an EARLIER row's own draft in this
             # same chunk cannot also be top pick for a later one — confirmed
@@ -538,9 +538,16 @@ class BankEntryService:
                         if (s.get("matched_entity_type"), str(s.get("matched_entity_id")))
                         not in claimed_documents
                     ]
-                draft = self._draft_for(t, rules, index, candidates, pairs, bank_names, account_names)
+                # A challan drafted as an EARLIER row's own proposal in this chunk is not offered to a later row, for the document's
+                # reason (above): two lines of one amount must not both claim one challan. A challan that is the proposal of two
+                # lines in different chunks is possible, and the second to be passed is refused in words by the tie (one entry
+                # pays one challan; the first tied it).
+                draft = self._draft_for(t, rules, index, candidates, pairs, bank_names, account_names,
+                                        [c for c in challans if (E.SOURCE_CHALLAN, str(c["id"])) not in claimed_documents])
                 if draft is not None and draft.source == E.SOURCE_DOCUMENT and draft.entity_id:
                     claimed_documents.add((draft.entity_type, str(draft.entity_id)))
+                if draft is not None and draft.source == E.SOURCE_CHALLAN and draft.entity_id:
+                    claimed_documents.add((E.SOURCE_CHALLAN, str(draft.entity_id)))
                 # Column names written out at the call, not spread from a dict:
                 # tests/test_backend_columns_exist_pg.py reads literal keys and
                 # counts anything else as a blind spot.
@@ -563,7 +570,8 @@ class BankEntryService:
         return {"drafted": len(rows), "changed": changed, "remaining": remaining,
                 "stale_before": stale_before}
 
-    def _draft_for(self, t, rules, index, candidates, pairs, bank_names, account_names) -> Optional[E.Draft]:
+    def _draft_for(self, t, rules, index, candidates, pairs, bank_names, account_names,
+                   challans: Optional[list] = None) -> Optional[E.Draft]:
         amount = max(int(t.get("debit_paise") or 0), int(t.get("credit_paise") or 0))
         is_debit = int(t.get("credit_paise") or 0) == 0
         hit = match_rule(t.get("description"), amount, is_debit, rules,
@@ -580,7 +588,37 @@ class BankEntryService:
                           else pair.get("primary_account_id"))
             other_name = bank_names.get(other_acct)
         tr_d = E.from_transfer(pair, str(t.get("id")), other_name)
-        return E.choose(rule_d, doc_d, tr_d, hist_d)
+        ch_d = E.from_challan(t, challans or [])
+        return E.choose(rule_d, doc_d, tr_d, hist_d, ch_d)
+
+    def _untied_challans(self, db, firm_id: str, client_id: str, rows: list[dict]) -> list[dict]:
+        """The client's recorded TDS challans tied to no ledger entry, each with the ledger account its section clears, for the lines
+        in `rows` (POST-A-272). Read ONCE per chunk, and only when the chunk has a debit to match: a client with no challan, or a chunk of
+        receipts, costs nothing. A challan whose client's chart holds no such active account is left out (nothing could be proposed on it),
+        and a read that fails is reported and means no challan proposals, never a failed redraft: a proposal is an offer, and the line
+        still needs the CA exactly as it did before this source existed."""
+        if not any(int(t.get("debit_paise") or 0) > 0 and int(t.get("credit_paise") or 0) == 0 for t in rows):
+            return []
+        try:
+            from core.db_paging import fetch_all
+            found = fetch_all(
+                lambda: (db.table("tds_challans").select("id, challan_no, payment_date, total_paise, section")
+                         .eq("firm_id", firm_id).eq("client_id", client_id).is_("journal_entry_id", "null")),
+                "id", label="bank_entries.untied_challans")
+            account_of: dict[str, Optional[str]] = {}
+            out = []
+            for c in found:
+                name = challan_ledger.account_name_for(c.get("section"))
+                if name not in account_of:
+                    account_of[name] = challan_ledger.liability_account_id(
+                        db, firm_id=firm_id, client_id=client_id, section=c.get("section"))
+                if account_of[name]:
+                    out.append({**c, "account_id": account_of[name], "account_name": name})
+            return out
+        except Exception as e:
+            from core.observability import capture_soft_failure
+            capture_soft_failure(e, operation="bank_entries.untied_challans", firm_id=firm_id, client_id=client_id)
+            return []
 
     def _pairs_by_txn(self, db, firm_id, client_id, around: list[dict]) -> dict:
         """Each of `around`'s candidate counterparts, keyed by BOTH ids. Never
@@ -718,6 +756,10 @@ class BankEntryService:
              .eq("id", txn_id).eq("firm_id", firm_id).execute())
             return _outcome(txn_id, "failed", detail)
 
+        tie_note = None
+        if applied and txn.get("draft_source") == E.SOURCE_CHALLAN:
+            tie_note = self._tie_challan(db, firm_id, txn, result.get("posted_journal_id"),
+                                         actor_id=actor_id, actor_auth_id=actor_auth_id)
         if by_rule:
             (privileged_for(db).table("bank_transactions")
              .update({"posted_by_rule_id": by_rule.get("id"), "updated_at": _now()})
@@ -734,9 +776,10 @@ class BankEntryService:
                 from core.observability import capture_soft_failure
                 capture_soft_failure(e, operation="bank_entries.trusted_rule_audit",
                                      transaction_id=post_id, rule_id=by_rule.get("id"))
-        return _outcome(txn_id, "passed", f"Passed as a {E.kind_for(txn)}.",
+        extra = {"challan_tie": tie_note} if tie_note else {}
+        return _outcome(txn_id, "passed", f"Passed as a {E.kind_for(txn)}." + (f" {tie_note}" if tie_note else ""),
                         posted_journal_id=result.get("posted_journal_id"),
-                        posted_transaction_id=post_id)
+                        posted_transaction_id=post_id, **extra)
 
     def _unapply(self, db, firm_id, txn, before: dict) -> None:
         """Undo what _apply_draft wrote, best effort. A transfer was paired
@@ -844,7 +887,52 @@ class BankEntryService:
             primary, counter = (txn_id, other) if is_out else (other, txn_id)
             bank_transfer_service.pair(db, firm_id, primary, counter, actor_id=actor_id)
             return primary, None, False
+        if source == E.SOURCE_CHALLAN:
+            return self._apply_challan_draft(db, firm_id, txn)
         raise HTTPException(status_code=422, detail=f"Unknown proposal source '{source}'.")
+
+    def _apply_challan_draft(self, db, firm_id, txn) -> tuple[str, Optional[int], bool]:
+        """The ledger is the whole of what a challan proposal applies: the same coding a person makes by choosing TDS Payable on the line.
+        The challan is tied only after the line has posted (`_tie_challan`), because a tie to an entry that is not there would be a claim
+        the books do not support. No GST treatment: a tax deposit is not a supply."""
+        if not txn.get("draft_account_id"):
+            raise HTTPException(status_code=422, detail="The proposal names no ledger.")
+        banking_service.set_account(db, firm_id, txn["id"], txn["draft_account_id"], derive_category=True)
+        return txn["id"], None, False
+
+    def _tie_challan(self, db, firm_id: str, txn: dict, journal_entry_id: Optional[str], *,
+                     actor_id: Optional[str], actor_auth_id: Optional[str]) -> Optional[str]:
+        """After a line proposed from a challan has POSTED, tie the challan to the entry it posted (POST-A-272), through the challan's own
+        door, which asks every question a hand-made tie asks (the entry is live and the client's, debits the account the section clears,
+        and pays no other challan) and records who did it.
+
+        Returns None when the challan is tied, else the sentence to show. A tie that cannot be made NEVER undoes the pass: the line is in
+        the books and the CA's click did what it said; the challan stays untied, the firm-wide list of challans with no entry still names
+        it, and the sentence says what to do (tie it from the Challans tab)."""
+        challan_id = txn.get("draft_entity_id")
+        if not (challan_id and journal_entry_id):
+            return "The challan was not tied: no ledger entry came back from the posting. Tie it from the Challans tab."
+        try:
+            rows = (db.table("tds_challans").select("*").eq("id", challan_id).eq("firm_id", firm_id)
+                    .eq("client_id", txn["client_id"]).limit(1).execute().data) or []
+            if not rows:
+                return "The challan was not tied: it is no longer in the register."
+            who = {"id": actor_id, "auth_user_id": actor_auth_id, "email": None}
+            challan_ledger.link_payment(db, firm_id=firm_id, client_id=txn["client_id"], challan=rows[0],
+                                        journal_entry_id=journal_entry_id, actor=who)
+            # Another open line of the same amount may hold a proposal naming this challan, which is now spoken for.
+            try:
+                self.mark_stale(db, firm_id, txn["client_id"])
+            except Exception as e:
+                from core.observability import capture_soft_failure
+                capture_soft_failure(e, operation="bank_entries.tie_challan_mark_stale", firm_id=firm_id, transaction_id=str(txn.get("id")))
+            return None
+        except challan_ledger.LinkRefused as refused:
+            return f"The line was passed, but the challan was not tied: {refused.sentence}"
+        except Exception as e:
+            from core.observability import capture_soft_failure
+            capture_soft_failure(e, operation="bank_entries.tie_challan", firm_id=firm_id, transaction_id=str(txn.get("id")))
+            return "The line was passed, but the challan could not be tied just now. Tie it from the Challans tab."
 
     def _trusted_rules(self, db, firm_id, client_id, refused: Optional[list] = None) -> dict:
         """The trusted rules whose person STILL answers for them (POST-A-339).
