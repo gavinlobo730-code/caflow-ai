@@ -196,21 +196,36 @@ def _name(client_map: dict[str, str], client_id: str) -> str:
 
 # ── The nine derivations ───────────────────────────────────────────────────
 
+#: The advance-tax obligation the calendar records. One spelling, read by the register's service and by the held-out rule below.
+ADVANCE_TAX_TYPE = "ADVANCE_TAX"
+
+
 def overdue_filings(
     calendar: Iterable[dict],
     client_map: dict[str, str],
     *,
     as_at: date,
+    covered_by_advance_tax_default: frozenset[str] = frozenset(),
 ) -> list[RiskRow]:
     """A compliance obligation past its due date and not filed.
 
     The TDS statements are held out and scored by `tds_defaults` below, under a
-    different section and at a fixed severity."""
+    different section and at a fixed severity.
+
+    AN UNFILED ADVANCE-TAX INSTALMENT IS ONE ROW, NOT TWO (POST-A-208). The register used to list it twice: here, as an Overdue Filing whose
+    action reads 'CGST Act §47 for a GST return', and again as an Advance Tax Default (`advance_tax_defaults`), which names §208's instalment and
+    §234C and is the statute that applies. The default row stays and this one is held out, exactly as a TDS statement is held out for
+    `tds_defaults`. `covered_by_advance_tax_default` is the `client|due date` of every default row emitted; an advance-tax entry whose
+    date is NOT one of them (a date the engine does not derive for the year) is no default row's, so it is still listed here and an
+    instalment is never dropped from the register without being listed under the other name."""
     rows: list[RiskRow] = []
     for entry in calendar:
         if (entry.get("filing_status") or "") in SETTLED_FILING_STATUSES:
             continue
         if (entry.get("compliance_type") or "") in TDS_STATEMENT_TYPES:
+            continue
+        if ((entry.get("compliance_type") or "") == ADVANCE_TAX_TYPE
+                and f"{entry.get('client_id') or ''}|{str(entry.get('due_date') or '')[:10]}" in covered_by_advance_tax_default):
             continue
         due = _as_date(entry.get("due_date"))
         if due is None or due >= as_at:
@@ -607,14 +622,17 @@ def build(
     tracked = [c for c in clients if (c.get("id") or "") in advance_tax_tracked_client_ids]
 
     reg = RiskRegister()
-    reg.rows.extend(overdue_filings(calendar, client_map, as_at=as_at))
+    advance_defaults = advance_tax_defaults(
+        tracked, advance_tax_installments, advance_tax_filed_keys,
+        client_map, as_at=as_at,
+    )
+    reg.rows.extend(overdue_filings(
+        calendar, client_map, as_at=as_at,
+        covered_by_advance_tax_default=frozenset(f"{r.client_id}|{r.on_date}" for r in advance_defaults)))
     reg.rows.extend(tds_defaults(calendar, client_map, as_at=as_at))
     reg.rows.extend(invalid_gstins(clients))
     reg.rows.extend(inactive_clients(clients, client_ids_with_recent_entries))
-    reg.rows.extend(advance_tax_defaults(
-        tracked, advance_tax_installments, advance_tax_filed_keys,
-        client_map, as_at=as_at,
-    ))
+    reg.rows.extend(advance_defaults)
     reg.rows.extend(expiring_dscs(dsc_rows, as_at=as_at))
     reg.rows.extend(overdue_loans(loans, client_map))
     reg.rows.extend(maturing_deposits(deposits, client_map, as_at=as_at))

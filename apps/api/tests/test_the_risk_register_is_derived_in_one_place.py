@@ -207,10 +207,10 @@ def test_the_service_treats_a_not_applicable_filing_and_instalment_as_settled(mo
     db.seed("compliance_calendar", {**base, "id": "adv-na", "compliance_type": "ADVANCE_TAX", "due_date": "2026-06-15", "filing_status": "na"})
     db.seed("compliance_calendar", {**base, "id": "adv-open", "compliance_type": "ADVANCE_TAX", "due_date": "2026-09-15", "filing_status": "pending"})
     payload = service.build_register(db, firm, None)
-    # Both open obligations are late and neither not-applicable one is (an unfiled advance-tax instalment is also an Overdue Filing: that is how
-    # the register has always read the calendar, and is left as it was).
+    # Both open obligations are late and neither not-applicable one is. The unfiled advance-tax instalment is ONE row, the Advance Tax Default
+    # below, and not also an Overdue Filing (POST-A-208: it used to be listed twice, once with a GST section's advice).
     filings = sorted(r["date"] for r in payload["rows"] if r["risk_type"] == "Overdue Filing")
-    assert filings == ["2026-09-11", "2026-09-15"], filings
+    assert filings == ["2026-09-11"], filings
     instalments = [r for r in payload["rows"] if r["risk_type"] == "Advance Tax Default"]
     assert [r["date"] for r in instalments] == ["2026-09-15"], [r["date"] for r in instalments]
 

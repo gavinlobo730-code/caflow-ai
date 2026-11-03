@@ -44,8 +44,8 @@ from services.compliance_engine import advance_tax_due_dates
 
 _logger = logging.getLogger("caflow.risk.register")
 
-#: The advance-tax obligation the calendar records. One spelling, read twice.
-_ADVANCE_TAX_TYPE = "ADVANCE_TAX"
+#: The advance-tax obligation the calendar records. One spelling, in the register's rule.
+_ADVANCE_TAX_TYPE = rule.ADVANCE_TAX_TYPE
 
 
 def _scoped(query, client_ids: Optional[set[str]]):
