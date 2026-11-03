@@ -50,6 +50,7 @@ import { clearReports } from "@/lib/accounting/reportCache";
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { InvoiceViewDrawer } from "@/components/invoices/InvoiceViewDrawer";
+import { UnfinishedInvoicesPanel } from "@/components/invoices/UnfinishedInvoicesPanel";
 import { SalesDebitNoteViewDrawer } from "@/components/sales/SalesDebitNoteViewDrawer";
 import type { SalesDebitNoteDetail } from "@/components/sales/SalesDebitNoteEditor";
 import { writeSalesDebitNoteDuplicateSeed } from "@/lib/sales/salesDebitNoteDuplicateSeed";
@@ -401,7 +402,11 @@ export default function SalesPage() {
           <SalesCycleTab clientId={clientId} />
         )}
         {tab === "invoices" && (
-          <SalesInvoices clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />
+          <>
+            {/* POST-A-092: drafts already in the ledger and issued invoices with no entry. Says nothing when the books and the list agree. */}
+            <UnfinishedInvoicesPanel clientId={clientId} onOpenInvoice={openInvoice} />
+            <SalesInvoices clientId={clientId} financialYear={financialYear} onFinancialYearChange={setFinancialYear} openDoc={openDoc} />
+          </>
         )}
         {tab === "recurring" && (
           <RecurringInvoices clientId={clientId} />

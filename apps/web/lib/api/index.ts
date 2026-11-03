@@ -1727,6 +1727,39 @@ export type DayBookPage = {
   max_limit: number;
 };
 
+/** A draft sales invoice that already has a live Sales entry in the ledger (POST-A-092), and what the server says stands in the way of
+ *  finishing it. `blockers` is null when the server did not ask (past its limit), an empty list when nothing is in the way: the two are
+ *  different statements and a screen must not read one as the other. */
+export type PostedDraftRow = {
+  invoice_id: string;
+  client_id: string;
+  invoice_no: string;
+  invoice_date: string;
+  total_paise: number;
+  entry_id: string;
+  entry_reference_no: string | null;
+  entry_date: string | null;
+  blockers: { code: string; message: string }[] | null;
+};
+
+export type PostedDrafts = {
+  drafts: PostedDraftRow[];
+  count: number;
+  checked: number;
+  not_checked: number;
+};
+
+/** An issued sales invoice with no ledger entry linked (the other direction), as the maintenance list serves the stored row. */
+export type UnpostedInvoiceRow = {
+  id: string;
+  client_id: string;
+  invoice_no: string;
+  invoice_date: string;
+  total_paise: number;
+};
+
+export type UnpostedInvoices = { unposted: UnpostedInvoiceRow[]; count: number };
+
 export type IrnWorklistWindow = {
   /** Five states and none stands in for another: an invoice of a client below
    *  the IRP's turnover floor OWES an IRN and has NO clock. */
@@ -6863,8 +6896,17 @@ export const api = {
     /** Everything that would stop `issue` right now, as the server lists it (POST-A-125). Reads and writes nothing. */
     issuePreflight: (id: string) =>
       request<ApiResp<IssuePreflight>>(`/api/sales-invoices/${id}/issue-preflight`),
+    /** Issued invoices with no ledger entry linked (POST-A-092). */
     unposted: (clientId?: string) =>
-      request(`/api/sales-invoices/maintenance/unposted${clientId ? `?client_id=${clientId}` : ""}`),
+      request<ApiResp<UnpostedInvoices>>(`/api/sales-invoices/maintenance/unposted${clientId ? `?client_id=${clientId}` : ""}`),
+    /** Draft invoices that already have a live Sales entry in the ledger, and what stands in the way of finishing each (POST-A-092).
+     *  Reads and writes nothing. */
+    postedDrafts: (clientId?: string) =>
+      request<ApiResp<PostedDrafts>>(`/api/sales-invoices/maintenance/posted-drafts${clientId ? `?client_id=${clientId}` : ""}`),
+    /** Post the ledger entry of an issued invoice that has none linked and link it (the server asks the locked year and refuses in words). */
+    repostJournal: (id: string) =>
+      request<ApiResp<{ invoice_id: string; journal_entry_id: string; already_posted: boolean }>>(
+        `/api/sales-invoices/${id}/repost-journal`, { method: "POST" }),
     downloadPdf: (id: string, invoiceNo?: string) =>
       downloadFile(`/api/sales-invoices/${id}/pdf`, `invoice-${invoiceNo ?? id}.pdf`),
     send: (id: string, toEmail?: string) =>

@@ -45,6 +45,19 @@ class EntryCannotBeReused(ValueError):
         self.unreadable = unreadable
 
 
+class InvoiceNoLongerADraft(Exception):
+    """The invoice being issued is not a draft any more: it was issued, cancelled or removed between the moment the route read it and
+    the moment the database locked it (two clicks on Issue, or another session). Nothing was posted and nothing was changed.
+
+    Deliberately NOT a ValueError, which the issue route reads as 'an account is missing: seed the chart and retry'."""
+
+
+class AtomicIssueNotInstalled(Exception):
+    """The database has no `issue_sales_invoice_atomic` (migration 577 is not applied to it yet). Raised only for the missing-function
+    signature, never for the function's own refusals, so a caller can carry on with the two-statement issue for the minutes between a
+    deploy of the API and the migration that goes with it, and for no other reason."""
+
+
 def unreadable(*, what: str, known_entry: bool = True) -> str:
     """The sentence for a ledger that could not be read to answer. Refusing is the only honest answer: a check that cannot look is not
     a check, and 'the same' is a claim.

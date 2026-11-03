@@ -42,7 +42,7 @@ FIRM = "11111111-1111-1111-1111-111111111111"
 CLIENT = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 USER = "uuuuuuuu-uuuu-uuuu-uuuu-uuuuuuuuuuuu"
 AUTH = "aaaaaaaa-1111-2222-3333-444444444444"
-RPCS = ("post_journal_atomic", "settle_receipt_atomic")
+RPCS = ("post_journal_atomic", "settle_receipt_atomic", "issue_sales_invoice_atomic")   # the third is migration 577's (POST-A-092)
 
 
 class _Spy(FakeDB):
@@ -134,6 +134,44 @@ def test_a_plain_receipt_is_settled_through_the_privileged_client(world):
     assert "audit_actor" not in entry
 
 
+def _draft_invoice(db):
+    inv = db.seed("client_sales_invoices", {
+        "firm_id": FIRM, "client_id": CLIENT, "customer_id": "cust-1", "invoice_no": "INV-A092-1", "invoice_date": "2026-06-30",
+        "status": "draft", "total_paise": 118_000, "taxable_amount_paise": 100_000, "cgst_paise": 9_000, "sgst_paise": 9_000,
+        "igst_paise": 0, "cess_paise": 0, "round_off_paise": 0})
+    return inv
+
+
+def _invoice_entry_args(inv, accounts):
+    return dict(entry_date=inv["invoice_date"], reference_no=inv["invoice_no"], narration="n", entry_type="Sales", lines=_lines(accounts),
+                source_type="sales_invoice", source_id=inv["id"], created_by=USER)
+
+
+def test_an_invoice_is_issued_through_the_privileged_client_in_one_call_that_marks_it_issued_and_carries_the_person(world, token):
+    """POST-A-092. The entry and the invoice's move to issued are ONE call to the database, made on the privileged client, with the
+    person in the payload; the request's own client is never asked, and no second statement marks the invoice."""
+    privileged, request, accounts = world
+    inv = _draft_invoice(privileged)
+    entry_id = phase2_journal_service._create_journal(
+        request, FIRM, CLIENT, issues_invoice={"invoice_id": inv["id"], "issued_at": "2026-06-30T10:00:00+00:00"},
+        **_invoice_entry_args(inv, accounts))
+    assert entry_id and request.refused == []
+    assert [c[0] for c in privileged.calls] == ["issue_sales_invoice_atomic"]
+    params = privileged.calls[0][1]
+    assert params["p_invoice_id"] == inv["id"] and params["p_entry"]["audit_actor"] == AUTH
+    assert (params["p_entry"]["source_type"], params["p_entry"]["source_id"], params["p_entry"]["entry_type"]) == ("sales_invoice", inv["id"], "Sales")
+    stored = next(r for r in privileged.rows("client_sales_invoices") if r["id"] == inv["id"])
+    assert (stored["status"], stored["journal_entry_id"], stored["issued_at"]) == ("issued", entry_id, "2026-06-30T10:00:00+00:00")
+
+
+def test_an_entry_posted_without_issues_invoice_is_posted_alone_as_a_repost_is(world):
+    privileged, request, accounts = world
+    inv = _draft_invoice(privileged)
+    assert phase2_journal_service._create_journal(request, FIRM, CLIENT, **_invoice_entry_args(inv, accounts))
+    assert [c[0] for c in privileged.calls] == ["post_journal_atomic"]
+    assert next(r for r in privileged.rows("client_sales_invoices") if r["id"] == inv["id"])["status"] == "draft"
+
+
 # ── the person ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 def test_a_postings_payload_carries_the_auth_id_of_the_requests_token_even_when_the_helper_names_no_created_by(world, token):
     """Most `journal_for_*` helpers pass no `created_by`: the person must not depend on it."""
@@ -162,7 +200,7 @@ def test_a_request_that_names_nobody_usable_adds_nothing(world, label, bound):
     assert "audit_actor" not in privileged.calls[0][1]["p_entry"], label
 
 
-@pytest.mark.parametrize("fn,key", [("post_journal_atomic", "p_entry"), ("settle_receipt_atomic", "p_journal_entry")])
+@pytest.mark.parametrize("fn,key", [("post_journal_atomic", "p_entry"), ("settle_receipt_atomic", "p_journal_entry"), ("issue_sales_invoice_atomic", "p_entry")])
 def test_a_payload_cannot_name_its_own_actor_the_door_removes_the_key_and_puts_back_only_the_verified_person(world, token, fn, key):
     privileged, request, accounts = world
     out = ledger_rpc(request, fn, {key: {"firm_id": FIRM, "client_id": CLIENT, "audit_actor": "SOMEONE-ELSE"}},
@@ -171,7 +209,7 @@ def test_a_payload_cannot_name_its_own_actor_the_door_removes_the_key_and_puts_b
     assert privileged.calls[-1][1][key]["audit_actor"] == AUTH
 
 
-@pytest.mark.parametrize("fn,key", [("post_journal_atomic", "p_entry"), ("settle_receipt_atomic", "p_journal_entry")])
+@pytest.mark.parametrize("fn,key", [("post_journal_atomic", "p_entry"), ("settle_receipt_atomic", "p_journal_entry"), ("issue_sales_invoice_atomic", "p_entry")])
 def test_a_payload_that_names_an_actor_in_a_request_with_nobody_verified_loses_it(world, fn, key):
     """A job, a public route or a webhook has no person; a key a caller wrote must not stand in for one."""
     privileged, request, accounts = world
@@ -342,7 +380,7 @@ def test_a_name_that_is_not_a_ledger_function_is_refused(monkeypatch):
         ledger_rpc(FakeDB(), "numbered_document_atomic", {"p_entry": {}}, firm_id=FIRM, client_id=CLIENT)
 
 
-@pytest.mark.parametrize("fn,key", [("post_journal_atomic", "p_entry"), ("settle_receipt_atomic", "p_journal_entry")])
+@pytest.mark.parametrize("fn,key", [("post_journal_atomic", "p_entry"), ("settle_receipt_atomic", "p_journal_entry"), ("issue_sales_invoice_atomic", "p_entry")])
 @pytest.mark.parametrize("entry", [
     {"firm_id": "other-firm", "client_id": CLIENT}, {"firm_id": FIRM, "client_id": "other-client"}, {"firm_id": FIRM}, {"client_id": CLIENT}, {},
 ], ids=["another firm", "another client", "no client", "no firm", "an empty entry"])
@@ -395,7 +433,8 @@ def test_no_rpc_call_names_a_ledger_function_by_literal_anywhere_but_the_door():
             if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "rpc" and node.args
                     and isinstance(node.args[0], ast.Constant) and node.args[0].value in RPCS):
                 sites.append((rel, node.args[0].value))
-    assert sorted(sites) == [("services/ledger_door.py", "post_journal_atomic"), ("services/ledger_door.py", "settle_receipt_atomic")], (
+    assert sorted(sites) == [("services/ledger_door.py", "issue_sales_invoice_atomic"), ("services/ledger_door.py", "post_journal_atomic"),
+                             ("services/ledger_door.py", "settle_receipt_atomic")], (
         f"a ledger function is called on a client directly, not through services/ledger_door.ledger_rpc: {sites}")
 
 
@@ -415,9 +454,12 @@ def test_each_of_the_two_call_sites_is_a_ledger_rpc_call_naming_its_firm_and_its
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) == "ledger_rpc":
                 sites.append((rel, node))
-    assert sorted(r for r, _n in sites) == ["services/phase2_journal_service.py", "services/receipt_service.py"], [(r, n.lineno) for r, n in sites]
-    names = {r: n.args[1].value for r, n in sites if len(n.args) > 1 and isinstance(n.args[1], ast.Constant)}
-    assert names == {"services/phase2_journal_service.py": "post_journal_atomic", "services/receipt_service.py": "settle_receipt_atomic"}, names
+    assert sorted(r for r, _n in sites) == ["services/phase2_journal_service.py", "services/phase2_journal_service.py",
+                                            "services/receipt_service.py"], [(r, n.lineno) for r, n in sites]
+    names = sorted((r, n.args[1].value) for r, n in sites if len(n.args) > 1 and isinstance(n.args[1], ast.Constant))
+    assert names == [("services/phase2_journal_service.py", "issue_sales_invoice_atomic"),
+                     ("services/phase2_journal_service.py", "post_journal_atomic"),
+                     ("services/receipt_service.py", "settle_receipt_atomic")], names
     for rel, node in sites:
         assert {k.arg for k in node.keywords} >= {"firm_id", "client_id"}, f"{rel}:{node.lineno} does not name its firm and its client"
 

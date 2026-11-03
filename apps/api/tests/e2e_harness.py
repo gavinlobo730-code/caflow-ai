@@ -711,6 +711,35 @@ class _Rpc:
                     r["is_reversed"] = True
         return entry["id"]
 
+    def _fn_issue_sales_invoice_atomic(self):
+        """Mirror migration 577 issue_sales_invoice_atomic: the draft invoice must belong to the payload's firm and client and still be a
+        draft with no entry linked; the entry must be its own; the entry is posted (with the kernel's duplicate handling) and the
+        invoice marked issued and linked in the same step. Returns the entry id."""
+        p = self.params
+        entry = p["p_entry"]
+        invoices = self.db._tables.setdefault("client_sales_invoices", [])
+        inv = next((r for r in invoices if r.get("id") == p["p_invoice_id"] and r.get("firm_id") == entry.get("firm_id")
+                    and r.get("client_id") == entry.get("client_id")), None)
+        if inv is None:
+            raise Exception(f"issue_sales_invoice_atomic: {p['p_invoice_id']} is not an invoice of this client")
+        if inv.get("status") != "draft":
+            raise Exception(f"issue_sales_invoice_atomic: the invoice is {inv.get('status')} and not a draft")
+        if inv.get("journal_entry_id"):
+            raise Exception("issue_sales_invoice_atomic: the draft is already linked to a ledger entry")
+        if (entry.get("reference_no") != inv.get("invoice_no") or str(entry.get("entry_date")) != str(inv.get("invoice_date"))
+                or str(entry.get("source_id")) != str(inv.get("id")) or entry.get("source_type") != "sales_invoice"
+                or entry.get("entry_type") != "Sales" or not entry.get("is_posted")):
+            raise Exception("issue_sales_invoice_atomic: the entry is not the posted Sales entry of this invoice")
+        failing = getattr(self.db, "fail_issue_after_posting", False)
+        before = (list(self.db._tables.get("journal_entries", [])), list(self.db._tables.get("journal_lines", [])))
+        entry_id = _Rpc(self.db, "post_journal_atomic", {"p_entry": entry, "p_lines": p["p_lines"]})._fn_post_journal_atomic()
+        if failing:
+            # the real function is one transaction: whatever was posted goes with the failure
+            self.db._tables["journal_entries"], self.db._tables["journal_lines"] = before
+            raise Exception("issue_sales_invoice_atomic: the invoice could not be marked issued")
+        inv["status"], inv["issued_at"], inv["journal_entry_id"] = "issued", p.get("p_issued_at"), entry_id
+        return entry_id
+
     def _fn_numbered_document_atomic(self):
         """Mirror migration 167 numbered_document_atomic: insert a numbered
         header + its lines atomically (trivially atomic in-memory). Returns

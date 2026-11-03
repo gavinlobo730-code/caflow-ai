@@ -213,6 +213,9 @@ EXCLUDES: dict[str, str] = {
         "flag is the column's default, so counting it would teach 'eligible, "
         "every time' from nothing — and what is learned is proposed for a bill "
         "that feeds GSTR-3B Table 4",
+    "routers/sales_invoices.py":
+        "the 'issued without a ledger entry' list: an opening document posts no journal by design, so listing it is a false warning and "
+        "its repost an entry that counts the receivable twice (POST-A-092)",
     "routers/credit_notes.py":
         "a s.34 note adjusts tax declared in the old system",
     "routers/sales_debit_notes.py": "the same, on the debit side",
@@ -296,6 +299,9 @@ _NARROW_SELECTS_THAT_ARE_NOT_ON_THE_FILTERED_PATH = {
     "routers/sales_debit_notes.py",
     "routers/purchase_credit_notes.py",
     "routers/debit_notes.py",
+    # The sales-invoice router filters the unposted list through the one rule (its select there is `*`); its other reads are the
+    # issue, cancel and delete handlers' own status and settlement probes.
+    "routers/sales_invoices.py",
     # The PDF reads `select("*", customers(…))`, which carries it; this entry
     # covers the small status probes beside it.
     "services/invoice_pdf_service.py",
