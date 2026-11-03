@@ -770,7 +770,7 @@ def test_a_watched_name_that_is_not_a_column_makes_the_trigger_refuse_the_write_
 
 
 def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_here(world):
-    """No trigger function writes a header table, and the only database functions that can are the two below, found from their
+    """No trigger function writes a header table, and the only database functions that can are the ones named below, found from their
     SOURCES: by name (a literal INSERT, UPDATE or DELETE against one of the six), and by dynamic SQL (EXECUTE with an INSERT or an
     UPDATE, which names its table in a variable and so is invisible to a name scan: `numbered_document_atomic__unguarded` is one, and
     was the bypass the review found)."""
@@ -781,7 +781,12 @@ def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_
     named = re.compile(r"\b(insert\s+into|update|delete\s+from)\s+(only\s+)?(public\.)?(%s)\b" % "|".join(TABLES), re.I)
     dynamic = re.compile(r"\bexecute\b", re.I)
     assert {f["n"] for f in functions if f["t"] and named.search(f["s"] or "")} == set(), "a trigger function writes a header table"
-    assert {f["n"] for f in functions if named.search(f["s"] or "")} == {"settle_receipt_atomic__unguarded"}
+    assert {f["n"] for f in functions if named.search(f["s"] or "")} == {
+        "settle_receipt_atomic__unguarded",               # the receipt settlement: paid_paise and status on an invoice, reached through its guarded wrapper
+        "issue_sales_invoice_atomic",                     # migration 577 (POST-A-092): marks the invoice issued and links its entry, in the entry's own
+                                                          # transaction; SECURITY DEFINER, so `current_user` is the owner, which this trigger does not judge;
+                                                          # executable by the privileged client alone, and asks who is calling first
+    }
     writes = re.compile(r"\b(insert|update)\b", re.I)
     assert {f["n"] for f in functions if dynamic.search(f["s"] or "") and writes.search(f["s"] or "")} == {
         "guard_client_firm",                              # migration 565's installer: EXECUTE format of CREATE and DROP TRIGGER, writes no row
