@@ -15,6 +15,11 @@ THIS NEEDS MIGRATION 545 ON THE DATABASE IT TALKS TO. The wrappers of 545 read t
 `audit_actor` key before the unguarded body, which builds its column list from the entry's keys; against a database without 545 every
 posting from a request with a verified person would fail. The order of the rollout is 545, this change, then 546.
 
+A THIRD NAME, `issue_sales_invoice_atomic` (migration 577, POST-A-092), goes through the same door and carries the person the same way. It
+writes no ledger row itself: it locks a draft invoice, calls `post_journal_atomic` and marks the invoice issued in the one transaction,
+so a failure between the entry and the status can no longer strand an entry behind a draft. Its executable-by list is the server's alone,
+like the other two.
+
 WHAT THE PRIVILEGED CALL KEEPS. The two wrappers still ask the closure (`period_closure_reason`: the firm's locked year and the
 client's finalised year-end), the reversal's ownership and the receipt-and-journal agreement for every caller, the service role
 included. What they do not ask of the service role is the caller's firm, client reach and role pair, because there is no caller. From
@@ -45,7 +50,7 @@ import os
 from core import db_provider
 
 #: the payload each function reads the posting person from, and where the reserved key goes
-_ENTRY_KEY = {"post_journal_atomic": "p_entry", "settle_receipt_atomic": "p_journal_entry"}
+_ENTRY_KEY = {"post_journal_atomic": "p_entry", "settle_receipt_atomic": "p_journal_entry", "issue_sales_invoice_atomic": "p_entry"}
 AUDIT_ACTOR_KEY = "audit_actor"
 
 
@@ -66,7 +71,7 @@ def ledger_client(db, *, firm_id: str, client_id: str):
 
 
 def ledger_rpc(db, fn: str, params: dict, *, firm_id: str, client_id: str):
-    """`<client>.rpc(fn, params)` for one of the two ledger functions, on the privileged client, carrying the posting person.
+    """`<client>.rpc(fn, params)` for one of the ledger functions, on the privileged client, carrying the posting person.
 
     Returns the request builder, so the caller keeps its own `.execute()` and its own handling of what comes back."""
     if fn not in _ENTRY_KEY:
@@ -83,8 +88,10 @@ def ledger_rpc(db, fn: str, params: dict, *, firm_id: str, client_id: str):
         if current_auth_user_id():
             carried[AUDIT_ACTOR_KEY] = current_auth_user_id()
         params = {**params, key: carried}
-    # The two names are spelt out, not passed on as a variable: the scanners that police who calls the ledger-writing functions
+    # The names are spelt out, not passed on as a variable: the scanners that police who calls the ledger-writing functions
     # (tests/test_the_hero_figures_are_counted_facts.py, tests/test_backend_tables_exist_pg.py) read literals.
     if fn == "post_journal_atomic":
         return client.rpc("post_journal_atomic", params)
+    if fn == "issue_sales_invoice_atomic":
+        return client.rpc("issue_sales_invoice_atomic", params)
     return client.rpc("settle_receipt_atomic", params)

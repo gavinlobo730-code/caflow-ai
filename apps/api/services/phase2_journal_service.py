@@ -60,6 +60,15 @@ from domain.fixed_assets.asset_ledger import (
 )
 
 
+def _sqlstate_of(error: Exception) -> str | None:
+    """The five-character SQLSTATE the driver kept on `error` (its `code`, or the `code` of the dict PostgREST puts in `args`), or None.
+    Read from the error and not searched for in its text, where a paise figure or a number could contain the digits."""
+    code = getattr(error, "code", None)
+    if not code and error.args and isinstance(error.args[0], dict):
+        code = error.args[0].get("code")
+    return str(code) if code else None
+
+
 class Phase2JournalService:
     """Auto-journal service for Phase 2 transaction types."""
 
@@ -68,7 +77,7 @@ class Phase2JournalService:
     # ------------------------------------------------------------------ #
 
     def journal_for_sales_invoice(
-        self, invoice: dict, firm_id: str, client_id: str
+        self, invoice: dict, firm_id: str, client_id: str, *, issue_at: Optional[str] = None
     ) -> Optional[str]:
         """
         Create journal entry for a posted sales invoice.
@@ -79,6 +88,10 @@ class Phase2JournalService:
            (Compensation to States) Act 2017 s.8 with s.11(2), proviso).
         CGST Act §9: GST on taxable outward supplies.
         CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
+
+        `issue_at` (POST-A-092) is the instant a DRAFT invoice is being issued: the entry is then posted and the invoice marked issued,
+        linked to the entry, in one transaction (migration 577), and raises `journal_figures.InvoiceNoLongerADraft` when the invoice
+        was no longer a draft by the time the database locked it. Left unset, the entry is posted alone, as for a repost.
         """
         if _USE_MOCK:
             _logger.info("[MOCK] journal_for_sales_invoice: %s", invoice.get("invoice_no"))
@@ -107,8 +120,11 @@ class Phase2JournalService:
                 # An issue that failed after posting leaves this entry behind with the invoice still a draft; the draft may have been
                 # changed since, so the entry is reused only if it carries these very figures (POST-A-092).
                 must_match=f"invoice {invoice['invoice_no']}",
+                issues_invoice=({"invoice_id": invoice["id"], "issued_at": issue_at} if issue_at else None),
                 **_ccy,
             )
+        except (journal_figures.InvoiceNoLongerADraft, journal_figures.AtomicIssueNotInstalled):
+            raise
         except ValueError:
             # Re-raise account resolution and balance errors so the router returns 422
             raise
@@ -2429,6 +2445,10 @@ class Phase2JournalService:
         # value names the document in the refusal. Left unset, the kernel behaves exactly as it always has (a retry of anything
         # returns the entry that is there).
         must_match: Optional[str] = None,
+        # POST-A-092: a sales invoice's issue. `{"invoice_id", "issued_at"}` posts this entry and marks that draft invoice issued, linked
+        # to the entry, in ONE database transaction (`issue_sales_invoice_atomic`, migration 577), so a failure between the two cannot
+        # leave an entry in the ledger behind a draft. Left unset, nothing about the kernel changes.
+        issues_invoice: Optional[dict] = None,
     ) -> str:
         """
         Insert a balanced double-entry journal entry and its lines.
@@ -2559,8 +2579,11 @@ class Phase2JournalService:
         already = self._live_entry_for(
             db, firm_id=firm_id, client_id=client_id, entry_date=entry_date, reference_no=reference_no,
             lines=lines, must_match=must_match, source_type=source_type, source_id=source_id, entry_type=entry_type)
-        if already:
+        if already and not issues_invoice:
             return already
+        # An issue that finds its entry already live (the draft was stranded by an earlier issue, and `must_match` has just proved the
+        # entry carries these very figures) still has to mark the invoice issued: it goes on to the database function, whose
+        # duplicate handling returns the live entry and which then marks the invoice, in one transaction.
 
         now_iso = datetime.now(timezone.utc).isoformat()
         entry_payload = {
@@ -2641,34 +2664,14 @@ class Phase2JournalService:
             # A missing function surfaces as a clear, diagnosable error below
             # instead of an opaque 500, so a migrate-before-deploy mistake is
             # immediately obvious rather than presenting as "every posting is down."
-            try:
-                # POST-A-317: the privileged client, after the route's own checks (services/ledger_door.py says why and what stays asked).
-                result = ledger_rpc(
-                    db, "post_journal_atomic",
-                    {"p_entry": entry_payload, "p_lines": line_payloads},
-                    firm_id=firm_id, client_id=client_id,
-                ).execute()
-            except Exception as rpc_err:
-                # R2.12 adversarial-review fix: a bare substring check on the
-                # function's own name misclassifies its OWN RAISE EXCEPTION
-                # ('post_journal_atomic: empty entry payload') as "RPC not
-                # found" — the same bug class found (and fixed) in
-                # services/receipt_service.py's identical check for
-                # settle_receipt_atomic. Require the actual missing-function
-                # signature (PGRST202, or a raw "function ... does not
-                # exist") instead of the function's own name.
-                msg = str(rpc_err).lower()
-                if "pgrst202" in msg or ("function" in msg and ("does not exist" in msg or "could not find the function" in msg)):
-                    raise RuntimeError(
-                        "post_journal_atomic RPC not found — migration 152 "
-                        "(apps/api/migrations/152_atomic_journal_posting.sql) must be "
-                        "applied to this database before the API is deployed."
-                    ) from rpc_err
-                raise
-            entry_id = result.data
-            if not entry_id:
-                raise RuntimeError(f"Failed to post journal for ref={reference_no}")
+            entry_id = self._post_through_the_ledger_door(
+                db, firm_id=firm_id, client_id=client_id, entry_payload=entry_payload, line_payloads=line_payloads,
+                issues_invoice=issues_invoice, reference_no=reference_no)
         else:
+            if issues_invoice:
+                # The invoice's status is written by one door, and a two-statement issue is exactly what this parameter ends: a client
+                # without `rpc` cannot do it, and a double that wants to issue implements the function (tests/e2e_harness.py does).
+                raise RuntimeError("Issuing an invoice needs the database function issue_sales_invoice_atomic: this client has no rpc.")
             # In-memory test double without rpc — two inserts (trivially atomic in
             # a synchronous fake). Never reached in production (the Supabase client
             # always exposes rpc).
@@ -2691,6 +2694,59 @@ class Phase2JournalService:
             "%s journal %s | ref=%s | dr=%d cr=%d",
             "Posted" if is_posted else "Drafted", entry_id, reference_no, total_debit, total_credit,
         )
+        return entry_id
+
+    def _post_through_the_ledger_door(self, db, *, firm_id: str, client_id: str, entry_payload: dict, line_payloads: list,
+                                      issues_invoice: Optional[dict], reference_no: str) -> str:
+        """The one call to the database's ledger writer, on the privileged client through `services/ledger_door` (POST-A-317), and the
+        words for what can go wrong with it. `issues_invoice` makes it the invoice's own function (`issue_sales_invoice_atomic`, migration
+        577), which posts the entry AND marks the invoice issued in one transaction; otherwise it is `post_journal_atomic`.
+
+        There is deliberately NO fallback from `post_journal_atomic` to the old two-insert path: it would silently reintroduce the F2
+        orphan-header bug migration 152 fixed. A missing function surfaces as a clear, diagnosable error instead of an opaque 500, so a
+        migrate-before-deploy mistake is obvious rather than presenting as 'every posting is down'."""
+        try:
+            if issues_invoice:
+                result = ledger_rpc(
+                    db, "issue_sales_invoice_atomic",
+                    {"p_invoice_id": issues_invoice["invoice_id"], "p_entry": entry_payload, "p_lines": line_payloads,
+                     "p_issued_at": issues_invoice["issued_at"]},
+                    firm_id=firm_id, client_id=client_id,
+                ).execute()
+            else:
+                result = ledger_rpc(
+                    db, "post_journal_atomic",
+                    {"p_entry": entry_payload, "p_lines": line_payloads},
+                    firm_id=firm_id, client_id=client_id,
+                ).execute()
+        except Exception as rpc_err:
+            if issues_invoice:
+                # The issue's own function says two things the caller must tell apart from a posting failure: that the invoice is
+                # no longer a draft (nothing was posted), and, for the minutes between the API's deploy and migration 577, that
+                # the function is not there yet (the caller carries on with the two-statement issue and says so in the log).
+                issue_msg = str(rpc_err).lower()
+                if (_sqlstate_of(rpc_err) == "55000" or "and not a draft" in issue_msg or "has changed since" in issue_msg
+                        or "is not an invoice of this client" in issue_msg):
+                    raise journal_figures.InvoiceNoLongerADraft(str(rpc_err)) from rpc_err
+                if "pgrst202" in issue_msg or ("issue_sales_invoice_atomic" in issue_msg and (
+                        "does not exist" in issue_msg or "could not find the function" in issue_msg)):
+                    raise journal_figures.AtomicIssueNotInstalled(
+                        "issue_sales_invoice_atomic is not on this database (migration 577)") from rpc_err
+            # R2.12 adversarial-review fix: a bare substring check on the function's own name misclassifies its OWN RAISE EXCEPTION
+            # ('post_journal_atomic: empty entry payload') as "RPC not found" — the same bug class found (and fixed) in
+            # services/receipt_service.py's identical check for settle_receipt_atomic. Require the actual missing-function
+            # signature (PGRST202, or a raw "function ... does not exist") instead of the function's own name.
+            msg = str(rpc_err).lower()
+            if "pgrst202" in msg or ("function" in msg and ("does not exist" in msg or "could not find the function" in msg)):
+                raise RuntimeError(
+                    "post_journal_atomic RPC not found — migration 152 "
+                    "(apps/api/migrations/152_atomic_journal_posting.sql) must be "
+                    "applied to this database before the API is deployed."
+                ) from rpc_err
+            raise
+        entry_id = result.data
+        if not entry_id:
+            raise RuntimeError(f"Failed to post journal for ref={reference_no}")
         return entry_id
 
     def reverse_entry(

@@ -14,10 +14,10 @@ _create_journal(db, firm_id, client_id, entry_date, reference_no, narration,
                 txn_currency=None, exchange_rate=None, rate_source=None,
                 rate_type=None, rate_date=None, rate_selected_by=None,
                 rate_overridden=False, currency_policy=None,
-                must_match=None) -> entry_id
+                must_match=None, issues_invoice=None) -> entry_id
 ```
 
-The eight parameters before the last are the multi-currency metadata (`06b`): every one defaults to the INR, rate 1 identity, so a caller that passes none is unchanged. `must_match` is the one opt-in of the dedup below (POST-A-092): a document name, set only by the sales invoice builder.
+The eight parameters before the last are the multi-currency metadata (`06b`): every one defaults to the INR, rate 1 identity, so a caller that passes none is unchanged. `must_match` is the one opt-in of the dedup below (POST-A-092): a document name, set only by the sales invoice builder. `issues_invoice` (POST-A-092, migration 577) is `{invoice_id, issued_at}`, set only by the same builder when a DRAFT invoice is being issued: the kernel then calls `issue_sales_invoice_atomic` instead of `post_journal_atomic`, which posts the entry AND marks that invoice issued, linked to the entry, in one database transaction, so a failure between the two cannot leave an entry behind a draft; an entry already live under the number and date (an earlier issue's, proved to carry these very lines by `must_match`) is reused and the invoice is marked with it.
 
 What it guarantees, in order:
 1. **Double-entry balance** — sums `debit_paise` / `credit_paise` across `lines`; raises `ValueError` if `total_debit != total_credit`, and refuses a balanced but zero-value journal. Nothing unbalanced ever reaches the GL.

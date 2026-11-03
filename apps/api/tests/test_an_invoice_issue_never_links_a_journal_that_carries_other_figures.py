@@ -387,17 +387,14 @@ def _preflight_codes(invoice_id):
 
 
 def _issue_that_fails_after_posting(monkeypatch, invoice_id):
-    """The failure this item is about: the journal is posted, then the second statement does not happen."""
-    real = si.update_header
-
-    def broken(*args, **kwargs):
-        raise RuntimeError("the second write did not happen")
-
-    monkeypatch.setattr(si, "update_header", broken)
-    res = si.issue_invoice(invoice_id, CALLER)
-    monkeypatch.setattr(si, "update_header", real)
-    assert res["success"] is False, res
-    return res
+    """The state an issue made BEFORE migration 577 could leave: the entry is posted and the invoice is still a draft (the second
+    statement never happened). An issue now is one database transaction and cannot leave it, so the state is produced the way the first
+    half of the old issue produced it: the invoice's entry posted alone, with nothing marking the invoice."""
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    entry_id = pjs.phase2_journal_service.journal_for_sales_invoice(_row(db, invoice_id), FIRM, "CLI")
+    assert entry_id and _row(db, invoice_id)["status"] == "draft"
+    return {"success": False, "entry_id": entry_id}
 
 
 def test_the_failed_issue_leaves_a_draft_and_a_live_entry(monkeypatch):
@@ -790,3 +787,174 @@ def test_no_other_caller_of_the_kernel_anywhere_asks():
                             and any(k.arg == "must_match" for k in call.keywords):
                         asking.add((path.relative_to(root).as_posix(), fn.name))
     assert asking == {("services/phase2_journal_service.py", "journal_for_sales_invoice")}, asking
+
+
+# ── POST-A-092: the issue is one transaction, and a stranded draft can be listed ──────────────────────────────────
+
+def test_an_issue_whose_status_write_fails_leaves_no_entry_and_a_draft(monkeypatch):
+    """The failure this item is about, driven the way it now happens: the database function posts the entry and then cannot mark the
+    invoice. It is one transaction, so the entry goes with the failure and the draft is exactly as it was."""
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    db.fail_issue_after_posting = True
+    res = si.issue_invoice(invoice_id, CALLER)
+    assert res["success"] is False, res
+    assert _row(db, invoice_id)["status"] == "draft" and not _row(db, invoice_id).get("journal_entry_id")
+    assert _entries(db, "INV-1") == [], "an entry was left behind a draft"
+    db.fail_issue_after_posting = False
+    assert si.issue_invoice(invoice_id, CALLER)["success"] is True
+    assert len(_entries(db, "INV-1")) == 1
+
+
+def test_a_second_issue_of_an_invoice_the_first_just_issued_is_refused_and_does_nothing_more(monkeypatch):
+    """Two clicks on Issue: the second finds the invoice issued when the database locks it. It posts nothing and flips nothing."""
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    real_blockers = si.issue_readiness_service.blockers_for_sales_invoice
+    assert si.issue_invoice(invoice_id, CALLER)["success"] is True
+    entries_after_first = list(db.rows("journal_entries"))
+    # the second click read the row while it was still a draft, so the route's own status check passes; only the lock can refuse it
+    monkeypatch.setattr(si.issue_readiness_service, "blockers_for_sales_invoice", lambda *a, **k: [])
+    res = si.issue_invoice(invoice_id, CALLER)
+    monkeypatch.setattr(si.issue_readiness_service, "blockers_for_sales_invoice", real_blockers)
+    assert res["success"] is False and "no longer a draft" in res["error"], res
+    assert db.rows("journal_entries") == entries_after_first
+
+
+def test_the_two_statement_issue_is_used_only_when_the_function_is_missing_and_says_so(monkeypatch, caplog):
+    """The API is live a few minutes before the migration is applied. Only the missing-function signature falls back; the function's
+    own refusals never do."""
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    real_fn = db.rpc
+
+    def rpc(fn, params=None):
+        if fn == "issue_sales_invoice_atomic":
+            raise Exception("Could not find the function public.issue_sales_invoice_atomic(p_invoice_id, p_entry) in the schema cache (PGRST202)")
+        return real_fn(fn, params)
+
+    monkeypatch.setattr(db, "rpc", rpc)
+    res = si.issue_invoice(invoice_id, CALLER)
+    assert res["success"] is True, res
+    assert _row(db, invoice_id)["status"] == "issued" and len(_entries(db, "INV-1")) == 1
+    assert any("migration 577 is not applied" in r.getMessage() for r in caplog.records)
+
+
+def test_a_refusal_of_the_function_itself_does_not_fall_back_to_the_two_statement_issue(monkeypatch):
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    real_fn = db.rpc
+
+    def rpc(fn, params=None):
+        if fn == "issue_sales_invoice_atomic":
+            raise Exception("issue_sales_invoice_atomic: the entry is not the posted Sales entry of this invoice (42501)")
+        return real_fn(fn, params)
+
+    monkeypatch.setattr(db, "rpc", rpc)
+    res = si.issue_invoice(invoice_id, CALLER)
+    assert res["success"] is False, res
+    assert _row(db, invoice_id)["status"] == "draft" and _entries(db, "INV-1") == []
+
+
+def test_the_list_of_posted_drafts_names_a_draft_with_a_live_entry_and_what_stands_in_its_way(monkeypatch):
+    db = _route_setup(monkeypatch)
+    stranded = _new_invoice("INV-1")
+    clean = _new_invoice("INV-2")
+    issued = _new_invoice("INV-3")
+    assert si.issue_invoice(issued, CALLER)["success"] is True
+    entry_id = _issue_that_fails_after_posting(monkeypatch, stranded)["entry_id"]
+    res = si.list_posted_drafts(None, CALLER)
+    assert res["success"] is True, res
+    data = res["data"]
+    assert [d["invoice_id"] for d in data["drafts"]] == [stranded] and data["count"] == 1
+    row = data["drafts"][0]
+    assert (row["invoice_no"], row["entry_id"], row["entry_reference_no"]) == ("INV-1", entry_id, "INV-1")
+    assert row["blockers"] == [], "a draft whose entry carries its figures is ready to finish"
+    assert clean not in [d["invoice_id"] for d in data["drafts"]] and issued not in [d["invoice_id"] for d in data["drafts"]]
+    # issuing it again finishes it against the entry that is there, and it leaves the list
+    assert si.issue_invoice(stranded, CALLER)["success"] is True
+    assert len(_entries(db, "INV-1")) == 1
+    assert si.list_posted_drafts(None, CALLER)["data"]["drafts"] == []
+
+
+def test_a_stranded_draft_that_was_edited_is_listed_with_the_blocker_that_names_the_entry(monkeypatch):
+    _route_setup(monkeypatch)
+    invoice_id = _new_invoice(rate_paise=100_000)
+    _issue_that_fails_after_posting(monkeypatch, invoice_id)
+    assert si.update_invoice(invoice_id, SalesInvoiceUpdateIn(lines=[_line(250_000)]), CALLER)["success"] is True
+    [row] = si.list_posted_drafts(None, CALLER)["data"]["drafts"]
+    assert row["blockers"] and any("INV-1" in b["message"] for b in row["blockers"]), row
+
+
+def test_the_list_of_posted_drafts_is_the_callers_clients_only(monkeypatch):
+    _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    _issue_that_fails_after_posting(monkeypatch, invoice_id)
+    other_firm = {**CALLER, "firm_id": "FIRM-B"}
+    assert si.list_posted_drafts(None, other_firm)["data"]["drafts"] == []
+
+
+def _issued_without_an_entry(db, no, *, opening):
+    return db.seed("client_sales_invoices", {
+        "firm_id": FIRM, "client_id": "CLI", "customer_id": "CUST-CLI", "invoice_no": no, "invoice_date": "2025-03-01",
+        "status": "issued", "total_paise": 500_000, "taxable_amount_paise": 500_000, "journal_entry_id": None, "is_opening": opening})
+
+
+def test_a_carried_over_opening_invoice_is_not_listed_as_issued_without_an_entry_and_cannot_be_reposted(monkeypatch):
+    """An opening document posts no journal BY DESIGN: its receivable is in the opening balance. Listing it put a permanent warning on
+    every migrated client and offered a repost that the kernel then refused as an imbalanced entry (found by the independent review)."""
+    from fastapi import HTTPException
+    db = _route_setup(monkeypatch)
+    opening = _issued_without_an_entry(db, "OLD/1", opening=True)
+    real = _issued_without_an_entry(db, "INV-9", opening=False)
+    listed = si.list_unposted("CLI", CALLER)
+    assert listed["success"] is True, listed
+    assert [r["id"] for r in listed["data"]["unposted"]] == [real["id"]] and listed["data"]["count"] == 1
+    with pytest.raises(HTTPException) as refused:
+        si.repost_journal(opening["id"], CALLER)
+    assert refused.value.status_code == 422 and "carried over" in refused.value.detail and "count" in refused.value.detail
+    assert _entries(db, "OLD/1") == []
+
+
+def test_an_issue_whose_read_back_fails_still_records_the_stock_and_the_audit_row(monkeypatch):
+    """The invoice is issued and committed once the function returns. A failed read after it must not end the request, or the retry is
+    refused as already issued and the rest of the issue (stock, cost of goods, the timeline, the audit row) is never recorded."""
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    real_table = db.table
+    reads = {"after": 0}
+
+    def table(name):
+        q = real_table(name)
+        if name == "client_sales_invoices" and _row(db, invoice_id).get("status") == "issued":
+            reads["after"] += 1
+            raise RuntimeError("the read back failed")
+        return q
+
+    monkeypatch.setattr(db, "table", table)
+    audited = []
+    monkeypatch.setattr(si, "log_event", lambda *a, **k: audited.append(a[3]))
+    res = si.issue_invoice(invoice_id, CALLER)
+    assert res["success"] is True and res["data"]["status"] == "issued", res
+    assert reads["after"] >= 1 and "status_change" in audited
+
+
+def test_a_posted_drafts_list_leaves_out_a_removed_draft(monkeypatch):
+    db = _route_setup(monkeypatch)
+    invoice_id = _new_invoice()
+    _issue_that_fails_after_posting(monkeypatch, invoice_id)
+    assert len(si.list_posted_drafts(None, CALLER)["data"]["drafts"]) == 1
+    _row(db, invoice_id)["deleted_at"] = "2026-11-01T00:00:00+00:00"
+    assert si.list_posted_drafts(None, CALLER)["data"]["drafts"] == []
+
+
+def test_the_function_s_refusal_is_told_by_its_code_and_not_by_digits_in_the_text():
+    class _Coded(Exception):
+        code = "55000"
+
+    class _Dict(Exception):
+        pass
+
+    assert pjs._sqlstate_of(_Coded("x")) == "55000"
+    assert pjs._sqlstate_of(_Dict({"code": "55000", "message": "m"})) == "55000"
+    assert pjs._sqlstate_of(RuntimeError("amount 5500012 paise")) is None

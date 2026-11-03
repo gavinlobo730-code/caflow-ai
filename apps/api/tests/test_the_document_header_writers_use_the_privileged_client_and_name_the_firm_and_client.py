@@ -64,6 +64,9 @@ MOVED = {
     ("routers/debit_notes.py", "issue_debit_note"),
     ("routers/purchase_credit_notes.py", "issue_purchase_credit_note"),
     ("routers/sales_debit_notes.py", "issue_sales_debit_note"),
+    # POST-A-092: an issue is one database transaction (`issue_sales_invoice_atomic`); `_post_and_mark_issued` writes the header through
+    # the door only on the deploy-window fallback, and `issue_invoice` itself writes none.
+    ("routers/sales_invoices.py", "_post_and_mark_issued"),
     ("routers/sales_invoices.py", "issue_invoice"),
     ("routers/sales_invoices.py", "cancel_invoice"),
     ("routers/sales_invoices.py", "repost_journal"),
@@ -205,7 +208,7 @@ def test_nothing_else_writes_a_header_directly_in_a_moved_function():
 def test_a_moved_function_goes_through_the_door_and_calls_it_for_every_move_it_makes():
     expected_calls = {
         "issue_credit_note": 4, "issue_debit_note": 4, "issue_purchase_credit_note": 4, "issue_sales_debit_note": 4,
-        "issue_invoice": 1, "cancel_invoice": 1, "repost_journal": 1, "receive_purchase_bill": 3, "cancel_purchase_bill": 1,
+        "issue_invoice": 0, "_post_and_mark_issued": 1, "cancel_invoice": 1, "repost_journal": 1, "receive_purchase_bill": 3, "cancel_purchase_bill": 1,
         "_claim_bill_outstanding": 1, "_rollback_bill_claim": 1, "_update_bill_payment_status": 1, "_create_foreign_payment": 1,
         "_adjust_invoice_paid": 1, "_adjust_bill_paid": 1, "create_payment_core": 1, "create_foreign_payment_core": 1,
         "create_receipt_core": 1, "create_foreign_receipt": 1, "_rollback_invoice_paid": 1, "_rollback_bill_paid": 1,
@@ -681,7 +684,11 @@ def _audited(audit_calls, entity, doc_id):
     return [k for a, k in audit_calls if a[1] == entity and a[2] == doc_id and a[3] == "update"]
 
 
-def test_issuing_an_invoice_writes_its_header_as_the_api_names_the_firm_and_the_client_and_audits_it(world, two_clients):
+def test_issuing_an_invoice_marks_it_issued_inside_the_database_function_and_not_through_the_header_door(world, two_clients):
+    """POST-A-092. The invoice's move to issued is written by `issue_sales_invoice_atomic` in the same transaction as its entry, so the
+    API issues no header statement at all (the door would be a second, separate write: the very gap migration 577 closes), and the
+    caller's own sign-in is asked to write nothing. The row-level record of the change is the database trigger's, which sees the person
+    the ledger door carried (migration 545); the route's own `status_change` audit stays."""
     db = world[0]
     statements, attempts, audit_calls, install = two_clients
     si, inv = _draft_invoice()
@@ -689,15 +696,12 @@ def test_issuing_an_invoice_writes_its_header_as_the_api_names_the_firm_and_the_
     result = si.issue_invoice(inv["id"], CALLER)
     assert result["success"] is True, result
     assert attempts == []
-    (write,) = _header_writes(statements, "client_sales_invoices")
-    assert write["label"] == "privileged"
-    assert {("id", inv["id"]), ("firm_id", FIRM), ("client_id", "CLI")} <= _filters(write)
-    assert write["payload"]["status"] == "issued" and write["payload"]["issued_at"] and write["payload"]["journal_entry_id"]
+    assert _header_writes(statements, "client_sales_invoices") == [], "the issue wrote the invoice header in a second statement"
     row = _row(db, "client_sales_invoices", inv["id"])
-    assert row["status"] == "issued" and row["journal_entry_id"] == write["payload"]["journal_entry_id"]
-    (audit,) = _audited(audit_calls, "sales_invoice", inv["id"])
-    assert audit["actor_id"] == "auth-u1" and audit["actor_email"] == "ca@f.test"
-    assert audit["old_data"]["status"] == "draft" and audit["new_data"]["status"] == "issued"
+    assert row["status"] == "issued" and row["issued_at"] and row["journal_entry_id"]
+    entry = next(e for e in db.table("journal_entries").select("*").eq("id", row["journal_entry_id"]).execute().data)
+    assert (entry["source_type"], entry["source_id"], entry["reference_no"]) == ("sales_invoice", inv["id"], inv["invoice_no"])
+    assert result["data"]["status"] == "issued" and result["data"]["journal_entry_id"] == row["journal_entry_id"]
 
 
 def test_cancelling_an_invoice_writes_its_status_as_the_api_and_audits_it(world, two_clients):

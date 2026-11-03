@@ -18,7 +18,7 @@ from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
 from domain.sales.line_tax import compute_line_gst
 from domain.sales import credit_limit
-from domain.accounting import journal_figures, journal_source as JS
+from domain.accounting import journal_figures, journal_source as JS, opening_documents
 from domain.inventory import stock_effect as stock_effects
 from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
@@ -2149,6 +2149,60 @@ def issue_preflight(
     return api_response(True, {"ready": not blockers, "blockers": [b.as_dict() for b in blockers]})
 
 
+def _post_and_mark_issued(db, current_user: dict, inv: dict, invoice_id: str):
+    """Post the invoice's entry AND mark it issued, linked to the entry, in ONE database transaction (`issue_sales_invoice_atomic`,
+    migration 577; POST-A-092). Returns `(the issued row, the entry id, None)`, or `(None, None, the refusal to return)`.
+
+    A failure anywhere in the function (the lines, a closed year, the status) undoes the entry as well, so a draft with an entry behind it is
+    no longer something an issue can leave. If the Chart of Accounts is not set up this refuses and the invoice stays a draft (CGST Act §9)."""
+    from services.phase2_journal_service import phase2_journal_service
+    now_iso = datetime.now(timezone.utc).isoformat()
+    firm_id = current_user.get("firm_id", "")
+    client_id = inv.get("client_id", "")
+    issued_by_one_transaction = True
+    try:
+        try:
+            journal_id = phase2_journal_service.journal_for_sales_invoice(
+                invoice=inv, firm_id=firm_id, client_id=client_id, issue_at=now_iso)
+        except journal_figures.AtomicIssueNotInstalled:
+            # The API is live a few minutes before the migration that goes with it. Issue the way it was issued until it is,
+            # and say so: this branch has no other reason to exist and is deleted once migration 577 has been in production.
+            _logger.error("issue_invoice: migration 577 is not applied to this database; issuing %s in two statements", invoice_id)
+            issued_by_one_transaction = False
+            journal_id = phase2_journal_service.journal_for_sales_invoice(invoice=inv, firm_id=firm_id, client_id=client_id)
+    except journal_figures.InvoiceNoLongerADraft:
+        # Another click or session issued, cancelled or removed it between the read and the database's lock. Nothing was posted.
+        return None, None, api_response(
+            False, None, "Cannot issue — this invoice is no longer a draft (it was issued or changed a moment ago). "
+                         "Reload the invoice to see where it stands.")
+    except journal_figures.EntryCannotBeReused as ve:
+        # An entry from an earlier issue that did not finish is in the ledger and the draft no longer matches it (POST-A-092).
+        # The sentence is whole, and the advice to seed the chart of accounts would be wrong here.
+        return None, None, api_response(False, None, f"Cannot issue — {ve}")
+    except ValueError as ve:
+        return None, None, api_response(
+            False, None, f"Cannot issue — {ve} Invoice remains a draft; seed the Chart of Accounts and retry.")
+    if not journal_id:
+        return None, None, api_response(False, None, "Cannot issue — journal posting failed. Invoice remains a draft; retry.")
+
+    if issued_by_one_transaction:
+        # The invoice IS issued and committed by now, so a read that fails here must not end the request: the stock effect, the
+        # timeline and the audit row still have to happen (a retry would be refused as already issued and never record them).
+        try:
+            reread = (db.table("client_sales_invoices").select("*")
+                      .eq("id", invoice_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+        except Exception as read_error:
+            _logger.error("issue_invoice: the issued row of %s could not be read back: %s", invoice_id, read_error)
+            reread = None
+        return (reread[0] if reread else {**inv, "status": "issued", "issued_at": now_iso, "journal_entry_id": journal_id}), journal_id, None
+    upd = update_header(
+        db, "client_sales_invoices", invoice_id,
+        {"status": "issued", "issued_at": now_iso, "journal_entry_id": journal_id},
+        firm_id=current_user.get("firm_id"), client_id=inv.get("client_id"), actor=current_user,
+        before={"status": inv.get("status"), "issued_at": inv.get("issued_at"), "journal_entry_id": inv.get("journal_entry_id")})
+    return (upd.data[0] if upd.data else {**inv, "status": "issued", "journal_entry_id": journal_id}), journal_id, None
+
+
 @router.post("/{invoice_id}/issue")
 def issue_invoice(
     invoice_id: str,
@@ -2156,10 +2210,11 @@ def issue_invoice(
 ):
     """
     Transition invoice from draft → issued.
-    ATOMIC (Batch 3.1): the posted journal entry is created FIRST; the invoice
-    only becomes 'issued' once the journal succeeds. A posting failure (e.g.
-    missing Chart of Accounts) leaves the invoice a re-tryable DRAFT — never an
-    issued-but-unposted state.
+    ATOMIC (POST-A-092, migration 577): the posted journal entry and the invoice's
+    move to 'issued' (with the link to that entry) are ONE database transaction. A
+    posting failure (e.g. missing Chart of Accounts) leaves the invoice a re-tryable
+    DRAFT with nothing posted; a failure after the posting undoes the posting too —
+    never an issued-but-unposted state and never a posted-but-still-draft one.
     CGST Act §31: Invoice must be issued before GST reporting. §9: GST on supply.
     """
     _assert_invoice_scope(current_user, invoice_id)
@@ -2200,33 +2255,9 @@ def issue_invoice(
         blockers = issue_readiness_service.blockers_for_sales_invoice(db, current_user.get("firm_id") or "", inv, first_only=True)
         if blockers:
             return issue_readiness_service.refuse(blockers[0])
-        # Auto-create journal entry FIRST — CGST Act §9. If the Chart of Accounts
-        # is not set up, this raises ValueError and the invoice stays a draft.
-        try:
-            journal_id = phase2_journal_service.journal_for_sales_invoice(
-                invoice=inv,
-                firm_id=current_user.get("firm_id", ""),
-                client_id=inv.get("client_id", ""),
-            )
-        except journal_figures.EntryCannotBeReused as ve:
-            # An entry from an earlier issue that did not finish is in the ledger and the draft no longer matches it (POST-A-092).
-            # The sentence is whole, and the advice to seed the chart of accounts would be wrong here.
-            return api_response(False, None, f"Cannot issue — {ve}")
-        except ValueError as ve:
-            return api_response(False, None,
-                                f"Cannot issue — {ve} Invoice remains a draft; seed the Chart of Accounts and retry.")
-        if not journal_id:
-            return api_response(False, None,
-                                "Cannot issue — journal posting failed. Invoice remains a draft; retry.")
-
-        now_iso = datetime.now(timezone.utc).isoformat()
-        upd = update_header(
-            db, "client_sales_invoices", invoice_id,
-            {"status": "issued", "issued_at": now_iso, "journal_entry_id": journal_id},
-            firm_id=current_user.get("firm_id"), client_id=inv.get("client_id"), actor=current_user,
-            before={"status": inv.get("status"), "issued_at": inv.get("issued_at"),
-                    "journal_entry_id": inv.get("journal_entry_id")})
-        updated_inv = upd.data[0] if upd.data else {**inv, "status": "issued", "journal_entry_id": journal_id}
+        updated_inv, journal_id, refusal = _post_and_mark_issued(db, current_user, inv, invoice_id)
+        if refusal is not None:
+            return refusal
 
         log_event(
             current_user.get("firm_id", ""), "sales_invoice", invoice_id,
@@ -2535,6 +2566,10 @@ def list_unposted(
             if client_id:
                 q = q.eq("client_id", client_id)
             rows = q.execute().data or []
+        # A carried-over opening document posts no journal BY DESIGN (its receivable is in the opening balance), so it is not "issued
+        # without an entry": listing it would put a permanent warning on every migrated client and offer a repost that cannot work
+        # (POST-A-092; `domain/accounting/opening_documents` is the one rule).
+        rows = opening_documents.without_carried_over(rows)
         if not client_id:
             rows = filter_by_client(current_user, rows)
         # G1: hide the internal client's invoices from non-Partners.
@@ -2544,6 +2579,99 @@ def list_unposted(
     except Exception as e:
         _logger.error("list_unposted: %s", e)
         return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+_OPENING_DOCUMENT_POSTS_NOTHING = ("This invoice was carried over from the books the client kept before. It posts no journal entry by design: its "
+                                   "receivable is already in the client's opening balance, and posting one would count it twice.")
+
+#: How many stranded drafts are asked "what stands in the way of finishing this?" in one reading. Each question is several reads, and a
+#: firm with more than this many stranded drafts has a different problem; the rest are listed unchecked and the answer says so.
+POSTED_DRAFTS_CHECKED_AT_MOST = 25
+
+
+@router.get("/maintenance/posted-drafts")
+def list_posted_drafts(
+    client_id: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """Draft invoices that already have a live Sales entry in the ledger (POST-A-092): the other direction of `maintenance/unposted`.
+
+    Since migration 577 an issue posts the entry and marks the invoice issued in one transaction, so an issue cannot leave this behind.
+    An issue made before it could (a failure between its two statements), and an invoice edited and re-issued since, can. Such an
+    invoice's revenue and output tax are in the ledger and the customer's balance while the invoice list, the receipts screen and
+    GSTR-1 do not count it, and nothing else names the difference. Each row says which entry is behind the draft, and what, if
+    anything, stands in the way of finishing it: issuing the draft again finishes it when the entry carries the very figures the draft
+    does (the posting reuses the entry and the invoice is marked issued with it), and is refused in words when it does not.
+
+    The match is the one the posting makes: the entry's source is this draft, or it is a live, unreversed Sales entry of the same client
+    under the draft's number and date. Reads and writes nothing. The internal practice client's invoices are visible only to Partners (G1)."""
+    if client_id:
+        assert_client_access(current_user, client_id)
+    firm_id = current_user.get("firm_id", "")
+    try:
+        if _USE_MOCK:
+            return api_response(True, {"drafts": [], "count": 0, "checked": 0, "not_checked": 0})
+        from core.db_paging import fetch_all, fetch_all_in
+        from core.supabase_client import get_supabase
+        db = get_supabase()
+
+        def _drafts():
+            q = (db.table("client_sales_invoices").select("*").eq("firm_id", firm_id).eq("status", "draft").is_("deleted_at", "null"))
+            return q.eq("client_id", client_id) if client_id else q
+
+        drafts = fetch_all(_drafts, "id", label="posted_drafts.drafts")
+        if not client_id:
+            drafts = filter_by_client(current_user, drafts)
+        if not is_partner(current_user):
+            drafts = [d for d in drafts if not is_internal_client(d.get("client_id"), firm_id)]
+
+        def _sales_entries():
+            return (db.table("journal_entries").select("id,client_id,reference_no,entry_date,source_id")
+                    .eq("firm_id", firm_id).eq("entry_type", "Sales").eq("is_reversed", False)
+                    .is_("deleted_at", "null").is_("reversal_of", "null"))
+
+        by_source = fetch_all_in(_sales_entries, "source_id", [d["id"] for d in drafts], "id", label="posted_drafts.by_source")
+        by_number = fetch_all_in(_sales_entries, "reference_no", [d.get("invoice_no") for d in drafts if d.get("invoice_no")],
+                                 "id", label="posted_drafts.by_number")
+        entries = {e["id"]: e for e in [*by_source, *by_number]}.values()
+        out = []
+        for d in sorted(drafts, key=lambda r: (str(r.get("invoice_date") or ""), str(r.get("invoice_no") or ""), str(r.get("id")))):
+            held = next((e for e in entries
+                         if str(e.get("client_id")) == str(d.get("client_id")) and (
+                             str(e.get("source_id") or "") == str(d["id"])
+                             or (e.get("reference_no") == d.get("invoice_no")
+                                 and str(e.get("entry_date"))[:10] == str(d.get("invoice_date"))[:10]))), None)
+            if held is None:
+                continue
+            out.append({"invoice": d, "entry": held})
+        rows = []
+        for n, item in enumerate(out):
+            d, held = item["invoice"], item["entry"]
+            blockers = None
+            if n < POSTED_DRAFTS_CHECKED_AT_MOST:
+                blockers = [b.as_dict() for b in issue_readiness_service.blockers_for_sales_invoice(db, firm_id, d)]
+            rows.append({
+                "invoice_id": d["id"], "client_id": d.get("client_id"), "invoice_no": d.get("invoice_no"),
+                "invoice_date": d.get("invoice_date"), "total_paise": d.get("total_paise"),
+                "entry_id": held["id"], "entry_reference_no": held.get("reference_no"), "entry_date": held.get("entry_date"),
+                # None is "not asked" (past the limit); an empty list is "nothing in the way": a screen must not read one as the other.
+                "blockers": blockers,
+            })
+        checked = min(len(rows), POSTED_DRAFTS_CHECKED_AT_MOST)
+        return api_response(True, {"drafts": rows, "count": len(rows), "checked": checked, "not_checked": len(rows) - checked})
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("list_posted_drafts: %s", e, exc_info=True)
+        return api_response(False, None, "Unable to complete invoice operation. Please try again.")
+
+
+def _assert_repostable(inv: dict) -> None:
+    """Only an ISSUED invoice that is not a carried-over opening document has an entry to repost (422 in words otherwise)."""
+    if inv.get("status") != "issued":
+        raise HTTPException(status_code=422, detail="Only issued invoices can be reposted")
+    if opening_documents.carried_over(inv):
+        raise HTTPException(status_code=422, detail=_OPENING_DOCUMENT_POSTS_NOTHING)
 
 
 @router.post("/{invoice_id}/repost-journal")
@@ -2564,8 +2692,7 @@ def repost_journal(
             if not inv:
                 raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
             assert_partner_for_internal_id(inv.get("client_id"), current_user)
-            if inv.get("status") != "issued":
-                raise HTTPException(status_code=422, detail="Only issued invoices can be reposted")
+            _assert_repostable(inv)
             if inv.get("journal_entry_id"):
                 return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": inv["journal_entry_id"], "already_posted": True})
             jid = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv["client_id"]) or "mock-journal"
@@ -2579,8 +2706,7 @@ def repost_journal(
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         inv = resp.data[0]
         assert_partner_for_internal_id(inv.get("client_id"), current_user)
-        if inv.get("status") != "issued":
-            raise HTTPException(status_code=422, detail="Only issued invoices can be reposted")
+        _assert_repostable(inv)
         if inv.get("journal_entry_id"):
             return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": inv["journal_entry_id"], "already_posted": True})
 

@@ -1036,8 +1036,11 @@ def _the_sales_invoice_asks_through_the_readiness_service(fn: ast.FunctionDef, k
     as its own kind of document exactly once."""
     asks = _calls(fn, "issue_readiness_service.blockers_for_sales_invoice")
     assert len(asks) == 1, "issue_invoice must ask the readiness list exactly once"
+    # Since migration 577 (POST-A-092) the real branch posts the entry and marks the invoice issued through ONE helper, so that helper's
+    # call is the write the question must precede (the helper itself is held to being called from this route alone, below).
     writers = [c for c in ast.walk(fn) if isinstance(c, ast.Call)
-               and (getattr(c.func, "attr", "") in {"journal_for_sales_invoice"} or getattr(c.func, "id", "") == "update_header")]
+               and (getattr(c.func, "attr", "") in {"journal_for_sales_invoice"}
+                    or getattr(c.func, "id", "") in {"update_header", "_post_and_mark_issued"})]
     opened = [c for c in ast.walk(fn) if isinstance(c, ast.Call) and getattr(c.func, "id", "") == "get_supabase"]
     assert opened, "the real branch opens the database"
     real_writers = [w for w in writers if w.lineno > min(o.lineno for o in opened)]
@@ -1108,6 +1111,9 @@ def test_the_rule_found_the_six_routes_and_every_poster_of_a_drafts_journal_is_o
         # an ISSUED invoice that has no journal yet: its header is the issued-document particulars migration 535 protects from a
         # signed-in session, which is why this route does not ask the draft question (it is not a draft)
         ("sales_invoices", "repost_journal"),
+        # the helper the sales invoice's issue route hands the posting to since migration 577 (POST-A-092): it is the write itself,
+        # so the question is asked by its one caller, `issue_invoice`, before the call (the route rule above) - held below
+        ("sales_invoices", "_post_and_mark_issued"),
         # the mock-mode branch lives inside the issue routes themselves
     }
     names = {"journal_for_sales_invoice", "journal_for_purchase_bill", "journal_for_credit_note", "journal_for_debit_note",
@@ -1121,3 +1127,16 @@ def test_the_rule_found_the_six_routes_and_every_poster_of_a_drafts_journal_is_o
     expected = {(m, f) for m, (f, _) in ISSUE_ROUTERS.items()} | posters
     assert seen == expected, f"a route posts a document's journal and is not asked about: {sorted(seen ^ expected)}"
     assert len(ISSUE_ROUTERS) == 6
+
+
+def test_the_helper_that_posts_and_marks_an_invoice_issued_is_called_by_the_issue_route_alone():
+    """The question is asked by the route, so the helper that writes must have no other caller that could reach it without the question
+    (a second caller would be a second way to issue an invoice that nobody asked about)."""
+    callers = set()
+    for path in sorted((API / "routers").glob("*.py")) + sorted((API / "services").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for fn in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+            if any(isinstance(c, ast.Call) and getattr(c.func, "id", getattr(c.func, "attr", "")) == "_post_and_mark_issued"
+                   for c in ast.walk(fn)):
+                callers.add((path.stem, fn.name))
+    assert callers == {("sales_invoices", "issue_invoice")}, callers
