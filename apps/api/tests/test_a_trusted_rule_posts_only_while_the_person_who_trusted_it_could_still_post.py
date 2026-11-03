@@ -224,6 +224,18 @@ def test_the_control_a_rule_whose_person_still_answers_posts_as_them(poster):
     assert [c["actor_id"] for c in poster.calls] == ["mgr-1"]
 
 
+def test_the_post_names_the_person_to_the_audit_log_by_their_auth_id_and_never_by_the_internal_one(poster):
+    """`audit_log.actor_id` takes the sign-in id. The sweep passed `actor_auth_id=None` for a rule's post, and the post then logged
+    `actor_auth_id or actor_id`, which is the rule owner's INTERNAL id: half of that person's audit rows under the wrong key."""
+    db = _db()
+    db.store["users"][0]["auth_user_id"] = "auth-of-mgr-1"
+    _trusting(db)
+    svc.redraft(db, FIRM, CLIENT)
+    assert svc.pass_ready(db, FIRM, CLIENT, only_trusted=True)["passed"] == 1
+    [call] = poster.calls
+    assert (call["actor_id"], call["actor_auth_id"]) == ("mgr-1", "auth-of-mgr-1")
+
+
 @pytest.mark.parametrize("how,code", [
     ("suspend", "suspended"),
     ("remove", "not_a_member"),

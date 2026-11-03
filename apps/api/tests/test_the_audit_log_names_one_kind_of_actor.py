@@ -248,3 +248,52 @@ def test_the_other_log_event_writes_a_different_table_and_is_left_alone():
     assert seen >= 4, (
         f"only {seen} task_timeline log_event calls found — if they have been "
         f"renamed or removed, say so here rather than letting this pass empty")
+
+
+
+# ── no audit write falls back from the sign-in id to the internal one (POST-A-361) ─────────────────────────────
+
+import re
+
+
+def _fallbacks_to_the_internal_id(source: str) -> list[int]:
+    """Lines of `<auth id> or <internal id>`: `actor_auth_id or actor_id`, or `... or <x>.get("id")`. The first operand is the right kind and the
+    second the wrong one, so the expression is the right id exactly when the caller remembered to pass it and the wrong id when it did not."""
+    import ast as _ast
+    out = []
+    for node in _ast.walk(_ast.parse(source)):
+        if not (isinstance(node, _ast.BoolOp) and isinstance(node.op, _ast.Or) and len(node.values) >= 2):
+            continue
+        text = [_ast.unparse(v) for v in node.values]
+        has_auth = any("auth" in t for t in text[:-1])
+        internal = text[-1]
+        # `ast.unparse` prints single quotes, so match either spelling of the internal-id read
+        if has_auth and (internal in ("actor_id", "user_id", "created_by") or re.search(r"""(\.get\(|\[)\s*['"]id['"]\s*[)\]]$""", internal)):
+            out.append(node.lineno)
+    return out
+
+
+def test_no_audit_write_falls_back_from_the_auth_id_to_the_internal_one():
+    import pathlib as _pl
+    api = _pl.Path(__file__).resolve().parent.parent
+    found = []
+    for d in ("services", "routers", "domain", "jobs", "repositories"):
+        for path in sorted((api / d).rglob("*.py")):
+            try:
+                lines = _fallbacks_to_the_internal_id(path.read_text(encoding="utf-8"))
+            except (SyntaxError, UnicodeDecodeError):
+                continue
+            found += [f"{path.relative_to(api).as_posix()}:{n}" for n in lines]
+    assert not found, ("an audit write names its actor `auth id or internal id`: when the auth id is missing the INTERNAL id lands in "
+                       f"audit_log.actor_id, which takes the auth id. Pass the auth id, or let it be unknown: {found}")
+
+
+def test_the_fallback_rule_sees_each_spelling_and_spares_the_right_ones():
+    bad = ["x = actor_auth_id or actor_id", "x = auth_id or user_id", "x = actor_auth_id or current_user.get(\"id\")",
+           "x = a or actor_auth_id or created_by"]
+    fine = ["x = actor_auth_id", "x = current_user.get('auth_user_id') or ''", "x = user.get('full_name') or actor_id",
+            "x = actor_auth_id or None"]
+    for src in bad:
+        assert _fallbacks_to_the_internal_id(src), src
+    for src in fine:
+        assert not _fallbacks_to_the_internal_id(src), src

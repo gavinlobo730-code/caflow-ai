@@ -32,6 +32,18 @@ def _reset():
         js._manual_runs_in_progress.clear()
 
 
+def _wait_until_no_run_is_in_progress():
+    """A started run releases its firm from its own thread, a moment after the test lets it go. A test that ends without waiting
+    for that hands its still-releasing thread to the next test, whose run for the same firm the late release would then erase,
+    which under a loaded machine made the second press start a run instead of being refused."""
+    for _ in range(200):
+        with js._manual_runs_lock:
+            if not js._manual_runs_in_progress:
+                return
+        threading.Event().wait(0.05)
+    raise AssertionError("a manual run never released its firm")
+
+
 def test_the_run_goes_to_a_thread_and_the_caller_is_answered_before_it_ends(monkeypatch):
     _reset()
     release, started, seen = threading.Event(), threading.Event(), {}
@@ -48,6 +60,7 @@ def test_the_run_goes_to_a_thread_and_the_caller_is_answered_before_it_ends(monk
     assert started.wait(timeout=5), "the run never began"
     assert seen == {"firm_id": "f1", "force": True, "thread": "scheduler-manual"}, "it must run on its own thread, for the one firm"
     release.set()
+    _wait_until_no_run_is_in_progress()
 
 
 def test_an_empty_firm_id_starts_nothing_so_a_persons_request_never_runs_every_firm(monkeypatch):
@@ -77,11 +90,7 @@ def test_a_second_press_for_the_same_firm_while_one_runs_starts_nothing_and_anot
     assert second["started"] is False and "already in progress" in second["reason"]
     assert js.start_daily_jobs("f2")["started"] is True, "another firm's press is not blocked by this firm's run"
     release.set()
-    for _ in range(100):
-        with js._manual_runs_lock:
-            if not js._manual_runs_in_progress:
-                break
-        threading.Event().wait(0.05)
+    _wait_until_no_run_is_in_progress()
     assert sorted(calls) == ["f1", "f2"]
 
 

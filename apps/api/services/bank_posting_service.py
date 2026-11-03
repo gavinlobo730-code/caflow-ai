@@ -686,7 +686,7 @@ class BankPostingService:
                 new_data["gst_rate_bps"] = int(gst_rate_bps)
                 new_data["gst_is_interstate"] = bool(is_interstate)
             log_event(firm_id, "bank_transaction", txn_id, "status_change",
-                      actor_id=actor_auth_id or actor_id, new_data=new_data,
+                      actor_id=actor_auth_id, new_data=new_data,
                       metadata={"source": "bank_post", "stage": "posted"})
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="bank_posting.audit_log", firm_id=firm_id, txn_id=txn_id)
@@ -969,7 +969,7 @@ class BankPostingService:
         try:
             from services.audit_service import log_event
             log_event(firm_id, "bank_transaction", txn_id, "status_change",
-                      actor_id=actor_auth_id or actor_id,
+                      actor_id=actor_auth_id,
                       old_data={"match_status": "posted", "posted_journal_id": journal_id},
                       new_data={"match_status": back_to, "reversal_journal_id": reversal_id},
                       metadata={"source": "bank_undo", "reversal_date": reversal_date})

@@ -913,8 +913,10 @@ class BankEntryService:
         for t in rows:
             rule = trusted.get(t.get("draft_rule_id")) if only_trusted else None
             actor = rule.get("trusted_by") if rule else actor_id
+            # The rule's person posts, and the audit row names them by their AUTH id (`audit_log.actor_id` takes it; `actor` is the
+            # internal one). `_trusted_rules` already carries it, read from the same `users` row that proved they still answer for the rule.
             results.append(self.pass_entry(db, firm_id, t["id"], actor_id=actor,
-                                           actor_auth_id=None if rule else actor_auth_id,
+                                           actor_auth_id=rule.get("trusted_by_auth_id") if rule else actor_auth_id,
                                            by_rule=rule))
         remaining = self._count(make)
         summary = {s: sum(1 for r in results if r["status"] == s)
