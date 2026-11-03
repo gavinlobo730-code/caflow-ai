@@ -54,6 +54,7 @@ REVIEWED: dict[tuple[str, str], str] = {
     ("gst_workspace.py", "compute_iff"): _FROM_THIS_CLIENTS_OWN_DOCUMENTS,
     ("gst_workspace.py", "gstr1_advances"): "the customers are the ones on this client's own receipts",
     ("gst_workspace.py", "gstr1_exception_report"): _FROM_THIS_CLIENTS_OWN_DOCUMENTS,
+    ("gst_workspace.py", "gstr1_outstanding_amendments"): _FROM_THIS_CLIENTS_OWN_DOCUMENTS + " (the amendment build primes the span's documents once, POST-A-265)",
     ("gst_workspace.py", "upload_gstr2b"): "the vendors are the ones on this client's own bills",
     ("purchase_bills.py", "delete_landed_cost"): "the bill is the one the router tied to the client and the charge is matched on it (`bill_id` is part of the chain)",
     ("rcm_documents.py", "issue_document"): "the vendor id is read from the bill or the payment the route tied to the client",

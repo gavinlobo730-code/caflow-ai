@@ -37,6 +37,7 @@ from core.ist_clock import ist_date_of, ist_today
 from domain.gst.amendment_proposal import propose
 from domain.gst.amendments import SECTION_TABLE, group_amendments, merge_into_payload
 from domain.gst.correction_window import fy_label, is_actionable, window_for
+from services import gst_read_memo
 from services.gst_exception_service import gstr1_exceptions
 
 _logger = logging.getLogger("caflow.gst_amendments")
@@ -142,7 +143,50 @@ def _rebuild_pool() -> ThreadPoolExecutor:
         return _REBUILD_POOL
 
 
+def _prime_reads(db, firm_id: str, client_id: str, periods: list[str]) -> None:
+    """Read ONCE what every earlier period's rebuild would otherwise read again (POST-A-265): the documents of the whole span the periods
+    cover (invoices, cancelled invoices, credit notes, debit notes, their lines and customers), into the memo the rebuilds answer from.
+
+    The span is the first day of the earliest period to the last day of the latest, the monthly window each rebuild uses, so a gap between
+    two filed periods is read too (a few rows that nobody asks for, against a round trip per period). The classification it makes is the
+    rebuild's own (`_classified_sales_documents`) and is discarded: what is kept is what was read. A failure here is reported and costs
+    only the saving: each period then reads for itself, exactly as it did before the memo."""
+    try:
+        from domain.gst import return_period
+        from services import gst_return_service as grs
+        spans = [return_period.resolve(p, None) for p in periods]
+        lo, hi = min(w.start for w in spans), max(w.end for w in spans)
+    except Exception as exc:                                    # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="gst_amendments.prime_reads.window", firm_id=firm_id, client_id=client_id)
+        return None
+    memo = gst_read_memo.active()
+    if memo is not None:
+        memo.window = (lo, hi)
+    try:
+        grs._classified_sales_documents(db, firm_id, client_id, lo, hi)
+        grs._cancelled_sales(db, firm_id, client_id, lo, hi)
+    except Exception as exc:                                    # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="gst_amendments.prime_reads", firm_id=firm_id, client_id=client_id)
+    return None
+
+
 def _exception_reports(db, firm_id: str, client_id: str, periods: list[str]) -> list[dict]:
+    """`gstr1_exceptions` for each of `periods`, IN THE ORDER GIVEN, several at a time, sharing what they would each read again.
+
+    With more than one period the rebuilds run inside a read memo (`services/gst_read_memo`, POST-A-265): the client-wide reads (the client,
+    its registrations, the year's turnover, whether its advances bear tax) are made once, and the documents of the whole span are read once
+    (`_prime_reads`) and sliced per period. The answer is the same as without it, which `tests/test_an_amendment_build_reads_what_it_shares_once.py`
+    holds against the per-period reads. One period reads for itself."""
+    if len(periods) <= 1:
+        return _run_exception_reports(db, firm_id, client_id, periods)
+    with gst_read_memo.scope():
+        _prime_reads(db, firm_id, client_id, periods)
+        return _run_exception_reports(db, firm_id, client_id, periods)
+
+
+def _run_exception_reports(db, firm_id: str, client_id: str, periods: list[str]) -> list[dict]:
     """`gstr1_exceptions` for each of `periods`, IN THE ORDER GIVEN, several at a time.
 
     THE ANSWER IS THE SEQUENTIAL ONE. The caller reads the reports oldest first and builds its lists in that order, so the reports are
@@ -158,7 +202,7 @@ def _exception_reports(db, firm_id: str, client_id: str, periods: list[str]) -> 
     context so the request id and the error-tracking scope follow the work into the thread. The pool is the process's, not the request's.
 
     This shortens the wall clock of a build with many earlier filed periods from the sum of their rebuilds to roughly a quarter of it;
-    it does NOT reduce the reads (each period is still rebuilt once per build), which is the remainder of POST-A-265.
+    the reads they share are made once by `_exception_reports`' memo.
     """
     if len(periods) <= 1 or _MAX_PARALLEL_REBUILDS <= 1:
         return [gstr1_exceptions(db, firm_id, client_id, p) for p in periods]

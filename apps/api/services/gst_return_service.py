@@ -25,6 +25,7 @@ from core.ist_clock import ist_fy_label, ist_date_of
 
 import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
+import services.gst_read_memo as gst_read_memo
 import services.itc_register_service as itc_register_service
 import services.bill_of_entry_service as bill_of_entry_service
 import services.client_gst_turnover_service as client_gst_turnover_service
@@ -180,11 +181,14 @@ def _posted_sales(db, firm_id, client_id, start, end) -> list[dict]:
     # An invoice carried over from the system the client migrated from was
     # raised, taxed and DECLARED there; declaring it again here states an
     # outward supply twice and pays the tax on it twice.
-    return _opening.without_carried_over(fetch_all(
-        lambda: db.table("client_sales_invoices").select("*")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-            .in_("status", list(_SALES_POSTED))
-            .gte("invoice_date", start).lte("invoice_date", end)))
+    def read(a, b):
+        return fetch_all(
+            lambda: db.table("client_sales_invoices").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .in_("status", list(_SALES_POSTED))
+                .gte("invoice_date", a).lte("invoice_date", b))
+    return _opening.without_carried_over(
+        gst_read_memo.window_rows("sales.posted", firm_id, client_id, start, end, "invoice_date", read))
 
 
 #: Which of Table 13's three natures this schema can report a CANCELLED
@@ -208,18 +212,23 @@ def _cancelled_sales(db, firm_id, client_id, start, end) -> list[dict]:
     Carried-over opening documents are excluded for `_posted_sales`' reason —
     their numbers belong to the series of the system the client migrated from.
     """
-    return _opening.without_carried_over(fetch_all(
-        lambda: db.table("client_sales_invoices").select("*")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("status", "cancelled")
-            .gte("invoice_date", start).lte("invoice_date", end)))
+    def read(a, b):
+        return fetch_all(
+            lambda: db.table("client_sales_invoices").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("status", "cancelled")
+                .gte("invoice_date", a).lte("invoice_date", b))
+    return _opening.without_carried_over(
+        gst_read_memo.window_rows("sales.cancelled", firm_id, client_id, start, end, "invoice_date", read))
 
 
 def _issued_credit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return fetch_all(lambda: db.table("credit_notes").select("*")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("status", "issued")
-            .gte("credit_note_date", start).lte("credit_note_date", end))
+    def read(a, b):
+        return fetch_all(lambda: db.table("credit_notes").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("status", "issued")
+                .gte("credit_note_date", a).lte("credit_note_date", b))
+    return gst_read_memo.window_rows("sales.credit_notes", firm_id, client_id, start, end, "credit_note_date", read)
 
 
 def _bills_cancelled_in(db, firm_id, client_id, start, end) -> list[dict]:
@@ -338,10 +347,12 @@ def _issued_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
 
 
 def _issued_sales_debit_notes(db, firm_id, client_id, start, end) -> list[dict]:
-    return fetch_all(lambda: db.table("sales_debit_notes").select("*")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-            .eq("status", "issued")
-            .gte("debit_note_date", start).lte("debit_note_date", end))
+    def read(a, b):
+        return fetch_all(lambda: db.table("sales_debit_notes").select("*")
+                .eq("firm_id", firm_id).eq("client_id", client_id)
+                .eq("status", "issued")
+                .gte("debit_note_date", a).lte("debit_note_date", b))
+    return gst_read_memo.window_rows("sales.debit_notes", firm_id, client_id, start, end, "debit_note_date", read)
 
 
 def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, list]:
@@ -375,7 +386,8 @@ def _document_lines(db, table: str, fk: str, doc_ids: list[str]) -> dict[str, li
         return {}
     from domain.gst.gstr1_builder import InvoiceLine
 
-    rows = fetch_all(lambda: db.table(table).select("*").in_(fk, list(doc_ids)))
+    rows = gst_read_memo.rows_by_id(
+        table, "", doc_ids, lambda doc_ids: fetch_all(lambda: db.table(table).select("*").in_(fk, list(doc_ids))), id_field=fk)
     by_doc: dict[str, list] = {}
     for r in sorted(rows or [], key=lambda x: (x.get(fk) or "", x.get("sort_order") or 0)):
         doc_id = r.get(fk)
@@ -2449,8 +2461,9 @@ def _classified_sales_documents(db, firm_id: str, client_id: str,
     cust_ids = {r.get("customer_id") for r in (invoices_raw + cns_raw + sdns_raw) if r.get("customer_id")}
     cust_by_id: dict = {}
     if cust_ids:
-        rows = (db.table("customers").select("id, name, gstin, state_code")
-                .eq("firm_id", firm_id).in_("id", list(cust_ids)).execute().data) or []
+        rows = gst_read_memo.rows_by_id("customers", firm_id, cust_ids, lambda ids: (
+            db.table("customers").select("id, name, gstin, state_code")
+            .eq("firm_id", firm_id).in_("id", list(ids)).execute().data) or [])
         cust_by_id = {c["id"]: c for c in rows}
 
     _REF_FIELD = {"sales_invoice": "invoice_no", "credit_note": "credit_note_no", "debit_note": "debit_note_no"}
@@ -2643,10 +2656,17 @@ def iff_from_books(db, firm_id: str, client_id: str, period: str,
 
 def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                      aggregate_turnover_paise: Optional[int] = None,
-                     frequency: Optional[str] = None) -> dict:
+                     frequency: Optional[str] = None,
+                     reconcile_to_ledger: bool = True) -> dict:
     """Build GSTR-1 from posted sales invoices + issued credit/debit notes, and
     reconcile the total output tax to the General Ledger GST-output control
     accounts.
+
+    `reconcile_to_ledger=False` (POST-A-265) leaves that reconciliation out and returns `"reconciliation": None`. It is the only thing in
+    this build that reads the LEDGER (every entry dated in the window and then every line of each of them, in chunks of two hundred), which
+    is by far the heaviest read of the build and the one a caller that wants the RETURN does not use: the comparison of a filed return with
+    the books (`gst_exception_service.drift_since_filing`) reads the rebuilt payload and its gaps only, and an amendment build asks it
+    once per earlier filed period. Left at its default every other caller is unchanged.
 
     `aggregate_turnover_paise` is the client's CGST §2(6) aggregate turnover for
     the PRECEDING financial year — what Notification 78/2020-Central Tax reads
@@ -2809,17 +2829,8 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             "reason": registration_caveat,
         })
 
-    # Reconcile output tax to the GL. GSTR-1 tax total is gross (before credit
-    # notes, before debit notes); compare against sales-only GST in the GL
-    # (credit notes are the CDNR reduction, debit notes the CDNR increase).
-    gl = _gl_gst_movements(db, firm_id, client_id, start, end)
-    inv_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
-                     + int(r.get("igst_paise") or 0) for r in invoices_raw)
-    cn_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
-                    + int(r.get("igst_paise") or 0) for r in cns_raw)
-    dn_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
-                    + int(r.get("igst_paise") or 0) for r in sdns_raw)
-    net_books_output = inv_output - cn_output + dn_output
+    reconciliation = (_ledger_reconciliation(db, firm_id, client_id, start, end, invoices_raw, cns_raw, sdns_raw)
+                      if reconcile_to_ledger else None)
 
     return {
         "period": period,
@@ -2856,16 +2867,32 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # the note tables have no cess column. Empty on every return whose
         # notes adjust cess-free invoices, which is almost all of them.
         "cess_gaps": _note_cess_not_carried(cns_raw + sdns_raw, note_parents),
-        "reconciliation": {
-            "net_output_gst": {
-                "books_paise": net_books_output,
-                "ledger_paise": gl["output_paise"],
-                "difference_paise": net_books_output - gl["output_paise"],
-                "matched": net_books_output == gl["output_paise"],
-            },
-            "reconciled": net_books_output == gl["output_paise"],
-        },
+        "reconciliation": reconciliation,
         "ca_review_required": True,   # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    }
+
+
+def _ledger_reconciliation(db, firm_id: str, client_id: str, start: str, end: str,
+                           invoices_raw: list, cns_raw: list, sdns_raw: list) -> dict:
+    """The books' net output tax against the General Ledger's GST-output control accounts for the window. GSTR-1 tax total is gross (before
+    credit notes, before debit notes); compare against sales-only GST in the GL (credit notes are the CDNR reduction, debit notes the CDNR
+    increase)."""
+    gl = _gl_gst_movements(db, firm_id, client_id, start, end)
+    inv_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
+                     + int(r.get("igst_paise") or 0) for r in invoices_raw)
+    cn_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
+                    + int(r.get("igst_paise") or 0) for r in cns_raw)
+    dn_output = sum(int(r.get("cgst_paise") or 0) + int(r.get("sgst_paise") or 0)
+                    + int(r.get("igst_paise") or 0) for r in sdns_raw)
+    net_books_output = inv_output - cn_output + dn_output
+    return {
+        "net_output_gst": {
+            "books_paise": net_books_output,
+            "ledger_paise": gl["output_paise"],
+            "difference_paise": net_books_output - gl["output_paise"],
+            "matched": net_books_output == gl["output_paise"],
+        },
+        "reconciled": net_books_output == gl["output_paise"],
     }
 
 

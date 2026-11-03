@@ -51,6 +51,7 @@ from typing import Optional
 from domain.banking.charge_gst import split_inclusive_charge
 from core.db_paging import fetch_all
 from core.ist_clock import ist_date_of
+from services import gst_read_memo
 
 _logger = logging.getLogger("caflow.gst_advances")
 
@@ -171,9 +172,11 @@ def advance_tax_applicable(db, firm_id: str, client_id: str) -> bool:
     so the app-layer firm filter is the isolation control (CLAUDE.md) and a
     read keyed on a bare uuid is not one.
     """
-    rows = (db.table("clients").select("id, gst_advance_tax_applicable")
-            .eq("id", client_id).eq("firm_id", firm_id)
-            .limit(1).execute().data) or []
+    # Remembered for the length of one amendment build (POST-A-265): the same flag for every earlier period it rebuilds.
+    rows = gst_read_memo.remember(("advance.flag", firm_id, client_id), lambda: (
+        db.table("clients").select("id, gst_advance_tax_applicable")
+        .eq("id", client_id).eq("firm_id", firm_id)
+        .limit(1).execute().data) or [])
     return bool(rows and rows[0].get("gst_advance_tax_applicable"))
 
 
