@@ -111,9 +111,11 @@ def test_the_year_lock_takes_the_internal_id_through_every_caller():
     # argument nothing reads.
     assert "actor_auth_id" in svc
     assert '"locked_by": actor_id' in svc, "locked_by must take the internal id"
-    assert "actor_id=actor_auth_id or actor_id" in svc, (
-        "audit_log attribution keeps the auth id, falling back to the internal "
-        "one rather than recording nobody")
+    # POST-A-361 (3-11-2026): this used to pin `actor_id=actor_auth_id or actor_id`, "falling back to the internal one rather than recording
+    # nobody". `audit_log.actor_id` holds ONE kind of id, the auth id (test_the_audit_log_names_one_kind_of_actor), so a missing auth id is
+    # recorded as unknown and not as the internal id, which would put half a person's rows under the wrong key. Both callers pass the auth id.
+    assert "actor_id=actor_auth_id," in svc and "actor_auth_id or actor_id" not in svc, (
+        "audit_log attribution is the auth id, or unknown; never the internal id")
 
 
 @pytest.mark.skipif(not _PG, reason="needs HARNESS_PG — reads the real FK list")

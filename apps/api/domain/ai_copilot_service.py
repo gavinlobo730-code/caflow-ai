@@ -222,6 +222,12 @@ class AICopilotService:
         context (None = firm-wide, for Partner/Manager). Set by the router from
         core.authz.effective_client_ids so the AI never sees clients the caller
         is not authorized to access.
+
+        `user_id` is the caller's INTERNAL id (`users.id`), and it is used only to
+        attribute the model call: the usage row's `user_id` is a key to `users`, so
+        the sign-in id (which is what the conversation itself is stored under)
+        would be refused by the key and the row lost without a word, and a firm's
+        monthly AI cap would not count the chat.
         """
         # Save user message
         self._repo.add_message(firm_id, conversation_id, "user", user_message)

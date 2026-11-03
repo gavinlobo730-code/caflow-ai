@@ -142,7 +142,7 @@ async def send_message(
     assert_client_access(current_user, ctx_id)
     result = await _service().chat(
         firm_id=firm_id,
-        user_id=user_id,
+        user_id=current_user.get("id"),      # the INTERNAL id: chat uses it only to attribute the model call (ai_usage_events.user_id keys users.id)
         conversation_id=conversation_id,
         user_message=payload.content,
         context_type=payload.context_type or conv.get("context_type", "global"),
@@ -190,7 +190,7 @@ async def quick_chat(
     })
     result = await _service().chat(
         firm_id=firm_id,
-        user_id=user_id,
+        user_id=current_user.get("id"),      # the INTERNAL id, as above; `user_id` here is the sign-in id the conversation is stored under
         conversation_id=conv["id"],
         user_message=payload.content,
         context_type=payload.context_type or "global",

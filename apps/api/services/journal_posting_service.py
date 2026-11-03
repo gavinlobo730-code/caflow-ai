@@ -126,7 +126,7 @@ class JournalPostingService:
             "posted_by": actor_id, "updated_at": now,
         }).eq("id", journal_id).eq("firm_id", firm_id).execute()
 
-        self._audit(firm_id, journal_id, "approve", actor_auth_id or actor_id, {
+        self._audit(firm_id, journal_id, "approve", actor_auth_id, {
             "is_posted": True, "source_type": je.get("source_type"),
             "source_id": je.get("source_id"),
         })

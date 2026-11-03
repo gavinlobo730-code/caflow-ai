@@ -312,7 +312,7 @@ def set_client_lock(db, firm_id: str, client_id: str, financial_year: str,
         log_event(
             firm_id, "client_year_lock", client_id,
             "lock" if lock else "unlock",
-            actor_id=actor_auth_id or actor_id, actor_email=actor_email,
+            actor_id=actor_auth_id, actor_email=actor_email,
             new_data={"financial_year": financial_year, "reason": reason},
         )
     return {"financial_year": financial_year, "locked": lock}
