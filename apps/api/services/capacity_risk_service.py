@@ -31,6 +31,7 @@ from core.db_paging import fetch_all
 from core.ist_clock import ist_today
 from domain.practice import capacity_risk as rule
 from domain.practice import task_estimate
+from domain.risk.register import SETTLED_FILING_STATUSES
 from repositories.capacity_repository import DEFAULT_WEEKLY_HOURS
 
 #: Statuses that mean the work is done. Everything else is outstanding —
@@ -41,8 +42,10 @@ _TASK_DONE = frozenset({"completed", "cancelled"})
 
 #: `compliance_calendar.filing_status` values that mean nothing is owed.
 #: 'na' is the CA saying the obligation does not apply to this client, which is
-#: a decision and not a gap.
-_COMPLIANCE_SETTLED = frozenset({"filed", "na"})
+#: a decision and not a gap. THE SAME PAIR THE RISK REGISTER SETTLES ON, taken from it and not written a second time (POST-A-208): this was an
+#: unpinned copy of that pair, and a status added to one and not the other would have counted an obligation as owed in the capacity forecast
+#: that the register called settled.
+_COMPLIANCE_SETTLED = SETTLED_FILING_STATUSES
 
 
 def _effort_by_step(db, step_ids: list[str]) -> dict[str, float]:
