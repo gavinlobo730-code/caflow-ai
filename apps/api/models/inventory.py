@@ -15,7 +15,7 @@ the caller (the Inventory tab's adjustment form) suggests a default per
 reason and always sends the CA-confirmed value explicitly.
 """
 from pydantic import BaseModel, field_validator
-from typing import Optional
+from typing import Literal, Optional
 
 ADJUSTMENT_REASONS = {
     "physical_count_shortage",
@@ -173,3 +173,21 @@ class CostingPolicyIn(BaseModel):
     client_id: str
     method: str
     effective_from: Optional[str] = None  # YYYY-MM-DD
+
+
+class StockEffectRetryIn(BaseModel):
+    """Complete the stock effect of one issued document (POST-A-092). The kind is closed on the four documents that move stock."""
+    client_id: str
+    kind: Literal["sales_invoice", "purchase_bill", "credit_note", "debit_note"]
+    document_id: str
+
+    @field_validator("document_id")
+    @classmethod
+    def _document_id_is_an_id(cls, value: str) -> str:
+        """An id the database cannot read is a 422 with a sentence, not a failed query that reads as a server fault."""
+        import uuid
+        try:
+            uuid.UUID(str(value))
+        except (ValueError, AttributeError, TypeError):
+            raise ValueError("document_id must be the document's id.") from None
+        return str(value)

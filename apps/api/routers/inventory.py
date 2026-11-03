@@ -17,7 +17,7 @@ from typing import Optional
 from models.common import api_response
 from models.inventory import (StockAdjustmentIn, NrvWritedownIn, NrvWritedownPreviewIn,
                               StockCountOpenIn, StockCountSaveIn,
-                              CostingPolicyIn)
+                              CostingPolicyIn, StockEffectRetryIn)
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.audit_service import log_event
@@ -463,6 +463,62 @@ def adjust_stock(
     except Exception as e:
         _logger.error("adjust_stock: %s", e)
         return api_response(False, None, "Unable to record the stock adjustment. Please try again.")
+
+
+@router.get("/stock-effects/unrecorded")
+def documents_with_unrecorded_stock(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The client's issued documents whose stock effect was not all recorded (POST-A-092): a goods line with no stock row, or a stock
+    row with a value and no journal. The database function does the counting (migration 579). A read that could not be made is a
+    failure, never an empty list: an empty list means every goods document has its stock."""
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"total": 0, "documents": []})
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    found = retry_service.unrecorded_documents(get_supabase(), firm_id=current_user.get("firm_id") or "", client_id=client_id)
+    if found is None:
+        return api_response(False, None, "Could not check which documents have unrecorded stock just now. This is not the same as there being none.")
+    return api_response(True, found)
+
+
+@router.post("/stock-effects/retry")
+def retry_stock_effect(
+    data: StockEffectRetryIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Complete the stock effect of ONE issued document: the lines that did not move are moved and what has no journal is journalled
+    (POST-A-092). The same four functions a first issue calls, run again so that a line already recorded is not recorded twice.
+    A missing document and another client's document are the same 404."""
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(False, None, "Stock cannot be completed in the demo without a database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    try:
+        answer = retry_service.retry(
+            get_supabase(), firm_id=firm_id, client_id=data.client_id, kind=data.kind, document_id=data.document_id,
+            # journal_entries.created_by FK references users(id), not auth_user_id.
+            created_by=current_user.get("id"),
+        )
+    except retry_service.NotFound:
+        raise HTTPException(status_code=404, detail="Document not found.") from None
+    except retry_service.Refused as refusal:
+        raise HTTPException(status_code=409, detail=str(refusal)) from None
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("retry_stock_effect: %s", e)
+        return api_response(False, None, "Unable to complete the stock for this document just now. Check the list and try again.")
+    log_event(
+        firm_id, "stock_effect", data.document_id, "retry",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        new_data={"kind": data.kind, "recorded": answer.get("recorded")},
+    )
+    return api_response(True, answer)
 
 
 @router.post("/items/{service_catalogue_id}/writedown")

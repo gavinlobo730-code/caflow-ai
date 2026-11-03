@@ -13,8 +13,8 @@ WHAT IS HELD
     * the product is saved in every case;
     * a create with no opening balance, and a service, answer exactly as before (no key);
     * an EDIT answers only when it could be the edit that records the opening stock, because seeding is a no-op for an item that already
-      has an opening row; an edit of the quantity on an item that already has one answers nothing and the stock keeps its old figure (said
-      here so the day it is fixed the test changes with it, and on the ledger line);
+      has an opening row; an edit that CHANGES the quantity or cost of an item that already has one is not applied (the opening row is
+      recorded once) and says so in the server's sentence, and an edit that sends the same figures again says nothing;
     * a check that itself raises still answers, as "could not check", and never as a clean result.
 """
 from __future__ import annotations
@@ -169,16 +169,41 @@ def test_an_edit_whose_ledger_insert_is_refused_names_the_product(world, monkeyp
     assert "saved without it" in stock["message"] and "no opening stock row" in stock["message"]
 
 
-def test_an_edit_of_an_item_that_already_has_an_opening_row_answers_nothing_and_the_old_figure_stays(world, monkeypatch):
-    """Seeding is a no-op once an opening row exists, so an edited quantity is not applied. That is a real gap and is NOT this change: it is
-    named on the ledger line. What is held here is that the edit does not claim a record it did not make."""
+def test_an_edit_that_changes_the_figures_of_an_item_that_already_has_an_opening_row_says_it_was_not_applied(world, monkeypatch):
+    """Seeding is a no-op once an opening row exists, so an edited quantity or cost is not applied to the stock. The edit says so in the
+    server's sentence and the existing opening row is left exactly as it was."""
     _through(world, monkeypatch)
     item = _goods()["data"]
     before = [dict(r) for r in world.rows("inventory_stock_ledger")]
     out = _edit(item["id"], opening_qty_units=99, opening_cost_paise=7_000)
     assert out["success"] is True
-    assert "opening_stock" not in out["data"]
+    stock = out["data"]["opening_stock"]
+    assert stock["checked"] is True and stock["recorded"] == 0 and stock["not_recorded"][0]["id"] == item["id"]
+    assert "was changed on the product, but its opening stock was already recorded" in stock["message"]
+    assert "still shows the old figure" in stock["message"] and "Adjust stock by hand" in stock["message"]
     assert [dict(r) for r in world.rows("inventory_stock_ledger")] == before, "the existing opening row must be left exactly as it was"
+
+
+def test_an_edit_that_sends_the_same_figures_again_says_nothing(world, monkeypatch):
+    """The form re-sends the opening quantity and cost on every save: sending what the product already holds is not a change, however
+    the number is spelled ('10' against the column's '10.000')."""
+    _through(world, monkeypatch)
+    item = _goods()["data"]
+    held = world.rows("service_catalogue")[0]
+    out = _edit(item["id"], opening_qty_units=held["opening_qty_units"], opening_cost_paise=held["opening_cost_paise"])
+    assert out["success"] is True and "opening_stock" not in out["data"]
+    # The column can come back as '4.000' (NUMERIC) while the form sends 4: the same quantity, not a change.
+    held["opening_qty_units"] = f"{float(held['opening_qty_units']):.3f}"
+    again = _edit(item["id"], opening_qty_units=float(held["opening_qty_units"]), opening_cost_paise=held["opening_cost_paise"])
+    assert again["success"] is True and "opening_stock" not in again["data"], "'4.000' and 4 are the same quantity"
+
+
+def test_a_change_of_the_cost_alone_is_a_change(world, monkeypatch):
+    _through(world, monkeypatch)
+    item = _goods()["data"]
+    held = world.rows("service_catalogue")[0]
+    out = _edit(item["id"], opening_cost_paise=int(held["opening_cost_paise"]) + 1)
+    assert "opening_stock" in out["data"] and "was changed on the product" in out["data"]["opening_stock"]["message"]
 
 
 def test_an_edit_that_does_not_touch_the_opening_balance_answers_as_it_always_did(world, monkeypatch):

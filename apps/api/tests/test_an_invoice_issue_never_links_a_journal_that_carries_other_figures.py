@@ -786,7 +786,16 @@ def test_no_other_caller_of_the_kernel_anywhere_asks():
                     if isinstance(call, ast.Call) and getattr(call.func, "attr", "") == "_create_journal" \
                             and any(k.arg == "must_match" for k in call.keywords):
                         asking.add((path.relative_to(root).as_posix(), fn.name))
-    assert asking == {("services/phase2_journal_service.py", "journal_for_sales_invoice")}, asking
+    # The four stock journals pass the option THROUGH as a parameter that is None unless the call is a retry of a document's stock effect
+    # (`resume=True`, POST-A-092): a first run keeps the kernel's default and a retry reuses an existing entry only if it carries the very
+    # figures the rows hold.
+    assert asking == {
+        ("services/phase2_journal_service.py", "journal_for_sales_invoice"),
+        ("domain/inventory_service.py", "post_cogs_journal_entry"),
+        ("domain/inventory_service.py", "post_inventory_receipt_journal_entry"),
+        ("domain/inventory_service.py", "post_sale_return_journal_entry"),
+        ("domain/inventory_service.py", "post_purchase_return_journal_entry"),
+    }, asking
 
 
 # ── POST-A-092: the issue is one transaction, and a stranded draft can be listed ──────────────────────────────────

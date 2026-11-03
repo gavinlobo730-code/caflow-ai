@@ -71,3 +71,17 @@ def report(asked: list, landed: Optional[set], *, edited: bool = False) -> dict:
                     + (f"The product was saved without it, so it has no opening stock row. {REMEDY}" if edited else
                        f"{'The product was' if len(missing) == 1 else 'These products were'} created without it, so the Stock column shows 0. {REMEDY}")),
     }
+
+
+def not_applied(row: dict) -> dict:
+    """The answer for a product saved again with a DIFFERENT opening quantity or cost when its opening stock row is already in the stock
+    ledger (POST-A-092). The opening row is recorded once and seeding is a no-op after that, so the edit changed the catalogue row and not the
+    stock: the product's figures and the Stock column now disagree, and saying nothing left the person believing the stock had moved.
+    Same keys as `report`, so a screen reads one shape."""
+    name = str(row.get("name") or "unnamed").strip()
+    return {
+        "asked": 1, "recorded": 0, "checked": True,
+        "not_recorded": [{"id": row.get("id"), "name": row.get("name")}],
+        "message": (f"The opening quantity or cost of “{name}” was changed on the product, but its opening stock was already recorded in the "
+                    f"stock ledger and a later change does not rewrite it, so the Stock column still shows the old figure. {REMEDY}"),
+    }

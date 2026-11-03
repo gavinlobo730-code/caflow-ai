@@ -180,6 +180,21 @@ def _opening_stock_answer_for_one(db, firm_id: str, row: dict, *, opening_date, 
         return opening_stock_report.report(asked, None, edited=edited)
 
 
+def _opening_figures_differ(owned_row: dict, qty, cost_paise) -> bool:
+    """True when the edit's opening quantity or cost is not what the product held before it. Compared as numbers (the column comes back as
+    '10.000' and the form sends 10), and an absent figure only equals an absent one."""
+    from decimal import Decimal, InvalidOperation
+
+    def number(value):
+        try:
+            return None if value is None else Decimal(str(value))
+        except InvalidOperation:
+            return None
+
+    return (number(owned_row.get("opening_qty_units")) != number(qty)
+            or number(owned_row.get("opening_cost_paise")) != number(cost_paise))
+
+
 def _seed_the_edited_opening_stock(db, *, firm_id: str, current_user: dict, service_id: str, owned_row: dict, updated: dict,
                                    opening_date, qty, cost_paise) -> dict:
     """Seed an edited product's opening stock and say whether it landed (POST-A-092, the single-product half).
@@ -201,6 +216,9 @@ def _seed_the_edited_opening_stock(db, *, firm_id: str, current_user: dict, serv
     except Exception as e:
         _logger.error("update_service: opening balance seeding failed for %s: %s", service_id, e, exc_info=True)
     if had_opening_row:
+        if _opening_figures_differ(owned_row, qty, cost_paise):
+            from domain.inventory import opening_stock_report
+            return {**updated, "opening_stock": opening_stock_report.not_applied(updated)}
         return updated
     return {**updated, "opening_stock": _opening_stock_answer_for_one(
         db, firm_id, updated, opening_date=opening_date, qty=qty, cost_paise=cost_paise, edited=True)}
