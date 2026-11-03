@@ -57,6 +57,10 @@ export interface ServiceCatalogueItem {
   reorder_level_units?: number | null;
   /** Set by the API when a create collided with an existing active name. */
   duplicate?: boolean;
+  /** What the server did NOT do about the opening stock this save asked for (POST-A-092, the single-product half): its own sentence, shown as
+   *  written, and null when the opening stock landed. Absent when the save asked nothing of the stock, and on an edit that could not be the one
+   *  to record it. */
+  opening_stock?: { message: string | null };
 }
 
 /** Map a preset to the editor line fields it pre-fills (qty is left to the

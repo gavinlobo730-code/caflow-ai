@@ -42,7 +42,7 @@ const EMPTY_FORM: ServiceFormInput = {
 const inputCls = "w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500";
 
 export function ProductServiceFormModal({
-  clientId, existing, seedName, onClose, onSaved, onError,
+  clientId, existing, seedName, onClose, onSaved, onError, onNotice,
 }: {
   clientId: string;
   existing: ServiceCatalogueItem | null;
@@ -51,6 +51,10 @@ export function ProductServiceFormModal({
   onClose: () => void;
   onSaved: (item: ServiceCatalogueItem) => void;
   onError: (msg: string) => void;
+  /** Where a sentence about something the save did NOT do goes (the opening stock was not recorded): the product IS saved, so it is not an error
+   *  and a host shows it the way it shows its other "succeeded, with a consequence" sentences (an amber toast, the stock notice). A host that
+   *  passes none gets it through `onError`, which is a red message for something that is not a failure: every host in the product passes one. */
+  onNotice?: (msg: string) => void;
 }) {
   const [form, setForm] = useState<ServiceFormInput>(
     existing ? serviceToForm(existing) : { ...EMPTY_FORM, name: seedName ?? "" },
@@ -107,6 +111,10 @@ export function ProductServiceFormModal({
       if (!res.success || !res.data) throw new Error(res.error ?? "Save failed");
       if (res.data.duplicate) { fail(`"${form.name.trim()}" already exists for this client.`); return; }
       onSaved(res.data);
+      // The product is saved; its opening stock may not have been recorded. The server says so in its own sentence and the form shows it as
+      // written, after the "saved" it follows, so a stock figure that did not land is never read as "created" (POST-A-092).
+      const said = res.data.opening_stock?.message;
+      if (said) (onNotice ?? onError)(said);
     } catch (e) {
       fail(e instanceof Error ? e.message : "Save failed");
     } finally {

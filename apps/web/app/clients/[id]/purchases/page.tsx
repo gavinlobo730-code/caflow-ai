@@ -1047,6 +1047,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           onClose={onDone}
           onSaved={(item) => { setServices((prev) => [...prev, item]); onDone(); }}
           onError={(text) => setMsg({ type: "err", text })}
+          onNotice={(text) => setStockNotes((shown) => withMoreStockSentences(shown, [text]))}
         />
       ),
     },

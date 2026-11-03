@@ -2023,6 +2023,7 @@ function SalesInvoices({
           onClose={onDone}
           onSaved={(item) => { setServices((prev) => [...prev, item]); onDone(); }}
           onError={(msg) => showToast(msg, "error")}
+          onNotice={(msg) => showToast(msg, "warning")}
         />
       ),
     },
