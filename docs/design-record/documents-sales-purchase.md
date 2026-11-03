@@ -269,6 +269,30 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   `the-book-can-be-read-not-only-posted-to` asserted the same spelling (it now
   asserts the page IMPORTS it). That is the third time this pattern has been
   fixed in this file's history; write the rule, not a spelling of it.
+  **The entries from BEFORE the stamp existed were stamped by migration 580**
+  (POST-A-372, 4-11-2026): on production 5,658 Sales and 759 Purchase entries
+  carried neither column, `party_ledger_as_at` finds a customer only through
+  `source_id`, so for the client with the most receipts every invoice sat in the
+  unattributed row (Rs 19,91,50,407.00 of debits) against credits that were
+  attributed — every customer read as owed nothing and over-paid while the
+  account's total was right. The file stamps an entry only where exactly one
+  document of its OWN firm and client names it through `journal_entry_id` and
+  the type matches; it gives the vendor-payment entry that names its kind the
+  payment that names it; and it hands each reversal its original's source (the
+  kernel's own rule), repeating so a reversal of a reversal follows.
+  **A document has two entries legitimately** — the sale and its cost-of-goods
+  journal both carry the invoice as their source (5,645 of the 5,658) — so the
+  "is it already claimed" test is made on the entry TYPE, never on the source:
+  a test on the source would have refused 99% of the set. Only the two source
+  columns move (`updated_at` follows any update); the audited allowance is set
+  and cleared inside the file; the edit log is written BY the statement, one row
+  per entry, because the row trigger records nothing without a person; closed
+  and filed periods are touched because a link moves no figure and no lock
+  judges one. The rollback undoes only the entries the file's own audit rows
+  name, and only while they still carry what the file gave them. **Left alone
+  and counted in the report line:** an entry named by no document, by two, or by
+  a document of another client or firm, and a reversal whose original has no
+  source (on production one Purchase entry no bill names, and its reversal).
 
 - **THE SUPPLIER MASTER IS `public.vendors`, AND `public.suppliers` IS RETIRED**
   (PUR-16). Migration 030 created a second one and `/accounting/suppliers` was
