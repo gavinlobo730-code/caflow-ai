@@ -89,6 +89,22 @@ def _visible_or_none(current_user: dict, rec: Optional[dict]) -> Optional[dict]:
     return rec
 
 
+def _bank_proposals_may_have_changed(firm_id: str, client_id: str) -> None:
+    """A challan recorded, retracted, tied or untied changes what the bank queue should propose for the client's open debits (POST-A-272:
+    a debit equal to a recorded, untied challan is offered as its payment). Marks the open lines stale so the next look at the queue
+    re-proposes them in chunks. BEST EFFORT and never a failure of the route that called it: the register change has already happened
+    and a proposal is an offer, so a failed mark only leaves a stale offer until the next redraft."""
+    if _USE_MOCK:
+        return
+    try:
+        from core.supabase_client import get_supabase
+        from services import bank_draft_staleness
+        bank_draft_staleness.mark_stale(get_supabase(), firm_id, client_id)
+    except Exception as e:                                        # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(e, operation="tds_workspace.bank_proposals_may_have_changed", firm_id=firm_id, client_id=client_id)
+
+
 def _could_not(exc: Exception, action: str):
     """The answer for a handler whose body raised something nobody anticipated.
 
@@ -1087,6 +1103,7 @@ def create_challan(
             event_type="tds_challan_deposited",
             title=f"TDS Challan deposited: {rupee_text(body.amount_paise)} under {body.section}",
         )
+        _bank_proposals_may_have_changed(firm_id, body.client_id)
         return api_response(True, {**record, "compliance_obligations": _close_the_deposit_obligations(current_user, record)})
     except HTTPException:
         raise
@@ -1145,6 +1162,7 @@ def retract_challan(
             event_type="tds_challan_retracted",
             title=f"TDS challan {rec.get('challan_no') or ''} retracted: {rupee_text(int(rec.get('total_paise') or 0))}".replace("  ", " "),
         )
+        _bank_proposals_may_have_changed(firm_id, rec["client_id"])
         return api_response(True, answer)
     except challan_retraction.RetractionRefused as refusal:
         raise HTTPException(status_code=refusal.status, detail=refusal.sentence) from refusal
@@ -1217,6 +1235,7 @@ def link_challan_payment(
         from core.supabase_client import get_supabase
         done = challan_ledger.link_payment(get_supabase(), firm_id=firm_id, client_id=rec["client_id"], challan=rec,
                                            journal_entry_id=str(body.journal_entry_id), actor=current_user)
+        _bank_proposals_may_have_changed(firm_id, rec["client_id"])
         return api_response(True, done)
     except challan_ledger.LinkRefused as refusal:
         raise HTTPException(status_code=refusal.status, detail=refusal.sentence) from refusal
@@ -1237,6 +1256,7 @@ def unlink_challan_payment(challan_id: uuid.UUID, current_user: dict = Depends(r
             raise HTTPException(status_code=404, detail="Not found")
         from core.supabase_client import get_supabase
         done = challan_ledger.unlink_payment(get_supabase(), firm_id=firm_id, client_id=rec["client_id"], challan=rec, actor=current_user)
+        _bank_proposals_may_have_changed(firm_id, rec["client_id"])
         return api_response(True, done)
     except challan_ledger.LinkRefused as refusal:
         raise HTTPException(status_code=refusal.status, detail=refusal.sentence) from refusal

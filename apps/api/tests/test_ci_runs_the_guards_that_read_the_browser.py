@@ -91,18 +91,25 @@ def test_it_covers_the_marketing_frontend_too() -> None:
     )
 
 
-def test_a_comment_mentioning_apps_web_is_not_a_read() -> None:
-    """Matching the bare string finds ~89 modules; most only talk about it."""
-    selected = _load().modules_reading_the_browser()
-    mentions = [
-        p
-        for p in (API_ROOT / "tests").glob("test_*.py")
-        if "apps/web" in p.read_text(errors="ignore")
-    ]
-    assert len(selected) < len(mentions), (
+def test_a_comment_mentioning_apps_web_is_not_a_read(tmp_path: pathlib.Path) -> None:
+    """Matching the bare string finds ~89 modules; most only talk about it.
+
+    Held on a synthetic tests directory and not on this repository's own count of files that mention the path against files that read it:
+    that comparison needed at least one file in the suite to talk about `apps/web` without reading it, so it failed on the day every such
+    file became a reader (a guard that reads the screen's type, POST-A-272), which says nothing about the selector."""
+    module = _load()
+    (tmp_path / "test_reads.py").write_text('import pathlib\nROOT = pathlib.Path(__file__).parents[3] / "apps" / "web"\n')
+    (tmp_path / "test_talks.py").write_text('"""Mentions apps/web only in prose, and in a # apps/web comment."""\n# apps/web\nx = 1\n')
+    (tmp_path / "test_imports_a_reader.py").write_text("from test_reads import ROOT\n")
+    original = module.TESTS
+    module.TESTS = tmp_path
+    try:
+        selected = sorted(p.name for p in module.modules_reading_the_browser())
+    finally:
+        module.TESTS = original
+    assert selected == ["test_imports_a_reader.py", "test_reads.py"], (
         "The selector is matching prose rather than the path expression, which "
-        "would pull most of the suite into a job that exists to stay small."
-    )
+        "would pull most of the suite into a job that exists to stay small.")
 
 
 def test_finding_nothing_is_a_failure_not_an_empty_run(tmp_path: pathlib.Path) -> None:

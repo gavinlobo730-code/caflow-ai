@@ -76,7 +76,7 @@ export interface Entry {
   kind: "receipt" | "payment" | "contra";
   /** Maintained by the database. The browser never computes it. */
   entry_state: EntryState;
-  draft_source: "rule" | "document" | "history" | "transfer" | null;
+  draft_source: "rule" | "document" | "history" | "transfer" | "challan" | null;
   draft_grade: "ready" | "proposed" | null;
   draft_label: string | null; draft_reason: string | null;
   /** D19, migration 413. `draft_flags_tds_decision` is what a rule PROPOSED;

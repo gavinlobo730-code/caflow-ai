@@ -109,7 +109,18 @@ and its reason:
 | `document` | one open invoice/bill/receipt/payment with the same amount, unambiguously | **ready** when exact and alone; **proposed** when short (TDS?) or when several could fit |
 | `history` | how this payee was coded before, with the evidence | **ready** when unanimous over ≥ 3 postings; **proposed** otherwise |
 | `transfer` | the counterpart line on another own account | **ready** when high-confidence and unambiguous; **proposed** otherwise |
+| `challan` | a debit equal to the total of exactly one recorded TDS challan not yet tied to the ledger, paid within a week of the line (POST-A-272, migration 578) | **proposed**, never ready |
 | *(none)* | — | the line **needs you** |
+
+`challan` is the fifth source and deliberately the weakest: an amount is not a payment, two challans of one amount are a question
+(so a line two challans fit gets no draft at all), and a round-figure debit can be something else. Its rank within a grade is rule >
+document > challan > transfer > history, and a READY draft of any source beats it. **Passing it** codes the line on the ledger the
+challan's section clears (TDS Payable, or TDS Payable - Salary for section 192) the way a person's choice does, posts through the
+ordinary `bank_posting_service.post`, and only then ties the challan to the entry that posting made, through the challan's own door
+(`tds_challan_ledger_service.link_payment`, which asks what a hand-made tie asks and audits it first). A tie that cannot be made never
+undoes the pass: the line is in the books and the answer says in words that the challan was not tied. **Nothing is ever posted from
+the challan itself**, which would debit the liability twice. A challan recorded, retracted, tied or untied marks the client's open lines
+stale so the queue re-proposes them.
 
 The grade is the thing that makes 3,000 lines a day workable. The owner's
 objection to "draft then approve" was exactly right — *"a CA can't be

@@ -195,10 +195,12 @@ def test_ready_from_a_weaker_source_beats_proposed_from_a_stronger_one():
     assert E.choose(None, doc, None, hist) is hist
 
 
-def test_within_a_grade_the_order_is_rule_document_transfer_history():
-    r, d, t, h = (_d(s, E.GRADE_READY) for s in E.SOURCES)
-    assert E.choose(r, d, t, h) is r
-    assert E.choose(None, d, t, h) is d
+def test_within_a_grade_the_order_is_rule_document_challan_transfer_history():
+    by = {s: _d(s, E.GRADE_READY) for s in E.SOURCES}
+    r, d, c, t, h = (by[s] for s in (E.SOURCE_RULE, E.SOURCE_DOCUMENT, E.SOURCE_CHALLAN, E.SOURCE_TRANSFER, E.SOURCE_HISTORY))
+    assert E.choose(r, d, t, h, c) is r
+    assert E.choose(None, d, t, h, c) is d
+    assert E.choose(None, None, t, h, c) is c
     assert E.choose(None, None, t, h) is t
     assert E.choose(None, None, None, h) is h
     assert E.choose(None, None, None, None) is None
