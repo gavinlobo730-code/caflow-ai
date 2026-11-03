@@ -202,7 +202,7 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
             </div>
             <div>
               <label htmlFor="vs-end" className="text-xs text-ps-label">To</label>
-              <DateInput id="vs-end" value={end}
+              <DateInput id="vs-end" anchor={start || null} notBefore={start || null} value={end}
                      onChange={(v) => setEnd(v)}
                      className="mt-1 px-3 py-2 text-sm bg-white border border-ps-border rounded-md text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>

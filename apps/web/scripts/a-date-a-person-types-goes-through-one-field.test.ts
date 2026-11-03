@@ -338,7 +338,7 @@ test("the equality fails both ways: a new native input, and a conversion that le
 
 // ── 2 and 3. Every <DateInput> names itself, and says what it holds ──────────
 
-interface Use { line: number; id: string | null; named: boolean; gated: boolean; anchored: boolean; sided: boolean }
+interface Use { line: number; id: string | null; label: string | null; value: string | null; named: boolean; gated: boolean; anchored: boolean; sided: boolean }
 
 /** Every `<DateInput …>` in a source, with whether it is named and whether it
  *  reports its state. */
@@ -358,6 +358,12 @@ export function dateInputUses(src: string, name = "x.tsx"): Use[] {
       const has = (n: string) => attrs.some((a) => a.name.getText(sf) === n);
       const id = attrs.find((a) => a.name.getText(sf) === "id");
       const idText = id?.initializer && ts.isStringLiteral(id.initializer) ? id.initializer.text : null;
+      const labelAttr = attrs.find((a) => a.name.getText(sf) === "aria-label");
+      const labelText = labelAttr?.initializer
+        ? ts.isStringLiteral(labelAttr.initializer) ? labelAttr.initializer.text : labelAttr.initializer.getText(sf)
+        : null;
+      const valueAttr = attrs.find((a) => a.name.getText(sf) === "value");
+      const valueText = valueAttr?.initializer ? valueAttr.initializer.getText(sf) : null;
       // An enclosing <label> — the one wrapper whose naming is visible in the
       // source. A local `Field` component may or may not render one around its
       // children (the fixed-assets screen's draws its label BESIDE them), so a
@@ -369,6 +375,8 @@ export function dateInputUses(src: string, name = "x.tsx"): Use[] {
       uses.push({
         line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
         id: idText,
+        label: labelText,
+        value: valueText,
         named: has("aria-label") || has("aria-labelledby") || inLabel || (idText !== null && htmlFors.has(idText)),
         gated: has("onStateChange"),
         anchored: has("anchor"),
@@ -438,6 +446,59 @@ test("a <DateInput> that is anchored to another date says which side of it it be
   assert.deepEqual(unsided, [],
     "A DateInput with an `anchor` and no `notBefore` or `notAfter` reads a short form in the ANCHOR'S financial year, which is a year before " +
     "the anchor when the anchor is in the last months of one. Say which side: notBefore={the date it belongs after} or notAfter={the date it belongs before}.");
+});
+
+// POST-A-126 (item 2). Fields that are an END by nature, and the 'to' half of a range, are anchored on the date they end after, so a short
+// form typed in them is read on the right side of it: `15/6` beside a start of 01/03/2026 is 15/06/2026 and not 15/06/2025, and a 'to'
+// typed `15/3` beside a 'from' of 01/04/2025 is 15/03/2026 and not the year of today's financial year. A box with no start typed yet reads
+// as before (an empty anchor is no anchor). file -> the boxes, named by their aria-label or id, or by their value expression where they
+// have neither.
+const ENDS: Record<string, string[]> = {
+  "components/fixed-assets/CwipTab.tsx": ["Approved completion date", "Now expected to complete on"],
+  "app/pipeline/page.tsx": ["Next follow-up date"],
+  "components/compliance/EditNoticeReadingModal.tsx": ["notice-due"],
+  "components/sales/SalesCycleTab.tsx": ["{form.valid_until}", "{form.expected_delivery_date}"],
+  "components/purchases/PurchaseCycleTab.tsx": ["{form.expected_date}"],
+  "app/settings/dsc-tracker/page.tsx": ["New expiry date"],
+  "app/clients/[id]/accounting/page.tsx": ["Ledger to"],
+  "app/clients/[id]/inventory/page.tsx": ["Stock ledger to"],
+  "app/clients/[id]/sales/page.tsx": ["Statement to"],
+  "app/portal/dashboard/page.tsx": ["{stmtEnd}"],
+  "app/reports/page.tsx": ["Report to"],
+  "app/settings/audit-log/page.tsx": ["Audit log to date"],
+  "app/time/page.tsx": ["Export to"],
+  "components/PeriodPicker.tsx": ["To date"],
+  "components/purchases/VendorStatementsTab.tsx": ["vs-end"],
+  "components/ui/data-table.tsx": ["{`${def.label} to`}"],
+};
+
+function nameOf(u: Use): string | null { return u.label ?? u.id ?? u.value; }
+
+test("an end that is an end by nature, and the 'to' half of a range, are anchored on the date they come after", () => {
+  const uses = usesInTree();
+  const problems: string[] = [];
+  for (const [file, names] of Object.entries(ENDS)) {
+    for (const name of names) {
+      const found = (uses[file] ?? []).filter((u) => nameOf(u) === name);
+      if (found.length !== 1) { problems.push(`${file}: expected one box named ${name}, found ${found.length}`); continue; }
+      if (!found[0].anchored || !found[0].sided) problems.push(`${file}:${found[0].line} ${name} must say anchor and notBefore`);
+    }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test("any box whose own name says it is a 'to' or an end is anchored, wherever it is", () => {
+  // The rule, not the list above: a NEW range filter whose 'to' box forgets its anchor is found here. A box that is an end for another
+  // reason is listed with the reason.
+  const NOT_AN_END: Record<string, string> = {};
+  const ENDISH = /(?:^|[\s-])(?:to|end|until)(?:$|[\s-])|\bto date\b/i;
+  const unanchored = Object.entries(usesInTree()).flatMap(([file, us]) => us
+    .filter((u) => !u.anchored && ENDISH.test(u.label ?? u.id ?? ""))
+    .filter((u) => !(`${file}#${u.label ?? u.id}` in NOT_AN_END))
+    .map((u) => `${file}:${u.line} ${u.label ?? u.id}`));
+  assert.deepEqual(unanchored, [],
+    "A box named 'to', 'end' or 'until' reads a short form in a financial year chosen from today, not from the date it comes after. " +
+    "Give it anchor={start || null} notBefore={start || null}, or list it here with the reason it is not an end.");
 });
 
 function usesInTree(): Record<string, Use[]> {

@@ -47,7 +47,11 @@ test("with no search in force there is no Clear link", () => {
 test("the toolbar link clears the local preferences AND the search box, which reaches the server through the debounce", () => {
   const src = fs.readFileSync(path.join(import.meta.dirname, "..", "components/ui/data-table.tsx"), "utf8");
   assert.match(src, /serverSearch \? serverPaged\?\.search : t\.prefs\.search/, "visibility asks the server's side for a server table");
-  assert.match(src, /onClick=\{\(\) => \{ t\.clearFilters\(\); setQ\(""\); \}\}\s+className="text-xs font-medium text-ps-label/,
+  // Both Clear buttons are ONE function since POST-A-126 (it also remounts the date filters); what it must do is unchanged: clear the local
+  // preferences AND the search box, which reaches a server-side search through the debounce.
+  assert.match(src, /const clearAll = \(\) => \{ t\.clearFilters\(\); setQ\(""\); setClearedTimes\(/, "clearAll clears the preferences and the search box");
+  assert.match(src, /onClick=\{clearAll\}\s+className="text-xs font-medium text-ps-label/,
     "the toolbar link must do what the empty-state button does");
+  assert.match(src, /\/\/ clearFilters alone would leave the server still filtering\.\s+onClick=\{clearAll\}/, "so must the empty-state button");
   assert.doesNotMatch(src, /<button onClick=\{t\.clearFilters\}/, "the bare clearFilters handler is the defect");
 });

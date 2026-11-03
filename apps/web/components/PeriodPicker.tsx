@@ -74,6 +74,7 @@ export default function PeriodPicker({
           />
           <span className="text-xs text-ps-hint">to</span>
           <DateInput
+            anchor={customFrom || null} notBefore={customFrom || null}
             value={customTo}
             onChange={onCustomToChange}
             aria-label="To date"

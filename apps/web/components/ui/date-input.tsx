@@ -95,11 +95,22 @@
  *   It does not reset itself when a parent sets `value` to `""` while the box
  *   holds unreadable text the parent was already told about — `""` is what the
  *   box last handed up, so nothing differs. A parent that wants a reset remounts
- *   the field with a `key`.
+ *   the field with a `key`; the two Clear buttons that empty a date filter (the
+ *   shared table's and the bank book's) do (POST-A-126). A form that SAVES a date
+ *   is not exposed: a save is refused while a box holds unreadable text.
+ *
+ * ── WHEN AN OVERLAY CLOSES OVER IT ──────────────────────────────────────────
+ *
+ *   A date commits on blur, so Escape pressed with the cursor in the box would
+ *   close an overlay that asks about unsaved typing before the parent had seen
+ *   the date. The box carries `data-typed-date` (TYPED_DATE_MARKER) so that the
+ *   shared Modal and Drawer can leave it first and close on the next tick
+ *   (lib/dates/closeAfterDateCommit.ts).
  */
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
+  TYPED_DATE_MARKER,
   TYPED_DATE_PLACEHOLDER,
   dateFieldState,
   isoFromRead,
@@ -188,6 +199,7 @@ export const DateFieldView = React.forwardRef<HTMLInputElement, DateFieldViewPro
       <span className={cn("block min-w-0", wrapperClassName)}>
         <input
           {...rest}
+          {...{ [TYPED_DATE_MARKER]: "" }}
           ref={ref}
           id={inputId}
           type="text"

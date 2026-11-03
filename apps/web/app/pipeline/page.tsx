@@ -570,6 +570,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
               </label>
               <DateInput
                 aria-label="Next follow-up date"
+                anchor={form.lastContactDate || null} notBefore={form.lastContactDate || null}
                 value={form.nextFollowUpDate}
                 onChange={(v) =>
                   setForm({ ...form, nextFollowUpDate: v })

@@ -634,7 +634,7 @@ function StockLedgerDrillDown({
           </div>
           <div>
             <label className="block text-3xs font-medium text-ps-hint mb-1">To</label>
-            <DateInput aria-label="Stock ledger to" value={endDate} onChange={(v) => setEndDate(v)}
+            <DateInput aria-label="Stock ledger to" anchor={startDate || null} notBefore={startDate || null} value={endDate} onChange={(v) => setEndDate(v)}
               className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <button onClick={() => { setStartDate(fyRange.start); setEndDate(fyRange.end); }} className="text-xs text-blue-600 hover:underline pb-1.5">

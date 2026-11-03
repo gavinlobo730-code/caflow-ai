@@ -422,6 +422,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
               <label className="text-sm">
                 <span className="mb-1 block text-ps-label">Valid until</span>
                 <DateInput
+                  anchor={form.document_date || null} notBefore={form.document_date || null}
                   value={form.valid_until}
                   onChange={(v) => setForm({ ...form, valid_until: v })}
                   onStateChange={dates.watch("valid_until", "Valid until")}
@@ -445,6 +446,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                 <label className="text-sm">
                   <span className="mb-1 block text-ps-label">Expected delivery</span>
                   <DateInput
+                    anchor={form.document_date || null} notBefore={form.document_date || null}
                     value={form.expected_delivery_date}
                     onChange={(v) => setForm({ ...form, expected_delivery_date: v })}
                     onStateChange={dates.watch("expected_delivery_date", "Expected delivery")}

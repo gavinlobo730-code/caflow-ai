@@ -433,7 +433,7 @@ function ProjectModal({ clientId, onClose, onSaved }: {
           with neither rather than reporting it as on track. */}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Approved completion date" hint="As originally approved — blank if there is none">
-          <DateInput aria-label="Approved completion date" value={approvedDate} onChange={setApprovedDate}
+          <DateInput aria-label="Approved completion date" anchor={started || null} notBefore={started || null} value={approvedDate} onChange={setApprovedDate}
             onStateChange={dates.watch("approved", "Approved completion date")} className={INPUT} />
         </Field>
         <Field label="Approved cost (₹)" hint="As originally approved">
@@ -443,7 +443,7 @@ function ProjectModal({ clientId, onClose, onSaved }: {
         </Field>
       </div>
       <Field label="Now expected to complete on" hint="A fresh judgement, not the original promise">
-        <DateInput aria-label="Now expected to complete on" value={expected} onChange={setExpected} onStateChange={dates.watch("expected", "Now expected to complete on")} className={INPUT} />
+        <DateInput aria-label="Now expected to complete on" anchor={started || null} notBefore={started || null} value={expected} onChange={setExpected} onStateChange={dates.watch("expected", "Now expected to complete on")} className={INPUT} />
       </Field>
     </Shell>
   );

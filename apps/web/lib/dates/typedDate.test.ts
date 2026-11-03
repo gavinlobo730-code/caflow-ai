@@ -81,6 +81,20 @@ test("29/02 is a date only in a leap year, and without a year it is judged in th
   assert.match((parseTypedDate("29/02/2026", JULY) as { message: string }).message, /not a leap year/);
 });
 
+test("a bare 29/02 that lands in a non-leap February says how to get a leap one, and a year the person typed does not get the hint (POST-A-126)", () => {
+  const bare = parseTypedDate("29/02", { ...JULY, financialYear: "2025-26" }) as { kind: string; message: string };
+  assert.equal(bare.kind, "error");
+  assert.match(bare.message, /Feb 2026 has only 28 days\. 2026 is not a leap year\./);
+  assert.match(bare.message, /Type the year in full if you meant a leap year, such as 29\/02\/2028\./);
+  const typed = parseTypedDate("29/02/2026", JULY) as { message: string };
+  assert.match(typed.message, /not a leap year/);
+  assert.doesNotMatch(typed.message, /Type the year/, "a year somebody typed is theirs: only the reason is given");
+  // the example is the NEXT leap year, and 2100 is not one
+  assert.match((parseTypedDate("29/02", { ...JULY, financialYear: "2098-99" }) as { message: string }).message, /such as 29\/02\/2104/);
+  // another day that does not exist is not helped by a year, so it does not say so
+  assert.doesNotMatch((parseTypedDate("31/04", { ...JULY, financialYear: "2025-26" }) as { message: string }).message, /Type the year/);
+});
+
 test("ddmmyy resolves to 20yy and the result carries the full date to show at once", () => {
   const r = parseTypedDate("150326", JULY);
   assert.equal(r.kind, "date");

@@ -525,7 +525,7 @@ export default function PortalDashboardPage() {
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <label className="text-xs text-ps-label">To
-                  <DateInput value={stmtEnd} onChange={(v) => setStmtEnd(v)}
+                  <DateInput anchor={stmtStart || null} notBefore={stmtStart || null} value={stmtEnd} onChange={(v) => setStmtEnd(v)}
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <button disabled={busy} onClick={reloadStatement}

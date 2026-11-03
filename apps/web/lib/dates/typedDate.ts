@@ -106,6 +106,10 @@ export const MAX_YEAR = 2999;
 export const TYPED_DATE_EXAMPLE = "15/03/2026";
 export const TYPED_DATE_PLACEHOLDER = "dd/mm/yyyy";
 
+/** The attribute every typed-date box carries (components/ui/date-input.tsx). A date box COMMITS on blur, so an overlay that hears Escape and
+ *  asks about unsaved typing has to know the focused element is one (lib/dates/closeAfterDateCommit.ts). One name, here, read by both. */
+export const TYPED_DATE_MARKER = "data-typed-date";
+
 export type TypedDateProblem =
   | "unreadable"
   | "year_digits"
@@ -163,6 +167,13 @@ function pad(n: number, width = 2): string {
  *  month is the last day of this one, leap years included. */
 function daysInMonth(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/** The first leap year after `year` (2026 -> 2028, 2099 -> 2104: 2100 is divisible by 100 and not by 400). */
+function nextLeapYear(year: number): number {
+  let y = year + 1;
+  while (daysInMonth(y, 2) !== 29) y += 1;
+  return y;
 }
 
 function isRealDay(y: number, m: number, d: number): boolean {
@@ -390,8 +401,11 @@ export function parseTypedDate(raw: string | null | undefined, ctx: TypedDateCon
   }
   const last = daysInMonth(year, month);
   if (day > last) {
+    // A bare 29/02 is read in the financial year's own February, which the person did not choose: say that typing the year is the way out,
+    // and name the next leap year so the sentence is one they can act on. A year they typed is theirs and gets only the reason (POST-A-126).
     const leap = month === 2 && day === 29
-      ? ` ${year} is not a leap year.`
+      ? ` ${year} is not a leap year.` +
+        (shape.year === null ? ` Type the year in full if you meant a leap year, such as 29/02/${nextLeapYear(year)}.` : "")
       : "";
     return {
       kind: "error", problem: "no_such_day",

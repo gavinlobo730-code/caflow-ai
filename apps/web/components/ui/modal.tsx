@@ -15,6 +15,7 @@ import { useEffect, useRef, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { trapTabKey } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
+import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 
 export function Modal({
   title,
@@ -52,7 +53,9 @@ export function Modal({
         // does not also bubble to a parent Drawer's document listener (a Modal
         // may be rendered inside the Invoice Hub drawer).
         e.stopPropagation();
-        onCloseRef.current();
+        // A date box commits on blur: with the cursor in one, it is left first and the close (which may ask about unsaved typing) runs on
+        // the next tick, by the closure that has seen the date (POST-A-126).
+        closeAfterTheFocusedDateCommits(() => onCloseRef.current());
         return;
       }
       trapTabKey(e, panelRef.current);

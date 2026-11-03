@@ -806,6 +806,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-ps-label font-medium">To</label>
                 <DateInput aria-label="Report to"
+                  anchor={fromDate || null} notBefore={fromDate || null}
                   value={toDate}
                   onChange={(v) => setToDate(v)}
                   className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
