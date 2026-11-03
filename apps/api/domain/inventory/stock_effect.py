@@ -28,9 +28,11 @@ None for it: an absent answer and a good answer must not look alike on the wire.
 
 WHAT THIS DOES NOT DO
 
-It does not retry, and it does not change what the four functions write. A partly moved document (line 1 written, line 2
-refused) still leaves the stock ledger ahead of the general ledger by line 1: the COGS journal is posted from a total that
-is only reached when every line moved. That is recorded in the design record, and the nightly check still finds it.
+It does not retry (`stock_resume` and `services/stock_effect_retry_service` do: the four functions take `resume=True`, and the
+client's Inventory tab lists the documents this module's sentences are about and offers Complete the stock), and it does not change
+what the four functions write on a first run. A partly moved document (line 1 written, line 2 refused) still leaves the stock
+ledger ahead of the general ledger by line 1 until it is completed: the COGS journal is posted from a total that is only reached
+when every line moved. The nightly check still finds it, and so does the Inventory tab's list.
 """
 from __future__ import annotations
 
@@ -42,10 +44,11 @@ JOURNAL_POSTED = "posted"
 JOURNAL_NOT_POSTED = "not_posted"
 JOURNAL_STATES = (JOURNAL_NOT_OWED, JOURNAL_POSTED, JOURNAL_NOT_POSTED)
 
-REMEDY_CANCEL = "Adjust stock by hand, or cancel the document and enter it again once the cause is fixed."
+REMEDY_CANCEL = ("Once the cause is fixed, press Complete the stock on the client's Inventory tab; or adjust stock by hand, or cancel "
+                 "the document and enter it again.")
 #: A credit note and a purchase debit note have no cancel route (a draft is deleted, an issued one is left), so the only
 #: thing the sentence can honestly offer for them is the stock adjustment.
-REMEDY_ADJUST = "Adjust stock by hand once the cause is fixed."
+REMEDY_ADJUST = "Once the cause is fixed, press Complete the stock on the client's Inventory tab, or adjust stock by hand."
 _DISAGREE = "Until then the stock report and the Inventory account do not agree with this document."
 
 #: kind -> (the document as a person names it, what was done to it, what was meant to happen to stock, that in the passive
@@ -81,6 +84,9 @@ class StockEffect:
     #: Set once the loop over the goods lines has FINISHED. `moved_lines == goods_lines` proves nothing before this, because
     #: `goods_lines` counts the lines reached and a call that raised partway through a line has reached it and not finished it.
     lines_done: bool = False
+    #: Set by a retry that met a line it cannot complete exactly (`stock_resume.CannotResume`). It is a sentence written in
+    #: `stock_resume`, safe for a screen, and it replaces the generic one: the document's stock is left as it was found.
+    cannot_resume: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.kind not in DOCUMENTS:
@@ -117,6 +123,8 @@ class StockEffect:
         ref = str(self.reference).strip() if self.reference else ""
         head = f"{noun.capitalize()} {ref} was {verb}, but " if ref else f"This {noun} was {verb}, but "
         tail = f"{remedy} {_DISAGREE}"
+        if self.cannot_resume:
+            return f"{head}{self.cannot_resume} {_DISAGREE}"
         if self.stopped_by is not None and self.goods_lines == 0:
             # Nothing was counted, so nothing is known: the document may carry no goods at all. Say that, and send the CA to look.
             return (f"{head}an error stopped the stock step before it could say what it did, so any goods on it may not have "

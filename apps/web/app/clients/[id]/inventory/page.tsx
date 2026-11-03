@@ -28,6 +28,7 @@ import { CostFormulaPanel } from "@/components/inventory/CostFormulaPanel";
 import { LocationsAndBatches } from "@/components/inventory/LocationsAndBatches";
 import { StockAgeingPanel } from "@/components/inventory/StockAgeing";
 import { ReorderPanel } from "@/components/inventory/ReorderPanel";
+import { UnrecordedStockPanel } from "@/components/inventory/UnrecordedStockPanel";
 
 import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
@@ -446,6 +447,10 @@ export default function InventoryPage() {
         <div className="mb-4">
           <CostFormulaPanel clientId={clientId} />
         </div>
+
+        {/* POST-A-092 — documents issued with their stock effect incomplete. Above the register for the same reason as the formula:
+            a closing stock figure read while a sale or a purchase is missing from it is a wrong figure. Silent when there are none. */}
+        <UnrecordedStockPanel clientId={clientId} />
 
         {/* apex-bank-assets-inventory-11. The comments on the three panels
             below all say the register is what answers "what do I hold" and

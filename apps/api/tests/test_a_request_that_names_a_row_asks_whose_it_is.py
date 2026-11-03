@@ -129,6 +129,11 @@ DEPTH = 5
 
 # A door the rule flags that is safe, and why. Shrink-only: each key must still be flagged.
 REVIEWED: dict[tuple[str, str, str], str] = {
+    ("inventory", "retry_stock_effect", "document"):
+        "the service loads the document by its id AND the firm AND the client before it does anything (`stock_effect_retry_service._load`, one "
+        "literal table per kind), and a document that is absent and one that is another client's raise the same NotFound, which the route "
+        "answers 404 'Document not found.'; nothing is written before the load. There is no `named_row_ownership` helper for a credit or "
+        "debit note, and the four kinds are loaded the same way.",
     ("assignments", "remove_assignment", "member"):
         "a DELETE: it stores no person. The row it removes is matched on the firm, the client AND the person together, so a `user_id` that is "
         "another firm's, or invented, matches nothing and the answer is 'Assignment not found'. (Counted as asked until the first review of the "

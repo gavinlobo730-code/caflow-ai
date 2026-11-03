@@ -1760,6 +1760,23 @@ export type UnpostedInvoiceRow = {
 
 export type UnpostedInvoices = { unposted: UnpostedInvoiceRow[]; count: number };
 
+/** A live document whose stock effect was not all recorded (POST-A-092), as the database function counts it. `owed_lines` are the goods
+ *  lines the stock step meant to move, `moved_lines` the stock rows it wrote, `unjournalled_rows` the rows with a value and no journal. */
+export type UnrecordedStockDocument = {
+  kind: "sales_invoice" | "purchase_bill" | "credit_note" | "debit_note";
+  document_id: string;
+  reference: string | null;
+  document_date: string | null;
+  owed_lines: number;
+  moved_lines: number;
+  unjournalled_rows: number;
+};
+
+export type UnrecordedStock = { total: number; documents: UnrecordedStockDocument[] };
+
+/** What a retry answered. `recorded` is true, false, or null when the document carries no goods line; `message` is the server's sentence. */
+export type StockRetryAnswer = { recorded: boolean | null; message: string; stock_effect: Record<string, unknown> | null };
+
 export type IrnWorklistWindow = {
   /** Five states and none stands in for another: an invoice of a client below
    *  the IRP's turnover floor OWES an IRN and has NO clock. */
@@ -5148,6 +5165,13 @@ export const api = {
 
   inventory: {
     items: (params: Record<string, string>) => request(`/api/inventory/items?${new URLSearchParams(params)}`),
+    /** POST-A-092 — the client's issued documents whose stock was not all recorded. A failed read is a failure and never an empty list. */
+    unrecordedStock: (clientId: string) =>
+      request<ApiResp<UnrecordedStock>>(`/api/inventory/stock-effects/unrecorded?${new URLSearchParams({ client_id: clientId })}`),
+    /** POST-A-092 — complete the stock effect of one issued document. The server moves the lines that did not move and journals what has
+     *  no journal; a line already recorded is not recorded twice. */
+    retryStockEffect: (body: { client_id: string; kind: UnrecordedStockDocument["kind"]; document_id: string }) =>
+      request<ApiResp<StockRetryAnswer>>(`/api/inventory/stock-effects/retry`, { method: "POST", body: JSON.stringify(body) }),
     /** Closing stock AS AT a date — the statement that ties to the Inventories
      *  line on the balance sheet. Distinct from `items`, which is the CURRENT
      *  position and takes no date: the two answer different questions, and only
