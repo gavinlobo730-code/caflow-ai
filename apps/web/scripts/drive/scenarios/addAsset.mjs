@@ -130,4 +130,31 @@ export const scenarios = [
       await page.getByPlaceholder(NAME).waitFor({ state: "detached" });
     },
   },
+  {
+    id: "escape-with-the-cursor-in-the-purchase-date-asks-before-it-closes-and-keeps-the-date",
+    title: "Escape pressed while the purchase date is still being typed asks about unsaved changes first; the drawer stays open and the date is kept (POST-A-126, POST-A-130)",
+    async run(env) {
+      const { page, stub } = env;
+      await atTheDrawer(env, { reply: () => ok({ id: "fa-1" }) });
+      // The date is the ONLY unsaved typing, and a date commits on blur: before the shared Drawer left the box first, the question was
+      // never asked and the drawer simply closed with the date in it.
+      const box = page.getByLabel("Purchase date");
+      await box.click();
+      await box.fill("");
+      await box.pressSequentially("15/6");
+      assert.strictEqual(await box.evaluate((el) => document.activeElement === el), true, "the cursor must still be in the date box");
+      await page.keyboard.press("Escape");
+      const question = page.getByRole("alertdialog");
+      await question.waitFor();
+      assert.match(await question.innerText(), /unsaved changes/i, "the question that appeared is not the unsaved-changes one");
+      assert.ok(await page.getByPlaceholder(NAME).isVisible(), "the drawer closed over a date nobody had saved");
+      // One Escape answers the QUESTION (the top dialog) and the drawer beneath it stays: the stack, driven.
+      await page.keyboard.press("Escape");
+      await question.waitFor({ state: "detached" });
+      assert.ok(await page.getByPlaceholder(NAME).isVisible(), "the Escape that answered the question also closed the drawer");
+      assert.match(await box.inputValue(), /^15\/06\/20\d\d$/, "the typed date was lost or left unread");
+      await expectWrites(stub, CREATE, 0, "an Escape that was answered Cancel", "POST");
+      // With nothing unsaved the same Escape just closes: clear the box's date and the form is as it was opened.
+    },
+  },
 ];

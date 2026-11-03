@@ -7,9 +7,8 @@
 //     (5) A typed-date box commits on BLUR. An overlay that hears Escape and asks "you have unsaved changes" reads its dirty flag from the
 //         render it is in, which has not seen a date still sitting in the box, so the question would be skipped and the date lost. The
 //         employee drawer was fixed by hand. The shared Modal and Drawer, which the other overlays are moving onto, now do it once.
-//         NO overlay on them asks before closing TODAY (the fixed-asset drawers are hand-built and do not hear Escape at all), so this is
-//         held by the unit tests of the helper and by this source guard, and has not been seen in a browser: the scenario goes in with the
-//         first caller.
+//         The fixed-asset Add and Correct drawers (moved onto the shared Drawer under POST-A-130) are the first that ask before closing; the
+//         browser drive of Add Asset (`add-asset`) holds it end to end, and this source guard holds the routing.
 //     (4) A box holding text it could not read has already told its parent "no date" (`""`), so a parent that clears to `""` changes
 //         nothing the box can see and the unreadable text stayed on screen with its sentence. The contract is a remount with a key;
 //         the two Clear buttons that empty date state (the shared table's and the bank book's) did not remount.

@@ -121,7 +121,6 @@ const FROZEN: Record<string, number> = {
   "app/clients/[id]/accounting/page.tsx": 3,
   "app/clients/[id]/compliance/gst/page.tsx": 1,
   "app/clients/[id]/documents/page.tsx": 1,
-  "app/clients/[id]/fixed-assets/page.tsx": 2,
   "app/clients/[id]/health/page.tsx": 1,
   "app/clients/[id]/inventory/page.tsx": 3,
   "app/clients/[id]/lifecycle/page.tsx": 1,

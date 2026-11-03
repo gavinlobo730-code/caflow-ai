@@ -113,10 +113,13 @@ for (const form of FORMS) {
 // 2. EVERY WAY OUT OF A DRAWER ASKS FIRST
 // ═════════════════════════════════════════════════════════════════════════════
 
-const DRAWERS: { file: string; component: string }[] = [
-  { file: "components/payroll/EmployeeDrawer.tsx", component: "EmployeeDrawer" },
-  { file: "app/clients/[id]/fixed-assets/page.tsx", component: "AddAssetDrawer" },
-  { file: "app/clients/[id]/fixed-assets/page.tsx", component: "CorrectAssetDrawer" },
+/** `minHandlers` is the floor under "the walk found something to judge". The two fixed-asset drawers are the shared Drawer since POST-A-130, which
+ *  owns the backdrop click and Escape (and reads the `onClose` it is handed), so the handlers written in THEIR source are the buttons: the Correct
+ *  drawer has Cancel and Save only. */
+const DRAWERS: { file: string; component: string; minHandlers: number }[] = [
+  { file: "components/payroll/EmployeeDrawer.tsx", component: "EmployeeDrawer", minHandlers: 3 },
+  { file: "app/clients/[id]/fixed-assets/page.tsx", component: "AddAssetDrawer", minHandlers: 3 },
+  { file: "app/clients/[id]/fixed-assets/page.tsx", component: "CorrectAssetDrawer", minHandlers: 2 },
 ];
 
 /** Handler-valued JSX attributes and listener registrations that run on a
@@ -141,7 +144,7 @@ for (const d of DRAWERS) {
     const fn = functionsIn(parse(d.file)).get(d.component);
     assert.ok(fn, `${d.component} not found`);
     const handlers = gestureHandlers(fn);
-    assert.ok(handlers.length >= 3, `found only ${handlers.length} gesture handlers — the walk is vacuous`);
+    assert.ok(handlers.length >= d.minHandlers, `found only ${handlers.length} gesture handlers — the walk is vacuous`);
     const offenders = handlers.filter((h) => mentions(h, "onClose")).map((h) => h.getText().slice(0, 80));
     assert.deepEqual(offenders, [],
       "a handler that names onClose bypasses the leave question — go through the guard");

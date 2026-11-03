@@ -8,6 +8,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Drawer } from "@/components/ui/drawer";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -604,8 +605,8 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex justify-end" onClick={leave}>
-      <div className="bg-white w-full max-w-md h-full overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
+    <Drawer open onClose={leave} ariaLabel={`Correct ${asset.asset_code ?? asset.asset_name}`} widthClass="sm:max-w-md">
+      <div className="p-6 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Correct {asset.asset_code ?? asset.asset_name}</h3>
           <p className="text-2xs text-ps-hint mt-1">
@@ -650,7 +651,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
           </Button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -958,8 +959,8 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && leave()}>
-      <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
+    <Drawer open onClose={leave} ariaLabel="Add fixed asset" widthClass="sm:max-w-[440px]">
+      <div className="flex min-h-full flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Fixed Asset</h2>
           <button onClick={leave} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
@@ -1263,7 +1264,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           </Button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 
