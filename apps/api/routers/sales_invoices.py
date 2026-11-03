@@ -2163,13 +2163,14 @@ def _post_and_mark_issued(db, current_user: dict, inv: dict, invoice_id: str):
     try:
         try:
             journal_id = phase2_journal_service.journal_for_sales_invoice(
-                invoice=inv, firm_id=firm_id, client_id=client_id, issue_at=now_iso)
+                invoice=inv, firm_id=firm_id, client_id=client_id, issue_at=now_iso, created_by=current_user.get("id"))
         except journal_figures.AtomicIssueNotInstalled:
             # The API is live a few minutes before the migration that goes with it. Issue the way it was issued until it is,
             # and say so: this branch has no other reason to exist and is deleted once migration 577 has been in production.
             _logger.error("issue_invoice: migration 577 is not applied to this database; issuing %s in two statements", invoice_id)
             issued_by_one_transaction = False
-            journal_id = phase2_journal_service.journal_for_sales_invoice(invoice=inv, firm_id=firm_id, client_id=client_id)
+            journal_id = phase2_journal_service.journal_for_sales_invoice(
+                invoice=inv, firm_id=firm_id, client_id=client_id, created_by=current_user.get("id"))
     except journal_figures.InvoiceNoLongerADraft:
         # Another click or session issued, cancelled or removed it between the read and the database's lock. Nothing was posted.
         return None, None, api_response(
@@ -2231,7 +2232,7 @@ def issue_invoice(
                     # Post journal FIRST — failure keeps the invoice a draft.
                     try:
                         jid = phase2_journal_service.journal_for_sales_invoice(
-                            inv, current_user.get("firm_id", ""), inv["client_id"])
+                            inv, current_user.get("firm_id", ""), inv["client_id"], created_by=current_user.get("id"))
                     except ValueError as ve:
                         return api_response(False, None,
                                             f"Cannot issue — {ve} Invoice remains a draft; retry after setup.")
@@ -2695,7 +2696,8 @@ def repost_journal(
             _assert_repostable(inv)
             if inv.get("journal_entry_id"):
                 return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": inv["journal_entry_id"], "already_posted": True})
-            jid = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv["client_id"]) or "mock-journal"
+            jid = phase2_journal_service.journal_for_sales_invoice(
+                inv, firm_id, inv["client_id"], created_by=current_user.get("id")) or "mock-journal"
             inv["journal_entry_id"] = jid
             return api_response(True, {"invoice_id": invoice_id, "journal_entry_id": jid, "already_posted": False})
 
@@ -2716,7 +2718,8 @@ def repost_journal(
             period_validation_service.validate_posting_date(firm_id or "", inv["invoice_date"])
 
         try:
-            journal_id = phase2_journal_service.journal_for_sales_invoice(inv, firm_id, inv.get("client_id", ""))
+            journal_id = phase2_journal_service.journal_for_sales_invoice(
+                inv, firm_id, inv.get("client_id", ""), created_by=current_user.get("id"))
         except journal_figures.EntryCannotBeReused as ve:
             return api_response(False, None, f"Cannot repost — {ve}")
         except ValueError as ve:

@@ -53,7 +53,7 @@ def _no_side_effects(monkeypatch):
     monkeypatch.setattr(fa.period_validation_service, "validate_posting_date", lambda *a: None)
     monkeypatch.setattr(fa.timeline_service, "log", lambda *a, **k: None)
     monkeypatch.setattr(fa._journal_svc, "journal_for_depreciation",
-                        lambda asset, amount, period, firm, client: f"je-{asset['id']}-{period}")
+                        lambda asset, amount, period, firm, client, created_by=None: f"je-{asset['id']}-{period}")
 
 
 def _run(db, monkeypatch, **kw):

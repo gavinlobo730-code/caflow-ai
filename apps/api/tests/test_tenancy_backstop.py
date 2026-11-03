@@ -63,7 +63,7 @@ def test_finalize_run_cross_firm_is_404_before_any_journal_posting(payroll_app, 
     posted = []
     monkeypatch.setattr(
         "services.phase2_journal_service.Phase2JournalService.journal_for_payroll",
-        lambda self, run, firm_id, client_id: posted.append(run) or "JE-FAKE",
+        lambda self, run, firm_id, client_id, created_by=None: posted.append(run) or "JE-FAKE",
     )
     run = db.seed("payroll_runs", {
         "firm_id": "F1", "client_id": "C1", "status": "draft",
@@ -79,7 +79,7 @@ def test_finalize_run_own_firm_succeeds(payroll_app, monkeypatch):
     app, db = payroll_app
     monkeypatch.setattr(
         "services.phase2_journal_service.Phase2JournalService.journal_for_payroll",
-        lambda self, run, firm_id, client_id: "JE-FAKE",
+        lambda self, run, firm_id, client_id, created_by=None: "JE-FAKE",
     )
     # This test is about WHO may finalise, not about the release rule. The run is
     # for June 2026, FY 2026-27, whose income-tax rates the registry carries

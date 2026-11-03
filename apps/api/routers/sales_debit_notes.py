@@ -484,7 +484,7 @@ def issue_sales_debit_note(sdn_id: str, current_user: dict = Depends(rbac("accou
         # partial; the debit note stays a re-tryable draft.
         try:
             journal_id = phase2_journal_service.journal_for_sales_debit_note(
-                dn=sdn, firm_id=firm_id or "", client_id=client_id,
+                dn=sdn, firm_id=firm_id or "", client_id=client_id, created_by=current_user.get("id"),
             )
             if not journal_id:
                 raise RuntimeError("sales debit-note journal posting returned no id")

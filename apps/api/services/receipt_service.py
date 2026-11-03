@@ -735,7 +735,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         }
         MOCK_RECEIPTS.append(receipt)
         from services.phase2_journal_service import phase2_journal_service
-        phase2_journal_service.journal_for_receipt(receipt, firm_id or "", client_id)
+        phase2_journal_service.journal_for_receipt(receipt, firm_id or "", client_id, created_by=(actor or {}).get("id"))
         return {**receipt, "allocations": allocations}
 
     # F1 fix: allocations must reference THIS client's invoices (firm+client scope),
@@ -840,6 +840,7 @@ def create_receipt_core(firm_id: str, data: dict, actor: dict, db) -> dict:
         receipt=receipt_payload,
         firm_id=firm_id or "",
         client_id=client_id,
+        created_by=(actor or {}).get("id"),
     )
     if journal_id:
         receipt_payload["journal_entry_id"] = journal_id

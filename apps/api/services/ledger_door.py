@@ -34,8 +34,9 @@ label and not a credential: migration 545 checks the person is a member of the e
 the key before the unguarded body. The key is the DOOR'S: a value a caller put in the entry is removed and only the verified person is
 put back, so a payload can never name its own actor. A job has no request and sends none; it is audited as the person in `created_by`
 where there is one, and as nobody otherwise, which is what it always was. A manual run of the daily batch happens inside the request
-of the person who pressed it, and is audited as that person. Most of the `journal_for_*` helpers that post a document's entry pass no
-`created_by` at all, which is why the actor cannot ride on it.
+of the person who pressed it, and is audited as that person. The `journal_for_*` helpers that post a document's entry took no `created_by` until POST-A-376
+(4-11-2026) and take it now; the audit actor still travels in the payload and not on it, because a job has no person to name and the
+audit trigger needs the sign-in id where `created_by` holds the internal one.
 
 A POSTING NAMES ITS FIRM AND ITS CLIENT. This refuses an empty one before the privileged client is used at all: `can_access_client`
 answers True for no client (a firm-level resource has none to check), which is the one value a scope check must not be handed here.

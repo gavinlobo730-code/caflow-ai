@@ -1860,6 +1860,7 @@ def receive_purchase_bill(
                         MOCK_PURCHASE_BILLS[i],
                         current_user.get("firm_id", ""),
                         MOCK_PURCHASE_BILLS[i]["client_id"],
+                        created_by=current_user.get("id"),
                     )
                     return api_response(True, MOCK_PURCHASE_BILLS[i])
             raise HTTPException(status_code=404, detail=f"Purchase bill {bill_id} not found")
@@ -1910,6 +1911,7 @@ def receive_purchase_bill(
                 bill=updated_bill,
                 firm_id=current_user.get("firm_id", ""),
                 client_id=updated_bill.get("client_id", ""),
+                created_by=current_user.get("id"),
             )
             if not journal_id:
                 raise RuntimeError("purchase-bill journal posting returned no id")
