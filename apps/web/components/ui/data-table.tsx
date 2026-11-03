@@ -286,6 +286,11 @@ export function DataTable<T>({
     return () => clearTimeout(id);
   }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A date box that holds text it could not read has already told its parent "no date" and is never told again when the parent clears to "":
+  // the value is the same, so nothing differs. Clear therefore remounts the filter boxes (POST-A-126; the contract in components/ui/date-input.tsx).
+  const [clearedTimes, setClearedTimes] = React.useState(0);
+  const clearAll = () => { t.clearFilters(); setQ(""); setClearedTimes((n) => n + 1); };
+
   const { page } = t;
   const colSpan = t.visibleColumns.length + (hasBulk ? 1 : 0) + (rowActions ? 1 : 0);
   const start = page.total === 0 ? 0 : (page.page - 1) * t.prefs.pageSize + 1;
@@ -346,7 +351,7 @@ export function DataTable<T>({
         )}
 
         {filters.map((f) => (
-          <FilterControl key={f.key} def={f} value={t.prefs.filters[f.key]} onChange={(v) => t.setFilter(f.key, v)} />
+          <FilterControl key={`${f.key}-${clearedTimes}`} def={f} value={t.prefs.filters[f.key]} onChange={(v) => t.setFilter(f.key, v)} />
         ))}
 
         {/* A server-paged table keeps its search on the server's side of the line (`serverPaged.search`), so "is a search in
@@ -355,7 +360,7 @@ export function DataTable<T>({
         {(t.activeFilterCount > 0 || (serverSearch ? serverPaged?.search : t.prefs.search)) && (
           <button
             type="button"
-            onClick={() => { t.clearFilters(); setQ(""); }}
+            onClick={clearAll}
             className="text-xs font-medium text-ps-label underline-offset-2 hover:underline"
           >
             Clear
@@ -504,7 +509,7 @@ export function DataTable<T>({
                     type="button"
                     // setQ("") reaches a server-side search through the debounce above;
                     // clearFilters alone would leave the server still filtering.
-                    onClick={() => { t.clearFilters(); setQ(""); }}
+                    onClick={clearAll}
                     className="inline-flex items-center justify-center rounded-lg border border-ps-border bg-white px-4 py-2 text-sm font-medium text-ps-label transition-colors hover:bg-ps-bg"
                   >
                     {FILTERED_EMPTY.clearLabel}
@@ -758,7 +763,7 @@ function FilterControl<T>({
       <span className="inline-flex items-center gap-1" title={def.label}>
         <DateInput aria-label={`${def.label} from`} className={sel} value={v.from ?? ""} onChange={(iso) => onChange({ ...v, from: iso })} />
         <span className="text-ps-disabled">–</span>
-        <DateInput aria-label={`${def.label} to`} className={sel} value={v.to ?? ""} onChange={(iso) => onChange({ ...v, to: iso })} />
+        <DateInput aria-label={`${def.label} to`} anchor={v.from || null} notBefore={v.from || null} className={sel} value={v.to ?? ""} onChange={(iso) => onChange({ ...v, to: iso })} />
       </span>
     );
   }

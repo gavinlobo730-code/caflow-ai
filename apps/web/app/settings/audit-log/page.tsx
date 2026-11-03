@@ -335,7 +335,7 @@ function AuditLogContent() {
         </div>
         <div>
           <label className="text-xs text-ps-label">To Date</label>
-          <DateInput aria-label="Audit log to date" value={filterDateTo} onChange={(v) => setFilterDateTo(v)}
+          <DateInput aria-label="Audit log to date" anchor={filterDateFrom || null} notBefore={filterDateFrom || null} value={filterDateTo} onChange={(v) => setFilterDateTo(v)}
             className="block w-full mt-1 px-3 py-1.5 text-sm border border-ps-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
         <div>

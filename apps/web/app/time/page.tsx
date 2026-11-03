@@ -398,6 +398,7 @@ export default function TimeTrackingPage() {
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">To</label>
             <DateInput aria-label="Export to"
+              anchor={exportDateFrom || null} notBefore={exportDateFrom || null}
               value={exportDateTo}
               onChange={v => setExportDateTo(v)}
               className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"

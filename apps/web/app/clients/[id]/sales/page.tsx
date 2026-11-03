@@ -1307,7 +1307,7 @@ function Statements({ clientId }: { clientId: string }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">To</label>
-            <DateInput aria-label="Statement to" value={end} onChange={(v) => setEnd(v)}
+            <DateInput aria-label="Statement to" anchor={start || null} notBefore={start || null} value={end} onChange={(v) => setEnd(v)}
               className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
         </div>

@@ -71,7 +71,7 @@ export function EditNoticeReadingModal({
           </div>
           <div>
             <label htmlFor="notice-due" className="text-xs font-medium text-ps-body block mb-1">Response due on</label>
-            <DateInput id="notice-due" value={form.response_due_date} onChange={set("response_due_date")}
+            <DateInput id="notice-due" anchor={form.issue_date || null} notBefore={form.issue_date || null} value={form.response_due_date} onChange={set("response_due_date")}
               onStateChange={dates.watch("response_due_date", "Response due on")} className={FIELD} />
           </div>
         </div>

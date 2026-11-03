@@ -11,7 +11,7 @@ import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } f
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
@@ -171,7 +171,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
           <label className="block text-2xs text-ps-label mb-0.5">
             New expiry date <span className="text-state-problem">*</span>
           </label>
-          <DateInput aria-label="New expiry date" anchor={newIssued || null} notBefore={newIssued || null} value={newExpiry} onChange={setNewExpiry}
+          <DateInput aria-label="New expiry date" anchor={newIssued || todayIstISO()} notBefore={newIssued || todayIstISO()} value={newExpiry} onChange={setNewExpiry}
             onStateChange={dates.watch("newExpiry", "New expiry date")}
             className={field} />
         </div>

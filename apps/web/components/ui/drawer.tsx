@@ -19,6 +19,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { trapTabKey } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
+import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 
 export interface DrawerProps {
   open: boolean;
@@ -58,7 +59,8 @@ export function Drawer({
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onCloseRef.current();
+        // See Modal: a date box is left first, and the close runs on the next tick (POST-A-126).
+        closeAfterTheFocusedDateCommits(() => onCloseRef.current());
         return;
       }
       trapTabKey(e, panelRef.current);

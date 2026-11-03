@@ -99,6 +99,8 @@ export function BankRegister({ clientId }: { clientId: string }) {
   const [bankAccountId, setBankAccountId] = useState("");
   const [data, setData] = useState<RegisterPayload | null>(null);
   const [loading, setLoading] = useState(false);
+  // Clear remounts the two date boxes: one that holds text it could not read has already said "no date" and is not told again (POST-A-126).
+  const [clearedTimes, setClearedTimes] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [dateFrom, setDateFrom] = useState("");
@@ -233,12 +235,12 @@ export function BankRegister({ clientId }: { clientId: string }) {
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">From</span>
-          <DateInput value={dateFrom} onChange={setDateFrom}
+          <DateInput key={`from-${clearedTimes}`} value={dateFrom} onChange={setDateFrom}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">To</span>
-          <DateInput value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
+          <DateInput key={`to-${clearedTimes}`} value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
@@ -256,7 +258,7 @@ export function BankRegister({ clientId }: { clientId: string }) {
         </label>
         <div className="flex items-center gap-2">
           {filtersActive && (
-            <button onClick={() => { setDateFrom(""); setDateTo(""); setStatus("all"); setSearch(""); }}
+            <button onClick={() => { setDateFrom(""); setDateTo(""); setStatus("all"); setSearch(""); setClearedTimes((n) => n + 1); }}
               className="text-2xs px-2 py-1.5 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
               Clear
             </button>
