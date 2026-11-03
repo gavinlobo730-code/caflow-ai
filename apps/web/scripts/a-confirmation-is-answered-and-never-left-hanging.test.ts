@@ -154,6 +154,7 @@ test("Escape dismisses whatever is open, by the same route as Cancel", () => {
   // source saying it: Escape cancels (false for a confirm, null for a prompt).
   const src = readFileSync(join(import.meta.dirname, "../components/ui/confirm-dialog.tsx"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.match(src, /e\.key === "Escape"\)\s*dismiss\(\)/);
+  // Since POST-A-128 only the TOP dialog acts: a question shown over a Modal answers the press and the Modal beneath it stays.
+  assert.match(src, /e\.key === "Escape" && overlay\.isTop\(\)\)\s*dismiss\(\)/);
   assert.match(src, /function cancelCurrent\(\)[\s\S]*?open\.resolve\(false\)[\s\S]*?open\.resolve\(null\)/);
 });

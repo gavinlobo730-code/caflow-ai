@@ -7,8 +7,8 @@
 // is its own file now. Behaviour here is unchanged by the move.
 
 import { useEffect, useState, useCallback } from "react";
-import { X } from "lucide-react";
 import { api } from "@/lib/api";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { fmt, rsToP, QueueTxn } from "@/components/banking/shared";
 import { formatDate } from "@/lib/dates/format";
@@ -135,135 +135,130 @@ export function FindMatchModal({ txn, onClose, onPicked, onSettle }: {
   const lastPage = Math.max(0, Math.ceil(total / PER_PAGE) - 1);
 
   return (
-    <div className="fixed inset-0 bg-ps-ink/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
-          <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-ps-ink">Find other matches</h3>
-            <p className="text-xs text-ps-label mt-0.5 truncate">
-              {txn.description} · {formatDate(txn.transaction_date)} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}
-            </p>
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
-        </div>
-
-        <form onSubmit={submit} className="px-5 py-3 border-b border-ps-border space-y-2">
-          <div className="flex gap-2">
-            <input
-              value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="Invoice number, party name…"
-              aria-label="Search documents"
-              className="flex-1 px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" />
-            <button type="submit" disabled={loading}
-              className="text-xs px-3 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">
-              {loading ? "Searching…" : "Search"}
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <select value={entityType} onChange={(e) => setEntityType(e.target.value)}
-              aria-label="Document type"
-              className="px-2 py-1 text-2xs border border-ps-border rounded text-ps-label">
-              {/* Only what money moving THIS way can settle. The backend applies
-                  the same rule and refuses anything else outright, so this list
-                  narrows the request rather than deciding it. */}
-              <option value="">All types</option>
-              {(data?.allowed_types ?? []).map((t) => (
-                <option key={t} value={t}>{CANDIDATE_TYPE_LABELS[t] ?? t}</option>
-              ))}
-            </select>
-            <label className="flex items-center gap-1 text-3xs text-ps-hint">
-              From
-              <DateInput value={dateFrom} onChange={setDateFrom}
-                aria-label="Dated from"
-                className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
-            </label>
-            <label className="flex items-center gap-1 text-3xs text-ps-hint">
-              To
-              <DateInput value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
-                aria-label="Dated to"
-                className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
-            </label>
-            <label className="flex items-center gap-1 text-3xs text-ps-hint">
-              ₹ min
-              <input type="number" step="0.01" min="0" value={minRs} onChange={(e) => setMinRs(e.target.value)}
-                aria-label="Minimum amount in rupees"
-                className="w-24 px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
-            </label>
-            <label className="flex items-center gap-1 text-3xs text-ps-hint">
-              ₹ max
-              <input type="number" step="0.01" min="0" value={maxRs} onChange={(e) => setMaxRs(e.target.value)}
-                aria-label="Maximum amount in rupees"
-                className="w-24 px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
-            </label>
-          </div>
-        </form>
-
-        <div className="px-5 py-3 overflow-y-auto flex-1 space-y-1.5">
-          {error && <p className="text-xs text-state-problem">{error}</p>}
-          {!error && !loading && shown.length === 0 && (
-            <p className="text-xs text-ps-hint">
-              Nothing here matches. Widen the dates or clear a filter — this search already
-              looks past the amount, so a document of any size is reachable.
-            </p>
-          )}
-          {data?.truncated && (
-            <p className="text-3xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
-              There were more documents than this search reads at once. Narrow the dates or
-              the amount to be sure you are seeing everything.
-            </p>
-          )}
-          {shown.map((r) => (
-            <div key={`${r.matched_entity_type}:${r.matched_entity_id}`}
-              className="flex items-center justify-between gap-3 border border-ps-border rounded px-2.5 py-1.5">
-              <div className="min-w-0">
-                <p className="text-2xs text-ps-body truncate">{r.label}</p>
-                <p className="text-3xs text-ps-hint">
-                  {formatDate(r.entity_date)} · {fmt(r.amount_paise)}
-                  {r.outstanding_paise !== null && r.outstanding_paise !== r.amount_paise
-                    ? ` · ${fmt(r.outstanding_paise)} open` : ""}
-                  {" · "}{r.summary}
-                </p>
-              </div>
-              <div className="shrink-0">
-                {/* Same rule as the suggestion list: a SHORT match settles only
-                    what arrived and leaves the document partly open, which is
-                    wrong when the shortfall is withheld TDS. Route it to the
-                    settlement modal rather than let one click under-settle. */}
-                {r.difference_paise > 0 ? (
-                  <button onClick={() => onSettle(r)}
-                    className="text-3xs px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
-                    title={`Bank line is ${fmt(r.difference_paise)} short of this document`}>
-                    {r.tds_rate_bps ? "Settle with TDS" : "Settle difference"}
-                  </button>
-                ) : (
-                  <button onClick={() => pick(r)} disabled={picking !== null}
-                    className="text-3xs px-2 py-0.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">
-                    {picking === r.matched_entity_id ? "Matching…" : "Match"}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between px-5 py-3 border-t border-ps-border">
-          <p className="text-3xs text-ps-hint">
-            {total === 0 ? "No documents" :
-              `${page * PER_PAGE + 1}–${Math.min((page + 1) * PER_PAGE, total)} of ${total}`}
-          </p>
-          <div className="flex gap-2">
-            <button onClick={() => goTo(page - 1)} disabled={page === 0 || loading}
-              className="text-2xs px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
-              Previous
-            </button>
-            <button onClick={() => goTo(page + 1)} disabled={page >= lastPage || loading}
-              className="text-2xs px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
-              Next
-            </button>
-          </div>
-        </div>
-      </div>
+    <Modal
+      title="Find other matches"
+      note={<span className="block truncate">{txn.description} · {formatDate(txn.transaction_date)} · {fmt(txnAmount)} {isCredit ? "credit" : "debit"}</span>}
+      // A match being made ignores Escape, a click outside and the X (the shared dialog's rule since POST-A-130).
+      onClose={() => { if (picking === null) onClose(); }}
+      maxWidthClass="max-w-2xl"
+      footer={
+        <>
+    <p className="mr-auto text-3xs text-ps-hint">
+      {total === 0 ? "No documents" :
+        `${page * PER_PAGE + 1}–${Math.min((page + 1) * PER_PAGE, total)} of ${total}`}
+    </p>
+    <div className="flex gap-2">
+      <button onClick={() => goTo(page - 1)} disabled={page === 0 || loading}
+        className="text-2xs px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
+        Previous
+      </button>
+      <button onClick={() => goTo(page + 1)} disabled={page >= lastPage || loading}
+        className="text-2xs px-2 py-1 border border-ps-border rounded text-ps-label disabled:opacity-40">
+        Next
+      </button>
     </div>
+        </>
+      }
+    >
+    <form onSubmit={submit} className="space-y-2 border-b border-ps-border pb-3">
+      <div className="flex gap-2">
+        <input
+          value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="Invoice number, party name…"
+          aria-label="Search documents"
+          className="flex-1 px-2 py-1.5 text-xs border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand" />
+        <button type="submit" disabled={loading}
+          className="text-xs px-3 py-1.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">
+          {loading ? "Searching…" : "Search"}
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <select value={entityType} onChange={(e) => setEntityType(e.target.value)}
+          aria-label="Document type"
+          className="px-2 py-1 text-2xs border border-ps-border rounded text-ps-label">
+          {/* Only what money moving THIS way can settle. The backend applies
+              the same rule and refuses anything else outright, so this list
+              narrows the request rather than deciding it. */}
+          <option value="">All types</option>
+          {(data?.allowed_types ?? []).map((t) => (
+            <option key={t} value={t}>{CANDIDATE_TYPE_LABELS[t] ?? t}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-3xs text-ps-hint">
+          From
+          <DateInput value={dateFrom} onChange={setDateFrom}
+            aria-label="Dated from"
+            className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
+        </label>
+        <label className="flex items-center gap-1 text-3xs text-ps-hint">
+          To
+          <DateInput value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
+            aria-label="Dated to"
+            className="px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
+        </label>
+        <label className="flex items-center gap-1 text-3xs text-ps-hint">
+          ₹ min
+          <input type="number" step="0.01" min="0" value={minRs} onChange={(e) => setMinRs(e.target.value)}
+            aria-label="Minimum amount in rupees"
+            className="w-24 px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
+        </label>
+        <label className="flex items-center gap-1 text-3xs text-ps-hint">
+          ₹ max
+          <input type="number" step="0.01" min="0" value={maxRs} onChange={(e) => setMaxRs(e.target.value)}
+            aria-label="Maximum amount in rupees"
+            className="w-24 px-1.5 py-1 text-2xs border border-ps-border rounded text-ps-label" />
+        </label>
+      </div>
+    </form>
+
+    <div className="space-y-1.5">
+      {error && <p className="text-xs text-state-problem">{error}</p>}
+      {!error && !loading && shown.length === 0 && (
+        <p className="text-xs text-ps-hint">
+          Nothing here matches. Widen the dates or clear a filter — this search already
+          looks past the amount, so a document of any size is reachable.
+        </p>
+      )}
+      {data?.truncated && (
+        <p className="text-3xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-2 py-1">
+          There were more documents than this search reads at once. Narrow the dates or
+          the amount to be sure you are seeing everything.
+        </p>
+      )}
+      {shown.map((r) => (
+        <div key={`${r.matched_entity_type}:${r.matched_entity_id}`}
+          className="flex items-center justify-between gap-3 border border-ps-border rounded px-2.5 py-1.5">
+          <div className="min-w-0">
+            <p className="text-2xs text-ps-body truncate">{r.label}</p>
+            <p className="text-3xs text-ps-hint">
+              {formatDate(r.entity_date)} · {fmt(r.amount_paise)}
+              {r.outstanding_paise !== null && r.outstanding_paise !== r.amount_paise
+                ? ` · ${fmt(r.outstanding_paise)} open` : ""}
+              {" · "}{r.summary}
+            </p>
+          </div>
+          <div className="shrink-0">
+            {/* Same rule as the suggestion list: a SHORT match settles only
+                what arrived and leaves the document partly open, which is
+                wrong when the shortfall is withheld TDS. Route it to the
+                settlement modal rather than let one click under-settle. */}
+            {r.difference_paise > 0 ? (
+              <button onClick={() => onSettle(r)}
+                className="text-3xs px-2 py-0.5 bg-amber-600 text-white rounded hover:bg-amber-700"
+                title={`Bank line is ${fmt(r.difference_paise)} short of this document`}>
+                {r.tds_rate_bps ? "Settle with TDS" : "Settle difference"}
+              </button>
+            ) : (
+              <button onClick={() => pick(r)} disabled={picking !== null}
+                className="text-3xs px-2 py-0.5 bg-brand text-white rounded hover:bg-brand-dark disabled:opacity-50">
+                {picking === r.matched_entity_id ? "Matching…" : "Match"}
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+    </Modal>
   );
 }
 

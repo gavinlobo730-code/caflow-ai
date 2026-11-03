@@ -1,0 +1,38 @@
+/**
+ * Which open dialog is the TOP one (POST-A-128).
+ *
+ * Every shared dialog listens for Escape on the document, so two open at once (a dialog opened from inside another, a confirmation shown over
+ * a dialog, a Modal over a Drawer) would both hear one press, and the lower one would close with the top one or, worse, in its place: the
+ * Modal listens in the capture phase and stops the event, so a ConfirmDialog opened above it never heard Escape at all and the Modal beneath
+ * it closed instead. The rule is one line, "only the top one acts", and this is where it is kept.
+ *
+ * `openOverlay()` is called when a dialog opens and returns a handle; `isTop()` says whether this dialog is the newest one still open, and
+ * `close()` takes it off (calling it twice is the same as once). Registration order is the stacking order, which is right for a dialog that
+ * is opened by a person's action after the one beneath it. It is NOT right for two that mount in the same render, where React runs the inner
+ * one's effect first; no dialog in the product does that, and the Modal's own drive opens them one after the other.
+ */
+export interface OverlayHandle {
+  /** True while this is the newest dialog still open. */
+  isTop(): boolean;
+  /** Take it off the stack. Safe to call twice. */
+  close(): void;
+}
+
+const open: symbol[] = [];
+
+export function openOverlay(): OverlayHandle {
+  const token = Symbol("overlay");
+  open.push(token);
+  return {
+    isTop: () => open[open.length - 1] === token,
+    close: () => {
+      const at = open.indexOf(token);
+      if (at !== -1) open.splice(at, 1);
+    },
+  };
+}
+
+/** How many dialogs are open: for the tests, and for a screen that wants to know whether anything is. */
+export function openOverlayCount(): number {
+  return open.length;
+}

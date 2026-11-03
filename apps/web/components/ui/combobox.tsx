@@ -260,6 +260,15 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
     setOpen(false);
     setQuery("");
   }, [setQuery]);
+  // A choice made, or Escape pressed, leaves the search box that had focus and the closed picker's button takes its place: without this
+  // focus fell to the page (POST-A-128). A hand that Tabs and types, as the journal and bill editors are meant to be driven, lost its
+  // place after every account. NOT done for a click away: that person has put focus somewhere on purpose.
+  const restoreFocus = React.useRef(false);
+  React.useLayoutEffect(() => {
+    if (open || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    triggerRef.current?.focus();
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -320,6 +329,7 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
         inputRef.current?.focus();
       } else {
         onChange(o);
+        restoreFocus.current = true;
         close();
       }
     },
@@ -360,13 +370,16 @@ function ComboboxInner<T>(props: ComboboxProps<T>, ref: React.ForwardedRef<Combo
         break;
       case "Escape":
         e.preventDefault();
+        restoreFocus.current = true;
         close();
         break;
       case "Tab":
-        // Commit the highlighted option, then let focus move on.
+        // Commit the highlighted option, then let focus move on: the button the picker closes into takes focus first, so the browser's own
+        // Tab goes to the NEXT control after it and not from a search box that has just been removed.
         if (results[highlighted - resultOffset] && !multiple) {
           commit(results[highlighted - resultOffset]);
         } else {
+          restoreFocus.current = true;
           close();
         }
         break;
