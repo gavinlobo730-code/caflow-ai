@@ -26,7 +26,7 @@ const read = (rel: string) => stripComments(fs.readFileSync(path.join(WEB, rel),
 /** What is wrong with a shared dialog's use of the stack, as sentences (empty when it is right). */
 export function stackProblems(src: string): string[] {
   const found: string[] = [];
-  if (!/import \{ openOverlay \} from "@\/lib\/ui\/overlayStack"/.test(src)) found.push("does not import openOverlay");
+  if (!/import \{[^}]*\bopenOverlay\b[^}]*\} from "@\/lib\/ui\/overlayStack"/.test(src)) found.push("does not import openOverlay");
   if (!/const overlay = openOverlay\(\);/.test(src)) found.push("does not register when it opens");
   if (!/overlay\.close\(\)/.test(src)) found.push("does not take itself off the stack when it closes");
   if (!/overlay\.isTop\(\)/.test(src)) found.push("does not ask whether it is the top dialog before acting on Escape");
@@ -80,3 +80,38 @@ test("the bank's entry dialog and the three it opens are the shared Modal", () =
   }
   assert.doesNotMatch(entry, /fixed inset-0/);
 });
+
+test("an Escape inside an open picker is left to the picker, before the dialog stops the event", () => {
+  for (const file of ["components/ui/modal.tsx", "components/ui/drawer.tsx"]) {
+    const src = read(file);
+    assert.match(src, /import \{ escapeBelongsToAnOpenPicker, openOverlay \} from "@\/lib\/ui\/overlayStack"/, `${file} does not import the picker rule`);
+    const at = src.indexOf('e.key === "Escape"');
+    const branch = src.slice(at, at + 1100);
+    const picker = branch.indexOf("escapeBelongsToAnOpenPicker(");
+    const stop = branch.indexOf("e.stopPropagation()");
+    assert.ok(picker !== -1 && stop !== -1 && picker < stop, `${file}: the picker rule must be asked before stopPropagation`);
+    const swapped = branch.replace(/\n[^\n]*escapeBelongsToAnOpenPicker\([^\n]*\n/, "\n").replace("e.stopPropagation();", "e.stopPropagation(); if (escapeBelongsToAnOpenPicker(e.target as Element | null)) return;");
+    assert.ok(swapped.indexOf("escapeBelongsToAnOpenPicker(") > swapped.indexOf("e.stopPropagation()"), "the control must put the picker rule after the stop");
+  }
+  assert.match(read("components/ui/drawer.tsx"), /e\.defaultPrevented \|\| escapeBelongsToAnOpenPicker\(/, "the Drawer also honours an Escape a child already handled");
+});
+
+test("a dialog moves focus to the first control a person can focus, not to a hidden one", () => {
+  const src = read("components/ui/modal.tsx");
+  assert.match(src, /firstFormField\(panelRef\.current\) \?\? panelRef\.current\)\?\.focus\(\)/);
+  assert.doesNotMatch(src, /querySelector<HTMLElement>\("input, select, textarea"\)/, "the unfiltered first-field query is back");
+});
+
+test("the fixed-asset drawers ignore Escape, the backdrop and Cancel while a save is in flight", () => {
+  const src = read("app/clients/[id]/fixed-assets/page.tsx");
+  const leaves = src.match(/const leave = async \(\) => \{[^\n]*\n/g) ?? [];
+  assert.equal(leaves.length, 2, "both drawers define leave");
+  for (const l of leaves) assert.match(l, /if \(submittingRef\.current\) return;/, `a drawer's leave does not hold while saving: ${l.trim()}`);
+});
+
+test("the Modal's footer bar is flush with the panel's bottom edge, which a plain -mb-4 cannot do under space-y-3", () => {
+  const src = read("components/ui/modal.tsx");
+  assert.match(src, /sticky bottom-0 -mx-4 !-mb-4/);
+  assert.match(src, /footer \? " scroll-pb-16" : ""/);
+});
+

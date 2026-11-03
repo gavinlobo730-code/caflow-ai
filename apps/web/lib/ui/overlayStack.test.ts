@@ -2,7 +2,7 @@
 // Run with: node --experimental-strip-types --test lib/ui/overlayStack.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { openOverlay, openOverlayCount } from "./overlayStack.ts";
+import { escapeBelongsToAnOpenPicker, openOverlay, openOverlayCount, OPEN_PICKER_SELECTOR } from "./overlayStack.ts";
 
 test("a lone dialog is the top one, and nothing is left when it closes", () => {
   const before = openOverlayCount();
@@ -54,3 +54,14 @@ test("a closed dialog is not the top one", () => {
   assert.equal(b.isTop(), true);
   b.close();
 });
+
+test("an Escape inside an open picker is the picker's, and one anywhere else is the dialog's", () => {
+  const inside = { closest: (sel: string) => (sel === OPEN_PICKER_SELECTOR ? {} : null) };
+  const outside = { closest: () => null };
+  assert.equal(escapeBelongsToAnOpenPicker(inside), true);
+  assert.equal(escapeBelongsToAnOpenPicker(outside), false);
+  assert.equal(escapeBelongsToAnOpenPicker(null), false);
+  assert.equal(escapeBelongsToAnOpenPicker({} as never), false, "a target with no closest() is not a picker");
+  assert.equal(OPEN_PICKER_SELECTOR, '[role="combobox"][aria-expanded="true"]', "the picker's input says it is open this way (components/ui/combobox.tsx)");
+});
+

@@ -59,3 +59,28 @@ export function trapTabKey(e: KeyboardEvent, panel: HTMLElement | null): boolean
   (move === "first" ? items[0] : items[items.length - 1]).focus();
   return true;
 }
+
+/** What the first-field rule reads of a form control: the three facts a person cannot focus a control without. */
+export interface FieldFacts {
+  disabled: boolean;
+  type?: string;
+  /** null when the control (or an ancestor) is `display: none`, which cannot take focus. */
+  offsetParent: unknown;
+}
+
+/**
+ * Whether a dialog may move focus to this form control when it opens. A hidden control cannot take focus, so `.focus()` on it does nothing and
+ * focus stays on whatever was behind the dialog: the bank's entry dialog opens with a hidden file input (`class="hidden"`) before its first
+ * visible field, so focus stayed on the table row, whose arrow keys then moved the row behind the dialog and whose Enter opened another entry.
+ */
+export function canTakeFocusOnOpen(f: FieldFacts): boolean {
+  return !f.disabled && f.type !== "hidden" && f.offsetParent !== null;
+}
+
+/** The first form control of `root` a dialog can really move focus to, or null (the dialog then focuses its own panel). */
+export function firstFormField(root: HTMLElement | null): HTMLElement | null {
+  if (!root) return null;
+  const all = Array.from(root.querySelectorAll<HTMLInputElement>("input, select, textarea"));
+  return all.find((el) => canTakeFocusOnOpen({ disabled: el.disabled, type: el.type, offsetParent: el.offsetParent })) ?? null;
+}
+

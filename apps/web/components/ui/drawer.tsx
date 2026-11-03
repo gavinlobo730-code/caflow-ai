@@ -20,7 +20,7 @@ import { X } from "lucide-react";
 import { trapTabKey } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
-import { openOverlay } from "@/lib/ui/overlayStack";
+import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
 
 export interface DrawerProps {
   open: boolean;
@@ -62,6 +62,9 @@ export function Drawer({
       if (e.key === "Escape") {
         // A dialog opened over this drawer acts on Escape and this one waits (POST-A-128).
         if (!overlay.isTop()) return;
+        // The picker's own handler runs first here (React's root is below the document) and has already closed its list and called
+        // preventDefault: that Escape was the picker's (POST-A-128).
+        if (e.defaultPrevented || escapeBelongsToAnOpenPicker(e.target as Element | null)) return;
         e.stopPropagation();
         // See Modal: a date box is left first, and the close runs on the next tick (POST-A-126).
         closeAfterTheFocusedDateCommits(() => onCloseRef.current());

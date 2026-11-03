@@ -63,6 +63,10 @@ export const scenarios = [
       const { row, entry } = await atTheEntry(env);
       assert.equal(await entry.getAttribute("aria-modal"), "true", "the entry dialog does not say it is modal");
       assert.ok((await entry.getAttribute("aria-labelledby")), "the entry dialog has no name");
+      // Focus MOVED into it. The entry dialog opens with a hidden file input before its first visible field, and focusing that does nothing, so
+      // focus stayed on the row behind the dialog (whose arrow keys then moved the row and whose Enter opened another entry) and the closing
+      // assertion that focus returned to the row passed vacuously (found by an independent review).
+      await until(() => insideTopDialog(page), "focus to move into the entry dialog");
       assert.equal(await page.evaluate(() => document.body.style.overflow), "hidden", "the page behind the entry dialog can still scroll");
 
       // 2. the split over the entry
@@ -74,6 +78,18 @@ export const scenarios = [
       await split.waitFor();
       assert.equal(await page.getByRole("dialog").count(), 2, "the split should be a second dialog over the entry");
       await until(() => insideTopDialog(page), "focus to move into the split dialog");
+      // Escape inside an OPEN ledger picker closes the picker's list and leaves the dialog (and the lines typed in it) alone; before this the
+      // Modal stopped the event, the picker never heard it, and the whole dialog closed.
+      const picker = split.getByRole("button", { name: "Ledger for line 1" });
+      await picker.focus();
+      await page.keyboard.press("Enter");
+      const openPicker = page.locator('[role="combobox"][aria-expanded="true"]');
+      await openPicker.waitFor();
+      await page.keyboard.press("Escape");
+      await openPicker.waitFor({ state: "detached" });
+      assert.equal(await page.getByRole("dialog").count(), 2, "Escape in an open picker closed a dialog");
+      assert.ok(await split.isVisible(), "Escape in an open picker closed the split dialog");
+      assert.equal(await picker.evaluate((el) => el === document.activeElement), true, "focus did not go back to the picker's button");
       for (const key of ["Tab", "Tab", "Tab", "Tab", "Tab", "Shift+Tab", "Shift+Tab", "Shift+Tab"]) {
         await page.keyboard.press(key);
         assert.equal(await insideTopDialog(page), true, `${key} left the split dialog`);

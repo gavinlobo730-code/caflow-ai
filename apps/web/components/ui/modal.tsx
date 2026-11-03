@@ -17,10 +17,10 @@
  */
 import { useEffect, useRef, useId, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { trapTabKey } from "@/lib/ui/focusTrap";
+import { firstFormField, trapTabKey } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
-import { openOverlay } from "@/lib/ui/overlayStack";
+import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
 
 export function Modal({
   title,
@@ -51,8 +51,8 @@ export function Modal({
   useEffect(() => {
     restoreRef.current = (document.activeElement as HTMLElement) ?? null;
     // Focus the first form field (not the Close button) once mounted.
-    const firstField = panelRef.current?.querySelector<HTMLElement>("input, select, textarea");
-    (firstField ?? panelRef.current)?.focus();
+    // The first field a person can really focus: a hidden file input before it would take the focus call and leave focus behind the dialog.
+    (firstFormField(panelRef.current) ?? panelRef.current)?.focus();
     const unlockScroll = lockBodyScroll();
     const overlay = openOverlay();
 
@@ -60,6 +60,9 @@ export function Modal({
       if (e.key === "Escape") {
         // Only the TOP dialog acts: a dialog opened over this one hears the same press and closes itself, and this one stays (POST-A-128).
         if (!overlay.isTop()) return;
+        // Escape inside an open picker closes the picker's list and leaves the dialog (and what is typed in it) alone: left unstopped here, the
+        // picker's own handler runs next. Before this it never ran and the whole dialog closed.
+        if (escapeBelongsToAnOpenPicker(e.target as Element | null)) return;
         // Capture phase + stopPropagation so Escape closes THIS dialog only and
         // does not also bubble to a parent Drawer's document listener (a Modal
         // may be rendered inside the Invoice Hub drawer).
@@ -89,7 +92,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative w-full ${maxWidthClass} bg-white rounded-xl shadow-xl p-4 space-y-3 max-h-[90vh] overflow-y-auto outline-none`}
+        className={`relative w-full ${maxWidthClass} bg-white rounded-xl shadow-xl p-4 space-y-3 max-h-[90vh] overflow-y-auto outline-none${footer ? " scroll-pb-16" : ""}`}
       >
         <div className="flex items-center justify-between gap-3">
           <h3 id={titleId} className="text-sm font-semibold text-ps-ink">{title}</h3>
@@ -104,8 +107,11 @@ export function Modal({
         </div>
         {note && <p className="text-2xs text-ps-label">{note}</p>}
         {children}
+        {/* `!-mb-4`: the panel's `space-y-3` sets margin-bottom: 0 on every sibling after the first and outranks a plain `-mb-4`, which left the bar 16px
+            above the panel's bottom edge with a white strip beneath it. `scroll-pb-16` keeps a control focused near the end of a scrolled dialog from
+            hiding behind the bar. */}
         {footer && (
-          <div className="sticky bottom-0 -mx-4 -mb-4 flex items-center justify-end gap-2 rounded-b-xl border-t border-ps-border bg-white px-4 py-3">
+          <div className="sticky bottom-0 -mx-4 !-mb-4 flex items-center justify-end gap-2 rounded-b-xl border-t border-ps-border bg-white px-4 py-3">
             {footer}
           </div>
         )}

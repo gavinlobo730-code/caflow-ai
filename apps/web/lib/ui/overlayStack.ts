@@ -36,3 +36,21 @@ export function openOverlay(): OverlayHandle {
 export function openOverlayCount(): number {
   return open.length;
 }
+
+/** What this needs of an event target: the one DOM call, so a test can hand it a stand-in. */
+export interface PickerProbe {
+  closest(selector: string): unknown;
+}
+
+/** An open ledger/party picker's search box: the one element whose Escape means "close the list", not "close the dialog". */
+export const OPEN_PICKER_SELECTOR = '[role="combobox"][aria-expanded="true"]';
+
+/**
+ * True when an Escape was pressed inside an OPEN picker. The Modal listens in the capture phase and stops the event, so without this the
+ * picker's own Escape never ran: a person who opened a ledger picker inside the split dialog and pressed Escape to dismiss the list lost the
+ * whole dialog and every line typed in it. A dialog leaves such an Escape alone, and the picker (which runs next) closes its list.
+ */
+export function escapeBelongsToAnOpenPicker(target: PickerProbe | null | undefined): boolean {
+  return !!target && typeof target.closest === "function" && target.closest(OPEN_PICKER_SELECTOR) !== null;
+}
+

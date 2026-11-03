@@ -157,4 +157,22 @@ export const scenarios = [
       // With nothing unsaved the same Escape just closes: clear the box's date and the form is as it was opened.
     },
   },
+  {
+    id: "escape-while-a-save-is-in-flight-keeps-the-drawer-open",
+    title: "Escape pressed while Add Asset is saving is ignored: the drawer stays until the server answers, then closes with the asset created once",
+    async run(env) {
+      const { page, stub } = env;
+      await atTheDrawer(env, { reply: () => ok({ id: "fa-1" }) });
+      await fillTheForm(page, "125000");
+      await addButton(page).click();
+      // The stub holds a write for a moment, so the request is in flight here. The leave question reads `dirty && !saving` and so says "leave"
+      // without asking the moment a save starts: the drawer closed mid-request, lost a refusal, and on success the late close shut whichever
+      // drawer was open by then (found by an independent review).
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(250);
+      assert.ok(await page.getByPlaceholder(NAME).isVisible(), "Escape closed the drawer while its save was in flight");
+      await expectWrites(stub, CREATE, 1, "an Escape pressed while the save was in flight", "POST");
+      await page.getByPlaceholder(NAME).waitFor({ state: "detached" });
+    },
+  },
 ];

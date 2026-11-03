@@ -569,7 +569,10 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   // simply what differs from it. A SUCCESSFUL save closes the drawer directly.
   const { dirty } = useDirtyFields(form);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
-  const leave = async () => { if (await confirmLeave()) onClose(); };
+  // A save in flight holds the drawer open: Escape, the backdrop and Cancel are ignored until it answers, as the split, settle and match dialogs
+  // ignore them (the shared dialogs' rule since POST-A-130). `confirmLeave` cannot hold it: it reads `dirty && !saving` and so resolves true,
+  // without a question, the moment a save starts, and a drawer closed mid-request loses a refusal or, on success, closes the NEXT drawer.
+  const leave = async () => { if (submittingRef.current) return; if (await confirmLeave()) onClose(); };
 
   const set = (k: keyof CorrectionForm, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -778,7 +781,10 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     "asset_category", "schedule_ii_class", "wdv_rate_percent", "useful_life_years",
   ]));
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
-  const leave = async () => { if (await confirmLeave()) onClose(); };
+  // A save in flight holds the drawer open: Escape, the backdrop and Cancel are ignored until it answers, as the split, settle and match dialogs
+  // ignore them (the shared dialogs' rule since POST-A-130). `confirmLeave` cannot hold it: it reads `dirty && !saving` and so resolves true,
+  // without a question, the moment a save starts, and a drawer closed mid-request loses a refusal or, on success, closes the NEXT drawer.
+  const leave = async () => { if (submittingRef.current) return; if (await confirmLeave()) onClose(); };
 
   // Picking a category (or one of its Schedule II classes) pre-fills BOTH the
   // life and the rate from the same served row — they are one figure and its
