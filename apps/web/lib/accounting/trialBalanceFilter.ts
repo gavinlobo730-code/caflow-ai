@@ -5,8 +5,9 @@
  * payable) more often than it reads it top to bottom. The search and the type filter only choose which ROWS are drawn: every total on
  * the screen is the server's, for all of the accounts, and the screen says so whenever a filter is on. Nothing here adds up a rupee.
  *
- * A row the server derives rather than reads from an account (the brought-forward surplus, whose id starts `__`) is not an account and
- * cannot be searched for, so it is drawn only when no filter is on.
+ * A row the server COMPUTES rather than reads from an account (the brought-forward surplus, whose id starts `__`) is not an account and
+ * cannot be searched for, so it is drawn only when no filter is on. The two cash-basis ADVANCE accounts also have an id that starts `__`, but
+ * they are accounts: named, typed, with a balance that is inside the server's totals, so a search finds them and the counts include them.
  */
 export interface FilterableRow {
   account_id: string;
@@ -24,7 +25,16 @@ export interface TrialBalanceFilter {
 
 export const NO_FILTER: TrialBalanceFilter = { query: "", type: "" };
 
-const isDerived = (row: FilterableRow) => row.account_id.startsWith("__");
+/**
+ * The accounts the cash-basis projection registers when a chart has no advance control account (`domain/reporting/projector.ADVANCE_CUSTOMER`
+ * and `ADVANCE_VENDOR`). Their ids start `__` because they are not rows of `chart_of_accounts`, but they are accounts on the report: a name, a
+ * type and a balance that the totals include. `apps/api/tests/test_the_trial_balance_filter_knows_the_engines_synthetic_accounts.py` holds this
+ * list to the engine's, so a third one added there cannot be left out here.
+ */
+export const SYNTHETIC_ACCOUNT_IDS: readonly string[] = ["__advance_customers__", "__advance_to_vendors__"];
+
+/** A row the server computed (the brought-forward surplus, the retained-earnings line): not an account. */
+const isDerived = (row: FilterableRow) => row.account_id.startsWith("__") && !SYNTHETIC_ACCOUNT_IDS.includes(row.account_id);
 
 export const isFiltering = (filter: TrialBalanceFilter): boolean => filter.query.trim() !== "" || filter.type !== "";
 
@@ -45,6 +55,18 @@ export function typeChoices(rows: readonly FilterableRow[]): string[] {
   const seen = new Set<string>();
   for (const row of rows) if (!isDerived(row) && row.account_type) seen.add(row.account_type);
   return Array.from(seen);
+}
+
+/**
+ * The rows to draw under a Profit and Loss or Balance Sheet caption. The same filter as the trial balance's for the accounts (the cash-basis
+ * advance accounts among them), but a DERIVED row (the computed retained earnings / net profit line) is drawn under EVERY filter: on these
+ * statements it is a component of its caption's figure and of the total beside it, not an account to search for, so hiding it would leave a
+ * caption whose drawn rows do not reconcile to its figure and no filter that could show the line (a review of 2-11-2026 found exactly that).
+ * It is still not counted among the accounts.
+ */
+export function filterStatementRows<T extends FilterableRow>(rows: readonly T[], filter: TrialBalanceFilter): T[] {
+  if (!isFiltering(filter)) return [...rows];
+  return rows.filter((row) => isDerived(row) || filterRows([row], filter).length === 1);
 }
 
 /** How many of the accounts the filter lets through, and how many there are. Derived rows are not accounts and are not counted. */
