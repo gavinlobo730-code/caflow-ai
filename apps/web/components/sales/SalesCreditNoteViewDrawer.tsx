@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { SalesCreditNoteDetail } from "@/components/sales/SalesCreditNoteEditor";
+import { goodsReturnedWords } from "@/lib/inventory/goodsReturned";
 import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import {
@@ -196,6 +197,7 @@ export function SalesCreditNoteViewDrawer({
               <DetailRow label="CN date" value={cn.credit_note_date} />
               <DetailRow label="Applied to invoice" value={cn.sales_invoice_id ? "Yes" : "Standalone"} />
               <DetailRow label="Reason" value={cn.reason ?? "—"} />
+              {cn.goods_returned != null && <DetailRow label="Goods returned" value={goodsReturnedWords(cn.goods_returned)} />}
               <DetailRow label="Notes" value={cn.notes ?? "—"} />
             </div>
 

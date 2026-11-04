@@ -52,6 +52,7 @@ from core.ist_clock import ist_today, ist_date_of
 from core.observability import capture_posting_failure
 from domain.inventory import costing
 from domain.inventory import landed_cost as landed
+from domain.inventory import note_goods
 from domain.inventory import stock_effect as stock_effects
 from domain.inventory import stock_resume
 
@@ -2028,6 +2029,10 @@ def apply_credit_note_to_inventory(db, *, firm_id: str, client_id: str, credit_n
     `resume=True` is the retry (`stock_resume`). A line with no journal behind it that was recorded while the item was already
     oversold is REFUSED on a retry, because its cost cannot be rebuilt from the row."""
     effect = stock_effects.StockEffect("credit_note", reference=credit_note.get("credit_note_no"))
+    if note_goods.says_no_goods_came_back(credit_note):
+        # POST-A-371: a note that says no goods came back (a price, rate or discount correction) moves neither stock nor cost. Asked here
+        # as well as at the route because the retry (`stock_effect_retry_service`) calls this function directly.
+        return effect
     try:
         # ONE read of the client's cost formula for the whole document, not
         # one per line — `clients` is a Singapore-to-Mumbai round trip
@@ -2123,6 +2128,9 @@ def apply_debit_note_to_inventory(db, *, firm_id: str, client_id: str, debit_not
     (routers/debit_notes.py) — fail-soft, never raises; RETURNS what it did (POST-A-092). `resume=True` is the retry
     (`stock_resume`)."""
     effect = stock_effects.StockEffect("debit_note", reference=debit_note.get("debit_note_no"))
+    if note_goods.says_no_goods_came_back(debit_note):
+        # POST-A-371: a price or rate correction moves neither stock nor cost; see apply_credit_note_to_inventory.
+        return effect
     try:
         # ONE read of the client's cost formula for the whole document, not
         # one per line — `clients` is a Singapore-to-Mumbai round trip

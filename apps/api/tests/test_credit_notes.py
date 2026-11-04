@@ -49,7 +49,7 @@ def _issue_invoice(db, inv_no="INV-1", taxable=100000, cgst=9000, sgst=9000, igs
 
 def _create_cn(db, inv_id, rate, no="CN-1"):
     res = cn.create_credit_note(cn.CreditNoteIn(
-        client_id="CLI", customer_id="CUST1", credit_note_date="2025-06-05",
+        goods_returned=True, client_id="CLI", customer_id="CUST1", credit_note_date="2025-06-05",
         sales_invoice_id=inv_id, reason="Goods returned",
         lines=[InvoiceLineIn(description="return", quantity=1, rate_paise=rate,
                               gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
@@ -114,7 +114,7 @@ def test_line_unit_persists_on_create_and_edit(monkeypatch):
     db = _setup(monkeypatch)
     inv_id, _ = _issue_invoice(db)
     res = cn.create_credit_note(cn.CreditNoteIn(
-        client_id="CLI", customer_id="CUST1", credit_note_date="2025-06-05",
+        goods_returned=True, client_id="CLI", customer_id="CUST1", credit_note_date="2025-06-05",
         sales_invoice_id=inv_id, reason="Goods returned",
         lines=[InvoiceLineIn(description="return", quantity=2, unit="KGS", rate_paise=20000,
                               gst_rate_percent=18.0, service_catalogue_id="SVC-1")],

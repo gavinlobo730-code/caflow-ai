@@ -148,7 +148,7 @@ def test_rc1_full_business_cycle_reconciles(monkeypatch):
 
     # 6) Debit note ₹10,000 + 18% = ₹11,800 against the bill (purchase return)
     dres = dn.create_debit_note(dn.DebitNoteIn(
-        client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-13", purchase_bill_id=bill_id,
+        client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-13", purchase_bill_id=bill_id, goods_returned=True,
         lines=[InvoiceLineIn(service_catalogue_id="SVC-1", description="ret", quantity=1, rate_paise=1_00000, gst_rate_percent=18.0)],
     ), CALLER)
     assert dn.issue_debit_note(dres["data"]["id"], CALLER)["success"] is True

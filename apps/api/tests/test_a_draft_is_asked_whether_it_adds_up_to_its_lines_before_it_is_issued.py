@@ -626,14 +626,16 @@ def _received_bill(db):
 
 def _new_credit_note(db):
     res = cn.create_credit_note(cn.CreditNoteIn(client_id="CLI", customer_id="CUST-CLI", credit_note_date="2025-06-05",
-                                                sales_invoice_id=_issued_invoice(db), reason="returned", lines=[_line(10_000)]), CALLER)
+                                                sales_invoice_id=_issued_invoice(db), reason="returned", goods_returned=True,
+                                                lines=[_line(10_000)]), CALLER)
     assert res["success"] is True, res
     return res["data"]["id"]
 
 
 def _new_debit_note(db):
     res = dn.create_debit_note(dn.DebitNoteIn(client_id="CLI", vendor_id="VEND-CLI", debit_note_date="2025-06-05",
-                                              purchase_bill_id=_received_bill(db), reason="short", lines=[_line(10_000)]), CALLER)
+                                              purchase_bill_id=_received_bill(db), reason="short", goods_returned=True,
+                                              lines=[_line(10_000)]), CALLER)
     assert res["success"] is True, res
     return res["data"]["id"]
 

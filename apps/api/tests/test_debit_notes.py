@@ -47,7 +47,7 @@ def _received_bill(db, no="BILL-1", rate=1_00000):
 
 def _create_dn(db, bill_id, rate, no="DN-1"):
     res = dn.create_debit_note(dn.DebitNoteIn(
-        client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-05",
+        goods_returned=True, client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-05",
         purchase_bill_id=bill_id,
         lines=[InvoiceLineIn(description="return", quantity=1, rate_paise=rate, gst_rate_percent=18.0, service_catalogue_id="SVC-1")],
     ), CALLER)
@@ -225,7 +225,7 @@ def test_line_unit_persists_on_create_and_edit(monkeypatch):
     db = _setup(monkeypatch)
     bill_id, _ = _received_bill(db)
     res = dn.create_debit_note(dn.DebitNoteIn(
-        client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-05",
+        goods_returned=True, client_id="CLI", vendor_id="VEND1", debit_note_date="2025-06-05",
         purchase_bill_id=bill_id,
         lines=[InvoiceLineIn(description="return", quantity=2, unit="KGS", rate_paise=20000,
                               gst_rate_percent=18.0, service_catalogue_id="SVC-1")],

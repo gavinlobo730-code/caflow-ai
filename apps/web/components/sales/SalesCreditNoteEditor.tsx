@@ -32,6 +32,8 @@ import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
+import { GoodsReturnedChoice } from "@/components/inventory/GoodsReturnedChoice";
+import type { GoodsReturned } from "@/lib/inventory/goodsReturned";
 import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
@@ -95,6 +97,8 @@ export interface SalesCreditNoteDetail {
   credit_note_date: string;
   sales_invoice_id?: string | null;
   reason?: string | null;
+  /** Whether the goods on the note physically came back (null = not stated). The server obeys it. */
+  goods_returned?: boolean | null;
   is_interstate?: boolean;
   status: string;
   notes?: string | null;
@@ -153,6 +157,9 @@ export function SalesCreditNoteEditor({
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? duplicateSeed?.customer_id ?? "");
   const [cnDate, setCnDate] = useState(existing?.credit_note_date ?? today);
   const [reason, setReason] = useState(existing?.reason ?? duplicateSeed?.reason ?? "");
+  // A copy of a note does not copy its answer: whether goods came back is a fact about THIS return, asked again.
+  const [goodsReturned, setGoodsReturned] = useState<GoodsReturned>(existing?.goods_returned ?? null);
+  const isCopy = !!duplicateSeed;
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [invoiceId, setInvoiceId] = useState(existing?.sales_invoice_id ?? "");
   const [openInvoices, setOpenInvoices] = useState<OpenInvoiceOption[]>([]);
@@ -193,7 +200,9 @@ export function SalesCreditNoteEditor({
   // Rehydrate each existing line's Product/Service picker — same fix as
   // SalesDebitNoteEditor.tsx (detailLinesToEditorLines only keeps the id).
   useEffect(() => {
-    if (!isEdit || !existing?.id) return;
+    // An edit, and ALSO a copy of a note (POST-A-371): a copy's lines carry only the item's id, and the question "did the goods come
+    // back?" is asked only of a note whose lines name a good, which needs the item.
+    if (!(isEdit && existing?.id) && !isCopy) return;
     const ids = Array.from(new Set(
       initialLines.map((l) => l.serviceCatalogueId).filter((id): id is string => !!id),
     ));
@@ -221,19 +230,23 @@ export function SalesCreditNoteEditor({
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once per loaded note
-  }, [isEdit, existing?.id, clientId]);
+  }, [isEdit, existing?.id, clientId, isCopy]);
 
   // ── Dirty detection ──────────────────────────────────────────────────────
   const initialSnapshot = useRef({
     customerId: existing?.customer_id ?? duplicateSeed?.customer_id ?? "",
     cnDate: existing?.credit_note_date ?? today,
     reason: existing?.reason ?? duplicateSeed?.reason ?? "",
+    goodsReturned: (existing?.goods_returned ?? null) as GoodsReturned,
     notes: existing?.notes ?? "",
     invoiceId: existing?.sales_invoice_id ?? "",
     isInterstate: existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false,
     lines: initialLines,
   });
-  const currentSnapshot = { customerId, cnDate, reason, notes, invoiceId, isInterstate, lines };
+  const currentSnapshot = { customerId, cnDate, reason, goodsReturned, notes, invoiceId, isInterstate, lines };
+  // The question is asked only of a note that names goods; a line's item says so. No rule here: the server decides what each answer does.
+  const namesGoods = lines.some((l) => l.product?.kind === "good");
+  const goodsAnswer = namesGoods && goodsReturned !== null ? goodsReturned : undefined;
   const dirty = hasChanges(initialSnapshot.current, currentSnapshot);
   const { confirmLeave } = useUnsavedChanges(dirty && !saving, undefined, confirmDialog);
 
@@ -294,6 +307,7 @@ export function SalesCreditNoteEditor({
               credit_note_date: cnDate,
               sales_invoice_id: invoiceId || undefined,
               reason: reason.trim() || undefined,
+              goods_returned: goodsAnswer,
               is_interstate: isInterstate,
               notes: notes.trim() || undefined,
               lines: linePayload,
@@ -310,6 +324,7 @@ export function SalesCreditNoteEditor({
             credit_note_date: cnDate,
             sales_invoice_id: invoiceId || undefined,
             reason: reason.trim() || undefined,
+            goods_returned: goodsAnswer,
             is_interstate: isInterstate,
             lines: linePayload,
           },
@@ -435,6 +450,11 @@ export function SalesCreditNoteEditor({
               <input aria-label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={isLocked} placeholder="Goods returned / rate correction / excess billed"
                 className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand disabled:bg-ps-bg disabled:text-ps-hint" />
             </div>
+            {namesGoods && (
+              <div className="col-span-2 lg:col-span-3">
+                <GoodsReturnedChoice kind="credit_note" value={goodsReturned} onChange={setGoodsReturned} disabled={isLocked} />
+              </div>
+            )}
             <div className="flex items-end pb-1.5">
               <label className={`flex items-center gap-2 text-xs text-ps-label ${isLocked ? "opacity-50" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={isInterstate} disabled={isLocked} onChange={(e) => setIsInterstate(e.target.checked)} className="rounded" />
