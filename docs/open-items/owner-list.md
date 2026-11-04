@@ -63,6 +63,7 @@ None of these is decided by me. Prices are what the repository's own notes say, 
 | 8 | GitHub settings: a dedicated least-privilege login for the automated smoke test (and its secret); optionally you as required approver for production migrations (see section 6). | Settings and secrets in your GitHub account. | POST-B-022, POST-B-063 |
 | 9 | Optional: send the drafted purpose-code enquiry to Sahamati/ReBIT. It is free and is the primary source for the bank-feed question in section 4. | An outward message in your name. | POST-B-243, POST-B-245 |
 | 10 | One of two things for the spreadsheet reader that imports user files: allow this environment to reach `cdn.sheetjs.com` (so the fixed build of the reader can be fetched and checked), or tell me to move the importer to another library. The old reader carries two known advisories (prototype pollution and a slow-pattern attack) and the fix is only published there. Separate from this, moving the web app from Next 14 to 15 is a major upgrade I can do alone, and overlaps the Dependabot Next 16 question. | It is your network setting, or a choice of library for a screen that reads your clients' uploads. | POST-A-174 |
+| 11 | Let this environment download and run **PostgREST** (the open-source program that Supabase itself uses to turn the database into the web API the product talks to), version 12.2.3, from its official GitHub release page. The environment's safety check refused the download on 4-11-2026 as an outside program, and I did not work around it. | Only you can grant it (a permission rule for the session, or a go-ahead). Without it I cannot run the real stack (the product's API against a migrated database) here, so the seeded firm cannot be walked over a real database; the practice-data seeding is checked against the real routers in mock mode and the declared request shapes only. | POST-A-028, PRE-A-004, POST-A-269 |
 
 ## 4. Statutory and legal points I will not assume
 
@@ -260,6 +261,23 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** Claude once the government sites are reachable (section 1); a practising CA for the reading.
 - **Stays unbuilt meanwhile:** A Form 27EQ obligation on the compliance calendar. A 27EQ statement recorded as filed answers that nothing was closed, in words.
 - **Ledger:** POST-A-267
+
+
+### S25. Capital gains on both sides of 23 July 2024 in one return: how the exemption and the rates are applied
+
+- **Question:** For the return of FY 2024-25 (AY 2025-26), where long-term gains on listed shares fall both before and after 23-07-2024: (a) The product believes the section 112A exemption is Rs 1,00,000 for a transfer before 23-07-2024 and Rs 1,25,000 from that date, and the rates 10% and 12.5%; all four figures are from recollection (graded [S]) and none was read from the Act, so please state them. Is the exemption one amount for the whole year, and against which gains is it applied first (those taxed at the lower rate before the date or at the higher one after it)? (b) How do a short-term or a long-term capital loss, and a brought-forward loss, set off between the two periods' gains (the return's Schedule CG splits them by period)? (c) For tax years from 2026-27, where do these sit in the Income-tax Act 2025? The product's gains calculator already applies the date of transfer to a single transfer; what it does not do is combine the two periods in one year's return, because the order of the exemption and the set-offs is a legal reading it has not made. The year also needs FY 2024-25's slab, rebate and surcharge entries, which the rate registry does not hold.
+- **Needed:** Sections 111A, 112, 112A and 70 to 74 of the Income-tax Act 1961 as amended by the Finance (No. 2) Act 2024, with its transitional provision; the instructions to Schedule CG of the ITR form for AY 2025-26; the corresponding sections of the Income-tax Act 2025.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** The pre- and post-23-07-2024 buckets in the return computation (a transfer-date input and the two sets of rates). The register of capital gains keeps the date-of-transfer fork it has.
+- **Ledger:** POST-A-071
+
+### S26. Form 3CD clause 32 and a loss from a later year: what the clause states, and whether a later year's loss may be offered to an earlier one
+
+- **Question:** (a) Clause 32 of Form 3CD asks for the particulars of brought-forward losses and allowances: at which date must the figure stated for each loss be taken, the position at the START of the year reported (what was brought forward into it) or after that year's own set-off, and what columns does the clause ask for (the product recalls assessment year, nature, amount as returned, amount as assessed and remarks, and has not read the form)? The product states the position after the latest return recorded as filed, which is neither, and says so in the note it serves. (b) May a loss of a LATER assessment year ever be set off against the income of an EARLIER one? The computation currently offers a loss whose year is after the computation's own, and writes it back as used by the earlier year; the product believes the carry-forward provisions (sections 71B, 72, 73 and 74) carry a loss to SUBSEQUENT years, but that is a recollection and it has not read them for this point.
+- **Needed:** Form 3CD clause 32 as notified (and its guidance note from the ICAI); sections 71B, 72, 73, 74 and 74A of the Income-tax Act 1961; for tax years from 2026-27, the Income-tax Act 2025's corresponding sections and its form.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** Clause 32 stating a year's own position from the per-year entries; the refusal to offer a loss to an earlier year; the matching of an old return's use to a loss by type.
+- **Ledger:** POST-A-367
 
 ## 5. Wait-until-asked items the goal probably needs
 
