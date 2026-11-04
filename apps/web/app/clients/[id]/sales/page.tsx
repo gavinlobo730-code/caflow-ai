@@ -87,6 +87,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { typedDateText } from "@/lib/dates/typedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -1150,6 +1151,25 @@ function Statements({ clientId }: { clientId: string }) {
   const [customerId, setCustomerId] = useState("");
   const [start, setStart] = useState(def.start);
   const [end, setEnd] = useState(def.end);
+  // A statement window that is not two dates reads as blank, and a blank bound reached the Email's Send (a write, and an outward mail) as
+  // start_date/end_date "": the server refuses it in words about a field the person never saw. Generate now says the field's own sentence
+  // instead (found by an independent read of the seventh drive slice, 5-11-2026). A value the address bar seeded (?from=2026-02-31) is
+  // judged by the same reader the box uses, because a box shows such a value as blank and reports no problem. The Email and the PDF do
+  // not read these boxes at all: they act on the statement SHOWN (see `shown`).
+  const dates = useDateProblems();
+  function windowProblem(): string | null {
+    if (dates.first) return dates.first;
+    if (!typedDateText(start) || !typedDateText(end)) return "Statement period: enter both dates.";
+    if (end < start) return "Statement period: the end date is before the start date.";
+    return null;
+  }
+  // WHAT IS SENT IS WHAT IS ON THE SCREEN. The Email and the PDF read the customer picker and the two boxes as they are NOW, so after
+  // Generate for one customer, choosing another and pressing Email mailed THAT customer's statement to the first one's address (the modal
+  // pre-fills the address from the statement shown), and editing a date did the same for another period. They send the shown statement's
+  // customer and period instead.
+  function shown(): { customer_id: string; start_date: string; end_date: string } | null {
+    return stmt ? { customer_id: stmt.customer.id, start_date: stmt.period.start_date, end_date: stmt.period.end_date } : null;
+  }
   const [stmt, setStmt] = useState<StmtData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1247,6 +1267,8 @@ function Statements({ clientId }: { clientId: string }) {
 
   async function generate() {
     if (!customerId) { setError("Select a customer first."); return; }
+    const problem = windowProblem();
+    if (problem) { setError(problem); return; }
     setLoading(true); setError(null); setStmt(null);
     try {
       const token = await getAuthToken();
@@ -1260,9 +1282,10 @@ function Statements({ clientId }: { clientId: string }) {
   async function downloadPdf() {
     setDownloading(true);
     try {
-    if (!stmt) return;
+    const on = shown();
+    if (!on) return;
     const token = await getAuthToken();
-    const res = await fetch(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${customerId}&start_date=${start}&end_date=${end}`,
+    const res = await fetch(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${on.customer_id}&start_date=${on.start_date}&end_date=${on.end_date}`,
       { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) { setError("PDF download failed."); return; }
     const blob = await res.blob();
@@ -1275,11 +1298,13 @@ function Statements({ clientId }: { clientId: string }) {
     setEmailMsg(null); setEmailModal(true);
   }
   async function sendEmail() {
+    const on = shown();
+    if (!on) return;
     setEmailing(true); setEmailMsg(null);
     try {
       const token = await getAuthToken();
       const res = await apiCall("/api/customer-statements/email", "POST",
-        { client_id: clientId, customer_id: customerId, start_date: start, end_date: end, to_email: emailTo || undefined }, token);
+        { client_id: clientId, customer_id: on.customer_id, start_date: on.start_date, end_date: on.end_date, to_email: emailTo || undefined }, token);
       if (res.success) { setEmailModal(false); setEmailMsg(null); setDeliveryRefresh((k) => k + 1); }
       else { setEmailMsg(res.error ?? "Email failed."); setDeliveryRefresh((k) => k + 1); }
     } catch (e) { setEmailMsg(e instanceof Error ? e.message : "Email failed."); }
@@ -1295,19 +1320,19 @@ function Statements({ clientId }: { clientId: string }) {
             <CustomerLookup
               customers={customers}
               value={customerId}
-              onChange={setCustomerId}
+              onChange={(id) => { setCustomerId(id); setStmt(null); }}
               clearable
               ariaLabel="Customer"
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">From</label>
-            <DateInput aria-label="Statement from" value={start} onChange={(v) => setStart(v)}
+            <DateInput aria-label="Statement from" id="statement-from" value={start} onChange={(v) => setStart(v)} onStateChange={dates.watch("start", "Statement from")}
               className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-label mb-1">To</label>
-            <DateInput aria-label="Statement to" anchor={start || null} notBefore={start || null} value={end} onChange={(v) => setEnd(v)}
+            <DateInput aria-label="Statement to" id="statement-to" anchor={start || null} notBefore={start || null} value={end} onChange={(v) => setEnd(v)} onStateChange={dates.watch("end", "Statement to")}
               className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
           </div>
         </div>
