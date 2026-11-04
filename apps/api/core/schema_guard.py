@@ -133,6 +133,32 @@ _ADD_COLUMN = re.compile(r"ADD COLUMN\s+IF NOT EXISTS\s+(\w+)", re.IGNORECASE)
 # production would have been /health 503 and a held deploy (found by the real-Postgres job on 28-10-2026, not by this repository's
 # mock-mode suite).
 _DROP_COLUMN = re.compile(r"DROP COLUMN\s+(?:IF\s+EXISTS\s+)?(\w+)", re.IGNORECASE)
+# A later migration that DROPS A TABLE takes everything the guard expected of it out too. Without this the expectation outlived the
+# table, which is the same incident as the column above one level up: migration 582 drops `compliance_tasks`, migrations 003, 007
+# and 016 had each added `firm_id` to it, and a database built from the migrations "lacked" `compliance_tasks.firm_id` for good,
+# so /health would have answered 503 "schema_drift" on every fresh boot and held every later deploy (found by an independent read
+# of the migration's diff before it merged, on 4-11-2026; nothing in the mock-mode suite builds a database). Only a statement that
+# STARTS a line counts, with comments removed first, because a header that says "DROP TABLE x" in prose is not one; a table dropped
+# and then added to again (a later `ADD COLUMN`) is expected again, which is why the statements are read in file order.
+_DROP_TABLE = re.compile(r"^[ \t]*DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([^;]+);", re.IGNORECASE | re.MULTILINE)
+_SQL_COMMENT = re.compile(r"/\*.*?\*/|--[^\n]*", re.DOTALL)
+
+
+def _tables_dropped_by(statement_tail: str) -> set[str]:
+    """The public tables named by one `DROP TABLE <list> [CASCADE | RESTRICT]` statement (a table in another schema is not the
+    public one the live read covers)."""
+    out: set[str] = set()
+    for part in statement_tail.split(","):
+        words = part.split()
+        if not words:
+            continue
+        name = words[0].replace('"', "")
+        schema, _, bare = name.rpartition(".")
+        if schema and schema.lower() != "public":
+            continue
+        if bare:
+            out.add(bare.lower())
+    return out
 
 # Tables some migration adds columns to that this database does not have and no
 # live code queries. Every one was verified against the production catalog
@@ -154,17 +180,9 @@ SUPERSEDED_TABLES: dict[str, str] = {
         "`year_end_review_events`, carrying the event_type and actor_id columns "
         "migration 155 declares here. Both readers were repointed at it, so the "
         "old name is queried by nothing in apps/api or apps/web.",
-    "transactions":
-        "Never created in this database. The posted ledger is journal_entries + "
-        "journal_lines, which every report, the passbook and the GST engine read; "
-        "the columns migration 006/007 declare here (supply_type, invoice_type, "
-        "cess_paise …) live on client_sales_invoices and purchase_bills instead. "
-        "No code names this table.",
-    "transaction_lines":
-        "The child half of the same superseded design — journal_lines is the live "
-        "line table. Its cess_paise equivalent is on the invoice/bill line tables. "
-        "No code names this table.",
 }
+# `transactions` and `transaction_lines` were listed here until 4-11-2026: migration 139 drops both, and the parser now forgets a table
+# a later migration drops (_DROP_TABLE), so their entries excused nothing and the superseded-table test required their removal.
 
 # "table.column" pairs where the TABLE is live and correct but the column was
 # superseded. All three are migration 008's denormalised firm_id: production
@@ -226,7 +244,19 @@ def expected_columns_from_migrations(migrations_dir: Path = MIGRATIONS_DIR) -> d
             # adds off it (521's rollback drops `maturity_amount_is_estimate`).
             continue
         text = path.read_text(errors="ignore")
-        for schema, table, body in _ALTER_TABLE_BLOCK.findall(text):
+        # One file's statements in the order they are written, so a table dropped and added to again ends up expected.
+        events: list[tuple[int, str, object]] = [
+            (m.start(), "alter", m.groups()) for m in _ALTER_TABLE_BLOCK.finditer(text)
+        ]
+        events += [
+            (m.start(), "drop", m.group(1)) for m in _DROP_TABLE.finditer(_SQL_COMMENT.sub(lambda c: " " * len(c.group(0)), text))
+        ]
+        for _, kind, payload in sorted(events, key=lambda e: e[0]):
+            if kind == "drop":
+                for gone in _tables_dropped_by(str(payload)):
+                    expected.pop(gone, None)
+                continue
+            schema, table, body = payload  # type: ignore[misc]
             if schema and schema.lower() != "public":
                 continue
             cols = _ADD_COLUMN.findall(body)

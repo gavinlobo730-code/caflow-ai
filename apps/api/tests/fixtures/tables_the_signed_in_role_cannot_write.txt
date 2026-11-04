@@ -62,7 +62,6 @@ client_sales_invoice_lines
 client_sales_invoices
 client_statutory_identity
 client_year_locks
-compliance_tasks
 credit_note_allocations
 credit_note_lines
 credit_notes

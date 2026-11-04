@@ -106,3 +106,50 @@ def test_migration_521s_column_is_expected_on_fixed_deposits_and_no_table_is_cal
     assert "maturity_amount_is_estimate" in expected.get("fixed_deposits", set())
     for word in ("if", "only", "exists", "public"):
         assert word not in expected, f"{word!r} is a word of the SQL, not a table"
+
+
+# ── a table a later migration drops is no longer expected (migration 582 took /health down in a read of its diff, not in production)
+
+def test_a_table_a_later_migration_drops_is_no_longer_expected(tmp_path):
+    (tmp_path / "001_a.sql").write_text("ALTER TABLE public.gone ADD COLUMN IF NOT EXISTS firm_id UUID;\n"
+                                        "ALTER TABLE public.kept ADD COLUMN IF NOT EXISTS x INT;\n")
+    (tmp_path / "002_b.sql").write_text("DROP TABLE public.gone;\n")
+    assert expected_columns_from_migrations(tmp_path) == {"kept": {"x"}}
+
+
+@pytest.mark.parametrize("statement", [
+    "DROP TABLE gone;",
+    "DROP TABLE IF EXISTS gone;",
+    "DROP TABLE IF EXISTS public.gone CASCADE;",
+    'drop table if exists "public"."gone" restrict;',
+    "    DROP TABLE IF EXISTS other_a, gone, other_b;",
+    "DROP TABLE\n    IF EXISTS\n    public.gone;",
+])
+def test_every_way_of_writing_a_drop_table_forgets_the_table(tmp_path, statement):
+    (tmp_path / "001_a.sql").write_text("ALTER TABLE gone ADD COLUMN IF NOT EXISTS firm_id UUID;\n")
+    (tmp_path / "002_b.sql").write_text(statement + "\n")
+    assert "gone" not in expected_columns_from_migrations(tmp_path), statement
+
+
+def test_a_drop_table_in_prose_or_in_another_schema_forgets_nothing(tmp_path):
+    (tmp_path / "001_a.sql").write_text("ALTER TABLE gone ADD COLUMN IF NOT EXISTS firm_id UUID;\n")
+    (tmp_path / "002_b.sql").write_text(
+        "-- a header that says DROP TABLE gone; in a comment\n"
+        "/* DROP TABLE gone;\n   in a block comment */\n"
+        "SELECT 'to DROP TABLE gone; would be wrong';\n"
+        "DROP TABLE IF EXISTS auth.gone;\n")
+    assert expected_columns_from_migrations(tmp_path) == {"gone": {"firm_id"}}
+
+
+def test_a_table_dropped_and_then_added_to_again_is_expected_again(tmp_path):
+    (tmp_path / "001_a.sql").write_text("ALTER TABLE t ADD COLUMN IF NOT EXISTS old_col INT;\n")
+    (tmp_path / "002_b.sql").write_text("DROP TABLE t;\nCREATE TABLE t (id INT);\n"
+                                        "ALTER TABLE t ADD COLUMN IF NOT EXISTS new_col INT;\n")
+    assert expected_columns_from_migrations(tmp_path) == {"t": {"new_col"}}, "the old column must not outlive the drop"
+
+
+def test_the_retired_compliance_tasks_table_is_not_expected_after_migration_582():
+    expected = expected_columns_from_migrations()
+    assert "compliance_tasks" not in expected, (
+        "migration 582 drops compliance_tasks; expecting a column on it makes /health answer 503 'schema_drift' on every boot")
+    assert "transactions" not in expected and "transaction_lines" not in expected, "migration 139 drops both"
