@@ -31,6 +31,7 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="icon" type="image/svg+xml" href="/logo.svg" />
         {/* `ps.ink` (#0D1635) exactly. A <meta> takes no class, so this and
             the manifest are the only two places a token has to be written
