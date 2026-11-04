@@ -338,6 +338,10 @@ export function PurchaseBillEditor({
   // AI Upload (Extract) — create-only; re-extracting into an already-saved
   // draft would silently overwrite manually-corrected fields.
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  // POST-A-131: on a phone the bill is a photograph, so a second control opens the camera (`capture`) and feeds the same file the Extract
+  // button reads. It is shown on a TOUCH device (`pointer: coarse`: a phone in either orientation, a tablet), not by width, and never on a
+  // desktop, because `capture` means nothing there. The camera input itself is hidden, so the visible button carries the name and the AI disclosure.
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
   // The server's arithmetic check on the extraction's own five header figures
@@ -1140,8 +1144,13 @@ export function PurchaseBillEditor({
         ) : (
           <section className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 space-y-2">
             <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Upload Invoice (AI Extract)</p>
-            <div className="flex items-center gap-2">
-              <input type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="Invoice file to extract" aria-describedby="ai-disclosure-invoice-extraction" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg" aria-label="Invoice file to extract" aria-describedby="ai-disclosure-invoice-extraction" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label min-w-0 max-w-full" />
+              <input ref={cameraInputRef} type="file" accept="image/jpeg,image/png" capture="environment" aria-label="Photograph the invoice to extract" aria-describedby="ai-disclosure-invoice-extraction" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="hidden" />
+              <Button variant="plain" size="none" onClick={() => cameraInputRef.current?.click()} aria-describedby="ai-disclosure-invoice-extraction" className="hidden [@media(pointer:coarse)]:inline-flex text-xs px-3 py-1.5 border border-state-attention-border text-state-attention rounded-lg">
+                Take photo
+              </Button>
+              {uploadFile && <span className="hidden [@media(pointer:coarse)]:inline min-w-0 text-3xs text-state-attention truncate max-w-[9rem]">{uploadFile.name}</span>}
               <Button variant="plain" size="none" onClick={handleExtract} disabled={!uploadFile || extracting} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {extracting ? "Extracting…" : "Extract"}
               </Button>

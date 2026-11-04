@@ -1,3 +1,9 @@
+// v5 — a navigation that fails because the page could not be fetched shows /offline.html (a branded page that says it cannot reach PracticeSync and
+// offers Try again) instead of the browser's own error page (POST-A-131). The worker cannot tell an offline device from an outage or a DNS failure, so the
+// page does not claim to know which. EDITING offline.html ALONE DOES NOT REACH EXISTING INSTALLS: the page is stored when a worker installs, and a worker
+// installs only when this file's bytes change, so change CACHE_NAME below whenever offline.html changes. Nothing else changes: data requests are never cached, and every branch still
+// resolves to a real Response.
+//
 // v4 — fixes a hard navigation failure: v3's final catch-all branch
 // (isDataRequest/navigate/isStaticAsset all false — this is where every
 // Next.js App Router client-side route transition's background RSC/".txt"
@@ -14,22 +20,39 @@
 // uncaught rejection and never `undefined` (caches.match() misses return
 // undefined, which respondWith() can't accept either — offlineFallback()
 // below covers that gap too, pre-existing in every branch since v2/v3).
-const CACHE_NAME = 'practicesync-v4';
+const CACHE_NAME = 'practicesync-v5';
+const OFFLINE_PAGE = '/offline.html';
 const STATIC_ASSETS = ['/login/'];
 
+// Cloudflare Pages serves offline.html at /offline and REDIRECTS /offline.html to it, and a response marked `redirected` cannot answer a page
+// navigation (the browser turns it into a network error). So the page is fetched once, and stored and served as a plain Response built from
+// its bytes. Failing to store it must never fail the install: without it the fallback is the 503 it always was.
+function plainPage(res) {
+  return res.blob().then(b => new Response(b, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
+}
+function cacheOfflinePage(cache) {
+  return fetch(OFFLINE_PAGE)
+    .then(res => (res.ok ? plainPage(res).then(page => cache.put(OFFLINE_PAGE, page)) : undefined))
+    .catch(() => undefined);
+}
+
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(STATIC_ASSETS)));
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(STATIC_ASSETS).then(() => cacheOfflinePage(c))));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
   // Delete ALL previous caches (v1/v2/v3) so every client self-heals from
   // any prior version's bug the moment this version activates — no user
-  // action needed.
+  // action needed. And give the offline page a second chance: if storing it at install failed (a transient error), nothing else would
+  // ever retry it for this version.
   e.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    ).then(() => caches.open(CACHE_NAME))
+      .then(c => c.match(OFFLINE_PAGE).then(have => (have ? undefined : cacheOfflinePage(c))))
+      .catch(() => undefined)
+      .then(() => self.clients.claim())
   );
 });
 
@@ -37,9 +60,17 @@ self.addEventListener('activate', e => {
 // miss (nothing was ever cached for this request, e.g. a never-visited page
 // while offline) still resolves to a real Response instead of throwing.
 function offlineFallback(request) {
-  return caches.match(request).then(
-    cached => cached || new Response(null, { status: 503, statusText: 'Offline' })
-  );
+  return caches.match(request).then(cached => {
+    if (cached) return cached;
+    // A page navigation that nothing cached gets the branded offline page; anything else (a script, an image, a data payload) keeps the
+    // bare 503 it always had, because a page is not an acceptable answer to a request for a script.
+    if (request.mode === 'navigate') {
+      return caches.match(OFFLINE_PAGE).then(
+        page => (page ? plainPage(page) : new Response(null, { status: 503, statusText: 'Offline' }))
+      );
+    }
+    return new Response(null, { status: 503, statusText: 'Offline' });
+  });
 }
 
 self.addEventListener('fetch', e => {

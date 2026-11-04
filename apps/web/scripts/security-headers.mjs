@@ -23,7 +23,7 @@
  *     Referrer-Policy: strict-origin-when-cross-origin the value Cloudflare already sends, stated. Other
  *                                                      origins see this one's origin and never a path, so
  *                                                      a client id or a signing token is not leaked.
- *     Permissions-Policy: camera=(), microphone=()...  none is used anywhere in apps/web (checked by a test).
+ *     Permissions-Policy: camera=(), microphone=()...  no page calls the camera or microphone itself (getUserMedia and the like: checked by a test). The purchase bill's Take photo (POST-A-131) uses `<input type=file capture>`, which hands the choice to the phone's own camera app; whether Permissions-Policy `camera=()` governs that is NOT verified, and it is not expected to.
  *     Strict-Transport-Security: max-age=2592000       30 days, no includeSubDomains, no preload — see
  *                                                      HSTS below.
  *     Content-Security-Policy                          see CSP below.
