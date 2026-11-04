@@ -385,6 +385,63 @@ function openEmployeeDrawer(tab) {
   };
 }
 
+/** Settings > Multi-currency with the firm entitled, so the Exchange rates panel under the register is drawn; a rate typed, only its date left. */
+async function openFxRates(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { settings: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/currencies\/entitlement$/, reply: () => ok({ platform: { on: true }, firm: { on: true } }) });
+  stub.route({ method: "GET", re: /api\/currencies\/rate-types$/, reply: () => ok({ rate_types: ["booking", "gst_notified", "customs", "closing"].map((code) => ({ code, meaning: `The ${code} rate.` })) }) });   // the four codes the fx_rates CHECK admits
+  stub.route({ method: "GET", re: /api\/currencies\/rates\?/, reply: () => ok({ rates: [] }) });
+  stub.route({ method: "PUT", re: /api\/currencies\/rates$/, reply: () => ok({ rate: "83.42", replaced: false }) });
+  await page.goto(`${env.base}/settings/multi-currency/`, { waitUntil: "networkidle" });
+  await page.locator("#fx-rate").fill("83.42");
+}
+
+/** The Overdue Interest tab with one customer that owes interest, so "Prepare draft invoice" is offered; only the as-at date is left to type. */
+async function openOverdueInterest(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { sales: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/late-interest\/preview\?/, reply: () => ok({
+    as_of: "2026-10-08", convention: { statement: "stub", day_count: "stub", as_of: "2026-10-08" },
+    statutory_reading: { section: "stub", grade: "S", text: "stub" }, caveats: [], gaps: [],
+    totals: { interest_paise: 1_200_00, parties_with_interest: 1, parties_without_terms: 0, overdue_outstanding_paise: 50_000_00 },
+    parties: [{ customer_id: "c-beta", customer_name: "Beta Stores", terms_set: true, terms: { rate_bps: 1800, grace_days: 0, basis: "simple" },
+      overdue_outstanding_paise: 50_000_00, interest_paise: 1_200_00, documents: [] }] }) });
+  stub.route({ method: "GET", re: /api\/late-interest\/terms\?/, reply: () => ok({ customers: [] }) });
+  stub.route({ method: "POST", re: /api\/late-interest\/drafts$/, reply: () => ok({ drafts: [], not_drafted: [], failed: [], caveats: [] }) });
+  await page.goto(env.at("/sales/?tab=interest"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Prepare draft invoice" }).first().waitFor();
+}
+
+/** Inventory with the cost formula panel above the register, its "Record" form open on a formula; only the effective date is left. */
+async function openCostFormula(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { inventory: ["read", "write"], accounting: ["read", "write"] } }) });
+  const policy = { client_id: CLIENT_ID, method: "moving_average", label: "Moving average", is_recorded: false, unrecorded_means: "Not recorded.",
+    methods: [{ value: "moving_average", label: "Moving average" }, { value: "fifo", label: "First in, first out" }],
+    standard_cost_refused: "Standard cost is not offered.", as5_disclosure: "stub", earliest_date_a_change_can_take_effect: null, methods_used: [] };
+  stub.route({ method: "GET", re: /api\/inventory\/costing-policy\?/, reply: () => ok(policy) });
+  stub.route({ method: "PUT", re: /api\/inventory\/costing-policy$/, reply: () => ok({ ...policy, is_recorded: true }) });
+  await page.goto(env.at("/inventory/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record", exact: true }).first().click();
+  await page.locator("#cost-formula-from").waitFor();
+}
+
+/** Payroll > Inputs with one salary structure and one employee, "Apply to employees" open with the employee ticked and a gross typed; only the date is left. */
+async function openApplyStructure(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
+  stub.route({ method: "GET", re: /api\/payroll\/employees\?/, reply: () => ok([{
+    id: "emp-1", name: "Asha Rao", designation: "Accountant", basic_paise: 40_000_00, hra_percent: 40, pf_applicable: true, esi_applicable: false, pt_applicable: true, status: "active" }]) });
+  stub.route({ method: "GET", re: /api\/payroll\/salary-structures\?/, reply: () => ok([{
+    id: "st-1", name: "Grade A", basic_percent: 50, hra_percent: 40, pf_applicable: true, esi_applicable: false }]) });
+  stub.route({ method: "POST", re: /salary-structures\/st-1\/apply$/, reply: () => ok({ applied: 0, preview: true, employees: [], notes: [] }) });
+  await page.goto(env.at("/payroll/?tab=inputs"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Apply to employees" }).first().click();
+  await page.getByLabel("Apply to Asha Rao").check();
+  await page.getByLabel("Gross salary (₹) — Asha Rao").fill("80000");
+}
+
 /** Opens a form on a 1440 by 720 screen, a smaller laptop's, so that a dialog taller than 720 pixels must scroll to keep its Save in reach. */
 const onAShortScreen = (open) => async (env) => {
   await env.page.setViewportSize({ width: 1440, height: 720 });
@@ -869,6 +926,27 @@ const EDITORS = [
     heldWhileUnreadable: true,
     fields: [{ box: (p) => p.locator("#drawer-last-working-day"), label: "Last working day", key: "leaving_date", full: "31/03/2026", iso: "2026-03-31" }],
     save: (p) => p.getByRole("button", { name: "Compute", exact: true }), write: /employees\/emp-1\/settlement$/,
+  },
+  // The seventh slice (4-11-2026): single-purpose panels.
+  {
+    id: "exchange-rate", title: "Settings > Multi-currency: record an exchange rate", open: openFxRates,
+    fields: [{ box: (p) => p.locator("#fx-date"), label: "For the date", key: "rate_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Record rate", exact: true }), write: /api\/currencies\/rates$/,
+  },
+  {
+    id: "overdue-interest", title: "Sales > Overdue Interest: the as-at date a draft interest invoice is prepared for", open: openOverdueInterest,
+    fields: [{ box: (p) => p.locator("#overdue-as-at"), label: "As at", key: "as_of_date", full: "15/09/2026", iso: "2026-09-15" }],
+    save: (p) => p.getByRole("button", { name: "Prepare draft invoice" }).first(), write: /api\/late-interest\/drafts$/,
+  },
+  {
+    id: "cost-formula", title: "Inventory: the date a cost formula takes effect", open: openCostFormula,
+    fields: [{ box: (p) => p.locator("#cost-formula-from"), label: "Takes effect from", key: "effective_from", full: "01/04/2027", iso: "2027-04-01" }],
+    save: (p) => p.getByRole("button", { name: "Record", exact: true }).last(), write: /api\/inventory\/costing-policy$/,
+  },
+  {
+    id: "apply-salary-structure", title: "Payroll > Inputs: the date a salary structure is applied from", open: openApplyStructure, heldWhileUnreadable: true,
+    fields: [{ box: (p) => p.locator("#apply-structure-effective-from"), label: "Effective from", key: "effective_from", full: "01/10/2026", iso: "2026-10-01" }],
+    save: (p) => p.getByRole("button", { name: "Preview", exact: true }), write: /salary-structures\/st-1\/apply$/,
   },
 ];
 

@@ -316,6 +316,11 @@ const DRIVEN: Record<string, string[]> = {
   // The fifth slice (4-11-2026): the capital-gains screen's calculator, register dialog and reinvestment claim.
   // The sixth slice (4-11-2026): an employee's drawer.
   "components/payroll/EmployeeDrawer.tsx": ["#drawer-joining-date", "#drawer-last-working-day", "#settlement-payment-date", "#drawer-revision-effective-from", "#drawer-loan-started-on"],
+  // The seventh slice (4-11-2026): single-purpose panels.
+  "components/currency/FxRatesPanel.tsx": ["#fx-date"],
+  "components/sales/OverdueInterestPanel.tsx": ["#overdue-as-at"],
+  "components/inventory/CostFormulaPanel.tsx": ["#cost-formula-from"],
+  "components/payroll/ApplyStructureModal.tsx": ["#apply-structure-effective-from"],
   "app/income-tax/capital-gains/page.tsx": ["#cg-calc-purchase-date", "#cg-calc-sale-date", "#cg-reg-purchase-date", "#cg-reg-sale-date", "[Acquisition date]", "[CGAS deposit date]"],
 };
 
@@ -334,8 +339,8 @@ const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "app/clients/[id]/sales/page.tsx": {
     "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
     "#rec-inv-end": "the recurring invoice's end date, anchored to the start (a later row)",
-    "[Statement from]": "the statement window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
-    "[Statement to]": "the statement window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
+    "[Statement from]": "the customer statement window; Generate and PDF are reads, but the Email modal's Send posts these dates, so the save claims DO apply to it (a later row, with the gate the Send does not have yet)",
+    "[Statement to]": "the customer statement window; Generate and PDF are reads, but the Email modal's Send posts these dates, so the save claims DO apply to it (a later row, with the gate the Send does not have yet)",
   },
 };
 

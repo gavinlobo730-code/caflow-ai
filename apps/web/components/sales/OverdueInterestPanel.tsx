@@ -41,6 +41,7 @@ import { EmptyState } from "@/components/ui/states";
 import type { SingleFlight } from "@/lib/async/singleFlight";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -79,6 +80,11 @@ export default function OverdueInterestPanel({
   onOpenInvoice?: (invoiceId: string) => void;
 }) {
   const [asOf, setAsOf] = useState(todayLocalISO());
+  // An "As at" that is not a date reads as blank, and the draft was sent with that blank: the server REFUSES it (422, "as_of_date must be a date
+  // (YYYY-MM-DD)", in its own words, not the field's), so no draft was made, but a write went out and the person was told in a sentence about a
+  // field name they never saw (found by driving the tab, 4-11-2026; an independent read corrected my first account of it, which had the server
+  // reading a blank as today: that holds for a date left out, not for an empty string).
+  const dates = useDateProblems();
   const [preview, setPreview] = useState<LateInterestPreview | null>(null);
   const [terms, setTerms] = useState<LateInterestTerms[]>([]);
   const [edits, setEdits] = useState<Record<string, TermsText>>({});
@@ -152,6 +158,8 @@ export default function OverdueInterestPanel({
   }
 
   async function prepare(party: LateInterestParty) {
+    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { setMsg({ type: "err", text: "As at: enter the date the interest is worked out to." }); return; }
     setBusy(`draft:${party.customer_id}`);
     setMsg(null);
     setDrafted(null);
@@ -194,8 +202,10 @@ export default function OverdueInterestPanel({
           <label className="text-2xs text-ps-label">
             As at
             <DateInput
+              id="overdue-as-at"
               value={asOf}
               onChange={(v) => setAsOf(v)}
+              onStateChange={dates.watch("asOf", "As at")}
               className="mt-0.5 block rounded-lg border border-ps-border px-2 py-1.5 text-xs"
             />
           </label>
