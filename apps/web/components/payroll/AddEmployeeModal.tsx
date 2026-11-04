@@ -30,9 +30,9 @@
  *  PF, HRA, gratuity and every month's withholding thereafter. */
 
 import { useState } from "react";
-import { X } from "lucide-react";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
@@ -237,12 +237,21 @@ export function AddEmployeeModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-ps-ink">{isEdit ? "Edit Employee" : "Add Employee"}</h2>
-          <button onClick={onClose}><X size={16} /></button>
+    // The shared dialog, not a hand-built overlay: the form is tall (identifiers, pay, statutory elections), and the overlay it used to be
+    // had no height limit and no scroll, so on a laptop screen the heading, the name box and the save button were out of reach (found by
+    // driving it, PRE-A-015). The shared dialog limits its height, scrolls its body, keeps the buttons in view, holds the keyboard
+    // inside it and closes on Escape.
+    <Modal
+      title={isEdit ? "Edit Employee" : "Add Employee"}
+      onClose={onClose}
+      maxWidthClass="max-w-lg"
+      footer={(
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? "Saving..." : isEdit ? "Update Employee" : "Add Employee"}</Button>
         </div>
+      )}
+    >
         {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -483,12 +492,7 @@ export function AddEmployeeModal({
                    onChange={e => setForm(f => ({ ...f, bank_name: e.target.value }))} />
           </div>
         </div>
-        <div className="flex gap-2 justify-end mt-5">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>{saving ? "Saving..." : isEdit ? "Update Employee" : "Add Employee"}</Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

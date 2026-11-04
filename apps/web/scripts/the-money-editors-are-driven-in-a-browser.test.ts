@@ -311,6 +311,8 @@ const DRIVEN: Record<string, string[]> = {
   "components/purchases/PurchaseCreditNoteEditor.tsx": ["#purchase-cn-date"],
   "app/accounting/loans/page.tsx": ["[Disbursement date]", "[Loan maturity date]", "[Fixed deposit start date]", "[Fixed deposit maturity date]"],
   "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date"],
+  // The fourth slice (4-11-2026).
+  "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
