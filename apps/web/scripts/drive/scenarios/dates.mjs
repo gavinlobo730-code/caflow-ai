@@ -353,6 +353,24 @@ function openStockForm(kind) {
   };
 }
 
+/** The client's payroll Inputs tab with "Add Employee" open on a name and a basic salary, so only the dates are left. */
+async function openEmployeeForm(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve"] } }) });
+  stub.route({ method: "POST", re: /api\/payroll\/employees$/, reply: () => ok({ id: "emp-1" }) });
+  await page.goto(env.at("/payroll/?tab=inputs"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Add Employee" }).first().click();
+  await page.getByRole("heading", { name: "Add Employee" }).waitFor();
+  await page.getByLabel("Name", { exact: true }).fill("Asha Rao");
+  await page.getByLabel("Basic Salary (Rs/month)").fill("40000");
+}
+
+/** Opens a form on a 1440 by 720 screen, a smaller laptop's, so that a dialog taller than 720 pixels must scroll to keep its Save in reach. */
+const onAShortScreen = (open) => async (env) => {
+  await env.page.setViewportSize({ width: 1440, height: 720 });
+  await open(env);
+};
+
 /** The Billing screen for a person who may write on it, with one fee invoice that is owed (so a receipt can be recorded against it). */
 async function atBilling(env) {
   const { page, stub } = env;
@@ -522,7 +540,7 @@ const EDITORS = [
   },
   {
     id: "tds-challan", title: "TDS challan form",
-    open: openTdsChallanForm,
+    open: onAShortScreen(openTdsChallanForm), saveInView: true,
     fields: [{ box: (p) => p.locator("#tds-challan-date"), label: "Challan date", key: "challan_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/,
   },
@@ -688,6 +706,25 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Save Write-down", exact: true }), write: /api\/inventory\/items\/sc1\/writedown$/,
   },
   {
+    id: "employee-form", title: "employee form (payroll Inputs)", open: onAShortScreen(openEmployeeForm), saveInView: true,
+    fields: [
+      { box: (p) => p.locator("#employee-joining-date"), label: "Joining date", key: "joining_date", full: "15/07/2025", iso: "2025-07-15" },
+      { box: (p) => p.locator("#date-of-birth"), label: "Date of Birth", key: "date_of_birth", full: "20/03/1990", iso: "1990-03-20" },
+    ],
+    save: (p) => modalOf(p).getByRole("button", { name: "Add Employee", exact: true }), write: /api\/payroll\/employees$/,
+  },
+  {
+    id: "employee-pf-election", title: "employee form: PF on actual wages takes effect from (payroll Inputs)", saveInView: true,
+    open: onAShortScreen(async (env) => {
+      await openEmployeeForm(env);
+      const { page } = env;
+      await page.getByLabel(/PF Applicable/).check();
+      await page.locator("#pf-actual").check();
+    }),
+    fields: [{ box: (p) => p.locator("#pf-actual-from"), label: "PF on actual wages takes effect from", key: "pf_on_actual_wages_from", full: "15/07/2025", iso: "2025-07-15" }],
+    save: (p) => modalOf(p).getByRole("button", { name: "Add Employee", exact: true }), write: /api\/payroll\/employees$/,
+  },
+  {
     id: "post-dated-cheque", title: "post-dated cheque form", open: openPostDatedCheque,
     fields: [{ box: (p) => p.getByLabel("Cheque date"), label: "Cheque date", key: "cheque_date", full: "15/11/2026", iso: "2026-11-15" }],
     save: (p) => p.getByRole("button", { name: "Record cheque", exact: true }), write: /post-dated-cheques$/,
@@ -707,6 +744,20 @@ const EDITORS = [
 async function driveEditor(env, spec) {
   const { page, stub } = env;
   await spec.open(env);
+
+  // 0. A dialog's save control can be brought onto the screen. A hand-built overlay taller than the screen has no scroll, so
+  //    its heading and its Save button were out of reach (the Add Employee dialog, found by driving it); the shared dialog limits its height,
+  //    scrolls its body and keeps its buttons in view. Opt-in per row (`saveInView`): the rows of dialogs that hold it.
+  if (spec.saveInView || process.env.PROBE_DIALOG_FIT) {
+    // REACHABLE, not merely visible: a dialog or page that scrolls brings its Save into view (the browser does it for a person who
+    // tabs or scrolls), so the control is scrolled to first. One that cannot scroll leaves it where it was, below the bottom.
+    await spec.save(page).scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => undefined);
+    const box = await spec.save(page).boundingBox();
+    const height = page.viewportSize()?.height ?? 0;
+    const fits = !!box && box.y >= 0 && box.y + box.height <= height;
+    if (process.env.PROBE_DIALOG_FIT) { console.log(`FIT ${fits ? "yes" : "NO "} ${spec.id}  save at y=${box ? Math.round(box.y) : "?"}..${box ? Math.round(box.y + box.height) : "?"} of ${height}`); return; }
+    assert.ok(fits, `${spec.title}: the Save button cannot be brought onto the screen (it is at ${box ? Math.round(box.y) + ".." + Math.round(box.y + box.height) : "nowhere"} of a ${height}-pixel screen)`);
+  }
 
   // 1. No native date input anywhere on the screen.
   assert.equal(await page.locator('input[type="date"]').count(), 0,

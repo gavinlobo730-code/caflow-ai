@@ -684,7 +684,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
 
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Add Challan 281</h3>
           <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>

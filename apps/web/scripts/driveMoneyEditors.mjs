@@ -220,7 +220,9 @@ for (const run of selected) {
   stub.reset(baseline());
   stub.route({ method: "GET", re: /service-catalogue/, reply: () => ok([ITEM]) });
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    // 1440 by 900 unless DRIVE_VIEWPORT_HEIGHT says otherwise: the probe `PROBE_DIALOG_FIT=1` is run at a shorter screen (768, 720) to find
+    // the dialogs whose Save button is out of reach on a smaller laptop.
+    viewport: { width: 1440, height: Number(process.env.DRIVE_VIEWPORT_HEIGHT) || 900 },
     ...(run.context ?? {}),
   });
   await context.clock.setFixedTime(new Date(NOW));

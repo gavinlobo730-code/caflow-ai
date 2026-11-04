@@ -173,7 +173,6 @@ const FROZEN: Record<string, number> = {
   "components/gst/RegistrationsTab.tsx": 1,
   "components/inventory/LocationsAndBatches.tsx": 2,
   "components/inventory/StockCountSheet.tsx": 1,
-  "components/payroll/AddEmployeeModal.tsx": 1,
   "components/payroll/ApplyStructureModal.tsx": 1,
   "components/payroll/DisburseModal.tsx": 1,
   "components/payroll/EmployeeDrawer.tsx": 1,
