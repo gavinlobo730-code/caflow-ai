@@ -301,6 +301,58 @@ async function openCustomerReceipt(env) {
   await page.getByLabel("Amount (₹)").fill("25000");
 }
 
+/** One of the four note editors, opened on a new note with the party and one line chosen so only the date is left. */
+function openNoteEditor({ path, party, write }) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "POST", re: write, reply: () => ok({ id: "note-new" }) });
+    await page.goto(env.at(path), { waitUntil: "networkidle" });
+    await pick(page, page.locator(`button[aria-label="${party.label}"]`), party.name);
+    await pick(page, page.locator('button[aria-label="Line 1 product or service"]'), "Consulting");
+    await page.getByLabel("Reason").fill("Rate correction");
+  };
+}
+
+/** Loans & Fixed Deposits: the "Add Loan" or "Add FD" form open on a client and the amounts, so only the dates are left. */
+function openLoanOrDeposit(kind) {
+  return async (env) => {
+    const { page } = env;
+    await page.goto(`${env.base}/accounting/loans/`, { waitUntil: "networkidle" });
+    if (kind === "fd") await page.getByRole("button", { name: /Fixed Deposits/ }).first().click();
+    await page.getByRole("button", { name: kind === "loan" ? "Add Loan" : "Add FD", exact: true }).first().click();
+    const form = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: kind === "loan" ? "Add Loan" : "Add Fixed Deposit" }) });
+    await form.waitFor();
+    await pick(page, form.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+    const amounts = form.locator('input[type="number"]');
+    if (kind === "loan") {
+      await form.getByPlaceholder("e.g. HDFC Bank").fill("HDFC Bank");
+      await amounts.nth(0).fill("1000000");   // principal
+      await amounts.nth(1).fill("900000");    // outstanding
+      await amounts.nth(2).fill("10.5");      // rate
+    } else {
+      await form.getByPlaceholder("e.g. State Bank of India").fill("State Bank of India");
+      await amounts.nth(0).fill("500000");    // principal
+      await amounts.nth(1).fill("7");         // rate
+    }
+  };
+}
+
+/** The client's Inventory tab with one stocked item, and a row's "Adjust" or "Write down" form open with its quantity or value typed. */
+function openStockForm(kind) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /api\/inventory\/items\?/, reply: () => ok([{
+      id: "sc1", name: "Copier paper", description: null, hsn_sac: "4802", unit: "NOS", is_active: true,
+      stock_qty_units: 40, avg_cost_paise: 25000, stock_value_paise: 1000000,
+    }]) });
+    stub.route({ method: "POST", re: /api\/inventory\/items\/sc1\/(adjust|writedown)$/, reply: () => ok({ id: "mv-1" }) });
+    await page.goto(env.at("/inventory/"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: kind === "adjust" ? "Adjust" : "Write down", exact: true }).first().click();
+    if (kind === "adjust") await page.getByLabel("Quantity", { exact: true }).fill("2");
+    else await page.getByLabel("Net realisable value / unit (₹)").fill("200");
+  };
+}
+
 /** The Billing screen for a person who may write on it, with one fee invoice that is owed (so a receipt can be recorded against it). */
 async function atBilling(env) {
   const { page, stub } = env;
@@ -594,6 +646,46 @@ const EDITORS = [
     id: "customer-receipt", title: "customer receipt form (Receipts tab)", open: openCustomerReceipt,
     fields: [{ box: (p) => p.locator("#receipt-date"), label: "Receipt date", key: "receipt_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.getByRole("button", { name: "Record Receipt", exact: true }).last(), write: /api\/receipts\/$/,
+  },
+  ...[
+    { id: "sales-credit-note-editor", title: "sales credit note editor", path: "/sales/credit-notes/new/edit/", party: { label: "Customer", name: "Beta Stores" },
+      box: "#sales-cn-date", label: "Credit note date", key: "credit_note_date", write: /\/api\/credit-notes\/$/ },
+    { id: "sales-debit-note-editor", title: "sales debit note editor", path: "/sales/debit-notes/new/edit/", party: { label: "Customer", name: "Beta Stores" },
+      box: "#sales-dn-date", label: "Debit note date", key: "debit_note_date", write: /\/api\/sales-debit-notes\/$/ },
+    { id: "purchase-debit-note-editor", title: "purchase debit note editor", path: "/purchases/debit-notes/new/edit/", party: { label: "Vendor", name: "Gamma Supplies" },
+      box: "#purchase-dn-date", label: "Debit note date", key: "debit_note_date", write: /\/api\/debit-notes\/$/ },
+    { id: "purchase-credit-note-editor", title: "purchase credit note editor", path: "/purchases/credit-notes/new/edit/", party: { label: "Vendor", name: "Gamma Supplies" },
+      box: "#purchase-cn-date", label: "Credit note date", key: "credit_note_date", write: /\/api\/purchase-credit-notes\/$/ },
+  ].map((n) => ({
+    id: n.id, title: n.title, open: openNoteEditor(n),
+    fields: [{ box: (p) => p.locator(n.box), label: n.label, key: n.key, full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save Draft", exact: true }), write: n.write,
+  })),
+  {
+    id: "loan", title: "loan form (Loans & Fixed Deposits)", open: openLoanOrDeposit("loan"),
+    fields: [
+      { box: (p) => p.getByLabel("Disbursement date"), label: "Disbursement date", key: "disbursement_date", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => p.getByLabel("Loan maturity date"), label: "Maturity date", key: "maturity_date", full: "14/07/2029", iso: "2029-07-14" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Add Loan", exact: true }).last(), write: /rest\/v1\/loans/,
+  },
+  {
+    id: "fixed-deposit", title: "fixed deposit form (Loans & Fixed Deposits)", open: openLoanOrDeposit("fd"),
+    fields: [
+      { box: (p) => p.getByLabel("Fixed deposit start date"), label: "Start date", key: "start_date", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => p.getByLabel("Fixed deposit maturity date"), label: "Maturity date", key: "maturity_date", full: "14/07/2027", iso: "2027-07-14" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Add FD", exact: true }).last(), write: /rest\/v1\/fixed_deposits/,
+  },
+  {
+    id: "stock-adjustment", title: "stock adjustment form (Inventory)", open: openStockForm("adjust"),
+    fields: [{ box: (p) => p.locator("#stock-adjust-date"), label: "Date", key: "adjustment_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save Adjustment", exact: true }), write: /api\/inventory\/items\/sc1\/adjust$/,
+  },
+  {
+    id: "stock-writedown", title: "NRV write-down form (Inventory)", open: openStockForm("writedown"),
+    fields: [{ box: (p) => p.locator("#writedown-date"), label: "Date", key: "writedown_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save Write-down", exact: true }), write: /api\/inventory\/items\/sc1\/writedown$/,
   },
   {
     id: "post-dated-cheque", title: "post-dated cheque form", open: openPostDatedCheque,
