@@ -365,6 +365,26 @@ async function openEmployeeForm(env) {
   await page.getByLabel("Basic Salary (Rs/month)").fill("40000");
 }
 
+/** An employee's drawer (Profile, Full & final, Salary revisions, Loans & advances) on the client's payroll screen, open at one tab, for a person who may finalise. */
+function openEmployeeDrawer(tab) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
+    stub.route({ method: "GET", re: /api\/payroll\/employees\?/, reply: () => ok([{
+      id: "emp-1", name: "Asha Rao", designation: "Accountant", basic_paise: 40_000_00, hra_percent: 40, pf_applicable: true, esi_applicable: false,
+      pt_applicable: true, status: "active" }]) });   // no joining date recorded: a short date in a box that already holds one is read in THAT date's year (DateInput's anchor), so a stored one would change what 15/1 means
+    stub.route({ method: "GET", re: /employees\/emp-1\/salary-revisions\?/, reply: () => ok({ revisions: [] }) });
+    stub.route({ method: "GET", re: /employees\/emp-1\/loans\?/, reply: () => ok({ loans: [] }) });
+    stub.route({ method: "PATCH", re: /api\/payroll\/employees\/emp-1$/, reply: () => ok({ id: "emp-1" }) });
+    stub.route({ method: "POST", re: /employees\/emp-1\/salary-revisions$/, reply: () => ok({ id: "rev-1" }) });
+    stub.route({ method: "POST", re: /employees\/emp-1\/loans$/, reply: () => ok({ loan: { id: "loan-1" }, notes: [] }) });
+    stub.route({ method: "POST", re: /employees\/emp-1\/settlement$/, reply: () => ok({ employee_id: "emp-1", components: [], deductions: [], totals: { gross_paise: 0, taxable_paise: 0, net_payable_paise: 0 }, gaps: [], problems: [] }) });
+    await page.goto(env.at("/payroll/?tab=inputs"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Open", exact: true }).first().click();
+    if (tab) await page.getByRole("button", { name: tab, exact: true }).click();
+  };
+}
+
 /** Opens a form on a 1440 by 720 screen, a smaller laptop's, so that a dialog taller than 720 pixels must scroll to keep its Save in reach. */
 const onAShortScreen = (open) => async (env) => {
   await env.page.setViewportSize({ width: 1440, height: 720 });
@@ -804,6 +824,51 @@ const EDITORS = [
       { box: (p) => p.getByLabel("CGAS deposit date"), label: "CGAS deposit date", key: "cgas_deposit_date", full: "20/08/2026", iso: "2026-08-20" },
     ],
     save: (p) => p.getByRole("button", { name: "Record claim", exact: true }), write: /api\/income-tax\/capital-gains\/cg-1\/reinvestments$/,
+  },
+  // The sixth slice (4-11-2026): an employee's drawer.
+  {
+    id: "employee-drawer-joining-date", title: "employee drawer, Profile: joining date", open: openEmployeeDrawer(null),
+    fields: [{ box: (p) => p.locator("#drawer-joining-date"), label: "Joining date", key: "joining_date", full: "15/07/2025", iso: "2025-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/payroll\/employees\/emp-1$/,
+  },
+  {
+    id: "employee-drawer-salary-revision", title: "employee drawer, Salary revisions: effective from", open: async (env) => {
+      await openEmployeeDrawer("Salary revisions")(env);
+      await env.page.getByLabel("Basic", { exact: true }).fill("45000");
+    },
+    heldWhileUnreadable: true,
+    fields: [{ box: (p) => p.locator("#drawer-revision-effective-from"), label: "Effective from", key: "effective_from", full: "01/04/2026", iso: "2026-04-01" }],
+    save: (p) => p.getByRole("button", { name: "Record revision", exact: true }), write: /employees\/emp-1\/salary-revisions$/,
+  },
+  {
+    id: "employee-drawer-loan", title: "employee drawer, Loans & advances: started on", open: async (env) => {
+      await openEmployeeDrawer("Loans & advances")(env);
+      await env.page.getByLabel("Principal", { exact: true }).fill("50000");
+      await env.page.getByLabel("Monthly instalment", { exact: true }).fill("5000");
+    },
+    fields: [{ box: (p) => p.locator("#drawer-loan-started-on"), label: "Started on", key: "started_on", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Record loan", exact: true }), write: /employees\/emp-1\/loans$/,
+  },
+  {
+    id: "employee-drawer-settlement-payment-date", title: "employee drawer, Full & final: the date the settlement is paid (the confirming click)", open: async (env) => {
+      const { page, stub } = env;
+      await openEmployeeDrawer("Full & final")(env);
+      stub.route({ method: "POST", re: /employees\/emp-1\/settlement\/record$/, reply: () => ok({
+        employee_id: "emp-1", components: [], deductions: [], totals: { gross_paise: 0, taxable_paise: 0, net_payable_paise: 0 }, gaps: [], problems: [], settlement_id: "s-1" }) });
+      // The payment date is read after the last working day (its anchor), so the last working day is in FY 2026-27 here as the short-form claim expects.
+      await typeAndLeave(page.locator("#drawer-last-working-day"), "30/06/2026");
+      await page.getByRole("button", { name: "Compute", exact: true }).click();
+      await page.locator("#settlement-payment-date").waitFor();
+      await page.getByRole("button", { name: "Record settlement", exact: true }).click();
+    },
+    fields: [{ box: (p) => p.locator("#settlement-payment-date"), label: "Payment date", key: "payment_date", full: "05/07/2026", iso: "2026-07-05" }],
+    save: (p) => p.getByRole("button", { name: "Yes, record it", exact: true }), write: /employees\/emp-1\/settlement\/record$/,
+  },
+  {
+    id: "employee-drawer-last-working-day", title: "employee drawer, Full & final: last working day", open: openEmployeeDrawer("Full & final"),
+    heldWhileUnreadable: true,
+    fields: [{ box: (p) => p.locator("#drawer-last-working-day"), label: "Last working day", key: "leaving_date", full: "31/03/2026", iso: "2026-03-31" }],
+    save: (p) => p.getByRole("button", { name: "Compute", exact: true }), write: /employees\/emp-1\/settlement$/,
   },
 ];
 

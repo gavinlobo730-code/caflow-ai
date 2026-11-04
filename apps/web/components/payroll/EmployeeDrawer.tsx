@@ -368,7 +368,7 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
             className={`${FIELD} mt-1`} />
         </label>
         <label className={LABEL}>Joining date
-          <DateInput value={joiningDate} onChange={setJoiningDate} onStateChange={dates.watch("joining", "Joining date")}
+          <DateInput id="drawer-joining-date" value={joiningDate} onChange={setJoiningDate} onStateChange={dates.watch("joining", "Joining date")}
             className={`${FIELD} mt-1`} />
           <span className="text-3xs text-ps-hint">
             Gratuity&apos;s five years, EPS eligibility on first joining, and whether the
@@ -505,7 +505,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>Last working day
-          <DateInput value={leavingDate} onChange={setLeavingDate} onStateChange={dates.watch("leaving", "Last working day")}
+          <DateInput id="drawer-last-working-day" value={leavingDate} onChange={setLeavingDate} onStateChange={dates.watch("leaving", "Last working day")}
             className={`${FIELD} mt-1`} />
           <span className="text-3xs text-ps-hint">
             Joined {employee.joining_date ? formatDate(employee.joining_date) : "— not recorded, so gratuity cannot be computed"}.
@@ -755,7 +755,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
         </p>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <label className={LABEL}>Effective from
-            <DateInput value={effectiveFrom} onChange={setEffectiveFrom} onStateChange={dates.watch("effectiveFrom", "Effective from")}
+            <DateInput id="drawer-revision-effective-from" value={effectiveFrom} onChange={setEffectiveFrom} onStateChange={dates.watch("effectiveFrom", "Effective from")}
               className={`${FIELD} mt-1`} />
           </label>
           <Money label="Basic" value={basic} onChange={setBasic} />
@@ -889,7 +889,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
             </span>
           </label>
           <label className={LABEL}>Started on
-            <DateInput value={startedOn} onChange={setStartedOn} onStateChange={dates.watch("startedOn", "Started on")}
+            <DateInput id="drawer-loan-started-on" value={startedOn} onChange={setStartedOn} onStateChange={dates.watch("startedOn", "Started on")}
               className={`${FIELD} mt-1`} />
           </label>
           <label className={`${LABEL} col-span-2`}>Purpose
