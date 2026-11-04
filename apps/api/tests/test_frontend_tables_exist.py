@@ -156,7 +156,7 @@ def test_the_replay_sees_views_and_not_just_tables():
     exactly the wrong conclusion to hand someone.
     """
     live = _live_tables()
-    for v in ("accounts", "journal_entry_lines", "compliance_entries",
+    for v in ("accounts", "journal_entry_lines",
               "salary_slips", "clients_external"):
         assert v in live, (
             f"{v} is a view in production but the migration replay does not see "
@@ -174,6 +174,21 @@ def test_dsc_tracker_stays_gone():
         "premise is gone and it should be deleted, not worked around.")
     assert "dsc_tracker" not in _frontend_queries(), (
         'a page queries "dsc_tracker" again — the table is dsc_records.')
+
+
+def test_the_retired_compliance_system_b_objects_stay_gone():
+    """Migration 582 (POST-A-322) dropped `compliance_tasks`, the view `compliance_entries` over it and the foreign key
+    `filings.compliance_task_id` had into it. Both halves, as `test_dsc_tracker_stays_gone` asserts: that no page queries either
+    name, AND that neither genuinely exists in the migration replay. (`compliance_entries` was in the list of views the replay must
+    see until that migration, which is why it left that list in the same change: a view the replay still saw after the drop would
+    mean the DROP had not been read.)"""
+    live = _live_tables()
+    refs = _frontend_queries()
+    for name in ("compliance_tasks", "compliance_entries"):
+        assert name not in live, (
+            f"{name} exists in the migration replay again: migration 582 dropped it. If a later migration recreated it, this "
+            "test's premise is gone and it should be deleted, not worked around.")
+        assert name not in refs, f"a page queries {name!r} again: the calendar is compliance_records."
 
 
 def test_no_frontend_code_queries_a_table_that_does_not_exist():

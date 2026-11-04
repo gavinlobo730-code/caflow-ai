@@ -21,7 +21,7 @@ WHAT THIS EXISTS TO PREVENT
         no entries that outlive the migration they excuse),
       * every reason must be substantive, not a shrug,
       * no superseded TABLE may be queried by live code — the moment someone
-        writes .table("transactions"), this fails and the exclusion is wrong,
+        writes .table("notes_to_accounts"), this fails and the exclusion is wrong,
       * the lists cannot grow without editing the cap here, deliberately.
 
     And the guard must still do its job: a genuinely missing column on a live
@@ -46,7 +46,7 @@ WEB_ROOT = API_ROOT.parents[1] / "apps" / "web"
 # was justified one entry at a time against the live catalog on 2026-08-15;
 # raising it should require the same evidence, which is why it is a number
 # someone has to change on purpose rather than a list that quietly grows.
-MAX_EXCLUSIONS = 7
+MAX_EXCLUSIONS = 5
 
 
 def test_the_lists_cannot_grow_without_a_deliberate_edit():
@@ -181,7 +181,7 @@ def test_a_genuinely_missing_column_is_still_reported(monkeypatch):
 def test_a_superseded_table_absent_entirely_does_not_fail_health(monkeypatch):
     monkeypatch.setattr(
         "core.schema_guard.expected_columns_from_migrations",
-        lambda *a, **k: {"transactions": {"supply_type", "cess_paise"}},
+        lambda *a, **k: {"notes_to_accounts": {"content", "note_data"}},
     )
     db = _Db({"journal_entries": ["id"]})
     assert check_schema_drift(db) == {"checked": True, "missing": []}

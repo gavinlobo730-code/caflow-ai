@@ -1,0 +1,17 @@
+-- Rollback of migration 582.
+--
+-- WHAT IT CANNOT UNDO: the table `compliance_tasks`, the view `compliance_entries` over it and the constraint
+-- `filings_compliance_task_id_fkey` are NOT recreated. The table held no row when it was dropped (the migration refuses to run
+-- otherwise), nothing in apps/api or apps/web reads or writes it, and recreating an empty table, a view nothing reads and a
+-- constraint over an empty column would restore only the thing the migration set out to remove.
+--
+-- If a database needs them back, do not rebuild them from the migrations alone: the table's columns are migration 001 plus
+-- the `firm_id` that 003, 007 and 016 each add, its indexes are in 001 and 017, its row-security policies are in 005, 074 and 170
+-- (and an assignment-scope policy that no migration names and only the production snapshot holds), its grants are in 010, 039,
+-- 041 and 095 (170 then took the write privilege from `authenticated`), and the view is migration 016's
+-- `SELECT * FROM public.compliance_tasks`. Production's real shape is `tests/fixtures/production_schema_2026-09-03.json` and
+-- `production_guards_2026-09-03.json`; read those first. (Migration 168 is NOT part of this: its unique index is on
+-- `compliance_records`.)
+--
+-- Nothing to run.
+SELECT 1;
