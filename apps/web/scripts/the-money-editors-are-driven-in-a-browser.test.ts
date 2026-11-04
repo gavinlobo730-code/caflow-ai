@@ -324,6 +324,15 @@ const DRIVEN: Record<string, string[]> = {
   "components/sales/OverdueInterestPanel.tsx": ["#overdue-as-at"],
   "components/inventory/CostFormulaPanel.tsx": ["#cost-formula-from"],
   "components/payroll/ApplyStructureModal.tsx": ["#apply-structure-effective-from"],
+  "components/fixed-assets/AmortisationReclassification.tsx": ["[Reclassify as at]"],
+  // The ninth slice (5-11-2026): the payroll File tab, the tax worksheets, the ITR and GST trackers and a GST registration.
+  "components/payroll/StatutoryHandoff.tsx": ["[Date of the payment or filing]"],
+  "components/tax/UnforeseenIncomePanel.tsx": ["[Date the income arose]"],
+  "components/tax/HousePropertyWorksheet.tsx": ["[Loan taken on]", "[House completed on]"],
+  "components/gst/Itc04Panel.tsx": ["#itc04-came-back-on", "#itc04-challan-date"],
+  "app/income-tax/page.tsx": ["#itr-batch-filed-date", "#itr-add-due-date", "#itr-filed-modal-date"],
+  "app/gst/page.tsx": ["#gst-add-filing-due-date", "#gst-batch-filed-date", "#gst-filed-modal-date"],
+  "components/gst/RegistrationsTab.tsx": ["#gst-reg-registered-from", "[Date ${r.gstin} was cancelled or surrendered]"],
   "app/income-tax/capital-gains/page.tsx": ["#cg-calc-purchase-date", "#cg-calc-sale-date", "#cg-reg-purchase-date", "#cg-reg-sale-date", "[Acquisition date]", "[CGAS deposit date]"],
 };
 
@@ -351,9 +360,14 @@ test("every date field the drive types into is a real DateInput in the editor it
     const have = dateInputsOf(file);
     for (const f of fields) {
       assert.ok(have.includes(f), `${file} no longer has a DateInput ${f}: the drive would be typing into nothing`);
-      // A per-row label is driven on its first row.
-      const needle = f.startsWith("#") ? f : f.slice(1, -1).replace("${n}", "1");
-      assert.ok(dates.includes(needle), `the date scenarios never mention ${needle}, so ${f} of ${file} is not driven`);
+      // A per-row label is driven on its first row. A label with some other interpolation (`Date ${r.gstin} was cancelled or surrendered`)
+      // is driven when the scenarios mention each fixed part of it.
+      const needles = f.startsWith("#") ? [f]
+        : f.includes("${n}") ? [f.slice(1, -1).replace("${n}", "1")]
+        : f.slice(1, -1).split(/\$\{[^}]*\}/).map((part) => part.trim()).filter(Boolean);
+      for (const needle of needles) {
+        assert.ok(dates.includes(needle), `the date scenarios never mention ${needle}, so ${f} of ${file} is not driven`);
+      }
     }
   }
 });

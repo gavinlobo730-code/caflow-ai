@@ -609,7 +609,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
 
               <label className="text-xs block">
                 <span className="block text-ps-body font-medium mb-1">Registered from</span>
-                <DateInput value={form.effective_from}
+                <DateInput id="gst-reg-registered-from" value={form.effective_from}
                   onChange={(v) => setForm(f => ({ ...f, effective_from: v }))}
                   onStateChange={regDates.watch("from", "Registered from")}
                   className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
