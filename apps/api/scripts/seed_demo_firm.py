@@ -528,6 +528,7 @@ def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
     Fee engagements are also what billing reads, so this populates those
     screens too. The fees are the fixture's, in whole rupees.
     """
+    ids: dict[str, str] = {}
     for e in c.engagements:
         engagement = api.post("/api/engagements", {
             "client_id": client_id,
@@ -538,10 +539,128 @@ def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
             "status": "Active",
         })
         written["engagements"] += 1
+        ids[e.service_type] = _id(engagement)
         out = api.post(
-            f"/api/engagements/{_id(engagement)}/generate-obligations"
+            f"/api/engagements/{ids[e.service_type]}/generate-obligations"
             f"?financial_year={fy}", {}).get("data") or {}
         written["obligations"] += int(out.get("generated") or 0)
+    return ids
+
+
+#: The moves a task makes from `todo` to reach each status, through the machine in `services/task_service` (a task is
+#: created `todo` and moved, so the seeder walks the same transitions a person does).
+_TASK_PATH = {
+    "todo": (),
+    "in_progress": ("in_progress",),
+    "waiting_client": ("waiting_client",),
+    "review_required": ("in_progress", "review_required"),
+    "completed": ("in_progress", "completed"),
+}
+
+
+def _practice(api: Api, c, client_id: str, fy: str, engagement_ids: dict[str, str], written: dict, fee_plan: list) -> None:
+    """The practice's OWN work for this client: its to-do list, the time spent, and the fee invoices it will raise.
+
+    The books written above are the client's; the Tasks, Time and Billing screens are the practice's, and they opened
+    empty on the demo firm (PRE-A-004, slice 3d). Each goes through the door the screen uses. Nothing here posts to the
+    client's ledger: a fee invoice is the practice's receivable, not the client's. The fee invoices are only PLANNED here
+    (appended to `fee_plan`) and are raised once all the clients are done, in date order (see `_fee_billing`)."""
+    _tasks(api, c, client_id, fy, written)
+    _time(api, c, client_id, fy, engagement_ids, written)
+    for n, f in enumerate(fixture.fee_invoices_for(c, fy), start=1):
+        if engagement_ids.get(f.service_type):
+            fee_plan.append((f.invoice_date, c.pan, n, engagement_ids[f.service_type], f))
+
+
+def _tasks(api: Api, c, client_id: str, fy: str, written: dict) -> None:
+    """The client's to-do list, each task made `todo` and moved through the machine to the status the fixture gives it."""
+    for t in fixture.tasks_for(c, fy):
+        task = api.post("/api/tasks", {
+            "client_id": client_id, "title": t.title, "description": t.description, "priority": t.priority,
+            "due_date": t.due_date, "estimated_minutes": t.estimated_minutes,
+        })
+        written["tasks"] += 1
+        for step in _TASK_PATH[t.status]:
+            api.patch(f"/api/tasks/{_id(task)}", {"status": step})
+        written["tasks_moved"] += len(_TASK_PATH[t.status])
+
+
+def _time(api: Api, c, client_id: str, fy: str, engagement_ids: dict[str, str], written: dict) -> None:
+    """Sittings of work against the client's own engagements (a record of effort: the fee is fixed). Each has an END as well as
+    a start and a duration: an entry with no end is how a RUNNING timer is stored, and a person may run only one."""
+    for e in fixture.time_entries_for(c, fy):
+        api.post("/api/time-entries", {
+            "client_id": client_id, "engagement_id": engagement_ids.get(e.service_type), "description": e.description,
+            "started_at": e.started_at, "ended_at": e.ended_at, "duration_minutes": e.duration_minutes,
+            "is_billable": e.is_billable,
+        })
+        written["time_entries"] += 1
+
+
+def _fee_billing(api: Api, fee_plan: list, written: dict) -> None:
+    """Fee invoices raised from the clients' engagements (`POST /api/invoices/from-engagement`, which adds 18% GST to the fixed
+    fee), issued, and, where the fixture says they were paid, receipted for the part the fixture says. An invoice nobody has
+    paid stays issued.
+
+    IN DATE ORDER ACROSS ALL THE CLIENTS, because the invoice numbers come from one firm-wide counter: raised client by client,
+    29 of 63 neighbouring numbers went backwards in date (the numbering is still consecutive, so this is what a Billing list
+    sorted by number would have shown). An invoice dated after today is not raised, and a receipt dated after today is not
+    recorded (money received on a day that has not come); both are counted, as a return not yet due is."""
+    from core.ist_clock import ist_today
+    today = ist_today().isoformat()
+    for _date, pan, n, engagement_id, f in sorted(fee_plan, key=lambda p: (p[0], p[1], p[2])):
+        if f.invoice_date > today:
+            written["fee_invoices_not_yet_due"] += 1
+            continue
+        raised = api.post(f"/api/invoices/from-engagement/{engagement_id}?invoice_month={f.invoice_date}", {})
+        invoice = (raised.get("data") or {}).get("invoice") or {}
+        invoice_id = str(invoice.get("id") or "")
+        if not invoice_id:
+            raise SystemExit(f"could not find the fee invoice in the response: {json.dumps(raised)[:300]}")
+        written["fee_invoices"] += 1
+        api.patch(f"/api/invoices/{invoice_id}/status", {"new_status": "Issued"})
+        written["fee_invoices_issued"] += 1
+        if f.receipt_after_days is None:
+            continue
+        receipt_on = _paid_on(f.invoice_date, f.receipt_after_days)
+        if receipt_on > today:
+            written["fee_receipts_not_yet_due"] += 1
+            continue
+        total = int(invoice.get("total_paise") or 0)
+        if total <= 0:
+            raise SystemExit(f"the fee invoice {invoice_id} came back with no total: {json.dumps(invoice)[:300]}")
+        api.post(f"/api/billing/fee-invoices/{invoice_id}/receipts", {
+            "receipt_date": receipt_on,
+            "amount_paise": total * f.receipt_fraction_bps // 10_000,
+            "payment_mode": "NEFT", "reference_no": f"SEED-FEE-{pan[-4:]}-{n:02d}",
+        })
+        written["fee_receipts"] += 1
+
+
+def _leads(api: Api, written: dict) -> None:
+    """The practice's pipeline: people who are not yet clients, all at the first stage (Pipeline screen).
+
+    The screen keeps a card's entity type, last-contact day and follow-up day in a JSON blob in `notes` (its own
+    `toApiBody` writes it, `fromApiLead` reads it: `__caflow_meta__`, `entityType`, `lastContactDate`, `nextFollowUpDate`,
+    `userNotes`), so the seeder writes that same blob; without it every card read "Proprietorship" and "last contacted
+    today". The dates are offsets from today because a pipeline is read against today."""
+    from datetime import timedelta
+    from core.ist_clock import ist_today
+    today = ist_today()
+    for lead in fixture.leads_for():
+        api.post("/api/lifecycle/leads", {
+            "company_name": lead.company_name, "contact_name": lead.contact_name, "email": lead.email,
+            "source": lead.source, "stage": "Lead",
+            "estimated_value_paise": lead.estimated_monthly_fee_paise,
+            "expected_close_date": (today + timedelta(days=lead.expected_close_in_days)).isoformat(),
+            "notes": json.dumps({
+                "__caflow_meta__": True, "entityType": lead.entity_type,
+                "lastContactDate": (today - timedelta(days=lead.last_contact_days_ago)).isoformat(),
+                "nextFollowUpDate": (today + timedelta(days=lead.follow_up_in_days)).isoformat(),
+                "userNotes": lead.notes,
+            }),
+        })
+        written["leads"] += 1
 
 
 #: The sequence the GST workspace walks a saved return through. `ca_approved`
@@ -1455,6 +1574,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "payroll_disbursed": 0,
                "bank_lines": 0, "bank_drafts": 0, "tans": 0,
                "engagements": 0, "obligations": 0,
+               "tasks": 0, "tasks_moved": 0, "time_entries": 0, "fee_invoices": 0, "fee_invoices_issued": 0,
+               "fee_receipts": 0, "fee_invoices_not_yet_due": 0, "fee_receipts_not_yet_due": 0, "leads": 0,
                "bank_rules": 0, "bank_rules_skipped": 0,
                "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0,
                "gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0,
@@ -1500,6 +1621,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     #: counts only the documents that post).
     last_month = fixture.draft_month(firm.financial_year)
 
+    fee_plan: list = []          # the fee invoices to raise once every client is done (see `_fee_billing`)
     for c in firm.clients:
         print(f"  {c.name} — {c.demonstrates}")
         client_id = _id(api.post("/api/clients", {
@@ -1655,7 +1777,8 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         _fixed_assets(api, c, client_id, bank_id, firm.financial_year, written)
         _cwip(api, c, client_id, book, written)
         _payroll(api, c, client_id, bank_id, written)
-        _engagements(api, c, client_id, firm.financial_year, fy_start, written)
+        engagement_ids = _engagements(api, c, client_id, firm.financial_year, fy_start, written)
+        _practice(api, c, client_id, firm.financial_year, engagement_ids, written, fee_plan)
         # LAST, because the credits above are known only once every invoice
         # has been written and the engine has told us what each one came to.
         if bank_id and c.banks[0].import_statement:
@@ -1676,6 +1799,10 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         # firm's Recalculate: with `--add-to-existing` the latter would also overwrite the scores of clients this run did not write.
         _health_score(api, c, client_id, written)
 
+    # The fee invoices are raised in date order across the clients (one firm-wide number counter), and the pipeline is the firm's and
+    # not a client's: both are written once, after the clients.
+    _fee_billing(api, fee_plan, written)
+    _leads(api, written)
     return written
 
 

@@ -173,6 +173,11 @@ class _Recorder:
                 "deductee_count": 2, "deductees": [{"deductee_pan": "ABCDE1234F"}] * 2,
                 "total_tds_deducted_paise": 1000_00, "total_tds_deposited_paise": 1000_00, "validation_errors": [],
                 "challan_gaps": [], "reconciliation": {"matched": True}}}
+        if path.startswith("/api/invoices/from-engagement/"):
+            # A fee invoice is answered under `invoice`, with the id the issue and the receipt are made against and the total the
+            # receipt is a fraction of (the engagement's fee and 18% GST).
+            return {"success": True, "error": None, "data": {"invoice": {
+                "id": f"fee-invoice-{self._n:05d}", "total_paise": 11_800_00, "status": "Draft"}}}
         if path.startswith("/api/tds-workspace/returns/") and path.endswith("/status") and body.get("status") == "filed":
             return {"success": True, "error": None, "data": {
                 "status": "filed", "compliance_obligation": {"state": "closed", "closed": True}}}
@@ -255,6 +260,11 @@ _DOORS_THIS_SEEDER_MUST_WALK = [
     ("PUT", "/api/payroll/enablement"),
     # The services the practice provides -- and the obligations they imply.
     ("POST", "/api/engagements"),
+    # The practice's own work (PRE-A-004, slice 3d): the to-do list and the pipeline are written in mock mode as well; the hours and
+    # the fee invoices cannot be (the time-entry repository has no mock store), so this is where their bodies are checked.
+    ("POST", "/api/tasks"),
+    ("POST", "/api/time-entries"),
+    ("POST", "/api/lifecycle/leads"),
     # The deductor's TAN -- without it no TDS statement can be built.
     ("PUT", "/api/payroll/statutory-identity"),
     ("POST", "/api/payroll/employees"),
@@ -286,6 +296,106 @@ _INCOME_TAX_DOORS = [
 @pytest.mark.parametrize("prefix", _INCOME_TAX_DOORS)
 def test_the_income_tax_stage_reaches_the_door(_run, prefix):
     assert any(m == "POST" and p.startswith(prefix) for m, p in _run.calls), f"POST {prefix} was never called"
+
+
+#: The practice stage's doors that carry an id in the path (a task's moves, a fee invoice's issue and receipt), by method and prefix.
+_PRACTICE_DOORS = [
+    ("PATCH", "/api/tasks/"), ("POST", "/api/invoices/from-engagement/"), ("PATCH", "/api/invoices/"),
+    ("POST", "/api/billing/fee-invoices/"),
+]
+
+
+@pytest.mark.parametrize("method,prefix", _PRACTICE_DOORS)
+def test_the_practice_stage_reaches_the_door(_run, method, prefix):
+    assert any(m == method and p.startswith(prefix) for m, p in _run.calls), f"{method} {prefix} was never called"
+
+
+def test_a_fee_invoice_is_issued_before_it_is_receipted(_run):
+    """The ORDER is asserted as an order. Nothing in the product refuses a receipt on a draft fee invoice (an independent read
+    looked: no status check in the router, the service or the database function), so this is not a door rule being held; it is
+    the only position a practice is ever in, an invoice sent and then paid, and a seeder that receipted a draft would show a
+    Billing screen with money received against a document that was never issued."""
+    seen = [(m, p, b) for m, p, b in _run.requests]
+    receipts = 0
+    for i, (m, p, _body) in enumerate(seen):
+        if m == "POST" and p.startswith("/api/billing/fee-invoices/"):
+            receipts += 1
+            invoice_id = p.split("/")[4]
+            issued = [j for j, (m2, p2, b2) in enumerate(seen[:i])
+                      if m2 == "PATCH" and p2 == f"/api/invoices/{invoice_id}/status" and b2 == {"new_status": "Issued"}]
+            assert issued, f"{p} was receipted before {invoice_id} was issued"
+    assert receipts > 0, "no fee receipt was recorded, so the order above was checked on nothing"
+
+
+#: What each status costs in moves, written HERE (the seeder's own table is what is being checked).
+_MOVES = {"todo": (), "in_progress": ("in_progress",), "waiting_client": ("waiting_client",),
+          "review_required": ("in_progress", "review_required"), "completed": ("in_progress", "completed")}
+
+
+def test_every_task_is_walked_to_the_status_the_fixture_gives_it_and_by_the_moves_that_status_costs(_run):
+    """Per TASK and not per total: the machine refuses todo -> completed, so a completed task has been in progress first, and the
+    number of tasks left at each status is the fixture's. A total can be right while a task is skipped."""
+    created = [(i, b) for i, (m, p, b) in enumerate(_run.requests) if m == "POST" and p == "/api/tasks"]
+    walked: dict[str, list[str]] = {}
+    for m, p, b in _run.requests:
+        if m == "PATCH" and p.startswith("/api/tasks/"):
+            walked.setdefault(p.rsplit("/", 1)[1], []).append(b["status"])
+    got = []
+    for i, body in created:
+        task_id = f"seeded-{i + 1:05d}"           # the recorder answers a create with `seeded-<count after the write>`
+        got.append((body["title"], tuple(walked.get(task_id, ()))))
+    expected = sorted((t.title, _MOVES[t.status]) for c in fixture.build().clients for t in fixture.tasks_for(c, "2025-26"))
+    assert sorted(got) == expected, "a task was created with different moves than its status costs"
+    assert any(moves == ("in_progress", "completed") for _title, moves in got), "no task was completed, so nothing here was held"
+
+
+def test_every_time_entry_has_an_end_that_is_its_start_plus_its_duration_and_is_not_a_billable_hour(_run):
+    """An entry with no end is how a RUNNING timer is stored, and a person may run one: 37 of them made Start Timer fail for the
+    Partner who seeds. A billable hour with no rate is listed on the Billing screen as work with no rate, and the fee is fixed."""
+    from datetime import datetime, timedelta
+    bodies = [b for m, p, b in _run.requests if m == "POST" and p == "/api/time-entries"]
+    assert len(bodies) == fixture.summary(fixture.build())["time_entries"] > 0
+    for b in bodies:
+        started, ended = datetime.fromisoformat(b["started_at"]), datetime.fromisoformat(b["ended_at"])
+        assert started.utcoffset() is not None and ended.utcoffset() is not None, "a timestamp with no offset is read as the server's"
+        assert ended - started == timedelta(minutes=b["duration_minutes"]) and b["duration_minutes"] > 0, b
+        assert b["is_billable"] is False, b
+
+
+def test_the_fee_invoices_are_raised_in_date_order_across_all_the_clients_and_every_receipt_is_a_part_of_one_after_it(_run):
+    """One firm-wide number counter, so raising them client by client numbered them out of date order."""
+    raised = [(i, p.split("invoice_month=")[1]) for i, (m, p, b) in enumerate(_run.requests)
+              if m == "POST" and p.startswith("/api/invoices/from-engagement/")]
+    assert len(raised) > 20
+    dates = [d for _i, d in raised]
+    assert dates == sorted(dates), "fee invoices were raised out of date order"
+    month_of = {f"fee-invoice-{i + 1:05d}": d for i, d in raised}
+    receipts = [(p.split("/")[4], b) for m, p, b in _run.requests if m == "POST" and p.startswith("/api/billing/fee-invoices/")]
+    assert receipts
+    for invoice_id, body in receipts:
+        assert 0 < body["amount_paise"] <= 11_800_00, "a receipt is a part of the invoice's total, never more (the recorder's total is 11,800)"
+        assert body["receipt_date"] >= month_of[invoice_id], f"{invoice_id} was paid on {body['receipt_date']}, before it was raised on {month_of[invoice_id]}"
+
+
+def test_every_lead_is_at_the_first_stage_has_no_telephone_and_carries_the_screens_own_card_facts(_run):
+    """The Pipeline screen keeps a card's entity type and its two contact days in a JSON blob in `notes`; a plain-text note made every
+    card a Proprietorship contacted today. The key names and the entity words are read FROM THE SCREEN, so a rename there fails here."""
+    import json
+    import re
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[3] / "apps" / "web" / "app" / "pipeline" / "page.tsx").read_text(encoding="utf-8")
+    words = set(re.findall(r'"([^"]+)"', re.search(r"type EntityType =((?:\s*\|\s*\"[^\"]+\")+)", page).group(1)))
+    assert {"Proprietorship", "LLP", "Private Limited", "Partnership"} <= words
+    leads = [b for m, p, b in _run.requests if m == "POST" and p == "/api/lifecycle/leads"]
+    assert len(leads) == 5
+    for b in leads:
+        assert b["stage"] == "Lead" and "phone" not in b, b
+        assert 1_000_00 <= b["estimated_value_paise"] <= 50_000_00, "a lead's value is a MONTHLY fee, which the screen prints per month and adds up"
+        meta = json.loads(b["notes"])
+        assert meta["__caflow_meta__"] is True and meta["entityType"] in words
+        assert meta["lastContactDate"] < meta["nextFollowUpDate"] <= b["expected_close_date"], meta
+        for key in ("__caflow_meta__", "entityType", "lastContactDate", "nextFollowUpDate", "userNotes"):
+            assert key in page, f"the Pipeline screen no longer reads {key!r} from a lead's notes"
 
 
 #: The TDS stage's doors. The challan and the statement's four writes are checked against the models their doors declare,

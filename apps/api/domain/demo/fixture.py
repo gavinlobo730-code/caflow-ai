@@ -43,11 +43,14 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, replace, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Iterable, NamedTuple, Optional
 
 from domain.gst.gstin import checksum_char
+
+#: India's offset, written once: a seeded timestamp is a wall-clock time in India, not a UTC one.
+_IST = timezone(timedelta(hours=5, minutes=30))
 
 #: One seed, fixed. Two runs produce the same practice, which is what lets a
 #: test assert a figure and a demo be rehearsed.
@@ -1143,6 +1146,267 @@ def engagements_for(client: "DemoClient") -> tuple[DemoEngagement, ...]:
     return tuple(out)
 
 
+# ── The practice's own work: tasks, time, fee invoices and leads ─────────────
+#
+# The books above are the CLIENTS' books. What a practice also holds, and what its own screens (Tasks, Time, Billing,
+# Pipeline) show, is its own work for those clients: what is to be done, who spent how long on it, what the practice billed
+# and what has come in. The seeder wrote none of it, so those screens opened empty on the demo firm (PRE-A-004, slice 3d).
+#
+# EVERYTHING HERE IS DERIVED FROM WHAT THE CLIENT FILES AND FROM WHAT THE SEEDER RECORDS, the way `engagements_for` is, and
+# from the financial year's own months, never from the clock. The position is the one the books are left in (see
+# `draft_month`): the posted months are done and filed, the last month is still being entered. A task therefore says DONE for
+# what the seeder files, and OPEN only for what it leaves open (the draft month's work, the salary payment of a finalized run,
+# an income tax return that has not been filed). A task that said "in progress" over a return the GST screen shows as filed
+# would be two screens disagreeing, and the review that found it also found the health score deducting for it.
+#
+# A task's due date is the practice's OWN working date (the 1st to the 8th of the month after the one it is for), never a
+# statutory due date: those are `compliance_engine`'s and are shown on the compliance calendar, so a second statement of them
+# here could only drift. On a later day every open task is overdue, which is the position every seeded compliance obligation
+# is in (the owner's decision: no seed date is moved). Nothing is assigned to a person, because a person is a member of the
+# firm the seeder writes into and the fixture cannot name one.
+
+@dataclass(frozen=True)
+class DemoTask:
+    title: str
+    description: str
+    #: todo | in_progress | waiting_client | review_required | completed (the CHECK on `tasks.status`).
+    status: str
+    #: low | medium | high | critical (the CHECK on `tasks.priority`).
+    priority: str
+    due_date: str
+    estimated_minutes: int
+
+
+@dataclass(frozen=True)
+class DemoTimeEntry:
+    """Time a person spent on a client. `service_type` names the engagement it was spent under (the engagement the seeder
+    created for that keyword); the practice bills a fixed fee, so the entry is a record of effort and not of a charge
+    (`is_billable` is False: a billable hour with no rate recorded would be listed on the Billing screen as work with no rate).
+
+    `ended_at` is `started_at` plus the duration. A time entry with NO end is how the product stores a RUNNING timer, and a
+    person may have only one: 37 of them for one Partner made Start Timer and the running-timer lookup fail (found by an
+    independent read, 4-11-2026). The Time screen's own manual form sends both."""
+    service_type: str
+    started_at: str
+    ended_at: str
+    duration_minutes: int
+    description: str
+    is_billable: bool
+
+
+@dataclass(frozen=True)
+class DemoFeeInvoice:
+    """One fee invoice raised from an engagement, and what came of it. `receipt_after_days` None is an invoice nobody has
+    paid; `receipt_fraction_bps` below 10,000 is a part payment (the invoice stays open for the rest)."""
+    service_type: str
+    invoice_date: str
+    receipt_after_days: Optional[int]
+    receipt_fraction_bps: int = 10_000
+
+
+@dataclass(frozen=True)
+class DemoLead:
+    """A person who is not yet a client. The Pipeline screen keeps three facts of a card (its entity type, the day it was
+    last contacted and the day it should be followed up) in a JSON blob in `notes`, so the seeder writes those too: without
+    them every card read "Proprietorship" and "last contacted: today". `estimated_value_paise` is a MONTHLY fee, because the
+    screen prints it as "per month" and adds the cards up as monthly recurring revenue."""
+    company_name: str
+    contact_name: str
+    email: str
+    #: referral | website | cold | event | other (`routers/lifecycle._VALID_SOURCES`).
+    source: str
+    #: One of the screen's `EntityType` words.
+    entity_type: str
+    estimated_monthly_fee_paise: int
+    #: Days before / after the day the pipeline is seeded.
+    last_contact_days_ago: int
+    follow_up_in_days: int
+    expected_close_in_days: int
+    notes: str
+
+
+#: The words each demo task says. A month is named in the title, so two tasks of one client are never the same sentence.
+def _month_name(d: date) -> str:
+    return d.strftime("%B %Y")
+
+
+def tasks_for(client: "DemoClient", financial_year: str) -> tuple[DemoTask, ...]:
+    """The practice's own to-do list for one client, from what the client files and what the seeder records for it.
+
+    The position is `draft_month`'s: eleven months posted, the twelfth still being entered. So
+
+      * a return, payroll run or deposit the seeder records for a POSTED month is a COMPLETED task;
+      * the draft month's return is IN PROGRESS (its books are being entered) and its missing bills are WAITING ON THE CLIENT;
+      * a finalized payroll run whose salary payment is not recorded is a TO DO (the run's own status says so);
+      * the income tax return follows what the seeder takes it to (`DemoIncomeTax.take_it_to`): filed is completed, waiting for a
+        Partner is review required, none prepared is to do.
+
+    Each column of the Tasks board has something in it for most clients, and no two boards need differ (they differ with what a
+    client files). A task is made `todo` and moved through the machine in `services/task_service`, so the seeder can walk it."""
+    months = _fy_months(financial_year)
+    posted = months[:-1]
+    draft = months[-1]
+    m_last, m_prev, m_old = posted[-1], posted[-2], posted[-3]
+    start_year = int(financial_year[:4])
+    # The practice's own working date: the `day`th of the month AFTER `d`'s. Not `d + 31 days`, which lands on the 4th of March
+    # from the 1st of February.
+    own = lambda d, day: ((d.replace(day=28) + timedelta(days=4)).replace(day=day)).isoformat()   # noqa: E731
+    out: list[DemoTask] = []
+
+    if client.gstin and client.gst_filing_frequency == "quarterly":
+        # A quarter is filed only when all three of its months are before the draft month (`_return_windows`): July to September
+        # and before are filed, October to December is the last whole quarter, and January to March is open because March is
+        # still being entered.
+        q_done = months[6:9]
+        q_open = months[9:12]
+        out.append(DemoTask(
+            f"GSTR-3B for {q_done[0].strftime('%B')} to {q_done[-1].strftime('%B %Y')}",
+            "Reconcile the quarter's purchases with GSTR-2B, set off the credit and record the return as filed once the client has paid the tax.",
+            "completed", "high", own(q_done[-1], 5), 120))
+        out.append(DemoTask(
+            f"Reconcile the {q_open[0].strftime('%B')} to {q_open[-1].strftime('%B %Y')} purchases with GSTR-2B",
+            "Match the quarter's purchase bills to what the suppliers filed, and list the bills the client must chase.",
+            "in_progress", "high", own(draft, 5), 120))
+        out.append(DemoTask(
+            f"Chase the missing purchase bills for {_month_name(draft)}",
+            "A few supplier bills are not in the books yet; ask the client for them before the quarter's return is prepared.",
+            "waiting_client", "medium", own(draft, 3), 30))
+    elif client.gstin:
+        out.append(DemoTask(
+            f"GSTR-3B for {_month_name(m_last)}",
+            "Reconcile purchases with GSTR-2B, set off the credit and record the return as filed once the client has paid the tax.",
+            "completed", "high", own(m_last, 5), 90))
+        out.append(DemoTask(
+            f"Enter the {_month_name(draft)} books and prepare GSTR-1",
+            "Finish entering the month's invoices, check each for place of supply and HSN, then prepare the return for the client's approval.",
+            "in_progress", "high", own(draft, 5), 60))
+        out.append(DemoTask(
+            f"Chase the missing purchase bills for {_month_name(draft)}",
+            "A few supplier bills are not in the books yet; ask the client for them before the month's return is prepared.",
+            "waiting_client", "medium", own(draft, 3), 30))
+
+    # The return of income follows what the seeder takes it to. Form 16 is the salary certificate an employee receives, so it is
+    # asked for only of a client with salary.
+    it = client.income_tax
+    has_salary = bool(it and it.salary_paise > 0)
+    documents = "Form 16, Form 26AS and the AIS" if has_salary else "Form 26AS, the AIS and the year's books"
+    if it is not None and it.itr_form and it.take_it_to == "filed":
+        out.append(DemoTask(
+            "Income tax return: collect the documents, compute and file",
+            f"Collect {documents}, compute the income and record the return as filed once the client has signed it.",
+            "completed", "medium", own(draft, 15), 180))
+    elif it is not None and it.itr_form:
+        out.append(DemoTask(
+            "Income tax return: review the computation before it is filed",
+            "The return is prepared from the books and the facts the client gave; a Partner reviews it before it is filed.",
+            "review_required", "high", own(draft, 15), 60))
+    else:
+        out.append(DemoTask(
+            "Collect the documents for the income tax return",
+            f"Ask for {documents}, and tick them off against the client's own list.",
+            "todo", "medium", own(draft, 15), 45))
+
+    # Advance tax is not asked of a client on the presumptive scheme at all: the engine treats it as paid in one instalment, and
+    # a task that names an instalment date for it would contradict the Advance Tax screen the same seeder fills.
+    presumptive = bool(it and it.presumptive_44ad)
+    if client.entity_type != "Individual" and not presumptive:
+        out.append(DemoTask(
+            "Advance tax: tell the client what to deposit for the December instalment",
+            "Estimate the year's tax from the books so far, check what has been paid and tell the client what to deposit.",
+            "completed", "high", date(start_year, 12, 5).isoformat(), 75))
+
+    if client.deducts_tax:
+        out.append(DemoTask(
+            f"Deposit the TDS deducted in {_month_name(m_old)}",
+            "Prepare the challan from the deposit worksheet, get the client's confirmation and record the challan once it is paid.",
+            "completed", "critical", own(m_old, 5), 40))
+    if client.employees:
+        out.append(DemoTask(
+            f"Run payroll for {_month_name(m_prev)}",
+            "Check attendance and the statutory deductions, release the run and record the salary payment.",
+            "completed", "high", own(m_prev, 1), 90))
+        out.append(DemoTask(
+            f"Record the salary payment for {_month_name(m_last)}",
+            "The run is finalized and its cost is booked; pay the salaries and record the payment.",
+            "todo", "high", own(m_last, 1), 30))
+    if client.entity_type == "Private Limited":
+        out.append(DemoTask(
+            "Prepare the company's AOC-4 and MGT-7 for the annual general meeting",
+            "Draft the financial statements and the annual return from the books, then settle the dates with the directors.",
+            "todo", "medium", date(start_year + 1, 9, 15).isoformat(), 240))
+    return tuple(out)
+
+
+def time_entries_for(client: "DemoClient", financial_year: str) -> tuple[DemoTimeEntry, ...]:
+    """A few sittings of work against the client's own engagements, in the three months before the draft month.
+
+    The service words are the ones `engagements_for` gives, so each entry names an engagement the client has; a client with
+    none of an engagement's kind gets no entry for it. The time is a record of effort: the fee is fixed."""
+    months = _fy_months(financial_year)[:-1]
+    held = {e.service_type for e in client.engagements}
+    plan = (
+        ("GST Returns", 0, 9, "Reconcile purchases with GSTR-2B and prepare the return", 105, True),
+        ("GST Returns", 1, 10, "Prepare GSTR-1 and review the invoice register", 75, True),
+        ("Income Tax Return", 2, 14, "Gather the documents and prepare the computation of income", 150, True),
+        ("TDS Returns", 1, 16, "Prepare the quarterly statement from the deduction register", 90, True),
+        ("Payroll Processing", 2, 5, "Process the month's payroll and check the statutory deductions", 120, True),
+        ("Advance Tax", 1, 12, "Estimate the year's tax and the instalment due", 60, False),
+    )
+    out = []
+    for service, back, day, what, minutes, _billable in plan:
+        if service not in held:
+            continue
+        month = months[-3 + back]
+        started = datetime(month.year, month.month, 1, 10, 30, tzinfo=_IST) + timedelta(days=day - 1)
+        out.append(DemoTimeEntry(service, started.isoformat(), (started + timedelta(minutes=minutes)).isoformat(), minutes, what,
+                                 False))
+    return tuple(out)
+
+
+def fee_invoices_for(client: "DemoClient", financial_year: str) -> tuple[DemoFeeInvoice, ...]:
+    """The fee invoices the practice raised from this client's engagements, and which of them were paid.
+
+    A monthly engagement is billed for the three months before the draft month: the first two are paid (one late, one soon
+    after the invoice) and the latest is still open. A quarterly one is billed at the start of the year's third and last
+    quarters, the first paid and the other not. An annual one is billed once, and half of it has been paid."""
+    months = _fy_months(financial_year)
+    out: list[DemoFeeInvoice] = []
+    for e in client.engagements:
+        if e.billing_cycle == "Monthly":
+            for i, m in enumerate(months[-4:-1]):
+                out.append(DemoFeeInvoice(e.service_type, m.isoformat(), (12, 38, None)[i]))
+        elif e.billing_cycle == "Quarterly":
+            out.append(DemoFeeInvoice(e.service_type, months[6].isoformat(), 17))
+            out.append(DemoFeeInvoice(e.service_type, months[9].isoformat(), None))
+        elif e.billing_cycle == "Annually":
+            out.append(DemoFeeInvoice(e.service_type, months[9].isoformat(), 26, 5_000))
+    return tuple(out)
+
+
+def leads_for() -> tuple[DemoLead, ...]:
+    """The practice's pipeline: people who are not yet clients.
+
+    Fictional names on the reserved `.invalid` domain, so no mail can reach a real person, and NO TELEPHONE NUMBER (every
+    Indian mobile number is a live one). Every lead is at the first stage, `Lead`: the later stages (`Engagement Drafted`,
+    `Engagement Sent`, `Engagement Signed`) are the ones the engagement-letter lifecycle moves a lead to, and no letter exists
+    behind these, so a lead shown further along would be a claim the Engagement Letters screen contradicts. They come with the
+    seeded letters (PRE-A-004). The dates are offsets from the day the pipeline is seeded, because a pipeline is read
+    against today and not against the books' year, and a monthly fee is of the order of the seeded engagements' (the
+    practice's own fees run to about Rs 59,000 a month across its eight clients)."""
+    return (
+        DemoLead("Kiran Agro Products LLP", "Kiran Joshi", "kiran@kiranagro.example.invalid", "referral", "LLP",
+                 8_000_00, 3, 4, 21, "Referred by an existing client. Wants GST and annual accounts for a new LLP."),
+        DemoLead("Bhanushali Cold Storage Pvt Ltd", "Mahesh Bhanushali", "mahesh@bhanushali.example.invalid", "website", "Private Limited",
+                 15_000_00, 1, 2, 14, "Asked for a quote after the website form. Payroll for 40 people and quarterly TDS."),
+        DemoLead("Sagar Dental Clinic", "Dr Sagar Pawar", "sagar@sagardental.example.invalid", "event", "Proprietorship",
+                 3_000_00, 6, 7, 30, "Met at a trade event. Wants an annual return and a GST registration."),
+        DemoLead("Veda Learning Pvt Ltd", "Veda Iyer", "veda@vedalearning.example.invalid", "referral", "Private Limited",
+                 12_000_00, 2, 3, 10, "Liked the proposal on a call; waiting on the first month's documents before a letter is drafted."),
+        DemoLead("Nair & Menon Associates", "Rekha Nair", "rekha@nairmenon.example.invalid", "cold", "Partnership",
+                 5_000_00, 9, 5, 45, "Cold call. A small partnership firm unhappy with its current accountant."),
+    )
+
+
 def _finished(client: "DemoClient", financial_year: str) -> "DemoClient":
     """What is derived from a client's whole year once its documents exist:
     the stock each item must open with, the TAN of a client that deducts tax,
@@ -1539,6 +1803,12 @@ def summary(firm: DemoFirm) -> dict:
         "cwip_projects": sum(len(c.cwip_projects) for c in firm.clients),
         "assets_with_blocked_tax": sum(
             1 for c in firm.clients for a in c.assets if a.itc_eligible is False),
+        "tasks": sum(len(tasks_for(c, firm.financial_year)) for c in firm.clients),
+        "time_entries": sum(len(time_entries_for(c, firm.financial_year)) for c in firm.clients),
+        "fee_invoices": sum(len(fee_invoices_for(c, firm.financial_year)) for c in firm.clients),
+        "fee_receipts": sum(1 for c in firm.clients for f in fee_invoices_for(c, firm.financial_year)
+                            if f.receipt_after_days is not None),
+        "leads": len(leads_for()),
         "payroll_runs": sum(len(c.payroll) for c in firm.clients),
         "payroll_runs_paid": sum(1 for c in firm.clients for m in c.payroll
                                  if m.leave_at == "paid"),
