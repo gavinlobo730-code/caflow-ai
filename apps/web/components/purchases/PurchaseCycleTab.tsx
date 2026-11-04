@@ -419,6 +419,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                 <label className="text-sm">
                   <span className="mb-1 block text-ps-label">Order date</span>
                   <DateInput
+                    id="po-date"
                     value={form.document_date}
                     onChange={(v) => setForm({ ...form, document_date: v })}
                     onStateChange={dates.watch("document_date", "Order date")}
@@ -428,6 +429,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                 <label className="text-sm">
                   <span className="mb-1 block text-ps-label">Expected by</span>
                   <DateInput
+                    id="po-expected"
                     anchor={form.document_date || null} notBefore={form.document_date || null}
                     value={form.expected_date}
                     onChange={(v) => setForm({ ...form, expected_date: v })}
@@ -443,6 +445,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
                     Goods arrived on
                   </span>
                   <DateInput
+                    id="grn-received"
                     value={form.received_on}
                     onChange={(v) => setForm({ ...form, received_on: v })}
                     onStateChange={dates.watch("received_on", "Goods arrived on")}
