@@ -123,7 +123,8 @@ CLASSIFIED = {
         "frozen": [
             'id', 'firm_id', 'client_id', 'customer_id', 'sales_invoice_id', 'credit_note_no', 'credit_note_date',
             'reason', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise', 'igst_paise', 'total_paise', 'status',
-            'journal_entry_id', 'created_at', 'is_interstate', 'applied_paise', 'total_gst_paise', 'deleted_at'],
+            'journal_entry_id', 'created_at', 'is_interstate', 'applied_paise', 'total_gst_paise', 'deleted_at',
+            'goods_returned'],   # migration 581 (POST-A-371): whether the goods came back is a particular of the note, frozen once it is issued
         "generated": []},
     "debit_notes": {
         "allowed": [
@@ -132,7 +133,7 @@ CLASSIFIED = {
             'id', 'firm_id', 'client_id', 'vendor_id', 'purchase_bill_id', 'debit_note_no', 'debit_note_date',
             'reason', 'is_interstate', 'is_reverse_charge', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise',
             'igst_paise', 'total_paise', 'total_gst_paise', 'applied_paise', 'status', 'journal_entry_id',
-            'created_at', 'created_by', 'deleted_at'],
+            'created_at', 'created_by', 'deleted_at', 'goods_returned'],   # migration 581 (POST-A-371): frozen once issued, like the credit note's
         "generated": []},
     "purchase_credit_notes": {
         "allowed": [
