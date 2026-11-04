@@ -304,6 +304,13 @@ const DRIVEN: Record<string, string[]> = {
   "components/purchases/PurchaseCycleTab.tsx": ["#po-date", "#po-expected", "#grn-received"],
   "components/sales/SalesCycleTab.tsx": ["#sc-date", "#sc-valid-until", "#sc-expected-delivery"],
   "app/clients/[id]/sales/page.tsx": ["#receipt-date"],
+  // The third slice (4-11-2026).
+  "components/sales/SalesCreditNoteEditor.tsx": ["#sales-cn-date"],
+  "components/sales/SalesDebitNoteEditor.tsx": ["#sales-dn-date"],
+  "components/purchases/DebitNoteEditor.tsx": ["#purchase-dn-date"],
+  "components/purchases/PurchaseCreditNoteEditor.tsx": ["#purchase-cn-date"],
+  "app/accounting/loans/page.tsx": ["[Disbursement date]", "[Loan maturity date]", "[Fixed deposit start date]", "[Fixed deposit maturity date]"],
+  "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
@@ -312,6 +319,11 @@ const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "components/invoices/InvoiceEditor.tsx": { "#inv-sb-date": "the shipping bill date of an export invoice; shown only for exports (second slice)" },
   "components/purchases/PurchaseBillEditor.tsx": { "#bill-15ca-date": "the Form 15CA date; shown only for a foreign payee (second slice)" },
   "app/income-tax/advance-tax/page.tsx": { "#at-furnished-on": "feeds the §234A/§234B calculation and is saved nowhere, so the save claims do not apply (the working's own scenario is a later row)" },
+  "app/clients/[id]/inventory/page.tsx": {
+    "#stock-as-at": "the as-at date of the stock register: a filter that writes nothing (a later row for the window claims)",
+    "[Stock ledger from]": "the stock ledger's window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
+    "[Stock ledger to]": "the stock ledger's window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
+  },
   "components/sales/SalesCycleTab.tsx": { "[Date the goods came back, challan ${c.document_no}]": "the return date typed on a challan row (an update, not a form; a later row)" },
   "app/clients/[id]/sales/page.tsx": {
     "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
