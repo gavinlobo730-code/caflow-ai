@@ -18,15 +18,21 @@
  *      field (`Payment date: Feb 2026 has only 28 days.`), which is a different sentence from the field's own;
  *   5. a date typed in full reaches the request body as the ISO date typed, whatever the locale or zone.
  *
- * The editors not here (billing, mark-as-filed, payroll disbursement, asset acquisition and the rest) are
- * the second slice: each is one more row in `EDITORS`, because the claims are the same. The TDS deduction and challan
- * forms, the advance-tax register's paid-on date and the section 140A challan's deposit date are rows already.
+ * The second slice (4-11-2026) added Mark as Filed (the one prompt Deadlines, a client's Compliance tab and Practice Compliance
+ * share), the fee engagement and fee receipt forms, a customer receipt, the retainer, the payroll disbursement prompt, an asset's
+ * purchase and disposal dates, the three Work in Progress forms, an opening invoice or bill, a Bill of Entry and the sales and
+ * purchase cycle forms. Each is one row in `EDITORS`, because the claims are the same; the ones not here are listed on ledger
+ * line PRE-A-015. The TDS deduction and challan forms, the advance-tax register's paid-on date and the section 140A challan's
+ * deposit date were rows before it.
+ *
+ * A prompt may HOLD its button while the text is unreadable instead of refusing the click in a sentence (`heldWhileUnreadable`):
+ * Mark as Filed does, so the claim there is a disabled button, the field's own sentence, and no write.
  */
 import assert from "node:assert/strict";
 import { TZ_MATRIX, pick, sameTickDouble, expectWrites } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok } from "../stub.mjs";
-import { CLIENT_ID } from "../fixtures.mjs";
+import { CLIENT_ID, PAYROLL_RUN } from "../fixtures.mjs";
 
 export const group = "dates";
 
@@ -118,6 +124,239 @@ async function openPostDatedCheque(env) {
 
 /** A modal over a drawer: the open dialog is the last one. */
 const modalOf = (page) => page.getByRole("dialog").last();
+
+/** The Add Asset drawer on the register, its categories loaded and the name and cost typed, so only the date is left. */
+async function openAddAsset(env) {
+  const { page, stub } = env;
+  stub.setTable("fixed_assets", []);
+  stub.route({ method: "GET", re: /fixed-assets\/categories/, reply: () => ok([{
+    category: "Computers and data processing", depreciable: true, residual_value_cap_percent: 5,
+    classes: [{ label: "Laptops and desktops", useful_life_years: 3, wdv_rate_percent: 63.16 }],
+  }]) });
+  stub.route({ method: "POST", re: /api\/fixed-assets$/, reply: () => ok({ id: "fa-1" }) });
+  await page.goto(env.at("/fixed-assets/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Add Asset" }).first().click();
+  const name = page.getByPlaceholder("e.g. Dell Laptop SN12345");
+  await name.waitFor();
+  // The category list lands after the drawer opens; the form is not ready until it has chosen the first one.
+  await page.locator("select", { has: page.locator("option", { hasText: "Computers and data processing" }) })
+    .and(page.locator("select")).first().waitFor();
+  await name.fill("Dell Laptop");
+  await page.getByPlaceholder("100000").fill("125000");
+}
+
+/** The Disposal tab with one live asset chosen and the proceeds typed, so only the date is left. */
+async function openDisposal(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/fixed-assets\?client_id=/, reply: () => ok([{
+    id: "fa-9", asset_code: "FA-0009", asset_name: "Dell Laptop", asset_category: "Computers and data processing",
+    purchase_date: "2025-04-01", purchase_cost_paise: 12500000, salvage_value_paise: 0, depreciation_method: "WDV",
+    wdv_rate_percent: 63.16, accumulated_depreciation_paise: 2000000, is_disposed: false, current_wdv_paise: 10500000,
+  }]) });
+  stub.route({ method: "PATCH", re: /api\/fixed-assets\/fa-9\/dispose$/, reply: () => ok({ gain_loss_paise: 0, part_month_depreciation_not_charged: false }) });
+  await page.goto(env.at("/fixed-assets/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Disposal", exact: true }).click();
+  await page.getByRole("button", { name: "Dispose", exact: true }).first().click();
+  await page.getByText("Dispose: Dell Laptop").waitFor();
+  await page.locator("label:has-text('Sale Proceeds') input").fill("90000");
+}
+
+/** The Monthly Retainer Tracker with the "Set retainer" form open, the fee and the service chosen, so only the date is left. */
+async function openRetainer(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /billing\/schedules/, reply: () => ok([]) });
+  stub.route({ method: "GET", re: /billing\/service-options$/, reply: () => ok({
+    internal_client_id: CLIENT_ID,
+    services: [{ id: "sv-1", name: "Monthly retainer", hsn_sac: "998221", default_rate_paise: 1500000, gst_rate_bps: 1800 }],
+  }) });
+  stub.route({ method: "POST", re: /billing\/schedules$/, reply: () => ok({ id: "bs-1" }) });
+  await page.goto(`${env.base}/accounting/retainer/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Set retainer/ }).first().click();
+  await page.locator("#retainer-fee").fill("15000");
+  await page.locator("#retainer-service").selectOption("sv-1");
+}
+
+/** The client's payroll Release tab with a finalised run and the "Record payment" prompt open on a linked bank account. */
+async function openDisbursement(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /payroll\/runs\?/, reply: () => ok([{ ...PAYROLL_RUN, client_id: CLIENT_ID }]) });
+  stub.route({ method: "GET", re: /banking\/accounts/, reply: () => ok([
+    { id: "ba-1", bank_name: "HDFC Bank", account_no: "50100012345678", coa_account_id: "a1", is_active: true },
+  ]) });
+  stub.route({ method: "POST", re: /payroll\/runs\/run1\/disburse$/, reply: () => ok({ id: "run1", status: "paid" }) });
+  await page.goto(env.at("/payroll/?tab=release"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record payment", exact: true }).first().click();
+  await page.locator("#disburse-date").waitFor();
+}
+
+/** The Opening Balances tab with the "Add a document" drawer open on a customer, a number and an amount, so only the dates are left. */
+async function openOpeningDocument(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/customers/, reply: () => ok([{ id: "cu1", name: "Beta Stores" }]) });
+  stub.route({ method: "POST", re: /api\/opening-documents$/, reply: () => ok({ id: "od-1" }) });
+  await page.goto(env.at("/accounting/?tab=opening-balances"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Add a document" }).first().click();
+  await page.getByText("Add an opening invoice").waitFor();
+  await page.locator("label:has-text('Customer') select").selectOption("cu1");
+  await page.locator("label:has-text('Invoice number') input").fill("OLD/2025/0042");
+  await page.locator("label:has-text('Still outstanding') input").fill("15000");
+}
+
+/** The Bills of Entry tab with "Record a Bill of Entry" open, the number and the assessable value typed, so only the date is left. */
+async function openBillOfEntry(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/bills-of-entry$/, reply: () => ok({ id: "be-1" }) });
+  await page.goto(env.at("/purchases/?tab=bills-of-entry"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record a Bill of Entry" }).first().click();
+  await page.getByPlaceholder("e.g. 1234567").fill("1234567");
+  await page.locator("label:has-text('Assessable value') input").fill("100000");
+}
+
+/** The Work in Progress tab with one live project, for the three forms that carry a date (new project, a cost on it, capitalising it). */
+async function atCwip(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/cwip\?client_id=/, reply: () => ok({
+    does_not_depreciate: "Capital work in progress is not depreciated.",
+    projects: [{ id: "p1", project_code: "BLD-1", project_name: "Warehouse", started_on: "2026-04-10", approved_cost_paise: 500000000,
+      status: "in_progress", incurred_paise: 120000000, over_approved_cost: false }],
+  }) });
+  stub.route({ method: "GET", re: /api\/cwip\/schedules/, reply: () => ok({
+    ageing: { as_of: "2026-10-08", bucket_order: [], bucket_labels: {}, row_order: [], row_labels: {}, rows: {}, total_paise: 0, notes: [] },
+    completion_schedule: { bucket_labels: {}, rows: [], gaps: [] },
+    does_not_depreciate: "Capital work in progress is not depreciated.",
+  }) });
+  await page.goto(env.at("/fixed-assets/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Work in Progress", exact: true }).click();
+  await page.getByText("Warehouse").first().waitFor();
+}
+async function openCwipProject(env) {
+  env.stub.route({ method: "POST", re: /api\/cwip$/, reply: () => ok({ id: "p2" }) });
+  await atCwip(env);
+  await env.page.getByRole("button", { name: "New project" }).click();
+  await modalOf(env.page).getByRole("button", { name: "Create", exact: true }).waitFor();
+  await modalOf(env.page).locator("label:has-text('Project name') input").fill("Showroom");
+}
+async function openCwipCost(env) {
+  env.stub.route({ method: "POST", re: /api\/cwip\/p1\/costs$/, reply: () => ok({ id: "c1" }) });
+  await atCwip(env);
+  await env.page.getByRole("button", { name: "Add cost", exact: true }).click();
+  await modalOf(env.page).getByRole("button", { name: "Record", exact: true }).waitFor();
+  await modalOf(env.page).getByPlaceholder("Contractor running bill").fill("Running bill 4");
+  await modalOf(env.page).locator("label:has-text('Amount (₹)') input").fill("250000");
+}
+async function openCwipCapitalise(env) {
+  env.stub.route({ method: "POST", re: /api\/cwip\/p1\/capitalise$/, reply: () => ok({ id: "fa-5" }) });
+  await atCwip(env);
+  await env.page.getByRole("button", { name: /Capitalise/ }).first().click();
+  await modalOf(env.page).getByRole("button", { name: "Capitalise", exact: true }).waitFor();
+}
+
+/** The Orders & Goods Receipts tab with the "New" form open on a supplier, a number and one line. `tab` is "orders" or "receipts". */
+function openPurchaseCycleForm(tab) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /api\/vendors/, reply: () => ok([{ id: "v1", name: "Gamma Supplies" }]) });
+    stub.route({ method: "POST", re: /api\/purchase-cycle\/(orders|receipts)$/, reply: () => ok({ id: "pc-1" }) });
+    await page.goto(env.at("/purchases/?tab=purchase-cycle"), { waitUntil: "networkidle" });
+    if (tab === "receipts") await page.getByRole("button", { name: "Goods Receipts", exact: true }).click();
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.locator("label:has-text('Supplier') select").first().selectOption("v1");
+    await page.locator("label:has-text('Number') input").first().fill(tab === "orders" ? "PO/2026-27/0001" : "GRN/2026-27/0001");
+    await page.getByLabel("Line 1 description").fill("Paper");
+  };
+}
+
+/** The Quotes, Orders & Challans tab with "New" open on a customer, a number and one line. `tab` is the tab's own label. */
+function openSalesCycleForm(tab, number) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /api\/customers/, reply: () => ok([{ id: "cu1", name: "Beta Stores" }]) });
+    stub.route({ method: "GET", re: /sales-cycle\/vocabulary$/, reply: () => ok({
+      quote_kinds: [{ value: "quotation", label: "Quotation" }, { value: "proforma", label: "Proforma invoice" }],
+      quote_statuses: [], order_statuses: [], challan_statuses: [],
+      challan_reasons: [{ value: "supply", label: "Supply of goods", is_a_supply: true }],
+      goods_kinds: [{ value: "inputs", label: "Inputs" }],
+      not_a_tax_invoice: "This is not a tax invoice.", no_tax_on_a_non_supply: "No tax is charged on a non-supply.",
+      job_work_exclusion: "", rule_55_5_steps: [], copies: [], itc_04: { decided: false, readings: [], refusal: "" },
+    }) });
+    stub.route({ method: "POST", re: /api\/sales-cycle\/(quotations|orders|challans)$/, reply: () => ok({ id: "sc-1" }) });
+    await page.goto(env.at("/sales/?tab=sales-cycle"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: tab, exact: true }).click();
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByText("Number", { exact: true }).waitFor();
+    await page.locator("select:has(option[value='cu1'])").first().selectOption("cu1");
+    await page.locator("label:has-text('Number') input").first().fill(number);
+    await page.getByLabel("Line 1 description").fill("Consulting");
+  };
+}
+
+/** The client's Receipts tab with "Record Receipt" open on a customer and an amount, so only the date is left. */
+async function openCustomerReceipt(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/receipts\/$/, reply: () => ok({ id: "r-new" }) });
+  await page.goto(env.at("/sales/?tab=receipts"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record Receipt" }).first().click();
+  await page.locator("#receipt-date").waitFor();
+  await pick(page, page.locator('button[aria-label="Customer"]'), "Beta Stores");
+  await page.getByLabel("Amount (₹)").fill("25000");
+}
+
+/** The Billing screen for a person who may write on it, with one fee invoice that is owed (so a receipt can be recorded against it). */
+async function atBilling(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { billing: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/engagements(\?|$)/, reply: () => ok({ engagements: [], total: 0 }) });
+  stub.setTable("fee_invoices", [{
+    id: "fi-1", firm_id: "f1", client_id: CLIENT_ID, invoice_no: "FEE-0001", invoice_date: "2026-09-01",
+    amount_paise: 1000000, gst_paise: 180000, total_paise: 1180000, status: "Issued",
+  }]);
+  stub.setTable("fee_receipts", []);
+  await page.goto(`${env.base}/billing/`, { waitUntil: "networkidle" });
+}
+
+/** "Add Fee Engagement" with the client chosen by default, the fee typed and everything else as it opens. */
+async function openFeeEngagement(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/engagements$/, reply: () => ok({ engagement: { id: "en-1", client_id: CLIENT_ID, service_type: "GST Filing", fee_paise: 500000, billing_cycle: "Monthly", start_date: "2026-07-15", status: "Active" } }) });
+  await atBilling(env);
+  await page.getByRole("button", { name: "Engagements", exact: true }).first().click();
+  await page.getByRole("button", { name: "Add Engagement" }).first().click();
+  await page.getByRole("heading", { name: "Add Fee Engagement" }).waitFor();
+  await page.getByLabel("Fee (₹)").fill("5000");
+}
+
+/** "Record Receipt" against the owed fee invoice, with the amount typed. */
+async function openFeeReceipt(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /billing\/fee-invoices\/fi-1\/receipts$/, reply: () => ok({ id: "fr-1", invoice_id: "fi-1", receipt_date: "2026-07-15", amount_paise: 100000, payment_mode: "NEFT", reference_no: "" }) });
+  await atBilling(env);
+  await page.getByRole("button", { name: "Receipts", exact: true }).first().click();
+  await page.getByRole("button", { name: "Record Receipt" }).first().click();
+  await page.getByRole("heading", { name: "Record Receipt" }).waitFor();
+  await page.getByLabel("Amount (₹)").fill("1000");
+}
+
+/**
+ * The Deadlines screen with one obligation that is ready to file and the "Mark as Filed" prompt open on it. The prompt is the
+ * one shared by Deadlines (single and bulk), a client's Compliance tab and Practice → Compliance, so this one row drives all of them.
+ */
+async function openMarkFiled(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /compliance\/reopenable-types$/, reply: () => ok({ obligation_types: [], max_reason_chars: 500 }) });
+  stub.route({
+    method: "GET", re: /compliance\/obligations(\?|$)/,
+    reply: () => ok({ obligations: [{
+      id: "ob-1", client_id: CLIENT_ID, compliance_type: "GSTR-3B", obligation_type: "GSTR3B", status: "Ready To File",
+      period_start: "2026-09-01", period_end: "2026-09-30", due_date: "2026-10-20", filed_date: null, acknowledgement_no: null,
+      notes: null, period_label: "GSTR-3B September 2026",
+    }], total: 1 }),
+  });
+  stub.route({ method: "POST", re: /compliance\/obligations\/ob-1\/mark-filed$/, reply: () => ok({ id: "ob-1", status: "Filed" }) });
+  await page.goto(`${env.base}/deadlines/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Mark Filed", exact: true }).first().click();
+  await modalOf(page).getByRole("button", { name: "Confirm Filed", exact: true }).waitFor();
+}
 
 async function openInvoicePayment(env) {
   const drawer = await openInvoiceDrawer(env, "issued");
@@ -251,6 +490,112 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/,
   },
   {
+    id: "mark-as-filed", title: "Mark as Filed prompt (Deadlines)", open: openMarkFiled, heldWhileUnreadable: true,
+    fields: [{ box: (p) => modalOf(p).locator("#mark-filed-date"), label: "Filed on", key: "filed_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => modalOf(p).getByRole("button", { name: "Confirm Filed", exact: true }), write: /compliance\/obligations\/ob-1\/mark-filed$/,
+  },
+  {
+    id: "fee-engagement", title: "fee engagement form (Billing)", open: openFeeEngagement,
+    fields: [{ box: (p) => p.locator("#engagement-start"), label: "Start date", key: "start_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save Engagement", exact: true }), write: /api\/engagements$/,
+  },
+  {
+    id: "fee-receipt", title: "fee receipt form (Billing)", open: openFeeReceipt,
+    fields: [{ box: (p) => p.locator("#fee-receipt-date"), label: "Receipt date", key: "receipt_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Record Receipt", exact: true }).last(), write: /billing\/fee-invoices\/fi-1\/receipts$/,
+  },
+  {
+    id: "add-asset", title: "Add Asset drawer (purchase date)", open: openAddAsset,
+    fields: [{ box: (p) => p.getByLabel("Purchase date"), label: "Purchase date", key: "purchase_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Add Asset", exact: true }).last(), write: /api\/fixed-assets$/,
+  },
+  {
+    id: "asset-disposal", title: "asset disposal form (Disposal tab)", open: openDisposal,
+    fields: [{ box: (p) => p.getByLabel("Disposal date"), label: "Disposal date", key: "disposal_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Confirm Disposal", exact: true }), write: /api\/fixed-assets\/fa-9\/dispose$/,
+  },
+  {
+    id: "retainer", title: "retainer form (next invoice due)", open: openRetainer,
+    fields: [{ box: (p) => p.locator("#retainer-next"), label: "Next invoice due", key: "next_run_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save Retainer", exact: true }), write: /billing\/schedules$/,
+  },
+  {
+    id: "payroll-disbursement", title: "payroll disbursement prompt (Record payment)", open: openDisbursement,
+    fields: [{ box: (p) => p.locator("#disburse-date"), label: "Payment date", key: "payment_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Confirm Payment", exact: true }), write: /payroll\/runs\/run1\/disburse$/,
+  },
+  {
+    id: "opening-document", title: "opening invoice form (Opening Balances)", open: openOpeningDocument,
+    fields: [
+      { box: (p) => p.locator("#opening-doc-date"), label: "Document date", key: "document_date", full: "15/07/2025", iso: "2025-07-15" },
+      { box: (p) => p.locator("#opening-doc-due"), label: "Due date", key: "due_date", full: "14/08/2025", iso: "2025-08-14" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Record", exact: true }), write: /api\/opening-documents$/,
+  },
+  {
+    id: "bill-of-entry", title: "Bill of Entry form (Purchases)", open: openBillOfEntry,
+    fields: [{ box: (p) => p.locator("#boe-date"), label: "Bill of Entry date", key: "be_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/bills-of-entry$/,
+  },
+  {
+    id: "cwip-project", title: "new project under construction (Work in Progress)", open: openCwipProject,
+    fields: [
+      { box: (p) => modalOf(p).locator('input[aria-label="Started on"]'), label: "Started on", key: "started_on", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => modalOf(p).locator('input[aria-label="Approved completion date"]'), label: "Approved completion date", key: "approved_completion_date", full: "14/08/2026", iso: "2026-08-14" },
+      { box: (p) => modalOf(p).locator('input[aria-label="Now expected to complete on"]'), label: "Now expected to complete on", key: "expected_completion_date", full: "20/08/2026", iso: "2026-08-20" },
+    ],
+    save: (p) => modalOf(p).getByRole("button", { name: "Create", exact: true }), write: /api\/cwip$/,
+  },
+  {
+    id: "cwip-cost", title: "cost on a project (Work in Progress)", open: openCwipCost,
+    fields: [{ box: (p) => modalOf(p).locator('input[aria-label="Incurred on"]'), label: "Incurred on", key: "incurred_on", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => modalOf(p).getByRole("button", { name: "Record", exact: true }), write: /api\/cwip\/p1\/costs$/,
+  },
+  {
+    id: "cwip-capitalise", title: "capitalise a project (Work in Progress)", open: openCwipCapitalise,
+    fields: [{ box: (p) => modalOf(p).locator('input[aria-label="Ready for use on"]'), label: "Ready for use on", key: "put_to_use_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => modalOf(p).getByRole("button", { name: "Capitalise", exact: true }), write: /api\/cwip\/p1\/capitalise$/,
+  },
+  {
+    id: "purchase-order", title: "purchase order form (Orders & Goods Receipts)", open: openPurchaseCycleForm("orders"),
+    fields: [
+      { box: (p) => p.locator("#po-date"), label: "Order date", key: "document_date", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => p.locator("#po-expected"), label: "Expected by", key: "expected_date", full: "14/08/2026", iso: "2026-08-14" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/purchase-cycle\/orders$/,
+  },
+  {
+    id: "goods-receipt", title: "goods receipt form (Orders & Goods Receipts)", open: openPurchaseCycleForm("receipts"),
+    fields: [{ box: (p) => p.locator("#grn-received"), label: "Goods arrived on", key: "received_on", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/purchase-cycle\/receipts$/,
+  },
+  {
+    id: "sales-quotation", title: "quotation form (Quotes, Orders & Challans)", open: openSalesCycleForm("Quotations & Proforma", "QT/2026-27/0001"),
+    fields: [
+      { box: (p) => p.locator("#sc-date"), label: "Date", key: "document_date", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => p.locator("#sc-valid-until"), label: "Valid until", key: "valid_until", full: "14/08/2026", iso: "2026-08-14" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/sales-cycle\/quotations$/,
+  },
+  {
+    id: "sales-order", title: "sales order form (Quotes, Orders & Challans)", open: openSalesCycleForm("Sales Orders", "SO/2026-27/0001"),
+    fields: [
+      { box: (p) => p.locator("#sc-date"), label: "Date", key: "document_date", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => p.locator("#sc-expected-delivery"), label: "Expected delivery", key: "expected_delivery_date", full: "14/08/2026", iso: "2026-08-14" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/sales-cycle\/orders$/,
+  },
+  {
+    id: "delivery-challan", title: "delivery challan form (Quotes, Orders & Challans)", open: openSalesCycleForm("Delivery Challans", "DC/2026-27/0001"),
+    fields: [{ box: (p) => p.locator("#sc-date"), label: "Date", key: "document_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/sales-cycle\/challans$/,
+  },
+  {
+    id: "customer-receipt", title: "customer receipt form (Receipts tab)", open: openCustomerReceipt,
+    fields: [{ box: (p) => p.locator("#receipt-date"), label: "Receipt date", key: "receipt_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Record Receipt", exact: true }).last(), write: /api\/receipts\/$/,
+  },
+  {
     id: "post-dated-cheque", title: "post-dated cheque form", open: openPostDatedCheque,
     fields: [{ box: (p) => p.getByLabel("Cheque date"), label: "Cheque date", key: "cheque_date", full: "15/11/2026", iso: "2026-11-15" }],
     save: (p) => p.getByRole("button", { name: "Record cheque", exact: true }), write: /post-dated-cheques$/,
@@ -293,13 +638,21 @@ async function driveEditor(env, spec) {
     await typeAndLeave(box, "15/03/2026"); // put it right again, so the next field is judged alone
   }
 
-  // 4. Save over unreadable text sends nothing and names the field.
+  // 4. Save over unreadable text sends nothing and names the field. A prompt may instead HOLD its button while the text is unreadable
+  //    (`heldWhileUnreadable`): then the button is disabled, which is the same refusal said by the control and the field's own sentence stays.
   const first = spec.fields[0];
   await typeAndLeave(primary, "31/02/2026");
-  await spec.save(page).click();
-  await page.getByText(`${first.label}: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
-    throw new Error(`${spec.title}: Save over an unreadable date did not say "${first.label}: ${FEB_SENTENCE}"`);
-  });
+  if (spec.heldWhileUnreadable) {
+    assert.equal(await spec.save(page).isDisabled(), true, `${spec.title}: the button was live over an unreadable date`);
+    await page.getByText(FEB_SENTENCE).first().waitFor({ timeout: 4000 }).catch(() => {
+      throw new Error(`${spec.title}: the field did not say "${FEB_SENTENCE}" beside the held button`);
+    });
+  } else {
+    await spec.save(page).click();
+    await page.getByText(`${first.label}: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+      throw new Error(`${spec.title}: Save over an unreadable date did not say "${first.label}: ${FEB_SENTENCE}"`);
+    });
+  }
   await stub.quiet();
   assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over an unreadable date SENT A WRITE`);
 

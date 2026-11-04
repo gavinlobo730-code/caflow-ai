@@ -272,7 +272,9 @@ test("the runner pins the clock for every scenario and applies out/_headers as C
 function dateInputsOf(rel: string): string[] {
   const text = read(join(WEB, rel));
   const out: string[] = [];
-  for (const m of text.matchAll(/<DateInput\b([\s\S]*?)(?:\/>|>)/g)) {
+  // An arrow function in an attribute (`onChange={iso => ...}`) holds a `>` that does not end the tag, so `=>` is skipped over:
+  // stopping at it cut the attributes short and read `aria-label="Purchase date"` as an unnamed field.
+  for (const m of text.matchAll(/<DateInput\b((?:=>|[^>])*?)(?:\/>|>)/g)) {
     const attrs = m[1];
     const id = /\bid="([^"]+)"/.exec(attrs)?.[1];
     // A label built per row (`Instalment ${n} paid on`) is read as written; the scenario types into row 1.
@@ -290,6 +292,18 @@ const DRIVEN: Record<string, string[]> = {
   "components/invoices/InvoiceViewDrawer.tsx": ["[Payment date]", "[Credit note date]", "[Debit note date]"],
   "components/purchases/PurchaseBillViewDrawer.tsx": ["[Payment date]", "[Debit note date]", "[Credit note date]"],
   "app/income-tax/advance-tax/page.tsx": ["[Instalment ${n} paid on]", "#sa-deposit-date"],
+  // The second slice (4-11-2026).
+  "components/compliance/MarkFiledModal.tsx": ["#mark-filed-date"],
+  "app/billing/page.tsx": ["#engagement-start", "#fee-receipt-date"],
+  "app/clients/[id]/fixed-assets/page.tsx": ["[Purchase date]", "[Disposal date]"],
+  "app/accounting/retainer/page.tsx": ["#retainer-next"],
+  "components/payroll/DisburseModal.tsx": ["#disburse-date"],
+  "components/accounting/OpeningBalancesTab.tsx": ["#opening-doc-date", "#opening-doc-due"],
+  "components/purchases/BillsOfEntryTab.tsx": ["#boe-date"],
+  "components/fixed-assets/CwipTab.tsx": ["[Started on]", "[Approved completion date]", "[Now expected to complete on]", "[Incurred on]", "[Ready for use on]"],
+  "components/purchases/PurchaseCycleTab.tsx": ["#po-date", "#po-expected", "#grn-received"],
+  "components/sales/SalesCycleTab.tsx": ["#sc-date", "#sc-valid-until", "#sc-expected-delivery"],
+  "app/clients/[id]/sales/page.tsx": ["#receipt-date"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
@@ -298,6 +312,13 @@ const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "components/invoices/InvoiceEditor.tsx": { "#inv-sb-date": "the shipping bill date of an export invoice; shown only for exports (second slice)" },
   "components/purchases/PurchaseBillEditor.tsx": { "#bill-15ca-date": "the Form 15CA date; shown only for a foreign payee (second slice)" },
   "app/income-tax/advance-tax/page.tsx": { "#at-furnished-on": "feeds the §234A/§234B calculation and is saved nowhere, so the save claims do not apply (the working's own scenario is a later row)" },
+  "components/sales/SalesCycleTab.tsx": { "[Date the goods came back, challan ${c.document_no}]": "the return date typed on a challan row (an update, not a form; a later row)" },
+  "app/clients/[id]/sales/page.tsx": {
+    "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
+    "#rec-inv-end": "the recurring invoice's end date, anchored to the start (a later row)",
+    "[Statement from]": "the statement window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
+    "[Statement to]": "the statement window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
+  },
 };
 
 test("every date field the drive types into is a real DateInput in the editor it names", () => {

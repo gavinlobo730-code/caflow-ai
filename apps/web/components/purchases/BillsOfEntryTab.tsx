@@ -411,7 +411,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
                 </label>
                 <label className="text-xs">
                   <span className="block text-ps-body font-medium mb-1">Date *</span>
-                  <DateInput value={form.be_date}
+                  <DateInput id="boe-date" value={form.be_date}
                     onChange={(iso) => setForm(f => ({ ...f, be_date: iso }))}
                     onStateChange={dates.watch("be_date", "Bill of Entry date")}
                     className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />

@@ -425,14 +425,14 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs block">
                   <span className="block text-ps-body font-medium mb-1">Document date *</span>
-                  <DateInput value={form.document_date}
+                  <DateInput id="opening-doc-date" value={form.document_date}
                     onChange={(iso) => setForm((f) => ({ ...f, document_date: iso }))}
                     onStateChange={dates.watch("document_date", "Document date")}
                     className="w-full px-2.5 py-1.5 border border-ps-border rounded-lg" />
                 </label>
                 <label className="text-xs block">
                   <span className="block text-ps-body font-medium mb-1">Due date</span>
-                  <DateInput value={form.due_date}
+                  <DateInput id="opening-doc-due" value={form.due_date}
                     onChange={(iso) => setForm((f) => ({ ...f, due_date: iso }))}
                     onStateChange={dates.watch("due_date", "Due date")}
                     anchor={form.due_date || form.document_date} notBefore={form.document_date}
