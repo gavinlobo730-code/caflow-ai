@@ -477,7 +477,13 @@ export async function getReinvestmentSections(): Promise<{
   });
   const json = await res.json();
   if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load the s.54 sections: ${res.statusText}`);
-  return json.data;
+  // A payload is not its lists until something has checked it: the screen reads `.length` of both the moment its Add Transaction dialog
+  // opens, so a 200 that lacked one white-screened the page (found by driving the dialog against a stub that answered `{}`). The screen's
+  // own fallback labels stand in for an empty list.
+  const shaped = objectWithLists<{ sections: ReinvestmentSectionInfo[]; asset_natures: TransferredAssetNature[]; acquisition_kinds: AcquisitionKind[] }>(
+    json.data, "sections", "asset_natures", "acquisition_kinds");
+  if (!shaped) throw new Error("The s.54 sections came back in a shape this screen cannot read.");
+  return shaped;
 }
 
 export async function getCapitalGainExemption(recordId: string): Promise<CapitalGainExemption> {

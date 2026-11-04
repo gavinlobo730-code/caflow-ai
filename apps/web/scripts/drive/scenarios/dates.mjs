@@ -29,10 +29,10 @@
  * Mark as Filed does, so the claim there is a disabled button, the field's own sentence, and no write.
  */
 import assert from "node:assert/strict";
-import { TZ_MATRIX, pick, sameTickDouble, expectWrites } from "../kit.mjs";
+import { TZ_MATRIX, pick, sameTickDouble, expectWrites, until } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok } from "../stub.mjs";
-import { CLIENT_ID, PAYROLL_RUN } from "../fixtures.mjs";
+import { CLIENT_ID, CLIENT_ROW, PAYROLL_RUN } from "../fixtures.mjs";
 
 export const group = "dates";
 
@@ -365,6 +365,26 @@ async function openEmployeeForm(env) {
   await page.getByLabel("Basic Salary (Rs/month)").fill("40000");
 }
 
+/** An employee's drawer (Profile, Full & final, Salary revisions, Loans & advances) on the client's payroll screen, open at one tab, for a person who may finalise. */
+function openEmployeeDrawer(tab) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
+    stub.route({ method: "GET", re: /api\/payroll\/employees\?/, reply: () => ok([{
+      id: "emp-1", name: "Asha Rao", designation: "Accountant", basic_paise: 40_000_00, hra_percent: 40, pf_applicable: true, esi_applicable: false,
+      pt_applicable: true, status: "active" }]) });   // no joining date recorded: a short date in a box that already holds one is read in THAT date's year (DateInput's anchor), so a stored one would change what 15/1 means
+    stub.route({ method: "GET", re: /employees\/emp-1\/salary-revisions\?/, reply: () => ok({ revisions: [] }) });
+    stub.route({ method: "GET", re: /employees\/emp-1\/loans\?/, reply: () => ok({ loans: [] }) });
+    stub.route({ method: "PATCH", re: /api\/payroll\/employees\/emp-1$/, reply: () => ok({ id: "emp-1" }) });
+    stub.route({ method: "POST", re: /employees\/emp-1\/salary-revisions$/, reply: () => ok({ id: "rev-1" }) });
+    stub.route({ method: "POST", re: /employees\/emp-1\/loans$/, reply: () => ok({ loan: { id: "loan-1" }, notes: [] }) });
+    stub.route({ method: "POST", re: /employees\/emp-1\/settlement$/, reply: () => ok({ employee_id: "emp-1", components: [], deductions: [], totals: { gross_paise: 0, taxable_paise: 0, net_payable_paise: 0 }, gaps: [], problems: [] }) });
+    await page.goto(env.at("/payroll/?tab=inputs"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Open", exact: true }).first().click();
+    if (tab) await page.getByRole("button", { name: tab, exact: true }).click();
+  };
+}
+
 /** Opens a form on a 1440 by 720 screen, a smaller laptop's, so that a dialog taller than 720 pixels must scroll to keep its Save in reach. */
 const onAShortScreen = (open) => async (env) => {
   await env.page.setViewportSize({ width: 1440, height: 720 });
@@ -487,6 +507,55 @@ function openNoteModal(side, opener) {
  * pinned financial year. A later field is anchored to the first (a due date to its invoice date) and is held to
  * the claims that do not depend on the anchor.
  */
+/** What the capital-gains estimator answers: every key the register's preview and the calculator's panel read. A figure here is a stub's, not a tax claim. */
+const CG_RESULT = {
+  holding_months: 20, is_long_term: false, gain_type: "STCG", gain_paise: 1_000_00, indexed_cost_paise: 0, gain_with_indexation_paise: 0,
+  tax_rate_percent: 20, tax_with_indexation_percent: null, tax_without_indexation_paise: 200_00, tax_with_indexation_paise: null,
+  tax_liability_paise: 200_00, section_ref: "stub", note: "", is_slab_rate_estimate: false, gaps: [], caveats: [],
+};
+
+/** The capital-gains screen on its Register tab with a client chosen (the screen opens on the calculator, and the register is a client's). */
+async function openCapitalGainsRegisterTab(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/clients$/, reply: () => ok({ clients: [CLIENT_ROW], total: 1 }) });
+  await page.goto(`${env.base}/income-tax/capital-gains/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders");
+  await page.waitForLoadState("networkidle");
+}
+
+/** The capital-gains screen's Register tab with the Add Transaction dialog open and everything but the two dates filled. */
+async function openCapitalGainsRegister(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\?/, reply: () => ok([]) });
+  stub.route({ method: "POST", re: /api\/income-tax\/capital-gains\/compute$/, reply: () => ok(CG_RESULT) });
+  stub.route({ method: "POST", re: /api\/income-tax\/capital-gains$/, reply: () => ok({ id: "cg-1" }) });
+  await openCapitalGainsRegisterTab(env);
+  await page.getByRole("button", { name: "Add Transaction" }).first().click();
+  await page.getByLabel("Asset Description").fill("Equity shares of Alpha Ltd");
+  await page.getByLabel("Purchase Cost (₹)").fill("100000");
+  await page.getByLabel("Sale Value (₹)").fill("150000");
+}
+
+/** The reinvestment-claim panel of one register row, with what was bought filled. */
+async function openReinvestmentClaim(env) {
+  const { page, stub } = env;
+  const record = {
+    id: "cg-1", client_id: CLIENT_ID, asset_description: "Flat 402", asset_type: "property", purchase_date: "2019-04-01", sale_date: "2026-05-10",
+    purchase_cost_paise: 50_00_000_00, improvement_cost_paise: 0, sale_value_paise: 90_00_000_00, indexed_cost_paise: null, gain_type: "LTCG",
+    tax_rate_percent: 12.5, transferred_asset_nature: null, is_listed_security: null, fmv_31_01_2018_paise: null, created_at: "2026-10-31T00:00:00Z",
+  };
+  stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\?/, reply: () => ok([record]) });
+  stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\/sections$/, reply: () => ok({ sections: [], asset_natures: [], acquisition_kinds: [] }) });
+  stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\/cg-1\/exemption$/, reply: () => ok({
+    gain_paise: 40_00_000_00, total_exemption_paise: 0, taxable_gain_paise: 40_00_000_00, claims: [], gaps: [], caveats: [] }) });
+  stub.route({ method: "POST", re: /api\/income-tax\/capital-gains\/cg-1\/reinvestments$/, reply: () => ok({ id: "ri-1" }) });
+  await openCapitalGainsRegisterTab(env);
+  await page.getByRole("button", { name: "Exemption", exact: true }).first().click();
+  await page.getByLabel("What was bought").waitFor();
+  await page.getByLabel("What was bought").fill("Flat 90, Kalyani Heights");
+}
+
 const EDITORS = [
   {
     id: "journal", title: "journal editor", open: openJournal,
@@ -739,6 +808,68 @@ const EDITORS = [
     fields: [{ box: (p) => modalOf(p).locator(`input[aria-label="${n.label}"]`), label: n.label, key: n.key, full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => modalOf(p).getByRole("button", { name: n.submit, exact: true }), write: n.write,
   })),
+  // The fifth slice (4-11-2026).
+  {
+    id: "capital-gains-register", title: "capital gains register: Add Transaction", open: onAShortScreen(openCapitalGainsRegister), saveInView: true,
+    fields: [
+      { box: (p) => p.locator("#cg-reg-purchase-date"), label: "Purchase date", key: "purchase_date", full: "15/07/2024", iso: "2024-07-15" },
+      { box: (p) => p.locator("#cg-reg-sale-date"), label: "Sale date", key: "sale_date", full: "20/03/2026", iso: "2026-03-20" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Save Transaction", exact: true }), write: /api\/income-tax\/capital-gains$/,
+  },
+  {
+    id: "capital-gains-reinvestment-claim", title: "capital gains register: record a reinvestment claim", open: onAShortScreen(openReinvestmentClaim), saveInView: true,
+    fields: [
+      { box: (p) => p.getByLabel("Acquisition date"), label: "Acquisition date", key: "acquisition_date", full: "15/07/2026", iso: "2026-07-15" },
+      { box: (p) => p.getByLabel("CGAS deposit date"), label: "CGAS deposit date", key: "cgas_deposit_date", full: "20/08/2026", iso: "2026-08-20" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Record claim", exact: true }), write: /api\/income-tax\/capital-gains\/cg-1\/reinvestments$/,
+  },
+  // The sixth slice (4-11-2026): an employee's drawer.
+  {
+    id: "employee-drawer-joining-date", title: "employee drawer, Profile: joining date", open: openEmployeeDrawer(null),
+    fields: [{ box: (p) => p.locator("#drawer-joining-date"), label: "Joining date", key: "joining_date", full: "15/07/2025", iso: "2025-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/payroll\/employees\/emp-1$/,
+  },
+  {
+    id: "employee-drawer-salary-revision", title: "employee drawer, Salary revisions: effective from", open: async (env) => {
+      await openEmployeeDrawer("Salary revisions")(env);
+      await env.page.getByLabel("Basic", { exact: true }).fill("45000");
+    },
+    heldWhileUnreadable: true,
+    fields: [{ box: (p) => p.locator("#drawer-revision-effective-from"), label: "Effective from", key: "effective_from", full: "01/04/2026", iso: "2026-04-01" }],
+    save: (p) => p.getByRole("button", { name: "Record revision", exact: true }), write: /employees\/emp-1\/salary-revisions$/,
+  },
+  {
+    id: "employee-drawer-loan", title: "employee drawer, Loans & advances: started on", open: async (env) => {
+      await openEmployeeDrawer("Loans & advances")(env);
+      await env.page.getByLabel("Principal", { exact: true }).fill("50000");
+      await env.page.getByLabel("Monthly instalment", { exact: true }).fill("5000");
+    },
+    fields: [{ box: (p) => p.locator("#drawer-loan-started-on"), label: "Started on", key: "started_on", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Record loan", exact: true }), write: /employees\/emp-1\/loans$/,
+  },
+  {
+    id: "employee-drawer-settlement-payment-date", title: "employee drawer, Full & final: the date the settlement is paid (the confirming click)", open: async (env) => {
+      const { page, stub } = env;
+      await openEmployeeDrawer("Full & final")(env);
+      stub.route({ method: "POST", re: /employees\/emp-1\/settlement\/record$/, reply: () => ok({
+        employee_id: "emp-1", components: [], deductions: [], totals: { gross_paise: 0, taxable_paise: 0, net_payable_paise: 0 }, gaps: [], problems: [], settlement_id: "s-1" }) });
+      // The payment date is read after the last working day (its anchor), so the last working day is in FY 2026-27 here as the short-form claim expects.
+      await typeAndLeave(page.locator("#drawer-last-working-day"), "30/06/2026");
+      await page.getByRole("button", { name: "Compute", exact: true }).click();
+      await page.locator("#settlement-payment-date").waitFor();
+      await page.getByRole("button", { name: "Record settlement", exact: true }).click();
+    },
+    fields: [{ box: (p) => p.locator("#settlement-payment-date"), label: "Payment date", key: "payment_date", full: "05/07/2026", iso: "2026-07-05" }],
+    save: (p) => p.getByRole("button", { name: "Yes, record it", exact: true }), write: /employees\/emp-1\/settlement\/record$/,
+  },
+  {
+    id: "employee-drawer-last-working-day", title: "employee drawer, Full & final: last working day", open: openEmployeeDrawer("Full & final"),
+    heldWhileUnreadable: true,
+    fields: [{ box: (p) => p.locator("#drawer-last-working-day"), label: "Last working day", key: "leaving_date", full: "31/03/2026", iso: "2026-03-31" }],
+    save: (p) => p.getByRole("button", { name: "Compute", exact: true }), write: /employees\/emp-1\/settlement$/,
+  },
 ];
 
 async function driveEditor(env, spec) {
@@ -835,6 +966,49 @@ export const scenarios = [
       await expectWrites(env.stub, m.write, 1, `two same-tick clicks on ${m.name}`);
     },
   })),
+  // The capital-gains CALCULATOR has no Save: it asks the server for an estimate by itself, a moment after the last keystroke, so its
+  // "write" is the estimate request. The claims are the same ones, with that request standing where Save does: over an unreadable date it
+  // is NOT asked, and over the dates typed in full it is asked with the ISO dates.
+  {
+    id: "capital-gains-calculator",
+    title: "capital gains calculator: typed dates are read by the one rule, no estimate is asked over an unreadable one, and the ISO dates reach the server",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "POST", re: /api\/income-tax\/capital-gains\/compute$/, reply: () => ok(CG_RESULT) });
+      await page.goto(`${env.base}/income-tax/capital-gains/`, { waitUntil: "networkidle" });
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      const purchase = page.locator("#cg-calc-purchase-date");
+      const sale = page.locator("#cg-calc-sale-date");
+      await typeAndLeave(purchase, "15/1");
+      assert.equal(await purchase.inputValue(), "15/01/2027", "15/1 in FY 2026-27 is 15 January 2027");
+      await typeAndLeave(purchase, "150326");
+      assert.equal(await purchase.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      for (const [box, label] of [[purchase, "Purchase date"], [sale, "Sale date"]]) {
+        await typeAndLeave(box, "31/02/2026");
+        assert.equal(await box.getAttribute("aria-invalid"), "true", `${label}: 31/02/2026 is not marked invalid`);
+        const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+        assert.ok(alerts.includes(FEB_SENTENCE), `${label}: the field's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+        await typeAndLeave(box, "15/03/2026");
+      }
+      // Over an unreadable date, with everything else in place, the estimate is not asked for and the screen says why.
+      await typeAndLeave(purchase, "31/02/2026");
+      await page.getByLabel("Purchase Price (₹)").fill("100000");
+      await page.getByLabel("Sale Price (₹)").fill("150000");
+      await page.getByText(`Purchase date: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`the calculator did not say "Purchase date: ${FEB_SENTENCE}" over an unreadable date`);
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/capital-gains\/compute$/).length, 0, "the estimate was asked for over an unreadable date");
+      // Typed in full, the dates are asked for as the ISO dates typed.
+      await typeAndLeave(purchase, "15/07/2024");
+      await typeAndLeave(sale, "20/03/2026");
+      await until(() => stub.writesTo(/capital-gains\/compute$/).some((w) => JSON.parse(w.body).sale_date === "2026-03-20"), "an estimate asked for the dates typed");
+      const last = JSON.parse(stub.writesTo(/capital-gains\/compute$/).at(-1).body);
+      assert.equal(last.purchase_date, "2024-07-15", `purchase_date reached the server as ${JSON.stringify(last.purchase_date)}`);
+      assert.equal(last.sale_date, "2026-03-20", `sale_date reached the server as ${JSON.stringify(last.sale_date)}`);
+    },
+  },
   // A date that belongs AFTER another is read after it. The anchor's financial year decides the year of a short form, so a valid-upto typed `2/4`
   // beside a bill dated 31/03/2027 (the last day of FY 2026-27) came out as 02/04/2026, a year BEFORE the bill, and the field showed it without a word.
   {

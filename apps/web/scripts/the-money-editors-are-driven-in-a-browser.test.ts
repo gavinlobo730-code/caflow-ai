@@ -313,6 +313,10 @@ const DRIVEN: Record<string, string[]> = {
   "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date"],
   // The fourth slice (4-11-2026).
   "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from"],
+  // The fifth slice (4-11-2026): the capital-gains screen's calculator, register dialog and reinvestment claim.
+  // The sixth slice (4-11-2026): an employee's drawer.
+  "components/payroll/EmployeeDrawer.tsx": ["#drawer-joining-date", "#drawer-last-working-day", "#settlement-payment-date", "#drawer-revision-effective-from", "#drawer-loan-started-on"],
+  "app/income-tax/capital-gains/page.tsx": ["#cg-calc-purchase-date", "#cg-calc-sale-date", "#cg-reg-purchase-date", "#cg-reg-sale-date", "[Acquisition date]", "[CGAS deposit date]"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
