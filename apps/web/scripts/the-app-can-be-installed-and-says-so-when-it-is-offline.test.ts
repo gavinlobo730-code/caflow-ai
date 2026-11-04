@@ -151,7 +151,7 @@ test("a page navigation that fails offline is answered with the offline page, as
   const w = loadWorker(async (u) => (u === "/offline.html" ? redirected() : new Response("login")));
   await w.install();
   const nowOffline = loadWorker(down);
-  nowOffline.stores.set("practicesync-v5", w.stores.values().next().value);
+  nowOffline.stores.set("practicesync-v5", [...w.stores.values()][0]);
   const answer = await nowOffline.fetch(nav("/clients/abc/overview/"));
   assert.equal(answer.status, 200);
   assert.equal(answer.redirected, false);
@@ -211,7 +211,7 @@ test("a failed request for a script, an image or a payload is NOT answered with 
   const w = loadWorker(async (u) => (u === "/offline.html" ? redirected() : new Response("login")));
   await w.install();
   const nowOffline = loadWorker(down);
-  nowOffline.stores.set("practicesync-v5", w.stores.values().next().value);
+  nowOffline.stores.set("practicesync-v5", [...w.stores.values()][0]);
   for (const u of ["/_next/static/chunks/app.js", "/logo.svg", "/clients/abc/overview/index.txt"]) {
     const answer = await nowOffline.fetch(sub(u));
     assert.equal(answer.status, 503, `${u} must stay a 503`);
