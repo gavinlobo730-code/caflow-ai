@@ -39,7 +39,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 |---|---|---|
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 3 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
-| [pre-demo-C-yours.md](pre-demo-C-yours.md) | 7 | before the demo: only the owner can do |
+| [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 99 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 167 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 197 | after the demo: only the owner or outsiders can do |
@@ -49,9 +49,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**487 open items** (24 before the demo, 463 after); 12 after-demo items are `high` priority; 27 are UNSURE. A further **150 items are parked** (not counted above).
+**486 open items** (23 before the demo, 463 after); 12 after-demo items are `high` priority; 27 are UNSURE. A further **150 items are parked** (not counted above).
 
-**Who must act.** 102 items are Claude's alone to build, but 12 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 90 can be built now. 181 need the owner to decide first and 204 only the owner or someone outside this container can do. In all **397 of the 487 wait on the owner.**
+**Who must act.** 102 items are Claude's alone to build, but 12 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 90 can be built now. 181 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **396 of the 486 wait on the owner.**
 
 <!-- counts:end -->
 
@@ -68,7 +68,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 9. **PRE-B-002** (decision) — Stop three screens promising what they do not do
 10. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
 11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
-12. **PRE-C-007** (you) — Read why the marketing site's Cloudflare build fails, and fix it in the dashboard
 25. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
 27. **PRE-A-015** (Claude) — Drive the money editors in a browser: double-click guard, keyboard, drafts, dates
 29. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
