@@ -1087,6 +1087,107 @@ export const scenarios = [
       assert.equal(last.sale_date, "2026-03-20", `sale_date reached the server as ${JSON.stringify(last.sale_date)}`);
     },
   },
+  // The customer STATEMENT window. Its two boxes fed Generate, the PDF and the Email modal's Send, which posted start_date and end_date as typed
+  // (an outward mail): a window that was not two dates went out as "" and the server refused it in words about a field the person never saw. And
+  // the Email and the PDF read the customer picker and the boxes as they were NOW, so after Generate for one customer, choosing another and pressing
+  // Email mailed the second customer's statement to the first one's address (found by two independent reads of the seventh and eighth slices). Now
+  // Generate refuses a window that is not two dates in order, in the field's own sentence, the picker clears the statement, and the Email and the
+  // PDF send the statement SHOWN. The dates are typed on the page and Send is pressed in the modal that covers the boxes.
+  {
+    id: "customer-statement-email-window",
+    title: "Sales > Statements: Generate refuses a window that is not two dates in order, the Email sends the statement shown (its customer and its ISO period) whatever the boxes say",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { sales: ["read", "write"], accounting: ["read", "write"] } }) });
+      stub.route({ method: "GET", re: /api\/customers\/\?/, reply: () => ok([
+        { id: "c-beta", name: "Beta Stores", email: "accounts@beta.example.invalid" },
+        { id: "c-gamma", name: "Gamma Traders", email: "accounts@gamma.example.invalid" }]) });
+      let statementsAsked = 0;   // the stub's log holds writes only, so a refused Generate is shown by a statement that was never asked for
+      stub.route({ method: "GET", re: /api\/customer-statements\?/, reply: () => { statementsAsked += 1; return ok({
+        customer: { id: "c-beta", name: "Beta Stores", email: "accounts@beta.example.invalid", gstin: null },
+        period: { start_date: "2026-04-01", end_date: "2026-09-30" }, opening_balance_paise: 0, closing_balance_paise: 0, transactions: [],
+        totals: { invoiced_paise: 0, received_paise: 0, credited_paise: 0, transaction_count: 0 } }); } });
+      stub.route({ method: "POST", re: /api\/customer-statements\/email$/, reply: () => ok({ sent: true }) });
+      await page.goto(env.at("/sales/?tab=statements"), { waitUntil: "networkidle" });
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      const from = page.locator("#statement-from");
+      const to = page.locator("#statement-to");
+      const generate = page.getByRole("button", { name: "Generate", exact: true });
+      const email = page.getByRole("button", { name: "Email", exact: true });
+      const refusedWith = async (sentence, what) => {
+        await generate.click();
+        await page.getByText(sentence).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${what} did not say "${sentence}"`); });
+        assert.equal(statementsAsked, 0, `${what} still asked the server for a statement`);
+      };
+      await pick(page, page.locator('button[aria-label="Customer"]'), "Beta Stores");
+      await typeAndLeave(from, "15/1");
+      assert.equal(await from.inputValue(), "15/01/2027", "15/1 in a box holding a date of FY 2026-27 is 15 January 2027");
+      for (const [box, label] of [[from, "Statement from"], [to, "Statement to"]]) {
+        await typeAndLeave(box, "31/02/2026");
+        assert.equal(await box.getAttribute("aria-invalid"), "true", `${label}: 31/02/2026 is not marked invalid`);
+        const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+        assert.ok(alerts.includes(FEB_SENTENCE), `${label}: the field's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+        await typeAndLeave(box, box === from ? "01/04/2026" : "30/09/2026");
+      }
+      // Generate over a window that is not two dates in order says so, in words, and asks for nothing.
+      await typeAndLeave(from, "31/02/2026");
+      await refusedWith(`Statement from: ${FEB_SENTENCE}`, "Generate over an unreadable window");
+      await typeAndLeave(from, "");
+      await refusedWith("Statement period: enter both dates.", "Generate over a cleared start");
+      await typeAndLeave(from, "01/10/2026");
+      // A reversed window: the To box says so itself ("30 Sep 2026 is before 01 Oct 2026."), and Generate asks for nothing.
+      await refusedWith(/is before/, "Generate over a reversed window");
+      // A good window, and the statement shown.
+      await typeAndLeave(from, "01/04/2026");
+      await generate.click();
+      await email.waitFor();
+      // Choosing another customer takes the statement off the screen, so nothing of the first customer's can be mailed under the second's name.
+      await pick(page, page.locator('button[aria-label="Customer"]'), "Gamma Traders");
+      assert.equal(await email.count(), 0, "the Email button stayed on the screen after another customer was chosen");
+      await pick(page, page.locator('button[aria-label="Customer"]'), "Beta Stores");
+      await generate.click();
+      await email.waitFor();
+      // The window spoilt after Generate, then a valid different one: the mail is still for the statement shown.
+      const modal = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "Email statement to customer" }) });
+      const send = async () => {
+        await email.click();
+        await modal.getByRole("button", { name: "Send", exact: true }).click();
+        await stub.quiet();
+      };
+      await typeAndLeave(to, "31/02/2026");
+      await send();
+      await typeAndLeave(to, "31/08/2026");
+      await email.waitFor();
+      await send();
+      const writes = stub.writesTo(/customer-statements\/email$/);
+      assert.equal(writes.length, 2, `expected two mails, saw ${writes.length}`);
+      for (const w of writes) {
+        const body = JSON.parse(w.body);
+        assert.equal(body.customer_id, "c-beta", `customer_id was ${JSON.stringify(body.customer_id)}`);
+        assert.equal(body.start_date, "2026-04-01", `start_date was ${JSON.stringify(body.start_date)}: the mail must be for the period SHOWN`);
+        assert.equal(body.end_date, "2026-09-30", `end_date was ${JSON.stringify(body.end_date)}: the mail must be for the period SHOWN, not what the box says now`);
+      }
+    },
+  },
+  // The interest panel's refusal of a CLEARED As at has a sentence of its own (the row above it types an impossible date, which takes the other
+  // refusal): a cleared box reads as blank with no problem to report, so only the second line of prepare() stops it.
+  {
+    id: "overdue-interest-a-cleared-as-at-is-refused-in-a-sentence-and-sends-nothing",
+    title: "Sales > Overdue Interest: a cleared As at is refused in its own sentence and nothing is sent",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openOverdueInterest(env);
+      await typeAndLeave(page.locator("#overdue-as-at"), "");
+      await page.getByRole("button", { name: "Prepare draft invoice" }).first().click();
+      await page.getByText("As at: enter the date the interest is worked out to.").first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error("Prepare draft invoice over a cleared As at did not say \"As at: enter the date the interest is worked out to.\"");
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/late-interest\/drafts$/).length, 0, "Prepare draft invoice over a cleared As at SENT A WRITE");
+    },
+  },
   // A date that belongs AFTER another is read after it. The anchor's financial year decides the year of a short form, so a valid-upto typed `2/4`
   // beside a bill dated 31/03/2027 (the last day of FY 2026-27) came out as 02/04/2026, a year BEFORE the bill, and the field showed it without a word.
   {

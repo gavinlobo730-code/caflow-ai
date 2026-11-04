@@ -303,7 +303,7 @@ const DRIVEN: Record<string, string[]> = {
   "components/fixed-assets/CwipTab.tsx": ["[Started on]", "[Approved completion date]", "[Now expected to complete on]", "[Incurred on]", "[Ready for use on]"],
   "components/purchases/PurchaseCycleTab.tsx": ["#po-date", "#po-expected", "#grn-received"],
   "components/sales/SalesCycleTab.tsx": ["#sc-date", "#sc-valid-until", "#sc-expected-delivery"],
-  "app/clients/[id]/sales/page.tsx": ["#receipt-date"],
+  "app/clients/[id]/sales/page.tsx": ["#receipt-date", "#statement-from", "#statement-to"],
   // The third slice (4-11-2026).
   "components/sales/SalesCreditNoteEditor.tsx": ["#sales-cn-date"],
   "components/sales/SalesDebitNoteEditor.tsx": ["#sales-dn-date"],
@@ -313,6 +313,9 @@ const DRIVEN: Record<string, string[]> = {
   "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date"],
   // The fourth slice (4-11-2026).
   "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from"],
+  // Two files the first slices drove by rows but never listed here, so a date box added to either would have gone unseen (found by an independent read of the eighth slice).
+  "app/tds/page.tsx": ["#tds-payment-date", "#tds-challan-date"],
+  "components/invoices/CompliancePanel.tsx": ["[Acknowledgement date]", "[EWB date]", "[Valid upto]"],
   // The fifth slice (4-11-2026): the capital-gains screen's calculator, register dialog and reinvestment claim.
   // The sixth slice (4-11-2026): an employee's drawer.
   "components/payroll/EmployeeDrawer.tsx": ["#drawer-joining-date", "#drawer-last-working-day", "#settlement-payment-date", "#drawer-revision-effective-from", "#drawer-loan-started-on"],
@@ -339,8 +342,6 @@ const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "app/clients/[id]/sales/page.tsx": {
     "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
     "#rec-inv-end": "the recurring invoice's end date, anchored to the start (a later row)",
-    "[Statement from]": "the customer statement window; Generate and PDF are reads, but the Email modal's Send posts these dates, so the save claims DO apply to it (a later row, with the gate the Send does not have yet)",
-    "[Statement to]": "the customer statement window; Generate and PDF are reads, but the Email modal's Send posts these dates, so the save claims DO apply to it (a later row, with the gate the Send does not have yet)",
   },
 };
 
