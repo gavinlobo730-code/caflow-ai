@@ -127,6 +127,12 @@ export function BillsOfEntryTab({ clientId, openDoc }:
     paid: acc.paid + r.total_paise,
   }), { credit: 0, cost: 0, paid: 0 }), [rows]);
 
+  // The form is a drawer over the page, and the page's message line is BEHIND it: a refusal said there was drawn under the dimmed backdrop, away from
+  // the box it is about. The refusal is shown inside the drawer, the page's line waits for the drawer to close, and opening or closing the drawer starts
+  // it clean (a refusal must not outlive the form it was said about).
+  function openForm() { setMsg(null); setForm(BLANK); setShowForm(true); }
+  function closeForm() { setMsg(null); setShowForm(false); }
+
   async function handleSave() {
     if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     if (!form.be_number.trim()) {
@@ -251,14 +257,14 @@ export function BillsOfEntryTab({ clientId, openDoc }:
             )}
           </p>
         </div>
-        <button onClick={() => { setForm(BLANK); setShowForm(true); }}
+        <button onClick={openForm}
           disabled={busy}
           className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
           <Plus size={13} /> Record a Bill of Entry
         </button>
       </div>
 
-      {msg && (
+      {msg && !showForm && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
           ? "bg-state-ready-surface border border-state-ready-border text-state-ready"
           : "bg-state-problem-surface border border-state-problem-border text-state-problem"}`}>
@@ -302,7 +308,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
           action={
             <EmptyStateActions>
               <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Record a Bill of Entry"
-                disabled={busy} onClick={() => { setForm(BLANK); setShowForm(true); }} />
+                disabled={busy} onClick={openForm} />
             </EmptyStateActions>
           }
         />
@@ -397,7 +403,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
           <div className="w-full max-w-xl h-full bg-white shadow-xl flex flex-col">
             <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <p className="text-sm font-semibold text-ps-ink">Record a Bill of Entry</p>
-              <button onClick={() => setShowForm(false)} aria-label="Close"
+              <button onClick={closeForm} aria-label="Close"
                 className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
             </div>
 
@@ -516,8 +522,11 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               </label>
             </div>
 
+            {msg?.type === "err" && (
+              <p role="alert" className="mx-5 mb-3 rounded-lg px-3 py-2 text-xs bg-state-problem-surface border border-state-problem-border text-state-problem">{msg.text}</p>
+            )}
             <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)}
+              <button onClick={closeForm}
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>

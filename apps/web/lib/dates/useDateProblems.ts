@@ -21,6 +21,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { DateFieldState } from "./typedDate.ts";
 
+/** What a box refuses beyond text that is not a date. */
+export interface DateRefusals {
+  /** A date after the box's `max` is refused too (the hint's own sentence is the refusal's). */
+  afterMax?: boolean;
+}
+
 /** The problems map after `state` is reported for `key`: a field that is
  *  `invalid` carries its sentence, anything else carries nothing. Pure, so the
  *  rule is testable without a render. */
@@ -29,8 +35,12 @@ export function reportDateState(
   key: string,
   label: string,
   state: DateFieldState,
+  refuse: DateRefusals = {},
 ): Record<string, string> {
-  const next = state.status === "invalid" && state.message ? `${label}: ${state.message}` : null;
+  // A date typed in full that is past the box's `max` is `valid` and carries a hint sentence (`outOfRange`): the box hands it up, as a native input
+  // does. A box whose date can never be later than today (the day a return was filed) says `{ afterMax: true }`, and the hint becomes a refusal.
+  const refused = refuse.afterMax === true && state.status === "valid" && state.outOfRange === "max" && !!state.message;
+  const next = (state.status === "invalid" || refused) && state.message ? `${label}: ${state.message}` : null;
   if ((prev[key] ?? null) === next) return prev as Record<string, string>;
   const rest = { ...prev };
   delete rest[key];
@@ -41,8 +51,8 @@ export function useDateProblems() {
   const [problems, setProblems] = useState<Record<string, string>>({});
   /** The `onStateChange` for one field. */
   const watch = useCallback(
-    (key: string, label: string) => (state: DateFieldState) =>
-      setProblems((prev) => reportDateState(prev, key, label, state)),
+    (key: string, label: string, refuse?: DateRefusals) => (state: DateFieldState) =>
+      setProblems((prev) => reportDateState(prev, key, label, state, refuse)),
     [],
   );
   return {

@@ -37,6 +37,10 @@
  * --out <dir>      drive another export than out/ (a build of an earlier commit, a patched copy)
  * --no-headers     drive WITHOUT out/_headers (not the product as it is served)
  *
+ * PROBE_REACHABLE=1  after each four-second wait for a sentence, ask the browser whether the person could reach it (a trial click): a sentence drawn
+ *                  BEHIND an overlay (a page's message line under a drawer's backdrop) is "visible" to Playwright and is not where the person is
+ *                  looking. A probe, not a check anything waits on: an element with pointer-events off (a toast) fails it though it can be read.
+ *
  * ENVIRONMENT. SMOKE_PORT is the port the export was built for (`pnpm smoke:build` bakes 4319 into the bundle,
  * and so does this script by default; the same variable the walk reads). PLAYWRIGHT_MODULE points at a Playwright
  * install kept outside the project; PLAYWRIGHT_BROWSERS_PATH at a directory of Chromium builds.
@@ -237,6 +241,25 @@ for (const run of selected) {
     return route.abort();
   });
   const page = await context.newPage();
+  // PROBE_REACHABLE=1: a sentence a scenario waits for must also be one the person can reach, not one drawn BEHIND an overlay (a message line under a full-screen
+  // dialog is "visible" to Playwright and unseen by the person). Every four-second wait for a locator is followed by a trial click, which asks the browser whether
+  // the element would receive the click. A probe and not a rule: an element with pointer-events off (a toast) fails it though a person can read it.
+  if (process.env.PROBE_REACHABLE) {
+    const proto = Object.getPrototypeOf(page.locator("body"));
+    if (!proto.__reachableProbe) {
+      const waitFor = proto.waitFor;
+      proto.waitFor = async function (options) {
+        await waitFor.call(this, options);
+        if (options && options.timeout === 4000 && (options.state === undefined || options.state === "visible")) {
+          await this.click({ trial: true, timeout: 1500 }).catch((e) => {
+            console.log(`PROBE-UNREACHABLE ${this}: ${String(e.message).split("\n").slice(0, 4).join(" | ").slice(0, 260)}`);
+            throw e;
+          });
+        }
+      };
+      proto.__reachableProbe = true;
+    }
+  }
   page.setDefaultTimeout(10_000);
 
   const problems = [];

@@ -467,6 +467,25 @@ test("a form's problems map holds one sentence per unreadable date and drops it 
   assert.deepEqual(reportDateState({}, "x", "X", hint), {});
 });
 
+test("a box can refuse a date after its max, and only that box: the hint stays a hint everywhere else", () => {
+  const after = dateFieldState("15/10/2026", parseTypedDate("15/10/2026", { ...JULY, max: "2026-10-08" }));
+  assert.equal(after.status, "valid");
+  assert.equal(after.outOfRange, "max");
+  // By default it is a hint and never blocks...
+  assert.deepEqual(reportDateState({}, "filed", "Date filed", after), {});
+  // ...and a box that says `afterMax` (the day a return was filed cannot be tomorrow) carries the hint's own sentence as its refusal.
+  const refused = reportDateState({}, "filed", "Date filed", after, { afterMax: true });
+  assert.deepEqual(Object.keys(refused), ["filed"]);
+  assert.match(refused.filed, /^Date filed: 15 Oct 2026 is after 08 Oct 2026\./);
+  // A date on or before the max, and a date before a MIN, are not refused by it.
+  const onTime = dateFieldState("08/10/2026", parseTypedDate("08/10/2026", { ...JULY, max: "2026-10-08" }));
+  assert.deepEqual(reportDateState({}, "filed", "Date filed", onTime, { afterMax: true }), {});
+  const early = dateFieldState("31/03/2026", parseTypedDate("31/03/2026", { ...JULY, min: "2026-04-01" }));
+  assert.deepEqual(reportDateState({}, "x", "X", early, { afterMax: true }), {}, "afterMax refuses a date after the max, never one before a min");
+  // Putting the date right withdraws the refusal.
+  assert.deepEqual(reportDateState(refused, "filed", "Date filed", onTime, { afterMax: true }), {});
+});
+
 // ── No zone can move a date, and no string goes through Date ───────────────
 
 test("the typed text never goes through the Date parser", () => {

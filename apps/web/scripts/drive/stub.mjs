@@ -193,6 +193,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
       return writes.filter((w) => re.test(w.path + w.search) && (!method || w.method === method));
     },
     allWrites: () => writes.slice(),
+    /** Forget the writes so far: a scenario whose OPENER writes (an approval, a save) counts only what the step under test writes. */
+    forgetWrites() { writes.length = 0; },
 
     /**
      * Resolves when no write is being held and nothing has been written for `quietMs`, counted FROM THIS CALL.

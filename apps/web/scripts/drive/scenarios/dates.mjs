@@ -31,7 +31,7 @@
 import assert from "node:assert/strict";
 import { TZ_MATRIX, pick, sameTickDouble, expectWrites, until } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
-import { ok } from "../stub.mjs";
+import { ok, refuse } from "../stub.mjs";
 import { CLIENT_ID, CLIENT_ROW, ITEM, PAYROLL_RUN } from "../fixtures.mjs";
 
 export const group = "dates";
@@ -713,6 +713,193 @@ async function openRecurringJournalTemplate(env) {
   await page.locator("#rj-cr").selectOption("ca-2");
   await page.locator("#rj-amount").fill("125000");
 }
+
+const GSTIN_OF_THE_CLIENT = "27AAACA1234A1ZK";
+const GSTR_FILED_SENTENCE = (form) => `Say the date this ${form} was filed on the portal. Recording it closes the period for new entries, and the lock message quotes the date — so it is asked for, not assumed.`;
+
+/** A refusal as the GST workspace gives one: a 200 with `success: false` and a sentence. */
+const refusal = (error) => ({ success: false, data: null, error });
+/** The sentence the route says for a date filed before the period it declares had ended (`checked_filed_date`). Pinned to the Python by
+ *  tests/test_the_drives_filing_sentences_are_the_servers.py, so a reworded server sentence fails there and not in a browser nobody runs. */
+const GSTR_BEFORE_PERIOD_SENTENCE = (filed, end) => `A return cannot have been filed on ${filed}, before the period it declares ended on ${end}.`;
+
+/** The GST workspace's answer to a status change: a blank date on the move to submitted, and a date before the period ended, are refused in the
+ *  route's own words. (A date after today is refused by the box before anything is sent, so the route's wording for it is never reached from here.) */
+function gstStatusReply(form, periodEnd = "2026-09-30") {
+  return (_req, raw) => {
+    const b = JSON.parse(raw);
+    if (b.status === "submitted") {
+      if (!String(b.filed_date ?? "").trim()) return refusal(GSTR_FILED_SENTENCE(form));
+      if (b.filed_date < periodEnd) return refusal(GSTR_BEFORE_PERIOD_SENTENCE(b.filed_date, periodEnd));
+    }
+    return ok({ status: b.status });
+  };
+}
+
+/** GST > GSTR-1 built for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. The opener's own writes
+ *  (the build's save, the approval) are forgotten, so a row counts what the prompt writes. */
+async function openGstr1MarkFiled(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
+  stub.setTable("clients", [{ ...CLIENT_ROW, name: CLIENT_ROW.client_name, gstin: GSTIN_OF_THE_CLIENT }]);
+  stub.route({ method: "POST", re: /api\/gst\/gstr1\/from-books$/, reply: (_req, raw) => ok({
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { gstin: GSTIN_OF_THE_CLIENT, fp: JSON.parse(raw).period, b2b: [] },
+    summary: { counts: { b2b: 3, b2cs_rate_groups: 1, b2cl: 0, credit_notes_registered: 0, credit_notes_unregistered: 0 },
+      totals_rupees: { taxable: 10000, cgst: 900, sgst: 900, igst: 0 } },
+    invoice_count: 4, taxable_total_paise: 1000000, tax_total_paise: 180000, reconciliation: {},
+    validation_errors: [], validation_warnings: [], payload_gaps: [] }) });
+  // The saved row the approval and the filing look up (the build's own save is a PostgREST write the stub answers, and reads answer these rows).
+  stub.setTable("gstr1_returns", [{ id: "g1-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, period: "092026", gstin: GSTIN_OF_THE_CLIENT, status: "validated" }]);
+  stub.route({ method: "PATCH", re: /gst-workspace\/gstr1\/g1-1\/status$/, reply: gstStatusReply("GSTR-1") });
+  await page.goto(`${env.base}/gst/gstr1/`, { waitUntil: "networkidle" });
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  await page.getByRole("button", { name: "Build GSTR-1", exact: true }).click();
+  await page.getByRole("button", { name: "CA Approve", exact: true }).click();
+  await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
+  await page.getByLabel("ARN (Acknowledgment Reference Number)", { exact: true }).fill("AA2710260000001");
+  await page.locator("#gstr1-filed-date").waitFor();
+  await stub.quiet();
+  stub.forgetWrites();
+}
+
+/** GST > GSTR-3B computed for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. */
+async function openGstr3bMarkFiled(env) {
+  const { page, stub } = env;
+  const zero = { igst_paise: 0, cgst_paise: 0, sgst_paise: 0 };
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
+  stub.setTable("clients", [{ ...CLIENT_ROW, name: CLIENT_ROW.client_name, gstin: GSTIN_OF_THE_CLIENT }]);
+  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { gstin: GSTIN_OF_THE_CLIENT, ret_period: JSON.parse(raw).period },
+    working: {
+      outward: { taxable_value_paise: 1800000, taxable_igst_paise: 0, taxable_cgst_paise: 900000, taxable_sgst_paise: 900000, zero_rated_paise: 0, zero_rated_igst_paise: 0, nil_exempt_paise: 0 },
+      rcm_inward: { ...zero },
+      itc: { ...zero, avail_igst_paise: 0, avail_cgst_paise: 100000, avail_sgst_paise: 100000, net_igst_paise: 0, net_cgst_paise: 100000, net_sgst_paise: 100000 },
+      itc_reversal: { permanent_paise: { ...zero, cess_paise: 0 }, reclaimable_paise: { ...zero, cess_paise: 0 }, reasons: [] },
+      net_payable: { ...zero, cgst_paise: 800000, sgst_paise: 800000, total_paise: 1600000, rcm_cash_paise: 0, challan_total_paise: 1600000 },
+      rule_36_4: { gstr2a_record_count: 0, gstr2a_igst_paise: 0, gstr2a_cgst_paise: 0, gstr2a_sgst_paise: 0, cap_applied: false, compared: false,
+        self_assessed_igst_paise: 0, self_assessed_cgst_paise: 0, self_assessed_sgst_paise: 0,
+        per_document: { applied: false, allowed_igst_paise: 0, allowed_cgst_paise: 0, allowed_sgst_paise: 0, allowed_cess_paise: 0,
+          withheld_igst_paise: 0, withheld_cgst_paise: 0, withheld_sgst_paise: 0, withheld_cess_paise: 0, withheld_total_paise: 0, withheld: [], not_assessed: [], notes: [] } },
+      itc_utilisation: { available_paise: 200000, consumed_paise: 200000, carried_forward_paise: 0 },
+    },
+    validation_warnings: [], late_filing: { available: false, reason: "No filing date was given." }, undeclarable_rows: [], bank_line_caveats: [],
+    registration_caveat: null, gstr1_tie_out: null, reconciliation: { reconciled: true }, months_without_gstr2b: [] }) });
+  // The three side reports (Rule 37, 37A and 43) are asked for after the build and may fail without failing the return: they are refused here,
+  // which the page shows as "not checked" beside the figures, so no fixture of their large shapes is carried.
+  stub.route({ method: "GET", re: /gst-workspace\/itc\/rule/, ...refuse("The ITC working is not worked in this drive.") });
+  stub.setTable("gstr3b_returns", [{ id: "g3-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, period: "092026", gstin: GSTIN_OF_THE_CLIENT, status: "validated" }]);
+  stub.route({ method: "PATCH", re: /gst-workspace\/gstr3b\/g3-1\/status$/, reply: gstStatusReply("GSTR-3B") });
+  await page.goto(`${env.base}/gst/gstr3b/`, { waitUntil: "networkidle" });
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  await page.getByRole("button", { name: "Compute GSTR-3B", exact: true }).click();
+  await page.getByRole("button", { name: "CA Approve", exact: true }).click();
+  await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
+  await page.getByLabel("ARN (Acknowledgment Reference Number)", { exact: true }).fill("AA2710260000002");
+  await page.locator("#gstr3b-filed-date").waitFor();
+  await stub.quiet();
+  stub.forgetWrites();
+}
+
+/** A client's GST page (compliance) on its GSTR-1 or GSTR-3B tab with one approved return, "Mark as filed" open: the dialog that records a filing and locks the period. */
+function openClientGstFiling(tab, { second = false } = {}) {
+  const [label, route, id] = tab === "gstr1" ? ["GSTR-1", "gstr1", "g1-1"] : ["GSTR-3B", "gstr3b", "g3-1"];
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
+    const row = { id, period: "092026", gstin: GSTIN_OF_THE_CLIENT, status: "ca_approved", total_taxable_paise: 1000000,
+      tax_liability_paise: 180000, itc_claimed_paise: 100000, net_tax_paise: 80000, cash_payable_paise: 80000 };
+    // `second`: a second approved return (the month before) is listed too, and the dialog is left closed for the scenario to open.
+    const rows = second ? [row, { ...row, id: id.replace("-1", "-0"), period: "082026" }] : [row];
+    stub.route({ method: "GET", re: /api\/gst-workspace\/returns\?/, reply: () => ok({ gstr1: tab === "gstr1" ? rows : [], gstr3b: tab === "gstr3b" ? rows : [] }) });
+    for (const r of rows) stub.route({ method: "PATCH", re: new RegExp(`gst-workspace\\/${route}\\/${r.id}\\/status$`), reply: gstStatusReply(label, r.period === "092026" ? "2026-09-30" : "2026-08-31") });
+    await page.goto(env.at("/compliance/gst/"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: label, exact: true }).click();
+    if (second) { await page.getByRole("button", { name: "Mark as filed", exact: true }).nth(1).waitFor(); return; }
+    await page.getByRole("button", { name: "Mark as filed", exact: true }).click();
+    await page.getByLabel("ARN from the portal", { exact: true }).fill("AA2710260000003");
+    await page.locator("#gst-mark-filed-date").waitFor();
+    await stub.quiet();
+    stub.forgetWrites();
+  };
+}
+
+/** The client's GSTR-3B tab with "Compute from Books" open on a period: the optional "Date filed" box (it adds the section 50 interest). */
+async function openClientGstr3bCompute(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
+  stub.route({ method: "GET", re: /api\/gst-workspace\/returns\?/, reply: () => ok({ gstr1: [], gstr3b: [] }) });
+  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: {}, working: {}, tax_liability_paise: 180000, itc_claimed_paise: 100000,
+    net_tax_paise: 80000, cash_payable_paise: 80000, itc_carried_forward_paise: 0,
+    reconciliation: { reconciled: true, output_gst: { ledger_paise: 180000, computed_paise: 180000 }, itc: { ledger_paise: 100000, computed_paise: 100000 } } }) });
+  await page.goto(env.at("/compliance/gst/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "GSTR-3B", exact: true }).click();
+  await page.getByRole("button", { name: "Compute from Books", exact: true }).first().click();   // the header's; the empty list offers one too
+  await page.getByLabel("GSTR-3B return period to compute (MMYYYY)", { exact: true }).fill("092026");
+}
+
+const TDS_BEFORE_QUARTER_SENTENCE = "A statement for Q2 FY 2026-27 cannot have been filed before the quarter ended on 2026-09-30. Check the date on the receipt.";
+
+/** TDS > Returns computed for a client and quarter, approved, with "Mark as Filed" open on a PRN: only the date is left. */
+async function openTdsReturnMarkFiled(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: ["read", "write", "approve", "compute"] } }) });
+  stub.route({ method: "POST", re: /api\/tds\/26q\/from-books$/, reply: (_req, raw) => ok({
+    form: "26Q", tan: "MUMA12345B", deductor_name: "Acme Traders Pvt Ltd", financial_year: JSON.parse(raw).financial_year, quarter: JSON.parse(raw).quarter,
+    quarter_end_date: "2026-09-30", total_tds_deducted_paise: 1000000, total_tds_deposited_paise: 1000000, deductee_count: 1,
+    deductees: [], challans: [], validation_errors: [], warnings: [] }) });
+  stub.route({ method: "POST", re: /api\/tds-workspace\/returns$/, reply: () => ok({ id: "tr-1" }) });
+  // The route's own refusal of a date earlier than the end of the quarter the statement reports on (routers/tds_workspace.py).
+  stub.route({ method: "PATCH", re: /api\/tds-workspace\/returns\/tr-1\/status$/, reply: (_req, raw) => {
+    const b = JSON.parse(raw);
+    if (b.status === "filed" && b.filing_date < "2026-09-30") return refusal(TDS_BEFORE_QUARTER_SENTENCE);
+    return ok({ id: "tr-1", status: b.status });
+  } });
+  await page.goto(`${env.base}/tds/returns/`, { waitUntil: "networkidle" });
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  // Q2 of FY 2026-27 has ended at the pinned 8 October 2026; the page's default quarter (Q3) has not, and the route refuses to approve it.
+  await page.getByLabel("Quarter", { exact: true }).selectOption("Q2");
+  await page.getByRole("button", { name: "Compute 26Q", exact: true }).click();
+  await page.getByRole("button", { name: "CA Approve", exact: true }).click();
+  await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
+  await page.getByLabel("PRN (Provisional Receipt Number)", { exact: true }).fill("PRN0000000001");
+  await page.locator("#tds-filing-date").waitFor();
+  await stub.quiet();
+  stub.forgetWrites();
+}
+
+/** Tax > Computation for an individual on the old regime, the Run Computation section open: the "Loan sanctioned on" claim date (it alone decides section 80EE or 80EEA). */
+async function openComputationLoanDate(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve", "compute"] } }) });
+  stub.setTable("clients", [{ ...CLIENT_ROW, entity_type: "Individual" }]);
+  stub.route({ method: "GET", re: /api\/income-tax\/financial-years$/, reply: () => ok({ financial_years: [{ fy: "2026-27", verified: true }], current_fy: "2026-27" }) });
+  stub.route({ method: "GET", re: /api\/income-tax\/assessee-kind\?/, reply: () => ok({ kind: "individual", refusal: null, implies_business_income: false, unavailable_reliefs: [], basis_note: null, asks_about_members: false }) });
+  // The engine is the server's: the request is the thing under test, and the answer is a refusal the page shows.
+  stub.route({ method: "POST", re: /api\/income-tax\/compute$/, ...refuse("The computation is not run in this drive.") });
+  await page.goto(env.at("/tax/computation/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Run Computation" }).click();
+  await page.getByLabel("Tax regime", { exact: true }).selectOption("old");
+  await page.locator("#computation-loan-sanctioned-on").waitFor();
+}
+
+/** Year-end > Adjustments for an engagement of the given FY, "New Adjustment" open with the description, accounts and amount typed: the adjusting entry's date is left. */
+const openYearEndAdjustment = (fy) => async (env) => {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { year_end: ["read", "write", "approve"], accounting: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/year-end\/engagements\/eng-1$/, reply: () => ok({ id: "eng-1", client_id: CLIENT_ID, financial_year: fy, status: "draft", version: 1, created_at: "2026-04-05T00:00:00Z", updated_at: "2026-04-05T00:00:00Z" }) });
+  stub.setTable("year_end_adjustments", []);
+  // The route answers the CREATED row, which the page puts at the end of its list.
+  stub.route({ method: "POST", re: /api\/year-end\/eng-1\/adjustments$/, reply: (_req, raw) => ok({
+    id: "adj-1", engagement_id: "eng-1", reference_no: null, status: "draft", created_at: "2026-10-08T08:00:00Z", ...JSON.parse(raw) }) });
+  await page.goto(env.at("/year-end/eng-1/?tab=adjustments"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New Adjustment" }).first().click();
+  await page.getByLabel("Description", { exact: true }).fill("Accrual for outstanding rent - March");
+  // The columns hold uuids (migration 293), so the drive types two, as a request the server would accept.
+  await page.getByLabel("Debit Account", { exact: true }).fill("00000000-0000-4000-8000-0000000000a1");
+  await page.getByLabel("Credit Account", { exact: true }).fill("00000000-0000-4000-8000-0000000000a2");
+  await page.getByLabel("Amount (₹)", { exact: true }).fill("125000");
+};
 
 const RECURRING_JOURNAL = {
   id: "rjt-1", client_id: CLIENT_ID, name: "Monthly office rent", frequency: "monthly", day_of_month: 1, narration: null,
@@ -1520,6 +1707,57 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Record Payment", exact: true }).first(), write: /api\/purchase-payments\/?$/,   // the form's own button comes first; the filter bar's and the empty state's only open the form
   },
   {
+    id: "gstr1-mark-filed", title: "GST > GSTR-1 > Mark as Filed: the date the return was filed on the portal (recording it locks the period)", open: openGstr1MarkFiled,
+    heldWhileUnreadable: true, cleared: { serverSays: "Say the date this GSTR-1 was filed on the portal." },
+    shortForm: "15/01/2026",
+    fields: [{ box: (p) => p.locator("#gstr1-filed-date"), label: "Date filed", key: "filed_date", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Confirm Filed", exact: true }), write: /gst-workspace\/gstr1\/g1-1\/status$/,
+  },
+  {
+    id: "gstr3b-mark-filed", title: "GST > GSTR-3B > Mark as Filed: the date the return was filed on the portal (recording it locks the period)", open: openGstr3bMarkFiled,
+    heldWhileUnreadable: true, cleared: { serverSays: "Say the date this GSTR-3B was filed on the portal." },
+    shortForm: "15/01/2026",
+    fields: [{ box: (p) => p.locator("#gstr3b-filed-date"), label: "Date filed", key: "filed_date", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Confirm Filed", exact: true }), write: /gst-workspace\/gstr3b\/g3-1\/status$/,
+  },
+  {
+    id: "client-gstr1-record-filing", title: "Client GST > GSTR-1 > Mark as filed: the date filed on the portal (recording it locks the period; it starts empty)", open: openClientGstFiling("gstr1"),
+    heldWhileUnreadable: true, cleared: "held",
+    shortForm: "15/01/2026",
+    fields: [{ box: (p) => p.locator("#gst-mark-filed-date"), label: "Date filed", key: "filed_date", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Record as filed", exact: true }), write: /gst-workspace\/gstr1\/g1-1\/status$/,
+  },
+  {
+    id: "client-gstr3b-record-filing", title: "Client GST > GSTR-3B > Mark as filed: the date filed on the portal (recording it locks the period; it starts empty)", open: openClientGstFiling("gstr3b"),
+    heldWhileUnreadable: true, cleared: "held",
+    shortForm: "15/01/2026",
+    fields: [{ box: (p) => p.locator("#gst-mark-filed-date"), label: "Date filed", key: "filed_date", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Record as filed", exact: true }), write: /gst-workspace\/gstr3b\/g3-1\/status$/,
+  },
+  {
+    id: "client-gstr3b-compute-date-filed", title: "Client GST > GSTR-3B > Compute from Books: the optional date filed (it adds the section 50 interest to the working)", open: openClientGstr3bCompute,
+    fields: [{ box: (p) => p.locator("#gstr3b-compute-filed-on"), label: "Date filed", key: "filed_on", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Compute", exact: true }), write: /api\/gst\/gstr3b\/from-books$/,
+  },
+  {
+    id: "tds-return-mark-filed", title: "TDS > Returns > Mark as Filed: the date the statement was filed on the portal", open: openTdsReturnMarkFiled,
+    heldWhileUnreadable: true, cleared: "held",
+    shortForm: "15/01/2026",
+    fields: [{ box: (p) => p.locator("#tds-filing-date"), label: "Date filed", key: "filing_date", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Confirm Filed", exact: true }), write: /api\/tds-workspace\/returns\/tr-1\/status$/,
+  },
+  {
+    id: "computation-loan-sanctioned-on", title: "Tax > Computation: the date the housing loan was sanctioned (it decides section 80EE or 80EEA; blank claims nothing)", open: openComputationLoanDate,
+    fields: [{ box: (p) => p.locator("#computation-loan-sanctioned-on"), label: "Loan sanctioned on", key: "housing_loan_sanctioned_on", full: "15/03/2019", iso: "2019-03-15", read: (b) => b.chapter_vi_a.housing_loan_sanctioned_on }],
+    save: (p) => p.getByRole("button", { name: "Compute & Save Snapshot", exact: true }), write: /api\/income-tax\/compute$/,
+  },
+  {
+    id: "year-end-adjustment-date", title: "Year-end > Adjustments > New Adjustment: the date an adjusting entry is posted at (it posts to the audited books)", open: openYearEndAdjustment("2026-27"),
+    cleared: "Date is required",
+    fields: [{ box: (p) => p.getByLabel("Adjustment date", { exact: true }), label: "Date", key: "adjustment_date", full: "31/03/2026", iso: "2026-03-31" }],
+    save: (p) => p.getByRole("button", { name: "Create Adjustment", exact: true }), write: /api\/year-end\/eng-1\/adjustments$/,
+  },
+  {
     id: "apply-salary-structure", title: "Payroll > Inputs: the date a salary structure is applied from", open: openApplyStructure, heldWhileUnreadable: true,
     fields: [{ box: (p) => p.locator("#apply-structure-effective-from"), label: "Effective from", key: "effective_from", full: "01/10/2026", iso: "2026-10-01" }],
     save: (p) => p.getByRole("button", { name: "Preview", exact: true }), write: /salary-structures\/st-1\/apply$/,
@@ -1551,7 +1789,9 @@ async function driveEditor(env, spec) {
   const primary = spec.fields[0].box(page);
   // 2. The short form is read inside the financial year the field is in.
   await typeAndLeave(primary, "15/1");
-  assert.equal(await primary.inputValue(), "15/01/2027", `${spec.title}: 15/1 in FY 2026-27 is 15 January 2027`);
+  // A box whose date can never be later than today (the day a return was filed) reads a short form as the last such day, not the next one: `shortForm`.
+  const short = spec.shortForm ?? "15/01/2027";
+  assert.equal(await primary.inputValue(), short, `${spec.title}: 15/1 is ${short}`);
   await typeAndLeave(primary, "150326");
   assert.equal(await primary.inputValue(), "15/03/2026", `${spec.title}: 150326 is 15/03/2026`);
   assert.notEqual(await primary.getAttribute("aria-invalid"), "true", `${spec.title}: a readable date is marked invalid`);
@@ -1590,6 +1830,17 @@ async function driveEditor(env, spec) {
     await typeAndLeave(primary, "");
     if (spec.cleared === "held") {
       assert.equal(await spec.save(page).isDisabled(), true, `${spec.title}: the button was live over a cleared date`);
+    } else if (typeof spec.cleared === "object") {
+      // `cleared: { serverSays }`: the screen leaves a blank date to the server, which answers it in words (the stub speaks the route's own
+      // sentence). ONE request goes out carrying "", the sentence is shown in the dialog, and the form is still open for the date.
+      await spec.save(page).click();
+      assert.ok(!spec.clearedFields, `${spec.title}: cleared { serverSays } cannot be combined with clearedFields`);
+      await shownInTheDialog(page, spec.cleared.serverSays, `${spec.title}: the server's answer to a cleared date was not shown`);
+      await stub.quiet();
+      const sent = stub.writesTo(spec.write);
+      assert.equal(sent.length, 1, `${spec.title}: a cleared date should send ONE request for the server to answer, saw ${sent.length}`);
+      assert.equal(JSON.parse(sent[0].body)[spec.fields[0].key], "", `${spec.title}: a cleared date should reach the server as "", was ${JSON.stringify(JSON.parse(sent[0].body)[spec.fields[0].key])}`);
+      stub.forgetWrites();
     } else {
       await spec.save(page).click();
       await page.getByText(spec.cleared).first().waitFor({ timeout: 4000 }).catch(() => {
@@ -1597,7 +1848,7 @@ async function driveEditor(env, spec) {
       });
     }
     await stub.quiet();
-    assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over a cleared date SENT A WRITE`);
+    if (typeof spec.cleared !== "object") assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over a cleared date SENT A WRITE`);
   }
   // 4b'. Where a form needs more than one date, each of the others is cleared in turn with the rest valid (`clearedFields`: indexes into `fields`).
   for (const k of spec.clearedFields ?? []) {
@@ -1649,6 +1900,16 @@ async function driveEditor(env, spec) {
     const got = field.read ? field.read(body) : body[field.key];
     assert.equal(got, field.iso, `${spec.title}: ${field.key} should reach the server as ${field.iso}, was ${JSON.stringify(got)}`);
   }
+}
+
+/** A sentence the person can SEE and REACH: waited for, then asked of the browser with a trial click, which fails if an overlay covers it (a message
+ *  line drawn behind a dialog is "visible" to a locator and unseen by the person). For an answer a dialog says about itself. */
+async function shownInTheDialog(page, sentence, what) {
+  const loc = page.getByText(sentence).first();
+  await loc.waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${what}: "${sentence}"`); });
+  await loc.click({ trial: true, timeout: 1500 }).catch((e) => {
+    throw new Error(`${what} where the person can reach it: "${sentence}" is drawn behind something (${String(e.message).split("\n")[0].slice(0, 120)})`);
+  });
 }
 
 export const scenarios = [
@@ -2023,6 +2284,209 @@ export const scenarios = [
       assert.equal(await page.getByText(`${f.label}: ${FEB_SENTENCE}`).count(), 0, "the form opened again with the last refusal still on it");
     },
   })),
+  // The two GST filing prompts leave a blank date to the server and show its sentence inside the dialog. Closing the dialog starts it clean: the
+  // sentence, the ARN and any date are gone when "Mark as Filed" is pressed again (a person must not meet an old refusal over a form that no longer holds it).
+  ...[
+    { id: "gstr1", name: "GST > GSTR-1 > Mark as Filed", open: openGstr1MarkFiled, box: "#gstr1-filed-date", form: "GSTR-1" },
+    { id: "gstr3b", name: "GST > GSTR-3B > Mark as Filed", open: openGstr3bMarkFiled, box: "#gstr3b-filed-date", form: "GSTR-3B" },
+  ].map((f) => ({
+    id: `${f.id}-mark-filed-a-refusal-does-not-outlive-the-dialog`,
+    title: `${f.name}: the server's answer to a blank date is gone, with the ARN and the date, when the dialog is opened again`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await f.open(env);
+      const sentence = `Say the date this ${f.form} was filed on the portal.`;
+      await page.getByRole("button", { name: "Confirm Filed", exact: true }).click();
+      await shownInTheDialog(page, sentence, `${f.name}: a blank date was not answered`);
+      // A date typed AFTER the refusal is still in the box when the dialog is closed: the reset has to clear it (a cleared box would pass without one).
+      await typeAndLeave(page.locator(f.box), "07/10/2026");
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
+      await page.locator(f.box).waitFor();
+      assert.equal(await page.getByText(sentence).count(), 0, `${f.name}: the dialog opened again with the last refusal still on it`);
+      assert.equal(await page.getByLabel("ARN (Acknowledgment Reference Number)", { exact: true }).inputValue(), "", `${f.name}: the ARN typed for the last attempt was still in the box`);
+      assert.equal(await page.locator(f.box).inputValue(), "", `${f.name}: a date was still in the box`);
+    },
+  })),
+  // The per-client "Mark as filed" dialog offered today's date, filled in: the date a return was filed on the portal is the CA's statement and is what
+  // the period lock quotes, and a filing recorded days late (the usual case) was stamped with the day the button was pressed unless the CA noticed.
+  // It starts empty, holds its button until a date is typed, and a typed date is what is sent.
+  ...["gstr1", "gstr3b"].map((tab) => ({
+    id: `client-${tab}-record-filing-starts-with-no-date`,
+    title: `Client GST > ${tab === "gstr1" ? "GSTR-1" : "GSTR-3B"} > Mark as filed: the date box starts empty and the button waits for a date`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await openClientGstFiling(tab)(env);
+      assert.equal(await page.locator("#gst-mark-filed-date").inputValue(), "", "the dialog offered a date the CA had not stated");
+      assert.equal(await page.getByRole("button", { name: "Record as filed", exact: true }).isDisabled(), true, "the button was live with no date");
+      await typeAndLeave(page.locator("#gst-mark-filed-date"), "07/10/2026");
+      assert.equal(await page.getByRole("button", { name: "Record as filed", exact: true }).isDisabled(), false, "the button stayed held over a typed date");
+    },
+  })),
+  // The optional date on Compute from Books: left blank it is not sent at all (an empty string would be refused by the server), and an unreadable one is refused first.
+  {
+    id: "client-gstr3b-compute-a-blank-date-filed-is-not-sent",
+    title: "Client GST > GSTR-3B > Compute from Books: with no date filed the request carries none",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openClientGstr3bCompute(env);
+      await page.getByRole("button", { name: "Compute", exact: true }).click();
+      await stub.quiet();
+      const writes = stub.writesTo(/api\/gst\/gstr3b\/from-books$/);
+      assert.equal(writes.length, 1, `expected one compute request, saw ${writes.length}`);
+      const body = JSON.parse(writes[0].body);
+      assert.equal("filed_on" in body, false, `a blank optional date was sent as ${JSON.stringify(body.filed_on)}`);
+    },
+  },
+  // The loan's sanctioned-on date is a CLAIM and optional: left blank it is sent as null (no section is claimed and the server names the gap), never as "".
+  {
+    id: "computation-loan-sanctioned-on-a-blank-claims-nothing",
+    title: "Tax > Computation: with no sanction date the claim goes as null",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openComputationLoanDate(env);
+      await page.getByRole("button", { name: "Compute & Save Snapshot", exact: true }).click();
+      await stub.quiet();
+      const writes = stub.writesTo(/api\/income-tax\/compute$/);
+      assert.equal(writes.length, 1, `expected one compute request, saw ${writes.length}`);
+      assert.equal(JSON.parse(writes[0].body).chapter_vi_a.housing_loan_sanctioned_on, null, "a blank sanction date did not go as null");
+    },
+  },
+  // A year-end stage is about ONE engagement's year, which is usually not the current one: a short date typed there is read inside THAT year (POST-A-126).
+  {
+    id: "year-end-adjustment-a-short-date-is-read-inside-the-engagements-year",
+    title: "Year-end > Adjustments: in an engagement of the previous year, 15/1 and 15/3 are January and March of that year's books",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await openYearEndAdjustment("2025-26")(env);
+      const box = page.getByLabel("Adjustment date", { exact: true });
+      await typeAndLeave(box, "15/1");
+      assert.equal(await box.inputValue(), "15/01/2026", "15/1 in an FY 2025-26 engagement is 15 January 2026");
+      await typeAndLeave(box, "15/3");
+      assert.equal(await box.inputValue(), "15/03/2026", "15/3 in an FY 2025-26 engagement is 15 March 2026");
+    },
+  },
+  // A year-end engagement is worked after its year has closed, so a date offered from the clock was in the NEXT year's books. The adjusting entry's date starts empty.
+  {
+    id: "year-end-adjustment-starts-with-no-date",
+    title: "Year-end > Adjustments > New Adjustment: the date starts empty, and saving without one is refused in a sentence",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openYearEndAdjustment("2025-26")(env);
+      assert.equal(await page.getByLabel("Adjustment date", { exact: true }).inputValue(), "", "the form offered a date the CA had not stated");
+      await page.getByRole("button", { name: "Create Adjustment", exact: true }).click();
+      await page.getByText("Date is required").first().waitFor({ timeout: 4000 }).catch(() => { throw new Error('saving with no date did not say "Date is required"'); });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/year-end\/eng-1\/adjustments$/).length, 0, "an adjustment with no date was sent");
+    },
+  },
+  // The four filing prompts: the date a return was filed on the portal can never be later than today and cannot precede the period it declares. A date after
+  // today was only HINTED at by the box (the server's own wording for it, "filed_date cannot be in the future", names a column), so it is refused in a
+  // sentence before anything is sent; a date before the period ended is the server's to refuse and its sentence is shown INSIDE the dialog.
+  ...[
+    { id: "gstr1", name: "GST > GSTR-1 > Mark as Filed", open: openGstr1MarkFiled, box: "#gstr1-filed-date", save: "Confirm Filed", held: true,
+      write: /gst-workspace\/gstr1\/g1-1\/status$/, before: GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30") },
+    { id: "gstr3b", name: "GST > GSTR-3B > Mark as Filed", open: openGstr3bMarkFiled, box: "#gstr3b-filed-date", save: "Confirm Filed", held: true,
+      write: /gst-workspace\/gstr3b\/g3-1\/status$/, before: GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30") },
+    { id: "client-gstr1", name: "Client GST > GSTR-1 > Mark as filed", open: openClientGstFiling("gstr1"), box: "#gst-mark-filed-date", save: "Record as filed", held: true,
+      write: /gst-workspace\/gstr1\/g1-1\/status$/, before: GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30") },
+    { id: "client-gstr3b", name: "Client GST > GSTR-3B > Mark as filed", open: openClientGstFiling("gstr3b"), box: "#gst-mark-filed-date", save: "Record as filed", held: true,
+      write: /gst-workspace\/gstr3b\/g3-1\/status$/, before: GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30") },
+    { id: "tds-return", name: "TDS > Returns > Mark as Filed", open: openTdsReturnMarkFiled, box: "#tds-filing-date", save: "Confirm Filed", held: false,
+      write: /api\/tds-workspace\/returns\/tr-1\/status$/, before: TDS_BEFORE_QUARTER_SENTENCE },
+  ].map((f) => ({
+    id: `${f.id}-filing-date-after-today-is-refused-and-before-the-period-is-answered`,
+    title: `${f.name}: a date after today is refused in a sentence and sends nothing; one before the period ended gets the server's sentence inside the dialog`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await f.open(env);
+      const box = page.locator(f.box);
+      const save = page.getByRole("button", { name: f.save, exact: true });
+      // After today (the clock is pinned at 8 October 2026).
+      await typeAndLeave(box, "15/10/2026");
+      const after = "15 Oct 2026 is after 08 Oct 2026.";
+      if (f.held) {
+        assert.equal(await save.isDisabled(), true, `${f.name}: the button was live over a date after today`);
+        await page.getByText(after).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${f.name}: the box did not say "${after}"`); });
+      } else {
+        await save.click();
+        await shownInTheDialog(page, `Date filed: ${after}`, `${f.name}: a date after today was not refused in a sentence`);
+      }
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a date after today SENT A WRITE`);
+      // Before the period it declares ended: the server's to refuse, said inside the dialog.
+      await typeAndLeave(box, "15/09/2026");
+      await save.click();
+      await shownInTheDialog(page, f.before, `${f.name}: the server's answer to a date before the period ended was not shown`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, 1, `${f.name}: a date before the period ended should send ONE request for the server to answer`);
+    },
+  })),
+  // The per-client dialog is about ONE return. Opened on a second one it kept the first one's ARN and date, so "Record as filed" recorded the FIRST
+  // return's date against the SECOND (and locked its period on it).
+  ...["gstr1", "gstr3b"].map((tab) => ({
+    id: `client-${tab}-record-filing-a-second-return-does-not-inherit-the-firsts-answers`,
+    title: `Client GST > ${tab === "gstr1" ? "GSTR-1" : "GSTR-3B"}: opening the dialog on another return starts it empty`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await openClientGstFiling(tab, { second: true })(env);
+      const mark = page.getByRole("button", { name: "Mark as filed", exact: true });
+      await mark.nth(0).click();
+      await page.getByText("Record the filing of 092026").waitFor({ timeout: 4000 });
+      await page.getByLabel("ARN from the portal", { exact: true }).fill("AA2710260000009");
+      await typeAndLeave(page.locator("#gst-mark-filed-date"), "07/10/2026");
+      await mark.nth(1).click();
+      await page.getByText("Record the filing of 082026").waitFor({ timeout: 4000 }).catch(() => { throw new Error("the dialog did not name the second return"); });
+      assert.equal(await page.getByLabel("ARN from the portal", { exact: true }).inputValue(), "", "the first return's ARN was still in the box for the second");
+      assert.equal(await page.locator("#gst-mark-filed-date").inputValue(), "", "the first return's date was still in the box for the second");
+    },
+  })),
+  // The optional "Date filed" of Compute from Books belongs to the period it was typed for: it survived Cancel and a saved draft and was sent with the next compute.
+  ...[
+    { id: "cancel", name: "Cancel", leave: async (page) => { await page.getByRole("button", { name: "Cancel", exact: true }).click(); } },
+    { id: "save-as-draft", name: "Save as Draft", leave: async (page) => { await page.getByRole("button", { name: "Save as Draft", exact: true }).click(); } },
+  ].map((c) => ({
+    id: `client-gstr3b-compute-date-filed-does-not-outlive-the-panel-after-${c.id}`,
+    title: `Client GST > GSTR-3B > Compute from Books: after ${c.name}, the date filed is empty when the panel is opened again`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await openClientGstr3bCompute(env);
+      await typeAndLeave(page.locator("#gstr3b-compute-filed-on"), "07/10/2026");
+      if (c.id === "save-as-draft") await page.getByRole("button", { name: "Compute", exact: true }).click();
+      if (c.id === "save-as-draft") await page.getByRole("button", { name: "Save as Draft", exact: true }).waitFor({ timeout: 6000 });
+      await c.leave(page);
+      // The panel closes when the draft is saved (the write is held for a moment by the stub): reopening before it has closed would read the old box.
+      await page.locator("#gstr3b-compute-filed-on").waitFor({ state: "detached", timeout: 8000 });
+      await page.getByRole("button", { name: "Compute from Books", exact: true }).first().click();
+      await page.locator("#gstr3b-compute-filed-on").waitFor();
+      assert.equal(await page.locator("#gstr3b-compute-filed-on").inputValue(), "", `the date filed typed for the last period was still in the box after ${c.name}`);
+    },
+  })),
+  // A computed statement belongs to the form, year and quarter it was computed for: a changed selector left the 26Q return approved and ready to be marked
+  // filed under a "Mark 24Q as Filed" heading.
+  {
+    id: "tds-return-a-changed-form-clears-the-computed-statement",
+    title: "TDS > Returns: changing the return type after a compute clears the statement, so nothing can be recorded as filed under another form",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await openTdsReturnMarkFiled(env);
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(await page.getByRole("button", { name: "Mark as Filed", exact: true }).count(), 1, "the approved statement should offer Mark as Filed before the change");
+      await page.getByLabel("Return Type", { exact: true }).selectOption("24Q");
+      await until(async () => (await page.getByRole("button", { name: "Mark as Filed", exact: true }).count()) === 0, "the 26Q statement cleared by the changed return type");
+      assert.equal(await page.getByRole("button", { name: "CA Approve", exact: true }).count(), 0, "an approval was still offered for the statement computed under the other form");
+    },
+  },
   // The reconciliation's end box only HINTS when it is before the start; the window reached the server reversed and was refused there in schema words.
   {
     id: "bank-reconciliation-a-reversed-window-is-refused-in-a-sentence",

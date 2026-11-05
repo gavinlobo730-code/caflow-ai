@@ -64,6 +64,7 @@ import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
+import { toast } from "@/components/ui/use-toast";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
@@ -1292,7 +1293,9 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           onDuplicate={duplicateBill}
           onCancelBill={cancelBill}
           onChanged={load}
-          onToast={(text, type) => setMsg({ type: type === "success" ? "ok" : "err", text })}
+          // A toast above the drawer: the page's message line (setMsg) is drawn BEHIND the drawer's backdrop, so a refusal said there (a date, an amount,
+          // the server's sentence) was away from the dialog it was about, and out of sight when the page was scrolled.
+          onToast={(text, type) => toast({ title: text, variant: type === "success" ? "default" : "destructive" })}
         />
       )}
 

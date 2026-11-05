@@ -32,7 +32,7 @@ import { IffPanel } from "@/components/gst/IffPanel";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { formatPaise } from "@/lib/services/formatting";
-import { formatMonthYear } from "@/lib/dates/format";
+import { formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   buildGSTR1,
@@ -48,7 +48,6 @@ import { Callout } from "@/components/ui/callout";
 import { DateInput } from "@/components/ui/date-input";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { todayLocalISO } from "@/lib/dateMath";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
@@ -78,8 +77,6 @@ function buildPeriodOptions() {
   return opts.reverse();
 }
 
-const PERIOD_OPTIONS = buildPeriodOptions();
-
 const STATUS_CONFIG: Record<GSTReturnStatus, { label: string; color: string }> = {
   draft:       { label: "Draft",       color: "bg-ps-muted text-ps-body" },
   validated:   { label: "Validated",   color: "bg-blue-100 text-blue-700" },
@@ -94,7 +91,9 @@ type ActiveTab = "summary" | "b2b" | "b2cs" | "b2cl" | "cdnr" | "exp" | "hsn" | 
 export default function GSTR1Page() {
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
-  const [yearMonth, setYearMonth] = useState(PERIOD_OPTIONS[1]?.value ?? "");
+  // Built when the screen opens, not when its code loads: a tab left open across a month end kept the old list and defaulted to the wrong month.
+  const [periodOptions] = useState(buildPeriodOptions);
+  const [yearMonth, setYearMonth] = useState(() => periodOptions[1]?.value ?? "");
   // WHICH REGISTRATION (GST-17): the server's list of what this client holds,
   // primary first. Only the primary could be built from this screen before.
   const reg = useRegistrationChoice(clientId || null);
@@ -131,8 +130,8 @@ export default function GSTR1Page() {
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [arn, setArn] = useState("");
   // The date the CA filed it on the portal (PRE-A-007). Starts EMPTY and is
-  // typed: it is what the period lock quotes and what the s.37(3) correction
-  // window is measured from, so the software does not offer one. The server
+  // typed: it is what the period lock quotes, so the software does not offer
+  // one (and a date after today is refused by the box, `notAfter`). The server
   // refuses a submit without it in its own words, shown in the modal.
   const [filedDate, setFiledDate] = useState("");
   const [filedError, setFiledError] = useState<string | null>(null);
@@ -300,7 +299,7 @@ export default function GSTR1Page() {
               onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand focus:border-brand"
             >
-              {PERIOD_OPTIONS.map(o => (
+              {periodOptions.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
@@ -841,9 +840,9 @@ export default function GSTR1Page() {
               <DateInput
                 id="gstr1-filed-date"
                 value={filedDate}
-                max={todayLocalISO()}
+                notAfter={todayIstISO()}
                 onChange={setFiledDate}
-                onStateChange={dates.watch("filedDate", "Date filed")}
+                onStateChange={dates.watch("filedDate", "Date filed", { afterMax: true })}
                 className="w-full"
               />
               <p className="text-xs text-ps-hint mt-1">

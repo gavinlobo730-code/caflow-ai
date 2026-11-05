@@ -52,12 +52,11 @@ import {
 } from "@/lib/data/gst";
 import { periodEndDate, splitRule37Bills } from "@/lib/gst/rule37Period";
 import { financialYearOfMonth } from "@/lib/dates/periods";
-import { formatMonthYear, formatDate } from "@/lib/dates/format";
+import { formatMonthYear, formatDate, todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { DateInput } from "@/components/ui/date-input";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { todayLocalISO } from "@/lib/dateMath";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
@@ -82,8 +81,6 @@ function buildPeriodOptions(): { value: string; label: string }[] {
   return opts.reverse();
 }
 
-const PERIOD_OPTIONS = buildPeriodOptions();
-
 const STATUS_CONFIG: Record<GSTReturnStatus, { label: string; color: string }> = {
   draft:       { label: "Draft",       color: "bg-ps-muted text-ps-body" },
   validated:   { label: "Validated",   color: "bg-blue-100 text-blue-700" },
@@ -96,7 +93,9 @@ const STATUS_CONFIG: Record<GSTReturnStatus, { label: string; color: string }> =
 export default function GSTR3BPage() {
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
-  const [yearMonth, setYearMonth] = useState(PERIOD_OPTIONS[1]?.value ?? "");
+  // Built when the screen opens, not when its code loads: a tab left open across a month end kept the old list and defaulted to the wrong month.
+  const [periodOptions] = useState(buildPeriodOptions);
+  const [yearMonth, setYearMonth] = useState(() => periodOptions[1]?.value ?? "");
   // WHICH REGISTRATION (GST-17): the server's list of what this client holds,
   // primary first. Only the primary could be built from this screen before.
   const reg = useRegistrationChoice(clientId || null);
@@ -132,9 +131,9 @@ export default function GSTR3BPage() {
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [arn, setArn] = useState("");
   // The date the CA filed it on the portal (PRE-A-007). Starts EMPTY and is
-  // typed: it is what the period lock quotes and what the s.39(9)/s.16(4)
-  // correction window is measured from, so the software does not offer one.
-  // The server refuses a submit without it in its own words, shown in the modal.
+  // typed: it is what the period lock quotes, so the software does not offer
+  // one (and a date after today is refused by the box, `notAfter`). The server
+  // refuses a submit without it in its own words, shown in the modal.
   const [filedDate, setFiledDate] = useState("");
   const [filedError, setFiledError] = useState<string | null>(null);
   // The server's sentence when recording this filing did NOT also close the compliance obligation (POST-A-264).
@@ -333,7 +332,7 @@ export default function GSTR3BPage() {
               onChange={e => { setYearMonth(e.target.value); setResult(null); setError(null); setRule37(null); setRule43(null); }}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand focus:border-brand"
             >
-              {PERIOD_OPTIONS.map(o => (
+              {periodOptions.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
@@ -1445,9 +1444,9 @@ export default function GSTR3BPage() {
               <DateInput
                 id="gstr3b-filed-date"
                 value={filedDate}
-                max={todayLocalISO()}
+                notAfter={todayIstISO()}
                 onChange={setFiledDate}
-                onStateChange={dates.watch("filedDate", "Date filed")}
+                onStateChange={dates.watch("filedDate", "Date filed", { afterMax: true })}
                 className="w-full"
               />
               <p className="text-xs text-ps-hint mt-1">

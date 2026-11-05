@@ -129,10 +129,10 @@ export default function TDSReturnsPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // A computed return belongs to the client it was computed for. Switching
-  // the picker without this reset left Approve / Mark Filed / File (demo)
-  // pointing at the previous client's return while the screen showed the new
-  // one — Mark Filed would even PATCH the old return.
+  // A computed return belongs to the client, the form, the year and the quarter it was computed for. Switching the picker without this reset left
+  // Approve / Mark Filed / File (demo) pointing at the previous client's return while the screen showed the new one — Mark Filed would even PATCH
+  // the old return. The form, the year and the quarter are the same: the dialog's heading is built from the selector ("Mark 24Q as Filed"), so
+  // a 26Q statement computed and then a changed selector recorded the 26Q return as filed under a 24Q heading.
   useEffect(() => {
     setResult(null);
     setReturnId(null);
@@ -142,7 +142,7 @@ export default function TDSReturnsPage() {
     setPrn(""); setAckNumber(""); setFilingDate(""); setFiledError(null);
     setCalendarNote(null);
     setError(null);
-  }, [clientId]);
+  }, [clientId, returnType, financialYear, quarter]);
 
   // THE SERVER BUILDS THE RETURN, FROM THE POSTED BOOKS.
   //
@@ -712,7 +712,7 @@ export default function TDSReturnsPage() {
             <div>
               <label htmlFor="tds-filing-date" className="block text-xs font-medium text-ps-body mb-1">Date filed on the portal *</label>
               <DateInput id="tds-filing-date" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand"
-                value={filingDate} onChange={setFilingDate} max={todayIstISO()} onStateChange={dates.watch("filingDate", "Date filed")} />
+                value={filingDate} onChange={setFilingDate} notAfter={todayIstISO()} onStateChange={dates.watch("filingDate", "Date filed", { afterMax: true })} />
               <p className="mt-1 text-3xs text-ps-label">The date on the portal&apos;s receipt, not today&apos;s date unless that is the day you filed.</p>
             </div>
             {filedError && <Callout tone="problem">{filedError}</Callout>}

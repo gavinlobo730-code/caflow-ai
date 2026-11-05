@@ -147,6 +147,12 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       ?? (kind === "receivable" ? "Invoice number" : "Bill number"),
     [kinds, kind]);
 
+  // The form is a drawer over the page, and the page's message line is BEHIND it: a refusal said there was drawn under the dimmed backdrop, away from
+  // the box it is about. The refusal is shown inside the drawer, the page's line waits for the drawer to close, and opening or closing the drawer starts
+  // it clean (a refusal must not outlive the form it was said about).
+  function openForm() { setMsg(null); setForm(BLANK); setShowForm(true); }
+  function closeForm() { setMsg(null); setShowForm(false); }
+
   async function handleSave() {
     if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     const paise = paiseFromRupeeInput(form.amount);
@@ -243,7 +249,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
             className="px-3 py-1.5 text-xs border border-ps-border text-ps-body rounded-lg hover:bg-ps-bg disabled:opacity-50 flex items-center gap-1.5">
             <Upload size={13} /> Import from CSV / Excel
           </button>
-          <button onClick={() => { setForm(BLANK); setShowForm(true); }} disabled={busy}
+          <button onClick={openForm} disabled={busy}
             className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50 flex items-center gap-1.5">
             <Plus size={13} /> Add a document
           </button>
@@ -261,7 +267,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
         ))}
       </div>
 
-      {msg && (
+      {msg && !showForm && (
         <div className={`rounded-lg px-3 py-2 text-xs ${msg.type === "ok"
           ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
           : "bg-state-problem-surface border border-state-problem-border text-state-problem"}`}>
@@ -396,7 +402,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               <p className="text-sm font-semibold text-ps-ink">
                 Add an opening {kind === "receivable" ? "invoice" : "bill"}
               </p>
-              <button onClick={() => setShowForm(false)} aria-label="Close"
+              <button onClick={closeForm} aria-label="Close"
                 className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
             </div>
 
@@ -454,13 +460,16 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               </label>
             </div>
 
+            {msg?.type === "err" && (
+              <p role="alert" className="mx-5 mb-3 rounded-lg px-3 py-2 text-xs bg-state-problem-surface border border-state-problem-border text-state-problem">{msg.text}</p>
+            )}
             <div className="px-5 py-3 border-t border-ps-border flex items-center justify-between">
               <p className="text-3xs text-ps-hint max-w-[14rem] leading-tight">
                 No journal is posted. The tax on this document was declared where
                 it was issued.
               </p>
               <div className="flex gap-2">
-                <button onClick={() => setShowForm(false)}
+                <button onClick={closeForm}
                   className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                   Cancel
                 </button>

@@ -10,7 +10,6 @@ import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
 import { ItcTimeBarRadar } from "@/components/gst/ItcTimeBarRadar";
 import RegistrationsTab from "@/components/gst/RegistrationsTab";
-import { todayLocalISO } from "@/lib/dateMath";
 import { gstPeriodLabel } from "@/lib/gst/period";
 import GSTR9Working from "@/components/gst/GSTR9Working";
 import Gstr9cWorking from "@/components/gst/Gstr9cWorking";
@@ -39,6 +38,7 @@ import { CreateDraftBillFrom2B } from "@/components/gst/CreateDraftBillFrom2B";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { todayIstISO } from "@/lib/dates/format";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -87,9 +87,9 @@ async function apiFetch(path: string, opts?: RequestInit) {
  *     nowhere to put the acknowledgement, and the period lock was created (if
  *     at all) against no ARN and no real date.
  *
- *     The dates matter beyond the record: the FILED date is what closes the
- *     §37(3) correction window under `compliance_engine`, and a lock dated
- *     "whenever somebody got round to recording it" locks the wrong day.
+ *     The date matters beyond the record: the period lock quotes it, and a lock dated "whenever somebody got round to recording it" names the
+ *     wrong day. It is NOT what the §37(3) correction window is measured from: that window is closed by the ANNUAL return's date
+ *     (`compliance_engine.correction_window_closes`, which reads the GSTR-9), so no GSTR-1 or GSTR-3B filing date moves it.
  *
  * WHY IT IS A DIALOG AND NOT AN INLINE BUTTON
  *     Marking a return filed is the act that LOCKS the period. It is worth a
@@ -107,9 +107,10 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
   onConfirm: (arn: string, filedDate: string) => void;
 }) {
   const [arn, setArn] = useState("");
-  // Defaulted to today because that is the common case, and EDITABLE because
-  // recording here lags the portal by days more often than not.
-  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  // Starts EMPTY and is typed, as the firm-level dialogs' date does (PRE-A-007): it is what the period lock quotes, and recording here lags the
+  // portal by days more often than not, so a date offered from the clock was the wrong date
+  // for whoever pressed the button without reading it. A blank date holds the button, and the line under the boxes says why.
+  const [filedDate, setFiledDate] = useState("");
   // Text that is not a date reads as blank, and blank disables the button: say why instead of leaving it dead (frontend_ux-19).
   const dates = useDateProblems();
   return (
@@ -133,12 +134,13 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
           />
         </div>
         <div>
-          <label htmlFor="gst-mark-filed-date" className="text-xs text-ps-body block mb-1">Date filed</label>
+          <label htmlFor="gst-mark-filed-date" className="text-xs text-ps-body block mb-1">Date filed on the portal</label>
           <DateInput
             id="gst-mark-filed-date"
             value={filedDate}
+            notAfter={todayIstISO()}
             onChange={setFiledDate}
-            onStateChange={dates.watch("filedDate", "Date filed")}
+            onStateChange={dates.watch("filedDate", "Date filed", { afterMax: true })}
             className="w-full border rounded px-2 py-1 text-sm"
           />
         </div>
@@ -146,10 +148,10 @@ function MarkFiledDialog({ period, saving, error, onCancel, onConfirm }: {
       {/* The ARN is optional on the server and stays optional here: a CA
           marking a return filed without the acknowledgement to hand must not
           be blocked from recording reality. The DATE is not — it is what the
-          period lock and the §37(3) window key on. */}
+          period lock quotes. */}
       <p className="text-xs text-ps-label">
-        The ARN can be left blank and added later. The date cannot: the correction
-        window under CGST §37(3) and the period lock are both measured from it.
+        The ARN can be left blank and added later. The date cannot: the period lock
+        quotes it, and it is the day you filed on the portal, not the day you record it here.
       </p>
       {error && <p role="alert" className="text-xs text-state-problem">{error}</p>}
       <div className="flex gap-2">
@@ -849,6 +851,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 
       {filingRow && (
         <MarkFiledDialog
+          key={filingRow.id}
           period={filingRow.period}
           saving={markingFiled}
           error={rowError}
@@ -911,8 +914,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                       the acknowledgement here. This is what writes the
                       public.filings row the period lock reads. */}
                   {r.status === "ca_approved" && (
-                    <button onClick={() => setFilingRow({ id: r.id as string,
-                                                          period: r.period as string })}
+                    <button onClick={() => { setRowError(null); setFilingRow({ id: r.id as string, period: r.period as string }); }}
                       className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark as filed
                     </button>
@@ -1189,6 +1191,9 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     setShowCompute(false);
     setComputeResult(null);
     setComputePeriod("");
+    // The optional date filed belongs to the period just saved: left in the box it was sent with the NEXT period's compute (section 50 interest
+    // and a late fee for a filing date nobody stated for that return).
+    setFiledOn("");
     setComputeError(null);
     load();
   }
@@ -1232,6 +1237,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       )}
       {filingRow && (
         <MarkFiledDialog
+          key={filingRow.id}
           period={filingRow.period}
           saving={busyRow === filingRow.id}
           error={rowError}
@@ -1282,7 +1288,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </Button>
-            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
+            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setFiledOn(""); }}
               className="px-3 py-1 border rounded text-sm">Cancel</button>
           </div>
 
@@ -1579,11 +1585,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   {/* The real thing. The CA files on gst.gov.in and records the
                       acknowledgement here; this PATCH is what writes the
                       public.filings row journal_period_lock_reason reads, and
-                      the ARN and date it carries are the ones the §37(3)
-                      correction window is measured from (GST-23). */}
+                      the ARN and date it carries are the ones its lock message
+                      quotes (GST-23). */}
                   {r.status === "ca_approved" && (
-                    <button onClick={() => setFilingRow({ id: r.id as string,
-                                                          period: r.period as string })}
+                    <button onClick={() => { setRowError(null); setFilingRow({ id: r.id as string, period: r.period as string }); }}
                       disabled={busyRow === r.id}
                       className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready disabled:opacity-40">
                       Mark as filed
