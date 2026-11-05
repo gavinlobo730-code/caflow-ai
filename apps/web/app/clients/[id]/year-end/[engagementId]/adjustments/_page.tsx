@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Plus, X, Loader2 } from "lucide-react";
 import { yearEndApi, type Adjustment, type AdjustmentType, type AdjustmentStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
@@ -14,6 +15,9 @@ import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
+import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLookup";
+import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import { fyRangeFor } from "@/lib/dates/periods";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
 import { objectOrNull } from "@/lib/api/shape";
@@ -73,6 +77,32 @@ export default function AdjustmentsPage() {
   // window.location, not useParams(): on the deployed static export every
   // dynamic segment is "_placeholder" (see ../_engagementId.ts).
   const engagementId = useEngagementId();
+  const { clientId } = useClientNav();
+
+  // The accounts an adjustment may name: the client's own and the firm-level ones (client_id null), which is exactly what the database accepts
+  // (migration 570). The two account columns hold a ledger account's ID (uuid), so the form picks one; it used to take free text ("5001 / Salary
+  // Expense") that the database refuses, and the list showed the raw id.
+  const [accounts, setAccounts] = useState<AccountLike[]>([]);
+  useEffect(() => {
+    if (!clientId || clientId === "_placeholder") return;
+    let alive = true;
+    (async () => {
+      const supabase = getSupabaseClient();
+      const { data } = await selectAll(() => supabase
+        .from("chart_of_accounts")
+        .select("id, account_code, account_name, account_type, account_subtype, is_active, client_id")
+        .or(`client_id.eq.${clientId},client_id.is.null`)
+        .eq("is_active", true)
+        .order("account_code")
+        .order("id"));
+      if (alive) setAccounts((data as AccountLike[]) ?? []);
+    })();
+    return () => { alive = false; };
+  }, [clientId]);
+  const accountLabel = (id: string) => {
+    const a = accounts.find((x) => x.id === id);
+    return a ? [a.account_code, a.account_name].filter(Boolean).join(" ") : id;
+  };
 
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,6 +209,7 @@ export default function AdjustmentsPage() {
         <AdjustmentForm
           engagementId={engagementId}
           financialYear={financialYear}
+          accounts={accounts}
           onSaved={(adj) => {
             setAdjustments((prev) => [adj, ...prev]);
             setShowForm(false);
@@ -215,10 +246,10 @@ export default function AdjustmentsPage() {
                     </td>
                     <td className="px-3 py-2.5 text-ps-body max-w-[180px] truncate">{adj.description}</td>
                     <td className="px-3 py-2.5 font-mono text-ps-label text-3xs">
-                      {adj.debit_account_name ?? adj.debit_account_id}
+                      {adj.debit_account_name ?? accountLabel(adj.debit_account_id)}
                     </td>
                     <td className="px-3 py-2.5 font-mono text-ps-label text-3xs">
-                      {adj.credit_account_name ?? adj.credit_account_id}
+                      {adj.credit_account_name ?? accountLabel(adj.credit_account_id)}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono font-semibold text-ps-ink">
                       {fmt(adj.amount_paise)}
@@ -318,11 +349,13 @@ function AdjActions({
 function AdjustmentForm({
   engagementId,
   financialYear,
+  accounts,
   onSaved,
   onCancel,
 }: {
   engagementId: string;
   financialYear?: string;
+  accounts: AccountLike[];
   onSaved: (adj: Adjustment) => void;
   onCancel: () => void;
 }) {
@@ -337,6 +370,10 @@ function AdjustmentForm({
   // The date the adjusting entry is posted at: text that is not a date read as blank and said "Date is required" about a box that held
   // one; it is refused in the date's own sentence instead (frontend_ux-19).
   const dates = useDateProblems();
+  // The box says, as a hint under it, when the date is outside the engagement's own financial year: an entry dated in another year posts into THAT
+  // year's books, where this engagement's statements do not read it. A hint and not a refusal, because an entry dated just outside (a reversal on
+  // 1 April) is a real thing a CA does and the choice is theirs.
+  const fyBounds = financialYear ? fyRangeFor(financialYear) : null;
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -407,21 +444,13 @@ function AdjustmentForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Debit Account *</label>
-          <input aria-label="Debit Account"
-            value={debitAccount}
-            onChange={(e) => setDebitAccount(e.target.value)}
-            placeholder="e.g. 5001 / Salary Expense"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono"
-          />
+          <AccountLookup accounts={accounts} value={debitAccount} onChange={setDebitAccount}
+            ariaLabel="Debit Account" placeholder="— Choose account —" />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Credit Account *</label>
-          <input aria-label="Credit Account"
-            value={creditAccount}
-            onChange={(e) => setCreditAccount(e.target.value)}
-            placeholder="e.g. 2001 / Salary Payable"
-            className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand font-mono"
-          />
+          <AccountLookup accounts={accounts} value={creditAccount} onChange={setCreditAccount}
+            ariaLabel="Credit Account" placeholder="— Choose account —" />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">Amount (₹) *</label>
@@ -440,6 +469,8 @@ function AdjustmentForm({
             aria-label="Adjustment date"
             value={adjDate}
             financialYear={financialYear}
+            min={fyBounds?.start}
+            max={fyBounds?.end}
             onChange={setAdjDate}
             onStateChange={dates.watch("adj", "Date")}
             className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
