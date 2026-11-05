@@ -86,16 +86,20 @@ interface AddFormState {
   notes: string;
 }
 
-const BLANK: AddFormState = {
-  clientId: "",
-  noticeType: "143(1)",
-  assessmentYear: "2025-26",
-  dateReceived: todayLocalISO(),
-  responseDueDate: "",
-  amountDemandedRs: "",
-  status: "pending",
-  notes: "",
-};
+// A FUNCTION, not a constant: the date received is today, and a module-level `todayLocalISO()` is read once when the page's code loads, so a tab left
+// open past midnight pre-filled yesterday as a valid date nobody typed.
+function blankNotice(): AddFormState {
+  return {
+    clientId: "",
+    noticeType: "143(1)",
+    assessmentYear: "2025-26",
+    dateReceived: todayLocalISO(),
+    responseDueDate: "",
+    amountDemandedRs: "",
+    status: "pending",
+    notes: "",
+  };
+}
 
 function AddModal({ clients, presetClientId, onClose, onAdded }: {
   clients: Client[];
@@ -107,7 +111,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
   // notice saved against the first client in the list, never chosen by the
   // CA, is exactly the defect this closes. Only a validated ?client_id= from
   // the client workspace link (sweep-income-tax-hub-04) preselects.
-  const [form, setForm] = useState<AddFormState>({ ...BLANK, clientId: presetClientId });
+  const [form, setForm] = useState<AddFormState>({ ...blankNotice(), clientId: presetClientId });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The response due date is optional and the date received is required: text that is not a date read as blank, so the first saved a

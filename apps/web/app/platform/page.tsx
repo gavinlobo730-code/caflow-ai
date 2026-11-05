@@ -363,7 +363,7 @@ export default function PlatformAdminPage() {
             </div>
             <div className="px-6 py-4 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-xs text-ps-hint">Created</p><p className="text-ps-ink">{detail.firm.created_at?.slice(0, 10)}</p></div>
+                <div><p className="text-xs text-ps-hint">Created</p><p className="text-ps-ink">{detail.firm.created_at ? formatDate(detail.firm.created_at) : "—"}</p></div>
                 <div><p className="text-xs text-ps-hint">Status</p><p className="text-ps-ink">{detail.firm.status}</p></div>
                 <div><p className="text-xs text-ps-hint">Users</p><p className="text-ps-ink">{detail.firm.users}</p></div>
                 <div><p className="text-xs text-ps-hint">Clients</p><p className="text-ps-ink">{detail.firm.clients}</p></div>

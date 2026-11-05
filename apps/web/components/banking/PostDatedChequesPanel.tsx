@@ -197,6 +197,9 @@ export default function PostDatedChequesPanel({
 
   async function submit() {
     if (chequeDates.first) { setMsg({ type: "err", text: chequeDates.first }); return; }
+    // A cleared box reports no problem, and "" went to the server as the cheque's date, which refuses it in the model's own words (the date
+    // is what decides when the cheque falls due and may be converted).
+    if (!form.chequeDate) { setMsg({ type: "err", text: "Cheque date: enter the date written on the cheque." }); return; }
     if (!form.partyId && !editing) {
       setMsg({ type: "err", text: `Choose the ${words.party.toLowerCase()} first.` });
       return;
@@ -306,6 +309,7 @@ export default function PostDatedChequesPanel({
           <label className="text-2xs text-ps-label">
             Presented on (blank = today)
             <DateInput
+              id="cheque-presented-on"
               value={presentedOn}
               onChange={setPresentedOn}
               onStateChange={presentDates.watch("presentedOn", "Presented on")}
@@ -413,7 +417,7 @@ export default function PostDatedChequesPanel({
             </label>
             <label className="text-2xs text-ps-label">
               Cheque date
-              <DateInput value={form.chequeDate} onChange={(iso) => setForm({ ...form, chequeDate: iso })}
+              <DateInput id="cheque-date" value={form.chequeDate} onChange={(iso) => setForm({ ...form, chequeDate: iso })}
                 onStateChange={chequeDates.watch("chequeDate", "Cheque date")}
                 className="mt-0.5 block w-full rounded-lg border border-ps-border px-2 py-1.5 text-xs" />
             </label>

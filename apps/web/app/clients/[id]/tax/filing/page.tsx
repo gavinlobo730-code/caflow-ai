@@ -419,8 +419,21 @@ export default function ITRFilingPage() {
     return () => { cancelled = true; };
   }, [showCreate, clientId, fy]);
 
+  // Opening the form starts it without the last refusal: it kept "Earlier return's filing date: ..." through Cancel and showed it again over a box
+  // that no longer held that text.
+  function openCreate() {
+    setCreateError(null);
+    setShowCreate(true);
+  }
+
   async function handleCreate() {
     if (createDates.first) { setCreateError(createDates.first); return; }
+    // Whether a kind needs the earlier return's receipt is the server's word (`needs_the_earlier_receipt`). Left empty, the receipt's number and
+    // date went as null and the server's refusal ended "...or name the original filing prepared here": a way out this form does not have.
+    if (selectedKind?.needs_the_earlier_receipt) {
+      if (!originalAck.trim()) { setCreateError("Earlier return's acknowledgement number: enter the number on the earlier return's receipt."); return; }
+      if (!originalAckDate) { setCreateError("Earlier return's filing date: enter the date on the earlier return's receipt."); return; }
+    }
     setCreating(true);
     setCreateError(null);
     try {
@@ -605,7 +618,7 @@ export default function ITRFilingPage() {
           <p className="text-xs text-ps-hint mt-0.5">IT Act §139 — Return of Income</p>
         </div>
         <button
-          onClick={() => setShowCreate(true)}
+          onClick={openCreate}
           className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
         >
           <Plus size={12} /> New Filing
@@ -754,7 +767,7 @@ export default function ITRFilingPage() {
           )}
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
+            <button onClick={() => { setShowCreate(false); setCreateError(null); }} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
@@ -780,7 +793,7 @@ export default function ITRFilingPage() {
             action={
               <EmptyStateActions>
                 <EmptyStateAction requires={["income_tax", "compute"]} icon={<Plus size={14} />} label="New Filing"
-                  onClick={() => setShowCreate(true)} />
+                  onClick={openCreate} />
               </EmptyStateActions>
             }
           />

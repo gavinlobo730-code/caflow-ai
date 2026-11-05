@@ -409,6 +409,17 @@ class ReconciliationCreateIn(BaseModel):
     opening_balance_paise: Optional[int] = None
     closing_balance_paise: int = 0
 
+    @field_validator("statement_start_date", "statement_end_date")
+    @classmethod
+    def _a_real_date(cls, v: str) -> str:
+        """Both bounds reach DATE columns and are compared as text just below, so a value that is not an ISO date is refused here in a sentence:
+        it was a 500 from Postgres (an empty string) or an order check that compared text that was not dates."""
+        from datetime import date as _date
+        try:
+            return _date.fromisoformat(str(v).strip()).isoformat()
+        except ValueError:
+            raise ValueError("Statement dates are written YYYY-MM-DD.") from None
+
     @model_validator(mode="after")
     def validate_period(self) -> "ReconciliationCreateIn":
         if self.statement_end_date < self.statement_start_date:

@@ -7,6 +7,7 @@ import { api, type ApiResp } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 interface Article {
   id: string; scope: string; department?: string | null; client_id?: string | null;
@@ -146,7 +147,7 @@ function KnowledgeInner() {
                   <ul className="space-y-1">
                     {versions.map((v) => (
                       <li key={v.version} className="flex items-center justify-between text-xs text-gray-600">
-                        <span>v{v.version}{v.changed_at ? ` · ${v.changed_at.slice(0, 10)}` : ""}</span>
+                        <span>v{v.version}{v.changed_at ? ` · ${formatDate(v.changed_at)}` : ""}</span>
                         {canAuthor && v.version !== a.current_version && (
                           <button disabled={rowBusy} onClick={() => restore(a.id, v.version)} className="flex items-center gap-1 text-blue-600 hover:underline"><RotateCcw size={11} /> Restore</button>
                         )}

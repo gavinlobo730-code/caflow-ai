@@ -286,6 +286,9 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
     setError(null);
     if (dates.first) { setError(dates.first); return; }
     if (!form.bank_account_id || !form.start || !form.end) { setError("Bank account and statement dates are required."); return; }
+    // The end box only HINTS when it is before the start (a hint is not a problem), so the window came to the server reversed and was refused
+    // there as "Value error, statement_end_date must not precede statement_start_date."
+    if (form.end < form.start) { setError("Statement end: it is before the statement start."); return; }
     const opening = toPaise(form.opening);
     const closing = toPaise(form.closing);
     if (opening === null || closing === null) { setError(NOT_AN_AMOUNT); return; }
@@ -407,7 +410,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             </select>
           )}
         </div>
-        <button onClick={() => { setShowNew((v) => !v); setSelectedId(""); }} className="text-xs px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
+        <button onClick={() => { setShowNew((v) => !v); setSelectedId(""); setError(null); }} className="text-xs px-3 py-2 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
           {showNew ? "Cancel" : "New Reconciliation"}
         </button>
       </div>
@@ -608,7 +611,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               )}
               {completed && (
                 <>
-                  <span className="text-2xs text-money-in ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? String(report.reconciliation.completed_at).slice(0, 10) : ""} · locked</span>
+                  <span className="text-2xs text-money-in ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? formatDate(String(report.reconciliation.completed_at)) : ""} · locked</span>
                   {/* The deliberate escape hatch. Partner-only server-side; a
                       non-Partner gets a 403 and the message says so. */}
                   <button onClick={() => setReopening(true)} disabled={busy}
@@ -625,7 +628,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               <p className="text-3xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                 Reopened {report.reconciliation.reopen_count}
                 {report.reconciliation.reopen_count === 1 ? " time" : " times"}
-                {report.reconciliation.reopened_at ? ` · last on ${String(report.reconciliation.reopened_at).slice(0, 10)}` : ""}
+                {report.reconciliation.reopened_at ? ` · last on ${formatDate(String(report.reconciliation.reopened_at))}` : ""}
                 {report.reconciliation.reopen_reason ? ` — “${report.reconciliation.reopen_reason}”` : ""}
               </p>
             )}
@@ -690,7 +693,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                           <span className="ml-2 text-3xs px-1.5 py-0.5 rounded-full bg-state-ready-surface text-state-ready">in force</span>
                         </p>
                         <p className="text-3xs text-ps-hint mt-0.5">
-                          Completed {String(history.current.completed_at ?? "").slice(0, 10)}
+                          Completed {formatDate(String(history.current.completed_at ?? ""))}
                         </p>
                       </div>
                       <span className="text-2xs font-mono shrink-0">
@@ -706,8 +709,8 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                           <span className="ml-2 text-3xs px-1.5 py-0.5 rounded-full bg-ps-muted text-ps-hint">replaced</span>
                         </p>
                         <p className="text-3xs text-ps-hint mt-0.5">
-                          Completed {String(h.completed_at ?? "").slice(0, 10)} · reopened{" "}
-                          {String(h.superseded_at ?? "").slice(0, 10)}
+                          Completed {formatDate(String(h.completed_at ?? ""))} · reopened{" "}
+                          {formatDate(String(h.superseded_at ?? ""))}
                           {h.reason ? ` — “${h.reason}”` : ""}
                         </p>
                       </div>

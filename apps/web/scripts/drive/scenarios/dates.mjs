@@ -559,6 +559,142 @@ function openGstRegistrations(how) {
   };
 }
 
+/** The bank screen's Entries tab with the Accounts panel open on "Add Bank Account", a bank, an account number and an opening balance typed, so only the date is left. */
+async function openBankAccountForm(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { banking: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/banking\/accounts\/deletable\?/, reply: () => ok({}) });
+  stub.route({ method: "GET", re: /api\/banking\/accounts\?/, reply: () => ok([]) });
+  stub.route({ method: "POST", re: /api\/banking\/accounts$/, reply: () => ok({ id: "ba-new" }) });
+  await page.goto(env.at("/bank/?tab=entries"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Accounts", exact: true }).click();
+  await page.getByRole("button", { name: "Add Account" }).first().click();
+  await page.getByLabel("Bank Name", { exact: true }).fill("Axis Bank");
+  await page.getByLabel("Account Number", { exact: true }).fill("918020033445566");
+  await page.getByLabel(/^Opening balance/i).first().fill("100000");
+}
+
+/** The bank screen's Reconcile tab with "New Reconciliation" open on a bank account, so only the statement dates and balances are left. */
+async function openNewReconciliation(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { banking: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/banking\/accounts(\?|$)/, reply: () => ok([
+    { id: "ba-1", client_id: CLIENT_ID, bank_name: "Axis Bank", account_no: "918020033445566", ifsc: "UTIB0000915", account_type: "Current", is_active: true,
+      opening_balance_paise: 0, opening_balance_date: null, coa_account_id: null, currency: "INR" }]) });
+  stub.route({ method: "GET", re: /api\/banking\/reconciliations\/opening-suggestion\?/, reply: () => ok({
+    suggested_opening_paise: 0, source: "bank_account_opening", previous_reconciliation: null, matches: true, reconciled_book_balance_paise: 0, mismatch_paise: 0 }) });
+  stub.route({ method: "GET", re: /api\/banking\/reconciliations(\?|$)/, reply: () => ok([]) });
+  stub.route({ method: "POST", re: /api\/banking\/reconciliations$/, reply: () => ok({ id: "rec-1", status: "in_progress" }) });
+  await page.goto(env.at("/bank/?tab=reconcile"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New Reconciliation", exact: true }).click();
+  await page.locator("select").filter({ has: page.locator("option[value='ba-1']") }).first().selectOption("ba-1");
+  await page.locator("#recon-start").waitFor();
+  await page.getByLabel("Opening balance (₹)").fill("0");
+  await page.getByLabel("Closing balance (₹)").fill("100000");
+}
+
+/** The received cheques register (Sales > Post-dated cheques) with one cheque that has fallen due, so "Convert to receipt" and the "Presented on" box beside it are live. */
+async function openChequeToConvert(env) {
+  const { page, stub } = env;
+  const count = { count: 0, amount_paise: 0 };
+  const cheque = {
+    id: "pdc-9", direction: "received", customer_id: "c-beta", vendor_id: null, party_name: "Beta Stores", cheque_no: "000451", cheque_date: "2026-10-01",
+    amount_paise: 2_500_000, drawee_bank: "HDFC Bank", bank_account_id: "ba-1", allocations: [], status: "held", state: "due", is_due: true, is_stale: false,
+    stale_note: null, stale_after: null, notes: null, converted_receipt_id: null, converted_payment_id: null, cancel_reason: null, posting_account_notice: null,
+  };
+  stub.route({ method: "GET", re: /post-dated-cheques\/options/, reply: () => ok({ parties: [{ id: "c-beta", name: "Beta Stores", gstin: null }], bank_accounts: [], documents: [] }) });
+  stub.route({ method: "GET", re: /post-dated-cheques\?/, reply: () => ok({ as_of: "2026-10-08", cheques: [cheque], notes: [], includes_finished: false, summary: {
+    received: { due: { count: 1, amount_paise: 2_500_000 }, not_due: count, converted: count, cancelled: count },
+    issued: { due: count, not_due: count, converted: count, cancelled: count } } }) });
+  stub.route({ method: "POST", re: /post-dated-cheques\/pdc-9\/convert$/, reply: () => ok({
+    cheque: { ...cheque, status: "converted", state: "converted", is_due: false },
+    document: { kind: "receipt", id: "r-1", number: "RCT/0001", date: "2026-10-05", amount_paise: 2_500_000, journal_entry_id: "j-1", unallocated_paise: 2_500_000, posting_account_notice: null },
+    stale_note: null }) });
+  await page.goto(env.at("/sales/?tab=post-dated-cheques"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Convert to receipt", exact: true }).waitFor();
+}
+
+/** A client's Income Tax > Filing screen with one ITR-3 ready for filing, selected, and "Record Acknowledgement" open with the acknowledgement number typed, so only the date is left. */
+async function openRecordItrAcknowledgement(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve"] } }) });
+  stub.route({ method: "POST", re: /api\/itr\/filings\/itr-f1\/acknowledge$/, reply: () => ok({
+    id: "itr-f1", client_id: CLIENT_ID, status: "filed", brought_forward_losses: { losses: [] },
+    compliance_obligation: { state: "closed", closed: true, obligation_id: "ob-itr", message: "The compliance calendar's ITR obligation for FY 2025-26 is closed." } }) });
+  stub.setTable("itr_filings", [{
+    id: "itr-f1", client_id: CLIENT_ID, itr_form: "ITR-3", financial_year: "2025-26", assessment_year: "2026-27", status: "ready_for_filing",
+    acknowledgement_number: null, filing_date: null, created_at: "2026-10-01T00:00:00Z", return_type: "original",
+    original_acknowledgement_number: null, original_filing_date: null, computation_snapshot_id: null }]);
+  await page.goto(env.at("/tax/filing/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /ITR-3/ }).first().click();
+  await page.getByRole("button", { name: "Record Acknowledgement", exact: true }).click();
+  await page.getByLabel("Acknowledgement Number", { exact: true }).fill("123456789012345");
+}
+
+/** Income Tax > Tax Audit with "Add Audit" open on a client, so only the audit and filing dates are left. */
+async function openAddTaxAudit(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve"] } }) });
+  stub.setTable("tax_audits", []);
+  await page.goto(`${env.base}/income-tax/tax-audit/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Add Audit", exact: true }).first().click();
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  await page.locator("#tax-audit-date").waitFor();
+}
+
+/** A client's Income Tax > Filing screen with "New Filing" open on a REVISED return, whose earlier return's acknowledgement number is typed, so only that return's filing date is left. */
+async function openNewRevisedReturn(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "compute", "approve"] } }) });
+  stub.route({ method: "POST", re: /api\/itr\/filings$/, reply: () => ok({ id: "itr-f2", status: "draft" }) });
+  stub.setTable("itr_filings", []);
+  await page.goto(env.at("/tax/filing/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New Filing" }).first().click();
+  await page.getByLabel("Kind of return", { exact: true }).selectOption("revised");
+  await page.getByLabel("Earlier return's acknowledgement number").fill("123456789012345");
+}
+
+/** Income Tax > Notices with "Add Notice" open on a client, so only the date received and the response due date are left. */
+async function openAddIncomeTaxNotice(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "write", "approve"] } }) });
+  stub.setTable("it_notices", []);
+  await page.goto(`${env.base}/income-tax/notices/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Add Notice", exact: true }).first().click();
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  await page.locator("#notice-date-received").waitFor();
+}
+
+/** A client's Compliance screen with one government notice awaiting review, and "Correct" open on it. */
+async function openCorrectNoticeReading(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance: ["read", "write", "approve"] } }) });
+  stub.route({ method: "PATCH", re: /document-intelligence-v2\/notices\/gn-1\/reading$/, reply: () => ok({ id: "gn-1" }) });
+  stub.setTable("government_notices", [{
+    id: "gn-1", client_id: CLIENT_ID, authority: "Income Tax Department", notice_type: "income_tax_notice", reference_no: "ITBA/AST/S/143(2)/2026-27/1", issue_date: "2026-09-20",
+    response_due_date: "2026-10-20", description: "Details of expenses claimed", status: "open", ca_approved: false, created_at: "2026-09-21T00:00:00Z" }]);
+  await page.goto(env.at("/compliance/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Correct", exact: true }).first().click();
+  await modalOf(page).locator("#notice-issued").waitFor();
+}
+
+/** A client's TDS compliance screen on its §197 Certificates tab, with "Record Certificate" open and a vendor, a certificate number, a rate and an amount typed, so only the validity dates are left. */
+async function openRecordLowerDeductionCertificate(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: ["read", "compute", "write"] } }) });
+  stub.route({ method: "GET", re: /tds-workspace\/lower-deduction-certificates\?/, reply: () => ok({
+    lower_deduction_certificates: [], has_more: false, limit: 200, max_limit: 200, vendors: [{ id: "v1", name: "Gamma Supplies" }] }) });
+  stub.route({ method: "GET", re: /api\/tds\/sections$/, reply: () => ok({ sections: [{ section: "194C", section_197_eligible: true }], section_197_not_priced: [] }) });
+  stub.route({ method: "POST", re: /tds-workspace\/lower-deduction-certificates$/, reply: () => ok({ id: "ldc-1" }) });
+  await page.goto(env.at("/compliance/tds/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "§197 Certificates", exact: true }).click();
+  await page.getByRole("button", { name: "+ Record Certificate" }).click();
+  await page.getByLabel("Vendor", { exact: true }).selectOption("v1");
+  await page.getByLabel("Certificate number").fill("LDC/2025/0042");
+  await page.getByLabel("Certified rate in percent (0 for nil)").fill("0.5");
+  await page.getByLabel("Amount the certificate applies up to, in rupees").fill("500000");
+}
+
 /** Settings > Multi-currency with the firm entitled, so the Exchange rates panel under the register is drawn; a rate typed, only its date left. */
 async function openFxRates(env) {
   const { page, stub } = env;
@@ -1025,8 +1161,8 @@ const EDITORS = [
     save: (p) => modalOf(p).getByRole("button", { name: "Add Employee", exact: true }), write: /api\/payroll\/employees$/,
   },
   {
-    id: "post-dated-cheque", title: "post-dated cheque form", open: openPostDatedCheque,
-    fields: [{ box: (p) => p.getByLabel("Cheque date"), label: "Cheque date", key: "cheque_date", full: "15/11/2026", iso: "2026-11-15" }],
+    id: "post-dated-cheque", title: "post-dated cheque form", open: openPostDatedCheque, cleared: "Cheque date: enter the date written on the cheque.",
+    fields: [{ box: (p) => p.locator("#cheque-date"), label: "Cheque date", key: "cheque_date", full: "15/11/2026", iso: "2026-11-15" }],
     save: (p) => p.getByRole("button", { name: "Record cheque", exact: true }), write: /post-dated-cheques$/,
   },
   ...[
@@ -1186,6 +1322,71 @@ const EDITORS = [
     save: (p) => p.getByRole("table").getByRole("button", { name: "Record", exact: true }), write: /client-gst-registrations\/reg-2\/close$/,
   },
   {
+    id: "bank-account-opening-date", title: "Bank > Accounts > Add Bank Account: the date the opening balance is as at", open: openBankAccountForm,
+    cleared: "An opening balance needs the date it is the balance as at",
+    fields: [{ box: (p) => p.locator("#bank-opening-date"), label: "Opening balance date", key: "opening_balance_date", full: "01/04/2025", iso: "2025-04-01" }],
+    save: (p) => p.getByRole("button", { name: "Add Account", exact: true }).last(), write: /api\/banking\/accounts$/,
+  },
+  {
+    id: "bank-reconciliation-statement-dates", title: "Bank > Reconcile > New Reconciliation: the statement's start and end dates", open: openNewReconciliation, eachField: true, cleared: "Bank account and statement dates are required.", clearedFields: [1],
+    fields: [
+      { box: (p) => p.locator("#recon-start"), label: "Statement start", key: "statement_start_date", full: "01/09/2026", iso: "2026-09-01" },
+      { box: (p) => p.locator("#recon-end"), label: "Statement end", key: "statement_end_date", full: "30/09/2026", iso: "2026-09-30" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Open Reconciliation", exact: true }), write: /api\/banking\/reconciliations$/,
+  },
+  {
+    id: "cheque-presented-on", title: "Sales > Post-dated cheques: the day a due cheque was presented (Convert to receipt posts a receipt on it)", open: openChequeToConvert,
+    fields: [{ box: (p) => p.locator("#cheque-presented-on"), label: "Presented on", key: "presented_on", full: "05/10/2026", iso: "2026-10-05" }],
+    save: (p) => p.getByRole("button", { name: "Convert to receipt", exact: true }), write: /post-dated-cheques\/pdc-9\/convert$/,
+    afterSave: (p) => p.getByRole("alertdialog").or(p.getByRole("dialog")).getByRole("button", { name: "Convert to receipt", exact: true }).click(),
+  },
+  {
+    id: "itr-filing-acknowledgement", title: "Income Tax > Filing: the date on the acknowledgement (Record as Filed)", open: openRecordItrAcknowledgement, heldWhileUnreadable: true, cleared: "held",
+    fields: [{ box: (p) => p.locator("#itr-ack-filing-date"), label: "Filing date", key: "filing_date", full: "24/07/2026", iso: "2026-07-24" }],
+    save: (p) => p.getByRole("button", { name: "Record as Filed", exact: true }), write: /api\/itr\/filings\/itr-f1\/acknowledge$/,
+  },
+  {
+    id: "tax-audit-dates", title: "Income Tax > Tax Audit > Add Audit: the audit date and the filing date", open: openAddTaxAudit, eachField: true,
+    fields: [
+      { box: (p) => p.locator("#tax-audit-date"), label: "Audit date", key: "audit_date", full: "30/09/2026", iso: "2026-09-30" },
+      { box: (p) => p.locator("#tax-audit-filing-date"), label: "Filing date", key: "filing_date", full: "07/10/2026", iso: "2026-10-07" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Add Audit", exact: true }).last(), write: /rest\/v1\/tax_audits/,
+  },
+  {
+    id: "itr-new-revised-return", title: "Income Tax > Filing > New Filing (revised): the earlier return's filing date", open: openNewRevisedReturn, cleared: "Earlier return's filing date: enter the date on the earlier return's receipt.",
+    fields: [{ box: (p) => p.locator("#itr-original-filing-date"), label: "Earlier return's filing date", key: "original_filing_date", full: "20/07/2026", iso: "2026-07-20" }],
+    save: (p) => p.getByRole("button", { name: "Create", exact: true }), write: /api\/itr\/filings$/,
+  },
+  {
+    id: "income-tax-notice-dates", title: "Income Tax > Notices > Add Notice: the date received and the response due date", open: openAddIncomeTaxNotice, eachField: true,
+    cleared: "Client and date received are required",
+    fields: [
+      { box: (p) => p.locator("#notice-date-received"), label: "Date received", key: "date_received", full: "03/10/2026", iso: "2026-10-03" },
+      { box: (p) => p.locator("#notice-response-due"), label: "Response due date", key: "response_due_date", full: "02/11/2026", iso: "2026-11-02" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Add Notice", exact: true }).last(), write: /rest\/v1\/it_notices/,
+  },
+  {
+    id: "notice-reading-correction-dates", title: "Compliance > a government notice > Correct the reading: the date it was issued and the response due date", open: openCorrectNoticeReading,
+    heldWhileUnreadable: true, eachField: true,
+    fields: [
+      { box: (p) => p.locator("#notice-issued"), label: "Issued on", key: "issue_date", full: "22/09/2026", iso: "2026-09-22" },
+      { box: (p) => p.locator("#notice-due"), label: "Response due on", key: "response_due_date", full: "21/10/2026", iso: "2026-10-21" },
+    ],
+    save: (p) => modalOf(p).getByRole("button", { name: "Save correction", exact: true }), write: /document-intelligence-v2\/notices\/gn-1\/reading$/,
+  },
+  {
+    id: "tds-lower-deduction-certificate", title: "TDS > §197 Certificates > Record Certificate: the validity period (valid from and to)", open: openRecordLowerDeductionCertificate, eachField: true, clearedFields: [1],
+    cleared: "Enter the validity period.",
+    fields: [
+      { box: (p) => p.getByLabel("Valid from", { exact: true }), label: "Valid from", key: "valid_from", full: "01/04/2025", iso: "2025-04-01" },
+      { box: (p) => p.getByLabel("Valid to", { exact: true }), label: "Valid to", key: "valid_to", full: "31/03/2026", iso: "2026-03-31" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }).last(), write: /tds-workspace\/lower-deduction-certificates$/,
+  },
+  {
     id: "apply-salary-structure", title: "Payroll > Inputs: the date a salary structure is applied from", open: openApplyStructure, heldWhileUnreadable: true,
     fields: [{ box: (p) => p.locator("#apply-structure-effective-from"), label: "Effective from", key: "effective_from", full: "01/10/2026", iso: "2026-10-01" }],
     save: (p) => p.getByRole("button", { name: "Preview", exact: true }), write: /salary-structures\/st-1\/apply$/,
@@ -1265,16 +1466,35 @@ async function driveEditor(env, spec) {
     await stub.quiet();
     assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over a cleared date SENT A WRITE`);
   }
+  // 4b'. Where a form needs more than one date, each of the others is cleared in turn with the rest valid (`clearedFields`: indexes into `fields`).
+  for (const k of spec.clearedFields ?? []) {
+    const field = spec.fields[k];
+    for (const other of spec.fields) await typeAndLeave(other.box(page), "15/03/2026");
+    await typeAndLeave(field.box(page), "");
+    await spec.save(page).click();
+    await page.getByText(spec.cleared).first().waitFor({ timeout: 4000 }).catch(() => {
+      throw new Error(`${spec.title} / ${field.label}: Save over this box cleared did not say "${spec.cleared}"`);
+    });
+    await stub.quiet();
+    assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title} / ${field.label}: Save over this box cleared SENT A WRITE`);
+  }
 
   // 4c. A form with more than one date refuses an unreadable text in ANY of them, not only the first: each box has its own key and label.
   if (spec.eachField) {
     for (const field of spec.fields.slice(1)) {
       await typeAndLeave(primary, "15/03/2026");
       await typeAndLeave(field.box(page), "31/02/2026");
-      await spec.save(page).click();
-      await page.getByText(`${field.label}: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
-        throw new Error(`${spec.title} / ${field.label}: Save over an unreadable date in this box did not say "${field.label}: ${FEB_SENTENCE}"`);
-      });
+      if (spec.heldWhileUnreadable) {
+        assert.equal(await spec.save(page).isDisabled(), true, `${spec.title} / ${field.label}: the button was live over an unreadable date in this box`);
+        await page.getByText(FEB_SENTENCE).first().waitFor({ timeout: 4000 }).catch(() => {
+          throw new Error(`${spec.title} / ${field.label}: the box did not say "${FEB_SENTENCE}" beside the held button`);
+        });
+      } else {
+        await spec.save(page).click();
+        await page.getByText(`${field.label}: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+          throw new Error(`${spec.title} / ${field.label}: Save over an unreadable date in this box did not say "${field.label}: ${FEB_SENTENCE}"`);
+        });
+      }
       await stub.quiet();
       assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title} / ${field.label}: Save over an unreadable date in this box SENT A WRITE`);
       await typeAndLeave(field.box(page), "15/03/2026");
@@ -1287,6 +1507,7 @@ async function driveEditor(env, spec) {
     assert.equal(await field.box(page).inputValue(), field.full, `${spec.title} / ${field.label}: ${field.full} did not stay as typed`);
   }
   await spec.save(page).click();
+  if (spec.afterSave) await spec.afterSave(page); // a confirmation the screen asks between the click and the write
   await stub.quiet();
   const writes = stub.writesTo(spec.write);
   assert.equal(writes.length, 1, `${spec.title}: expected one write, saw ${writes.length} (${stub.allWrites().map((w) => w.method + " " + w.path).join(", ") || "none"})`);
@@ -1633,6 +1854,55 @@ export const scenarios = [
       await page.getByRole("button", { name: /Add ITR Deadline/ }).first().click();
       await page.locator("#itr-add-due-date").waitFor();
       assert.equal(await page.getByText(`Due date: ${FEB_SENTENCE}`).count(), 0, "the prompt opened again with the last refusal still on it");
+    },
+  },
+  // A form that keeps state through Cancel kept its last refusal too: the bank reconciliation, the new-return and the §197 certificate forms each showed an old
+  // "<box>: Feb 2026 has only 28 days." over boxes that no longer held it. Opening the form again starts it clean.
+  ...[
+    { id: "bank-reconciliation", name: "Bank > Reconcile > New Reconciliation", open: openNewReconciliation, box: "#recon-start", label: "Statement start",
+      save: (p) => p.getByRole("button", { name: "Open Reconciliation", exact: true }),
+      close: (p) => p.getByRole("button", { name: "Cancel", exact: true }), reopen: (p) => p.getByRole("button", { name: "New Reconciliation", exact: true }) },
+    { id: "new-itr-return", name: "Income Tax > Filing > New Filing (revised)", open: openNewRevisedReturn, box: "#itr-original-filing-date", label: "Earlier return's filing date",
+      save: (p) => p.getByRole("button", { name: "Create", exact: true }),
+      close: (p) => p.getByRole("button", { name: "Cancel", exact: true }), reopen: (p) => p.getByRole("button", { name: "New Filing" }) },
+    { id: "lower-deduction-certificate", name: "TDS > §197 Certificates > Record Certificate", open: openRecordLowerDeductionCertificate, box: "Valid from", label: "Valid from",
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }).last(),
+      close: (p) => p.getByRole("button", { name: "Cancel", exact: true }), reopen: (p) => p.getByRole("button", { name: "+ Record Certificate" }) },
+  ].map((f) => ({
+    id: `${f.id}-a-refusal-does-not-outlive-the-form`,
+    title: `${f.name}: a refusal said in the form is gone when the form is opened again`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await f.open(env);
+      const box = f.box.startsWith("#") ? page.locator(f.box) : page.getByLabel(f.box, { exact: true });
+      await typeAndLeave(box, "31/02/2026");
+      await f.save(page).click();
+      await page.getByText(`${f.label}: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`Save over an unreadable date did not say "${f.label}: ${FEB_SENTENCE}"`);
+      });
+      await f.close(page).first().click();
+      await f.reopen(page).first().click();
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByText(`${f.label}: ${FEB_SENTENCE}`).count(), 0, "the form opened again with the last refusal still on it");
+    },
+  })),
+  // The reconciliation's end box only HINTS when it is before the start; the window reached the server reversed and was refused there in schema words.
+  {
+    id: "bank-reconciliation-a-reversed-window-is-refused-in-a-sentence",
+    title: "Bank > Reconcile > New Reconciliation: an end before the start is refused in a sentence and nothing is sent",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openNewReconciliation(env);
+      await typeAndLeave(page.locator("#recon-start"), "30/09/2026");
+      await typeAndLeave(page.locator("#recon-end"), "01/09/2026");
+      await page.getByRole("button", { name: "Open Reconciliation", exact: true }).click();
+      await page.getByText("Statement end: it is before the statement start.").first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error("a reversed statement window did not say \"Statement end: it is before the statement start.\"");
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/banking\/reconciliations$/).length, 0, "a reversed window SENT A WRITE");
     },
   },
   // A screen that is about ONE financial year says so to its date boxes. Every row above leaves the screen on the current year, where
