@@ -598,6 +598,13 @@ export default function IncomeTaxPage() {
     }
   }, []);
 
+  // Opening the prompt again starts it without the last refusal: it kept its error through Cancel, so a prompt reopened after "Due date: Feb 2026
+  // has only 28 days." showed that sentence over a box that no longer held it. (The typed values stay, as they always have.)
+  function openAddModal() {
+    setAddError(null);
+    setShowAddModal(true);
+  }
+
   function handleAddFormChange(
     field: keyof typeof addForm,
     value: string
@@ -857,7 +864,7 @@ export default function IncomeTaxPage() {
         subtitle="ITR Tracking — IT Act Section 139"
         actions={
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={openAddModal}
             className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
           >
             <Plus className="w-4 h-4" />
@@ -994,7 +1001,7 @@ export default function IncomeTaxPage() {
                 emptyAction={
                   <EmptyStateActions>
                     <EmptyStateAction requires={["compliance_record", "write"]} icon={<Plus size={14} />} label="Add first ITR deadline"
-                      onClick={() => setShowAddModal(true)} />
+                      onClick={openAddModal} />
                   </EmptyStateActions>
                 }
                 rowActions={(entry) =>

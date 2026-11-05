@@ -147,6 +147,9 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
 
   async function submit() {
     if (dates.first) { onError(dates.first); return; }
+    // A cleared box is not an unreadable one and reports no problem, but "" goes to the server as no date at all and the server dates the record
+    // today (the filing and the payment alike): a payment date this screen invented, said as "Recorded." Ask for it instead.
+    if (!on) { onError("Date: enter the date of the payment or filing."); return; }
     const paise = amount.trim() ? paiseFromRupeeInput(amount) : 0;
     if (paise === null) {
       onError("That amount is not an amount. Type it as ₹ and paise — "

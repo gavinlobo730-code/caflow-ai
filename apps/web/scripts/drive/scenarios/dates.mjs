@@ -385,6 +385,180 @@ function openEmployeeDrawer(tab) {
   };
 }
 
+/** The client's payroll File tab (the statutory handoff) for a finalised run, with ONE obligation to record: ESI/professional tax record a remittance, EPF an ECR filing. */
+function openStatutoryHandoff(scheme) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
+    stub.route({ method: "GET", re: /payroll\/runs\?/, reply: () => ok([{ ...PAYROLL_RUN, client_id: CLIENT_ID }]) });
+    stub.route({ method: "GET", re: /payroll\/clients\/[^/]+\/remittance-reconciliation$/, reply: () => ok({ client_id: CLIENT_ID, window_days: 30, unmatched: [], stale_links: [] }) });
+    stub.route({ method: "GET", re: /payroll\/runs\/run1\/handoff$/, reply: () => ok({
+      run_id: "run1", client_id: CLIENT_ID, month: "2026-09", unattributed_pt_paise: 0,
+      obligations: [{
+        scheme, key: `${scheme}-2026-09`, title: scheme === "epf" ? "EPF: Electronic Challan cum Return" : "ESI: monthly contribution",
+        authority: scheme === "epf" ? "EPFO" : "ESIC", portal: "the portal", portal_host: "", wage_month: "2026-09", period_label: "September 2026",
+        state: null, due_date: null, due_note: null, statute: null, identity: [], confirm: [],
+        artefact: { available: false, filename: null, endpoint: null, why_not: "Not built for this drive." },
+        blocking: [], warnings: [], record_back: scheme === "epf" ? "the TRRN" : "the challan", record_options: scheme === "epf" ? ["regular"] : [], recorded: null,
+      }],
+    }) });
+    stub.route({ method: "POST", re: /payroll\/clients\/[^/]+\/remittances$/, reply: () => ok({ client_id: CLIENT_ID, remittance: { id: "rem-1" }, compliance_obligations: [] }) });
+    stub.route({ method: "POST", re: /payroll\/runs\/run1\/ecr\/filed$/, reply: () => ok({ id: "ecr-1" }) });
+    await page.goto(env.at("/payroll/?tab=file"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Record it", exact: true }).waitFor();
+  };
+}
+
+/** The Tax Computation screen with the house-property worksheet open on one SELF-OCCUPIED property, whose loan and completion dates are the two boxes. */
+async function openHousePropertyWorksheet(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "compute", "write"] } }) });
+  stub.route({ method: "GET", re: /income-tax\/financial-years$/,
+               reply: () => ok({ financial_years: [{ fy: "2026-27", verified: true }, { fy: "2025-26", verified: true }], current_fy: "2026-27" }) });
+  stub.route({ method: "GET", re: /income-tax\/worksheets\/house_property\?/, reply: () => ok({ payload: {}, result: null, saved: false }) });
+  stub.route({ method: "PUT", re: /income-tax\/worksheets\/house_property$/, reply: () => ok({
+    payload: {}, saved: true, result: { properties: [], head_income_paise: 0, is_loss: false, gaps: [], caveats: [] } }) });
+  await page.goto(`${env.base}/clients/${CLIENT_ID}/tax/computation/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /Working papers/ }).click();
+  await page.getByRole("button", { name: "Add a property" }).click();
+  await page.getByLabel("Use", { exact: true }).first().selectOption("self_occupied");
+  await page.getByLabel("Loan taken on").waitFor();
+}
+
+/** Sales > Quotes, Orders & Challans, FORM GST ITC-04 panel: one challan line still with a job worker, and "Record a lot" open on it with a quantity typed, so only the dates are left. */
+async function openItc04Lot(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/customers/, reply: () => ok([{ id: "cu1", name: "Beta Stores" }]) });
+  stub.route({ method: "GET", re: /sales-cycle\/vocabulary$/, reply: () => ok({
+    quote_kinds: [], quote_statuses: [], order_statuses: [], challan_statuses: [], challan_reasons: [], goods_kinds: [],
+    not_a_tax_invoice: "", no_tax_on_a_non_supply: "", job_work_exclusion: "", rule_55_5_steps: [], copies: [], itc_04: { decided: false, readings: [], refusal: "" },
+  }) });
+  stub.route({ method: "GET", re: /sales-cycle\/itc-04\?/, reply: () => ok({
+    client_id: CLIENT_ID, financial_year: "2026-27", as_of: "2026-10-08",
+    period: { decided: true, readings: [], refusal: "", preceding_year_aato_paise: null, verified: false },
+    readings: [], selected_window: null, table_4: null, table_5a: null,
+    table_5b: { derived: false, reason: "" }, table_5c: { derived: false, reason: "" },
+    outstanding: [{
+      challan_id: "ch-1", challan_no: "JW/001", challan_date: "2026-06-01", job_worker: { name: "Gamma Works" }, goods_kind: "inputs",
+      lines: [{ challan_line_id: "cl-1", description: "Steel sheet", uqc: "KGS", sent: "5", returned: "0", lost_or_wasted: "0", outstanding: "5", taxable_value_at_stake_paise: 100000 }],
+      taxable_value_at_stake_paise: 100000,
+      clock: { applies: true, due_back_by: "2027-06-01", days_remaining: 236, overdue: false, consequence: "", gaps: [] },
+    }],
+    gaps: [], nothing_is_filed: true, verified: false, ca_review_required: true,
+  }) });
+  stub.route({ method: "POST", re: /sales-cycle\/challans\/ch-1\/returns$/, reply: () => ok({ id: "ret-1", challan_marked_received_back: false }) });
+  await page.goto(env.at("/sales/?tab=sales-cycle"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Delivery Challans", exact: true }).click();
+  await page.getByRole("button", { name: "Record a lot", exact: true }).click();
+  await page.getByText("Quantity returned", { exact: true }).waitFor();
+  await page.locator("label:has-text('Quantity returned') input").first().fill("2");
+}
+
+/** The ITR tracker (Income Tax) with one pending return listed: `how` is "single" (its own Mark Filed prompt), "batch" (the bulk prompt, one row ticked) or "add" (the Add ITR Deadline prompt on a chosen client). */
+function openItrTracker(how) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance_record: ["read", "write", "approve"], income_tax: ["read", "write"] } }) });
+    stub.route({ method: "GET", re: /income-tax\/financial-years$/, reply: () => ok({ financial_years: [{ fy: "2026-27", verified: true }, { fy: "2025-26", verified: true }], current_fy: "2026-27", current_fy_advance_tax: [] }) });
+    const dueDateAsks = { n: 0 };
+    stub.route({ method: "GET", re: /compliance\/itr-due-date\?/, reply: () => { dueDateAsks.n += 1; return ok({
+      due_date: "2026-07-31", decided: true, basis: "Stubbed: IT Act s.139(1).", statutory_gaps: [] }); } });
+    stub.route({ method: "PATCH", re: /compliance\/calendar\/itr-1\/filed$/, reply: () => ok({
+      record: { id: "itr-1", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
+      period_locked_from: null, period_locked_to: null, workspace_return: null }) });
+    stub.setTable("compliance_calendar", [{
+      id: "itr-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, compliance_type: "ITR", period_start: "2025-04-01", period_end: "2026-03-31",
+      due_date: "2026-07-31", filing_status: "pending", filed_date: null, arn_number: null, notes: "ITR-3",
+      clients: { client_name: "Acme Traders Pvt Ltd", pan: "AAACA1234A", entity_type: "Company" },
+    }]);
+    await page.goto(`${env.base}/income-tax/`, { waitUntil: "networkidle" });
+    if (how === "add") {
+      await page.getByRole("button", { name: /Add ITR Deadline/ }).first().click();
+      await page.locator("select[aria-label='Client']").selectOption({ index: 1 });
+      await page.locator("#itr-add-due-date").waitFor();
+      await page.getByText("Stubbed: IT Act s.139(1).").waitFor();
+      // The listed return is for FY 2025-26, the form's default, and a second ITR row for the same client and period is refused by the table's
+      // unique key (client, type, period start): add the next year's.
+      await page.getByRole("combobox", { name: "Financial year" }).last().selectOption("2026-27");
+      await until(() => dueDateAsks.n >= 2, "the due date asked for again for the year chosen");
+      await page.getByText("Stubbed: IT Act s.139(1).").waitFor();
+      return;
+    }
+    if (how === "batch") {
+      await page.locator("tr", { hasText: "Acme Traders" }).locator("input[type=checkbox]").first().check();
+      await page.getByRole("button", { name: "Mark Filed", exact: true }).first().click();
+      await page.getByLabel(/Acknowledgement number \(ARN\) — /).fill("123456789012345");
+      return;
+    }
+    await page.getByRole("button", { name: "Mark Filed", exact: true }).first().click();
+    await page.getByLabel("Acknowledgement number (ARN)", { exact: true }).fill("123456789012345");
+  };
+}
+
+/** The GST filing tracker with one pending GSTR-3B listed: `how` is "single" (its own Mark Filed prompt), "batch" (the bulk prompt, one row ticked) or "add" (the Add GST Filing prompt, with the engine's due date in the box). */
+function openGstTracker(how) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance_record: ["read", "write", "approve"], gst: ["read", "write"] } }) });
+    stub.route({ method: "GET", re: /compliance\/due-dates\/calculate\?/, reply: () => ok({
+      gstr1_due_date: "2026-10-11", gstr3b_due_date: "2026-10-20", gstr9_due_date: "2026-12-31" }) });
+    // The reply the real route sends (routers/compliance.py): the record and what became of the period lock and the workspace return.
+    stub.route({ method: "PATCH", re: /compliance\/calendar\/gst-1\/filed$/, reply: () => ok({
+      record: { id: "gst-1", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
+      period_locked_from: "2026-09-01", period_locked_to: "2026-09-30", workspace_return: null }) });
+    stub.setTable("compliance_calendar", [{
+      id: "gst-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, compliance_type: "GSTR3B", period_start: "2026-09-01", period_end: "2026-09-30",
+      due_date: "2026-10-20", filing_status: "pending", filed_date: null, created_at: "2026-10-01T00:00:00Z",
+      clients: { client_name: "Acme Traders Pvt Ltd", gstin: "27AAACA1234A1ZK" },
+    }]);
+    await page.goto(`${env.base}/gst/`, { waitUntil: "networkidle" });
+    if (how === "add") {
+      await page.getByRole("button", { name: /Add GST Filing/ }).first().click();
+      await page.locator("#gst-add-filing-due-date").waitFor();
+      await until(async () => (await page.locator("#gst-add-filing-due-date").inputValue()) !== "", "the engine's due date in the box");
+      return;
+    }
+    if (how === "batch") {
+      await page.locator("tr", { hasText: "Acme Traders" }).locator("input[type=checkbox]").first().check();
+      await page.getByRole("button", { name: "Mark Filed", exact: true }).first().click();
+      await page.getByLabel(/Acknowledgement number \(ARN\) — /).fill("AA270125001234A");
+      return;
+    }
+    await page.getByRole("button", { name: "Mark as Filed", exact: true }).first().click();
+    await page.getByLabel("Acknowledgement number (ARN)", { exact: true }).fill("AA270125001234A");
+  };
+}
+
+/** A client's GST > Registrations tab with the primary registration and one other listed: `how` is "add" (the Add a registration prompt, with a GSTIN typed) or "close" (the Cancelled… date box on the other registration). */
+function openGstRegistrations(how) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "write", "approve"], client: ["read", "write"] } }) });
+    stub.route({ method: "GET", re: /client-gst-registrations\/kinds$/, reply: () => ok({
+      registration_types: [{ value: "regular", files_gstr1_and_3b: true, files_cmp08: false, files_gstr8: false, files_gstr4_annual: false, other_return_form: null }],
+      composition_categories: [], filing_frequencies: ["monthly", "quarterly"], composition_rates_verified: false }) });
+    stub.route({ method: "GET", re: /client-gst-registrations\/turnover\?/, reply: () => ok({ client_id: CLIENT_ID, governing_financial_year: "2025-26", governing_turnover_paise: null, note: "No aggregate turnover is recorded for this year.", years: [] }) });
+    stub.route({ method: "GET", re: /client-gst-registrations\?/, reply: () => ok([
+      { id: null, gstin: "27AAACA1234A1ZK", state_code: "27", registration_type: "regular", filing_frequency: "monthly", is_primary: true, trade_name: null,
+        effective_from: null, effective_to: null, label: "Maharashtra (primary)", files_gstr1_and_3b: true, files_cmp08: false, files_gstr8: false, files_gstr4_annual: false },
+      { id: "reg-2", gstin: "29AAACA1234A1ZG", state_code: "29", registration_type: "regular", filing_frequency: "monthly", is_primary: false, trade_name: "Bengaluru depot",
+        effective_from: "2025-04-01", effective_to: null, label: "Karnataka", files_gstr1_and_3b: true, files_cmp08: false, files_gstr8: false, files_gstr4_annual: false },
+    ]) });
+    stub.route({ method: "POST", re: /api\/client-gst-registrations$/, reply: () => ok({ id: "reg-3" }) });
+    stub.route({ method: "POST", re: /client-gst-registrations\/reg-2\/close$/, reply: () => ok({ id: "reg-2" }) });
+    await page.goto(env.at("/compliance/gst/"), { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Registrations", exact: true }).click();
+    if (how === "add") {
+      await page.getByRole("button", { name: "Add a registration" }).click();
+      await page.locator("#gst-reg-registered-from").waitFor();
+      await page.getByPlaceholder("29AABCU9603R1ZJ").fill("29AABCU9603R1ZJ"); // a valid GSTIN the client does not hold yet
+      return;
+    }
+    await page.getByRole("button", { name: "Cancelled…" }).click();
+    await page.getByLabel(/was cancelled or surrendered/).waitFor();
+  };
+}
+
 /** Settings > Multi-currency with the firm entitled, so the Exchange rates panel under the register is drawn; a rate typed, only its date left. */
 async function openFxRates(env) {
   const { page, stub } = env;
@@ -944,6 +1118,74 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Record", exact: true }).last(), write: /api\/inventory\/costing-policy$/,
   },
   {
+    id: "statutory-handoff-esi-remittance", title: "Payroll > File: the date an ESI payment was made (the portal's challan)", open: openStatutoryHandoff("esic"), cleared: "Date: enter the date of the payment or filing.",
+    fields: [{ box: (p) => p.getByLabel("Date of the payment or filing"), label: "Date", key: "paid_on", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Record it", exact: true }), write: /payroll\/clients\/[^/]+\/remittances$/,
+  },
+  {
+    id: "statutory-handoff-epf-ecr", title: "Payroll > File: the date an EPF return was filed (the ECR record)", open: openStatutoryHandoff("epf"), cleared: "Date: enter the date of the payment or filing.",
+    fields: [{ box: (p) => p.getByLabel("Date of the payment or filing"), label: "Date", key: "submitted_on", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Record it", exact: true }), write: /payroll\/runs\/run1\/ecr\/filed$/,
+  },
+  {
+    id: "house-property-worksheet", title: "Income tax > Computation > house-property worksheet: the loan and completion dates", open: openHousePropertyWorksheet, eachField: true,
+    fields: [
+      { box: (p) => p.getByLabel("Loan taken on"), label: "Loan taken on", key: "loan_taken_on", full: "12/05/2019", iso: "2019-05-12", read: (b) => b.payload.properties[0].loan_taken_on },
+      { box: (p) => p.getByLabel("House completed on"), label: "House completed on", key: "completed_on", full: "30/06/2021", iso: "2021-06-30", read: (b) => b.payload.properties[0].completed_on },
+    ],
+    // the salary worksheet below it has a button of the same name; the house-property one is the first on the screen
+    save: (p) => p.getByRole("button", { name: "Save and work out", exact: true }).first(), write: /income-tax\/worksheets\/house_property$/,
+  },
+  {
+    id: "itc04-lot", title: "Sales > Challans > FORM GST ITC-04: the date a lot came back and the job worker's challan date", open: openItc04Lot, eachField: true, cleared: "Give the date the goods came back.",
+    fields: [
+      { box: (p) => p.locator("#itc04-came-back-on"), label: "Came back on", key: "returned_on", full: "12/09/2026", iso: "2026-09-12" },
+      { box: (p) => p.locator("#itc04-challan-date"), label: "Job worker's challan date", key: "job_worker_challan_date", full: "10/09/2026", iso: "2026-09-10" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Record this lot", exact: true }), write: /sales-cycle\/challans\/ch-1\/returns$/,
+  },
+  {
+    id: "itr-mark-filed", title: "Income Tax > ITR tracker: the date a return was filed (Mark ITR as Filed)", open: openItrTracker("single"), cleared: "Filing date is required",
+    fields: [{ box: (p) => p.locator("#itr-filed-modal-date"), label: "Date of filing", key: "filed_date", full: "28/07/2026", iso: "2026-07-28" }],
+    save: (p) => p.getByRole("button", { name: "Confirm Filing", exact: true }), write: /compliance\/calendar\/itr-1\/filed$/,
+  },
+  {
+    id: "itr-batch-mark-filed", title: "Income Tax > ITR tracker: the one date a batch of returns was filed on", open: openItrTracker("batch"), heldWhileUnreadable: true, cleared: "held",
+    fields: [{ box: (p) => p.locator("#itr-batch-filed-date"), label: "Date of filing", key: "filed_date", full: "28/07/2026", iso: "2026-07-28" }],
+    save: (p) => p.getByRole("button", { name: /^Confirm Filing \(/ }), write: /compliance\/calendar\/itr-1\/filed$/,
+  },
+  {
+    id: "itr-add-deadline", title: "Income Tax > ITR tracker: the due date of a new ITR deadline", open: openItrTracker("add"), cleared: "No due date yet — pick a client so the due date can be computed.",
+    fields: [{ box: (p) => p.locator("#itr-add-due-date"), label: "Due date", key: "due_date", full: "05/08/2026", iso: "2026-08-05" }],
+    save: (p) => p.getByRole("button", { name: "Add Deadline", exact: true }), write: /rest\/v1\/compliance_calendar/,
+  },
+  {
+    id: "gst-mark-filed", title: "GST > filing tracker: the date a return was filed (Mark as Filed)", open: openGstTracker("single"), cleared: "Filing date is required",
+    fields: [{ box: (p) => p.locator("#gst-filed-modal-date"), label: "Date of filing", key: "filed_date", full: "05/10/2026", iso: "2026-10-05" }],
+    save: (p) => p.getByRole("button", { name: "Confirm Filing", exact: true }), write: /compliance\/calendar\/gst-1\/filed$/,
+  },
+  {
+    id: "gst-batch-mark-filed", title: "GST > filing tracker: the one date a batch of returns was filed on", open: openGstTracker("batch"), heldWhileUnreadable: true, cleared: "held",
+    fields: [{ box: (p) => p.locator("#gst-batch-filed-date"), label: "Date of filing", key: "filed_date", full: "05/10/2026", iso: "2026-10-05" }],
+    save: (p) => p.getByRole("button", { name: /^Confirm \d+ Filings?$/ }), write: /compliance\/calendar\/gst-1\/filed$/,
+  },
+  {
+    id: "gst-add-filing", title: "GST > filing tracker: the due date of a new filing", open: openGstTracker("add"), cleared: "Due date: enter the date this return is due.",
+    fields: [{ box: (p) => p.locator("#gst-add-filing-due-date"), label: "Due date", key: "due_date", full: "05/11/2026", iso: "2026-11-05" }],
+    save: (p) => p.getByRole("button", { name: "Save Filing", exact: true }), write: /rest\/v1\/compliance_calendar/,
+  },
+  {
+    id: "gst-registration-add", title: "GST > Registrations: the date a registration took effect (Add a registration)", open: openGstRegistrations("add"),
+    fields: [{ box: (p) => p.locator("#gst-reg-registered-from"), label: "Registered from", key: "effective_from", full: "01/07/2017", iso: "2017-07-01" }],
+    save: (p) => p.getByRole("button", { name: "Add", exact: true }), write: /api\/client-gst-registrations$/,
+  },
+  {
+    id: "gst-registration-cancelled", title: "GST > Registrations: the date a registration was cancelled or surrendered", open: openGstRegistrations("close"), cleared: "Enter the date the registration was cancelled or surrendered.",
+    fields: [{ box: (p) => p.getByLabel(/was cancelled or surrendered/), label: "Date cancelled or surrendered", key: "effective_to", full: "31/03/2026", iso: "2026-03-31" }],
+    // the registration table's own Record: the turnover panel above it has a button of the same name
+    save: (p) => p.getByRole("table").getByRole("button", { name: "Record", exact: true }), write: /client-gst-registrations\/reg-2\/close$/,
+  },
+  {
     id: "apply-salary-structure", title: "Payroll > Inputs: the date a salary structure is applied from", open: openApplyStructure, heldWhileUnreadable: true,
     fields: [{ box: (p) => p.locator("#apply-structure-effective-from"), label: "Effective from", key: "effective_from", full: "01/10/2026", iso: "2026-10-01" }],
     save: (p) => p.getByRole("button", { name: "Preview", exact: true }), write: /salary-structures\/st-1\/apply$/,
@@ -1007,6 +1249,37 @@ async function driveEditor(env, spec) {
   }
   await stub.quiet();
   assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over an unreadable date SENT A WRITE`);
+
+  // 4b. A CLEARED box is not an unreadable one and reports no problem; what it does is the row's `cleared` sentence (or, `cleared: "held"`, a held
+  //     button) and sends nothing. A row whose date is optional leaves `cleared` out; the rows of earlier slices have not been given this step.
+  if (spec.cleared) {
+    await typeAndLeave(primary, "");
+    if (spec.cleared === "held") {
+      assert.equal(await spec.save(page).isDisabled(), true, `${spec.title}: the button was live over a cleared date`);
+    } else {
+      await spec.save(page).click();
+      await page.getByText(spec.cleared).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`${spec.title}: Save over a cleared date did not say "${spec.cleared}"`);
+      });
+    }
+    await stub.quiet();
+    assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over a cleared date SENT A WRITE`);
+  }
+
+  // 4c. A form with more than one date refuses an unreadable text in ANY of them, not only the first: each box has its own key and label.
+  if (spec.eachField) {
+    for (const field of spec.fields.slice(1)) {
+      await typeAndLeave(primary, "15/03/2026");
+      await typeAndLeave(field.box(page), "31/02/2026");
+      await spec.save(page).click();
+      await page.getByText(`${field.label}: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`${spec.title} / ${field.label}: Save over an unreadable date in this box did not say "${field.label}: ${FEB_SENTENCE}"`);
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title} / ${field.label}: Save over an unreadable date in this box SENT A WRITE`);
+      await typeAndLeave(field.box(page), "15/03/2026");
+    }
+  }
 
   // 5. The date typed in full is the ISO date the server receives.
   for (const field of spec.fields) await typeAndLeave(field.box(page), field.full);
@@ -1170,6 +1443,52 @@ export const scenarios = [
       }
     },
   },
+  // The fixed-asset register's "Reclassify as at" (accumulated amortisation moved to its own ledger). Its Prepare is a READ (the preview), and the
+  // post that follows sends the PREVIEW's own date, never the box, so the claims are about the preview request: not asked over a date that is not a
+  // date or over a blank one, and asked with the ISO date typed otherwise.
+  {
+    id: "amortisation-reclassification-as-at",
+    title: "Fixed assets > Reclassify as at: the preview is not asked for over a date that is not a date, and the ISO date is what it is asked for",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      const asked = [];
+      stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"], fixed_assets: ["read", "write"] } }) });
+      stub.route({ method: "GET", re: /amortisation-reclassification\/summary\?/, reply: () => ok({
+        unmoved: 1, moved: 0, unfinished: 0, excluded: 0, moved_assets: [], refusal: null, own_ledger: null }) });
+      stub.route({ method: "GET", re: /amortisation-reclassification\?/, reply: (_req, _body, url) => { asked.push(String(url?.search ?? url)); return ok({
+        as_at: "2026-09-30", ready: false, refusals: [], assets: [], excluded: [], reclassified: [], carried_over_candidates: [], entry_dates: [], later_dates: [],
+        financial_years: [], total_to_move_paise: 0, journals_to_post: 0, pointed_only_count: 0, moves_count: 0 }); } });
+      await page.goto(env.at("/fixed-assets/?tab=depreciation"), { waitUntil: "networkidle" });
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      const box = page.getByLabel("Reclassify as at");
+      await box.waitFor();
+      const prepare = page.getByRole("button", { name: "Prepare the reclassification", exact: true });
+      await typeAndLeave(box, "15/1");
+      assert.equal(await box.inputValue(), "15/01/2027", "15/1 in FY 2026-27 is 15 January 2027");
+      await typeAndLeave(box, "150326");
+      assert.equal(await box.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      await typeAndLeave(box, "31/02/2026");
+      assert.equal(await box.getAttribute("aria-invalid"), "true", "31/02/2026 is not marked invalid");
+      const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+      assert.ok(alerts.includes(FEB_SENTENCE), `the field's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+      await prepare.click();
+      await page.getByText(`As-at date: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`Prepare over an unreadable date did not say "As-at date: ${FEB_SENTENCE}"`);
+      });
+      await typeAndLeave(box, "");
+      await prepare.click();
+      await page.getByText("Say the date the reclassification is as at: a month end.").first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error("Prepare over a cleared date did not say its own sentence");
+      });
+      await stub.quiet();
+      assert.deepEqual(asked, [], "the preview was asked for over a date that is not a date");
+      await typeAndLeave(box, "30/09/2026");
+      await prepare.click();
+      await until(() => asked.length >= 1, "a preview asked for the date typed");
+      assert.match(asked.at(-1), /as_at=2026-09-30/, `the preview was asked for ${asked.at(-1)}`);
+    },
+  },
   // The interest panel's refusal of a CLEARED As at has a sentence of its own (the row above it types an impossible date, which takes the other
   // refusal): a cleared box reads as blank with no problem to report, so only the second line of prepare() stops it.
   {
@@ -1243,6 +1562,79 @@ export const scenarios = [
       assert.equal(stub.writesTo(c.write).length, 0, `${c.name} over a cleared date SENT A WRITE`);
     },
   })),
+  // The §234C(1) proviso's "Date the income arose" (advance-tax screen). It has no Save: the working is a stateless estimate the server is asked
+  // for a moment after the last keystroke, and the figure it returns is shown, never stored. So the claims are about that request: it is NOT
+  // asked over a date that is not a date (or a blank one), the date's own sentence is what the screen says instead, and over the date typed
+  // in full it is asked with the ISO date. The stub answers any date; the real engine refuses one outside the year the screen is on with a sentence
+  // (so the 15/03/2026 passed through on the way to the final date is answered OK here and is not asserted).
+  {
+    id: "unforeseen-income-date-arose",
+    title: "Advance tax > income that arose after an instalment: the estimate is not asked for over a date that is not a date, and the ISO date is what it is asked for",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "POST", re: /api\/income-tax\/advance-tax\/compute$/, reply: () => ok({
+        fy: "2026-27", estimated_tax_paise: 10000000, total_interest_paise: 0, section_ref: "Section 234C(1)(a)", is_presumptive_44ad_44ada: false,
+        basis: "stub", installments: [], unforeseen_income: [], caveats: [] }) });
+      await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      await page.getByPlaceholder("Enter tax amount").fill("100000");
+      await page.getByRole("button", { name: "Add an income", exact: true }).click();
+      await page.getByLabel("Tax on the income (₹)").fill("109375");
+      const box = page.getByLabel("Date the income arose");
+      await box.waitFor();
+      await typeAndLeave(box, "15/1");
+      assert.equal(await box.inputValue(), "15/01/2027", "15/1 in FY 2026-27 is 15 January 2027");
+      await typeAndLeave(box, "150326");
+      assert.equal(await box.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      assert.notEqual(await box.getAttribute("aria-invalid"), "true", "a readable date is marked invalid");
+      await typeAndLeave(box, "31/02/2026");
+      assert.equal(await box.getAttribute("aria-invalid"), "true", "31/02/2026 is not marked invalid");
+      const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+      assert.ok(alerts.includes(FEB_SENTENCE), `the field's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+      // The estimate is asked for a moment after the last keystroke: give any request already on its way time to arrive, then count.
+      await stub.quiet();
+      const before = stub.writesTo(/advance-tax\/compute$/).length;
+      await typeAndLeave(box, "31/02/2026");
+      await page.getByText(`Date the income arose: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`the working over an unreadable date did not say "Date the income arose: ${FEB_SENTENCE}"`);
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/advance-tax\/compute$/).length, before, "the estimate was asked for over a date that is not a date");
+      await typeAndLeave(box, "");
+      await page.getByText("Every income needs the date it arose.").first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error("a cleared date did not say \"Every income needs the date it arose.\"");
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/advance-tax\/compute$/).length, before, "the estimate was asked for over a cleared date");
+      await typeAndLeave(box, "12/09/2026");
+      await until(() => stub.writesTo(/advance-tax\/compute$/).some((w) => {
+        try { return JSON.parse(w.body).unforeseen_income?.[0]?.arose_on === "2026-09-12"; } catch { return false; }
+      }), "an estimate asked for with the date typed in full");
+      const last = JSON.parse(stub.writesTo(/advance-tax\/compute$/).at(-1).body);
+      assert.equal(last.unforeseen_income[0].arose_on, "2026-09-12", `arose_on was ${JSON.stringify(last.unforeseen_income[0].arose_on)}`);
+      assert.equal(last.unforeseen_income[0].tax_paise, 10937500, `tax_paise was ${JSON.stringify(last.unforeseen_income[0].tax_paise)}`);
+    },
+  },
+  // The Add ITR Deadline prompt kept its refusal through Cancel, so it opened again showing the last sentence over a box that no longer held it.
+  {
+    id: "itr-add-deadline-a-refusal-does-not-outlive-the-prompt",
+    title: "Income Tax > Add ITR Deadline: a refusal said in the prompt is gone when the prompt is opened again",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      await openItrTracker("add")(env);
+      await typeAndLeave(page.locator("#itr-add-due-date"), "31/02/2026");
+      await page.getByRole("button", { name: "Add Deadline", exact: true }).click();
+      await page.getByText(`Due date: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`Add Deadline over an unreadable date did not say "Due date: ${FEB_SENTENCE}"`);
+      });
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.getByRole("button", { name: /Add ITR Deadline/ }).first().click();
+      await page.locator("#itr-add-due-date").waitFor();
+      assert.equal(await page.getByText(`Due date: ${FEB_SENTENCE}`).count(), 0, "the prompt opened again with the last refusal still on it");
+    },
+  },
   // A screen that is about ONE financial year says so to its date boxes. Every row above leaves the screen on the current year, where
   // "the year of today" and "the year of the screen" are the same year and a box that forgot to be told would still pass.
   {

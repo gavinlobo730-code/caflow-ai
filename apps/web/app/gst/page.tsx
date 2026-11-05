@@ -198,6 +198,12 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
       setErr("Please fill all required fields.");
       return;
     }
+    // The due date is filled from the engine and is editable, and it is empty when the box was cleared or the lookup failed (the screen says so
+    // beside it). The column is NOT NULL, so a blank went out as a write the database refused in its own words.
+    if (!dueDate) {
+      setErr("Due date: enter the date this return is due.");
+      return;
+    }
     setSaving(true);
     setErr(null);
     try {
