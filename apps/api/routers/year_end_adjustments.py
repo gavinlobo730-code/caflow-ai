@@ -15,9 +15,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from models.common import api_response
+from models.iso_date import a_real_date
 from core.permissions import rbac
 from core.authz import can_access_client
 from services.audit_service import log_event
@@ -106,6 +107,13 @@ class AdjustmentCreateIn(BaseModel):
     adjustment_date: str          # ISO date string YYYY-MM-DD
     reference_no: Optional[str] = None
 
+    # The date reaches a DATE column inside the insert and is the entry date of the journal a posting writes: text that is not a date was a 500
+    # (SQLSTATE 22007/22008, which the unhandled-failure speaker does not map), for a caller that is not the screen.
+    @field_validator("adjustment_date")
+    @classmethod
+    def _date_is_a_date(cls, v: str) -> str:
+        return a_real_date(v, "adjustment_date")
+
 
 class AdjustmentUpdateIn(BaseModel):
     description: Optional[str] = None
@@ -114,6 +122,12 @@ class AdjustmentUpdateIn(BaseModel):
     credit_account_id: Optional[str] = None
     adjustment_date: Optional[str] = None
     reference_no: Optional[str] = None
+
+    @field_validator("adjustment_date")
+    @classmethod
+    def _date_is_a_date(cls, v: Optional[str]) -> Optional[str]:
+        # Omitted means unchanged; a date that is sent must be one (a blank cannot clear the date of an entry).
+        return None if v is None else a_real_date(v, "adjustment_date")
 
 
 class AdjustmentRejectIn(BaseModel):

@@ -9,7 +9,6 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useEngagementFinancialYear } from "../_engagementYear";
 
-import { todayLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -327,13 +326,14 @@ function AdjustmentForm({
   onSaved: (adj: Adjustment) => void;
   onCancel: () => void;
 }) {
-  const today = todayLocalISO();
   const [type, setType] = useState<AdjustmentType>("accrual");
   const [description, setDescription] = useState("");
   const [debitAccount, setDebitAccount] = useState("");
   const [creditAccount, setCreditAccount] = useState("");
   const [amountStr, setAmountStr] = useState("");
-  const [adjDate, setAdjDate] = useState(today);
+  // Starts EMPTY and is typed. It used to start as today, and a year-end engagement is worked AFTER its year has closed, so the date offered was
+  // in the next year's books: an adjusting entry saved without a second look would post into the wrong year.
+  const [adjDate, setAdjDate] = useState("");
   // The date the adjusting entry is posted at: text that is not a date read as blank and said "Date is required" about a box that held
   // one; it is refused in the date's own sentence instead (frontend_ux-19).
   const dates = useDateProblems();

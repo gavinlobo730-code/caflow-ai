@@ -88,12 +88,14 @@ test("the screen asks for the date, starts it blank, and cannot confirm without 
   assert.match(src, /markTDSFiled\(returnId, prn, ackNumber, filingDate\)/);
 });
 
-test("the date is cleared when the client changes, so one client's date is not carried to another's statement", () => {
+test("the date is cleared when the client, the form, the year or the quarter changes, so one statement's date is not carried to another", () => {
   const src = code(PAGE);
-  const reset = /useEffect\(\(\) => \{([\s\S]*?)\}, \[clientId\]\)/.exec(src);
-  assert.ok(reset, "the client-change reset is gone");
-  for (const cleared of ['setPrn("")', 'setAckNumber("")', 'setFilingDate("")', "setFiledError(null)", "setCalendarNote(null)"]) {
-    assert.ok(reset[1].includes(cleared), `the client change does not clear ${cleared}`);
+  // A computed statement belongs to the client, the form, the year and the quarter it was computed for: a changed selector left a 26Q statement
+  // approved and ready to be marked filed under a "Mark 24Q as Filed" heading (the twelfth slice of the browser drive, PRE-A-015).
+  const reset = /useEffect\(\(\) => \{([\s\S]*?)\}, \[clientId, returnType, financialYear, quarter\]\)/.exec(src);
+  assert.ok(reset, "the reset on a changed client, form, year or quarter is gone");
+  for (const cleared of ["setResult(null)", "setReturnId(null)", 'setPrn("")', 'setAckNumber("")', 'setFilingDate("")', "setFiledError(null)", "setCalendarNote(null)"]) {
+    assert.ok(reset[1].includes(cleared), `the change does not clear ${cleared}`);
   }
 });
 
@@ -125,9 +127,12 @@ test("a refusal of the dialog is shown IN the dialog, because the page's callout
   assert.match(src, /\{filedError && <Callout tone="problem">\{filedError\}<\/Callout>\}/, "the dialog never shows its error");
 });
 
-test("the date box carries today as its upper bound, as a hint and never as a value", () => {
+test("the date box is bounded by today in IST, refuses a date after it in a sentence and never fills it in as a value", () => {
   const src = code(PAGE);
-  assert.match(src, /<DateInput id="tds-filing-date"[^>]*max=\{todayIstISO\(\)\}/);
+  // `notAfter` reads a short form (15/1) in the past and gives the box's own sentence for a date typed in full after today; `afterMax` makes that a refusal
+  // before anything is sent, because the server's words for a future date name a column ("filing_date cannot be in the future").
+  assert.match(src, /<DateInput id="tds-filing-date"[^>]*notAfter=\{todayIstISO\(\)\}[^>]*\{ afterMax: true \}/);
+  assert.doesNotMatch(src, /<DateInput id="tds-filing-date"[^>]*\smax=/, "a bare max is only a hint, and a date after today reached the server");
 });
 
 test("the server's sentence about the calendar is read through the one helper and shown, and the page decides nothing about the state", () => {

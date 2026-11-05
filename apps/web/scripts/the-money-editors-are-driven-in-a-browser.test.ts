@@ -348,6 +348,13 @@ const DRIVEN: Record<string, string[]> = {
   "app/accounting/recurring/page.tsx": ["#rj-start", "#rj-end"],
   "app/accounting/trial-balance-import/page.tsx": ["#tb-opening-date"],
   "app/clients/[id]/purchases/page.tsx": ["#vendor-payment-date"],
+  // The twelfth slice (5-11-2026): the filing prompts that record a return as filed and lock its period, the loan-claim date and a year-end adjustment.
+  "app/gst/gstr1/page.tsx": ["#gstr1-filed-date"],
+  "app/gst/gstr3b/page.tsx": ["#gstr3b-filed-date"],
+  "app/clients/[id]/compliance/gst/page.tsx": ["#gst-mark-filed-date", "#gstr3b-compute-filed-on"],
+  "app/tds/returns/page.tsx": ["#tds-filing-date"],
+  "app/clients/[id]/tax/computation/page.tsx": ["#computation-loan-sanctioned-on"],
+  "app/clients/[id]/year-end/[engagementId]/adjustments/_page.tsx": ["[Adjustment date]"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
