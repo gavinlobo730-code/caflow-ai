@@ -35,7 +35,7 @@ import { api, type PTSlabRow } from "@/lib/api/index";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { TableSkeleton } from "@/components/ui/skeleton";
-import { MONTH_ABBREVIATIONS as MONTHS, formatDate } from "@/lib/dates/format";
+import { MONTH_ABBREVIATIONS as MONTHS, formatDate, todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
@@ -51,6 +51,12 @@ type BandDraft = { from: string; to: string; amount: string };
 
 const EMPTY_BAND: BandDraft = { from: "", to: "", amount: "" };
 
+/** What a notification must name, said when one of its three boxes is empty. */
+const REQUIRED_SENTENCE =
+  "The notification reference, its date and the effective-from date are all "
+  + "required — a recorded figure that names no source is exactly what this "
+  + "screen exists to replace.";
+
 export default function StatutoryValuesPage() {
   const [rows, setRows] = useState<PTSlabRow[]>([]);
   const [levying, setLevying] = useState<Record<string, string>>({});
@@ -61,6 +67,10 @@ export default function StatutoryValuesPage() {
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Why the last Record was refused. The form is a full-screen overlay and the page's message line (`msg`) is drawn BEHIND it, so every sentence Record had (a state code
+  // that is not two letters, the required fields, a band amount with a comma, the server's refusal of a set with a hole in it) went where the person could not see it and
+  // pressing Record over a gap looked like a button that did nothing (PRE-A-015). They are said inside the form now, which stays open with what was typed.
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [state, setState] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState("");
@@ -69,8 +79,10 @@ export default function StatutoryValuesPage() {
   // The effective-from date decides which payslips a recorded slab applies to, and the notification date is the source it names: text that
   // is not a date read as blank and the screen said they were "required" about boxes that held one (frontend_ux-19).
   const dates = useDateProblems();
-  // The form is a full-screen overlay, so the page's message line is behind it: the date's sentence is shown inside it once a save has been tried.
-  const refusal = useDateRefusal(dates.first);
+  // The form is a full-screen overlay, so the page's message line is behind it: the date's sentence is shown inside it once a save has been tried. The sentence for a notification
+  // that names no source or no date is DERIVED from the three boxes, so it goes the moment they are filled (it was a copy in the form's error that stayed after the fix).
+  const missing = !reference.trim() || !notifiedOn || !effectiveFrom ? REQUIRED_SENTENCE : null;
+  const refusal = useDateRefusal(dates.first ?? missing);
   const [basis, setBasis] = useState("monthly");
   const [months, setMonths] = useState<number[]>([]);
   const [bands, setBands] = useState<BandDraft[]>([{ ...EMPTY_BAND, from: "0" }]);
@@ -109,23 +121,18 @@ export default function StatutoryValuesPage() {
     setState(""); setEffectiveFrom(""); setReference(""); setNotifiedOn("");
     setBasis("monthly"); setMonths([]); setNote("");
     setBands([{ ...EMPTY_BAND, from: "0" }]);
+    setFormError(null);
   }
 
   async function save() {
+    setFormError(null);
     const code = state.trim().toUpperCase();
     if (!/^[A-Z]{2}$/.test(code)) {
-      setMsg({ type: "err", text: 'State must be the two-letter code, e.g. "GJ".' });
+      setFormError('State must be the two-letter code, e.g. "GJ".');
       return;
     }
-    if (dates.first) {
+    if (dates.first ?? missing) {
       refusal.refuse();
-      return;
-    }
-    if (!reference.trim() || !notifiedOn || !effectiveFrom) {
-      setMsg({ type: "err", text:
-        "The notification reference, its date and the effective-from date are all "
-        + "required — a recorded figure that names no source is exactly what this "
-        + "screen exists to replace." });
       return;
     }
 
@@ -139,8 +146,7 @@ export default function StatutoryValuesPage() {
       const amount = paiseFromRupeeInput(band.amount);
       const to = band.to.trim() === "" ? null : paiseFromRupeeInput(band.to);
       if (from === null || amount === null || (band.to.trim() !== "" && to === null)) {
-        setMsg({ type: "err", text:
-          `Band ${i + 1}: the amounts must be plain figures in rupees, without commas.` });
+        setFormError(`Band ${i + 1}: the amounts must be plain figures in rupees, without commas.`);
         return;
       }
       parsed.push({ from_paise: from, to_paise: to, amount_paise: amount });
@@ -162,7 +168,7 @@ export default function StatutoryValuesPage() {
       if (body?.success === false) {
         // The server's sentence says WHICH rule the set broke. A generic
         // "couldn't save" would throw away the only useful part.
-        setMsg({ type: "err", text: body.error || body.detail || "The set was refused." });
+        setFormError(body.error || body.detail || "The set was refused.");
         return;
       }
       setMsg({ type: "ok", text: `Recorded ${parsed.length} band(s) for ${code}.` });
@@ -170,7 +176,7 @@ export default function StatutoryValuesPage() {
       reset();
       await load();
     } catch (e) {
-      setMsg({ type: "err", text: e instanceof Error ? e.message : "The request failed." });
+      setFormError(e instanceof Error ? e.message : "The request failed.");
     } finally {
       setSaving(false);
     }
@@ -230,7 +236,7 @@ export default function StatutoryValuesPage() {
           }
           actions={
             <button
-              onClick={() => { reset(); refusal.clear(); setShowForm(true); }}
+              onClick={() => { if (showForm) return; reset(); refusal.clear(); setShowForm(true); }}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               <Plus size={15} />Record a notification
@@ -362,7 +368,7 @@ export default function StatutoryValuesPage() {
             <div className="bg-white rounded-xl w-full max-w-2xl my-8">
               <div className="px-5 py-4 flex items-center justify-between border-b border-ps-border">
                 <h2 className="text-sm font-semibold text-ps-ink">Record a notification</h2>
-                <button onClick={() => setShowForm(false)} className="text-ps-hint hover:text-ps-ink">
+                <button onClick={() => setShowForm(false)} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50">
                   <X size={16} />
                 </button>
               </div>
@@ -379,8 +385,9 @@ export default function StatutoryValuesPage() {
                   <Field label="Notification reference" value={reference} onChange={setReference} placeholder="PFT-2026/CR-12/Taxation-3" />
                   <div>
                     <label htmlFor="sv-notified-on" className="block text-2xs text-ps-label mb-1">Notification date</label>
-                    <DateInput id="sv-notified-on" value={notifiedOn} onChange={setNotifiedOn}
-                      onStateChange={dates.watch("notified", "Notification date")}
+                    {/* A notification the CA has read has been issued: its date cannot be after today. The day it TAKES EFFECT (above) can be ahead. */}
+                    <DateInput id="sv-notified-on" value={notifiedOn} onChange={setNotifiedOn} notAfter={todayIstISO()}
+                      onStateChange={dates.watch("notified", "Notification date", { afterMax: true })}
                       className="w-full border border-ps-border rounded-lg px-2.5 py-1.5 text-xs text-ps-ink outline-none focus:border-brand" />
                   </div>
                 </div>
@@ -444,14 +451,14 @@ export default function StatutoryValuesPage() {
                 </div>
 
                 <Field label="Note (optional)" value={note} onChange={setNote} placeholder="Anything the next reviewer should know" />
-                {refusal.shown && (
-                  <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>
+                {(refusal.shown ?? formError) && (
+                  <p role="alert" className="text-xs text-state-problem">{refusal.shown ?? formError}</p>
                 )}
               </div>
 
               <div className="px-5 py-4 flex items-center justify-end gap-2 border-t border-ps-border">
-                <button onClick={() => setShowForm(false)}
-                  className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg">Cancel</button>
+                <button onClick={() => setShowForm(false)} disabled={saving}
+                  className="px-4 py-1.5 text-sm text-ps-label hover:bg-ps-bg rounded-lg disabled:opacity-50">Cancel</button>
                 <button onClick={save} disabled={actionInFlight}
                   className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
                   {saving ? "Saving…" : "Record"}

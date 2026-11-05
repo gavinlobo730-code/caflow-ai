@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -32,7 +32,8 @@ import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { errorMessage } from "@/lib/api/index";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -49,14 +50,9 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = await res.json() as { error?: string; detail?: string };
-      detail = body.error ?? body.detail ?? detail;
-    } catch { /* not JSON */ }
-    throw new Error(detail);
-  }
+  // The sentence out of a refusal, through the one helper every screen that calls `fetch` itself is meant to use: a validation error's `detail` is a LIST of
+  // {loc, msg} and this page's own reading of it put "[object Object]" in front of the person.
+  if (!res.ok) throw new Error(await errorMessage(res));
   return res.json();
 }
 
@@ -222,9 +218,22 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
   // Both dates are optional, and a letter with no expiry date stays open for signing for ever: text that is not a date read as blank, so a
   // letter meant to lapse on a date was created with no expiry and nothing said (frontend_ux-19).
   const dates = useDateProblems();
+  // A letter that lapses before it starts is nonsense; the Expiry box hints at it (`notBefore`) and the form used to send it. The sentence is DERIVED from the two boxes, so it is
+  // true only while they are out of order: it is said once a Create has been tried and withdrawn the moment the dates are right, as a date's own sentence is (it was a copy in
+  // the form's error that stayed after the fix). ISO dates compare as text.
+  const orderProblem = form.start_date && form.expiry_date && form.expiry_date < form.start_date ? "Expiry date: it cannot be before the start date." : null;
+  const refusal = useDateRefusal(dates.first ?? orderProblem);
+  const clearRefusal = refusal.clear;
+  const sentence = refusal.shown ?? err;
+  // The card scrolls when the window is short, and the sentence is at its top while the button that raised it is at the bottom: bring it into view.
+  const sentenceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (sentence) sentenceRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [sentence]);
 
   useEffect(() => {
     if (open) {
+      clearRefusal();
       setForm({
         title: "",
         template_id: "",
@@ -238,7 +247,7 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
       });
       setErr(null);
     }
-  }, [open, initialName, initialFeePaise, initialEmail]);
+  }, [open, initialName, initialFeePaise, initialEmail, clearRefusal]);
 
   // Escape closes the dialog, matching the shared Modal (components/ui/modal.tsx)
   // — guarded on `open` and on `saving` so a create in flight can't be
@@ -254,7 +263,8 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (dates.first) { setErr(dates.first); return; }
+    setErr(null);
+    if (dates.first ?? orderProblem) { refusal.refuse(); return; }
     const feePaise = rupeesToPaise(form.fee_rupees);
     if (feePaise === null) {
       setErr("Fee isn't an amount — enter rupees, like 25000 or 25000.50.");
@@ -295,12 +305,12 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
           <h2 className="text-base font-semibold text-ps-ink">New Engagement Letter</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
+          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
             <X size={18} />
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {err && <Callout tone="problem">{err}</Callout>}
+          {sentence && <div ref={sentenceRef}><Callout tone="problem">{sentence}</Callout></div>}
 
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Title *</label>
@@ -392,7 +402,8 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+              disabled={saving}
+              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors disabled:opacity-50"
             >
               Cancel
             </button>

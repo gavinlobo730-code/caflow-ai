@@ -100,3 +100,16 @@ def test_the_404_the_client_forms_are_refused_with_is_what_the_client_scope_chec
     import inspect
     from core.authz import assert_client_access
     assert inspect.signature(assert_client_access).parameters["detail"].default == _literal("CLIENT_NOT_FOUND_SENTENCE")
+
+
+def test_the_statutory_values_door_says_a_hole_in_the_bands_in_the_drives_words():
+    """The statutory values screen shows the door's refusal of a slab set that does not start at zero (an HTTP 422 whose detail is this sentence) inside its dialog."""
+    from fastapi import HTTPException
+    from models.payroll import PTSlabSetIn
+    from routers.payroll import put_pt_slabs
+    body = PTSlabSetIn(state="GJ", effective_from="2027-04-01", notification_reference="PFT/1", notification_date="2026-03-10",
+                       bands=[{"from_paise": 10000, "to_paise": None, "amount_paise": 20000}])
+    with pytest.raises(HTTPException) as caught:
+        put_pt_slabs(body, {"firm_id": "F1", "role": "Partner", "id": "u1"})
+    assert caught.value.status_code == 422
+    assert caught.value.detail == _literal("PT_UNCOVERED_SENTENCE")
