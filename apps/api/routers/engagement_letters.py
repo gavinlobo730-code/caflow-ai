@@ -15,7 +15,7 @@ CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT any letter without explicit CA approva
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from datetime import datetime, timezone, date
 import logging
@@ -24,6 +24,7 @@ import secrets
 import uuid
 
 from models.common import api_response
+from models.iso_date import a_real_date
 from core.permissions import rbac
 from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
@@ -346,6 +347,15 @@ class TemplateUpdate(BaseModel):
     is_default: Optional[bool] = None
 
 
+# A letter that lapses before it starts is nonsense. One sentence for the two models and the PATCH route, which judges the dates a letter WOULD hold.
+_LAPSE_SENTENCE = "The expiry date cannot be before the start date."
+
+
+def _lapses_before_it_starts(start: Optional[str], expiry: Optional[str]) -> bool:
+    """True when both days are known and the expiry is before the start (both are canonical YYYY-MM-DD, which compare as text). The same day is allowed."""
+    return bool(start and expiry and expiry < start)
+
+
 class EngagementIn(BaseModel):
     title: str
     template_id: Optional[str] = None
@@ -358,6 +368,19 @@ class EngagementIn(BaseModel):
     recipient_email: Optional[str] = None
     notes: Optional[str] = None
 
+    @field_validator("start_date", "expiry_date")
+    @classmethod
+    def _optional_days(cls, v, info):
+        """Both dates are optional and, when given, real days (`models/iso_date.a_real_date`): they went to a DATE column as typed, and a caller that is not the screen
+        got the database's words in a 422 (PRE-A-015, fifteenth slice). A blank one is the same as absent."""
+        return None if v is None or str(v).strip() == "" else a_real_date(v, info.field_name)
+
+    @model_validator(mode="after")
+    def _a_letter_does_not_lapse_before_it_starts(self):
+        if _lapses_before_it_starts(self.start_date, self.expiry_date):
+            raise ValueError(_LAPSE_SENTENCE)
+        return self
+
 
 class EngagementUpdate(BaseModel):
     title: Optional[str] = None
@@ -366,6 +389,20 @@ class EngagementUpdate(BaseModel):
     expiry_date: Optional[str] = None
     recipient_name: Optional[str] = None
     recipient_email: Optional[str] = None
+
+    @field_validator("start_date", "expiry_date")
+    @classmethod
+    def _days_when_sent(cls, v, info):
+        # A PATCH body the route reads without the fields that were not sent (`if v is not None`): a blank date read as absent would be dropped and reported as a success,
+        # so it is refused in a sentence, and an omitted one stays omitted.
+        return None if v is None else a_real_date(v, info.field_name)
+
+    @model_validator(mode="after")
+    def _a_letter_does_not_lapse_before_it_starts(self):
+        # Only what was sent is seen here; a PATCH that sends one date is compared with the stored other by the route.
+        if _lapses_before_it_starts(self.start_date, self.expiry_date):
+            raise ValueError(_LAPSE_SENTENCE)
+        return self
 
 
 class SendIn(BaseModel):
@@ -1292,6 +1329,8 @@ def update_engagement(
             raise HTTPException(status_code=422, detail="fee_amount_paise must be non-negative")
 
     updates["updated_at"] = now
+    # The order of the two dates is judged on what the letter WOULD hold: the model sees only what was sent, so a PATCH of one date is compared with the stored other.
+    touches_dates = "start_date" in updates or "expiry_date" in updates
 
     if not db:
         eng = next(
@@ -1304,6 +1343,8 @@ def update_engagement(
         if eng["status"] != "Draft":
             raise HTTPException(status_code=409,
                                 detail=f"Cannot update engagement in '{eng['status']}' status. Only Draft engagements can be updated.")
+        if touches_dates and _lapses_before_it_starts(updates.get("start_date", eng.get("start_date")), updates.get("expiry_date", eng.get("expiry_date"))):
+            raise HTTPException(status_code=422, detail=_LAPSE_SENTENCE)
         old_data = {k: eng.get(k) for k in updates}
         eng.update(updates)
         _log_engagement_event(db, engagement_id, firm_id, "updated",
@@ -1313,7 +1354,7 @@ def update_engagement(
     try:
         existing_res = (
             db.table("engagements")
-            .select("status")
+            .select("status, start_date, expiry_date")
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
             .single()
@@ -1328,6 +1369,8 @@ def update_engagement(
     if existing["status"] != "Draft":
         raise HTTPException(status_code=409,
                             detail=f"Cannot update engagement in '{existing['status']}' status. Only Draft engagements can be updated.")
+    if touches_dates and _lapses_before_it_starts(updates.get("start_date", existing.get("start_date")), updates.get("expiry_date", existing.get("expiry_date"))):
+        raise HTTPException(status_code=422, detail=_LAPSE_SENTENCE)
 
     try:
         res = (

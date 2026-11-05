@@ -695,6 +695,90 @@ async function openClientTdsChallan(env) {
   await page.getByLabel("FY (e.g. 2025-26)", { exact: true }).fill("2026-27");
 }
 
+/** Settings > Statutory values, "Record a notification" open on a state, a reference and one band's tax: only the two dates are left. The write is answered with the state, the day and the
+ *  number of bands, as the real route answers it; the list the page reads again afterwards is a stub that always says no set is recorded (the real list would show the set stored). */
+async function openStatutoryValues(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write"], settings: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/payroll\/statutory-values$/, reply: () => ok({
+    pt_slabs: [], pt_levying_states: { GJ: "Gujarat", KL: "Kerala" }, pt_modelled_states: [], pt_recorded_states: [], pt_conflicts: [] }) });
+  stub.route({ method: "PUT", re: /api\/payroll\/statutory-values\/pt$/, reply: (_req, raw) => { const b = JSON.parse(raw); return ok({ state: b.state, effective_from: b.effective_from, bands: b.bands.length }); } });
+  await page.goto(`${env.base}/settings/statutory-values/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record a notification" }).click();
+  await page.getByLabel("State code", { exact: true }).fill("GJ");
+  await page.getByLabel("Notification reference", { exact: true }).fill("PFT/2026/12");
+  await page.getByLabel("Band 1: tax (₹)", { exact: true }).fill("200");
+}
+
+/** The "New Engagement Letter" dialog (the page's column chooser also has a "Title" box, so every locator is scoped to the dialog). */
+const engagementDialog = (page) => page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "New Engagement Letter" }) });
+
+/** Engagements with "New Engagement" open on a title: only the two dates (both optional) are left. */
+async function openNewEngagementLetter(env) {
+  const { page, stub } = env;
+  const made = [];
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { engagements: ["read", "write"], billing: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/engagement-letters$/, reply: () => ok({ engagements: made }) });
+  stub.route({ method: "GET", re: /api\/engagement-letters\/templates$/, reply: () => ok({ templates: [] }) });
+  stub.route({ method: "POST", re: /api\/engagement-letters$/, reply: (_req, raw) => {
+    const b = JSON.parse(raw);
+    const row = { id: "en-1", engagement_number: "ENG-0001", title: b.title, status: "Draft", fee_amount_paise: b.fee_amount_paise ?? 0, recipient_name: b.recipient_name, recipient_email: b.recipient_email,
+      lead_id: null, client_id: null, template_id: b.template_id, content: "", start_date: b.start_date, expiry_date: b.expiry_date, sent_at: null, last_sent_at: null, resend_count: 0,
+      signed_at: null, signed_by_name: null, rejected_at: null, rejection_notes: null, sign_token: null, created_at: "2026-10-08T05:00:00Z" };
+    made.push(row);
+    return ok({ engagement: row });
+  } });
+  await page.goto(`${env.base}/engagements/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New Engagement" }).first().click();
+  await engagementDialog(page).waitFor();
+  await engagementDialog(page).getByLabel("Title", { exact: true }).fill("GST Compliance — FY 2026-27");
+}
+
+/** The "Record a notification" overlay on the statutory values screen. */
+const statutoryDialog = (page) => page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "Record a notification" }) });
+/** The New lot dialog on the stock locations block. */
+const lotDialog = (page) => page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "New lot" }) });
+/** The Move stock panel, and its date box found by the caption above it (a span reading "Date"; the label's own text also holds the box's sentence once the text is unreadable): the
+ *  previous product left that box unnamed, and a scenario that needs the name would fail there on the name and not on the behaviour it is about. The name is held by the table row
+ *  `stock-transfer-date`. */
+const transferPanel = (page) => page.locator("div.rounded-xl.overflow-hidden").filter({ has: page.getByRole("heading", { name: /Move stock between godowns/ }) }).last();
+const transferDateBox = (page) => transferPanel(page).locator("label").filter({ has: page.locator("span").filter({ hasText: /^Date$/ }) }).locator("input").first();
+
+/** The inventory page's stock-locations block with two godowns and one item held in the first. `how` is "transfer" (the Move stock panel, with the item and a quantity typed)
+ *  or "lot" (the New lot dialog, with the item and a lot number typed). The stub is LIGHTER than the real routes (routers/inventory.py): the reads leave out default_godown_id, kind,
+ *  as_of, total_value_paise, same_registration and gaps, the transfer and lot writes answer {id} and not the real body, and the routes' own refusals (for example "Only X is held…") are not driven. */
+function openStockLocations(how) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { inventory: ["read", "write"], accounting: ["read", "write"] } }) });
+    stub.route({ method: "GET", re: /api\/inventory\/items\?/, reply: () => ok([{
+      id: "sc1", name: "Copier paper", description: null, hsn_sac: "4802", unit: "NOS", is_active: true, stock_qty_units: 40, avg_cost_paise: 25000, stock_value_paise: 1000000 }]) });
+    stub.route({ method: "GET", re: /api\/inventory\/godowns\?/, reply: () => ok({ unallocated_means: "Stock not yet placed in a godown.", godowns: [
+      { id: "g1", name: "Main godown", code: "MAIN", state_code: "27", gstin: null, is_default: true, is_active: true },
+      { id: "g2", name: "Pune godown", code: "PUN", state_code: "27", gstin: null, is_default: false, is_active: true }] }) });
+    stub.route({ method: "GET", re: /api\/inventory\/position-detail\?/, reply: () => ok({ rows: [{
+      service_catalogue_id: "sc1", item_name: "Copier paper", unit: "NOS", godown_id: "g1", godown_name: "Main godown", batch_id: null, batch_no: null, expiry_date: null, qty_units: "40", value_paise: 1000000 }] }) });
+    stub.route({ method: "GET", re: /api\/inventory\/expiry\?/, reply: () => ok({ bucket_order: [], bucket_labels: {}, buckets: {}, rows: [], notes: [] }) });
+    stub.route({ method: "GET", re: /api\/inventory\/batches\?/, reply: () => ok([]) });
+    stub.route({ method: "GET", re: /api\/inventory\/transfer-preview\?/, reply: () => ok({ is_supply: false, reason: "Both godowns are in the same state, so this is not a supply." }) });
+    stub.route({ method: "POST", re: /api\/inventory\/transfer$/, reply: () => ok({ id: "tr-1" }) });
+    stub.route({ method: "POST", re: /api\/inventory\/batches$/, reply: () => ok({ id: "b-1" }) });
+    await page.goto(env.at("/inventory/"), { waitUntil: "networkidle" });
+    if (how === "transfer") {
+      const panel = transferPanel(page);
+      await panel.waitFor();
+      await panel.locator("select").nth(2).selectOption("sc1");
+      await panel.locator("input[inputmode=decimal]").fill("5");
+      return;
+    }
+    await page.getByRole("button", { name: /Add lot/ }).first().click();
+    const dialog = lotDialog(page);
+    await dialog.waitFor();
+    await dialog.locator("select").selectOption("sc1");
+    await dialog.getByPlaceholder("As printed on the carton").fill("L-2026-001");
+  };
+}
+
 /** A client's GST > Registrations tab with the primary registration and one other listed: `how` is "add" (the Add a registration prompt, with a GSTIN typed) or "close" (the Cancelled… date box on the other registration). */
 function openGstRegistrations(how) {
   return async (env) => {
@@ -907,12 +991,25 @@ const MCA_BEFORE_YEAR_SENTENCE = "An AOC-4 for FY 2025-26 cannot have been filed
 const MCA_COULD_NOT_SENTENCE = "Unable to complete MCA operation. Please try again.";
 /** What `assert_client_access` raises (HTTP 404, core/authz.py) for a client the caller is not assigned to; the create doors of the client MCA and TDS tabs re-raise it. */
 const CLIENT_NOT_FOUND_SENTENCE = "Not found";
+/** What the statutory-values door says for a slab set with a hole in it (routers/payroll.py `put_pt_slabs`): an HTTP 422 whose detail is this sentence. */
+const PT_UNCOVERED_SENTENCE = "These slabs do not cover every wage. They must start at 0, each band's upper bound must be the next band's lower bound, and the highest band must be left open ('and above'). A wage falling in a hole would come out as nil, which is indistinguishable from a state saying nothing is due.";
+/** What the statutory-values screen says itself, before anything is sent. */
+const PT_STATE_CODE_SENTENCE = 'State must be the two-letter code, e.g. "GJ".';
+const PT_BAND_COMMA_SENTENCE = "Band 1: the amounts must be plain figures in rupees, without commas.";
 /** What the MCA door says for the one refusal a CA meets in the ordinary course, adding a director twice (routers/mca_workspace.py `create_director`, migration 038's UNIQUE (client_id, din)): an HTTP 200 with success:false. */
 const MCA_DUPLICATE_DIN_SENTENCE = "This DIN is already recorded for this client.";
 /** What the TDS door says for a failure nobody anticipated, here the challan (routers/tds_workspace.py `_could_not`): an HTTP 200 with success:false. */
 const TDS_COULD_NOT_CHALLAN_SENTENCE = "Could not record the TDS challan. The cause has been logged; please try again, and report it if it keeps failing.";
 /** What a box that refuses a date after today says about 15 October 2026 at the pinned clock (8 October 2026). */
 const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after 08 Oct 2026.";
+/** What the statutory-values screen says, derived from its boxes, when a notification names no source or one of its two days (the start of the sentence is enough to find it). */
+const STATUTORY_REQUIRED_SENTENCE = "The notification reference, its date and the effective-from date are all required";
+/** What the new-letter modal says while its Expiry box is before its Start box. */
+const ENGAGEMENT_ORDER_SENTENCE = "Expiry date: it cannot be before the start date.";
+/** What the lot dialog says while its Expires box is before its Manufactured box. */
+const LOT_ORDER_SENTENCE = "Expires: it cannot be before the manufacture date.";
+/** What the Move stock panel says of a quantity the server could not read. */
+const TRANSFER_QUANTITY_SENTENCE = "Quantity: enter a number, like 5 or 12.5 (up to three decimals).";
 
 /**
  * A route that answers a status change as the real filing doors do: a date before the period or year the filing declares ended is refused in the door's own
@@ -1876,6 +1973,39 @@ const EDITORS = [
     cleared: "Challan date: enter the date on the challan.",
     fields: [{ box: (p) => p.locator("#tds-client-challan-date"), label: "Challan date", key: "challan_date", full: "07/10/2026", iso: "2026-10-07" }],
     save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/,
+  },
+  // The fifteenth slice (6-11-2026): the statutory values screen, the engagement letter form and the stock transfer and lot forms.
+  {
+    id: "statutory-values-pt-notification", title: "Settings > Statutory values > Record a notification: when a professional-tax notice takes effect and when it was issued",
+    open: openStatutoryValues, saveInView: true, eachField: true,
+    cleared: "The notification reference, its date and the effective-from date are all required", clearedFields: [1],
+    fields: [
+      { box: (p) => p.locator("#sv-effective-from"), label: "Effective from", key: "effective_from", full: "01/04/2026", iso: "2026-04-01" },
+      { box: (p) => p.locator("#sv-notified-on"), label: "Notification date", key: "notification_date", full: "10/03/2026", iso: "2026-03-10" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Record", exact: true }), write: /api\/payroll\/statutory-values\/pt$/,
+  },
+  {
+    id: "new-engagement-letter-dates", title: "Engagements > New Engagement: when a letter starts and when it lapses", open: openNewEngagementLetter, eachField: true,
+    fields: [
+      { box: (p) => engagementDialog(p).getByLabel("Start date", { exact: true }), label: "Start date", key: "start_date", full: "01/04/2026", iso: "2026-04-01" },
+      { box: (p) => engagementDialog(p).getByLabel("Expiry date", { exact: true }), label: "Expiry date", key: "expiry_date", full: "31/03/2027", iso: "2027-03-31" },
+    ],
+    save: (p) => engagementDialog(p).getByRole("button", { name: "Create Engagement", exact: true }), write: /api\/engagement-letters$/,
+  },
+  {
+    id: "stock-transfer-date", title: "Inventory > Locations > Move stock between godowns: the day the stock moved", open: openStockLocations("transfer"),
+    cleared: "Date: enter the date the stock moved.",
+    fields: [{ box: (p) => p.getByLabel("Date the stock moved", { exact: true }), label: "Date", key: "movement_date", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Move stock", exact: true }), write: /api\/inventory\/transfer$/,
+  },
+  {
+    id: "stock-lot-dates", title: "Inventory > Locations > New lot: when a lot was manufactured and when it expires", open: openStockLocations("lot"), eachField: true, shortForm: "15/01/2026",
+    fields: [
+      { box: (p) => p.getByLabel("Manufactured (optional)"), label: "Manufactured", key: "manufactured_on", full: "01/09/2026", iso: "2026-09-01" },
+      { box: (p) => p.getByLabel("Expires (optional)"), label: "Expires", key: "expiry_date", full: "31/08/2028", iso: "2028-08-31" },
+    ],
+    save: (p) => p.locator("div.fixed").getByRole("button", { name: "Create", exact: true }), write: /api\/inventory\/batches$/,
   },
   {
     id: "gst-registration-add", title: "GST > Registrations: the date a registration took effect (Add a registration)", open: openGstRegistrations("add"),
@@ -3435,6 +3565,487 @@ export const scenarios = [
       await page.getByText("A stub message about September 2026's deposit.").first().waitFor({ timeout: 4000 });
       await stub.quiet();
       assert.equal(stub.writesTo(/api\/tds-workspace\/challans$/).length, 1);
+    },
+  },
+  // ── the fifteenth slice (6-11-2026) ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  // The statutory values screen is a full-screen overlay over a page whose message line sits BEHIND it: every sentence its save had (a state code that is not two letters, the
+  // required fields, a band amount with a comma, the server's refusal) went to that line, so a CA who pressed Record over a gap saw nothing happen. Only the date's own sentence was
+  // said inside.
+  {
+    id: "statutory-values-every-refusal-is-said-inside-the-dialog",
+    title: "Settings > Statutory values > Record a notification: a state code that is not two letters, a band amount with a comma and the server's refusal are each said inside the dialog",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openStatutoryValues(env);
+      await typeAndLeave(page.locator("#sv-effective-from"), "01/04/2026");
+      await typeAndLeave(page.locator("#sv-notified-on"), "10/03/2026");
+      const record = page.getByRole("button", { name: "Record", exact: true });
+      await page.getByLabel("State code", { exact: true }).fill("G");
+      await record.click();
+      await shownInTheDialog(page, PT_STATE_CODE_SENTENCE, "a state code that is not two letters was not refused inside the dialog");
+      await page.getByLabel("State code", { exact: true }).fill("GJ");
+      await page.getByLabel("Band 1: tax (₹)", { exact: true }).fill("2,000");
+      await record.click();
+      await shownInTheDialog(page, PT_BAND_COMMA_SENTENCE, "a band amount with a comma was not refused inside the dialog");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a refusal the screen could make itself SENT A WRITE");
+      // The server's refusal of a set with a hole in it (the first band does not start at zero) comes back as an HTTP 422 whose detail is the sentence.
+      stub.route({ method: "PUT", re: /api\/payroll\/statutory-values\/pt$/, ...refuse(PT_UNCOVERED_SENTENCE, 422) });
+      await page.getByLabel("Band 1: tax (₹)", { exact: true }).fill("200");
+      await page.getByLabel("Band 1: from (₹)", { exact: true }).fill("100");
+      await record.click();
+      await shownInTheDialog(page, PT_UNCOVERED_SENTENCE, "the server's refusal was not said inside the dialog");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 1, "expected the one refused request");
+      assert.equal(await page.getByLabel("State code", { exact: true }).inputValue(), "GJ", "the dialog lost what was typed over the server's refusal");
+      assert.equal(await page.locator("#sv-effective-from").inputValue(), "01/04/2026", "the dialog lost the effective-from date over the server's refusal");
+    },
+  },
+  // A notification names its source and the two days: with a box empty the dialog says so, and the sentence goes the moment the last box is filled (it was a copy in the form's error
+  // that stayed after the fix).
+  {
+    id: "statutory-values-a-notification-that-names-no-source-or-date-is-refused-and-the-sentence-goes-when-it-is-filled",
+    title: "Settings > Statutory values > Record a notification: a notification with a date or the reference missing is refused in a sentence inside the dialog, which goes when the boxes are filled",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openStatutoryValues(env);
+      const record = page.getByRole("button", { name: "Record", exact: true });
+      const sentence = page.getByText(STATUTORY_REQUIRED_SENTENCE);
+      await record.click();
+      await shownInTheDialog(page, STATUTORY_REQUIRED_SENTENCE, "a notification with no dates was not refused inside the dialog");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a notification with no dates SENT A WRITE");
+      // One date is not enough: the sentence stays while any box is empty…
+      await typeAndLeave(page.locator("#sv-effective-from"), "01/04/2026");
+      await page.waitForTimeout(300);
+      assert.equal(await sentence.count(), 1, "the sentence went before every box was filled");
+      // …and goes the moment the last one is filled.
+      await typeAndLeave(page.locator("#sv-notified-on"), "10/03/2026");
+      await page.waitForTimeout(300);
+      assert.equal(await sentence.count(), 0, "the sentence stayed in the dialog after the boxes were filled");
+      // The reference is one of the three: emptied, the sentence comes back on the next Record and goes when it is typed again.
+      await page.getByLabel("Notification reference", { exact: true }).fill("");
+      await record.click();
+      await shownInTheDialog(page, STATUTORY_REQUIRED_SENTENCE, "a notification with no reference was not refused inside the dialog");
+      await page.getByLabel("Notification reference", { exact: true }).fill("PFT/2026/12");
+      await page.waitForTimeout(300);
+      assert.equal(await sentence.count(), 0, "the sentence stayed in the dialog after the reference was typed");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a refused notification SENT A WRITE");
+    },
+  },
+  // A notification the CA has read has been issued, so its date cannot be after today; the day it takes effect can be ahead (a notice made now for the next April).
+  {
+    id: "statutory-values-a-notification-date-after-today-is-refused-and-an-effective-date-ahead-is-sent",
+    title: "Settings > Statutory values > Record a notification: a notification date after today is refused in a sentence and nothing is sent, and an effective-from date ahead is sent",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openStatutoryValues(env);
+      await typeAndLeave(page.locator("#sv-effective-from"), "01/04/2027");
+      await typeAndLeave(page.locator("#sv-notified-on"), "15/10/2026");
+      const record = page.getByRole("button", { name: "Record", exact: true });
+      await record.click();
+      await shownInTheDialog(page, `Notification date: ${AFTER_TODAY_SENTENCE}`, "a notification dated after today was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a notification date after today SENT A WRITE");
+      await typeAndLeave(page.locator("#sv-notified-on"), "10/03/2026");
+      await record.click();
+      await stub.quiet();
+      const sent = stub.writesTo(/statutory-values\/pt$/);
+      assert.equal(sent.length, 1, `expected one write, saw ${sent.length}`);
+      const body = JSON.parse(sent[0].body);
+      assert.equal(body.effective_from, "2027-04-01", `an effective-from date ahead should be sent as typed, was ${body.effective_from}`);
+      assert.equal(body.notification_date, "2026-03-10");
+    },
+  },
+  // The bound is INDIA's day, which the server judges by: at 20:00 UTC on 8 October it is already 9 October in India and still 8 October in Los Angeles. The day the pinned clock
+  // gives every other scenario is the same date in all three zones, so only this one can tell the Indian day from the browser's.
+  {
+    id: "statutory-values-a-notification-date-is-bounded-by-the-indian-day",
+    title: "Settings > Statutory values > Record a notification: at an hour when India is a day ahead of the browser the notification date is bounded by India's day",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context, stub } = env;
+      await context.clock.setFixedTime(new Date("2026-10-08T20:00:00Z"));
+      await openStatutoryValues(env);
+      await typeAndLeave(page.locator("#sv-effective-from"), "01/04/2027");
+      await typeAndLeave(page.locator("#sv-notified-on"), "10/10/2026");
+      const record = page.getByRole("button", { name: "Record", exact: true });
+      await record.click();
+      await shownInTheDialog(page, "Notification date: 10 Oct 2026 is after 09 Oct 2026.", "a day after India's today was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a notification date after India's today SENT A WRITE");
+      await typeAndLeave(page.locator("#sv-notified-on"), "09/10/2026");
+      await record.click();
+      await stub.quiet();
+      const sent = stub.writesTo(/statutory-values\/pt$/);
+      assert.equal(sent.length, 1, `India's today was refused or not sent: ${sent.length} writes`);
+      assert.equal(JSON.parse(sent[0].body).notification_date, "2026-10-09");
+    },
+  },
+  // While a Record is out the dialog cannot be left: Close and Cancel are held, so a late answer cannot act on a dialog the person has already left, and they are live again after a refusal.
+  {
+    id: "statutory-values-close-and-cancel-are-held-while-a-record-is-out",
+    title: "Settings > Statutory values > Record a notification: while a Record is out Close and Cancel are held, and live again once the answer is a refusal",
+    async run(env) {
+      const { page, stub } = env;
+      await openStatutoryValues(env);
+      await typeAndLeave(page.locator("#sv-effective-from"), "01/04/2026");
+      await typeAndLeave(page.locator("#sv-notified-on"), "10/03/2026");
+      stub.route({ method: "PUT", re: /api\/payroll\/statutory-values\/pt$/, delay: 1800, ...refuse(PT_UNCOVERED_SENTENCE, 422) });
+      const dialog = statutoryDialog(page);
+      await dialog.getByRole("button", { name: "Record", exact: true }).click();
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
+        "Close and Cancel to be held while the Record was out");
+      await shownInTheDialog(page, PT_UNCOVERED_SENTENCE, "the refusal was not shown once the answer came");
+      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
+      assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
+    },
+  },
+  // A dialog opened again after a refusal holds nothing of the last one: not its boxes and not its sentence.
+  {
+    id: "statutory-values-the-form-is-opened-afresh-after-a-refusal",
+    title: "Settings > Statutory values > Record a notification: opened again after a refusal and a Cancel it holds none of the last record and none of its sentence",
+    async run(env) {
+      const { page } = env;
+      await openStatutoryValues(env);
+      const dialog = statutoryDialog(page);
+      await page.getByLabel("State code", { exact: true }).fill("G");
+      await dialog.getByRole("button", { name: "Record", exact: true }).click();
+      await shownInTheDialog(page, PT_STATE_CODE_SENTENCE, "a state code that is not two letters was not refused inside the dialog");
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await dialog.waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error("Cancel did not close the dialog"); });
+      await page.getByRole("button", { name: "Record a notification" }).click();
+      await statutoryDialog(page).waitFor();
+      assert.equal(await page.getByLabel("State code", { exact: true }).inputValue(), "", "the dialog was opened with the last record's state code");
+      assert.equal(await page.getByLabel("Notification reference", { exact: true }).inputValue(), "", "the dialog was opened with the last record's reference");
+      assert.equal(await page.getByText(PT_STATE_CODE_SENTENCE).count(), 0, "the dialog was opened again with the last refusal still on it");
+    },
+  },
+  // The overlay keeps a pointer off the button behind it and not the keyboard: Enter on it ran the opener, which empties the form, in the middle of whatever was typed or sent.
+  {
+    id: "statutory-values-the-open-button-does-nothing-while-the-form-is-open",
+    title: "Settings > Statutory values > Record a notification: Enter on the open button behind the dialog does not empty what was typed",
+    async run(env) {
+      const { page } = env;
+      await openStatutoryValues(env);
+      await page.getByRole("button", { name: "Record a notification" }).focus();
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByLabel("State code", { exact: true }).inputValue(), "GJ", "Enter on the open button behind the dialog emptied the state code");
+      assert.equal(await page.getByLabel("Notification reference", { exact: true }).inputValue(), "PFT/2026/12", "Enter on the open button behind the dialog emptied the reference");
+    },
+  },
+  // A letter that lapses before it starts is nonsense: the box hinted at it (`notBefore`) and the form sent it. The sentence is true only while the two boxes are out of order.
+  {
+    id: "new-engagement-letter-an-expiry-before-the-start-is-refused",
+    title: "Engagements > New Engagement: an expiry date before the start date is refused in a sentence and nothing is sent, and the sentence goes when the dates are in order",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openNewEngagementLetter(env);
+      const dialog = engagementDialog(page);
+      await typeAndLeave(dialog.getByLabel("Start date", { exact: true }), "01/04/2026");
+      await typeAndLeave(dialog.getByLabel("Expiry date", { exact: true }), "01/03/2026");
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      await shownInTheDialog(page, ENGAGEMENT_ORDER_SENTENCE, "an expiry date before the start date was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/engagement-letters$/).length, 0, "an expiry date before the start date SENT A WRITE");
+      await typeAndLeave(dialog.getByLabel("Expiry date", { exact: true }), "31/03/2027");
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByText(ENGAGEMENT_ORDER_SENTENCE).count(), 0, "the refusal stayed in the dialog after the dates were put in order");
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/engagement-letters$/).length, 1, "the letter was not sent once the dates were in order");
+    },
+  },
+  // An end is read after its start: `15/6` beside a start of 01/03/2026 is 15/06/2026 and not 15/06/2025.
+  {
+    id: "new-engagement-letter-a-short-expiry-is-read-after-the-start",
+    title: "Engagements > New Engagement: a short expiry date typed beside a start in March is read in the year after it, not before",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openNewEngagementLetter(env);
+      const dialog = engagementDialog(page);
+      await typeAndLeave(dialog.getByLabel("Start date", { exact: true }), "01/03/2026");
+      await typeAndLeave(dialog.getByLabel("Expiry date", { exact: true }), "15/6");
+      assert.equal(await dialog.getByLabel("Expiry date", { exact: true }).inputValue(), "15/06/2026", "15/6 beside a start of 01/03/2026 should be read as 15/06/2026");
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      await stub.quiet();
+      const sent = stub.writesTo(/api\/engagement-letters$/);
+      assert.equal(sent.length, 1, `expected one write, saw ${sent.length}`);
+      assert.equal(JSON.parse(sent[0].body).expiry_date, "2026-06-15");
+    },
+  },
+  // While a Create is out the dialog cannot be left: Close and Cancel are held, and live again after a refusal.
+  {
+    id: "new-engagement-letter-close-and-cancel-are-held-while-a-create-is-out",
+    title: "Engagements > New Engagement: while a Create is out Close and Cancel are held, and live again once the answer is a refusal",
+    async run(env) {
+      const { page, stub } = env;
+      await openNewEngagementLetter(env);
+      const dialog = engagementDialog(page);
+      stub.route({ method: "POST", re: /api\/engagement-letters$/, delay: 1800, ...refuse("A stub refusal of the letter.", 422) });
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      const close = dialog.getByRole("button", { name: "Close", exact: true });
+      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
+        "Close and Cancel to be held while the Create was out");
+      await shownInTheDialog(page, "A stub refusal of the letter.", "the refusal was not shown once the answer came");
+      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
+      assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
+    },
+  },
+  // A dialog opened again after a refusal holds nothing of the last one, whether the sentence came from the boxes (the order of the two dates) or from the server.
+  {
+    id: "new-engagement-letter-is-opened-afresh-after-a-refusal",
+    title: "Engagements > New Engagement: opened again after a refusal and a Cancel it holds none of the last letter and none of its sentence",
+    async run(env) {
+      const { page, stub } = env;
+      await openNewEngagementLetter(env);
+      let dialog = engagementDialog(page);
+      const reopen = async () => {
+        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        await dialog.waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error("Cancel did not close the dialog"); });
+        await page.getByRole("button", { name: "New Engagement" }).first().click();
+        dialog = engagementDialog(page);
+        await dialog.waitFor();
+      };
+      // …a sentence from the server,
+      stub.route({ method: "POST", re: /api\/engagement-letters$/, ...refuse("A stub refusal of the letter.", 422) });
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      await shownInTheDialog(page, "A stub refusal of the letter.", "the server's refusal was not shown");
+      await reopen();
+      assert.equal(await page.getByText("A stub refusal of the letter.").count(), 0, "the dialog was opened again with the server's last refusal still on it");
+      assert.equal(await dialog.getByLabel("Title", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's title");
+      // …and one from the boxes.
+      await dialog.getByLabel("Title", { exact: true }).fill("Another letter");
+      await typeAndLeave(dialog.getByLabel("Start date", { exact: true }), "01/04/2026");
+      await typeAndLeave(dialog.getByLabel("Expiry date", { exact: true }), "01/03/2026");
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      await shownInTheDialog(page, ENGAGEMENT_ORDER_SENTENCE, "the order of the dates was not refused");
+      await reopen();
+      assert.equal(await page.getByText(ENGAGEMENT_ORDER_SENTENCE).count(), 0, "the dialog was opened again with the last order refusal still on it");
+      assert.equal(await dialog.getByLabel("Start date", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's start date");
+      assert.equal(await dialog.getByLabel("Expiry date", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's expiry date");
+    },
+  },
+  // The card scrolls when the window is short, and the sentence is at its top while the button that raised it is at the bottom: it must be brought into view, or pressing Create
+  // looks like a button that does nothing. 440 px is a laptop screen at about 150% zoom; at 520 the same card scrolls less than the sentence's height and the sentence stays in view
+  // by luck, so the window is shorter than that on purpose.
+  {
+    id: "new-engagement-letter-a-refusal-is-in-view-at-a-short-window",
+    title: "Engagements > New Engagement: at a short window the refusal raised by Create is in view, not above the fold of the scrolled card",
+    async run(env) {
+      const { page } = env;
+      await page.setViewportSize({ width: 1440, height: 440 });
+      await openNewEngagementLetter(env);
+      const dialog = engagementDialog(page);
+      await typeAndLeave(dialog.getByLabel("Start date", { exact: true }), "01/04/2026");
+      await typeAndLeave(dialog.getByLabel("Expiry date", { exact: true }), "01/03/2026");
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      const sentence = page.getByText(ENGAGEMENT_ORDER_SENTENCE).first();
+      await sentence.waitFor({ timeout: 4000 });
+      await page.waitForTimeout(400);
+      const seen = await sentence.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        let top = 0, bottom = window.innerHeight;
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const s = getComputedStyle(p);
+          if (/(auto|scroll)/.test(s.overflowY) && p.scrollHeight > p.clientHeight) { const pr = p.getBoundingClientRect(); top = Math.max(top, pr.top); bottom = Math.min(bottom, pr.bottom); }
+          if (s.position === "fixed") break; // a fixed overlay is not clipped by the scrolling ancestors of the place it was rendered
+        }
+        return { ok: r.top >= top - 1 && r.bottom <= bottom + 1, top: Math.round(r.top), bottom: Math.round(r.bottom), from: Math.round(top), to: Math.round(bottom) };
+      });
+      assert.ok(seen.ok, `the refusal is drawn outside what the person can see (sentence ${seen.top}-${seen.bottom}, visible ${seen.from}-${seen.to})`);
+    },
+  },
+  // The page words a refusal through the one helper every screen that calls fetch itself is meant to use: a validation error's detail is a LIST of {loc, msg}, which this page's own
+  // reading put on screen as "[object Object]".
+  {
+    id: "new-engagement-letter-a-validation-list-from-the-server-is-said-as-a-sentence",
+    title: "Engagements > New Engagement: a 422 whose detail is a list of validation messages is said as their sentence, not as [object Object]",
+    async run(env) {
+      const { page, stub } = env;
+      await openNewEngagementLetter(env);
+      const dialog = engagementDialog(page);
+      stub.route({ method: "POST", re: /api\/engagement-letters$/, ...refuse([{ type: "value_error", loc: ["body"], msg: "Value error, The expiry date cannot be before the start date.", input: {} }], 422) });
+      await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
+      await shownInTheDialog(page, "Value error, The expiry date cannot be before the start date.", "a validation list from the server was not said as its sentence");
+      assert.equal(await page.getByText("[object Object]").count(), 0, "a validation list was put on screen as [object Object]");
+    },
+  },
+  // A lot is made before it is recorded, and it cannot lapse before it was made.
+  {
+    id: "stock-lot-a-manufacture-date-after-today-and-an-expiry-before-it-are-refused",
+    title: "Inventory > Locations > New lot: a manufacture date after today and an expiry before the manufacture date are refused in a sentence and nothing is sent, and each sentence goes when the date is right",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openStockLocations("lot")(env);
+      const made = page.getByLabel("Manufactured (optional)");
+      const expires = page.getByLabel("Expires (optional)");
+      const create = lotDialog(page).getByRole("button", { name: "Create", exact: true });
+      await typeAndLeave(made, "15/10/2026");
+      await create.click();
+      await shownInTheDialog(page, `Manufactured: ${AFTER_TODAY_SENTENCE}`, "a lot made after today was not refused in a sentence");
+      // …and the sentence is withdrawn the moment the date is right (it was a copy in the form's error that stayed after the fix).
+      await typeAndLeave(made, "01/09/2026");
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByText(`Manufactured: ${AFTER_TODAY_SENTENCE}`).count(), 0, "the refusal stayed in the dialog after the date was put right");
+      await typeAndLeave(expires, "01/08/2026");
+      await create.click();
+      await shownInTheDialog(page, LOT_ORDER_SENTENCE, "a lot that expires before it was made was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/inventory\/batches$/).length, 0, "a lot with dates out of order SENT A WRITE");
+      await typeAndLeave(expires, "31/08/2028");
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByText(LOT_ORDER_SENTENCE).count(), 0, "the order refusal stayed in the dialog after the dates were put in order");
+    },
+  },
+  // An end is read after its start.
+  {
+    id: "stock-lot-a-short-expiry-is-read-after-the-manufacture-date",
+    title: "Inventory > Locations > New lot: a short expiry date typed beside a manufacture date in March is read in the year after it, not before",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openStockLocations("lot")(env);
+      const made = page.getByLabel("Manufactured (optional)");
+      const expires = page.getByLabel("Expires (optional)");
+      await typeAndLeave(made, "01/03/2026");
+      await typeAndLeave(expires, "15/6");
+      assert.equal(await expires.inputValue(), "15/06/2026", "15/6 beside a manufacture date of 01/03/2026 should be read as 15/06/2026");
+      await lotDialog(page).getByRole("button", { name: "Create", exact: true }).click();
+      await stub.quiet();
+      const sent = stub.writesTo(/api\/inventory\/batches$/);
+      assert.equal(sent.length, 1, `expected one write, saw ${sent.length}`);
+      assert.equal(JSON.parse(sent[0].body).expiry_date, "2026-06-15");
+    },
+  },
+  // A lot is made on a day that has come in INDIA: at 20:00 UTC on 8 October it is already 9 October there.
+  {
+    id: "stock-lot-a-manufacture-date-is-bounded-by-the-indian-day",
+    title: "Inventory > Locations > New lot: at an hour when India is a day ahead of the browser the manufacture date is bounded by India's day",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context, stub } = env;
+      await context.clock.setFixedTime(new Date("2026-10-08T20:00:00Z"));
+      await openStockLocations("lot")(env);
+      const made = page.getByLabel("Manufactured (optional)");
+      const create = lotDialog(page).getByRole("button", { name: "Create", exact: true });
+      await typeAndLeave(made, "10/10/2026");
+      await create.click();
+      await shownInTheDialog(page, "Manufactured: 10 Oct 2026 is after 09 Oct 2026.", "a day after India's today was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/inventory\/batches$/).length, 0, "a manufacture date after India's today SENT A WRITE");
+      await typeAndLeave(made, "09/10/2026");
+      await create.click();
+      await stub.quiet();
+      const sent = stub.writesTo(/api\/inventory\/batches$/);
+      assert.equal(sent.length, 1, `India's today was refused or not sent: ${sent.length} writes`);
+      assert.equal(JSON.parse(sent[0].body).manufactured_on, "2026-10-09");
+    },
+  },
+  // While a lot is being created Cancel is held: a late answer must not act on a dialog the person has already left (a lot created behind a Cancel).
+  {
+    id: "stock-lot-cancel-is-held-while-the-lot-is-being-created",
+    title: "Inventory > Locations > New lot: while a Create is out Cancel is held, and the dialog closes when the answer comes",
+    async run(env) {
+      const { page, stub } = env;
+      await openStockLocations("lot")(env);
+      stub.route({ method: "POST", re: /api\/inventory\/batches$/, delay: 1800, reply: () => ok({ id: "b-1" }) });
+      const dialog = lotDialog(page);
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+      await until(async () => await cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while the Create was out");
+      await dialog.waitFor({ state: "detached", timeout: 6000 }).catch(() => { throw new Error("the dialog stayed open after the lot was created"); });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/inventory\/batches$/).length, 1, "expected exactly one lot to be sent");
+    },
+  },
+  // The same for a godown, which sits on the same screen.
+  {
+    id: "stock-godown-cancel-is-held-while-the-godown-is-being-created",
+    title: "Inventory > Locations > New godown: while a Create is out Cancel is held, and the dialog closes when the answer comes",
+    async run(env) {
+      const { page, stub } = env;
+      await openStockLocations("transfer")(env);
+      stub.route({ method: "POST", re: /api\/inventory\/godowns$/, delay: 1800, reply: () => ok({ id: "g3" }) });
+      await page.getByRole("button", { name: /Add godown/ }).first().click();
+      const dialog = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "New godown" }) });
+      await dialog.waitFor();
+      await dialog.locator("input").first().fill("Annexe");
+      await dialog.getByRole("button", { name: "Create", exact: true }).click();
+      const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+      await until(async () => await cancel.isDisabled({ timeout: 500 }).catch(() => false), "Cancel to be held while the Create was out");
+      await dialog.waitFor({ state: "detached", timeout: 6000 }).catch(() => { throw new Error("the dialog stayed open after the godown was created"); });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/inventory\/godowns$/).length, 1, "expected exactly one godown to be sent");
+    },
+  },
+  // The Move stock panel defaulted its date to today and let the person clear it: a blank date went to the server as "", which answered in pydantic's words. The date box is found by
+  // the word above it here, so the previous product (which left it unnamed) fails on the behaviour and not on a name.
+  {
+    id: "stock-transfer-a-cleared-date-is-asked-for-and-nothing-is-sent",
+    title: "Inventory > Locations > Move stock: with the date cleared the panel asks for it in a sentence and sends nothing, and the sentence goes when a date is typed",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openStockLocations("transfer")(env);
+      await typeAndLeave(transferDateBox(page), "");
+      await page.getByRole("button", { name: "Move stock", exact: true }).click();
+      await shownInTheDialog(page, "Date: enter the date the stock moved.", "a cleared date was not asked for in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/inventory\/transfer$/).length, 0, "a cleared date SENT A WRITE");
+      await typeAndLeave(transferDateBox(page), "05/10/2026");
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByText("Date: enter the date the stock moved.").count(), 0, "the sentence stayed on the panel after a date was typed");
+    },
+  },
+  // A date that is not a day is refused in its own sentence once a Move was tried, and the sentence goes the moment the date is put right.
+  {
+    id: "stock-transfer-an-unreadable-date-is-refused-and-the-sentence-goes-when-it-is-put-right",
+    title: "Inventory > Locations > Move stock: an unreadable date is refused in a sentence and nothing is sent, and the sentence is withdrawn when the date is right",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openStockLocations("transfer")(env);
+      await typeAndLeave(transferDateBox(page), "31/02/2026");
+      await page.getByRole("button", { name: "Move stock", exact: true }).click();
+      await shownInTheDialog(page, `Date: ${FEB_SENTENCE}`, "a date that is not a day was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/inventory\/transfer$/).length, 0, "a date that is not a day SENT A WRITE");
+      await typeAndLeave(transferDateBox(page), "05/10/2026");
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByText(`Date: ${FEB_SENTENCE}`).count(), 0, "the refusal stayed on the panel after the date was put right");
+    },
+  },
+  // A quantity the server cannot read ("1,500", "5 kg") raised inside the service and came back as a generic failure naming nothing.
+  {
+    id: "stock-transfer-a-quantity-that-is-not-a-number-is-refused-and-nothing-is-sent",
+    title: "Inventory > Locations > Move stock: a quantity that is not a number is refused in a sentence and nothing is sent, and a number is sent as typed",
+    async run(env) {
+      const { page, stub } = env;
+      await openStockLocations("transfer")(env);
+      const quantity = transferPanel(page).locator("input[inputmode=decimal]");
+      await quantity.fill("1,500");
+      await page.getByRole("button", { name: "Move stock", exact: true }).click();
+      await shownInTheDialog(page, TRANSFER_QUANTITY_SENTENCE, "a quantity with a comma was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/inventory\/transfer$/).length, 0, "a quantity that is not a number SENT A WRITE");
+      await quantity.fill("1500");
+      await page.getByRole("button", { name: "Move stock", exact: true }).click();
+      await stub.quiet();
+      const sent = stub.writesTo(/api\/inventory\/transfer$/);
+      assert.equal(sent.length, 1, `expected one write, saw ${sent.length}`);
+      assert.equal(JSON.parse(sent[0].body).quantity, "1500");
     },
   },
 ];

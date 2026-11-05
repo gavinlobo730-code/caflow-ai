@@ -359,6 +359,10 @@ const DRIVEN: Record<string, string[]> = {
   "app/mca/page.tsx": ["#mca-due-date", "#mca-filed-on", "#mca-batch-filed-date", "#mca-filed-modal-date"],
   "app/clients/[id]/compliance/mca/page.tsx": ["#mca-confirm-filing-date", "#mca-company-incorporated", "#mca-new-filing-due-date", "#mca-director-appointment"],
   // The fourteenth slice (5-11-2026): the client TDS tab's New Challan form (its date was plain text), and the MCA tab's company, filing and director forms above.
+  // The fifteenth slice (6-11-2026): the statutory values screen, the engagement letter form and the stock transfer and lot forms.
+  "app/settings/statutory-values/page.tsx": ["#sv-effective-from", "#sv-notified-on"],
+  "app/engagements/page.tsx": ["[Start date]", "[Expiry date]"],
+  "components/inventory/LocationsAndBatches.tsx": ["[Date the stock moved]", "[Manufactured (optional)]", "[Expires (optional)]"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only

@@ -4,6 +4,7 @@ EPF Act §6: PF = 12% of (Basic + DA). ESI Act §2(9): employee 0.75%, employer 
 IT Act §192: TDS on salary (new regime slabs + 4% cess).
 All monetary amounts in integer paise.
 """
+from datetime import date as _date
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 from typing import Optional
@@ -13,6 +14,8 @@ from core.validators import validate_pan
 from domain.payroll import identity as identity_domain
 from domain.payroll import pf_wage_election as pf_election_domain
 from models.fy import FYLabel
+from models.iso_date import a_real_date
+from core.ist_clock import ist_today
 
 
 def _normalize_gender(v: Optional[str]) -> Optional[str]:
@@ -961,16 +964,13 @@ class PTSlabSetIn(BaseModel):
 
     @field_validator("effective_from", "notification_date")
     @classmethod
-    def _iso_date(cls, v):
-        s = str(v or "").strip()
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", s):
-            raise ValueError("Dates must be YYYY-MM-DD.")
-        from datetime import date as _date
-        try:
-            _date.fromisoformat(s)
-        except ValueError:
-            raise ValueError(f"{s!r} is not a real date.")
-        return s
+    def _iso_date(cls, v, info):
+        """Both are real days (`models/iso_date.a_real_date`, the one rule, with a sentence that names the field the caller sent). The day a notification TAKES EFFECT
+        may be ahead (a notice made now for the next April); the day it was ISSUED may not: a notification a person has read has been issued (PRE-A-015, fifteenth slice)."""
+        day = a_real_date(v, info.field_name)
+        if info.field_name == "notification_date" and _date.fromisoformat(day) > ist_today():
+            raise ValueError("The notification date cannot be after today's date in India.")
+        return day
 
 
 class ReleaseIn(BaseModel):

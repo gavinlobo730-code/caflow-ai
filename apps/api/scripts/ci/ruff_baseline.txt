@@ -129,7 +129,6 @@ models/parties.py :: C901 :: CustomerIn.validate_identifiers :: 16
 models/parties.py :: C901 :: CustomerUpdateIn.validate_identifiers :: 16
 models/parties.py :: C901 :: _normalise_residency :: 21
 models/payroll.py :: B904 :: ApplyStructureIn._iso_date :: 1
-models/payroll.py :: B904 :: PTSlabSetIn._iso_date :: 1
 models/sales_cycle.py :: B904 :: _iso_date :: 1
 repositories/assignment_repository.py :: F401 :: <module> :: 1
 repositories/assignment_rule_repository.py :: C901 :: AssignmentRuleRepository.evaluate_rules :: 18
@@ -278,7 +277,6 @@ routers/income_tax.py :: F401 :: <module> :: 1
 routers/income_tax_worksheets.py :: B904 :: read_worksheet :: 2
 routers/income_tax_worksheets.py :: B904 :: save_worksheet :: 2
 routers/intelligence.py :: B904 :: approve_journal_suggestion_endpoint :: 1
-routers/inventory.py :: B904 :: _a_date :: 1
 routers/inventory.py :: B904 :: expiry_report :: 1
 routers/inventory.py :: B904 :: position_detail :: 1
 routers/inventory.py :: F401 :: <module> :: 1

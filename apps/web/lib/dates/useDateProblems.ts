@@ -76,18 +76,29 @@ export function useDateProblems() {
  * It is a latch that RESETS, because a latch that lingered would speak the sentence at every keystroke of the retype (`15/`, `15/0`,
  * `15/07/` are all unreadable on the way to a date) and the box itself deliberately stays quiet until it is left. `clear()` is for opening
  * the form afresh.
+ *
+ * What is passed in may be any sentence that is a PURE FUNCTION of what the boxes hold, not only a box's own: two dates that must be in
+ * order (`dates.first ?? orderProblem`), a date that must be given (`dates.first ?? missing`). Such a sentence is true only while the
+ * condition holds, so it is derived and latched here and never copied into the form's error, where it stayed after the cause was fixed.
+ * A sentence that ANSWERS an attempt (the server's refusal, an amount that is not an amount) is the form's error and is cleared by the next
+ * attempt.
+ *
+ * `refuse` and `clear` keep their identity from one render to the next, so an effect that opens a form afresh can name `refusal.clear` in
+ * its dependencies without running again on every render.
  */
 export function useDateRefusal(first: string | null) {
   const [tried, setTried] = useState(false);
   useEffect(() => {
     if (!first) setTried(false);
   }, [first]);
+  /** A save was tried over a date that is wrong. */
+  const refuse = useCallback(() => setTried(true), []);
+  /** The form is opened afresh. */
+  const clear = useCallback(() => setTried(false), []);
   return {
     /** The sentence to show now, or null. */
     shown: tried ? first : null,
-    /** A save was tried over a date that is wrong. */
-    refuse: () => setTried(true),
-    /** The form is opened afresh. */
-    clear: () => setTried(false),
+    refuse,
+    clear,
   };
 }

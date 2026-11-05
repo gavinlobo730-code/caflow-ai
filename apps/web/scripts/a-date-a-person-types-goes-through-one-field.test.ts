@@ -458,6 +458,8 @@ const ENDS: Record<string, string[]> = {
   "app/pipeline/page.tsx": ["Next follow-up date"],
   "components/compliance/EditNoticeReadingModal.tsx": ["notice-due"],
   "components/sales/SalesCycleTab.tsx": ["sc-valid-until", "sc-expected-delivery"],
+  "app/engagements/page.tsx": ["Expiry date"],
+  "components/inventory/LocationsAndBatches.tsx": ["Expires (optional)"],
   "components/purchases/PurchaseCycleTab.tsx": ["po-expected"],
   "app/settings/dsc-tracker/page.tsx": ["New expiry date"],
   "app/clients/[id]/accounting/page.tsx": ["Ledger to"],

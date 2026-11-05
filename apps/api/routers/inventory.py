@@ -865,16 +865,10 @@ def put_costing_policy(
 
 from datetime import date as _date  # noqa: E402 — module already imported above
 
-from pydantic import BaseModel as _BaseModel, Field as _Field, field_validator  # noqa: E402
+from pydantic import BaseModel as _BaseModel, Field as _Field, field_validator, model_validator  # noqa: E402
+from core.ist_clock import ist_today  # noqa: E402
 from core import db_provider
-
-
-def _a_date(value: str, what: str) -> str:
-    try:
-        _date.fromisoformat(str(value)[:10])
-    except Exception:
-        raise ValueError(f"{what} must be a date, as YYYY-MM-DD.")
-    return str(value)[:10]
+from models.iso_date import a_real_date  # noqa: E402
 
 
 class GodownIn(_BaseModel):
@@ -953,8 +947,24 @@ class BatchIn(_BaseModel):
 
     @field_validator("manufactured_on", "expiry_date")
     @classmethod
-    def dates_are_dates(cls, v):
-        return _a_date(v, "The date") if v else v
+    def dates_are_dates(cls, v, info):
+        # A blank date is no date (it was stored as "", which a DATE column cannot take); anything else is a real day, kept as the canonical YYYY-MM-DD so the order below
+        # compares like with like (the old reading kept the first ten characters as typed: "20260101" sorted after "2026-12-31", and "2026-12-311" was silently cut).
+        return a_real_date(v, info.field_name) if v is not None and str(v).strip() else None
+
+    @field_validator("manufactured_on")
+    @classmethod
+    def made_on_a_day_that_has_come(cls, v):
+        """A lot is made before it is recorded: a manufacture date after today (in India) is a lot that does not exist yet (PRE-A-015, fifteenth slice). The expiry is a plan and may be any day."""
+        if v and _date.fromisoformat(v) > ist_today():
+            raise ValueError("The manufacture date cannot be after today's date in India.")
+        return v
+
+    @model_validator(mode="after")
+    def a_lot_does_not_lapse_before_it_is_made(self):
+        if self.manufactured_on and self.expiry_date and _date.fromisoformat(self.expiry_date) < _date.fromisoformat(self.manufactured_on):
+            raise ValueError("The expiry date cannot be before the manufacture date.")
+        return self
 
 
 class TransferIn(_BaseModel):
@@ -971,7 +981,19 @@ class TransferIn(_BaseModel):
     @field_validator("movement_date")
     @classmethod
     def moved_on_a_date(cls, v: str) -> str:
-        return _a_date(v, "The date the stock moved")
+        # A real day, kept as the canonical YYYY-MM-DD (the old reading kept the first ten characters as typed, so "2026-12-311" was silently cut to a different day).
+        return a_real_date(v, "The date the stock moved")
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_is_a_quantity(cls, v: str) -> str:
+        # The quantity went to `Decimal(str(quantity))` as typed: "1,500" or "5 kg" raised inside the service and answered 500, and a fourth decimal was rounded by the
+        # NUMERIC(10,3) column so the value no longer matched what was typed (domain/quantity.py, INV-09). Sign and zero are the service's own sentence.
+        from domain.quantity import quantity_violation
+        problem = quantity_violation(v)
+        if problem:
+            raise ValueError(problem)
+        return v
 
 
 def _loc():

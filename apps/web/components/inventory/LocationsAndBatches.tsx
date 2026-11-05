@@ -25,6 +25,8 @@ import { Plus, AlertCircle, Info, Warehouse, ArrowRightLeft, Trash2, Boxes, Rota
 import { request } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
+import { parseQuantity } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
@@ -34,7 +36,7 @@ import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 
 interface Godown {
   id: string;
@@ -494,8 +496,12 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
   const [decision, setDecision] = useState<{ is_supply: boolean | null; reason: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // The movement date decides which return the transfer is in: unreadable text is refused in the date's own sentence (frontend_ux-19).
+  // The movement date decides which return the transfer is in: unreadable text is refused in the date's own sentence (frontend_ux-19), said once a Move was tried
+  // and withdrawn the moment the date is right (a copy of it in `error` stayed after the fix). The box starts with today and can be cleared; a cleared one went to the
+  // server as "", which answered in pydantic's words, so the sentence that asks for it is derived from the box too.
   const dates = useDateProblems();
+  const clearedProblem = !when ? "Date: enter the date the stock moved." : null;
+  const refusal = useDateRefusal(dates.first ?? clearedProblem);
 
   // WHETHER IT IS A SUPPLY IS ASKED OF THE SERVER, on every change of either
   // godown. Comparing the two GSTINs here would be a second implementation of
@@ -517,8 +523,11 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
       .map((r) => [r.service_catalogue_id, r.item_name])).entries());
 
   async function move() {
-    if (dates.first) { setError(dates.first); return; }
-    setSaving(true); setError("");
+    setError("");
+    if (dates.first ?? clearedProblem) { refusal.refuse(); return; }
+    // A quantity the server cannot read ("1,500", "5 kg", a fourth decimal) came back as a generic failure naming nothing: it is refused here, in the unit the column keeps.
+    if (parseQuantity(quantity) === null) { setError("Quantity: enter a number, like 5 or 12.5 (up to three decimals)."); return; }
+    setSaving(true);
     try {
       await request("/api/inventory/transfer", {
         method: "POST",
@@ -545,7 +554,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
         </h3>
       </div>
       <div className="px-5 py-4 space-y-3">
-        {error && <Callout tone="problem">{error}</Callout>}
+        {(refusal.shown ?? error) && <Callout tone="problem">{refusal.shown ?? error}</Callout>}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <label className="text-xs">
             <span className="block text-ps-hint mb-1">From</span>
@@ -573,7 +582,7 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
           </label>
           <label className="text-xs">
             <span className="block text-ps-hint mb-1">Date</span>
-            <DateInput value={when} onChange={setWhen} onStateChange={dates.watch("when", "Date")} className={INPUT} />
+            <DateInput aria-label="Date the stock moved" value={when} onChange={setWhen} onStateChange={dates.watch("when", "Date")} className={INPUT} />
           </label>
         </div>
 
@@ -675,8 +684,8 @@ function GodownModal({ clientId, onClose, onSaved }: {
           </label>
         </div>
         <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-          <button onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
+          <button onClick={onClose} disabled={saving}
+            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
             Cancel
           </button>
           <Button variant="plain" size="none" onClick={save} disabled={saving || !name.trim()}
@@ -700,12 +709,18 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Both dates are optional and a blank one is stored as "this lot has no date", which is a different fact from stock that does not
-  // expire: text that is not a date is refused in the date's own sentence and never stored as that (frontend_ux-19).
+  // expire: text that is not a date is refused in the date's own sentence and never stored as that (frontend_ux-19), said once a Create was tried and withdrawn the
+  // moment the date is right (a copy of it in `error` stayed after the fix).
   const dates = useDateProblems();
+  // A lot cannot lapse before it was made (the box hints at it with `notBefore` and the form sent it): the sentence is derived from the two boxes, so it is true only
+  // while they are out of order, and it is said once a Create was tried and withdrawn the moment they are right. ISO dates compare as text.
+  const orderProblem = made && expires && expires < made ? "Expires: it cannot be before the manufacture date." : null;
+  const refusal = useDateRefusal(dates.first ?? orderProblem);
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
-    setSaving(true); setError("");
+    setError("");
+    if (dates.first ?? orderProblem) { refusal.refuse(); return; }
+    setSaving(true);
     try {
       await request("/api/inventory/batches", {
         method: "POST",
@@ -732,7 +747,7 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
           <h3 className="text-sm font-semibold text-ps-ink">New lot</h3>
         </div>
         <div className="px-5 py-4 space-y-3">
-          {error && <Callout tone="problem">{error}</Callout>}
+          {(refusal.shown ?? error) && <Callout tone="problem">{refusal.shown ?? error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Item</span>
             <select value={item} onChange={(e) => setItem(e.target.value)} className={INPUT}>
@@ -748,11 +763,12 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs">
               <span className="block text-ps-hint mb-1">Manufactured (optional)</span>
-              <DateInput value={made} onChange={setMade} onStateChange={dates.watch("made", "Manufactured")} className={INPUT} />
+              {/* A lot is made before it is recorded: a day after today is refused (a lot made tomorrow is not a lot yet). */}
+              <DateInput aria-label="Manufactured (optional)" notAfter={todayIstISO()} value={made} onChange={setMade} onStateChange={dates.watch("made", "Manufactured", { afterMax: true })} className={INPUT} />
             </label>
             <label className="block text-xs">
               <span className="block text-ps-hint mb-1">Expires (optional)</span>
-              <DateInput anchor={made || null} notBefore={made || null} value={expires} onChange={setExpires} onStateChange={dates.watch("expires", "Expires")} className={INPUT} />
+              <DateInput aria-label="Expires (optional)" anchor={made || null} notBefore={made || null} value={expires} onChange={setExpires} onStateChange={dates.watch("expires", "Expires")} className={INPUT} />
               <span className="block text-3xs text-ps-hint mt-1">
                 Leave blank if there is no date to record: the expiry report then says this lot has none recorded, which is not the same as stock that does not expire.
               </span>
@@ -760,8 +776,8 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
           </div>
         </div>
         <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-          <button onClick={onClose}
-            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label">
+          <button onClick={onClose} disabled={saving}
+            className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label disabled:opacity-50">
             Cancel
           </button>
           <Button variant="plain" size="none" onClick={save} disabled={saving || !item || !batchNo.trim()}

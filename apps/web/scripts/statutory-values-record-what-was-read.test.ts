@@ -66,7 +66,9 @@ test("the whole set is posted in one call", () => {
 });
 
 test("the notification reference and date are required before saving", () => {
-  assert.match(code, /if \(!reference\.trim\(\) \|\| !notifiedOn \|\| !effectiveFrom\)/);
+  // The condition is DERIVED from the three boxes (so the sentence goes the moment they are filled) and Record refuses through it before anything is sent.
+  assert.match(code, /const missing = !reference\.trim\(\) \|\| !notifiedOn \|\| !effectiveFrom \? REQUIRED_SENTENCE : null;/);
+  assert.match(code, /if \(dates\.first \?\? missing\) \{\s*refusal\.refuse\(\);\s*return;\s*\}/);
   assert.match(src, /a recorded figure that names no source/);
 });
 
