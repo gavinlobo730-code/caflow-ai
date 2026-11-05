@@ -45,14 +45,13 @@ import { api, request, type ApiResp, type HandoffObligation,
          type Remittance, type StatutoryHandoff as Handoff,
          type EsicMappedIpCheck, type StaleRemittanceLink, type UnmatchedRemittance } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { todayLocalISO } from "@/lib/dateMath";
 import { useToast } from "@/components/ui/use-toast";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { formatMonthYear, formatDate } from "@/lib/dates/format";
+import { formatMonthYear, formatDate, todayIstISO } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -127,7 +126,10 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   onError: (text: string) => void;
 }) {
   const [reference, setReference] = useState("");
-  const [on, setOn] = useState(todayLocalISO());
+  // Starts EMPTY (PRE-A-015): this date is the day the money left or the return was filed AT THE PORTAL. For ESI it is the payment date the month's deposit
+  // obligation is judged on time or late by (a payment dated after the due date closes nothing) and the date stamped on it. It is the CA's statement and
+  // recording lags the portal, so a date offered from the clock was the wrong date for whoever pressed Record without reading it. A day after today is refused.
+  const [on, setOn] = useState("");
   const [amount, setAmount] = useState("");
   const [paid, setPaid] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -248,8 +250,8 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
         <div>
           {/* One of these sits on the screen for each scheme, so it is named by an aria-label and not a shared id. */}
           <label className="block text-3xs text-ps-label mb-0.5">Date</label>
-          <DateInput aria-label="Date of the payment or filing" value={on} onChange={setOn}
-            onStateChange={dates.watch("on", "Date")}
+          <DateInput aria-label="Date of the payment or filing" value={on} notAfter={todayIstISO()} onChange={setOn}
+            onStateChange={dates.watch("on", "Date", { afterMax: true })}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                        outline-none focus:border-brand" />
         </div>
@@ -977,8 +979,11 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
       ) : null}
 
       {handoff?.obligations?.length ? (
+        // A card is about ONE month. Its key is the run its own figures came from (the obligation keys are "epf", "esic" and "professional_tax:<state>" in every month),
+        // so choosing another month starts every card clean: what was typed for November (the challan, the date, the amount, a Supplementary chosen for EPF) is not
+        // offered for October. It records against that same run, and not against the month selected a moment ago while the new month's figures are still on their way.
         handoff.obligations.map((o) => (
-          <ObligationCard key={o.key} o={o} clientId={clientId} runId={runId}
+          <ObligationCard key={`${handoff.run_id || runId}:${o.key}`} o={o} clientId={clientId} runId={handoff.run_id || runId}
             onChanged={() => { load(); toast({ title: "Recorded" }); }} />
         ))
       ) : !err ? (

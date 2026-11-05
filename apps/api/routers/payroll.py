@@ -103,6 +103,7 @@ from domain.income_tax.statutory_rates import (
     fy_rate_gap as income_tax_rate_gap,
 )
 from models.fy import FYLabel, OptionalFYLabel
+from models.iso_date import a_real_date
 from services.compliance_obligation_service import fy_months
 from core.ist_clock import ist_today
 from domain.money_sentence import rupee_text, rupee_whole_text
@@ -6008,6 +6009,21 @@ def run_ecr(
     })
 
 
+def _a_day_the_portal_has_already_seen(value: Optional[str], name: str, *, may_be_ahead: bool = False) -> Optional[str]:
+    """A date the CA wrote down about the portal (PRE-A-015): blank is the same as absent, anything else is a real day, and a day that has not come
+    yet is refused for the date of a thing ALREADY DONE (these two doors record what a person did at a portal; they plan nothing).
+
+    WHAT WAS WRONG: the record models took these dates as bare strings, the services compared them as TEXT (`paid_on < submitted_on`) and stored them
+    in DATE columns, so a caller that is not the screen sent "30/09/2026" or "soon" and got a 500 from Postgres with no sentence, and a day ahead was
+    stored as a payment already made. The sentence names the field the caller sent (`models/iso_date.a_real_date`)."""
+    if value is None or str(value).strip() == "":
+        return None
+    day = a_real_date(value, name)
+    if not may_be_ahead and date.fromisoformat(day) > ist_today():
+        raise ValueError(f"{name} cannot be in the future: this records what was already done at the portal.")
+    return day
+
+
 class ECRFiledIn(BaseModel):
     """What the CA did at the EPFO portal, recorded after they did it."""
     return_type: str = ecr_sequence.REGULAR
@@ -6015,6 +6031,11 @@ class ECRFiledIn(BaseModel):
     submitted_on: Optional[str] = None
     approved_on: Optional[str] = None
     trrn: Optional[str] = None
+
+    @field_validator("submitted_on", "approved_on")
+    @classmethod
+    def _dates_of_what_was_already_done(cls, v, info):
+        return _a_day_the_portal_has_already_seen(v, info.field_name)
 
 
 @router.post("/runs/{run_id}/ecr/filed")
@@ -6091,6 +6112,12 @@ class RemittanceIn(BaseModel):
     amount_paise: int = 0
     run_id: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("submitted_on", "paid_on", "challan_date")
+    @classmethod
+    def _dates_of_what_was_already_done(cls, v, info):
+        # The challan's own date is judged as a day only: nothing here knows when a challan may be dated, and a statutory reading is not assumed.
+        return _a_day_the_portal_has_already_seen(v, info.field_name, may_be_ahead=info.field_name == "challan_date")
 
 
 class RemittancePaymentIn(BaseModel):

@@ -149,7 +149,7 @@ def test_a_gst_return_without_a_filed_date_is_refused(world, otype):
     r = _mark(client, rec)
 
     assert r.status_code == 422, r.text
-    assert "filed_date" in r.text
+    assert f"Say the date this {otype} was filed on the portal." in r.text
     assert db.rows("filings") == []
 
 
@@ -189,6 +189,39 @@ def test_a_return_cannot_have_been_filed_before_its_period_ended(world):
     assert r.status_code == 422, r.text
     assert "before" in r.text
     assert _status(rec) == "Ready To File" and db.rows("filings") == []
+
+
+# ── a refusal is said as written, because the prompt shows it inside its dialog ───────────────────────────────
+
+REFUSALS = {
+    "no date": (dict(), "GSTR3B", "2026-06-01", "2026-06-30",
+                "Say the date this GSTR3B was filed on the portal. Recording it closes the period for new entries, and the lock message quotes "
+                "the date — so it is asked for, not assumed."),
+    "before the period": (dict(filed_date="2026-06-10"), "GSTR3B", "2026-06-01", "2026-06-30",
+                          "A return cannot have been filed on 2026-06-10, before the period it declares ended on 2026-06-30."),
+    "a period still running": (dict(filed_date="2026-07-20"), "GSTR3B", "2999-01-01", "2999-01-31",
+                               "Cannot mark this GSTR3B record Filed before its own period ends on 2999-01-31. A return declares a period "
+                               "that has not closed yet."),
+}
+
+
+@pytest.mark.parametrize("which", sorted(REFUSALS))
+def test_the_mark_filed_door_refuses_in_the_sentence_alone(world, which):
+    """`str(ValidationError)` is "Validation error on filed_date: <the sentence>"; the Mark as Filed prompt shows the answer's `detail` as it stands inside its
+    dialog, and a CA read a field name in front of every one of these. The reopen door has always said `.message`."""
+    body, otype, start, end, sentence = REFUSALS[which]
+    client, _ = world
+    r = _mark(client, _obl(otype, start=start, end=end), **body)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == sentence
+
+
+def test_the_transition_door_refuses_in_the_sentence_alone_too(world):
+    client, _ = world
+    rec = _obl("GSTR3B")
+    r = client.post(f"/api/compliance/obligations/{rec['id']}/transition", json={"status": "Filed"})
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == REFUSALS["no date"][4]
 
 
 # ── a type that closes no period says so ─────────────────────────────────────

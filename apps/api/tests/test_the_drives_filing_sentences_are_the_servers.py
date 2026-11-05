@@ -1,4 +1,4 @@
-"""The sentences the browser drive's stubs speak for a refused filing date are the server's own, word for word (PRE-A-015, the twelfth slice).
+"""The sentences the browser drive's stubs speak for a refused filing date are the server's own, word for word (PRE-A-015, the twelfth slice; the MCA and obligation doors added by the thirteenth).
 
 WHAT WAS WRONG
     The drive of the filing prompts (`apps/web/scripts/drive/scenarios/dates.mjs`) has its stub answer a blank date, a date before the period ended and a
@@ -50,4 +50,24 @@ def test_the_before_the_quarter_sentence_is_what_the_tds_door_says():
     body = UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="PRN0000000001", filing_date="2026-09-15")
     current = {"status": "ca_approved", "deductee_count": 1, "quarter_end": "2026-09-30", "quarter": "Q2", "financial_year": "2026-27"}
     assert _why_this_status_cannot_be_recorded(body, current, "2026-09-15") == _literal("TDS_BEFORE_QUARTER_SENTENCE")
+
+
+def test_the_before_the_year_sentence_is_what_the_mca_door_says():
+    """The MCA filings (the tracker's Mark Filed, its batch and a client's Mark Filed) are answered with this sentence as an HTTP 200 with success false."""
+    from routers.mca_workspace import _judged_filing_date
+    day, sentence = _judged_filing_date({"form_type": "AOC-4", "financial_year": None, "period": "FY 2025-26"}, "2026-01-15")
+    assert day is None
+    assert sentence == _literal("MCA_BEFORE_YEAR_SENTENCE")
+
+
+def test_the_obligation_door_says_a_date_before_the_period_in_the_same_words_as_the_gst_door():
+    """The shared Mark as Filed prompt (Deadlines, a client's Compliance tab, Practice > Compliance) asks the obligation door, which says it in the
+    sentence alone (the dialog shows the answer as it stands)."""
+    from core.exceptions import ValidationError
+    from domain.compliance_record_service import _filed_date_for
+    record = {"obligation_type": "GSTR3B", "period_end": "2026-09-30", "status": "Ready To File"}
+    with pytest.raises(ValidationError) as caught:
+        _filed_date_for(record, {"filed_date": "2026-09-15"})
+    drive = _literal("GSTR_BEFORE_PERIOD_SENTENCE", "filed, end").replace("${filed}", "2026-09-15").replace("${end}", "2026-09-30")
+    assert caught.value.message == drive
 

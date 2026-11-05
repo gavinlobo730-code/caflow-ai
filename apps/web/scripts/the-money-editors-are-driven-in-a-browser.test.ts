@@ -331,7 +331,7 @@ const DRIVEN: Record<string, string[]> = {
   "components/tax/HousePropertyWorksheet.tsx": ["[Loan taken on]", "[House completed on]"],
   "components/gst/Itc04Panel.tsx": ["#itc04-came-back-on", "#itc04-challan-date"],
   "app/income-tax/page.tsx": ["#itr-batch-filed-date", "#itr-add-due-date", "#itr-filed-modal-date"],
-  "app/gst/page.tsx": ["#gst-add-filing-due-date", "#gst-batch-filed-date", "#gst-filed-modal-date"],
+  "app/gst/page.tsx": ["#gst-add-filing-due-date", "#gst-add-filing-filed-on", "#gst-batch-filed-date", "#gst-filed-modal-date"],
   // The tenth slice (5-11-2026): the bank screens and the post-dated cheques panel.
   "app/income-tax/tax-audit/page.tsx": ["#tax-audit-date", "#tax-audit-filing-date"],
   "app/clients/[id]/tax/filing/page.tsx": ["#itr-ack-filing-date", "#itr-original-filing-date"],
@@ -355,6 +355,9 @@ const DRIVEN: Record<string, string[]> = {
   "app/tds/returns/page.tsx": ["#tds-filing-date"],
   "app/clients/[id]/tax/computation/page.tsx": ["#computation-loan-sanctioned-on"],
   "app/clients/[id]/year-end/[engagementId]/adjustments/_page.tsx": ["[Adjustment date]"],
+  // The thirteenth slice (5-11-2026): the MCA filings, on the tracker and on a client's page.
+  "app/mca/page.tsx": ["#mca-due-date", "#mca-filed-on", "#mca-batch-filed-date", "#mca-filed-modal-date"],
+  "app/clients/[id]/compliance/mca/page.tsx": ["#mca-confirm-filing-date"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
@@ -373,6 +376,9 @@ const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "app/clients/[id]/sales/page.tsx": {
     "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
     "#rec-inv-end": "the recurring invoice's end date, anchored to the start (a later row)",
+  },
+  "app/clients/[id]/compliance/mca/page.tsx": {
+    "#mca-director-appointment": "a director's date of appointment, optional, on the Directors tab's form (a later row: the director form is the next slice)",
   },
 };
 

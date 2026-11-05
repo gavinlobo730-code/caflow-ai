@@ -67,6 +67,9 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
   /** How long a write is held before it is answered. Long enough that a second click lands first. */
   let writeDelayMs = 700;
   let inFlight = 0;
+  /** table -> (the row sent) => the row made. An insert into such a table is answered with that row, as PostgREST does for `Prefer: return=representation`,
+   *  so a page that reads the created row's id back (to record a filing against it) works. Every other insert is answered `[]`. Cleared by `reset()`. */
+  let insertAnswers = {};
   /** Which scenario's requests are being answered. `reset()` starts a new one, and a held write of the scenario that just ended is
    *  still answered after the reset (a write is held 700 ms): when it was answered it used to take one off the NEW scenario's count,
    *  so the new scenario's `quiet()` saw "-2 writes held" and never went quiet (found when the TDS scenarios followed the advance-tax
@@ -115,6 +118,14 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         req.on("end", () => {
           writes.push({ t: Date.now(), via: "postgrest", method: req.method, path: pathname, table, search: url.search, body });
           touch();
+          const answer = req.method === "POST" ? insertAnswers[table] : undefined;
+          if (answer) {
+            let sent = {};
+            try { sent = JSON.parse(body); } catch { /* an unreadable body is answered with the row made from nothing */ }
+            const made = (Array.isArray(sent) ? sent : [sent]).map((row) => answer(row));
+            const wantsObject = String(req.headers.accept || "").includes("vnd.pgrst.object+json");
+            return sendJson(res, wantsObject ? made[0] : made, 201);
+          }
           sendJson(res, [], 201);
         });
         return;
@@ -140,15 +151,17 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         }
         const out = route
           ? route.reply(req, body, url)
+          // A route's `status` may be a function of the request, for a door that answers 422 for some bodies and 200 for others (a date before the period ended).
           : ok(req.method === "GET" ? [] : { id: "new-1" });
+        const status = typeof route?.status === "function" ? route.status(req, body, url) : (route?.status ?? 200);
         const delay = !isWrite ? (route?.delay ?? 0) : (route?.delay ?? writeDelayMs);
         // /health is the keep-alive's own ping and never waits.
         const wait = pathname.startsWith("/__api/health") ? 0 : delay;
         setTimeout(() => {
           if (isWrite && born === generation) { inFlight -= 1; touch(); }
           if (res.destroyed || res.writableEnded) return;
-          if ((route?.status ?? 200) >= 400) refusals += 1;
-          sendJson(res, out, route?.status ?? 200);
+          if (status >= 400) refusals += 1;
+          sendJson(res, out, status);
         }, wait);
       });
       return;
@@ -172,6 +185,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     reset(baseline) {
       tables = Object.fromEntries(Object.entries(baseline).map(([k, v]) => [k, structuredClone(v)]));
       routes = [];
+      insertAnswers = {};
       writes = [];
       writeDelayMs = 700;
       generation += 1;
@@ -182,6 +196,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     },
     refusalsServed: () => refusals,
     setTable(name, rows) { tables[name] = rows; },
+    /** Answer an insert into `name` with the row `makeRow(sent)` returns (see `insertAnswers`). */
+    answerInserts(name, makeRow) { insertAnswers[name] = makeRow; },
     /** Sign in as this auth user from now on (call BEFORE the first navigation of a scenario). */
     setAuthUser(user) { authUser = user; },
     /** Register an API route ahead of the defaults. */

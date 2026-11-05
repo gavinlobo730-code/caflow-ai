@@ -5,15 +5,18 @@
  * shared by /deadlines (single row and bulk), a client's Compliance tab and
  * Practice → Compliance.
  *
- * It asks for the DATE the return was filed on the portal, and always shows it.
- * For a GSTR-1 or GSTR-3B the server REQUIRES that date and, with it, records the
- * filing so the period locks; the lock message later quotes it to whoever tries
- * to post into the period, so it is something the CA states rather than
- * something the software stamps. The field is prefilled with today because that
- * is the commonest answer — visible and editable, never sent unseen. The ARN is
- * optional throughout. Which returns lock is the server's knowledge, not this
- * component's: it says what the server will do in general terms and the answer
- * that comes back says what it did (lib/compliance/filingOutcome).
+ * It asks for the DATE the return was filed on the portal. For a GSTR-1 or GSTR-3B
+ * the server REQUIRES that date and, with it, records the filing so the period
+ * locks; the lock message later quotes it to whoever tries to post into the
+ * period, so it is something the CA states rather than something the software
+ * stamps. THE BOX STARTS EMPTY: it used to be prefilled with today as "the
+ * commonest answer", but a filing is often recorded days after the portal, so a date offered from the clock was the wrong date for whoever
+ * pressed Confirm without reading it (PRE-A-015, the thirteenth slice). A day
+ * after today is refused at the box (`notAfter`, so a short form is read in the
+ * past) and the button waits for a date. The ARN is optional throughout. Which
+ * returns lock is the server's knowledge, not this component's: it says what the
+ * server will do in general terms and the answer that comes back says what it
+ * did (lib/compliance/filingOutcome).
  *
  * Nothing is filed anywhere by this: it records what the CA has already done on
  * the portal. CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
@@ -22,7 +25,7 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 
 export interface MarkFiledValues { filedDate: string; arn: string }
 
@@ -49,8 +52,7 @@ export function MarkFiledModal({
   onConfirm: (v: MarkFiledValues) => void;
   onClose: () => void;
 }) {
-  const today = todayLocalISO();
-  const [filedDate, setFiledDate] = useState(today);
+  const [filedDate, setFiledDate] = useState("");
   const [arn, setArn] = useState(initialArn);
   // The filing date locks a period, so text that is not a date must not read as
   // "no date" and quietly leave the button to the server (frontend_ux-19).
@@ -67,14 +69,15 @@ export function MarkFiledModal({
           <DateInput
             id="mark-filed-date"
             value={filedDate}
-            max={today}
+            notAfter={todayIstISO()}
             onChange={setFiledDate}
-            onStateChange={dates.watch("filedDate", "Filed on")}
+            onStateChange={dates.watch("filedDate", "Filed on", { afterMax: true })}
             className="w-full px-3 py-1.5 text-sm border border-state-working-border rounded-md focus:outline-none focus:ring-2 focus:ring-brand bg-white"
           />
           <p className="text-3xs text-ps-hint mt-1">
             The date it was filed on the portal. Recording a GSTR-1 or GSTR-3B as filed
-            also locks that period against new entries, and the lock quotes this date.
+            also stops new invoices, bills, credit and debit notes and journals being
+            dated in that period, and the lock quotes this date.
           </p>
         </div>
 

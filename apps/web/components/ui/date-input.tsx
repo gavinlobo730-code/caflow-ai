@@ -275,6 +275,17 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
       stateCallback.current?.({ status: "empty", text: "", message: null, outOfRange: null });
     }, []);
 
+    // ...and a field that is shown AGAIN over a value its parent kept says so if that date is outside its range. Text that cannot be read is never handed up, so the only
+    // problem that can come back is a date typed in full on the wrong side (a filing date after today, for a parent that refuses it with `afterMax`): the unmount above
+    // withdrew the sentence, and without this nothing would put it back, so the form saved a date its own box would have refused.
+    React.useEffect(() => {
+      if (!value) return;
+      const state = dateFieldState(box.text, box.read);
+      if (state.outOfRange) stateCallback.current?.(state);
+      // Once, on mount: what the box holds afterwards is reported as it is typed.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     function context(): TypedDateContext {
       return { financialYear, anchor: anchorAtFocus.current ?? anchor ?? (value || null), min, max, notBefore, notAfter };
     }

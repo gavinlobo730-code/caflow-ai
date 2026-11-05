@@ -36,10 +36,12 @@ export function describeFilingOutcome(
   if (recorded === true) {
     const from = result?.period_locked_from;
     const to = result?.period_locked_to;
-    const window = from && to ? ` for ${formatRangeLabel(from, to)}` : "";
+    const window = from && to ? ` in ${formatRangeLabel(from, to)}` : " in it";
     return {
       title: `${what} marked filed — period locked`,
-      description: `New entries${window} are now blocked, because a return covering it is on record as filed.`,
+      // Not "new entries": a receipt, a payment, a bank entry, a depreciation charge and a payroll accrual still post into a filed month. The lock stops the
+      // documents that feed the return (the closed-period rule: sales invoices, purchase bills, credit and debit notes and manual journals).
+      description: `New invoices, bills, credit and debit notes and journals dated${window} are now blocked, because a return covering it is on record as filed.`,
       locked: true,
     };
   }

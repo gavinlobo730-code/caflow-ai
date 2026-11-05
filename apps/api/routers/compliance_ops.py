@@ -207,7 +207,9 @@ def transition_obligation(record_id: str, body: TransitionBody,
             current_user["firm_id"], record_id, body.status, actor=current_user,
             filed_date=body.filed_date, acknowledgement_no=body.acknowledgement_no)
     except ValidationError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        # The sentence as written, as the reopen door says it: `str(e)` puts "Validation error on filed_date:" in front of it. (No screen shows this door's
+        # refusal in a dialog today: the Mark as Filed prompt asks `mark-filed`, below. It is the same speaker so that the two never disagree.)
+        raise HTTPException(status_code=422, detail=e.message)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Compliance obligation not found.")
     return api_response(True, {"obligation": updated, **_filing_fields(updated)})
@@ -238,7 +240,8 @@ def mark_filed_obligation(record_id: str, body: MarkFiledBody,
         # mark_filed fast-forwards through update_record, which is where
         # apex-overview-practice-02's period-end check lives (a return whose
         # own period has not ended yet cannot be walked to Filed here either).
-        raise HTTPException(status_code=422, detail=str(e))
+        # The sentence as written (see the transition door): the prompt shows it inside its dialog.
+        raise HTTPException(status_code=422, detail=e.message)
     return api_response(True, {"obligation": updated, **_filing_fields(updated)})
 
 
