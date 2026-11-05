@@ -216,6 +216,9 @@ export default function RecurringPage() {
       return;
     }
     if (!form.start_date) { setFormError("Start date is required"); return; }
+    // The end box only hints at the start (a hint is not a refusal), so an end before the start reached the server and was refused in
+    // schema words.
+    if (form.end_date && form.end_date < form.start_date) { setFormError("End date: it is before the start date."); return; }
 
     // The screen writes two lines; the model holds N (migration 377), so a
     // rent journal with its GST needs no schema change when the form grows.
@@ -588,7 +591,7 @@ export default function RecurringPage() {
                       </td>
                       <td className="px-5 py-2 text-xs">
                         {r.journal_entry_id
-                          ? <Link href="/accounting/journal" className="text-blue-600 hover:underline inline-flex items-center gap-1">
+                          ? <Link href={`/clients/${templates.find(t => t.id === historyFor)?.client_id ?? ""}/accounting?tab=journal`} className="text-blue-600 hover:underline inline-flex items-center gap-1">
                               Open <ExternalLink size={11} />
                             </Link>
                           : <span className="text-ps-disabled">—</span>}

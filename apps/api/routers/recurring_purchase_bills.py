@@ -69,6 +69,16 @@ class RecurringBillLineIn(BaseModel):
         return v
 
 
+def _a_real_date(v: str, name: str) -> str:
+    """A template's dates reach DATE columns and the date arithmetic of an unattended 06:00 IST job; text that is not an ISO date was a 500
+    from the date parser (an empty `start_date`) or a template that could never run. A sentence instead, naming the field."""
+    from datetime import date as _date
+    try:
+        return _date.fromisoformat(str(v).strip()).isoformat()
+    except ValueError:
+        raise ValueError(f"{name} must be a date written YYYY-MM-DD.") from None
+
+
 class RecurringBillTemplateIn(BaseModel):
     client_id: str
     vendor_id: str
@@ -81,6 +91,16 @@ class RecurringBillTemplateIn(BaseModel):
     is_inter_state: bool = False
     is_reverse_charge: bool = False
     lines: list[RecurringBillLineIn]
+
+    @field_validator("start_date")
+    @classmethod
+    def _start_is_a_date(cls, v: str) -> str:
+        return _a_real_date(v, "start_date")
+
+    @field_validator("end_date")
+    @classmethod
+    def _end_is_a_date(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None or not str(v).strip() else _a_real_date(v, "end_date")
 
     @field_validator("frequency")
     @classmethod
@@ -108,6 +128,16 @@ class RecurringBillTemplateUpdateIn(BaseModel):
     is_inter_state: Optional[bool] = None
     is_reverse_charge: Optional[bool] = None
     lines: Optional[list[RecurringBillLineIn]] = None
+
+    @field_validator("start_date")
+    @classmethod
+    def _start_is_a_date(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _a_real_date(v, "start_date")
+
+    @field_validator("end_date")
+    @classmethod
+    def _end_is_a_date(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None or not str(v).strip() else _a_real_date(v, "end_date")
 
     @field_validator("frequency")
     @classmethod
