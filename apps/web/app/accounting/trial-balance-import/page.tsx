@@ -436,7 +436,7 @@ export default function TrialBalanceImportPage() {
                   </p>
                 )}
                 <div className="flex items-center justify-center gap-2 mt-6">
-                  <Link href="/reports/trial-balance">
+                  <Link href={`/clients/${selectedClientId}/accounting?tab=trial`}>
                     <Button className="flex items-center gap-1.5">
                       <LinkIcon size={14} />View Trial Balance
                     </Button>

@@ -493,6 +493,9 @@ function RecurringBillEditor({
   async function save() {
     setErr(null);
     if (dates.first) { setErr(dates.first); return; }
+    // "First bill on *" is marked required and a cleared box reports no problem, so "" went to the server as the template's start date and
+    // came back as a 500 (the date parser cannot read it).
+    if (!startDate) { setErr("First bill on: enter the date of the first bill."); return; }
     if (!vendorId) { setErr("Choose the vendor this bill comes from."); return; }
     if (!title.trim()) { setErr("Give the template a name — you will pick it out of a list."); return; }
     if (endDate && endDate < startDate) { setErr("The end date cannot be before the start date."); return; }
@@ -547,7 +550,8 @@ function RecurringBillEditor({
         description: description || undefined,
         frequency,
         start_date: startDate,
-        end_date: endDate || undefined,
+        // null and not undefined: an edit that cleared the box must say so, or the stored stop date stays (JSON drops undefined).
+        end_date: endDate || null,
         notes: notes || undefined,
         is_inter_state: interState,
         is_reverse_charge: reverseCharge,

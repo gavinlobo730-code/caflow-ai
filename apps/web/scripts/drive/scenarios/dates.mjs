@@ -32,7 +32,7 @@ import assert from "node:assert/strict";
 import { TZ_MATRIX, pick, sameTickDouble, expectWrites, until } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok } from "../stub.mjs";
-import { CLIENT_ID, CLIENT_ROW, PAYROLL_RUN } from "../fixtures.mjs";
+import { CLIENT_ID, CLIENT_ROW, ITEM, PAYROLL_RUN } from "../fixtures.mjs";
 
 export const group = "dates";
 
@@ -693,6 +693,110 @@ async function openRecordLowerDeductionCertificate(env) {
   await page.getByLabel("Certificate number").fill("LDC/2025/0042");
   await page.getByLabel("Certified rate in percent (0 for nil)").fill("0.5");
   await page.getByLabel("Amount the certificate applies up to, in rupees").fill("500000");
+}
+
+/** Accounting > Recurring journals with "New template" open on a client, a name, two different accounts and an amount typed, so only the dates are left. */
+async function openRecurringJournalTemplate(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/recurring-journals(\?|$)/, reply: () => ok([]) });
+  stub.route({ method: "POST", re: /api\/recurring-journals$/, reply: () => ok({ id: "rj-1" }) });
+  stub.setTable("chart_of_accounts", [
+    { id: "ca-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, account_code: "5010", account_name: "Rent expense", account_type: "Expense", is_active: true },
+    { id: "ca-2", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, account_code: "2010", account_name: "Rent payable", account_type: "Liability", is_active: true },
+  ]);
+  await page.goto(`${env.base}/accounting/recurring/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New template", exact: true }).first().click();
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  await page.locator("#rj-name").fill("Monthly office rent");
+  await page.locator("#rj-dr").selectOption("ca-1");
+  await page.locator("#rj-cr").selectOption("ca-2");
+  await page.locator("#rj-amount").fill("125000");
+}
+
+const RECURRING_JOURNAL = {
+  id: "rjt-1", client_id: CLIENT_ID, name: "Monthly office rent", frequency: "monthly", day_of_month: 1, narration: null,
+  start_date: "2026-11-01", end_date: "2027-10-31", next_run_date: "2026-11-01", status: "active",
+  lines: [
+    { id: "rjl-1", template_id: "rjt-1", account_id: "ca-1", debit_paise: 12500000, credit_paise: 0, narration: null, sort_order: 0 },
+    { id: "rjl-2", template_id: "rjt-1", account_id: "ca-2", debit_paise: 0, credit_paise: 12500000, narration: null, sort_order: 1 },
+  ],
+};
+
+/** Accounting > Recurring journals with one template that stops on 31/10/2027, "Edit" open on it: the stop date is the box to clear. */
+async function openEditRecurringJournal(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/recurring-journals(\?|$)/, reply: () => ok([RECURRING_JOURNAL]) });
+  stub.route({ method: "PATCH", re: /api\/recurring-journals\/rjt-1$/, reply: () => ok(RECURRING_JOURNAL) });
+  stub.setTable("chart_of_accounts", [
+    { id: "ca-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, account_code: "5010", account_name: "Rent expense", account_type: "Expense", is_active: true },
+    { id: "ca-2", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, account_code: "2010", account_name: "Rent payable", account_type: "Liability", is_active: true },
+  ]);
+  await page.goto(`${env.base}/accounting/recurring/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.locator("#rj-end").waitFor();
+}
+
+const RECURRING_BILL = {
+  id: "rb-1", client_id: CLIENT_ID, vendor_id: "ven-1", title: "Office rent", description: null, frequency: "monthly",
+  start_date: "2026-11-01", end_date: "2027-10-31", next_run_date: "2026-11-01", notes: null, is_inter_state: false, is_reverse_charge: false, status: "active",
+  lines: [{ id: "rbl-1", service_catalogue_id: ITEM.id, description: "Consulting", hsn_sac: null, unit: null, quantity: 1, rate_paise: 5000000,
+    gst_rate_bps: 1800, is_service: true, itc_eligible: true, blocked_credit_reason: null, tds_applicable: false, expense_account_id: null }],
+};
+
+/** Purchases > Recurring bills with one template that stops on 31/10/2027, "Edit" open on it. */
+async function openEditRecurringBill(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/recurring-purchase-bills\?/, reply: () => ok([RECURRING_BILL]) });
+  stub.route({ method: "PUT", re: /api\/recurring-purchase-bills\/rb-1$/, reply: () => ok(RECURRING_BILL) });
+  stub.setTable("service_catalogue", [{ ...ITEM, kind: "service" }]);
+  await page.goto(env.at("/purchases/?tab=recurring"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.locator("#rec-bill-end").waitFor();
+}
+
+/** Purchases > Recurring bills with "New Template" open on a vendor, a name and one product line, so only the dates are left. */
+async function openRecurringBillTemplate(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/recurring-purchase-bills\?/, reply: () => ok([]) });
+  stub.route({ method: "POST", re: /api\/recurring-purchase-bills$/, reply: () => ok({ id: "rb-1" }) });
+  stub.setTable("service_catalogue", [{ ...ITEM, kind: "service" }]);
+  await page.goto(env.at("/purchases/?tab=recurring"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New Template" }).first().click();
+  await pick(page, page.locator('button[aria-label="Vendor"]'), "Gamma Supplies");
+  await page.getByLabel("Name", { exact: true }).fill("Office rent");
+  await pick(page, page.locator('button[aria-label="Product or service for line 1"]'), "Consulting");
+  await page.getByLabel("Rate (₹)", { exact: true }).fill("50000");
+}
+
+/** Accounting > Trial balance import taken to its Review step with a small balanced CSV and a client chosen, so only the opening date is left. */
+async function openTrialBalanceImport(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
+  // The real service echoes the date it posted as (the typed one, or the client's financial year start for a blank box) and reports the lines it wrote.
+  stub.route({ method: "POST", re: /api\/accounting\/trial-balance\/import$/, reply: (_req, raw) => ok({
+    posted: true, journal_entry_id: "j-tb", opening_date: JSON.parse(raw).opening_date ?? "2026-04-01", accounts: 2, adjustment_lines: 2,
+    total_debit_paise: 10000000, total_credit_paise: 10000000 }) });
+  await page.goto(`${env.base}/accounting/trial-balance-import/`, { waitUntil: "networkidle" });
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  await page.locator('input[aria-label="Trial balance CSV file to upload"]').setInputFiles({
+    name: "tb.csv", mimeType: "text/csv", buffer: Buffer.from("Account name,Debit,Credit\nCash at bank,100000,\nShare capital,,100000\n") });
+  await page.getByRole("button", { name: "Next: Review", exact: true }).click();
+  await page.getByRole("button", { name: /^Import \d+ Accounts$/ }).waitFor();
+}
+
+/** Purchases > Payments with "Record Payment" open on a vendor and an amount, so only the date is left. */
+async function openVendorPayment(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"] } }) });
+  stub.route({ method: "POST", re: /api\/purchase-payments\/?$/, reply: () => ok({ id: "pp-1" }) });
+  await page.goto(env.at("/purchases/?tab=payments"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record Payment" }).first().click();
+  await pick(page, page.locator('button[aria-label="Vendor"]'), "Gamma Supplies");
+  await page.getByLabel("Amount (₹)", { exact: true }).fill("25000");
 }
 
 /** Settings > Multi-currency with the firm entitled, so the Exchange rates panel under the register is drawn; a rate typed, only its date left. */
@@ -1387,6 +1491,35 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Save", exact: true }).last(), write: /tds-workspace\/lower-deduction-certificates$/,
   },
   {
+    id: "recurring-journal-template", title: "Accounting > Recurring journals > New template: the start and end dates (it raises a draft journal every month)", open: openRecurringJournalTemplate,
+    eachField: true, cleared: "Start date is required",
+    fields: [
+      { box: (p) => p.locator("#rj-start"), label: "Start date", key: "start_date", full: "01/11/2026", iso: "2026-11-01" },
+      { box: (p) => p.locator("#rj-end"), label: "End date", key: "end_date", full: "31/10/2027", iso: "2027-10-31" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Save template", exact: true }), write: /api\/recurring-journals$/,
+  },
+  {
+    id: "recurring-bill-template", title: "Purchases > Recurring bills > New Template: the first bill's date and the date to stop after", open: openRecurringBillTemplate,
+    eachField: true, cleared: "First bill on: enter the date of the first bill.",
+    fields: [
+      { box: (p) => p.locator("#rec-bill-start"), label: "First bill on", key: "start_date", full: "01/11/2026", iso: "2026-11-01" },
+      { box: (p) => p.locator("#rec-bill-end"), label: "Stop after", key: "end_date", full: "31/10/2027", iso: "2027-10-31" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Create template", exact: true }), write: /api\/recurring-purchase-bills$/,
+  },
+  {
+    id: "trial-balance-import-opening-date", title: "Accounting > Trial balance import: the opening date the balances are posted as at", open: openTrialBalanceImport,
+    fields: [{ box: (p) => p.locator("#tb-opening-date"), label: "Opening date", key: "opening_date", full: "01/04/2026", iso: "2026-04-01" }],
+    save: (p) => p.getByRole("button", { name: /^Import \d+ Accounts$/ }), write: /api\/accounting\/trial-balance\/import$/,
+  },
+  {
+    id: "vendor-payment-date", title: "Purchases > Payments > Record Payment: the date a payment to a vendor was made (it posts to the books)", open: openVendorPayment,
+    cleared: "Date: enter the date the payment was made.",
+    fields: [{ box: (p) => p.locator("#vendor-payment-date"), label: "Payment date", key: "payment_date", full: "05/10/2026", iso: "2026-10-05" }],
+    save: (p) => p.getByRole("button", { name: "Record Payment", exact: true }).first(), write: /api\/purchase-payments\/?$/,   // the form's own button comes first; the filter bar's and the empty state's only open the form
+  },
+  {
     id: "apply-salary-structure", title: "Payroll > Inputs: the date a salary structure is applied from", open: openApplyStructure, heldWhileUnreadable: true,
     fields: [{ box: (p) => p.locator("#apply-structure-effective-from"), label: "Effective from", key: "effective_from", full: "01/10/2026", iso: "2026-10-01" }],
     save: (p) => p.getByRole("button", { name: "Preview", exact: true }), write: /salary-structures\/st-1\/apply$/,
@@ -1865,6 +1998,9 @@ export const scenarios = [
     { id: "new-itr-return", name: "Income Tax > Filing > New Filing (revised)", open: openNewRevisedReturn, box: "#itr-original-filing-date", label: "Earlier return's filing date",
       save: (p) => p.getByRole("button", { name: "Create", exact: true }),
       close: (p) => p.getByRole("button", { name: "Cancel", exact: true }), reopen: (p) => p.getByRole("button", { name: "New Filing" }) },
+    { id: "vendor-payment", name: "Purchases > Payments > Record Payment", open: openVendorPayment, box: "#vendor-payment-date", label: "Payment date",
+      save: (p) => p.getByRole("button", { name: "Record Payment", exact: true }).first(),
+      close: (p) => p.getByRole("button", { name: "Cancel", exact: true }), reopen: (p) => p.getByRole("button", { name: "Record Payment", exact: true }) },   // with the form closed, the first is the toolbar's
     { id: "lower-deduction-certificate", name: "TDS > §197 Certificates > Record Certificate", open: openRecordLowerDeductionCertificate, box: "Valid from", label: "Valid from",
       save: (p) => p.getByRole("button", { name: "Save", exact: true }).last(),
       close: (p) => p.getByRole("button", { name: "Cancel", exact: true }), reopen: (p) => p.getByRole("button", { name: "+ Record Certificate" }) },
@@ -1905,6 +2041,74 @@ export const scenarios = [
       assert.equal(stub.writesTo(/api\/banking\/reconciliations$/).length, 0, "a reversed window SENT A WRITE");
     },
   },
+  // The recurring templates' stop date is OPTIONAL, and clearing it on an edit saved "successfully" and changed nothing: the journal service dropped the
+  // null and the bill screen left the key out. The request now says so, and the stored stop date goes.
+  ...[
+    { id: "recurring-journal", name: "Accounting > Recurring journals > Edit", open: openEditRecurringJournal, box: "#rj-end", write: /api\/recurring-journals\/rjt-1$/,
+      save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
+    { id: "recurring-bill", name: "Purchases > Recurring bills > Edit", open: openEditRecurringBill, box: "#rec-bill-end", write: /api\/recurring-purchase-bills\/rb-1$/,
+      save: (p) => p.getByRole("button", { name: "Save changes", exact: true }) },
+  ].map((f) => ({
+    id: `${f.id}-edit-an-untouched-stop-date-is-sent-back`,
+    title: `${f.name}: an edit that leaves the stop date alone sends the stored date back`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await f.open(env);
+      const box = page.locator(f.box);
+      assert.equal(await box.inputValue(), "31/10/2027", "the stored stop date was not shown in the box");
+      // Left alone, the stored date goes back as it was.
+      await f.save(page).click();
+      await stub.quiet();
+      const writes = stub.writesTo(f.write);
+      assert.equal(writes.length, 1, `${f.name}: expected one write for the untouched edit, saw ${writes.length}`);
+      assert.equal(JSON.parse(writes[0].body).end_date, "2027-10-31", "an edit that left the stop date alone did not send it back");
+    },
+  })),
+  ...[
+    { id: "recurring-journal", name: "Accounting > Recurring journals > Edit", open: openEditRecurringJournal, box: "#rj-end", write: /api\/recurring-journals\/rjt-1$/,
+      save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
+    { id: "recurring-bill", name: "Purchases > Recurring bills > Edit", open: openEditRecurringBill, box: "#rec-bill-end", write: /api\/recurring-purchase-bills\/rb-1$/,
+      save: (p) => p.getByRole("button", { name: "Save changes", exact: true }) },
+  ].map((f) => ({
+    id: `${f.id}-edit-a-cleared-stop-date-clears-it`,
+    title: `${f.name}: the stop date, cleared, reaches the server as null`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await f.open(env);
+      await typeAndLeave(page.locator(f.box), "");
+      await f.save(page).click();
+      await stub.quiet();
+      const writes = stub.writesTo(f.write);
+      assert.equal(writes.length, 1, `${f.name}: expected one write for the cleared stop date, saw ${writes.length}`);
+      const body = JSON.parse(writes[0].body);
+      assert.ok("end_date" in body && body.end_date === null, `${f.name}: a cleared stop date must reach the server as null, saw ${JSON.stringify(body.end_date)} (key present: ${"end_date" in body})`);
+    },
+  })),
+  // The end box of both templates only HINTS when it is before the start. The bill form refused it in its own words; the journal form let it reach the server.
+  ...[
+    { id: "recurring-journal", name: "Accounting > Recurring journals > New template", open: openRecurringJournalTemplate, start: "#rj-start", end: "#rj-end",
+      sentence: "End date: it is before the start date.", write: /api\/recurring-journals$/, save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
+    { id: "recurring-bill", name: "Purchases > Recurring bills > New Template", open: openRecurringBillTemplate, start: "#rec-bill-start", end: "#rec-bill-end",
+      sentence: "The end date cannot be before the start date.", write: /api\/recurring-purchase-bills$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
+  ].map((f) => ({
+    id: `${f.id}-a-reversed-window-is-refused-in-a-sentence`,
+    title: `${f.name}: a stop date before the first date is refused in a sentence and nothing is sent`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await f.open(env);
+      await typeAndLeave(page.locator(f.start), "01/11/2026");
+      await typeAndLeave(page.locator(f.end), "01/10/2026");
+      await f.save(page).click();
+      await page.getByText(f.sentence).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`${f.name}: a reversed window did not say "${f.sentence}"`);
+      });
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a reversed window SENT A WRITE`);
+    },
+  })),
   // A screen that is about ONE financial year says so to its date boxes. Every row above leaves the screen on the current year, where
   // "the year of today" and "the year of the screen" are the same year and a box that forgot to be told would still pass.
   {

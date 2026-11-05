@@ -2767,8 +2767,16 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     setAlloc({});
   }
 
+  // Opening or closing the form starts it afresh: a refusal over the date is said in the banner at the top of the tab, and neither it nor
+  // the date typed for the last payment may outlive the form it was said about.
+  function openPaymentForm() { setMsg(null); setPayDate(toDate()); setShowForm(true); }
+  function closePaymentForm() { setMsg(null); setShowForm(false); }
+
   async function handleSave() {
     if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    // The box is marked "Date *" and a cleared box reports no problem, so "" went to the server as the payment's date, where the period
+    // check raises on text that is not a date and the person got a failure with no sentence, for a payment that posts to the books.
+    if (!payDate) { setMsg({ type: "err", text: "Date: enter the date the payment was made." }); return; }
     if (!vendorId) { setMsg({ type: "err", text: "Select a vendor" }); return; }
     const amtPaise = paiseFromRupeeInput(amount || "0");
     if (amtPaise === null) {
@@ -2982,7 +2990,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ps-ink">Record Payment</h3>
-            <button onClick={() => setShowForm(false)}><X size={16} className="text-ps-hint" /></button>
+            <button onClick={() => closePaymentForm()}><X size={16} className="text-ps-hint" /></button>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
@@ -3168,7 +3176,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
           )}
 
           <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowForm(false)} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button onClick={() => closePaymentForm()} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <Button variant="plain" size="none" onClick={handleSave} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">{saving ? "Saving…" : "Record Payment"}</Button>
           </div>
         </div>
@@ -3194,13 +3202,13 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         emptyAction={
           <EmptyStateActions>
             <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Record Payment"
-              onClick={() => setShowForm(true)} />
+              onClick={() => openPaymentForm()} />
           </EmptyStateActions>
         }
         toolbarExtra={
           <>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
-            <button onClick={() => setShowForm((s) => !s)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Record Payment</button>
+            <button onClick={() => (showForm ? closePaymentForm() : openPaymentForm())} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Record Payment</button>
           </>
         }
         rowActions={(p) => !p.is_reversed && (

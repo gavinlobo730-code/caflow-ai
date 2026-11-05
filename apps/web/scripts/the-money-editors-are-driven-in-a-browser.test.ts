@@ -343,11 +343,17 @@ const DRIVEN: Record<string, string[]> = {
   "components/banking/PostDatedChequesPanel.tsx": ["#cheque-presented-on", "#cheque-date"],
   "components/gst/RegistrationsTab.tsx": ["#gst-reg-registered-from", "[Date ${r.gstin} was cancelled or surrendered]"],
   "app/income-tax/capital-gains/page.tsx": ["#cg-calc-purchase-date", "#cg-calc-sale-date", "#cg-reg-purchase-date", "#cg-reg-sale-date", "[Acquisition date]", "[CGAS deposit date]"],
+  // The eleventh slice (5-11-2026): the two recurring templates, the trial-balance import and a payment to a vendor.
+  "components/purchases/RecurringBills.tsx": ["#rec-bill-start", "#rec-bill-end"],
+  "app/accounting/recurring/page.tsx": ["#rj-start", "#rj-end"],
+  "app/accounting/trial-balance-import/page.tsx": ["#tb-opening-date"],
+  "app/clients/[id]/purchases/page.tsx": ["#vendor-payment-date"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
  *  shrink: a field added to a driven editor must get a scenario row or be named here. */
 const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
+  "app/clients/[id]/purchases/page.tsx": { "#no-pe-on": "a foreign supplier's no-PE declaration date, shown only on the supplier form once the declaration is ticked (a later row)" },
   "components/invoices/InvoiceEditor.tsx": { "#inv-sb-date": "the shipping bill date of an export invoice; shown only for exports (second slice)" },
   "components/purchases/PurchaseBillEditor.tsx": { "#bill-15ca-date": "the Form 15CA date; shown only for a foreign payee (second slice)" },
   "app/income-tax/advance-tax/page.tsx": { "#at-furnished-on": "feeds the §234A/§234B calculation and is saved nowhere, so the save claims do not apply (the working's own scenario is a later row)" },

@@ -236,6 +236,11 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> Opti
     if not existing:
         return None
     merged = {**existing, **{k: v for k, v in data.items() if v is not None}}
+    # An explicit empty stop date CLEARS it (the key is present only when the caller sent it: the route dumps with `exclude_unset`), as the
+    # recurring-bill service already did. The merge above drops a None, so the screen's "Ends (optional)" box, cleared on an edit, saved
+    # "successfully" and the template kept stopping at the old date.
+    if "end_date" in data and not str(data["end_date"] or "").strip():
+        merged["end_date"] = None
     lines = list(data["lines"]) if data.get("lines") is not None else list(existing.get("lines") or [])
     _validate(merged, lines)
 
