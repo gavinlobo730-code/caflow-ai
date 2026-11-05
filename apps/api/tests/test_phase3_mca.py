@@ -104,6 +104,7 @@ def test_create_annual_filings(client):
             "client_id": _CLIENT_ID,
             "form_type": form,
             "financial_year": "2025-26",
+            "due_date": "2026-10-30",
             "description": "Draft prepared, awaiting auditor sign-off",
         }, headers=_HEADERS)
         assert resp.status_code == 200, f"Failed for {form}"
@@ -122,6 +123,7 @@ def test_filing_status_transition_requires_ca_approval(client):
         "client_id": _CLIENT_ID,
         "form_type": "MGT-7",
         "financial_year": "2025-26",
+        "due_date": "2026-11-29",
     }, headers=_HEADERS)
     filing_id = resp.json()["data"]["id"]
 
@@ -174,10 +176,10 @@ def test_filing_history_only_filed(client):
     """Filing history only returns filed records."""
     # Create two filings; file only one
     r1 = client.post("/api/mca-workspace/filings", json={
-        "client_id": _CLIENT_ID, "form_type": "AOC-4", "financial_year": "2025-26",
+        "client_id": _CLIENT_ID, "form_type": "AOC-4", "financial_year": "2025-26", "due_date": "2026-10-30",
     }, headers=_HEADERS).json()["data"]["id"]
     r2 = client.post("/api/mca-workspace/filings", json={
-        "client_id": _CLIENT_ID, "form_type": "MGT-7", "financial_year": "2025-26",
+        "client_id": _CLIENT_ID, "form_type": "MGT-7", "financial_year": "2025-26", "due_date": "2026-11-29",
     }, headers=_HEADERS).json()["data"]["id"]
 
     client.patch(f"/api/mca-workspace/filings/{r2}/status",
@@ -196,5 +198,6 @@ def test_invalid_form_type_rejected(client):
         "client_id": _CLIENT_ID,
         "form_type": "FAKE-99",
         "financial_year": "2025-26",
+        "due_date": "2026-10-30",
     }, headers=_HEADERS)
     assert resp.json()["success"] is False

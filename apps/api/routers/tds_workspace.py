@@ -25,6 +25,7 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel, OptionalFYLabel
+from models.iso_date import a_real_date
 from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
@@ -259,6 +260,25 @@ class CreateChallanRequest(BaseModel):
     @classmethod
     def _known_minor_head(cls, v: str) -> str:
         return (v or "200").strip()
+
+    @field_validator("bsr_code", "challan_no", "section")
+    @classmethod
+    def _a_challan_is_known_by_these(cls, v, info):
+        """A challan is matched to the bank's record by its BSR code and serial number and to a deduction by its section. `tds_challans.bsr_code` and
+        `challan_no` are NOT NULL, which a blank text satisfies, so a challan typed with a box skipped was stored nameless (found by the fourteenth
+        slice's review of the client's New Challan form). Only that something was written is judged: no BSR format or section list is assumed here."""
+        text = (v or "").strip()
+        if not text:
+            raise ValueError(f"{info.field_name} is required.")
+        return text
+
+    @field_validator("challan_date")
+    @classmethod
+    def _challan_date_is_a_day(cls, v):
+        """The date on the challan is a real day (PRE-A-015, fourteenth slice). It was a bare string handed to `validate_posting_date`, which raised a ValueError for
+        "" or "30/09/2026" that the broad handler below turned into a sentence the client's TDS tab ignored while it closed the form as though the challan was saved.
+        Only the shape is judged: nothing here knows when a challan may be dated, and a statutory reading is not assumed."""
+        return a_real_date(v, "challan_date")
 
     def tds_paise(self) -> int:
         """What of the total is TAX. Never negative — the components are

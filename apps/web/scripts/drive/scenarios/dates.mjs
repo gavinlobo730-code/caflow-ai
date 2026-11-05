@@ -608,6 +608,93 @@ async function openClientMcaConfirm(env, { two = false } = {}) {
   await page.getByLabel("SRN (required)", { exact: true }).fill("SRN12345678");
 }
 
+/** A client's MCA compliance page, ready for a tab to be clicked. The lists it reads answer with what the forms below have made so far (`env.made`), so a record that
+ *  was saved can be looked for in its list. The four forms are the page's own (not the tracker's). */
+async function atClientMca(env) {
+  const { page, stub } = env;
+  const made = { filings: [], directors: [] };
+  env.made = made;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { mca: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /mca-workspace\/filings\?client_id=/, reply: () => ok(made.filings) });
+  stub.route({ method: "GET", re: /mca-workspace\/directors\?client_id=/, reply: () => ok(made.directors) });
+  stub.setTable("mca_companies", []);
+  await page.goto(`${env.base}/clients/${CLIENT_ID}/compliance/mca/`, { waitUntil: "networkidle" });
+}
+
+/** A client's MCA page, Company Master tab, "+ Add Company" open on a CIN, a name and the two capitals: only the incorporation date is left. */
+async function openClientMcaCompany(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /mca-workspace\/companies$/, reply: (_req, raw) => {
+    const b = JSON.parse(raw);
+    stub.setTable("mca_companies", [{ id: "mc-1", company_name: b.company_name, cin: b.cin, incorp_date: b.incorporation_date, company_category: "Private Limited",
+      authorized_capital_paise: b.authorized_capital_paise, paid_up_capital_paise: b.paid_up_capital_paise, registered_office: b.registered_address }]);
+    return ok({ id: "mc-1" });
+  } });
+  await atClientMca(env);
+  await page.getByRole("button", { name: "+ Add Company" }).click();
+  await page.getByLabel("CIN (e.g. U74999MH2020PTC123456)", { exact: true }).fill("U74999MH2020PTC123456");
+  await page.getByLabel("Company Name", { exact: true }).fill("Acme Traders Pvt Ltd");
+  await page.getByLabel("Authorised Capital (₹)", { exact: true }).fill("2500000");
+  await page.getByLabel("Paid-up Capital (₹)", { exact: true }).fill("1000000");
+}
+
+/** A client's MCA page, Annual Filings tab, "+ New Filing" open on a form and a year: only the due date is left. */
+async function openClientMcaNewFiling(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /mca-workspace\/filings$/, reply: (_req, raw) => {
+    const b = JSON.parse(raw);
+    const row = { id: "mf-new", client_id: CLIENT_ID, category: "annual", form_type: b.form_type, financial_year: b.financial_year, due_date: b.due_date, status: "not_started" };
+    env.made.filings.push(row);
+    return ok(row);
+  } });
+  await atClientMca(env);
+  await page.getByRole("button", { name: "Annual Filings", exact: true }).click();
+  await page.getByRole("button", { name: "+ New Filing" }).click();
+  await page.getByLabel("Form", { exact: true }).selectOption("AOC-4");
+  await page.getByLabel("Financial year (for example 2025-26)", { exact: true }).fill("2025-26");
+}
+
+/** A client's MCA page, Directors tab, "+ Add Director" open on a DIN and a name: only the date of appointment is left. */
+async function openClientMcaDirector(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /mca-workspace\/directors$/, reply: (_req, raw) => {
+    const b = JSON.parse(raw);
+    // The door stores the name as `director_name` (the column), which is what the table prints.
+    const row = { id: "md-1", client_id: CLIENT_ID, din: b.din, director_name: b.name, designation: b.designation, date_of_appointment: b.date_of_appointment, kyc_status: "pending" };
+    env.made.directors.push(row);
+    return ok(row);
+  } });
+  await atClientMca(env);
+  await page.getByRole("button", { name: "Directors", exact: true }).click();
+  await page.getByRole("button", { name: "+ Add Director" }).click();
+  await page.getByLabel("DIN (8 digits)", { exact: true }).fill("01234567");
+  await page.getByLabel("Full Name", { exact: true }).fill("Asha Rao");
+}
+
+/** A client's TDS compliance page, Challans tab, "+ New Challan" open on a number, a BSR code, a section, an amount and a year: only the date is left. The list answers
+ *  with the challans the form has recorded; `env.challanAnswer` is what the door says about the compliance calendar (`compliance_obligations`). */
+async function openClientTdsChallan(env) {
+  const { page, stub } = env;
+  const made = [];
+  env.challanAnswer = [];
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: ["read", "write", "compute"] } }) });
+  stub.route({ method: "GET", re: /api\/tds-workspace\/challans\?/, reply: () => ok({ challans: made, has_more: false, limit: 200, max_limit: 200 }) });
+  stub.route({ method: "POST", re: /api\/tds-workspace\/challans$/, reply: (_req, raw) => {
+    const b = JSON.parse(raw);
+    const row = { id: "tc-1", challan_no: b.challan_no, payment_date: b.challan_date, bsr_code: b.bsr_code, section: b.section, total_paise: b.amount_paise, tds_paise: b.amount_paise, quarter: b.quarter, minor_head: "200" };
+    made.push(row);
+    return ok({ ...row, compliance_obligations: env.challanAnswer });
+  } });
+  await page.goto(env.at("/compliance/tds/"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Challans", exact: true }).click();
+  await page.getByRole("button", { name: "+ New Challan" }).click();
+  await page.getByLabel("Challan No.", { exact: true }).fill("00123");
+  await page.getByLabel("BSR Code (7 digits)", { exact: true }).fill("0510308");
+  await page.getByLabel("TDS Section (e.g. 194C)", { exact: true }).fill("194C");
+  await page.getByLabel("Amount (₹)", { exact: true }).fill("12345");
+  await page.getByLabel("FY (e.g. 2025-26)", { exact: true }).fill("2026-27");
+}
+
 /** A client's GST > Registrations tab with the primary registration and one other listed: `how` is "add" (the Add a registration prompt, with a GSTIN typed) or "close" (the Cancelled… date box on the other registration). */
 function openGstRegistrations(how) {
   return async (env) => {
@@ -816,6 +903,14 @@ const refusal = (error) => ({ success: false, data: null, error });
 const GSTR_BEFORE_PERIOD_SENTENCE = (filed, end) => `A return cannot have been filed on ${filed}, before the period it declares ended on ${end}.`;
 /** The MCA door's answer to a filing date before the financial year it declares has ended (routers/mca_workspace.py); an HTTP 200 with success:false. */
 const MCA_BEFORE_YEAR_SENTENCE = "An AOC-4 for FY 2025-26 cannot have been filed before the year ended on 2026-03-31. Check the filing date. Nothing was changed.";
+/** What the MCA door says when its insert fails (routers/mca_workspace.py, create_company and create_filing): an HTTP 200 with success:false. */
+const MCA_COULD_NOT_SENTENCE = "Unable to complete MCA operation. Please try again.";
+/** What `assert_client_access` raises (HTTP 404, core/authz.py) for a client the caller is not assigned to; the create doors of the client MCA and TDS tabs re-raise it. */
+const CLIENT_NOT_FOUND_SENTENCE = "Not found";
+/** What the MCA door says for the one refusal a CA meets in the ordinary course, adding a director twice (routers/mca_workspace.py `create_director`, migration 038's UNIQUE (client_id, din)): an HTTP 200 with success:false. */
+const MCA_DUPLICATE_DIN_SENTENCE = "This DIN is already recorded for this client.";
+/** What the TDS door says for a failure nobody anticipated, here the challan (routers/tds_workspace.py `_could_not`): an HTTP 200 with success:false. */
+const TDS_COULD_NOT_CHALLAN_SENTENCE = "Could not record the TDS challan. The cause has been logged; please try again, and report it if it keeps failing.";
 /** What a box that refuses a date after today says about 15 October 2026 at the pinned clock (8 October 2026). */
 const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after 08 Oct 2026.";
 
@@ -1392,7 +1487,7 @@ const EDITORS = [
   },
   {
     id: "tds-challan", title: "TDS challan form",
-    open: onAShortScreen(openTdsChallanForm), saveInView: true,
+    open: onAShortScreen(openTdsChallanForm), saveInView: true, cleared: "Challan date: enter the date on the challan.",
     fields: [{ box: (p) => p.locator("#tds-challan-date"), label: "Challan date", key: "challan_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/,
   },
@@ -1759,6 +1854,29 @@ const EDITORS = [
     fields: [{ box: (p) => p.locator("#mca-confirm-filing-date"), label: "Filing date", key: "filing_date", full: "05/10/2026", iso: "2026-10-05" }],
     save: (p) => p.getByRole("button", { name: "Confirm Filing", exact: true }), write: /mca-workspace\/filings\/mf-1\/status$/,
   },
+  // The fourteenth slice (5-11-2026): the three forms on a client's compliance tabs that took a date as plain typed text and closed as though they had saved.
+  {
+    id: "client-mca-company-incorporated", shortForm: "15/01/2026", title: "A client's MCA > Company Master > Add Company: the day the company was incorporated", open: openClientMcaCompany,
+    fields: [{ box: (p) => p.locator("#mca-company-incorporated"), label: "Incorporation date", key: "incorporation_date", full: "12/06/2019", iso: "2019-06-12" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /mca-workspace\/companies$/,
+  },
+  {
+    id: "client-mca-new-filing-due-date", title: "A client's MCA > Annual Filings > New Filing: the date a form is due", open: openClientMcaNewFiling,
+    cleared: "Due date: enter the date this form is due.",
+    fields: [{ box: (p) => p.locator("#mca-new-filing-due-date"), label: "Due date", key: "due_date", full: "30/10/2026", iso: "2026-10-30" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /mca-workspace\/filings$/,
+  },
+  {
+    id: "client-mca-director-appointment", title: "A client's MCA > Directors > Add Director: the date of appointment", open: openClientMcaDirector,
+    fields: [{ box: (p) => p.locator("#mca-director-appointment"), label: "Date of appointment", key: "date_of_appointment", full: "01/04/2025", iso: "2025-04-01" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /mca-workspace\/directors$/,
+  },
+  {
+    id: "client-tds-challan-date", title: "A client's TDS > Challans > New Challan: the date on the challan", open: openClientTdsChallan,
+    cleared: "Challan date: enter the date on the challan.",
+    fields: [{ box: (p) => p.locator("#tds-client-challan-date"), label: "Challan date", key: "challan_date", full: "07/10/2026", iso: "2026-10-07" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/,
+  },
   {
     id: "gst-registration-add", title: "GST > Registrations: the date a registration took effect (Add a registration)", open: openGstRegistrations("add"),
     fields: [{ box: (p) => p.locator("#gst-reg-registered-from"), label: "Registered from", key: "effective_from", full: "01/07/2017", iso: "2017-07-01" }],
@@ -2069,6 +2187,29 @@ async function shownInTheDialog(page, sentence, what) {
     throw new Error(`${what} where the person can reach it: "${sentence}" is drawn behind something (${String(e.message).split("\n")[0].slice(0, 120)})`);
   });
 }
+
+/** The four forms on a client's compliance tabs (fourteenth slice): three used to take a date as plain text and ignore the answer, and the fourth (a director) had been
+ *  fixed for that but kept its typed values through Cancel. `refusal` is the sentence the door gives when its insert fails (`Unable to complete MCA operation…` in
+ *  routers/mca_workspace.py, `_could_not` in routers/tds_workspace.py), `httpRefusal` the 404 `assert_client_access` raises for a client the caller is not assigned to;
+ *  tests/test_the_drives_filing_sentences_are_the_servers.py holds all three to the routers. `listShows` is text the saved record puts in its list; `optionalDate` is
+ *  whether a blank date is allowed (and then sent as null), which the database decides: `mca_companies.incorp_date` and `mca_directors.date_of_appointment` are
+ *  nullable, `mca_filings.due_date` and `tds_challans.payment_date` are NOT NULL. */
+const CLIENT_COMPLIANCE_FORMS = [
+  { id: "client-mca-company", name: "A client's MCA > Company Master > Add Company", open: openClientMcaCompany, add: "+ Add Company", write: /mca-workspace\/companies$/,
+    dateBox: "#mca-company-incorporated", dateKey: "incorporation_date", typedDate: "12/06/2019", typedLabel: "Company Name", typedValue: "Acme Traders Pvt Ltd", listShows: "Acme Traders Pvt Ltd", optionalDate: true,
+    refusal: MCA_COULD_NOT_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+  { id: "client-mca-director", name: "A client's MCA > Directors > Add Director", open: openClientMcaDirector, add: "+ Add Director", write: /mca-workspace\/directors$/,
+    dateBox: "#mca-director-appointment", dateKey: "date_of_appointment", typedDate: "01/04/2025", typedLabel: "Full Name", typedValue: "Asha Rao", listShows: "Asha Rao", optionalDate: true,
+    refusal: MCA_DUPLICATE_DIN_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+  { id: "client-mca-new-filing", name: "A client's MCA > Annual Filings > New Filing", open: openClientMcaNewFiling, add: "+ New Filing", write: /mca-workspace\/filings$/,
+    dateBox: "#mca-new-filing-due-date", dateKey: "due_date", typedDate: "30/10/2026", typedLabel: "Financial year (for example 2025-26)", typedValue: "2025-26", listShows: "2026-10-30", optionalDate: false,
+    askedFor: "Due date: enter the date this form is due.",
+    refusal: MCA_COULD_NOT_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+  { id: "client-tds-challan", name: "A client's TDS > Challans > New Challan", open: openClientTdsChallan, add: "+ New Challan", write: /api\/tds-workspace\/challans$/,
+    dateBox: "#tds-client-challan-date", dateKey: "challan_date", typedDate: "07/10/2026", typedLabel: "Challan No.", typedValue: "00123", listShows: "00123", optionalDate: false,
+    askedFor: "Challan date: enter the date on the challan.",
+    refusal: TDS_COULD_NOT_CHALLAN_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+];
 
 export const scenarios = [
   ...EDITORS.map((spec) => ({
@@ -3088,6 +3229,212 @@ export const scenarios = [
       await page.waitForTimeout(300);
       assert.equal(await box.inputValue(), "", "text typed for the first filing was still in the box for the second");
       assert.equal(await page.getByText(FEB_SENTENCE).count(), 0, "the sentence about the first filing's text was still on the second filing's panel");
+    },
+  },
+  // ── the four forms on a client's compliance tabs (fourteenth slice) ────────────────────────────────────────────────────────────────────────
+  // Three took their date as plain typed text, sent whatever it held ("" for a box left empty, which a DATE column cannot take), ignored the server's answer and closed as
+  // though they had saved. A company or a filing typed with no date, and a challan with a mistyped one, was not created and nothing said so; a form left open for a second
+  // record still held the first. (The first fix sent null for a blank filing date; the column is NOT NULL, so the date is required and the form asks for it.)
+  ...CLIENT_COMPLIANCE_FORMS.flatMap((f) => [
+    {
+      id: `${f.id}-a-refusal-is-said-inside-the-form-and-keeps-what-was-typed`,
+      title: `${f.name}: when the server refuses, its sentence is shown in the form and the form stays open with what was typed`,
+      contexts: TZ_MATRIX,
+      async run(env) {
+        const { page, stub } = env;
+        await f.open(env);
+        for (const how of ["answers success false", "refuses with a status"]) {
+          stub.route({ method: "POST", re: f.write, ...(how === "refuses with a status" ? refuse(f.httpRefusal, 404) : { reply: () => ({ success: false, data: null, error: f.refusal }) }) });
+          stub.forgetWrites();
+          await typeAndLeave(page.locator(f.dateBox), f.typedDate);
+          await page.getByRole("button", { name: "Save", exact: true }).click();
+          await shownInTheDialog(page, how === "refuses with a status" ? f.httpRefusal : f.refusal, `${f.name}: the server's refusal (it ${how}) was not shown`);
+          await stub.quiet();
+          assert.equal(stub.writesTo(f.write).length, 1, `${f.name}: expected the one refused request (it ${how})`);
+          assert.equal(await page.locator(f.dateBox).count(), 1, `${f.name}: the form closed over a refusal (it ${how}), as though it had saved`);
+          assert.equal(await page.getByLabel(f.typedLabel, { exact: true }).inputValue(), f.typedValue, `${f.name}: the form lost ${f.typedLabel} over a refusal (it ${how})`);
+          assert.equal(await page.locator(f.dateBox).inputValue(), f.typedDate, `${f.name}: the form lost the date over a refusal (it ${how})`);
+        }
+      },
+    },
+    {
+      id: `${f.id}-cancel-after-a-refusal-starts-the-next-record-clean`,
+      title: `${f.name}: a refusal, Cancel and the form opened again hold nothing of the last record, and not its sentence`,
+      contexts: TZ_MATRIX,
+      async run(env) {
+        const { page, stub } = env;
+        await f.open(env);
+        stub.route({ method: "POST", re: f.write, reply: () => ({ success: false, data: null, error: f.refusal }) });
+        await typeAndLeave(page.locator(f.dateBox), f.typedDate);
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await shownInTheDialog(page, f.refusal, `${f.name}: the server's refusal was not shown`);
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
+        await page.locator(f.dateBox).waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error(`${f.name}: Cancel did not close the form`); });
+        await page.getByRole("button", { name: f.add, exact: true }).click();
+        assert.equal(await page.getByText(f.refusal).count(), 0, `${f.name}: the form opened again still said the last record's refusal`);
+        assert.equal(await page.getByLabel(f.typedLabel, { exact: true }).inputValue(), "", `${f.name}: ${f.typedLabel} of the cancelled record was still in the form`);
+        assert.equal(await page.locator(f.dateBox).inputValue(), "", `${f.name}: the date of the cancelled record was still in the form`);
+      },
+    },
+    {
+      id: `${f.id}-reopened-after-a-saved-record-starts-empty-and-the-record-is-in-its-list`,
+      title: `${f.name}: after a record is saved the form is closed and the record is in its list, and the form opened again holds nothing of it`,
+      contexts: TZ_MATRIX,
+      async run(env) {
+        const { page, stub } = env;
+        await f.open(env);
+        await typeAndLeave(page.locator(f.dateBox), f.typedDate);
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await page.locator(f.dateBox).waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error(`${f.name}: the form stayed open after the record was saved`); });
+        await stub.quiet();
+        assert.equal(stub.writesTo(f.write).length, 1, `${f.name}: expected one request`);
+        await page.getByText(f.listShows).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${f.name}: the saved record (${f.listShows}) is not in the list`); });
+        await page.getByRole("button", { name: f.add, exact: true }).click();
+        assert.equal(await page.getByLabel(f.typedLabel, { exact: true }).inputValue(), "", `${f.name}: ${f.typedLabel} of the last record was still in the form`);
+        assert.equal(await page.locator(f.dateBox).inputValue(), "", `${f.name}: the date of the last record was still in the form`);
+      },
+    },
+    {
+      id: `${f.id}-pressing-the-open-button-again-keeps-what-was-typed`,
+      title: `${f.name}: the open button stays on screen above the form, and pressing it again keeps what was typed`,
+      contexts: TZ_MATRIX,
+      async run(env) {
+        const { page } = env;
+        await f.open(env);
+        await typeAndLeave(page.locator(f.dateBox), f.typedDate);
+        await page.getByRole("button", { name: f.add, exact: true }).click();
+        await page.waitForTimeout(300);
+        assert.equal(await page.getByLabel(f.typedLabel, { exact: true }).inputValue(), f.typedValue, `${f.name}: pressing the open button again emptied ${f.typedLabel}`);
+        assert.equal(await page.locator(f.dateBox).inputValue(), f.typedDate, `${f.name}: pressing the open button again emptied the date`);
+      },
+    },
+    {
+      id: `${f.id}-two-clicks-in-the-same-moment-send-one-request`,
+      title: `${f.name}: a same-tick double click on Save sends ONE request`,
+      async run(env) {
+        const { page, stub } = env;
+        await f.open(env);
+        await typeAndLeave(page.locator(f.dateBox), f.typedDate);
+        await sameTickDouble(page.getByRole("button", { name: "Save", exact: true }));
+        await expectWrites(stub, f.write, 1, `two same-tick clicks on Save in ${f.name}`);
+      },
+    },
+    {
+      id: `${f.id}-cancel-is-held-while-the-save-is-out`,
+      title: `${f.name}: while a Save is out Cancel is held, so a late answer cannot act on a form opened for another record`,
+      async run(env) {
+        const { page, stub } = env;
+        await f.open(env);
+        stub.route({ method: "POST", re: f.write, delay: 1800, reply: () => ({ success: false, data: null, error: f.refusal }) });
+        await typeAndLeave(page.locator(f.dateBox), f.typedDate);
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        const cancel = page.getByRole("button", { name: "Cancel", exact: true });
+        await until(async () => await cancel.isDisabled(), `${f.name}: Cancel stayed live while the Save was out`);
+        await shownInTheDialog(page, f.refusal, `${f.name}: the refusal was not shown once the answer came`);
+        assert.equal(await cancel.isDisabled(), false, `${f.name}: Cancel stayed held after the answer`);
+      },
+    },
+    ...(f.optionalDate ? [{
+      id: `${f.id}-no-date-typed-is-sent-as-no-date`,
+      title: `${f.name}: with no date typed the request carries null, never an empty string the database cannot read`,
+      contexts: TZ_MATRIX,
+      async run(env) {
+        const { page, stub } = env;
+        await f.open(env);
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await stub.quiet();
+        const sent = stub.writesTo(f.write);
+        assert.equal(sent.length, 1, `${f.name}: expected one request, saw ${sent.length}`);
+        assert.equal(JSON.parse(sent[0].body)[f.dateKey], null, `${f.name}: with no date typed ${f.dateKey} reached the server as ${JSON.stringify(JSON.parse(sent[0].body)[f.dateKey])}, not null`);
+      },
+    }] : [{
+      id: `${f.id}-no-date-typed-is-asked-for-and-nothing-is-sent`,
+      title: `${f.name}: the date is required (the column is NOT NULL): with none typed the form asks for it in a sentence and sends nothing`,
+      contexts: TZ_MATRIX,
+      async run(env) {
+        const { page, stub } = env;
+        await f.open(env);
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        await shownInTheDialog(page, f.askedFor, `${f.name}: a blank date was not asked for`);
+        await stub.quiet();
+        assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a blank date SENT A WRITE (the column is NOT NULL, so the database would refuse it)`);
+      },
+    }]),
+  ]),
+  // A company that has a CIN has been incorporated: a day after today is refused in a sentence and nothing is sent.
+  {
+    id: "client-mca-company-an-incorporation-date-after-today-is-refused",
+    title: "A client's MCA > Company Master > Add Company: an incorporation date after today is refused in a sentence and nothing is sent",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openClientMcaCompany(env);
+      await typeAndLeave(page.locator("#mca-company-incorporated"), "15/10/2026");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await shownInTheDialog(page, `Incorporation date: ${AFTER_TODAY_SENTENCE}`, "a company incorporated after today was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/mca-workspace\/companies$/).length, 0, "an incorporation date after today SENT A WRITE");
+      // …and the sentence is withdrawn the moment the date is right (it was a copy that stayed after the fix).
+      await typeAndLeave(page.locator("#mca-company-incorporated"), "08/10/2026");
+      await page.waitForTimeout(300);
+      assert.equal(await page.getByText(`Incorporation date: ${AFTER_TODAY_SENTENCE}`).count(), 0, "the refusal stayed on the form after the date was put right");
+    },
+  },
+  // The challan is known by its number, its BSR code, its section and its year: a box skipped is asked for, in a sentence, and nothing is sent (a challan with a box skipped was
+  // stored as empty text, which the NOT NULL columns accept).
+  ...[
+    { label: "Challan No.", sentence: "Challan number: enter the serial number printed on the challan." },
+    { label: "BSR Code (7 digits)", sentence: "BSR code: enter the code of the bank branch printed on the challan." },
+    { label: "TDS Section (e.g. 194C)", sentence: "TDS section: enter the section this challan pays, for example 194C." },
+    { label: "FY (e.g. 2025-26)", sentence: "Financial year: enter it as 2026-27." },
+  ].map((box) => ({
+    id: `client-tds-challan-without-${box.label.split(" ")[0].toLowerCase().replace(/[^a-z]/g, "")}-is-asked-for-and-nothing-is-sent`,
+    title: `A client's TDS > Challans > New Challan: with "${box.label}" left empty the form asks for it in a sentence and sends nothing`,
+    async run(env) {
+      const { page, stub } = env;
+      await openClientTdsChallan(env);
+      await typeAndLeave(page.locator("#tds-client-challan-date"), "07/10/2026");
+      await page.getByLabel(box.label, { exact: true }).fill("");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await shownInTheDialog(page, box.sentence, `a challan with "${box.label}" empty was not asked for it`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/tds-workspace\/challans$/).length, 0, `a challan with "${box.label}" empty SENT A WRITE`);
+    },
+  })),
+  // The firm-level Add Challan 281 modal asks for the same: the server now refuses a challan without its serial number or BSR code for every caller, and a validation list
+  // from the server is not a sentence this screen's fetch can show (it came back as "Could not record the challan", with no reason).
+  ...[
+    { name: "Serial No.", placeholder: "00001", sentence: "Challan number: enter the serial number printed on the challan." },
+    { name: "BSR Code", placeholder: "7-digit BSR code", sentence: "BSR code: enter the code of the bank branch printed on the challan." },
+  ].map((box) => ({
+    id: `tds-add-challan-281-without-${box.name.split(" ")[0].toLowerCase()}-is-asked-for-and-nothing-is-sent`,
+    title: `TDS > Challans > Add Challan 281: with "${box.name}" left empty the modal asks for it in a sentence and sends nothing`,
+    async run(env) {
+      const { page, stub } = env;
+      const form = await openTdsChallanForm(env);
+      await typeAndLeave(form.locator("#tds-challan-date"), "07/10/2026");
+      await form.getByPlaceholder(box.placeholder).fill("");
+      await form.getByRole("button", { name: "Add", exact: true }).click();
+      await shownInTheDialog(page, box.sentence, `a challan with "${box.name}" empty was not asked for it`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(/tds-workspace\/challans$/).length, 0, `a challan with "${box.name}" empty SENT A WRITE`);
+    },
+  })),
+  // The answer to a recorded challan says what became of the month's deposit obligation on the compliance calendar (the server's words); the form used to throw it away.
+  {
+    id: "client-tds-challan-says-what-became-of-the-monthly-deposit",
+    title: "A client's TDS > Challans > New Challan: what the server says about the compliance calendar is shown after the challan is recorded",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openClientTdsChallan(env);
+      env.challanAnswer = [{ state: "not_closed", closed: false, month: "2026-09", needs_action: true, message: "A stub message about September 2026's deposit." }];
+      await typeAndLeave(page.locator("#tds-client-challan-date"), "07/10/2026");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByText("Challan recorded. What became of the monthly deposits on the compliance calendar:").first().waitFor({ timeout: 4000 }).catch(() => { throw new Error("the server's answer about the compliance calendar was not shown"); });
+      await page.getByText("A stub message about September 2026's deposit.").first().waitFor({ timeout: 4000 });
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/tds-workspace\/challans$/).length, 1);
     },
   },
 ];

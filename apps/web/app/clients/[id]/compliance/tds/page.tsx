@@ -9,6 +9,9 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 // The year picker comes from the clock, never a literal list (CLAUDE.md).
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { errorMessage } from "@/lib/api";
+import type { CalendarAnswer } from "@/lib/data/tds";
+import { Callout } from "@/components/ui/callout";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -19,7 +22,7 @@ import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { minorHeadLabel } from "@/lib/tds/minorHead";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -29,6 +32,9 @@ async function getToken(): Promise<string> {
   return session?.access_token ?? "";
 }
 
+/** A refusal comes back in the envelope every caller already reads (the same as the client MCA and GST pages' helper). FastAPI's HTTPException is
+ *  `{"detail": "..."}` with no `error` key, so every `r.error ?? "…"` on this page showed the fallback over the sentence the server wrote, or nothing at all
+ *  where the caller read no answer. `errorMessage` reads a string detail, an array of them, and a body that is not JSON at all. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const token = await getToken();
   const res = await fetch(`${API}${path}`, {
@@ -39,6 +45,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
       ...(opts?.headers ?? {}),
     },
   });
+  if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
   return res.json();
 }
 
@@ -261,6 +268,8 @@ function DeductionsTab({ clientId }: { clientId: string }) {
 
 // ── Challans ───────────────────────────────────────────────────────────────
 
+const EMPTY_CHALLAN_FORM = { challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" };
+
 function ChallansTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -271,7 +280,33 @@ function ChallansTab({ clientId }: { clientId: string }) {
   const [showNew, setShowNew] = useState(false);
   // amount in RUPEES, converted at the boundary — a CA depositing ₹1,24,500 of
   // TDS should type 124500, not 12450000.
-  const [form, setForm] = useState({ challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" });
+  const [form, setForm] = useState({ ...EMPTY_CHALLAN_FORM });
+  // The date on the challan is REQUIRED, and was typed as plain text: a mistyped one reached the server, whose refusal this form ignored while it closed
+  // and cleared itself as though the challan was recorded (PRE-A-015).
+  const dates = useDateProblems();
+  // The date's sentence is said once a save has been tried and withdrawn the moment the date is right.
+  const refusal = useDateRefusal(dates.first);
+  // Why the last Save was refused (this screen's own sentence or the server's). The form stays open with it, and with what was typed.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  // What recording the challan did to the compliance calendar, in the server's words (the monthly deposit it closed, or the one it left open and why). The
+  // answer carried this all along and the form threw it away; the firm-level TDS screen shows it in the same words.
+  const [calendarAnswers, setCalendarAnswers] = useState<CalendarAnswer[] | null>(null);
+
+  function openForm() {
+    // Not while it is open (the button stays on screen above it), and a form opened for a second challan holds nothing of the first.
+    if (showNew) return;
+    setForm({ ...EMPTY_CHALLAN_FORM });
+    setSaveError(null);
+    refusal.clear();
+    setShowNew(true);
+  }
+  function closeForm() {
+    setShowNew(false);
+    setSaveError(null);
+    refusal.clear();
+    setForm({ ...EMPTY_CHALLAN_FORM });
+  }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -284,6 +319,16 @@ function ChallansTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    setSaveError(null);
+    if (dates.first) { refusal.refuse(); return; }
+    // Required, and said in the date's own words (a blank box is not an unreadable one).
+    if (!form.challan_date) { setSaveError("Challan date: enter the date on the challan."); return; }
+    // The other text a challan is known by: the bank's record is found by its BSR code and serial number and a deduction by its section, and a box skipped was
+    // stored as empty text (the columns are NOT NULL, which a blank satisfies). Only that something was typed is judged here, as at the server.
+    if (!form.challan_no.trim()) { setSaveError("Challan number: enter the serial number printed on the challan."); return; }
+    if (!form.bsr_code.trim()) { setSaveError("BSR code: enter the code of the bank branch printed on the challan."); return; }
+    if (!form.section.trim()) { setSaveError("TDS section: enter the section this challan pays, for example 194C."); return; }
+    if (!form.financial_year.trim()) { setSaveError("Financial year: enter it as 2026-27."); return; }
     // Rupees typed, integer paise sent, through the exact parser rather than
     // parseInt (which would read "1,24,500" as 1) or Math.round(x * 100).
     const amount = paiseFromRupeeInput(form.amount_rupees);
@@ -291,23 +336,51 @@ function ChallansTab({ clientId }: { clientId: string }) {
       toast({ title: "Amount must be a non-negative amount in rupees, e.g. 124500 or 124500.50.", variant: "destructive" });
       return;
     }
-    await apiFetch("/api/tds-workspace/challans", {
-      method: "POST",
-      body: JSON.stringify({ ...form, client_id: clientId, amount_paise: amount }),
-    });
-    setShowNew(false);
-    setForm({ challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" });
-    load();
+    setSaving(true);
+    try {
+      // THE RESULT IS READ. It was awaited and dropped, so a refusal closed the form, emptied it, and the challan the CA believed was recorded was not.
+      const res = await apiFetch("/api/tds-workspace/challans", {
+        method: "POST",
+        body: JSON.stringify({ ...form, client_id: clientId, amount_paise: amount }),
+      });
+      if (!res?.success) {
+        setSaveError(res?.error ?? "The challan was not recorded.");
+        return;
+      }
+      const answered = res.data?.compliance_obligations;
+      setCalendarAnswers(Array.isArray(answered) ? (answered as CalendarAnswer[]) : null);
+      closeForm();
+      load();
+    } catch (e) {
+      setSaveError(e instanceof Error && e.message ? e.message : "The challan was not recorded.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Challans</h3>
-        <button onClick={() => setShowNew(true)}
+        <button onClick={openForm}
           className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + New Challan
         </button>
+      </div>
+
+      {/* What recording a challan did to the compliance calendar, in the server's words; the tone is attention only for a month the server left open. */}
+      <div role="status" className="space-y-2 empty:!mt-0">
+        {calendarAnswers && calendarAnswers.length > 0 && (
+          <>
+            <Callout tone={calendarAnswers.some((a) => a.needs_action) ? "attention" : "note"}
+              title="Challan recorded. What became of the monthly deposits on the compliance calendar:">
+              <ul className="list-disc pl-5 space-y-1">
+                {calendarAnswers.map((a, i) => <li key={`${a.month ?? "all"}-${i}`}>{a.message}</li>)}
+              </ul>
+            </Callout>
+            <button type="button" onClick={() => setCalendarAnswers(null)} className="text-xs text-ps-label underline">Dismiss</button>
+          </>
+        )}
       </div>
 
       {showNew && (
@@ -316,12 +389,22 @@ function ChallansTab({ clientId }: { clientId: string }) {
           <div className="grid grid-cols-2 gap-3">
             {[
               { key: "challan_no", placeholder: "Challan No." },
-              { key: "challan_date", placeholder: "Date (YYYY-MM-DD)" },
+              { key: "challan_date", placeholder: "Challan date", date: true },
               { key: "bsr_code", placeholder: "BSR Code (7 digits)" },
               { key: "section", placeholder: "TDS Section (e.g. 194C)" },
               { key: "amount_rupees", placeholder: "Amount (₹)" },
               { key: "financial_year", placeholder: "FY (e.g. 2025-26)" },
-            ].map(({ key, placeholder }) => (
+            ].map(({ key, placeholder, date }: { key: string; placeholder: string; date?: boolean }) => date ? (
+              // The one date box: a typed "07/10/2026" is read by the one rule and sent as the ISO date. Only that it is a day is judged here, as at the server:
+              // nothing in this screen knows when a challan may be dated.
+              <label key={key} className="text-xs text-ps-label flex flex-col gap-1">
+                Challan date
+                <DateInput id="tds-client-challan-date" value={form.challan_date}
+                  onChange={(v) => setForm((f) => ({ ...f, challan_date: v }))}
+                  onStateChange={dates.watch("challan", "Challan date")}
+                  className="w-full border rounded px-3 py-1.5 text-sm text-ps-ink" />
+              </label>
+            ) : (
               <input key={key} placeholder={placeholder} aria-label={placeholder}
                 value={(form as Record<string, string>)[key]}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
@@ -332,9 +415,12 @@ function ChallansTab({ clientId }: { clientId: string }) {
               {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q}>{q}</option>)}
             </select>
           </div>
+          {(refusal.shown ?? saveError) && <p role="alert" className="text-xs text-state-problem">{refusal.shown ?? saveError}</p>}
           <div className="flex gap-2">
-            <Button variant="plain" size="none" onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</Button>
-            <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <Button variant="plain" size="none" onClick={saveNew} disabled={saving}
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">{saving ? "Saving…" : "Save"}</Button>
+            {/* Held while a request is out, so a late answer cannot act on a form opened for another challan. */}
+            <button onClick={closeForm} disabled={saving} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
         </div>
       )}
@@ -379,7 +465,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
                   action={
                     <EmptyStateActions>
                       <EmptyStateAction requires={["tds", "compute"]} label="New Challan"
-                        onClick={() => setShowNew(true)} />
+                        onClick={openForm} />
                     </EmptyStateActions>
                   }
                 />

@@ -1,4 +1,4 @@
-"""The sentences the browser drive's stubs speak for a refused filing date are the server's own, word for word (PRE-A-015, the twelfth slice; the MCA and obligation doors added by the thirteenth).
+"""The sentences the browser drive's stubs speak for a refused filing date are the server's own, word for word (PRE-A-015, the twelfth slice; the MCA and obligation doors added by the thirteenth; the two "could not" sentences of the client MCA and TDS forms by the fourteenth).
 
 WHAT WAS WRONG
     The drive of the filing prompts (`apps/web/scripts/drive/scenarios/dates.mjs`) has its stub answer a blank date, a date before the period ended and a
@@ -71,3 +71,32 @@ def test_the_obligation_door_says_a_date_before_the_period_in_the_same_words_as_
     drive = _literal("GSTR_BEFORE_PERIOD_SENTENCE", "filed, end").replace("${filed}", "2026-09-15").replace("${end}", "2026-09-30")
     assert caught.value.message == drive
 
+
+
+def test_the_mca_door_says_what_the_drive_says_when_its_insert_fails():
+    """A client's MCA tab creates a company and a filing through two doors that answer a failed insert with this one sentence (an HTTP 200 with success false), which the forms show."""
+    import inspect
+    from routers import mca_workspace
+    sentence = _literal("MCA_COULD_NOT_SENTENCE")
+    for door in (mca_workspace.create_company, mca_workspace.create_filing, mca_workspace.create_director):
+        assert f'api_response(False, None, "{sentence}")' in inspect.getsource(door), f"{door.__name__} no longer answers a failed insert with the drive's sentence"
+
+
+def test_the_mca_door_says_what_the_drive_says_when_a_director_is_added_twice():
+    """The ordinary refusal of the Add Director form (migration 038's UNIQUE (client_id, din)): an HTTP 200 with success false, shown in the form."""
+    import inspect
+    from routers import mca_workspace
+    assert f'"{_literal("MCA_DUPLICATE_DIN_SENTENCE")}"' in inspect.getsource(mca_workspace.create_director)
+
+
+def test_the_tds_door_says_what_the_drive_says_for_a_challan_nobody_anticipated():
+    from routers.tds_workspace import _could_not
+    answer = _could_not(RuntimeError("something nobody anticipated"), "record the TDS challan")
+    assert answer["error"] == _literal("TDS_COULD_NOT_CHALLAN_SENTENCE")
+
+
+def test_the_404_the_client_forms_are_refused_with_is_what_the_client_scope_check_raises():
+    """The create doors of a client's MCA and TDS tabs re-raise `assert_client_access`'s 404 for a client the caller is not assigned to (inside their `try`, through `except HTTPException: raise`)."""
+    import inspect
+    from core.authz import assert_client_access
+    assert inspect.signature(assert_client_access).parameters["detail"].default == _literal("CLIENT_NOT_FOUND_SENTENCE")

@@ -337,7 +337,7 @@ const DRIVEN: Record<string, string[]> = {
   "app/clients/[id]/tax/filing/page.tsx": ["#itr-ack-filing-date", "#itr-original-filing-date"],
   "app/income-tax/notices/page.tsx": ["#notice-date-received", "#notice-response-due"],
   "components/compliance/EditNoticeReadingModal.tsx": ["#notice-issued", "#notice-due"],
-  "app/clients/[id]/compliance/tds/page.tsx": ["[Valid from]", "[Valid to]"],
+  "app/clients/[id]/compliance/tds/page.tsx": ["[Valid from]", "[Valid to]", "#tds-client-challan-date"],
   "components/banking/AccountsPanel.tsx": ["#bank-opening-date"],
   "components/banking/ReconcileTab.tsx": ["#recon-start", "#recon-end"],
   "components/banking/PostDatedChequesPanel.tsx": ["#cheque-presented-on", "#cheque-date"],
@@ -357,7 +357,8 @@ const DRIVEN: Record<string, string[]> = {
   "app/clients/[id]/year-end/[engagementId]/adjustments/_page.tsx": ["[Adjustment date]"],
   // The thirteenth slice (5-11-2026): the MCA filings, on the tracker and on a client's page.
   "app/mca/page.tsx": ["#mca-due-date", "#mca-filed-on", "#mca-batch-filed-date", "#mca-filed-modal-date"],
-  "app/clients/[id]/compliance/mca/page.tsx": ["#mca-confirm-filing-date"],
+  "app/clients/[id]/compliance/mca/page.tsx": ["#mca-confirm-filing-date", "#mca-company-incorporated", "#mca-new-filing-due-date", "#mca-director-appointment"],
+  // The fourteenth slice (5-11-2026): the client TDS tab's New Challan form (its date was plain text), and the MCA tab's company, filing and director forms above.
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
@@ -376,9 +377,6 @@ const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "app/clients/[id]/sales/page.tsx": {
     "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
     "#rec-inv-end": "the recurring invoice's end date, anchored to the start (a later row)",
-  },
-  "app/clients/[id]/compliance/mca/page.tsx": {
-    "#mca-director-appointment": "a director's date of appointment, optional, on the Directors tab's form (a later row: the director form is the next slice)",
   },
 };
 
