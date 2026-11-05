@@ -186,7 +186,7 @@ def test_a_director_names_a_company_of_its_own_client_only(world):
 
 
 def test_an_mca_filing_names_a_company_of_its_own_client_only(world):
-    body = {"client_id": A, "form_type": "AOC-4", "financial_year": "2025-26"}
+    body = {"client_id": A, "form_type": "AOC-4", "financial_year": "2025-26", "due_date": "2026-10-30"}
     client = _client(mca_router)
     _refused(client.post("/api/mca-workspace/filings", json={**body, "company_id": "company-b"}), "That company was not found.")
     assert world.rows("mca_filings") == []

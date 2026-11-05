@@ -627,6 +627,12 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
 
   async function handleAdd() {
     if (dates.first) { setError(dates.first); return; }
+    // The challan is known by its date, serial number and BSR code, and the server refuses it without them for every caller (a blank one was stored as empty text,
+    // which the NOT NULL columns accept): said here in the same words as a client's Challans tab, so the CA is told which box. A validation list from the server
+    // is not a sentence this screen's fetch can show, and it would have come back as "Could not record the challan" with no reason.
+    if (!challanDate) { setError("Challan date: enter the date on the challan."); return; }
+    if (!serialNo.trim()) { setError("Challan number: enter the serial number printed on the challan."); return; }
+    if (!bsrCode.trim()) { setError("BSR code: enter the code of the bank branch printed on the challan."); return; }
     // Convert to paise — integer arithmetic, never float
     const amtPaise = paiseFromRupeeInput(amtRupees || "0");
     if (amtPaise === null) {

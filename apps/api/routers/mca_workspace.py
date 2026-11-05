@@ -42,6 +42,7 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.compliance_engine import mca_due_date, MCA_AGM_OFFSET_DAYS
 from models.fy import OptionalFYLabel
+from models.iso_date import a_real_date
 
 router = APIRouter(prefix="/api/mca-workspace", tags=["mca_workspace"])
 _logger = logging.getLogger("caflow.mca_workspace")
@@ -52,6 +53,24 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _MOCK_COMPANIES: dict[str, dict] = {}
 _MOCK_DIRECTORS: dict[str, dict] = {}
 _MOCK_FILINGS: dict[str, dict] = {}
+
+
+def _optional_day(value: Optional[str], name: str, *, already_happened: bool = False) -> Optional[str]:
+    """A date an MCA form leaves optional (PRE-A-015, fourteenth slice): blank is the same as absent, anything else is a real day, and a day that has not
+    come yet is refused for the date of a thing ALREADY DONE (a company that has a CIN has been incorporated).
+
+    WHAT WAS WRONG: `incorporation_date` was a bare string handed to a DATE column. The client's MCA tab sends "" for a box left empty, the insert failed
+    (22007), this module's broad handler answered "Unable to complete MCA operation" and the screen, which ignored the answer, closed the form: a company
+    with no date typed was NOT created, with no word said (`mca_companies.incorp_date` is nullable, so a company with no date is a real thing). A date typed
+    as 12/06/2019 failed the same way. The screen now sends null for a blank and a date it has read; this is the same rule for every other caller, and the
+    sentence names the field the caller sent (`models/iso_date.a_real_date`). The filing's due date is NOT optional (`mca_filings.due_date` is NOT NULL) and
+    is judged by `a_real_date` directly."""
+    if value is None or str(value).strip() == "":
+        return None
+    day = a_real_date(value, name)
+    if already_happened and date.fromisoformat(day) > ist_today():
+        raise ValueError(f"{name} cannot be in the future: a company that has a CIN has already been incorporated.")
+    return day
 
 
 # ── Request Models ─────────────────────────────────────────────────────────────
@@ -65,6 +84,11 @@ class CreateCompanyRequest(BaseModel):
     authorized_capital_paise: int = Field(default=0, description="Integer paise only")
     paid_up_capital_paise: int = Field(default=0, description="Integer paise only")
     company_type: Optional[str] = None  # PVT, PUB, OPC, LLP
+
+    @field_validator("incorporation_date")
+    @classmethod
+    def _incorporation_is_a_day_that_has_come(cls, v):
+        return _optional_day(v, "incorporation_date", already_happened=True)
 
 
 class CreateDirectorRequest(BaseModel):
@@ -100,6 +124,14 @@ class UpdateDirectorRequest(BaseModel):
     date_of_cessation: Optional[str] = None
     designation: Optional[str] = None
 
+    @field_validator("date_of_cessation")
+    @classmethod
+    def _cessation_is_a_day(cls, v):
+        # A cessation can be dated ahead (a resignation effective from a later day), so only the shape is judged. This is a PATCH body that the route
+        # reads without the fields that were not sent (`if v is not None`), so a blank date turned into "absent" would be dropped and reported as a
+        # success: it is refused instead, in a sentence, and an omitted date stays omitted.
+        return None if v is None else a_real_date(v, "date_of_cessation")
+
 
 class CreateFilingRequest(BaseModel):
     client_id: str
@@ -107,8 +139,17 @@ class CreateFilingRequest(BaseModel):
     form_type: str = Field(..., description="AOC-4, MGT-7, ADT-1, DIR-12, INC-22, SH-7, CHG-1, CHG-4")
     financial_year: OptionalFYLabel = None  # e.g. 2025-26
     period: Optional[str] = None
-    due_date: Optional[str] = None
+    # REQUIRED: `mca_filings.due_date` is `DATE NOT NULL` (migration 012, unchanged since), so a filing without one can never be stored. It was an
+    # `Optional[str]` that the client's MCA tab filled with "" (a text the column cannot read) and, once the screen sent null instead, with a value the
+    # column refuses; either way the insert failed under the broad handler below and the filing was not created (PRE-A-015, fourteenth slice).
+    due_date: str = Field(..., description="YYYY-MM-DD, the date the form is due")
     description: Optional[str] = None
+
+    @field_validator("due_date")
+    @classmethod
+    def _due_date_is_a_day(cls, v):
+        # A due date is a plan, so only the shape is judged: it may be any day. A blank one is refused here, in a sentence naming the field.
+        return a_real_date(v, "due_date")
 
 
 class UpdateFilingStatusRequest(BaseModel):

@@ -21,7 +21,7 @@ import { panProblem } from "@/lib/identifiers/pan";
 import { dinProblem } from "@/lib/identifiers/din";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { toast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
@@ -74,6 +74,11 @@ const KYC_COLORS: Record<string, string> = {
 
 // ── Company Master ─────────────────────────────────────────────────────────
 
+const EMPTY_COMPANY_FORM = {
+  cin: "", company_name: "", incorporation_date: "", registered_address: "",
+  authorized_capital_rupees: "", paid_up_capital_rupees: "", company_type: "PVT",
+};
+
 function CompaniesTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,10 +86,31 @@ function CompaniesTab({ clientId }: { clientId: string }) {
   // Supabase query's error field used to be destructured away entirely.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({
-    cin: "", company_name: "", incorporation_date: "", registered_address: "",
-    authorized_capital_rupees: "", paid_up_capital_rupees: "", company_type: "PVT",
-  });
+  const [form, setForm] = useState({ ...EMPTY_COMPANY_FORM });
+  // The incorporation date is OPTIONAL: text that is not a date reads as blank, so a company typed with a mistyped date was saved with none and nothing said.
+  const dates = useDateProblems();
+  // The date's sentence is said once a save has been tried and withdrawn the moment the date is right (it was a copy that stayed after the fix).
+  const refusal = useDateRefusal(dates.first);
+  // Why the last Save was refused (this screen's own sentence or the server's). The form stays open with it, and with what was typed.
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  function openForm() {
+    // The button stays on screen above an open form: pressing it again must not wipe a half-typed record (and leave a date box that holds unreadable text
+    // half reset, because the box does not reset itself unless it is remounted).
+    if (showNew) return;
+    // A form opened for a second company holds nothing of the first (PRE-A-015).
+    setForm({ ...EMPTY_COMPANY_FORM });
+    setSaveError(null);
+    refusal.clear();
+    setShowNew(true);
+  }
+  function closeForm() {
+    setShowNew(false);
+    setSaveError(null);
+    refusal.clear();
+    setForm({ ...EMPTY_COMPANY_FORM });
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,6 +134,8 @@ function CompaniesTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    setSaveError(null);
+    if (dates.first) { refusal.refuse(); return; }
     const cinUp = form.cin.trim().toUpperCase();
     if (cinUp && !/^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/.test(cinUp)) {
       toast({ title: "Invalid CIN. Format: U74999MH2020PTC123456 (21 chars, starts with L or U). Companies Act 2013.", variant: "destructive" });
@@ -126,29 +154,43 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       toast({ title: "Paid-up capital cannot exceed authorised capital.", variant: "destructive" });
       return;
     }
-    await apiFetch("/api/mca-workspace/companies", {
-      method: "POST",
-      body: JSON.stringify({
-        ...form,
-        cin: cinUp,
-        client_id: clientId,
-        // Rupees typed, integer paise sent. paiseFromRupeeInput rather than
-        // parseInt or Math.round(x * 100): it is exact by construction and
-        // returns null for anything that is not an amount, so "25 lakh" is
-        // refused instead of becoming ₹25.
-        authorized_capital_paise: authorised,
-        paid_up_capital_paise: paidUp,
-      }),
-    });
-    setShowNew(false);
-    load();
+    setSaving(true);
+    try {
+      // THE RESULT IS READ. It was awaited and dropped, so a refusal closed the form as though the company was saved; and a blank incorporation date
+      // went to the server as "", which a DATE column cannot take, so a company with no date typed was not created at all (PRE-A-015).
+      const res = await apiFetch("/api/mca-workspace/companies", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          incorporation_date: form.incorporation_date || null,
+          cin: cinUp,
+          client_id: clientId,
+          // Rupees typed, integer paise sent. paiseFromRupeeInput rather than
+          // parseInt or Math.round(x * 100): it is exact by construction and
+          // returns null for anything that is not an amount, so "25 lakh" is
+          // refused instead of becoming ₹25.
+          authorized_capital_paise: authorised,
+          paid_up_capital_paise: paidUp,
+        }),
+      });
+      if (!res?.success) {
+        setSaveError(res?.error ?? "The company was not added.");
+        return;
+      }
+      closeForm();
+      load();
+    } catch (e) {
+      setSaveError(e instanceof Error && e.message ? e.message : "The company was not added.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Company Master</h3>
-        <button onClick={() => setShowNew(true)}
+        <button onClick={openForm}
           className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + Add Company
         </button>
@@ -161,14 +203,25 @@ function CompaniesTab({ clientId }: { clientId: string }) {
             {(([
               { key: "cin", placeholder: "CIN (e.g. U74999MH2020PTC123456)", maxLength: 21 },
               { key: "company_name", placeholder: "Company Name" },
-              { key: "incorporation_date", placeholder: "Incorporation Date (YYYY-MM-DD)" },
+              { key: "incorporation_date", placeholder: "Incorporation date", date: true },
               // In RUPEES, converted at the boundary below. These asked for
               // paise, so a CA registering ₹25,00,000 of authorised capital had
               // to type 250000000 — and one wrong zero files the company's
               // capital out by a factor of ten.
               { key: "authorized_capital_rupees", placeholder: "Authorised Capital (₹)" },
               { key: "paid_up_capital_rupees", placeholder: "Paid-up Capital (₹)" },
-            ] as { key: string; placeholder: string; maxLength?: number }[]).map(({ key, placeholder, maxLength }) => (
+            ] as { key: string; placeholder: string; maxLength?: number; date?: boolean }[]).map(({ key, placeholder, maxLength, date }) => date ? (
+              // The one date box: a typed "12/06/2019" is read by the one rule and sent as the ISO date the column takes, a day that has not come is refused
+              // here (a company that has a CIN has been incorporated), and a blank one is sent as null.
+              <label key={key} className="text-xs text-ps-label flex flex-col gap-1">
+                Incorporation date (optional)
+                <DateInput id="mca-company-incorporated" value={form.incorporation_date}
+                  onChange={(v) => setForm((f) => ({ ...f, incorporation_date: v }))}
+                  notAfter={todayIstISO()}
+                  onStateChange={dates.watch("incorporated", "Incorporation date", { afterMax: true })}
+                  className="w-full border rounded px-3 py-1.5 text-sm text-ps-ink" />
+              </label>
+            ) : (
               <input key={key} placeholder={placeholder} aria-label={placeholder} maxLength={maxLength}
                 value={(form as Record<string, string>)[key]}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
@@ -182,9 +235,13 @@ function CompaniesTab({ clientId }: { clientId: string }) {
               {["PVT", "PUB", "OPC", "LLP"].map((t) => <option key={t}>{t}</option>)}
             </select>
           </div>
+          {(refusal.shown ?? saveError) && <p role="alert" className="text-xs text-state-problem">{refusal.shown ?? saveError}</p>}
           <div className="flex gap-2">
-            <Button variant="plain" size="none" onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</Button>
-            <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <Button variant="plain" size="none" onClick={saveNew} disabled={saving}
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">{saving ? "Saving…" : "Save"}</Button>
+            {/* Held while a request is out: an answer that arrives after the form was closed (and opened for another record) would otherwise empty that one or show it
+                this one's refusal. */}
+            <button onClick={closeForm} disabled={saving} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
         </div>
       )}
@@ -220,20 +277,40 @@ function CompaniesTab({ clientId }: { clientId: string }) {
 
 // ── Directors ──────────────────────────────────────────────────────────────
 
+const EMPTY_DIRECTOR_FORM = { din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" };
+
 function DirectorsTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no directors added".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" });
+  const [form, setForm] = useState({ ...EMPTY_DIRECTOR_FORM });
   // An OPTIONAL date: text that is not a date reads as blank and the director would be saved with no appointment date and no word said
   // (frontend_ux-19).
   const dates = useDateProblems();
+  // The date's sentence is said once a save has been tried and withdrawn the moment the date is right.
+  const refusal = useDateRefusal(dates.first);
   // Why the last Save was refused — the server's sentence, or this screen's
   // own where it can tell before sending. The form stays open with it.
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function openForm() {
+    // Not while it is open (the button stays on screen above it), and a form opened for a second director holds nothing of the first: it kept the typed DIN,
+    // name and date through Cancel (PRE-A-015, found by the review of the fourteenth slice).
+    if (showNew) return;
+    setForm({ ...EMPTY_DIRECTOR_FORM });
+    setSaveError(null);
+    refusal.clear();
+    setShowNew(true);
+  }
+  function closeForm() {
+    setShowNew(false);
+    setSaveError(null);
+    refusal.clear();
+    setForm({ ...EMPTY_DIRECTOR_FORM });
+  }
 
   const load = useCallback(() => {
     setLoading(true);
@@ -250,7 +327,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
 
   async function saveNew() {
     setSaveError(null);
-    if (dates.first) { setSaveError(dates.first); return; }
+    if (dates.first) { refusal.refuse(); return; }
     // Companies Act 2013 §153, through the one browser identifier module,
     // which reproduces `core/validators.validate_din` — including that a BLANK
     // DIN is an error where a blank PAN is not, since a director without one is
@@ -293,8 +370,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
         setSaveError(res?.error ?? "The director was not added.");
         return;
       }
-      setShowNew(false);
-      setForm({ din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" });
+      closeForm();
       load();
     } catch (e) {
       setSaveError(e instanceof Error && e.message ? e.message : "The director was not added.");
@@ -315,7 +391,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Directors / DIN Register</h3>
-        <button onClick={() => setShowNew(true)}
+        <button onClick={openForm}
           className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + Add Director
         </button>
@@ -354,13 +430,13 @@ function DirectorsTab({ clientId }: { clientId: string }) {
               ))}
             </select>
           </div>
-          {saveError && <p role="alert" className="text-xs text-state-problem">{saveError}</p>}
+          {(refusal.shown ?? saveError) && <p role="alert" className="text-xs text-state-problem">{refusal.shown ?? saveError}</p>}
           <div className="flex gap-2">
             <Button variant="plain" size="none" onClick={saveNew} disabled={saving || !form.din.trim() || !form.name.trim()}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save"}
             </Button>
-            <button onClick={() => { setShowNew(false); setSaveError(null); }} className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <button onClick={closeForm} disabled={saving} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
         </div>
       )}
@@ -413,7 +489,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                   action={
                     <EmptyStateActions>
                       <EmptyStateAction requires={["mca", "write"]} label="Add Director"
-                        onClick={() => setShowNew(true)} />
+                        onClick={openForm} />
                     </EmptyStateActions>
                   }
                 />
@@ -428,13 +504,22 @@ function DirectorsTab({ clientId }: { clientId: string }) {
 
 // ── Filings (Annual or Event) ──────────────────────────────────────────────
 
+const EMPTY_FILING_FORM = { form_type: "", financial_year: "", due_date: "", description: "" };
+
 function FilingsTab({ clientId, category }: { clientId: string; category: "annual" | "event" }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no filings of this category yet".
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [form, setForm] = useState({ form_type: "", financial_year: "", due_date: "", description: "" });
+  const [form, setForm] = useState({ ...EMPTY_FILING_FORM });
+  // The due date is REQUIRED: `mca_filings.due_date` is `DATE NOT NULL`. Text that is not a date reads as blank, and a blank one used to go to the server as "", which
+  // a DATE column cannot take, so a filing typed with no due date (or a mistyped one) was not created at all and the form closed as though it had been (PRE-A-015).
+  const newDates = useDateProblems();
+  // The date's sentence is said once a save has been tried and withdrawn the moment the date is right.
+  const newRefusal = useDateRefusal(newDates.first);
+  const [newError, setNewError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [confirmFiling, setConfirmFiling] = useState<Record<string, unknown> | null>(null);
   const [srn, setSrn] = useState("");
   const [filingDate, setFilingDate] = useState("");
@@ -485,13 +570,45 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
     return () => { cancelled = true; };
   }, [category]);
 
-  async function saveNew() {
-    await apiFetch("/api/mca-workspace/filings", {
-      method: "POST",
-      body: JSON.stringify({ ...form, client_id: clientId }),
-    });
+  function openNew() {
+    // Not while it is open (the button stays on screen above it), and a form opened for a second filing holds nothing of the first.
+    if (showNew) return;
+    setForm({ ...EMPTY_FILING_FORM });
+    setNewError(null);
+    newRefusal.clear();
+    setShowNew(true);
+  }
+  function closeNew() {
     setShowNew(false);
-    load();
+    setNewError(null);
+    newRefusal.clear();
+    setForm({ ...EMPTY_FILING_FORM });
+  }
+
+  async function saveNew() {
+    setNewError(null);
+    if (newDates.first) { newRefusal.refuse(); return; }
+    // A blank box is not an unreadable one (the box hands up "" for both and reports which): the due date is required, and said in the date's own words.
+    if (!form.due_date) { setNewError("Due date: enter the date this form is due."); return; }
+    setCreating(true);
+    try {
+      // THE RESULT IS READ. It was awaited and dropped, so a refusal closed the form as though the filing was created; and a blank due date went to the
+      // server as "", so a filing with no due date typed was not created at all.
+      const res = await apiFetch("/api/mca-workspace/filings", {
+        method: "POST",
+        body: JSON.stringify({ ...form, client_id: clientId }),
+      });
+      if (!res?.success) {
+        setNewError(res?.error ?? "The filing was not created.");
+        return;
+      }
+      closeNew();
+      load();
+    } catch (e) {
+      setNewError(e instanceof Error && e.message ? e.message : "The filing was not created.");
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function updateStatus(id: string, status: string) {
@@ -561,7 +678,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">{category === "annual" ? "Annual" : "Event"} Filings</h3>
-        <button onClick={() => setShowNew(true)}
+        <button onClick={openNew}
           className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
           + New Filing
         </button>
@@ -579,17 +696,22 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
             <input placeholder="Financial Year (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={form.financial_year}
               onChange={(e) => setForm((f) => ({ ...f, financial_year: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
-            <input placeholder="Due Date (YYYY-MM-DD)" aria-label="Due date (YYYY-MM-DD)" value={form.due_date}
-              onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
-              className="border rounded px-3 py-1.5 text-sm" />
+            <label className="text-xs text-ps-label flex flex-col gap-1">
+              Due date
+              <DateInput id="mca-new-filing-due-date" value={form.due_date}
+                onChange={(v) => setForm((f) => ({ ...f, due_date: v }))}
+                onStateChange={newDates.watch("due", "Due date")}
+                className="w-full border rounded px-3 py-1.5 text-sm text-ps-ink" />
+            </label>
             <input placeholder="Description (optional)" aria-label="Description (optional)" value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
+          {(newRefusal.shown ?? newError) && <p role="alert" className="text-xs text-state-problem">{newRefusal.shown ?? newError}</p>}
           <div className="flex gap-2">
-            <Button variant="plain" size="none" onClick={saveNew} disabled={!form.form_type}
-              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">Save</Button>
-            <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <Button variant="plain" size="none" onClick={saveNew} disabled={!form.form_type || creating}
+              className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">{creating ? "Saving…" : "Save"}</Button>
+            <button onClick={closeNew} disabled={creating} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
         </div>
       )}

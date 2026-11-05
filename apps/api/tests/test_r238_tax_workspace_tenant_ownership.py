@@ -166,7 +166,7 @@ def test_create_director_accepts_own_firm(enforced):
 
 def test_create_mca_filing_rejects_foreign_client(enforced):
     import routers.mca_workspace as m
-    body = m.CreateFilingRequest(client_id="C-OTHER", form_type="AOC-4")
+    body = m.CreateFilingRequest(client_id="C-OTHER", form_type="AOC-4", due_date="2026-10-30")
     with pytest.raises(HTTPException) as ei:
         m.create_filing(body, PARTNER_F1)
     assert ei.value.status_code == 404
@@ -174,7 +174,7 @@ def test_create_mca_filing_rejects_foreign_client(enforced):
 
 def test_create_mca_filing_accepts_own_firm(enforced):
     import routers.mca_workspace as m
-    body = m.CreateFilingRequest(client_id="C1", form_type="AOC-4")
+    body = m.CreateFilingRequest(client_id="C1", form_type="AOC-4", due_date="2026-10-30")
     resp = m.create_filing(body, PARTNER_F1)
     assert resp["success"] is True
     assert resp["data"]["client_id"] == "C1"

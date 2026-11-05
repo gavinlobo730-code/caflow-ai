@@ -82,6 +82,7 @@ def test_mca_filing_status_filed_requires_manager():
         "client_id": "client-001",
         "form_type": "AOC-4",
         "financial_year": "2025-26",
+        "due_date": "2026-10-30",
         "company_name": "Test Co",
     }, headers=HEADERS)
     assert create_resp.status_code == 200
