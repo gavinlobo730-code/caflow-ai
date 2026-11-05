@@ -883,21 +883,29 @@ async function openComputationLoanDate(env) {
   await page.locator("#computation-loan-sanctioned-on").waitFor();
 }
 
+const YEAR_END_DEBIT = "00000000-0000-4000-8000-0000000000a1";
+const YEAR_END_CREDIT = "00000000-0000-4000-8000-0000000000a2";
+
 /** Year-end > Adjustments for an engagement of the given FY, "New Adjustment" open with the description, accounts and amount typed: the adjusting entry's date is left. */
 const openYearEndAdjustment = (fy) => async (env) => {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { year_end: ["read", "write", "approve"], accounting: ["read", "write"] } }) });
   stub.route({ method: "GET", re: /api\/year-end\/engagements\/eng-1$/, reply: () => ok({ id: "eng-1", client_id: CLIENT_ID, financial_year: fy, status: "draft", version: 1, created_at: "2026-04-05T00:00:00Z", updated_at: "2026-04-05T00:00:00Z" }) });
   stub.setTable("year_end_adjustments", []);
+  stub.setTable("chart_of_accounts", [
+    { id: YEAR_END_DEBIT, account_code: "5010", account_name: "Rent expense", account_type: "Expense", is_active: true, client_id: null },
+    { id: YEAR_END_CREDIT, account_code: "2010", account_name: "Rent payable", account_type: "Liability", is_active: true, client_id: CLIENT_ID },
+  ]);
   // The route answers the CREATED row, which the page puts at the end of its list.
   stub.route({ method: "POST", re: /api\/year-end\/eng-1\/adjustments$/, reply: (_req, raw) => ok({
     id: "adj-1", engagement_id: "eng-1", reference_no: null, status: "draft", created_at: "2026-10-08T08:00:00Z", ...JSON.parse(raw) }) });
   await page.goto(env.at("/year-end/eng-1/?tab=adjustments"), { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "New Adjustment" }).first().click();
   await page.getByLabel("Description", { exact: true }).fill("Accrual for outstanding rent - March");
-  // The columns hold uuids (migration 293), so the drive types two, as a request the server would accept.
-  await page.getByLabel("Debit Account", { exact: true }).fill("00000000-0000-4000-8000-0000000000a1");
-  await page.getByLabel("Credit Account", { exact: true }).fill("00000000-0000-4000-8000-0000000000a2");
+  // The two account columns hold a ledger account's id (uuid, migration 293), so the form PICKS an account from the client's chart (its own and the
+  // firm-level ones: what migration 570 accepts) and sends the id.
+  await pick(page, page.locator('button[aria-label="Debit Account"]'), "Rent expense");
+  await pick(page, page.locator('button[aria-label="Credit Account"]'), "Rent payable");
   await page.getByLabel("Amount (₹)", { exact: true }).fill("125000");
 };
 
@@ -1754,7 +1762,7 @@ const EDITORS = [
   {
     id: "year-end-adjustment-date", title: "Year-end > Adjustments > New Adjustment: the date an adjusting entry is posted at (it posts to the audited books)", open: openYearEndAdjustment("2026-27"),
     cleared: "Date is required",
-    fields: [{ box: (p) => p.getByLabel("Adjustment date", { exact: true }), label: "Date", key: "adjustment_date", full: "31/03/2026", iso: "2026-03-31" }],
+    fields: [{ box: (p) => p.getByLabel("Adjustment date", { exact: true }), label: "Date", key: "adjustment_date", full: "31/03/2027", iso: "2027-03-31" }],
     save: (p) => p.getByRole("button", { name: "Create Adjustment", exact: true }), write: /api\/year-end\/eng-1\/adjustments$/,
   },
   {
@@ -2485,6 +2493,45 @@ export const scenarios = [
       await page.getByLabel("Return Type", { exact: true }).selectOption("24Q");
       await until(async () => (await page.getByRole("button", { name: "Mark as Filed", exact: true }).count()) === 0, "the 26Q statement cleared by the changed return type");
       assert.equal(await page.getByRole("button", { name: "CA Approve", exact: true }).count(), 0, "an approval was still offered for the statement computed under the other form");
+    },
+  },
+  // The adjustment's two accounts are PICKED from the client's chart and sent as ids (the columns are uuids; the form used to take free text that the
+  // database refuses), and the list names them.
+  {
+    id: "year-end-adjustment-accounts-are-picked-and-sent-as-ids",
+    title: "Year-end > Adjustments > New Adjustment: the debit and credit accounts are chosen from the chart, reach the server as ids and are named in the list",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openYearEndAdjustment("2025-26")(env);
+      await typeAndLeave(page.getByLabel("Adjustment date", { exact: true }), "31/03/2026");
+      await page.getByRole("button", { name: "Create Adjustment", exact: true }).click();
+      await stub.quiet();
+      const writes = stub.writesTo(/api\/year-end\/eng-1\/adjustments$/);
+      assert.equal(writes.length, 1, `expected one write, saw ${writes.length}`);
+      const body = JSON.parse(writes[0].body);
+      assert.equal(body.debit_account_id, YEAR_END_DEBIT, `debit_account_id reached the server as ${JSON.stringify(body.debit_account_id)}`);
+      assert.equal(body.credit_account_id, YEAR_END_CREDIT, `credit_account_id reached the server as ${JSON.stringify(body.credit_account_id)}`);
+      await page.getByText("5010 Rent expense").first().waitFor({ timeout: 4000 }).catch(() => { throw new Error("the list did not name the debit account"); });
+      await page.getByText("2010 Rent payable").first().waitFor({ timeout: 4000 }).catch(() => { throw new Error("the list did not name the credit account"); });
+    },
+  },
+  // A date outside the engagement's own year is HINTED at (the box says so) and not refused: an entry dated just outside it, a reversal on 1 April, is
+  // a thing a CA does, and the choice is theirs (PRE-A-019). It posts into that other year's books, so the screen says so where the date is typed.
+  {
+    id: "year-end-adjustment-a-date-outside-the-engagements-year-is-hinted-not-refused",
+    title: "Year-end > Adjustments > New Adjustment: a date after the engagement's year says so in the box and is still sent",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openYearEndAdjustment("2025-26")(env);
+      await typeAndLeave(page.getByLabel("Adjustment date", { exact: true }), "01/04/2026");
+      await page.getByText("01 Apr 2026 is after 31 Mar 2026.").first().waitFor({ timeout: 4000 }).catch(() => { throw new Error("the box did not say the date is outside the engagement's year"); });
+      await page.getByRole("button", { name: "Create Adjustment", exact: true }).click();
+      await stub.quiet();
+      const writes = stub.writesTo(/api\/year-end\/eng-1\/adjustments$/);
+      assert.equal(writes.length, 1, "a hint must not stop the save");
+      assert.equal(JSON.parse(writes[0].body).adjustment_date, "2026-04-01");
     },
   },
   // The reconciliation's end box only HINTS when it is before the start; the window reached the server reversed and was refused there in schema words.
