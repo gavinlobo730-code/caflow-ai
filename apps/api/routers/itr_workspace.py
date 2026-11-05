@@ -154,6 +154,20 @@ class CreateFilingRequest(BaseModel):
     original_acknowledgement_number: Optional[str] = None
     original_filing_date: Optional[str] = None      # YYYY-MM-DD
 
+    @field_validator("original_filing_date")
+    @classmethod
+    def _earlier_return_date_is_a_real_past_date(cls, v):
+        """The earlier return's filing date is a date on a receipt that exists, so it is judged as the acknowledgement's filing date is: a real
+        day, not in the future (IST). It was a bare string, which reached a DATE column: free text was a 500 from Postgres. Blank is the same as
+        absent, and the workflow refuses a revised or updated return that has no date in words."""
+        if v is None or not str(v).strip():
+            return None
+        from domain.compliance_record_service import clean_filed_date
+        try:
+            return clean_filed_date(v)
+        except ValueError as refusal:
+            raise ValueError(str(refusal).replace("filed_date", "original_filing_date")) from None
+
     @model_validator(mode="after")
     def _years_are_a_pair(self):
         _assessment_year_must_follow(self.financial_year, self.assessment_year)

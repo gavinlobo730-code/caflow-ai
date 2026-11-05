@@ -418,7 +418,7 @@ function AuditLogContent() {
           {filtered.map((row) => (
             <div key={row.id} className="grid grid-cols-12 gap-2 px-5 py-3 hover:bg-ps-bg transition-colors items-start text-xs">
               <span className="col-span-2 text-ps-label tabular-nums">
-                {formatDate(row.created_at.slice(0, 10))}
+                {formatDate(row.created_at)}
                 <span className="block text-ps-hint font-mono">{row.created_at.slice(11, 19)}</span>
               </span>
               <span className="col-span-2 text-ps-body truncate" title={row.actor}>{row.actor}</span>

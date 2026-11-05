@@ -332,6 +332,15 @@ const DRIVEN: Record<string, string[]> = {
   "components/gst/Itc04Panel.tsx": ["#itc04-came-back-on", "#itc04-challan-date"],
   "app/income-tax/page.tsx": ["#itr-batch-filed-date", "#itr-add-due-date", "#itr-filed-modal-date"],
   "app/gst/page.tsx": ["#gst-add-filing-due-date", "#gst-batch-filed-date", "#gst-filed-modal-date"],
+  // The tenth slice (5-11-2026): the bank screens and the post-dated cheques panel.
+  "app/income-tax/tax-audit/page.tsx": ["#tax-audit-date", "#tax-audit-filing-date"],
+  "app/clients/[id]/tax/filing/page.tsx": ["#itr-ack-filing-date", "#itr-original-filing-date"],
+  "app/income-tax/notices/page.tsx": ["#notice-date-received", "#notice-response-due"],
+  "components/compliance/EditNoticeReadingModal.tsx": ["#notice-issued", "#notice-due"],
+  "app/clients/[id]/compliance/tds/page.tsx": ["[Valid from]", "[Valid to]"],
+  "components/banking/AccountsPanel.tsx": ["#bank-opening-date"],
+  "components/banking/ReconcileTab.tsx": ["#recon-start", "#recon-end"],
+  "components/banking/PostDatedChequesPanel.tsx": ["#cheque-presented-on", "#cheque-date"],
   "components/gst/RegistrationsTab.tsx": ["#gst-reg-registered-from", "[Date ${r.gstin} was cancelled or surrendered]"],
   "app/income-tax/capital-gains/page.tsx": ["#cg-calc-purchase-date", "#cg-calc-sale-date", "#cg-reg-purchase-date", "#cg-reg-sale-date", "[Acquisition date]", "[CGAS deposit date]"],
 };

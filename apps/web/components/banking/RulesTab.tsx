@@ -28,6 +28,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/dates/format";
 
 interface BankRule {
   id: string;
@@ -505,7 +506,7 @@ export function RulesTab({ clientId, accounts }: { clientId: string; accounts: A
                   )}
                   {r.is_trusted && !r.trusted_waiting && (
                     <span className="inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-full bg-state-ready-surface text-state-ready border border-state-ready-border"
-                      title={r.trusted_at ? `Trusted on ${r.trusted_at.slice(0, 10)}` : "Trusted"}>
+                      title={r.trusted_at ? `Trusted on ${formatDate(r.trusted_at)}` : "Trusted"}>
                       <ShieldCheck size={10} /> Trusted — passes without a click
                     </span>
                   )}

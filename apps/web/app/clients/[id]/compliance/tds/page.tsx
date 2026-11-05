@@ -1342,7 +1342,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
             check the number, the rate and the period before you save.
           </p>
         </div>
-        <button onClick={() => setShowNew((s) => !s)}
+        <button onClick={() => { setShowNew((s) => !s); setSaveError(null); }}
           className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark whitespace-nowrap">
           + Record Certificate
         </button>
@@ -1399,7 +1399,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
           </div>
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowNew(false)}
+            <button onClick={() => { setShowNew(false); setSaveError(null); }}
               className="text-sm px-3 py-1 border rounded">Cancel</button>
             <Button variant="plain" size="none" onClick={saveNew} disabled={saving}
               className="text-sm px-3 py-1 bg-state-ready-solid text-white rounded disabled:opacity-50">

@@ -279,6 +279,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Clause 32 stating a year's own position from the per-year entries; the refusal to offer a loss to an earlier year; the matching of an old return's use to a loss by type.
 - **Ledger:** POST-A-367
 
+### S27. Section 197 lower-deduction certificate: does Rule 28AA(4) cap its validity at the financial year, and is a certificate issued for a specified amount?
+
+- **Question:** The §197 Certificates screen (a client's TDS compliance page) tells the person, when the validity period is missing, that "Rule 28AA(4) caps it at the financial year", and says a certificate is issued for a specified amount. The service that records a certificate states in its own comment that the cap was never read from the rule's text and does not enforce it, so a certificate valid for longer than a year is accepted. (a) What does the rule provide about the period a certificate is valid for (the financial year, or the period stated in the certificate within it) and about an amount? (b) From 1-4-2026, which rule under the Income-tax Act 2025 and its Rules corresponds, and does the same hold? Please state the wording.
+- **Needed:** Rule 28AA of the Income-tax Rules 1961 as amended, the corresponding rule of the Rules made under the Income-tax Act 2025, and the form of the application and of the certificate.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Refusing a certificate whose period runs past one financial year, and any change to the screen's sentence about the rule, which stays as it was.
+- **Ledger:** PRE-A-015
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
