@@ -30,7 +30,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO } from "@/lib/dateMath";
 import { filingTrackerStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
-import { formatDate, formatMonthYear } from "@/lib/dates/format";
+import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
 import { useToast } from "@/components/ui/use-toast";
 import { api, type GstDueDates } from "@/lib/api";
@@ -161,10 +161,19 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   const [dueDate, setDueDate] = useState("");
   const [dueDateErr, setDueDateErr] = useState<string | null>(null);
   const [status, setStatus] = useState<FilingStatus>("Pending");
+  // The day it was filed on the portal, asked only for a filing recorded as Filed. This form used to send TODAY'S date for one, with no box and no
+  // question: the date a return was filed is the CA's statement (the period lock quotes it) and recording often lags the portal by days.
+  // It starts EMPTY, and a day after today is refused (PRE-A-015).
+  const [filedOn, setFiledOn] = useState("");
+  // The portal's receipt: the single and batch prompts of this tracker refuse a filing recorded without it, so this form does too.
+  const [arn, setArn] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { toast } = useToast();
   // Text that is not a date reads as blank, and the filing would save with no due date: refuse it instead (frontend_ux-19).
   const dates = useDateProblems();
+  // The filed-on box is on the form only for a filing recorded as Filed, so an unreadable date there matters only then.
+  const filedDates = useDateProblems();
 
   // Auto-fill the due date from the compliance engine when the return type or
   // the period changes. `cancelled` guards the response of a request the CA has
@@ -194,6 +203,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
 
   async function handleSave() {
     if (dates.first) { setErr(dates.first); return; }
+    if (status === "Filed" && filedDates.first) { setErr(filedDates.first); return; }
     if (!clientId || !period) {
       setErr("Please fill all required fields.");
       return;
@@ -204,12 +214,20 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
       setErr("Due date: enter the date this return is due.");
       return;
     }
+    if (status === "Filed" && !arn.trim()) {
+      setErr("Acknowledgement number (ARN): enter the number on the portal's receipt.");
+      return;
+    }
+    if (status === "Filed" && !filedOn) {
+      setErr("Filed on: enter the date this return was filed on the portal.");
+      return;
+    }
     setSaving(true);
     setErr(null);
     try {
       const sb = getSupabaseClient();
       const selectedClient = clients.find((c) => c.id === clientId);
-      const filedDate = status === "Filed" ? todayLocalISO() : null;
+      const filedDate = status === "Filed" ? filedOn : null;
 
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       // Map ReturnType to compliance_calendar compliance_type values
@@ -238,12 +256,24 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         .single();
 
       if (error) throw new Error(error.message);
+      // The row exists and is pending. If the server declines to record it as filed (a date before the period ended is its to refuse), the
+      // dialog must not stay open over a row that now exists: the next Save would insert it again and the database would answer in its own words.
+      // So the row is added as it is, and the sentence is said where the page can show it (the MCA form does the same).
+      let notMarkedFiled: string | null = null;
       if (filedDate) {
-        const marked = await api.compliance.markFiled((data as { id: string }).id,
-                                                      { filed_date: filedDate });
-        if (!marked.success) throw new Error(marked.error ?? "Failed to record the filing.");
-        (data as Record<string, unknown>).filing_status = "filed";
-        (data as Record<string, unknown>).filed_date = filedDate;
+        // The server refuses with a 422, which the API client raises, and some doors answer 200 with success false: both are "declined".
+        try {
+          const marked = await api.compliance.markFiled((data as { id: string }).id,
+                                                        { filed_date: filedDate, arn: arn.trim() });
+          if (marked.success) {
+            (data as Record<string, unknown>).filing_status = "filed";
+            (data as Record<string, unknown>).filed_date = filedDate;
+          } else {
+            notMarkedFiled = marked.error ?? "The server declined it.";
+          }
+        } catch (e) {
+          notMarkedFiled = e instanceof Error ? e.message : "The server declined it.";
+        }
       }
       const returnTypeMap: Record<string, ReturnType> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR9: "GSTR-9" };
       const r = data as Record<string, unknown>;
@@ -261,6 +291,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
         created_at: r.created_at as string,
       };
       onAdded(filing);
+      if (notMarkedFiled) toast({ title: "Filing added, but not marked filed", description: notMarkedFiled, variant: "destructive" });
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to save filing.");
@@ -352,7 +383,14 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
           <label className="text-xs font-medium text-ps-body block mb-1">Status</label>
           <select aria-label="Status"
             value={status}
-            onChange={(e) => setStatus(e.target.value as FilingStatus)}
+            onChange={(e) => {
+              const next = e.target.value as FilingStatus;
+              setStatus(next);
+              // A sentence about the boxes of Filed does not stay when they go, and neither do the values: a box shown again over a date typed before it was hidden
+              // came back holding a date after today with no sentence beside it.
+              setErr(null);
+              if (next !== "Filed") { setFiledOn(""); setArn(""); }
+            }}
             className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
           >
             <option value="Pending">Pending</option>
@@ -360,6 +398,32 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
             <option value="Overdue">Overdue</option>
           </select>
         </div>
+
+        {status === "Filed" && (
+          <div>
+            <label className="text-xs font-medium text-ps-body block mb-1">Acknowledgement number (ARN)</label>
+            <input aria-label="Acknowledgement number (ARN)"
+              value={arn}
+              onChange={(e) => setArn(e.target.value)}
+              placeholder="e.g. AA270125001234A"
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono mb-3 focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+            <label htmlFor="gst-add-filing-filed-on" className="text-xs font-medium text-ps-body block mb-1">
+              Filed on the portal on
+            </label>
+            <DateInput
+              id="gst-add-filing-filed-on"
+              value={filedOn}
+              notAfter={todayIstISO()}
+              onChange={setFiledOn}
+              onStateChange={filedDates.watch("filedOn", "Filed on", { afterMax: true })}
+              className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+            <p className="text-3xs text-ps-hint mt-1">
+              The date it was filed on the portal. Recording a GSTR-1 or GSTR-3B as filed also stops new invoices, bills, credit and debit notes and journals being dated in that period, and the lock quotes this date.
+            </p>
+          </div>
+        )}
 
         <div className="flex gap-2 pt-2">
           <button
@@ -401,7 +465,9 @@ interface BatchMarkFiledModalProps {
 function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledModalProps) {
   // Already-filed rows and rows recorded as not applicable never belong in this flow — filter once, up front.
   const [rows, setRows] = useState<GSTFiling[]>(() => selected.filter((f) => f.status !== "Filed" && f.status !== "Not applicable"));
-  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  // Starts EMPTY (PRE-A-015): the date a return was filed on the portal is the CA's statement, and a date offered from the clock was the wrong date for
+  // whoever pressed Confirm without reading it. A day after today is refused.
+  const [filedDate, setFiledDate] = useState("");
   const [arns, setArns] = useState<Record<string, string>>({});
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -522,8 +588,9 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
             <DateInput
               id="gst-batch-filed-date"
               value={filedDate}
+              notAfter={todayIstISO()}
               onChange={setFiledDate}
-              onStateChange={dates.watch("filedDate", "Date of filing")}
+              onStateChange={dates.watch("filedDate", "Date of filing", { afterMax: true })}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
@@ -672,7 +739,7 @@ export default function GSTPage() {
   // ── Mark as Filed ──────────────────────────────────────────────────────────
   function openMarkFiledModal(f: GSTFiling) {
     setFiledModal({ filing: f });
-    setFiledForm({ arn: "", filed_date: todayLocalISO() });
+    setFiledForm({ arn: "", filed_date: "" });
     setFiledError(null);
   }
 
@@ -1097,8 +1164,9 @@ export default function GSTPage() {
                 <DateInput
                   id="gst-filed-modal-date"
                   value={filedForm.filed_date}
+                  notAfter={todayIstISO()}
                   onChange={(v) => setFiledForm((p) => ({ ...p, filed_date: v }))}
-                  onStateChange={filedDates.watch("filedDate", "Date of filing")}
+                  onStateChange={filedDates.watch("filedDate", "Date of filing", { afterMax: true })}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>

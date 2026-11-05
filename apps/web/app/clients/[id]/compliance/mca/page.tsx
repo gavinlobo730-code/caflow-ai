@@ -16,7 +16,7 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { panProblem } from "@/lib/identifiers/pan";
 import { dinProblem } from "@/lib/identifiers/din";
 import { Button } from "@/components/ui/button";
@@ -508,7 +508,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   function openConfirmFiling(row: Record<string, unknown>) {
     setConfirmFiling(row);
     setSrn("");
-    setFilingDate(todayLocalISO());
+    // Starts EMPTY (PRE-A-015): the day a form was filed on MCA21 is the CA's statement, not the day it is recorded here.
+    setFilingDate("");
     setConfirmError(null);
   }
 
@@ -663,9 +664,11 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
             <input placeholder="SRN (required)" aria-label="SRN (required)" value={srn}
               onChange={(e) => setSrn(e.target.value)}
               className="border rounded px-3 py-1.5 text-sm font-mono" />
-            <DateInput id="mca-confirm-filing-date" aria-label="Filing date" value={filingDate}
+            {/* Keyed by the filing: the box does not reset text it could not read, so a second row's panel opened over "abc" typed for the first would still hold it. */}
+            <DateInput key={String(confirmFiling.id)} id="mca-confirm-filing-date" aria-label="Filing date" value={filingDate}
+              notAfter={todayIstISO()}
               onChange={setFilingDate}
-              onStateChange={filingDates.watch("filingDate", "Filing date")}
+              onStateChange={filingDates.watch("filingDate", "Filing date", { afterMax: true })}
               className="w-full border rounded px-3 py-1.5 text-sm" />
           </div>
           {confirmError && <p className="text-xs text-state-problem">{confirmError}</p>}

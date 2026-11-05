@@ -8,7 +8,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { assessmentYearFor, financialYearChoicesAround } from "@/lib/dates/periods";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
@@ -272,6 +272,21 @@ export default function ITRFilingPage() {
   const [showAck, setShowAck] = useState(false);
   const [ackNumber, setAckNumber] = useState("");
   const [ackDate, setAckDate] = useState("");
+  // The panel is about ONE filing and starts empty every time it opens: the number and date of the last one were still in it after Cancel, after a record and when
+  // another return was picked, and "Record as Filed" then sent them for the return on screen. The key remounts the date box, which does not reset text it could not read.
+  const [ackKey, setAckKey] = useState(0);
+  function openAckPanel() {
+    setAckNumber("");
+    setAckDate("");
+    setAckKey((k) => k + 1);
+    setShowAck(true);
+  }
+  function closeAckPanel() {
+    setShowAck(false);
+    setAckNumber("");
+    setAckDate("");
+    setAckKey((k) => k + 1);
+  }
   // The date the genuine filing record carries, and the one the period lock and the calendar are closed by: unreadable text holds the
   // button and says why, instead of a button that stays dead over a box with a date in it (frontend_ux-19).
   const ackDates = useDateProblems();
@@ -298,6 +313,8 @@ export default function ITRFilingPage() {
       setSheetError(null);
       setBooksSchedules(null);
       setBooksError(null);
+      // The acknowledgement panel belongs to the return it was opened on.
+      closeAckPanel();
     }
     setSelectedFiling(f);
   }
@@ -421,9 +438,21 @@ export default function ITRFilingPage() {
 
   // Opening the form starts it without the last refusal: it kept "Earlier return's filing date: ..." through Cancel and showed it again over a box
   // that no longer held that text.
+  // The key remounts the earlier return's date box, which does not reset text it could not read.
+  const [createKey, setCreateKey] = useState(0);
   function openCreate() {
     setCreateError(null);
+    setOriginalAck("");
+    setOriginalAckDate("");
+    setCreateKey((k) => k + 1);
     setShowCreate(true);
+  }
+  function closeCreate() {
+    setShowCreate(false);
+    setCreateError(null);
+    setOriginalAck("");
+    setOriginalAckDate("");
+    setCreateKey((k) => k + 1);
   }
 
   async function handleCreate() {
@@ -449,15 +478,15 @@ export default function ITRFilingPage() {
           // Sent only where the kind needs them. The server refuses a revised
           // or updated return without the earlier receipt — the form carries
           // it — so an empty string here would produce a refusal that reads
-          // like a bug rather than a missing field.
-          original_acknowledgement_number: originalAck.trim() || null,
-          original_filing_date: originalAckDate || null,
+          // like a bug rather than a missing field. And a box the person can no
+          // longer see (the kind was changed back to an original return) sends
+          // nothing: its text was still in the state and the server judged it.
+          original_acknowledgement_number: selectedKind?.needs_the_earlier_receipt ? (originalAck.trim() || null) : null,
+          original_filing_date: selectedKind?.needs_the_earlier_receipt ? (originalAckDate || null) : null,
         }),
       });
       if (!res.success) throw new Error(res.error ?? "Failed");
-      setShowCreate(false);
-      setOriginalAck("");
-      setOriginalAckDate("");
+      closeCreate();
       await load();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed");
@@ -539,7 +568,7 @@ export default function ITRFilingPage() {
       if (!res.success) throw new Error(res.error ?? "Failed");
       setCalendarNote(obligationNote(res.data));
       setLossNote(lossRecordNote(res.data));
-      setShowAck(false);
+      closeAckPanel();
       chooseFiling(null);
       await load();
     } catch (err) {
@@ -753,9 +782,10 @@ export default function ITRFilingPage() {
                 <label htmlFor="itr-original-filing-date" className="text-3xs text-ps-label mb-1 block">
                   Earlier return&apos;s filing date
                 </label>
-                <DateInput id="itr-original-filing-date" value={originalAckDate}
+                <DateInput key={createKey} id="itr-original-filing-date" value={originalAckDate}
+                  notAfter={todayIstISO()}
                   onChange={setOriginalAckDate}
-                  onStateChange={createDates.watch("original", "Earlier return's filing date")}
+                  onStateChange={createDates.watch("original", "Earlier return's filing date", { afterMax: true })}
                   className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
               </div>
               <p className="col-span-2 text-3xs text-ps-hint">
@@ -767,7 +797,7 @@ export default function ITRFilingPage() {
           )}
           {createError && <p className="text-xs text-red-600">{createError}</p>}
           <div className="flex gap-2 justify-end">
-            <button onClick={() => { setShowCreate(false); setCreateError(null); }} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
+            <button onClick={closeCreate} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
             <Button variant="plain" size="none" spinner={false} onClick={handleCreate} disabled={actionInFlight}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded disabled:opacity-50 flex items-center gap-1">
               {creating && <Loader2 size={10} className="animate-spin" />} Create
@@ -938,7 +968,7 @@ export default function ITRFilingPage() {
             )}
             {selectedFiling.status === "ready_for_filing" && !showAck && (
               <button
-                onClick={() => setShowAck(true)}
+                onClick={openAckPanel}
                 className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
               >
                 Record Acknowledgement
@@ -999,13 +1029,13 @@ export default function ITRFilingPage() {
                 </div>
                 <div>
                   <label htmlFor="itr-ack-filing-date" className="text-3xs text-ps-label mb-1 block">Filing Date</label>
-                  <DateInput id="itr-ack-filing-date" value={ackDate} onChange={setAckDate}
-                    onStateChange={ackDates.watch("filing", "Filing date")}
+                  <DateInput key={ackKey} id="itr-ack-filing-date" value={ackDate} notAfter={todayIstISO()} onChange={setAckDate}
+                    onStateChange={ackDates.watch("filing", "Filing date", { afterMax: true })}
                     className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg" />
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setShowAck(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
+                <button onClick={closeAckPanel} className="text-xs px-3 py-1.5 border border-ps-border rounded">Cancel</button>
                 <Button variant="plain" size="none" spinner={false}
                   onClick={() => handleRecordAck(selectedFiling)}
                   disabled={actionInFlight || !ackNumber || !ackDate}

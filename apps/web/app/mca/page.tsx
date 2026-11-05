@@ -28,7 +28,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { todayLocalISO, daysBetweenLocalISO, toLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { filingTrackerStatus, calendarWordForMcaStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
-import { formatDate, formatMonthYear } from "@/lib/dates/format";
+import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
 import { Callout } from "@/components/ui/callout";
 import { formatCroreLakh } from "@/lib/money/format";
@@ -268,18 +268,29 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
       let calendar: string | undefined;
       if (status === "Filed") {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing the CA made on MCA21.
-        const res = await api.mca.setFilingStatus(filing.id, {
-          status: "filed", ca_approved: true, srn: srn.trim(), filing_date: filedOn,
-        });
-        if (res.success) {
-          filing.status = "Filed";
-          filing.filed_date = filedOn;
-          filing.srn = srn.trim();
-          calendar = calendarSentence(obligationNote(res.data));
-        } else {
+        // The door answers a date it refuses as HTTP 200 with success false, and answers 403 to a caller who may not approve MCA filings, which the API client
+        // RAISES. Either way the row exists and is pending: it is added as it is and the sentence is said, and the dialog does not stay open over a row that
+        // now exists (the next Save would insert it again).
+        let declined: string | null = null;
+        try {
+          const res = await api.mca.setFilingStatus(filing.id, {
+            status: "filed", ca_approved: true, srn: srn.trim(), filing_date: filedOn,
+          });
+          if (res.success) {
+            filing.status = "Filed";
+            filing.filed_date = filedOn;
+            filing.srn = srn.trim();
+            calendar = calendarSentence(obligationNote(res.data));
+          } else {
+            declined = res.error ?? "The server declined it.";
+          }
+        } catch (e) {
+          declined = e instanceof Error ? e.message : "The server declined it.";
+        }
+        if (declined) {
           // The row exists and is pending: say so, with the server's sentence, rather than showing Filed.
           onAdded(filing);
-          toast({ title: "Filing added, but not marked filed", description: res.error ?? "The server declined it." });
+          toast({ title: "Filing added, but not marked filed", description: declined });
           onClose();
           return;
         }
@@ -338,7 +349,13 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Status</label>
-              <select aria-label="Status" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={status} onChange={e => setStatus(e.target.value as FilingStatus)}>
+              <select aria-label="Status" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={status} onChange={e => {
+                const next = e.target.value as FilingStatus;
+                setStatus(next);
+                // The filed-on box and the sentences about it go when the filing is not Filed, and so does the date: shown again it came back holding a date after today with no sentence.
+                setErr(null);
+                if (next !== "Filed") setFiledOn("");
+              }}>
                 <option value="Pending">Pending</option>
                 <option value="Filed">Filed</option>
                 <option value="Overdue">Overdue</option>
@@ -355,9 +372,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
               <DateInput
                 id="mca-filed-on"
                 value={filedOn}
-                max={todayLocalISO()}
+                notAfter={todayIstISO()}
                 onChange={setFiledOn}
-                onStateChange={dates.watch("filedOn", "Filed on MCA21 on")}
+                onStateChange={dates.watch("filedOn", "Filed on MCA21 on", { afterMax: true })}
                 className="w-full"
               />
             </div>
@@ -403,7 +420,9 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
   // local list as they succeed (see handleSubmit), so a partial failure only
   // re-shows the rows that still need attention.
   const [rows, setRows] = useState<MCAFiling[]>(() => filings.filter(f => f.status !== "Filed" && f.status !== "Not applicable"));
-  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  // Starts EMPTY (PRE-A-015): the date a form was filed on MCA21 is the CA's statement, and a date offered from the clock was the wrong date for
+  // whoever pressed Confirm without reading it. A day after today is refused.
+  const [filedDate, setFiledDate] = useState("");
   const [srns, setSrns] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [failures, setFailures] = useState<{ label: string; error: string }[]>([]);
@@ -499,8 +518,9 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
                 <DateInput
                   id="mca-batch-filed-date"
                   value={filedDate}
+                  notAfter={todayIstISO()}
                   onChange={setFiledDate}
-                  onStateChange={dates.watch("filedDate", "Date of filing")}
+                  onStateChange={dates.watch("filedDate", "Date of filing", { afterMax: true })}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 <p className="text-3xs text-ps-hint mt-1">Applied to all filings below.</p>
@@ -671,7 +691,7 @@ export default function MCAPage() {
 
   function openMarkFiledModal(f: MCAFiling) {
     setFiledModal({ filing: f });
-    setFiledForm({ srn: "", filed_date: todayLocalISO() });
+    setFiledForm({ srn: "", filed_date: "" });
     setFiledError(null);
   }
 
@@ -1117,8 +1137,9 @@ export default function MCAPage() {
                 <DateInput
                   id="mca-filed-modal-date"
                   value={filedForm.filed_date}
+                  notAfter={todayIstISO()}
                   onChange={(v) => setFiledForm((p) => ({ ...p, filed_date: v }))}
-                  onStateChange={filedDates.watch("filedDate", "Date of filing")}
+                  onStateChange={filedDates.watch("filedDate", "Date of filing", { afterMax: true })}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>

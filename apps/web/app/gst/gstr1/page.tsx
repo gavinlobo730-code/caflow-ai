@@ -847,8 +847,8 @@ export default function GSTR1Page() {
               />
               <p className="text-xs text-ps-hint mt-1">
                 Required: the date on the portal acknowledgement. Recording a GSTR-1 as
-                filed locks that period against new entries, and the lock message quotes
-                this date.
+                filed stops new invoices, bills, credit and debit notes and journals being
+                dated in that period, and the lock message quotes this date.
               </p>
             </div>
             {filedError && (

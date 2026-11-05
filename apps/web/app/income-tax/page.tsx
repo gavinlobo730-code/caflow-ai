@@ -65,6 +65,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -214,7 +215,8 @@ function BulkMarkFiledModal({
     [selected],
   );
 
-  const [filedDate, setFiledDate] = useState(todayLocalISO());
+  // The date the returns were filed on the portal is the CA's statement and starts EMPTY: a filing is often recorded days after the portal, so a date offered from the clock was the wrong date for whoever pressed Confirm without reading it (PRE-A-015). A day after today is refused.
+  const [filedDate, setFiledDate] = useState("");
   const [arns, setArns] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -332,8 +334,9 @@ function BulkMarkFiledModal({
             <DateInput
               id="itr-batch-filed-date"
               value={filedDate}
+              notAfter={todayIstISO()}
               onChange={setFiledDate}
-              onStateChange={dates.watch("filedDate", "Date of filing")}
+              onStateChange={dates.watch("filedDate", "Date of filing", { afterMax: true })}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
             />
           </div>
@@ -1009,7 +1012,7 @@ export default function IncomeTaxPage() {
                     <button
                       onClick={() => {
                         setFiledModal({ entry });
-                        setFiledForm({ arn: "", filed_date: today });
+                        setFiledForm({ arn: "", filed_date: "" });
                         setFiledError(null);
                       }}
                       className="text-xs px-2.5 py-1 bg-state-ready-surface text-state-ready font-medium rounded hover:bg-state-ready-hover transition-colors"
@@ -1446,8 +1449,9 @@ export default function IncomeTaxPage() {
                 <DateInput
                   id="itr-filed-modal-date"
                   value={filedForm.filed_date}
+                  notAfter={todayIstISO()}
                   onChange={(v) => setFiledForm((p) => ({ ...p, filed_date: v }))}
-                  onStateChange={filedDates.watch("filedDate", "Date of filing")}
+                  onStateChange={filedDates.watch("filedDate", "Date of filing", { afterMax: true })}
                   className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
                 />
               </div>
