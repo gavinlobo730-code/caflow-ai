@@ -14,7 +14,9 @@
 //       * the four compliance pages show no thrown request's message themselves: no `instanceof Error` test and no `.message` read of a caught value, so what they print comes
 //         through `failureSentence`;
 //       * every `try` on those pages that makes a request has a `catch`, and the GSTR-3B row actions say what they caught through `failureSentence`;
-//       * a file that calls `fetch` itself is either one of three that must, or on a list that only shrinks, and the list names the shape that keeps each there.
+//       * a file that calls `fetch` itself is either one of four that must, or on a list that only shrinks (it is empty now), and the list names the shape that keeps each there;
+//       * the browser's Supabase client is made once, with the fetch that answers a dropped connection in the product's words (POST-A-413), and a change is never sent a second time by
+//         `request()` (POST-A-412).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -36,22 +38,30 @@ const PAYROLL = "app/clients/[id]/payroll/page.tsx";
 const GST_PAGE = "app/clients/[id]/compliance/gst/page.tsx";
 const TDS_PAGE = "app/clients/[id]/compliance/tds/page.tsx";
 
-/** The three files that must call `fetch` themselves, and why. */
+/** The four files that must call `fetch` themselves, and why. */
 const MUST_CALL_FETCH: Record<string, string> = {
   [HELPER]: "the wrapper: it is the one `fetch` the others go through",
+  "lib/supabase/plainRestFetch.ts": "the `fetch` the browser's Supabase client is made with: it passes a request on, and answers in the server's place for one that got no answer (POST-A-413)",
   "lib/api/index.ts": "`request()`'s own bounded fetch, which has its own timeout, retry and plain sentences, and says them itself",
   "lib/api/keepAwake.ts": "the keep-awake ping, which swallows its failures by design and shows nothing",
 };
 
-/** Files that still read their own answer. A list that only SHRINKS: converting one leaves its entry stale and fails the test until the entry is deleted. */
-const STILL_READ_BY_THEMSELVES: Record<string, string> = {
-  "app/clients/[id]/purchases/page.tsx": "two request closures (`doFetch`) with a retry on 401, one with its own reading of a refusal, copied from `lib/invoices/shared.ts`",
-  "lib/invoices/shared.ts": "two request closures (`doFetch`) with a retry on 401, and `refusalSentence` for a failed status",
-  "components/invoices/InvoiceViewDrawer.tsx": "a PDF opened in a new tab, whose caller says a fixed \"Unable to open PDF\", so no browser words reach the screen",
-  "components/purchases/DebitNoteEditor.tsx": "an attachment upload whose catch says its own fixed sentence",
-  "components/purchases/PurchaseBillEditor.tsx": "an invoice reading whose catch says its own fixed sentence",
-  "components/purchases/PurchaseCreditNoteEditor.tsx": "an attachment upload whose catch says its own fixed sentence",
-};
+/**
+ * Files that still read their own answer. A list that only SHRINKS: converting one leaves its entry stale and fails the test until the entry is deleted. IT IS EMPTY, which is the goal state
+ * (POST-A-410 converted the last six: the purchases page's closures went to `lib/invoices/shared`, which reads through the helper, and the drawer's PDF and the three editors' uploads do too);
+ * a file that needs to call `fetch` itself is one of the three above, or says here, in a sentence, what shape keeps it there.
+ */
+const STILL_READ_BY_THEMSELVES: Record<string, string> = {};
+
+/** The files POST-A-410 converted: none of them calls `fetch` or reads `Response.json()` itself any more, and none of them keeps a copy of the invoice screens' request helpers. */
+const CONVERTED_IN_410 = [
+  "app/clients/[id]/purchases/page.tsx",
+  "lib/invoices/shared.ts",
+  "components/invoices/InvoiceViewDrawer.tsx",
+  "components/purchases/DebitNoteEditor.tsx",
+  "components/purchases/PurchaseBillEditor.tsx",
+  "components/purchases/PurchaseCreditNoteEditor.tsx",
+];
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(WEB, rel), "utf8");
@@ -247,20 +257,21 @@ function bareCatchesSaying(rel: string, src: string, setter: string): string[] {
   return found;
 }
 
+/** The calls on the browser's Supabase client that change something. A `.rpc()` is a POST too, and nothing in the browser calls one. */
+const TABLE_WRITES = new Set(["insert", "update", "upsert", "delete"]);
+
 /**
- * A catch that says a failed request through `failureSentence(e, fallback, label)` must label it as the try's requests are: "write" when any of them may change something, "read" when every
- * one only asks (no method or GET, or the word "read" as the call's own third argument). The source already throws the finished sentence by the request's own method, so the label only
- * decides what a failure that reached the screen UNCONVERTED says (the auth client's token fetch), and a label that disagrees with the request is a sentence that is wrong when that happens.
+ * What a block asks and what it changes, counted from its requests: `apiFetch(…)` calls (a change unless there is no method, or GET or HEAD, or the word "read" as the call's own third
+ * argument) and calls on a table of the browser's Supabase client (`….from(…).insert|update|upsert|delete(…)` is a change; a `.select(…)` on a chain that writes nothing asks). The table
+ * half was added after an independent read found that the rule below understood `apiFetch` only: `failureSentence` words a Supabase error by the screen's label (POST-A-413), so a table
+ * write caught under "read" would have been worded as a read.
  */
-function labelsThatDisagreeWithTheRequest(rel: string, src: string): string[] {
-  const found: string[] = [];
-  const sf = parse(rel, src);
-  walk(sf, (node) => {
-    if (!ts.isTryStatement(node) || !node.catchClause) return;
-    let asks = 0;
-    let changes = 0;
-    walk(node.tryBlock, (n) => {
-      if (!(ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "apiFetch")) return;
+function requestsMadeIn(block: ts.Node): { asks: number; changes: number } {
+  let asks = 0;
+  let changes = 0;
+  walk(block, (n) => {
+    if (!ts.isCallExpression(n)) return;
+    if (ts.isIdentifier(n.expression) && n.expression.text === "apiFetch") {
       const word = n.arguments[2];
       if (word && ts.isStringLiteral(word) && word.text === "read") { asks++; return; }
       let method = "GET";
@@ -271,7 +282,29 @@ function labelsThatDisagreeWithTheRequest(rel: string, src: string): string[] {
         }
       }
       if (method === "GET" || method === "HEAD") asks++; else changes++;
-    });
+      return;
+    }
+    if (!ts.isPropertyAccessExpression(n.expression)) return;
+    const chain = n.expression.getText();
+    if (!/\.from\(/.test(chain)) return;
+    const name = n.expression.name.text;
+    if (TABLE_WRITES.has(name)) changes++;
+    else if (name === "select" && !/\.(insert|update|upsert|delete)\(/.test(chain)) asks++;
+  });
+  return { asks, changes };
+}
+
+/**
+ * A catch that says a failed request through `failureSentence(e, fallback, label)` must label it as the try's requests are: "write" when any of them may change something, "read" when every
+ * one only asks (no method or GET, or the word "read" as the call's own third argument; a table `.select()`). The source already throws the finished sentence by the request's own method, so the label only
+ * decides what a failure that reached the screen UNCONVERTED says (the auth client's token fetch) or what the Supabase client handed back as an error object, and a label that disagrees with the request is a sentence that is wrong when that happens.
+ */
+function labelsThatDisagreeWithTheRequest(rel: string, src: string): string[] {
+  const found: string[] = [];
+  const sf = parse(rel, src);
+  walk(sf, (node) => {
+    if (!ts.isTryStatement(node) || !node.catchClause) return;
+    const { asks, changes } = requestsMadeIn(node.tryBlock);
     if (asks + changes === 0) return;
     const wanted = changes > 0 ? "write" : "read";
     walk(node.catchClause.block, (n) => {
@@ -284,18 +317,94 @@ function labelsThatDisagreeWithTheRequest(rel: string, src: string): string[] {
   return found;
 }
 
-/** How many `try` statements make a request through `apiFetch` and have a catch that says it through `failureSentence`: the population `labelsThatDisagreeWithTheRequest` reads. */
+/** How many `try` statements make a request (through `apiFetch` or on a table) and have a catch that says it through `failureSentence`: the population `labelsThatDisagreeWithTheRequest` reads. */
 function triesThatSayWhatTheyCaught(rel: string, src: string): number {
   let n = 0;
   walk(parse(rel, src), (node) => {
     if (!ts.isTryStatement(node) || !node.catchClause) return;
-    let requests = false;
+    const { asks, changes } = requestsMadeIn(node.tryBlock);
     let says = false;
-    walk(node.tryBlock, (c) => { if (ts.isCallExpression(c) && ts.isIdentifier(c.expression) && c.expression.text === "apiFetch") requests = true; });
     walk(node.catchClause.block, (c) => { if (ts.isCallExpression(c) && ts.isIdentifier(c.expression) && c.expression.text === "failureSentence") says = true; });
-    if (requests && says) n++;
+    if (asks + changes > 0 && says) n++;
   });
   return n;
+}
+
+/** Every `callee(…).catch(handler)` in a file: the line, the request's method, and whether the handler takes what was thrown. */
+function catchesOnRequests(rel: string, src: string, callee: string): Array<{ line: number; method: string; takesWhatWasThrown: boolean }> {
+  const found: Array<{ line: number; method: string; takesWhatWasThrown: boolean }> = [];
+  const sf = parse(rel, src);
+  walk(sf, (node) => {
+    if (!(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "catch")) return;
+    const request = node.expression.expression;
+    if (!(ts.isCallExpression(request) && ts.isIdentifier(request.expression) && request.expression.text === callee)) return;
+    const method = (/method:\s*["'](\w+)["']/.exec(request.getText())?.[1] ?? "GET").toUpperCase();
+    const handler = node.arguments[0];
+    const takesWhatWasThrown = handler !== undefined && (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler)) && handler.parameters.length > 0;
+    found.push({ line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1, method, takesWhatWasThrown });
+  });
+  return found;
+}
+
+/** A request that changes something whose failure is swallowed into `null`: `callee(…, { method: "POST" … }).catch(() => null)`, a handler that does not even take what was thrown. A change that got no answer may have gone through, and a caller that sees null says its own fixed "could not" over it. */
+function writesThatSwallowTheirFailure(rel: string, src: string, callee: string): string[] {
+  return catchesOnRequests(rel, src, callee)
+    .filter((c) => c.method !== "GET" && c.method !== "HEAD" && !c.takesWhatWasThrown)
+    .map((c) => `line ${c.line}: ${callee} ${c.method} … .catch(() => …) says nothing of what was thrown`);
+}
+
+/**
+ * `await <receiver>.<method>(…)` calls in a file, split by whether each sits in a `try` block itself (not its catch or finally, and not in a function nested in it, which runs later).
+ * The Supabase fetch wrapper reads the body of an answer inside its try so that a connection that dies after the headers is the drop it is (POST-A-413); a read moved out of the try
+ * would pass every other rule and be worded by the client as "TypeError: network error".
+ */
+function awaitsInsideATry(rel: string, src: string, receiver: string, method: string): { inside: number; outside: number } {
+  let inside = 0;
+  let outside = 0;
+  walk(parse(rel, src), (node) => {
+    if (!(ts.isAwaitExpression(node) && ts.isCallExpression(node.expression))) return;
+    const callee = node.expression.expression;
+    if (!(ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && callee.expression.text === receiver && callee.name.text === method)) return;
+    let inTry = false;
+    for (let p: ts.Node | undefined = node.parent; p; p = p.parent) {
+      if (ts.isFunctionLike(p)) break;
+      if (ts.isBlock(p) && p.parent && ts.isTryStatement(p.parent) && p.parent.tryBlock === p) { inTry = true; break; }
+    }
+    if (inTry) inside++; else outside++;
+  });
+  return { inside, outside };
+}
+
+/**
+ * The files that build a Supabase client, however the package is brought in: a value import of `createClient` (renamed or not), `import * as ns` with `ns.createClient(…)` or
+ * `new ns.SupabaseClient(…)`, `new SupabaseClient(…)`, and a dynamic `import("@supabase/supabase-js")` or `require("@supabase/supabase-js")`. A type import (`import type`, `import { type X }`)
+ * builds nothing. (An independent read found the first version saw only `import { createClient }`.)
+ */
+function buildsASupabaseClient(rel: string, src: string): boolean {
+  const PACKAGE = "@supabase/supabase-js";
+  let found = false;
+  const namespaces = new Set<string>();
+  const sf = parse(rel, src);
+  walk(sf, (node) => {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === PACKAGE && !node.importClause?.isTypeOnly) {
+      const bindings = node.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings) && bindings.elements.some((el) => !el.isTypeOnly && (el.propertyName ?? el.name).text === "createClient")) found = true;
+      if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
+    }
+    if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]) && node.arguments[0].text === PACKAGE
+      && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === "require"))) found = true;
+    if (ts.isNewExpression(node)) {
+      const callee = node.expression;
+      const name = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
+      if (name === "SupabaseClient") found = true;
+    }
+  });
+  if (!found && namespaces.size > 0) {
+    walk(sf, (node) => {
+      if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && namespaces.has(node.expression.text) && node.name.text === "createClient") found = true;
+    });
+  }
+  return found;
 }
 
 /** The name of the function declaration a node sits in, or "" at the top of the file. */
@@ -315,7 +424,11 @@ function functionsCallingFetch(rel: string, src: string): string[] {
   return found;
 }
 
-/** A request that may change something (any method but GET) labelled "read", other than a stateless estimator (a function whose name begins `compute`): its failure would say that no result came back when the change may have gone through. */
+/**
+ * A request that may change something (any method but GET) labelled "read", other than a stateless estimator (a function whose name begins `compute`) or the AI reading of an
+ * uploaded invoice (`handleExtract`, which proposes figures and records no bill: a reading is a proposal, not a write): its failure would say that no result came back when the
+ * change may have gone through.
+ */
 function readLabelsOnAChange(rel: string, src: string): string[] {
   const found: string[] = [];
   walk(parse(rel, src), (node) => {
@@ -328,7 +441,7 @@ function readLabelsOnAChange(rel: string, src: string): string[] {
       if (!named) continue;
       const value = ts.isPropertyAssignment(p) && ts.isStringLiteral(p.initializer) ? p.initializer.text : "(not a literal)";
       const fn = enclosingFunction(node);
-      if (value.toUpperCase() !== "GET" && !/^compute/.test(fn)) found.push(`${rel}: ${fn || "(top level)"} sends ${value} and calls it a read`);
+      if (value.toUpperCase() !== "GET" && !/^(compute|handleExtract$)/.test(fn)) found.push(`${rel}: ${fn || "(top level)"} sends ${value} and calls it a read`);
     }
   });
   return found;
@@ -506,7 +619,78 @@ test("the GSTR-3B tab's five row actions each catch a request that throws (POST-
   assert.match(read(rel), /async function markFiled\(id: string, arn: string, filedDate: string\) \{\s*const ok = await updateStatus\(/);
 });
 
-test("a file that calls fetch itself is one of three that must, or is on the list that only shrinks", () => {
+test("the browser's Supabase client is made once, with the fetch that answers a dropped connection in the product's words (POST-A-413)", () => {
+  const rel = "lib/supabase/client.ts";
+  assert.match(read(rel), /createClient\([^;]*\{ global: \{ fetch: plainRestFetch \} \}\)/, `${rel} makes the client without plainRestFetch: a dropped connection reads \"TypeError: Failed to fetch\" at every table read and write`);
+  const builders: string[] = [];
+  for (const dir of ["app", "components", "lib"]) {
+    for (const f of sourceFiles(dir)) if (buildsASupabaseClient(f, read(f))) builders.push(f);
+  }
+  assert.deepEqual(builders, [rel], "a second place makes a Supabase client, and it would not have the plain fetch");
+  const mod = read("lib/supabase/plainRestFetch.ts");
+  assert.match(mod, /status: 503/, "the answer for a read that got no answer is not a 503: the client would not send the read again");
+  assert.match(mod, /import \{ browserFailureOf, doingOf, NO_ANSWER_CODE, noAnswerSentence \} from "\.\.\/api\/failureSentence\.ts";/, "the module takes its sentences and its code from the one module that says them");
+  const reads = awaitsInsideATry("lib/supabase/plainRestFetch.ts", mod, "res", "text");
+  assert.ok(reads.inside >= 1 && reads.outside === 0, `the body is not read inside the try (${reads.inside} in, ${reads.outside} out): a connection that dies after the headers is worded by the client as TypeError: network error`);
+});
+
+test("request() sends a read again after a dropped connection and a change never (POST-A-412)", () => {
+  const src = read("lib/api/index.ts");
+  assert.match(src, /if \(!isNetworkFailure\) throw e;\s*if \(doing === "write"\) throw plainFailure\(e, doing\);\s*await sleep\(5_000\);/, "request() waits and sends a change a second time after a dropped connection");
+  assert.doesNotMatch(src, /the retry itself is POST-A-412/, "a comment still says that the retry of a change is open");
+});
+
+test("the files POST-A-410 converted call no fetch, read no body of their own and keep no copy of the invoice screens' request helpers", () => {
+  for (const rel of CONVERTED_IN_410) {
+    const src = read(rel);
+    assert.equal(directFetches(rel, src), 0, `${rel} calls fetch itself again: go through fetchPlain/jsonPlain`);
+    assert.deepEqual(bareJsonReads(rel, src), [], `${rel} reads a body with .json() itself: use jsonPlain`);
+    assert.deepEqual(statusTextReads(rel, src), [], `${rel} reads a status line`);
+  }
+  const page = read("app/clients/[id]/purchases/page.tsx");
+  const sf = parse("page.tsx", page);
+  const copies: string[] = [];
+  walk(sf, (node) => {
+    if (ts.isFunctionDeclaration(node) && node.name && ["apiCall", "apiGet", "getAuthToken", "refreshedAuthToken"].includes(node.name.text)) copies.push(node.name.text);
+  });
+  assert.deepEqual(copies, [], "the purchases page keeps its own copy of a request helper the invoice screens share");
+  assert.match(page, /import \{ apiCall, apiGet, getAuthToken \} from "@\/lib\/invoices\/shared";/);
+  const shared = read("lib/invoices/shared.ts");
+  assert.ok((shared.match(/fetchPlain\(/g) ?? []).length >= 2 && (shared.match(/jsonPlain</g) ?? []).length >= 2, "the shared helpers do not read through the helper module");
+  // the uploads and the PDF say what they caught through the helper, as what they were
+  for (const [rel, what] of [["components/purchases/DebitNoteEditor.tsx", '"Attachment upload failed.", "write"'], ["components/purchases/PurchaseCreditNoteEditor.tsx", '"Attachment upload failed.", "write"'], ["components/invoices/InvoiceViewDrawer.tsx", '"Unable to open PDF", "read"']] as const) {
+    assert.ok(read(rel).includes(`failureSentence(e, ${what})`), `${rel}: the catch does not say what it caught through failureSentence`);
+  }
+  // the invoice reading's try also holds the mapping of the reading onto the form, so only a request that got no answer is told in the product's words and a defect there says the fixed sentence
+  assert.ok(read("components/purchases/PurchaseBillEditor.tsx").includes('setError(e instanceof PlainFailure ? e.message : "AI extraction failed. Please enter the bill details manually.");'), "the invoice reading shows the message of any error in its try");
+  // a refusal with no sentence of its own: only a 5xx, a 408 and a 429 are told to try again
+  assert.match(read("lib/invoices/shared.ts"), /return res\.status >= 500 \|\| res\.status === 408 \|\| res\.status === 429\s*\?\s*`The server could not complete this request[^`]*Please try again in a moment\.`\s*:\s*`The server did not accept this request/, "a 5xx, a 408 and a 429 with no sentence are not told to try again in a moment, or another 4xx is");
+});
+
+test("the payroll page reads a body that is not JSON as what it is, and the four run actions say what was thrown (POST-A-410)", () => {
+  const src = read(PAYROLL);
+  assert.doesNotMatch(src, /res\.json\(\)\.catch\(\(\) => null\)/, "the reader reads a page that is not JSON as nothing again");
+  assert.match(src, /throw new PlainFailure\("not_ours", !res\.ok && looksLikeMarkup\(text\) \? errorPageSentence\(res\.status\) : notOursSentence\(doing\)\);/);
+  assert.match(src, /\} else if \(!res\.ok\) \{[^}]*throw new PlainFailure\("not_ours", notOursSentence\(doing\)\);/, "an empty answer under a failed status is read as nothing again");
+  assert.deepEqual(writesThatSwallowTheirFailure(PAYROLL, src, "apiFetch"), [], `${PAYROLL}: a change is read as failed whatever was thrown`);
+  for (const [fn, sentence] of [["createRun", "CREATE_FAILED"], ["finalizeRun", "FINALIZE_FAILED"], ["recomputeRun", "RECOMPUTE_FAILED"], ["deleteRun", "DELETE_FAILED"]]) {
+    assert.ok(src.includes(`failureSentence(thrown, ${sentence}, "write")`), `${fn} does not say a request that got no answer as one`);
+  }
+  // the rule is live on this page only: four change requests whose catch takes what was thrown, and a read whose catch does not need to (an independent read found the other four pages hold none)
+  const payrollCatches = catchesOnRequests(PAYROLL, src, "apiFetch");
+  assert.ok(payrollCatches.filter((c) => c.method !== "GET" && c.takesWhatWasThrown).length >= 4, "the rule no longer sees the payroll page's four change requests");
+  assert.ok(payrollCatches.some((c) => c.method === "GET" && !c.takesWhatWasThrown), "the rule no longer sees the payroll page's read that swallows its failure by design");
+  // the four compliance pages make no such change today; the loop holds that none is added
+  for (const rel of PAGES) assert.deepEqual(writesThatSwallowTheirFailure(rel, read(rel), "apiFetch"), [], `${rel}: a change is read as failed whatever was thrown`);
+});
+
+test("what a refused or failed GST row action says is announced to a screen reader, on both tabs (POST-A-411)", () => {
+  const gst = read("app/clients/[id]/compliance/gst/page.tsx");
+  assert.match(gst, /\{rowError && !filingRow && \(\s*\/\/[^\n]*\n\s*<p role="alert" className="text-sm text-state-problem/, "the GSTR-1 tab's row sentence is a plain paragraph again");
+  assert.match(gst, /\{rowError && !filingRow && \(\s*\/\/[^\n]*\n\s*<div role="alert" className="text-sm px-3 py-2 rounded bg-state-attention-surface/, "the GSTR-3B tab's row sentence is a plain box again");
+});
+
+test("a file that calls fetch itself is one of four that must, or is on the list that only shrinks", () => {
   const calling = new Map<string, number>();
   for (const dir of ["app", "components", "lib"]) {
     for (const rel of sourceFiles(dir)) {
@@ -523,7 +707,8 @@ test("a file that calls fetch itself is one of three that must, or is on the lis
   assert.deepEqual(stale, [], `these files no longer call fetch themselves: delete them from STILL_READ_BY_THEMSELVES (${stale.join(", ")})`);
   const gone = Object.keys(MUST_CALL_FETCH).filter((rel) => !calling.has(rel));
   assert.deepEqual(gone, [], `${gone.join(", ")} no longer calls fetch: the exception is not needed`);
-  assert.ok(calling.size >= 8, `only ${calling.size} files found: the walk has stopped finding them`);
+  // the walk must still find the files that must call it: with the list of the others empty, finding fewer means it has stopped looking
+  assert.ok(calling.size >= Object.keys(MUST_CALL_FETCH).length, `only ${calling.size} files found: the walk has stopped finding them`);
 });
 
 test("every file on the list exists and every reason is a sentence", () => {
@@ -535,11 +720,41 @@ test("every file on the list exists and every reason is a sentence", () => {
 
 // ── the rules catch what they are for ───────────────────────────────────────────────────────────────────────────────
 
+test("self-test: the rules of POST-A-410, 412 and 413 flag a spoiled copy", () => {
+  assert.equal(writesThatSwallowTheirFailure("x.tsx", "async function f() { return apiFetch('/x', { method: 'POST' }).catch(() => null); }", "apiFetch").length, 1, "a change whose failure is swallowed is not seen");
+  assert.equal(writesThatSwallowTheirFailure("x.tsx", "async function f() { return apiFetch('/x', { method: \"DELETE\" }).catch(() => null); }", "apiFetch").length, 1, "a delete whose failure is swallowed is not seen");
+  assert.deepEqual(writesThatSwallowTheirFailure("x.tsx", "async function f() { return apiFetch('/x').catch(() => null); }", "apiFetch"), [], "a read is flagged");
+  assert.deepEqual(writesThatSwallowTheirFailure("x.tsx", "async function f() { let t; return apiFetch('/x', { method: 'POST' }).catch((e) => { t = e; return null; }); }", "apiFetch"), [], "a handler that takes what was thrown is flagged");
+  assert.deepEqual(awaitsInsideATry("x.ts", "async function f() { try { const t = await res.text(); } catch (e) { throw e; } }", "res", "text"), { inside: 1, outside: 0 }, "a body read in the try is not seen");
+  assert.deepEqual(awaitsInsideATry("x.ts", "async function f() { const t = await res.text(); try { g(); } catch (e) { throw e; } }", "res", "text"), { inside: 0, outside: 1 }, "a body read before the try is read as inside it");
+  assert.deepEqual(awaitsInsideATry("x.ts", "async function f() { try { g(); } catch (e) { await res.text(); } }", "res", "text"), { inside: 0, outside: 1 }, "a body read in the catch is read as inside the try");
+  assert.deepEqual(awaitsInsideATry("x.ts", "async function f() { try { items.map(async () => { await res.text(); }); } catch (e) { throw e; } }", "res", "text"), { inside: 0, outside: 1 }, "a body read in a function nested in the try is read as inside it");
+  assert.deepEqual(awaitsInsideATry("x.ts", "async function f() { try { await other.text(); await res.json(); } catch (e) { throw e; } }", "res", "text"), { inside: 0, outside: 0 }, "another receiver or method is counted");
+  assert.equal(buildsASupabaseClient("x.ts", "import { createClient } from '@supabase/supabase-js'; const c = createClient(u, k);"), true, "a Supabase client made here is not seen");
+  assert.equal(buildsASupabaseClient("x.ts", "import { createClient as make } from '@supabase/supabase-js'; const c = make(u, k);"), true, "a renamed import is not seen");
+  assert.equal(buildsASupabaseClient("x.ts", "import * as sb from '@supabase/supabase-js'; const c = sb.createClient(u, k);"), true, "a namespace import that builds is not seen");
+  assert.equal(buildsASupabaseClient("x.ts", "import { SupabaseClient } from '@supabase/supabase-js'; const c = new SupabaseClient(u, k);"), true, "new SupabaseClient is not seen");
+  assert.equal(buildsASupabaseClient("x.ts", "async function f() { const m = await import('@supabase/supabase-js'); return m.createClient(u, k); }"), true, "a dynamic import is not seen");
+  assert.equal(buildsASupabaseClient("x.ts", "const m = require('@supabase/supabase-js'); const c = m.createClient(u, k);"), true, "a require is not seen");
+  assert.equal(buildsASupabaseClient("x.ts", "import type { SupabaseClient } from '@supabase/supabase-js';"), false, "a type import is flagged");
+  assert.equal(buildsASupabaseClient("x.ts", "import { type SupabaseClient, type Session } from '@supabase/supabase-js'; let c: SupabaseClient | null = null;"), false, "an element-level type import is flagged");
+  assert.equal(buildsASupabaseClient("x.ts", "import * as sb from '@supabase/supabase-js'; let c: sb.SupabaseClient | null = null;"), false, "a namespace import used only as a type is flagged");
+  assert.equal(buildsASupabaseClient("x.ts", "export async function createClient(input) { return 1; }"), false, "the product's own createClient is flagged");
+  assert.doesNotMatch("const _client = createClient(url, key);", /createClient\([^;]*\{ global: \{ fetch: plainRestFetch \} \}\)/, "a client made without the plain fetch is not seen");
+});
+
 test("self-test: each rule flags a spoiled copy of the code it guards", () => {
   assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await apiFetch('/x', { method: 'DELETE' }); } catch (e) { s(failureSentence(e, 'x', 'read')); } }").length, 1, "a change labelled a read is not seen");
   assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await apiFetch('/x'); } catch (e) { s(failureSentence(e, 'x', 'write')); } }").length, 1, "a question labelled a write is not seen");
   assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await apiFetch('/x', { method: 'POST' }); } catch (e) { s(failureSentence(e, 'x')); } }").length, 0, "the default label (a write) over a change is flagged");
   assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await apiFetch('/x', { method: 'POST' }, 'read'); } catch (e) { s(failureSentence(e, 'x', 'read')); } }").length, 0, "an estimator labelled a read is flagged");
+  // a table call on the Supabase client is a request too (an independent read found the rule understood apiFetch only)
+  assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await supabase.from('t').update({ a: 1 }).eq('id', 1); } catch (e) { s(failureSentence(e, 'x', 'read')); } }").length, 1, "a table write labelled a read is not seen");
+  assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await supabase.from('t').insert({ a: 1 }).select(); } catch (e) { s(failureSentence(e, 'x', 'read')); } }").length, 1, "an insert followed by a select is read as a question");
+  assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await supabase.from('t').delete().eq('id', 1); } catch (e) { s(failureSentence(e, 'x')); } }").length, 0, "the default label over a table delete is flagged");
+  assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await supabase.from('t').select('a').limit(1); } catch (e) { s(failureSentence(e, 'x', 'read')); } }").length, 0, "a table select labelled a read is flagged");
+  assert.equal(labelsThatDisagreeWithTheRequest("x.tsx", "async function f() { try { await supabase.from('t').select('a').limit(1); } catch (e) { s(failureSentence(e, 'x', 'write')); } }").length, 1, "a table select labelled a write is not seen");
+  assert.equal(triesThatSayWhatTheyCaught("x.tsx", "async function f() { try { await supabase.from('t').select('a'); } catch (e) { s(failureSentence(e, 'x', 'read')); } }"), 1, "a try that asks a table is not counted");
   assert.deepEqual(readCallsToAChange("x.tsx", "async function save() { return apiFetch('/api/tds-workspace/returns', { method: 'POST' }, 'read'); }", "apiFetch"), ["x.tsx: save sends '/api/tds-workspace/returns' and calls it a read"], "a change called a read is not seen");
   assert.deepEqual(readCallsToAChange("x.tsx", "async function f() { return apiFetch('/api/gst/gstr1/from-books', { method: 'POST' }, 'read'); }", "apiFetch"), [], "an estimator is flagged");
   assert.deepEqual(readCallsToAChange("x.tsx", "async function computeFromBooks() { return apiFetch(path, { method: 'POST' }, 'read'); }", "apiFetch"), [], "the compute function is flagged");

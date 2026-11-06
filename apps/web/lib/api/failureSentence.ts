@@ -102,7 +102,14 @@ const NOT_JSON_SYNTAXERROR = /^(?:json\b[\s\S]*|[\s\S]*\bjson\b[\s\S]*|the strin
 // The Supabase client (postgrest-js) words a failed fetch as "<error name>: <error message>", so the browser's words arrive behind a prefix that also says what kind of error it was.
 const CLIENT_PREFIX = /^(typeerror|fetcherror|syntaxerror):\s*/i;
 
-type ErrorLike = { name?: unknown; message?: unknown };
+/**
+ * The `code` of the error the browser's Supabase client hands back for a request that got no answer (`lib/supabase/plainRestFetch` answers in the server's place with it). The client returns a
+ * PLAIN OBJECT, not an Error, whose `message` is already the product's sentence for what the request was; a screen that holds that object says it by this code, so that the words are the ones
+ * for what the SCREEN was doing (a read or a change), as they are for every other failed request.
+ */
+export const NO_ANSWER_CODE = "PS_NO_ANSWER";
+
+type ErrorLike = { name?: unknown; message?: unknown; code?: unknown };
 
 function asErrorLike(e: unknown): ErrorLike | null {
   return e !== null && typeof e === "object" ? (e as ErrorLike) : null;
@@ -114,6 +121,7 @@ export type BrowserFailure = "no_answer" | "not_ours";
 export function browserFailureOf(e: unknown): BrowserFailure | null {
   const like = asErrorLike(e);
   if (!like) return null;
+  if (like.code === NO_ANSWER_CODE) return "no_answer";
   let name = typeof like.name === "string" ? like.name : "";
   let message = typeof like.message === "string" ? like.message.trim() : "";
   // The auth client reports the same dropped connection under its own name when it tries to renew a session.

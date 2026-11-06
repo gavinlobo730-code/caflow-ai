@@ -38,8 +38,9 @@ const NOT_OURS_WRITE = "The server's answer was not the product's own (a network
 const WAYS = [
   { name: "answers success false", route: (sentence) => ({ reply: () => ({ success: false, data: null, error: sentence }) }), says: (spec) => spec.refusal },
   { name: "refuses with a status", route: () => refuse(CLIENT_NOT_FOUND_SENTENCE, 404), says: () => CLIENT_NOT_FOUND_SENTENCE },
-  // A proxy's error page that arrives with a 200: `res.json()` throws and the handler's own catch says so. The payroll page reads such a body as nothing, and says its own sentence.
-  { name: "answers something that is not JSON", route: () => notJson(), says: (spec) => spec.unreadable ?? NOT_OURS_WRITE },
+  // A proxy's error page that arrives with a 200: `res.json()` throws and the handler's own catch says so. (The payroll page used to read such a body as nothing and say its own "Couldn't …"
+  // sentence, a claim that the change had not been made; its reader throws for it now, POST-A-410, so every screen says the one sentence.)
+  { name: "answers something that is not JSON", route: () => notJson(), says: () => NOT_OURS_WRITE },
 ];
 
 /** A sentence as the whole text of an alert (a substring would let "Not found" be satisfied by any longer alert that contains it); a pattern is used as it is. */
@@ -225,8 +226,7 @@ const ROW_ACTIONS = [
   { id: "a-filings-status-change", what: "A client's MCA > Annual Filings > Start", open: openMcaFilings, button: "Start", method: "PATCH", write: /mca-workspace\/filings\/mf-1\/status$/, refusal: MCA_COULD_NOT_SENTENCE, rowId: "mf-1" },
   { id: "a-tds-returns-status-change", what: "A client's TDS > Returns > Prepare", open: openTdsReturnsWithOne, button: "Prepare", method: "PATCH", write: /api\/tds-workspace\/returns\/tr-1\/status$/, refusal: TDS_COULD_NOT_STATUS_SENTENCE, rowId: "tr-1" },
   { id: "a-pt-registration-removal", what: "A client's Payroll > Setup > Professional tax registrations > Remove (the tenth write of this shape and the last in the app)", open: openPayrollPt, button: "Remove", method: "DELETE",
-    write: /api\/payroll\/statutory-identity\/pt/, refusal: CLIENT_NOT_FOUND_SENTENCE, rowId: "MH",
-    unreadable: "Couldn't remove the registration." },
+    write: /api\/payroll\/statutory-identity\/pt/, refusal: CLIENT_NOT_FOUND_SENTENCE, rowId: "MH" },
 ];
 
 /** A form or a dialog with a button that writes: its answer is said inside it, beside that button; over a refusal it stays open with what was typed or computed in it. */

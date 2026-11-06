@@ -62,6 +62,9 @@ export const scenarios = [
       assert.equal(asked.length, 2, `Show more should read once more, saw ${asked.length} reads`);
       assert.equal(asked[1].limit, "300", "the next window is one step larger");
       await page.getByText("More exist that are not shown here").waitFor({ state: "detached" });
+      // The notice goes while the next window is being read, before the count is drawn again, so the count is waited for too: it is what says that the read came back. (Read at once, the body
+      // still said "3+ events" in about one run in four, on main as well.)
+      await page.getByText(/\b3 events\b/).first().waitFor({ timeout: 4000 });
       body = await page.locator("body").innerText();
       assert.doesNotMatch(body, /More exist that are not shown here/, "the server said nothing more exists");
       assert.match(body, /3 events/);

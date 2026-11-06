@@ -210,7 +210,7 @@ export default function ClientHealthPage() {
       setAlerts((alertsRes.data as HealthAlert[]) ?? []);
       await loadOverrides();
     } catch (e) {
-      // the Supabase client words a failed fetch "TypeError: Failed to fetch"; failureSentence knows that wording and leaves every other message as it is
+      // the Supabase client hands back a plain object, not an Error: for a request that got no answer its `code` says so (lib/supabase/plainRestFetch) and failureSentence says it for what this screen was doing; every other message is left as it is
       setError(failureSentence(e, "Failed to load", "read"));
     } finally {
       setLoading(false);

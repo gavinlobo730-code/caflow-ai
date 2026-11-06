@@ -41,7 +41,7 @@ import { promptDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, failureSentence, fetchPlain } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, failureSentence, fetchPlain, looksLikeMarkup, notOursSentence, plainFailure, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -51,6 +51,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data: T }> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
+  const doing = doingOf(options?.method);
   const res = await fetchPlain(`${API}${path}`, {
     ...options,
     headers: {
@@ -58,8 +59,21 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
-  }, doingOf(options?.method));
-  const body = await res.json().catch(() => null);
+  }, doing);
+  // A body that is not JSON is a gateway's page, not the product's answer: it says nothing about whether a change went through (POST-A-410). It is thrown as what it is. It used to be
+  // read as nothing, and the caller then said its own fixed "Could not …" over a payroll release that may have posted.
+  const text = await res.text().catch((e: unknown) => { throw plainFailure(e, doing); });
+  let body: UntypedJson = null;
+  if (text.trim() !== "") {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new PlainFailure("not_ours", !res.ok && looksLikeMarkup(text) ? errorPageSentence(res.status) : notOursSentence(doing));
+    }
+  } else if (!res.ok) {
+    // The product's own refusals always carry a body, so an EMPTY answer under a failed status is a gateway's, and a caller that read it as nothing said its fixed "Could not …" over a request that may have gone through.
+    throw new PlainFailure("not_ours", notOursSentence(doing));
+  }
   // FastAPI's own HTTPException body is `{"detail": ...}` with no `success`
   // key at all — every caller here decides on `res.success === false`, which
   // is never true for that shape, so a refusal (finalize's 409 gaps payload
@@ -74,6 +88,12 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
   }
   return body;
 }
+
+/** What each payroll run action says when it is refused with no sentence of its own, and what it falls back to when it has nothing better to say. */
+const CREATE_FAILED = "Could not create the payroll run — the request failed.";
+const FINALIZE_FAILED = "Could not finalize the payroll run — the request failed.";
+const RECOMPUTE_FAILED = "Could not recompute the payroll run — the request failed.";
+const DELETE_FAILED = "Could not delete the payroll run — the request failed.";
 
 /** The server's own sentence out of a refusal apiFetch handed back.
  *
@@ -657,8 +677,9 @@ function RunsTab({ clientId, firmId, openDoc }:
     setCreating(true);
     setCreateError(null);
     setRunGaps([]);
+    let thrown = null as unknown;
     const res = await apiFetch("/api/payroll/runs", { method: "POST", body: JSON.stringify({ client_id: clientId, firm_id: firmId, month }) })
-      .catch(() => null) as {
+      .catch((e: unknown) => { thrown = e; return null; }) as {
         success?: boolean; error?: string | null;
         data?: { statutory_gaps?: string[]; attendance_gaps?: string[] };
       } | null;
@@ -667,7 +688,8 @@ function RunsTab({ clientId, firmId, openDoc }:
     // rejection produced silent no-op with zero explanation of why nothing
     // happened.
     if (!res || res.success === false) {
-      setCreateError(refusalText(res) ?? "Could not create the payroll run — the request failed.");
+      // a request that got no answer says that it is not known whether the run was made, and not that it failed (POST-A-410)
+      setCreateError(thrown ? failureSentence(thrown, CREATE_FAILED, "write") : refusalText(res) ?? CREATE_FAILED);
       return;
     }
     // The run has ALWAYS come back with statutory_gaps and this page has always
@@ -695,10 +717,11 @@ function RunsTab({ clientId, firmId, openDoc }:
   async function finalizeRun(runId: string, overrideReason?: string) {
     setFinalizing(runId);
     setFinalizeError(null);
+    let thrown = null as unknown;
     const res = await apiFetch(`/api/payroll/runs/${runId}/finalize`, {
       method: "POST",
       body: JSON.stringify(overrideReason ? { override_reason: overrideReason } : {}),
-    }).catch(() => null) as {
+    }).catch((e: unknown) => { thrown = e; return null; }) as {
       success?: boolean; error?: string | null;
       detail?: string | { message?: string; gaps?: string[] };
       data?: { overridden_gaps?: string[]; loan_writedown_owed?: boolean };
@@ -718,10 +741,8 @@ function RunsTab({ clientId, firmId, openDoc }:
         setOverrideReason("");
         return;
       }
-      setFinalizeError(
-        (typeof detail === "string" ? detail : null)
-        ?? res?.error
-        ?? "Could not finalize the payroll run — the request failed.");
+      // Releasing posts the run's journal: a request that got no answer may have been the one that posted it, and the sentence says that it is not known (POST-A-410)
+      setFinalizeError(thrown ? failureSentence(thrown, FINALIZE_FAILED, "write") : (typeof detail === "string" ? detail : null) ?? res?.error ?? FINALIZE_FAILED);
       return;
     }
     // The release stands (its journal is posted) but the loan balances were not all written down. Said here, where the
@@ -747,14 +768,12 @@ function RunsTab({ clientId, firmId, openDoc }:
   async function recomputeRun(runId: string) {
     setRebuilding(runId);
     setFinalizeError(null);
+    let thrown = null as unknown;
     const res = await apiFetch(`/api/payroll/runs/${runId}/recompute`, { method: "POST" })
-      .catch(() => null) as { success?: boolean; error?: string | null; detail?: string } | null;
+      .catch((e: unknown) => { thrown = e; return null; }) as { success?: boolean; error?: string | null; detail?: string } | null;
     setRebuilding(null);
     if (!res || res.success === false) {
-      setFinalizeError(
-        (typeof res?.detail === "string" ? res.detail : null)
-        ?? res?.error
-        ?? "Could not recompute the payroll run — the request failed.");
+      setFinalizeError(thrown ? failureSentence(thrown, RECOMPUTE_FAILED, "write") : (typeof res?.detail === "string" ? res.detail : null) ?? res?.error ?? RECOMPUTE_FAILED);
       return;
     }
     await load();
@@ -764,15 +783,13 @@ function RunsTab({ clientId, firmId, openDoc }:
   async function deleteRun(runId: string) {
     setRebuilding(runId);
     setFinalizeError(null);
+    let thrown = null as unknown;
     const res = await apiFetch(`/api/payroll/runs/${runId}`, { method: "DELETE" })
-      .catch(() => null) as { success?: boolean; error?: string | null; detail?: string } | null;
+      .catch((e: unknown) => { thrown = e; return null; }) as { success?: boolean; error?: string | null; detail?: string } | null;
     setRebuilding(null);
     setConfirmDelete(null);
     if (!res || res.success === false) {
-      setFinalizeError(
-        (typeof res?.detail === "string" ? res.detail : null)
-        ?? res?.error
-        ?? "Could not delete the payroll run — the request failed.");
+      setFinalizeError(thrown ? failureSentence(thrown, DELETE_FAILED, "write") : (typeof res?.detail === "string" ? res.detail : null) ?? res?.error ?? DELETE_FAILED);
       return;
     }
     await load();
@@ -1919,7 +1936,7 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
       // THE ANSWER IS READ (POST-A-391, the tenth write of this shape and the last in the app): it was awaited and dropped, so a refused removal reloaded the list and said nothing.
       const res = await apiFetch(`/api/payroll/statutory-identity/pt?client_id=${clientId}&state=${state}`,
                                  { method: "DELETE" });
-      // `success` must be TRUE to count as accepted: apiFetch hands back null for an answer that is not JSON (a proxy's error page) and an answer with no `success` is not an
+      // `success` must be TRUE to count as accepted: apiFetch throws for an answer that is not JSON (a proxy's error page; a 204 with no body comes back as null) and an answer with no `success` is not an
       // acceptance, so only a success is read as one; the sentence is the page's own reading of the refusal (a string, or the 422's list of messages).
       if ((res as { success?: boolean } | null)?.success !== true) {
         setSaveError(refusalText(res) ?? "Couldn't remove the registration.");

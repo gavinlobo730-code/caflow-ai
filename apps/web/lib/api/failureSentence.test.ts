@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  NOT_OURS_READ, NOT_OURS_WRITE, NO_ANSWER_READ, NO_ANSWER_WRITE,
+  NOT_OURS_READ, NOT_OURS_WRITE, NO_ANSWER_CODE, NO_ANSWER_READ, NO_ANSWER_WRITE,
   PlainFailure, browserFailureOf, doingOf, errorPageSentence, failureSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence,
 } from "./failureSentence.ts";
 
@@ -48,6 +48,21 @@ const NOT_OURS_SPELLINGS: [string, unknown][] = [
 
 test("a dropped connection is recognised in every engine's words", () => {
   for (const [engine, e] of NO_ANSWER_SPELLINGS) assert.equal(browserFailureOf(e), "no_answer", engine);
+});
+
+test("the Supabase client's no-answer error is recognised by its code, said for what the screen was doing, and nothing else of its kind is read out (POST-A-413)", () => {
+  // the client hands back a plain object, not an Error, whose message is already a sentence; the screen says it for what IT was doing
+  const stands = { message: NO_ANSWER_READ, details: "", hint: "", code: NO_ANSWER_CODE };
+  assert.equal(browserFailureOf(stands), "no_answer");
+  assert.equal(failureSentence(stands, "Couldn't load.", "read"), NO_ANSWER_READ);
+  assert.equal(failureSentence(stands, "Couldn't save.", "write"), NO_ANSWER_WRITE);
+  assert.ok(plainFailure(stands, "write") instanceof PlainFailure);
+  // a database error of the client's own is not rewritten, and its words are not read out
+  const refusal = { message: "permission denied for table clients", details: null, hint: null, code: "42501" };
+  assert.equal(browserFailureOf(refusal), null);
+  assert.equal(failureSentence(refusal, "Couldn't load."), "Couldn't load.");
+  // the code is the whole of the recognition: an object that only says the words is not taken for it
+  assert.equal(browserFailureOf({ message: NO_ANSWER_READ, code: "" }), null);
 });
 
 test("an answer that is not JSON is recognised in every engine's words", () => {

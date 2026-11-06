@@ -106,7 +106,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
       .order("created_at", { ascending: false });
     if (error) {
       setNotices([]);
-      // The Supabase client words a failed fetch "TypeError: Failed to fetch"; that is the browser's, and a database's own message is left as it is.
+      // The Supabase client hands back a plain object, not an Error: for a request that got no answer its `code` says so (lib/supabase/plainRestFetch) and the sentence is said for what this screen was doing; a database's own message is left as it is.
       setNoticesError(browserFailureOf(error) ? failureSentence(error, "Couldn't load government notices.", "read") : (error.message || "Couldn't load government notices."));
       return;
     }

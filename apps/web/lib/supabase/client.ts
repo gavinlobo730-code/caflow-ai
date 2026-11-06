@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { plainRestFetch } from "./plainRestFetch.ts";
 
 let _client: SupabaseClient | null = null;
 
@@ -10,7 +11,10 @@ export function getSupabaseClient(): SupabaseClient {
 
   // Provide a no-op client at build time so static generation doesn't crash.
   // Real auth calls only happen in the browser where env vars are populated.
-  _client = createClient(url || "https://placeholder.supabase.co", key || "placeholder");
+  //
+  // The client is given `plainRestFetch`, so a table read or write whose connection drops comes back with the product's sentence as `error.message` and not
+  // `TypeError: Failed to fetch` (POST-A-413). It is the ONLY place the browser makes a Supabase client: a second one would not have it.
+  _client = createClient(url || "https://placeholder.supabase.co", key || "placeholder", { global: { fetch: plainRestFetch } });
   return _client;
 }
 

@@ -29,6 +29,7 @@ import { UQC_CODES } from "@/lib/constants/uqc";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, getAuthToken, fmt, gstRateOptions, gstRateToPercent } from "@/lib/invoices/shared";
+import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { todayLocalISO } from "@/lib/dateMath";
@@ -287,12 +288,12 @@ export function DebitNoteEditor({
       formData.append("file", uploadFile);
       formData.append("client_id", clientId);
       const token = await getAuthToken();
-      const res = await fetch(`${API}/api/debit-notes/upload`, {
+      const res = await fetchPlain(`${API}/api/debit-notes/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
-      });
-      const json = await res.json();
+      }, "write");
+      const json = await jsonPlain<UntypedJson>(res, "write");
       if (json.success && json.data?.document_url) {
         setDocumentUrl(json.data.document_url as string);
       } else {
@@ -300,8 +301,9 @@ export function DebitNoteEditor({
         // with FastAPI's `{detail}` body, not this API's {success,error} envelope.
         setError(json.error || (typeof json.detail === "string" ? json.detail : null) || "Attachment upload failed.");
       }
-    } catch {
-      setError("Attachment upload failed.");
+    } catch (e) {
+      // a connection that dropped may have dropped after the file was kept: the sentence says that it is not known (POST-A-410)
+      setError(failureSentence(e, "Attachment upload failed.", "write"));
     } finally {
       setUploading(false);
     }
