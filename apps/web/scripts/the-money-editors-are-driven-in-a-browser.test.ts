@@ -417,7 +417,7 @@ test("a scenario fails on an uncaught exception, a console error, a CSP violatio
   assert.match(src, /m\.type\(\) !== "error"/, "a console error no longer counts");
   assert.match(src, /__cspViolations/);
   assert.match(src, /escaped\.add\(/, "a request for a host that is not the stub is no longer recorded");
-  assert.match(src, /exit\(failed\.length \|\| escaped\.size \? 1 : 0\)/, "a foreign-host request no longer fails the run");
+  assert.match(src, /exit\(failed\.length \|\| escaped\.size \|\| stoppedAtDeadline \? 1 : 0\)/, "a foreign-host request, or a drive stopped at its deadline, no longer fails the run");
   // The one native dialog allowed is the browser's own leave-site prompt, which the drive accepts so a reload
   // does not hang. Anything else is the product asking with the browser's voice.
   assert.match(src, /d\.type\(\) === "beforeunload"/);
