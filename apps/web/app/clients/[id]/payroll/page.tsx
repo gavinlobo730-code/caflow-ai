@@ -41,6 +41,7 @@ import { promptDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { doingOf, failureSentence, fetchPlain } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -50,14 +51,14 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data: T }> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetchPlain(`${API}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
-  });
+  }, doingOf(options?.method));
   const body = await res.json().catch(() => null);
   // FastAPI's own HTTPException body is `{"detail": ...}` with no `success`
   // key at all — every caller here decides on `res.success === false`, which
@@ -1870,8 +1871,9 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
       }
       setValues(res.data.identity ?? {});
       setSaved(name);
-    } catch {
-      setSaveError("Couldn't save — the request failed or timed out.");
+    } catch (e) {
+      // a request that got no answer says that it is not known whether it was saved, not that it was not (POST-A-406)
+      setSaveError(failureSentence(e, "Couldn't save — the request failed or timed out.", "write"));
     } finally {
       setSaving(null);
     }
@@ -1904,8 +1906,8 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
       }
       setPtForm({ state: "", ptrc_number: "", ptec_number: "" });
       await load();
-    } catch {
-      setSaveError("Couldn't save — the request failed or timed out.");
+    } catch (e) {
+      setSaveError(failureSentence(e, "Couldn't save — the request failed or timed out.", "write"));
     } finally {
       setSaving(null);
     }
@@ -1924,8 +1926,8 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
         return;
       }
       await load();
-    } catch {
-      setSaveError("Couldn't remove the registration.");
+    } catch (e) {
+      setSaveError(failureSentence(e, "Couldn't remove the registration.", "write"));
     } finally {
       setSaving(null);
     }
@@ -2412,8 +2414,8 @@ function SalaryStructuresTab({ clientId, firmId }: { clientId: string; firmId: s
       }
       await load();
       setShowAdd(false);
-    } catch {
-      setSaveError("Could not save the salary structure — the request failed.");
+    } catch (e) {
+      setSaveError(failureSentence(e, "Could not save the salary structure — the request failed.", "write"));
     } finally {
       setSaving(false);
     }

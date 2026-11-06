@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -15,15 +16,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
     data: { session },
   } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
-  return res.json();
+  }, doing);
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

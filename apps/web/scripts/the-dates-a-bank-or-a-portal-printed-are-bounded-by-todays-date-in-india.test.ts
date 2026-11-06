@@ -138,6 +138,8 @@ const AN_ANSWER = [
   /^""$/,
   /^res\??\.error(?: (?:\?\?|\|\|) "[^"]*")?$/,
   /^e instanceof Error(?: && e\.message)? \? e\.message : "[^"]*"$/,
+  // A failed request's own, said through the one helper (POST-A-406): the browser's words for a dropped connection or a page that is not JSON are the product's sentence by then.
+  /^failureSentence\(e, "[^"]*", "(?:read|write)"\)$/,
 ];
 
 /** The calls of `setters` in `code` that hand over anything but an answer; `extra` is what the form may also say itself, by exact pattern. */
@@ -465,8 +467,9 @@ test("the days that are a PLAN are not bounded by today, and the stock filters r
 
 test("the writers and the deleters behind those two forms say what the server said", () => {
   const data = read(DATA);
-  const helper = topLevelText(data, "async function writeAnswer<T>(");
-  assert.ok(helper.indexOf("errorMessage(res)") > 0 && helper.indexOf("errorMessage(res)") < helper.indexOf("res.json()"),
+  // The module's one reader of an answer (`readAnswer` and `writeAnswer` are its two names, POST-A-382).
+  const helper = topLevelText(data, "async function answerOf<T>(");
+  assert.ok(helper.indexOf("errorMessage(res)") > 0 && helper.indexOf("errorMessage(res)") < helper.indexOf("jsonPlain"),
     "a failed status is no longer read by errorMessage before the body is read as the house envelope");
   for (const fn of ["saveAdvanceTaxPayments", "createSelfAssessmentChallan", "addReinvestment", "deleteReinvestment", "deleteSelfAssessmentChallan"]) {
     const body = topLevelText(data, `export async function ${fn}(`);

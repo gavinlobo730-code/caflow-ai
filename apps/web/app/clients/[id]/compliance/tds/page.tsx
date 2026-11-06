@@ -10,6 +10,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
+import { doingOf, failureSentence, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
 import type { CalendarAnswer } from "@/lib/data/tds";
 import { Callout } from "@/components/ui/callout";
 import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
@@ -38,18 +39,21 @@ async function getToken(): Promise<string> {
 /** A refusal comes back in the envelope every caller already reads (the same as the client MCA and GST pages' helper). FastAPI's HTTPException is
  *  `{"detail": "..."}` with no `error` key, so every `r.error ?? "…"` on this page showed the fallback over the sentence the server wrote, or nothing at all
  *  where the caller read no answer. `errorMessage` reads a string detail, an array of them, and a body that is not JSON at all. */
-async function apiFetch(path: string, opts?: RequestInit) {
+async function apiFetch(path: string, opts?: RequestInit, asked?: Doing) {
   const token = await getToken();
-  const res = await fetch(`${API}${path}`, {
+  // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
+  // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks, such as "Compute from Books").
+  const doing = asked ?? doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 /**
@@ -214,7 +218,7 @@ function DeductionsTab({ clientId }: { clientId: string }) {
     setLoading(true);
     loadTdsWindow(clientId, "deductions")
       .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
-      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS deductions. Please try again."); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(failureSentence(e, "Couldn't load TDS deductions. Please try again.", "read")); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -323,7 +327,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
     setLoading(true);
     loadTdsWindow(clientId, "challans")
       .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
-      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS challans. Please try again."); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(failureSentence(e, "Couldn't load TDS challans. Please try again.", "read")); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -355,7 +359,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
       closeForm();
       load();
     } catch (e) {
-      setSaveError(e instanceof Error && e.message ? e.message : "The challan was not recorded.");
+      setSaveError(failureSentence(e, "The challan was not recorded.", "write"));
     } finally {
       setSaving(false);
     }
@@ -578,7 +582,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       // A refusal of a row action is about the list as it stood: a list read again (after a return was created, say) is not what it was said about, and
       // neither is a question the server asked about one of its rows (POST-A-402).
       .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); setStatusError(null); setHeldBack(null); })
-      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS returns. Please try again."); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(failureSentence(e, "Couldn't load TDS returns. Please try again.", "read")); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -608,7 +612,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       setShowNew(false);
       load();
     } catch (e) {
-      setNewError(e instanceof Error && e.message ? e.message : "The return was not created.");
+      setNewError(failureSentence(e, "The return was not created.", "write"));
     } finally {
       setCreating(false);
     }
@@ -636,7 +640,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       }
       load();
     } catch (e) {
-      setStatusError(e instanceof Error && e.message ? e.message : "The return's status was not changed.");
+      setStatusError(failureSentence(e, "The return's status was not changed.", "write"));
     }
   }
 
@@ -672,11 +676,11 @@ function ReturnsTab({ clientId }: { clientId: string }) {
           deductor_pan: computeForm.deductor_pan,
           deductor_address: computeForm.deductor_address,
         }),
-      });
+      }, "read");
       if (r.success) setComputeResult(r.data as Record<string, unknown>);
       else setComputeError(r.error ?? `Couldn't compute Form ${computeForm.return_type} from books.`);
     } catch (e) {
-      setComputeError(e instanceof Error && e.message ? e.message : `Couldn't compute Form ${computeForm.return_type} from books.`);
+      setComputeError(failureSentence(e, `Couldn't compute Form ${computeForm.return_type} from books.`, "read"));
     } finally {
       setComputing(false);
     }
@@ -712,7 +716,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       setComputeError(null);
       load();
     } catch (e) {
-      setSaveComputedError(e instanceof Error && e.message ? e.message : "The statement was not saved.");
+      setSaveComputedError(failureSentence(e, "The statement was not saved.", "write"));
     } finally {
       setSavingComputed(false);
     }
@@ -1022,19 +1026,27 @@ function Form26ASTab({ clientId }: { clientId: string }) {
   // in tds_deductions. The server reads it now; sending a book side is ignored
   // and the response says so.
   async function upload() {
-    setLoading(true);
     setError(null);
+    // What was pasted is read first, on its own. One catch served the paste and the request, so a request that failed outright (a dropped connection, a gateway's page) was told to the CA as
+    // "Invalid JSON" and sent them to look for a mistake in a file that was fine.
+    let raw_data: unknown;
     try {
       const parsed = JSON.parse(jsonText);
-      const raw_data = Array.isArray(parsed) ? { tds_entries: parsed } : parsed;
+      raw_data = Array.isArray(parsed) ? { tds_entries: parsed } : parsed;
+    } catch {
+      setError("Invalid JSON. Paste the 26AS entries as a JSON array or object.");
+      return;
+    }
+    setLoading(true);
+    try {
       const resp = await apiFetch("/api/tds-workspace/form26as/upload", {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, financial_year: fy, raw_data }),
       });
       if (resp.success) setResult(resp.data);
       else setError(resp.error ?? "Upload failed");
-    } catch {
-      setError("Invalid JSON. Paste the 26AS entries as a JSON array or object.");
+    } catch (e) {
+      setError(failureSentence(e, "Upload failed", "write"));
     } finally {
       setLoading(false);
     }
@@ -1152,7 +1164,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
     setLoading(true);
     loadTdsWindow(clientId, "certificates")
       .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
-      .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS certificates. Please try again."); })
+      .catch((e) => { setRows([]); setMore(false); setLoadError(failureSentence(e, "Couldn't load TDS certificates. Please try again.", "read")); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
@@ -1176,7 +1188,7 @@ function CertificatesTab({ clientId }: { clientId: string }) {
       });
       if (!res.success) { setSaveError(res.error ?? "Could not record the certificate."); return; }
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Could not record the certificate.");
+      setSaveError(failureSentence(e, "Could not record the certificate.", "write"));
       return;
     }
     setShowNew(false);
@@ -1482,7 +1494,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
         failure = typeof res?.detail === "string" ? res.detail : (res?.error ?? "Couldn't save the certificate.");
       }
     } catch (e) {
-      failure = e instanceof Error ? e.message : "Couldn't save the certificate.";
+      failure = failureSentence(e, "Couldn't save the certificate.", "write");
     } finally {
       setSaving(false);
     }

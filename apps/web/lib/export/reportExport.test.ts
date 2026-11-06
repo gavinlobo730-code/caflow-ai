@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { exportErrorMessage, exportQuery } from "./reportExport.ts";
+import { NO_ANSWER_READ } from "../api/failureSentence.ts";
 
 test("a report is always asked for under a client and a format", () => {
   const q = new URLSearchParams(exportQuery("c-1", "pdf"));
@@ -40,6 +41,9 @@ test("an error that is not JSON still says something a person can act on", () =>
     exportErrorMessage(new Error("API error 503: upstream unavailable")),
     "The export could not be made (error 503).",
   );
-  assert.equal(exportErrorMessage(new Error("Failed to fetch")), "Failed to fetch");
+  // The browser's own words for a request that got no answer are replaced by the plain sentence (POST-A-406); an error of any other kind is shown as it is.
+  assert.equal(exportErrorMessage(new TypeError("Failed to fetch")), NO_ANSWER_READ);
+  assert.equal(exportErrorMessage(new Error("Failed to fetch")), NO_ANSWER_READ);
+  assert.equal(exportErrorMessage(new Error("The export is being prepared.")), "The export is being prepared.");
   assert.equal(exportErrorMessage(undefined), "The export could not be made.");
 });

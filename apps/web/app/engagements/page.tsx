@@ -36,24 +36,26 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { errorMessage } from "@/lib/api/index";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   // The sentence out of a refusal, through the one helper every screen that calls `fetch` itself is meant to use: a validation error's `detail` is a LIST of
   // {loc, msg} and this page's own reading of it put "[object Object]" in front of the person.
   if (!res.ok) throw new Error(await errorMessage(res));
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 // ---------------------------------------------------------------------------
@@ -799,9 +801,9 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
     try {
       const { data: { session } } = await getSupabaseClient().auth.getSession();
       const token = session?.access_token ?? "";
-      const res = await fetch(`${API}/api/engagement-letters/${letter.id}/pdf`, {
+      const res = await fetchPlain(`${API}/api/engagement-letters/${letter.id}/pdf`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      }, "read");
       if (!res.ok) throw new Error(`Couldn't download the PDF (HTTP ${res.status})`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -813,7 +815,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setActionErr(e instanceof Error ? e.message : "Couldn't download the PDF");
+      setActionErr(failureSentence(e, "Couldn't download the PDF", "read"));
     } finally {
       setActionLoading(false);
     }

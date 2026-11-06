@@ -23,7 +23,8 @@
  * All amounts in integer paise. Never float.
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { api } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
+import { fetchPlain, jsonPlain, type Doing } from "@/lib/api/failureSentence";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import type { CreditLedgerBlock } from "@/lib/api";
 import { getFirmId } from "./getFirmId";
@@ -670,36 +671,34 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   // unauthenticated POST is a 401 — which this helper omitted entirely. Alongside
   // the dropped `transactions` table that made this path doubly non-functional.
   const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchPlain(`${API_BASE}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
     },
     body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(JSON.stringify(err.detail ?? err));
-  }
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error ?? "API error");
-  return json.data as T;
+  }, "write");
+  return gstAnswer<T>(res, "write");
 }
 
 async function apiGet<T>(path: string): Promise<T> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchPlain(`${API_BASE}${path}`, {
     headers: session?.access_token
       ? { Authorization: `Bearer ${session.access_token}` }
       : {},
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(JSON.stringify(err.detail ?? err));
-  }
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error ?? "API error");
+  }, "read");
+  return gstAnswer<T>(res, "read");
+}
+
+/** The answer of a GST call, or the server's own sentence as the Error. A refusal was thrown as the JSON of its `detail` (a sentence inside quotation marks, a validation list as
+ *  brackets) and a status line stood in for a body that was not JSON (POST-A-382's class); `errorMessage` is the one reader of a failed status, and a page that is not the product's
+ *  answer is said by `jsonPlain` and never in the browser's words (POST-A-406). */
+async function gstAnswer<T>(res: Response, doing: Doing): Promise<T> {
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const json = await jsonPlain<{ success?: boolean; error?: string | null; data?: T } | null>(res, doing);
+  if (!json?.success) throw new Error(json?.error ?? "The server did not accept the request.");
   return json.data as T;
 }
 

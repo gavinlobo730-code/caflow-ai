@@ -11,6 +11,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL (TDS-20's first half).
@@ -37,16 +38,17 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${BASE}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 const TALLY_TONES = {

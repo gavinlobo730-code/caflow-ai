@@ -2,6 +2,7 @@ import type { IssuePreflight } from "@/lib/invoices/issueReadiness";
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { withReference } from "@/lib/api/requestReference";
+import { doingOf, errorPageSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 import { recordsUrl } from "@/lib/einvoice/invoiceRecords";
 
@@ -3221,6 +3222,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     }
   }
 
+  const doing = doingOf(options?.method);
   let res: Response;
   try {
     res = await fetchWithTimeout(path, options, token);
@@ -3229,8 +3231,11 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     // connection fails outright before any response comes back (TypeError
     // "Failed to fetch" — the same underlying symptom the browser reports as
     // a misleading CORS error, since there's no response to carry a CORS
-    // header). Nothing was processed server-side, so one retry after a short
-    // delay is safe: by then the instance has usually finished waking up.
+    // header). For a request that only ASKS, one retry after a short delay is
+    // safe: by then the instance has usually finished waking up. For a CHANGE it
+    // is not shown to be: a rejected fetch does not prove that the server saw
+    // nothing, because the connection can drop after it has written and before
+    // the answer arrives (POST-A-412).
     //
     // A TIMEOUT IS NOT RETRIED, and that is a deliberate change.
     //
@@ -3247,16 +3252,14 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     // different failures. Only the first one is worth trying again.
     const isTimeout = e instanceof DOMException && e.name === "AbortError";
     const isNetworkFailure = e instanceof TypeError;
-    if (isTimeout) {
-      throw new Error(
-        "This is taking longer than expected — the server didn't respond in time. Please try again.");
-    }
+    // What the person is told depends on what the request was: "please try again" is no advice for a change that may have gone through before the bound ran out (POST-A-406; the retry itself is POST-A-412).
+    if (isTimeout) throw new Error(timedOutSentence(doing));
     if (!isNetworkFailure) throw e;
     await sleep(5_000);
     try {
       res = await fetchWithTimeout(path, options, token);
     } catch {
-      throw new Error("The server is taking too long to respond (it may be waking up). Please retry in a moment.");
+      throw new Error(stillNoAnswerSentence(doing));
     }
   }
   // A long-running bulk action (hundreds of sequential/concurrent calls) can
@@ -3268,13 +3271,20 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     const { data: refreshed } = await supabase.auth.refreshSession();
     const newToken = refreshed.session?.access_token;
     if (newToken && newToken !== token) {
-      res = await fetchWithTimeout(path, options, newToken);
+      try {
+        res = await fetchWithTimeout(path, options, newToken);
+      } catch (e) {
+        // the re-send is a request like any other: a dropped connection or the bound running out is said in the product's words, not the browser's
+        throw e instanceof DOMException && e.name === "AbortError" ? new Error(timedOutSentence(doing)) : plainFailure(e, doing);
+      }
     }
   }
   if (!res.ok) {
     throw new Error(await errorMessage(res));
   }
-  return res.json();
+  // A proxy's page that arrives with a 200 is not JSON, and the browser's own "Unexpected token '<'…" is not a sentence for a person
+  // (POST-A-406): `jsonPlain` says that the answer was not the product's, and for a change that it is not known whether it went through.
+  return jsonPlain<T>(res, doing);
 }
 
 /**
@@ -3312,9 +3322,10 @@ async function errorSentence(res: Response): Promise<string> {
     const parsed = JSON.parse(body);
     const detail = parsed?.detail ?? parsed?.error;
     if (typeof detail === "string" && detail.trim()) return explainMfaRefusal(detail.trim());
-    // A validation error's detail is an array of {loc, msg, ...}.
+    // A validation error's detail is an array of {loc, msg, ...}. A sentence a validator raised arrives with the framework's label in front of it ("Value error, …"),
+    // which is a label for a programmer and not part of what the CA is told (POST-A-392).
     if (Array.isArray(detail)) {
-      const msgs = detail.map((d) => d?.msg).filter((m) => typeof m === "string");
+      const msgs = detail.map((d) => d?.msg).filter((m) => typeof m === "string").map(modelSentence).filter((m) => m !== "");
       if (msgs.length) return msgs.join(" · ");
     }
     if (detail && typeof detail === "object" && typeof detail.message === "string") {
@@ -3336,6 +3347,8 @@ async function errorSentence(res: Response): Promise<string> {
   } catch {
     /* not JSON — fall through to the raw body */
   }
+  // A gateway's error page (a 502 while the API wakes, a proxy's 413) is a document, and printing its markup over a screen says nothing a person can use.
+  if (looksLikeMarkup(body)) return errorPageSentence(res.status);
   return body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
 }
 
@@ -3358,7 +3371,9 @@ export class ApiRefusal extends Error {
 /** Read a failed Response ONCE and produce the refusal it describes. */
 export async function refusalFrom(res: Response): Promise<ApiRefusal> {
   const body = await res.text().catch(() => "");
-  let message = body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
+  let message = looksLikeMarkup(body)
+    ? errorPageSentence(res.status)
+    : body.trim() ? `API error ${res.status}: ${body}` : `API error ${res.status}`;
   let code: string | null = null;
   try {
     const detail = JSON.parse(body)?.detail;
@@ -3378,16 +3393,14 @@ async function downloadFile(path: string, fallbackFilename: string, extraHeaders
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchPlain(`${BASE_URL}${path}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(extraHeaders ?? {}),
     },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API error ${res.status}: ${err}`);
-  }
+  }, "read");
+  // A failed download is read like any other failed request: the server's sentence (or a gateway's page said as one), not `API error 422: {"detail": …}` with the JSON around it.
+  if (!res.ok) throw new Error(await errorMessage(res));
 
   // Prefer the filename from Content-Disposition, fall back to the provided one
   let filename = fallbackFilename;
@@ -3395,7 +3408,13 @@ async function downloadFile(path: string, fallbackFilename: string, extraHeaders
   const match = disposition?.match(/filename="?([^";]+)"?/);
   if (match?.[1]) filename = match[1];
 
-  const blob = await res.blob();
+  let blob: Blob;
+  try {
+    blob = await res.blob();
+  } catch (e) {
+    // the connection can drop while the file is coming
+    throw plainFailure(e, "read");
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4546,13 +4565,13 @@ export const api = {
       const form = new FormData();
       form.append("file", file);
       form.append("slot", slot);
-      const res = await fetch(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, {
+      const res = await fetchPlain(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, "write");
       if (!res.ok) throw new Error(await errorMessage(res));
-      return res.json() as Promise<ApiResp<{ slot: string; storage_path: string }>>;
+      return jsonPlain<ApiResp<{ slot: string; storage_path: string }>>(res, "write");
     },
     /** A signed link to a notice's document or its reply, minted now. */
     noticeAttachmentUrl: (noticeId: string, slot: "notice" | "response") =>
@@ -4671,13 +4690,13 @@ export const api = {
     upload: async (form: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetch(`${BASE_URL}/api/documents/upload`, {
+      const res = await fetchPlain(`${BASE_URL}/api/documents/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, "write");
       if (!res.ok) throw new Error(await errorMessage(res));
-      return res.json();
+      return jsonPlain<UntypedJson>(res, "write");
     },
     /** A signed link to a stored document, minted NOW.
      *
@@ -4699,13 +4718,13 @@ export const api = {
     parse: async (formData: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetch(`${BASE_URL}/api/documents/parse`, {
+      const res = await fetchPlain(`${BASE_URL}/api/documents/parse`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
-      });
+      }, "write");
       if (!res.ok) throw new Error(await errorMessage(res));
-      return res.json();
+      return jsonPlain<UntypedJson>(res, "write");
     },
   },
   /** A client's documents: the vault, the Documents tab and the files shared to the portal (`/api/client-documents`).
@@ -4719,13 +4738,13 @@ export const api = {
     upload: async (form: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetch(`${BASE_URL}/api/client-documents/upload`, {
+      const res = await fetchPlain(`${BASE_URL}/api/client-documents/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, "write");
       if (!res.ok) throw new Error(await errorMessage(res));
-      return res.json() as Promise<ApiResp<{ document: ClientDocumentRow }>>;
+      return jsonPlain<ApiResp<{ document: ClientDocumentRow }>>(res, "write");
     },
     /** A signed link, minted now. */
     downloadUrl: (docId: string) =>
@@ -4950,16 +4969,16 @@ export const api = {
     shareReport: async (form: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetch(`${BASE_URL}/api/accounting/shared-reports`, {
+      const res = await fetchPlain(`${BASE_URL}/api/accounting/shared-reports`, {
         method: "POST",
         // No Content-Type — the browser sets the multipart boundary.
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, "write");
       // A 422 is a sentence written for the CA (an unknown report, an empty or
       // oversized workbook), so surface it rather than the status line.
       if (!res.ok) throw new Error(await errorMessage(res));
-      return res.json();
+      return jsonPlain<UntypedJson>(res, "write");
     },
     /**
      * The Schedule III ageing schedules — the notes to the balance sheet added
@@ -5344,30 +5363,30 @@ export const api = {
     uploadStatement: async (form: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetch(`${BASE_URL}/api/banking/statements/upload`, {
+      const res = await fetchPlain(`${BASE_URL}/api/banking/statements/upload`, {
         method: "POST",
         // No Content-Type — the browser sets the multipart boundary.
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, "write");
       // A 422 here is an answer written for the CA — the statement does not add
       // up, the format is unmappable — and it used to reach the screen as the
       // raw JSON body inside "API error 422: {...}". It now arrives as its
       // sentence, with the server's code where there is one, so the import
       // dialog can offer the acknowledgement rather than leaving a dead end.
       if (!res.ok) throw await refusalFrom(res);
-      return res.json();
+      return jsonPlain<UntypedJson>(res, "write");
     },
     /** Tier 3.2 — a multipart POST that returns JSON, same shape as uploadStatement. */
     postStatementForm: async (path: string, form: FormData) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetch(`${BASE_URL}${path}`, {
+      const res = await fetchPlain(`${BASE_URL}${path}`, {
         method: "POST",
         // No Content-Type — the browser sets the multipart boundary.
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, "write");
       // A 422 here is a real answer (an unmappable file, a contradictory
       // mapping) and its message is written for the CA, so surface the body
       // rather than the status line. It is thrown as an ApiRefusal — still an
@@ -5381,7 +5400,7 @@ export const api = {
         const message = await errorMessage(res);
         throw new ApiRefusal(message, (await refusalFrom(forCode)).code);
       }
-      return res.json();
+      return jsonPlain<UntypedJson>(res, "write");
     },
     /** Read a statement's header row + first rows so the CA can map the columns. */
     inspectStatement: (form: FormData) =>
@@ -7213,13 +7232,13 @@ export const api = {
       const token = session?.access_token;
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${BASE_URL}/api/settings/branding/logo`, {
+      const res = await fetchPlain(`${BASE_URL}/api/settings/branding/logo`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
-      });
+      }, "write");
       if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
-      return res.json();
+      return jsonPlain<UntypedJson>(res, "write");
     },
   },
   invoiceSettings: {

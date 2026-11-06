@@ -25,6 +25,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { toast } from "@/components/ui/use-toast";
 import Link from "next/link";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 // WHAT THE PAYABLE FIGURE IS CALLED. The engine sets payable.net_payable_paise
 // to total_tax_paise - tds_and_advance_paise (domain/income_tax/itr_engine.py):
@@ -104,16 +105,17 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${BASE}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 const paise = formatWhole;

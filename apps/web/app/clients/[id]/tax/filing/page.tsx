@@ -22,6 +22,7 @@ import { obligationNote } from "@/lib/compliance/obligationNote";
 import { lossRecordAnswer, lossRecordNote } from "@/lib/tax/lossRecordNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -37,16 +38,17 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${BASE}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 const STATUS_ORDER = ["draft", "review", "partner_review", "ready_for_filing", "filed"];
@@ -342,7 +344,7 @@ export default function ITRFilingPage() {
       setLoadError(null);
     } catch (e) {
       setFilings([]);
-      setLoadError(e instanceof Error ? e.message : "Couldn't load ITR filings.");
+      setLoadError(failureSentence(e, "Couldn't load ITR filings.", "read"));
     } finally {
       setLoading(false);
     }

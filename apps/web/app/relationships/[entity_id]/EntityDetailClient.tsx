@@ -15,6 +15,7 @@ import { errorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 // Same shape and field set as the "Add Entity" form on the Entity Registry
 // list (apps/web/app/relationships/page.tsx) — kept as its own copy here
@@ -59,19 +60,20 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   // A refusal carries FastAPI's {detail} with no `error` key, so reading only
   // `.error` showed a bare "Failed to ..." for a 422 that had a reason — the
   // same fix the Add Entity form already carries.
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 const EMPTY_EDIT_FORM: EntityFormValues = {

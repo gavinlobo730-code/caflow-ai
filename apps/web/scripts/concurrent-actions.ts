@@ -183,7 +183,7 @@ export function findUnguardedActions(source: string): Finding[] {
     if (i < 0) continue;
     const body = braceBlock(source, i)[0];
     if (body.indexOf("await") < 0) continue;
-    if (!/api\.\w+\.|supabase|fetch\(/.test(body)) continue;
+    if (!/api\.\w+\.|supabase|fetch(?:Plain)?\(/.test(body)) continue;
     // A handler that raises a flag of its own has a loading state; whether its
     // button is wired to it is a different (and much larger, mostly harmless —
     // a re-read is idempotent) question, deliberately not ratcheted here. This
@@ -227,7 +227,7 @@ export function findUnwiredActions(source: string): Finding[] {
     if (i < 0) continue;
     const body = braceBlock(source, i)[0];
     if (body.indexOf("await") < 0) continue;
-    if (!/api\.\w+\.|supabase|fetch\(/.test(body)) continue;
+    if (!/api\.\w+\.|supabase|fetch(?:Plain)?\(/.test(body)) continue;
     const raised = Object.keys(flagOf)
       .filter((st) => new RegExp("\\b" + st + "\\(true\\)").test(body))
       .map((st) => flagOf[st]);

@@ -14,6 +14,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { errorMessage } from "@/lib/api";
+import { doingOf, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import { TDS_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 import { readWindow } from "@/lib/lists/readWindow";
@@ -266,7 +268,7 @@ export async function computeReturnFromBooks(
   if (!path) throw new Error(`No from-books builder for Form ${returnType}.`);
   const json = await authedFetch<TDSReturnPayload>(path, {
     method: "POST", body: JSON.stringify(params),
-  });
+  }, "read");
   if (!json.success) {
     // A 422 from FastAPI is `{detail: "…"}`, not the `{success, data, error}`
     // envelope, and `detail` is where the deductor refusal's sentences are —
@@ -290,22 +292,37 @@ export async function computeReturnFromBooks(
  * choice: it is a call that cannot succeed. Declared below its first callers
  * because function declarations hoist; the alternative is moving it above the
  * types, which reads worse. */
-async function authedFetch<T>(path: string, init?: RequestInit): Promise<{ success: boolean; data: T; error: string | null }> {
+async function authedFetch<T>(path: string, init?: RequestInit, asked?: Doing): Promise<{ success: boolean; data: T; error: string | null }> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const res = await fetch(`${API_BASE}${path}`, {
+  // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks).
+  const doing = asked ?? doingOf(init?.method);
+  const res = await fetchPlain(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
       ...(init?.headers ?? {}),
     },
-  });
-  const body = await res.json();
+  }, doing);
+  // The body, or why there is none in the product's words (POST-A-406): a page that arrives with a 200 is "not the product's answer" and one under a failed
+  // status is read by `errorMessage` like every other refusal. A failed status is parsed from a copy so that the original is left for `errorMessage`.
+  let body: UntypedJson;
+  if (res.ok) {
+    body = await jsonPlain<UntypedJson>(res, doing);
+  } else {
+    body = await res.clone().json().catch(() => undefined);
+    if (body === undefined) throw new Error(await errorMessage(res));
+  }
   // A refusal raised as an HTTP error (a locked year, a missing row, a tier) comes back as `{ detail: "<sentence>" }` and carries no
   // `success` or `error` key, so every caller read it as "no error given" and showed its own generic line. The sentence is the
-  // server's and is passed on as the error. A `detail` that is not a sentence (a validation list) is left as it was.
+  // server's and is passed on as the error.
   if (body && typeof body === "object" && !("success" in body) && typeof body.detail === "string") {
     return { success: false, data: null as unknown as T, error: body.detail };
+  }
+  // A `detail` that is a validation list (a request model's own refusal: a six-digit BSR code, a date after today) was left as the list, which no caller reads as a sentence;
+  // `errorMessage` flattens it into the sentences it holds (POST-A-382).
+  if (!res.ok && body && typeof body === "object" && !("success" in body)) {
+    return { success: false, data: null as unknown as T, error: await errorMessage(res) };
   }
   return body;
 }
@@ -394,7 +411,7 @@ export async function computeTdsAmount(params: {
   const resp = await authedFetch<TDSAmountResult>("/api/tds/compute-amount", {
     method: "POST",
     body: JSON.stringify(params),
-  });
+  }, "read");
   if (!resp.success) throw new Error(resp.error ?? "TDS calculation failed");
   return resp.data;
 }
@@ -487,7 +504,7 @@ export async function previewTdsDeduction(body: {
   }>("/api/tds-workspace/deductions/preview", {
     method: "POST",
     body: JSON.stringify(body),
-  });
+  }, "read");
   if (!resp.success) throw new Error(resp.error ?? "Could not compute the deduction");
   // The screen reads `explain.applies` and `explain.fy_prior_tds_paise`: a preview without its explanation is no preview (POST-A-149).
   const shaped = objectOrNull<typeof resp.data>(resp.data);

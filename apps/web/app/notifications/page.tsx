@@ -18,20 +18,22 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<{ success: boolean; data: T; error: string | null }> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const res = await fetch(`${API}${path}`, {
+  const doing = doingOf(init?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
       ...(init?.headers ?? {}),
     },
-  });
-  return res.json();
+  }, doing);
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 const SEVERITY_ICONS: Record<InsightSeverity, React.ReactNode> = {

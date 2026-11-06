@@ -115,7 +115,7 @@ test("the section 234A and 234B answer refuses a payload without its two blocks 
 
 test("the capital-gains exemption working needs its three lists", () => {
   assert.match(read("lib/data/income-tax.ts"),
-    /objectWithLists<CapitalGainExemption>\(\s*json\.data\s*,\s*"claims"\s*,\s*"gaps"\s*,\s*"caveats"\s*\)/);
+    /objectWithLists<CapitalGainExemption>\(\s*answer\s*,\s*"claims"\s*,\s*"gaps"\s*,\s*"caveats"\s*\)/);
 });
 
 test("a fixed-asset category with no classes keeps its place with an empty list, and a payload that is not a list is no categories", () => {

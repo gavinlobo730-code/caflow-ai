@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, AlertCircle, FileText, XCircle } from "lucide-react";
 import { formatDateTime } from "@/lib/dates/format";
+import { PlainFailure, failureSentence, fetchPlain, notOursSentence } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -52,6 +53,8 @@ export default function SignPage() {
   const [letter, setLetter] = useState<Letter | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The failure was in getting an answer (a dropped connection, a gateway's page), not in the link: the heading must not tell a client with a valid link that it is unavailable.
+  const [couldNotReach, setCouldNotReach] = useState(false);
 
   const [name, setName] = useState("");
   const [consent, setConsent] = useState(false);
@@ -69,9 +72,12 @@ export default function SignPage() {
       return;
     }
     setToken(t);
-    fetch(`${API}/api/public/engagement-letters/${encodeURIComponent(t)}`)
+    // A dropped connection said "Failed to fetch" to the CLIENT on this public page (POST-A-406): the product's sentence is said instead.
+    fetchPlain(`${API}/api/public/engagement-letters/${encodeURIComponent(t)}`, undefined, "read")
       .then(async (r) => {
         const j = await r.json().catch(() => null);
+        // A body that is not JSON is a gateway's page (the API waking, a proxy), not an answer about THIS link: a client holding a valid link was told that it was invalid or had expired.
+        if (j === null) throw new PlainFailure("not_ours", notOursSentence("read"));
         if (!r.ok || !j?.success) {
           // Read both shapes: api_response uses `error`, FastAPI HTTPException
           // uses `detail`. Without `detail` a 503 (service issue) would be
@@ -80,7 +86,7 @@ export default function SignPage() {
         }
         setLetter(j.data as Letter);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Unable to load this letter."))
+      .catch((e) => { setCouldNotReach(e instanceof PlainFailure); setError(failureSentence(e, "Unable to load this letter.", "read")); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -89,16 +95,18 @@ export default function SignPage() {
     setSubmitting(true);
     setActionErr(null);
     try {
-      const r = await fetch(`${API}/api/public/engagement-letters/${encodeURIComponent(token)}${path}`, {
+      const r = await fetchPlain(`${API}/api/public/engagement-letters/${encodeURIComponent(token)}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      });
+      }, "write");
       const j = await r.json().catch(() => null);
+      // A body that is not JSON says nothing about whether the letter was accepted, and "please try again" could accept it twice.
+      if (j === null) throw new PlainFailure("not_ours", notOursSentence("write"));
       if (!r.ok || !j?.success) throw new Error(j?.error || j?.detail || "Something went wrong. Please try again.");
       setLetter(j.data as Letter);
     } catch (e) {
-      setActionErr(e instanceof Error ? e.message : "Something went wrong.");
+      setActionErr(failureSentence(e, "Something went wrong.", "write"));
     } finally {
       setSubmitting(false);
     }
@@ -122,8 +130,14 @@ export default function SignPage() {
         {!loading && error && (
           <div className="rounded-xl border border-state-problem-border bg-white p-8 text-center">
             <AlertCircle size={32} className="mx-auto mb-3 text-state-problem" />
-            <h1 className="text-lg font-semibold text-slate-900">Link unavailable</h1>
+            <h1 className="text-lg font-semibold text-slate-900">{couldNotReach ? "The letter could not be loaded" : "Link unavailable"}</h1>
             <p className="mt-1 text-sm text-slate-600">{error}</p>
+            {couldNotReach && (
+              <button onClick={() => window.location.reload()}
+                className="mt-4 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                Try again
+              </button>
+            )}
           </div>
         )}
 

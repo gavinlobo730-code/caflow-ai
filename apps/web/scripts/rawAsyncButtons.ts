@@ -117,7 +117,8 @@ const WRITE_VERB = new RegExp(
 );
 
 const SUPABASE_WRITE = new Set(["insert", "update", "upsert", "delete", "rpc"]);
-const FETCHERS = new Set(["apiCall", "apiFetch", "fetch", "request", "authedFetch"]);
+// `fetchPlain` is `fetch` whose failure is already a sentence (lib/api/failureSentence): the same call under another name, so a screen that moved to it does not stop being a raw writing button.
+const FETCHERS = new Set(["apiCall", "apiFetch", "fetch", "fetchPlain", "request", "authedFetch"]);
 const MUTATING_METHOD = /^(?:POST|PUT|PATCH|DELETE)$/i;
 
 const WEB = join(import.meta.dirname, "..");

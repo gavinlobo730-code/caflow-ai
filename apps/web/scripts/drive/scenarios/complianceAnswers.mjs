@@ -31,15 +31,15 @@ const TDS_COULD_NOT_SAVE_SENTENCE = "Could not save Form 26Q for Q1 FY 2025-26. 
 const CLIENT_NOT_FOUND_SENTENCE = "Not found";
 const GSTIN_OF_THE_CLIENT = "27AAACA1234A1ZK";
 
-/** The wording of the browser's own error for a body it cannot read as JSON (Chromium: `Unexpected token '<', "<html><bod"... is not valid JSON`). */
-const JSON_WORDS = /JSON/i;
+/** What a person is told when the server's answer was not the product's own (lib/api/failureSentence `NOT_OURS_WRITE`, pinned to it by that module's unit test): the browser's own `Unexpected token '<', "<html><bod"... is not valid JSON` is not said (POST-A-406). */
+const NOT_OURS_WRITE = "The server's answer was not the product's own (a network or gateway error page can do this), so it is not known whether the request went through. If this was a change, reload the page to see whether it was recorded before you try again.";
 
-/** The three ways a request goes wrong, and the sentence each puts on the screen: a string is the whole sentence, a pattern is part of the browser's own wording. */
+/** The three ways a request goes wrong, and the sentence each puts on the screen: a string is the whole sentence, a pattern is used as it is. */
 const WAYS = [
   { name: "answers success false", route: (sentence) => ({ reply: () => ({ success: false, data: null, error: sentence }) }), says: (spec) => spec.refusal },
   { name: "refuses with a status", route: () => refuse(CLIENT_NOT_FOUND_SENTENCE, 404), says: () => CLIENT_NOT_FOUND_SENTENCE },
   // A proxy's error page that arrives with a 200: `res.json()` throws and the handler's own catch says so. The payroll page reads such a body as nothing, and says its own sentence.
-  { name: "answers something that is not JSON", route: () => notJson(), says: (spec) => spec.unreadable ?? JSON_WORDS },
+  { name: "answers something that is not JSON", route: () => notJson(), says: (spec) => spec.unreadable ?? NOT_OURS_WRITE },
 ];
 
 /** A sentence as the whole text of an alert (a substring would let "Not found" be satisfied by any longer alert that contains it); a pattern is used as it is. */

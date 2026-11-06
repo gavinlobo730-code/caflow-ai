@@ -335,9 +335,13 @@ for (const run of selected) {
   // sent on purpose included. Those are counted apart and judged against the refusals the stub says it sent
   // (below): one more than that is a request that failed for a reason nobody planned.
   const networkErrors = [];
+  // The engagement letter's display frame is `sandbox=""` ON PURPOSE (no script may run in it), and the runner's own init scripts (the session and the policy probe) are injected into every frame: Chromium reports
+  // each as a blocked script. That is the frame doing what it is for and not a problem on the screen, so exactly that message is let through, and nothing wider than it.
+  const SANDBOXED_FRAME_REFUSES_THE_RUNNERS_SCRIPT = /^Blocked script execution in 'about:srcdoc' because the document's frame is sandboxed and the 'allow-scripts' permission is not set\.?$/;
   page.on("console", (m) => {
     if (m.type() !== "error") return;
     if (/^Failed to load resource: the server responded with a status of [45]\d\d/.test(m.text())) networkErrors.push(m.text().slice(0, 200));
+    else if (SANDBOXED_FRAME_REFUSES_THE_RUNNERS_SCRIPT.test(m.text())) return;
     else problems.push(`console.error: ${m.text().slice(0, 200)}`);
   });
   page.on("dialog", (d) => {

@@ -4159,7 +4159,9 @@ export const scenarios = [
       const dialog = engagementDialog(page);
       stub.route({ method: "POST", re: /api\/engagement-letters$/, ...refuse([{ type: "value_error", loc: ["body"], msg: "Value error, The expiry date cannot be before the start date.", input: {} }], 422) });
       await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
-      await shownInTheDialog(page, "Value error, The expiry date cannot be before the start date.", "a validation list from the server was not said as its sentence");
+      // The sentence is the server's own, WITHOUT the framework's "Value error, " label in front of it (POST-A-392: `errorMessage` drops it for every screen that reads a refusal through it).
+      await shownInTheDialog(page, "The expiry date cannot be before the start date.", "a validation list from the server was not said as its sentence");
+      assert.equal(await page.getByText(/Value error/).count(), 0, "the framework's label is on the screen in front of the server's sentence");
       assert.equal(await page.getByText("[object Object]").count(), 0, "a validation list was put on screen as [object Object]");
     },
   },

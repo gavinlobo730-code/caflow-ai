@@ -28,6 +28,7 @@ import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
+import { doingOf, failureSentence, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
 import type { CreditLedgerBlock, ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import {
@@ -58,18 +59,21 @@ async function getToken(): Promise<string> {
  *  sentence the server wrote — the 2B upload's 422 ("this file is for another
  *  month / another registration") among them. `errorMessage` reads a string
  *  detail, an array of them, and a body that is not JSON at all. */
-async function apiFetch(path: string, opts?: RequestInit) {
+async function apiFetch(path: string, opts?: RequestInit, asked?: Doing) {
   const token = await getToken();
-  const res = await fetch(`${API}${path}`, {
+  // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
+  // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks, such as "Compute from Books").
+  const doing = asked ?? doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 /**
@@ -233,7 +237,7 @@ function GSTR3BDetailDrawer({
           tax: Number(d.total_tax_paise ?? 0),
         });
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Couldn't load the detail.");
+        if (!cancelled) setError(failureSentence(e, "Couldn't load the detail.", "read"));
       }
     })();
     return () => { cancelled = true; };
@@ -624,7 +628,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       setPeriod("");
       load();
     } catch (e) {
-      setNewError(e instanceof Error && e.message ? e.message : "The GSTR-1 return was not created.");
+      setNewError(failureSentence(e, "The GSTR-1 return was not created.", "write"));
     } finally {
       setSaving(false);
     }
@@ -649,7 +653,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       load();
       return true;
     } catch (e) {
-      setRowError(e instanceof Error && e.message ? e.message : "Couldn't update the return.");
+      setRowError(failureSentence(e, "Couldn't update the return.", "write"));
       return false;
     }
   }
@@ -694,11 +698,11 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
           period: computePeriod,
           ...(includeAmendments ? {} : { include_amendments: false }),
         }, reg.choice)),
-      });
+      }, "read");
       if (r.success) setComputeResult(r.data as Record<string, unknown>);
       else setComputeError(r.error ?? "Couldn't compute GSTR-1 from books.");
     } catch (e) {
-      setComputeError(e instanceof Error && e.message ? e.message : "Couldn't compute GSTR-1 from books.");
+      setComputeError(failureSentence(e, "Couldn't compute GSTR-1 from books.", "read"));
     } finally {
       setComputing(false);
     }
@@ -736,7 +740,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       setComputeError(null);
       load();
     } catch (e) {
-      setSaveComputedError(e instanceof Error && e.message ? e.message : "The GSTR-1 was not saved.");
+      setSaveComputedError(failureSentence(e, "The GSTR-1 was not saved.", "write"));
     } finally {
       setSavingComputed(false);
     }
@@ -1093,7 +1097,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       setPeriod("");
       load();
     } catch (e) {
-      setNewError(e instanceof Error && e.message ? e.message : "The GSTR-3B return was not created.");
+      setNewError(failureSentence(e, "The GSTR-3B return was not created.", "write"));
     } finally {
       setSaving(false);
     }
@@ -1121,6 +1125,11 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       if (status === "submitted") { const note = obligationNote(r.data); if (note) setClosureNotes((n) => [...n, note]); }
       load();
       return true;
+    } catch (e) {
+      // A request that FAILS (a dropped connection, a proxy's page that is not JSON) is said, as the GSTR-1 tab's status change says it (POST-A-405): the hold is released below,
+      // but a click that ends in silence reads as a button that did nothing, and "Record as filed" is the act that locks the period.
+      setRowError(failureSentence(e, "Couldn't update the return.", "write"));
+      return false;
     } finally { setBusyRow(null); }
   }
 
@@ -1140,9 +1149,11 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     setRowError(null);
     try {
       const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}/recompute?dry_run=true`,
-                               { method: "POST" });
+                               { method: "POST" }, "read");
       if (!r.success) { setRowError(r.error ?? "Couldn't check this return."); return; }
       setFreshness((f) => ({ ...f, [id]: r.data as Staleness }));
+    } catch (e) {
+      setRowError(failureSentence(e, "Couldn't check this return.", "read"));
     } finally { setBusyRow(null); }
   }
 
@@ -1156,6 +1167,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       if (!r.success) { setRowError(r.error ?? "Couldn't recompute this return."); return; }
       setFreshness((f) => { const n = { ...f }; delete n[id]; return n; });
       load();
+    } catch (e) {
+      setRowError(failureSentence(e, "Couldn't recompute this return.", "write"));
     } finally { setBusyRow(null); }
   }
 
@@ -1169,6 +1182,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       const r = await apiFetch(`/api/gst-workspace/gstr3b/${id}`, { method: "DELETE" });
       if (!r.success) { setRowError(r.error ?? "Couldn't delete this return."); return; }
       load();
+    } catch (e) {
+      setRowError(failureSentence(e, "Couldn't delete this return.", "write"));
     } finally { setBusyRow(null); }
   }
 
@@ -1201,11 +1216,11 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           client_id: clientId, period: computePeriod,
           ...(filedOn ? { filed_on: filedOn } : {}),
         }, reg.choice)),
-      });
+      }, "read");
       if (r.success) setComputeResult(r.data as Record<string, unknown>);
       else setComputeError(r.error ?? "Couldn't compute GSTR-3B from books.");
     } catch (e) {
-      setComputeError(e instanceof Error && e.message ? e.message : "Couldn't compute GSTR-3B from books.");
+      setComputeError(failureSentence(e, "Couldn't compute GSTR-3B from books.", "read"));
     } finally {
       setComputing(false);
     }
@@ -1257,7 +1272,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       setComputeError(null);
       load();
     } catch (e) {
-      setSaveComputedError(e instanceof Error && e.message ? e.message : "The GSTR-3B was not saved.");
+      setSaveComputedError(failureSentence(e, "The GSTR-3B was not saved.", "write"));
     } finally {
       setSavingComputed(false);
     }
@@ -1905,14 +1920,14 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       const resp = await apiFetch("/api/gst-workspace/gstr2b/inspect", {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, raw_data: read.raw }),
-      });
+      }, "read");
       if (resp.success) {
         setInspection(objectWithLists<Inspection2B>(resp.data, "refusals", "problems"));
       } else {
         setError(resp.error ?? "Couldn't read that file. Please try again.");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't read that file. Please try again.");
+      setError(failureSentence(e, "Couldn't read that file. Please try again.", "read"));
     } finally {
       setReading(false);
     }
@@ -1932,7 +1947,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       if (resp.success) setResult(objectWithLists<Recon2BResult>(resp.data, "defaulters", "problems", "probable_matches"));
       else setError(resp.error ?? "Upload failed");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setError(failureSentence(e, "Upload failed", "write"));
     } finally {
       setLoading(false);
     }

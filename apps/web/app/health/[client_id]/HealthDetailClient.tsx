@@ -14,6 +14,7 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import {
   HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass,
   weightLabel as weightBpToLabel, type HealthDimensionKey, type HealthGrade,
@@ -24,15 +25,16 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
-  return res.json();
+  }, doing);
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -28,15 +29,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${BASE}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
-  return res.json();
+  }, doing);
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -137,7 +139,7 @@ export default function XBRLPage() {
       setLoadError(null);
     } catch (e) {
       setPackages([]);
-      setLoadError(e instanceof Error ? e.message : "Couldn't load XBRL packages.");
+      setLoadError(failureSentence(e, "Couldn't load XBRL packages.", "read"));
     } finally {
       setLoading(false);
     }
