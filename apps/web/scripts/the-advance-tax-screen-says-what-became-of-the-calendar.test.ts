@@ -31,7 +31,9 @@ test("the files are where this guard thinks they are", () => {
 test("saving the register returns the instalments AND the calendar answer, and the type says so", () => {
   assert.ok(/saveAdvanceTaxPayments\(req: SaveAdvanceTaxRequest\): Promise<SaveAdvanceTaxResult>/.test(DATA),
     "the save no longer returns the object the server answers with");
-  assert.ok(/return json\.data as SaveAdvanceTaxResult;/.test(DATA), "the save does not hand back the server's whole answer");
+  // The data of the server's answer, whole, typed as the result: through the module's one reader of a write's answer (which also says a refusal in the server's own sentence).
+  assert.ok(/return writeAnswer<SaveAdvanceTaxResult>\(res, /.test(DATA), "the save does not hand back the server's whole answer");
+  assert.ok(/return json\.data as T;/.test(DATA), "the reader of a write's answer no longer hands back the answer's data");
   assert.ok(/compliance_obligations:\s*AdvanceTaxObligationAnswer\[\]/.test(DATA), "the result does not carry the calendar answer");
   assert.ok(/installments:\s*AdvanceTaxRecord\[\]/.test(DATA), "the result does not carry the stored instalments");
   assert.ok(/needs_action\?: boolean;/.test(DATA), "an answer's needs_action is not typed");

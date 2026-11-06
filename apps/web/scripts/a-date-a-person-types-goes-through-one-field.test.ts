@@ -433,8 +433,6 @@ test("a <DateInput> that is anchored to another date says which side of it it be
       "a settlement can be paid before the last working day (the money leaves on payment_date, which nothing orders against the leaving date), for example the day before a holiday",
     "components/invoices/InvoiceEditor.tsx#inv-sb-date":
       "the editor says customs issues the shipping bill after the invoice, but that is a customs-practice statement nobody has graded against a primary source",
-    "components/purchases/PurchaseBillEditor.tsx#bill-15ca-date":
-      "the editor says Form 15CA is filed when the money moves, after the bill is booked, but that sequence (Rule 37BB) has not been read from a primary source here",
   };
   const uses = usesInTree();
   const anchored = Object.entries(uses).flatMap(([file, us]) => us.filter((u) => u.anchored).map((u) => ({ file, line: u.line, id: u.id, sided: u.sided })));

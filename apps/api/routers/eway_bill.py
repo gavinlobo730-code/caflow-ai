@@ -72,12 +72,15 @@ class RecordEWBGeneratedRequest(BaseModel):
 
     @field_validator("ewb_date", "ewb_valid_upto")
     @classmethod
-    def _the_day_the_portal_printed(cls, v: str) -> str:
+    def _the_day_the_portal_printed(cls, v: str, info) -> str:
         """Both are DAYS the NIC portal printed, stored as a bare date (POST-A-251): the column is a timestamptz, so a longer value kept
-        its time of day and a reader had to guess whether that was Indian wall-clock labelled UTC or a true instant."""
+        its time of day and a reader had to guess whether that was Indian wall-clock labelled UTC or a true instant. The day the bill was
+        GENERATED has come by the time it is recorded; the day it is valid UPTO is a plan and may be ahead (PRE-A-015, sixteenth slice)."""
         day = portal_day(v)
         if day is None:
             raise ValueError("must be a date, YYYY-MM-DD: the day the e-way bill portal printed")
+        if info.field_name == "ewb_date" and day > ist_today():
+            raise ValueError("The e-way bill date cannot be after today's date in India.")
         return day.isoformat()
 
 

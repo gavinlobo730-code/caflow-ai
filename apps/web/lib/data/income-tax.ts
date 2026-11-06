@@ -8,6 +8,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { errorMessage } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -343,6 +344,20 @@ async function _authHeaders(): Promise<Record<string, string>> {
   return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 }
 
+/**
+ * The answer of a call that WRITES, or the server's own sentence as the Error (PRE-A-015, sixteenth slice).
+ *
+ * A refusal of the request model (a 422) or of the route (a 4xx) is FastAPI's `{"detail": …}` and has no `error` key, so `json.error ?? "Failed to …: <status text>"` showed the
+ * CA "Unprocessable Entity" over the sentence the server wrote (a challan with a six-digit BSR code, a deposit dated tomorrow sent by another caller). A status that is not a
+ * success is read by lib/api's `errorMessage`, the one reader of it; the house envelope's `{success: false, error}` under a 200 keeps its own `error`.
+ */
+async function writeAnswer<T>(res: Response, failed: string): Promise<T> {
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const json = (await res.json()) as { success?: boolean; error?: string | null; data?: T };
+  if (!json.success) throw new Error(json.error ?? failed);
+  return json.data as T;
+}
+
 /** Stateless capital-gains estimator — computes only, never persists. */
 export async function computeCapitalGains(req: ComputeCapitalGainsRequest): Promise<CapitalGainsComputeResult> {
   const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/compute`, {
@@ -502,9 +517,7 @@ export async function addReinvestment(recordId: string, req: ReinvestmentInput):
   const res = await fetch(
     `${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments`,
     { method: "POST", headers: await _authHeaders(), body: JSON.stringify(req) });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to record the claim: ${res.statusText}`);
-  return json.data;
+  return writeAnswer<{ id: string }>(res, "Failed to record the claim.");
 }
 
 export async function deleteReinvestment(recordId: string, claimId: string): Promise<void> {
@@ -514,8 +527,7 @@ export async function deleteReinvestment(recordId: string, claimId: string): Pro
   const path = `/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments/${encodeURIComponent(claimId)}`;
   const res = await fetch(`${API_BASE}${path}`,
     { method: "DELETE", headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to delete the claim: ${res.statusText}`);
+  await writeAnswer<unknown>(res, "Failed to delete the claim.");
 }
 
 // ── Advance tax interest (R3.13a) ───────────────────────────────────────────
@@ -795,9 +807,7 @@ export async function saveAdvanceTaxPayments(req: SaveAdvanceTaxRequest): Promis
   const res = await fetch(`${API_BASE}/api/income-tax/advance-tax`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to save advance tax payments: ${res.statusText}`);
-  return json.data as SaveAdvanceTaxResult;
+  return writeAnswer<SaveAdvanceTaxResult>(res, "Failed to save advance tax payments.");
 }
 
 // ── §140A self-assessment tax — the Challan 280 (IT-13) ─────────────────────
@@ -897,16 +907,13 @@ export async function createSelfAssessmentChallan(req: SelfAssessmentChallanInpu
   const res = await fetch(`${API_BASE}/api/income-tax/self-assessment`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to record the challan: ${res.statusText}`);
-  return json.data as SelfAssessmentChallan;
+  return writeAnswer<SelfAssessmentChallan>(res, "Failed to record the challan.");
 }
 
 export async function deleteSelfAssessmentChallan(challanId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/income-tax/self-assessment/${challanId}`,
     { method: "DELETE", headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to remove the challan: ${res.statusText}`);
+  await writeAnswer<unknown>(res, "Failed to remove the challan.");
 }
 
 export async function getITNotices(clientId: string): Promise<Record<string, unknown>[]> {

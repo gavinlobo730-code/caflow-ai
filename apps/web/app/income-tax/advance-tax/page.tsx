@@ -42,9 +42,9 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { UnforeseenIncomePanel, type UnforeseenRow } from "@/components/tax/UnforeseenIncomePanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
 // past, so the current financial year could not be selected at all — broken on
@@ -116,6 +116,8 @@ export default function AdvanceTaxPage() {
   // on" date is read by a different calculation (the §234A period runs to it, or to today) and has a hook of its own, so a typo in one date
   // does not stop the work that does not read it.
   const advDates = useDateProblems();
+  // A Save over a date that is wrong says so once, and the sentence goes when the date is right (a copy of it in `error` stayed after the fix).
+  const advRefusal = useDateRefusal(advDates.first);
   const lateDates = useDateProblems();
   // The two facts Explanation 2 to §139(1) turns on that no column holds.
   // §44AB applicability is the year's own turnover (domain/income_tax/
@@ -134,6 +136,7 @@ export default function AdvanceTaxPage() {
   const [saError, setSaError] = useState<string | null>(null);
   // The challan's deposit date is what the return's credit is dated by: unreadable text is refused in the date's own sentence (frontend_ux-19).
   const saDates = useDateProblems();
+  const saRefusal = useDateRefusal(saDates.first);
   const [saBusy, setSaBusy] = useState(false);
   const [saForm, setSaForm] = useState({
     bsr_code: "", deposit_date: "", challan_serial_no: "", bank_name: "",
@@ -367,8 +370,11 @@ export default function AdvanceTaxPage() {
   }
 
   async function handleAddChallan() {
+    // A new attempt begins, so what the last one said is no longer true. (The date's own sentence is not in `saError`: it is in the latch,
+    // which withdraws it when the date is right. Left in place, an answer to an earlier attempt was hidden under it and came back.)
+    setSaError(null);
     if (!clientId) { setSaError("Select a client first."); return; }
-    if (saDates.first) { setSaError(saDates.first); return; }
+    if (saDates.first) { saRefusal.refuse(); return; }
     // Every amount through the one parser. A blank box is nil, and anything
     // that is not an amount stops the save rather than being coerced — a
     // coerced zero on `total_paise` records a challan for nothing and claims
@@ -388,7 +394,6 @@ export default function AdvanceTaxPage() {
       return;
     }
     setSaBusy(true);
-    setSaError(null);
     try {
       await createSelfAssessmentChallan({
         client_id: clientId,
@@ -437,13 +442,14 @@ export default function AdvanceTaxPage() {
   }
 
   async function handleSave() {
+    // A new attempt begins, so what the last one said is no longer true (see handleAddChallan).
+    setError(null);
     if (!clientId || estimatedTaxPaise <= 0) {
       setError("Enter estimated annual tax first");
       return;
     }
-    if (advDates.first) { setError(advDates.first); return; }
+    if (advDates.first) { advRefusal.refuse(); return; }
     setSaving(true);
-    setError(null);
     try {
       const installments: AdvanceTaxInstallmentInput[] = [1, 2, 3, 4].map(n => ({
         installment_number: n as 1 | 2 | 3 | 4,
@@ -516,7 +522,8 @@ export default function AdvanceTaxPage() {
         </Button>
       </div>
 
-      {error && <Callout tone="problem">{error}</Callout>}
+      {/* The newest answer is the one shown: every attempt clears `error` before it refuses a date, so an answer that is here came after the date's sentence. */}
+      {(error || advRefusal.shown) && <Callout tone="problem">{error || advRefusal.shown}</Callout>}
       {computeError && <Callout tone="problem">{computeError}</Callout>}
       {saveMsg && <div className="bg-state-ready-surface text-state-ready rounded-lg px-5 py-2 text-sm">{saveMsg}</div>}
       {/* What saving did to the compliance calendar, in the server's words. The live region is always on the page, so that what
@@ -635,9 +642,10 @@ export default function AdvanceTaxPage() {
                           key={`${clientId}:${fy}:paid${n}`}
                           financialYear={fy}
                           aria-label={`Instalment ${n} paid on`}
+                          notAfter={todayIstISO()}
                           value={editPaidDate[n] ?? ""}
                           onChange={v => setEditPaidDate(prev => ({ ...prev, [n]: v }))}
-                          onStateChange={advDates.watch(`paid${n}`, `Instalment ${n} paid on`)}
+                          onStateChange={advDates.watch(`paid${n}`, `Instalment ${n} paid on`, { afterMax: true })}
                           className="border border-ps-border rounded px-2 py-1 text-xs outline-none focus:border-brand" />
                       </td>
                       <td className="px-3 py-3">
@@ -829,9 +837,9 @@ export default function AdvanceTaxPage() {
                 placeholder="7 digits" />
             </label>
             <label className="text-xs text-ps-label">Deposited on
-              <DateInput id="sa-deposit-date" value={saForm.deposit_date}
+              <DateInput id="sa-deposit-date" value={saForm.deposit_date} notAfter={todayIstISO()}
                 onChange={v => setSaForm({ ...saForm, deposit_date: v })}
-                onStateChange={saDates.watch("deposit", "Deposited on")}
+                onStateChange={saDates.watch("deposit", "Deposited on", { afterMax: true })}
                 className="block mt-1 w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
             </label>
             <label className="text-xs text-ps-label">Challan serial no.
@@ -892,7 +900,7 @@ export default function AdvanceTaxPage() {
             </Button>
           </div>
 
-          {saError && <p className="text-xs text-state-problem">{saError}</p>}
+          {(saError || saRefusal.shown) && <p className="text-xs text-state-problem">{saError || saRefusal.shown}</p>}
 
           {saPosition && (saPosition.challans ?? []).length > 0 && (
             <div className="overflow-x-auto">
