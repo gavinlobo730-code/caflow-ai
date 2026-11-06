@@ -86,10 +86,10 @@ import { readOnlinePayment } from "@/lib/payments/onlinePayment";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { typedDateText } from "@/lib/dates/typedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
@@ -766,11 +766,19 @@ function RecurringEditor({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState(existing?.frequency ?? "monthly");
-  const [startDate, setStartDate] = useState(existing?.start_date ?? todayLocalISO());
+  // A new template begins on India's day, not the browser's (a browser a few hours ahead of India would offer a day that has not come there).
+  const [startDate, setStartDate] = useState(existing?.start_date ?? todayIstISO());
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
   // The end date is OPTIONAL: text that is not a date reads as blank, and an invoice template meant to stop would keep raising invoices
   // with nothing said (frontend_ux-19).
   const recurringDates = useDateProblems();
+  // The first invoice's day is REQUIRED and a cleared box reports no problem (it is blank, not unreadable), so the sentence for a blank one is derived from the box, beside the dates' own,
+  // and said through the latch: it goes when a date is typed.
+  const startMissing = startDate ? null : "Start date: enter the date of the first invoice.";
+  // The window's ORDER is a fact about the two boxes too, so its sentence is derived and said through the same latch, and goes when the boxes are put in order. (Copied into the form's own error it
+  // stayed on the form after the cause was fixed, until the next press.)
+  const orderProblem = startDate && endDate && endDate < startDate ? "End date cannot be before start date" : null;
+  const refusal = useDateRefusal(recurringDates.first ?? startMissing ?? orderProblem);
   const [isInterState, setIsInterState] = useState(existing?.is_inter_state ?? false);
   // Reuses the invoice form's vocabulary and its unknown-value fallback rather
   // than a second copy of the option lists (task #156 / #157).
@@ -821,7 +829,10 @@ function RecurringEditor({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (recurringDates.first) { setError(recurringDates.first); return; }
+    // A new press begins, so what the last one said is no longer true.
+    setError(null);
+    // A blank first day went to the server as "" (a 422 there, and a 500 before it): it is asked for here, in the box's words. A stop day before the first day is refused in the same breath.
+    if (recurringDates.first ?? startMissing ?? orderProblem) { refusal.refuse(); return; }
     if (!customerId) { setError("Select a customer"); return; }
     if (!title.trim()) { setError("Title is required"); return; }
     if (lines.some((l) => l.description.trim() && !l.service_catalogue_id)) {
@@ -845,7 +856,6 @@ function RecurringEditor({
       gst_rate_percent: l.gst, is_service: l.is_service,
     }));
     if (payloadLines.length === 0) { setError("Add at least one line item"); return; }
-    if (endDate && endDate < startDate) { setError("End date cannot be before start date"); return; }
     setSaving(true); setError(null);
     try {
       const token = await getAuthToken();
@@ -1015,7 +1025,7 @@ function RecurringEditor({
             Each run creates a <strong>draft</strong> invoice for CA review — it is never issued or emailed automatically.
           </p>
 
-          {error && <Callout tone="problem">{error}</Callout>}
+          {(error || refusal.shown) && <Callout tone="problem">{error || refusal.shown}</Callout>}
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button type="submit" disabled={saving}

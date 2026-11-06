@@ -1,4 +1,4 @@
-// THE DAYS A BANK OR A PORTAL PRINTED, AND THE DAY GOODS CAME BACK, CANNOT BE AFTER TODAY IN INDIA, AND A SENTENCE ABOUT THEM GOES WHEN THEY ARE PUT RIGHT (PRE-A-015, sixteenth and seventeenth slices).
+// THE DAYS A BANK OR A PORTAL PRINTED, AND THE DAY GOODS CAME BACK, CANNOT BE AFTER TODAY IN INDIA, AND A SENTENCE ABOUT THEM GOES WHEN THEY ARE PUT RIGHT (PRE-A-015, sixteenth, seventeenth and eighteenth slices).
 //   node --experimental-strip-types --test scripts/the-dates-a-bank-or-a-portal-printed-are-bounded-by-todays-date-in-india.test.ts
 //
 // THE DEFECT
@@ -9,10 +9,13 @@
 //   under the date's sentence and came back when the date was put right.
 //   The seventeenth slice holds four more boxes to the same rules: the day a lot of goods came back on FORM GST ITC-04, the day a whole challan's goods came back (which stops the
 //   s.143 clock), and the day on a TDS challan on the firm's TDS screen and on a client's TDS tab (the bank has taken the tax by the day it is dated).
+//   The eighteenth slice adds two more facts (the day customs issued an export's shipping bill, and the day a foreign supplier's no-PE declaration is dated), says the supplier form's answers
+//   beside its Save and a recurring invoice's blank first day and window out of order through the latch, and holds the days that are a PLAN (a recurring template's window, the day a return is furnished in the
+//   §234A working) and the filters that write nothing (the stock register's as-at day and an item's ledger window) to their own rules.
 //
 // THE RULES (each read from the source as a RULE and not as one spelling of it, with the detectors tried below on the spellings that evade a looser reading; each EXECUTED by the browser
 // drive, scripts/drive/scenarios/dates.mjs, whose scenarios the last test imports and requires; the server half is tests/test_the_dates_a_bank_or_a_portal_printed_are_not_after_today.py)
-//   1. Each of the ten boxes is bounded by today in India (`notAfter={todayIstISO()}`), refuses a later day instead of hinting at it (`{ afterMax: true }`), and reports to the hook
+//   1. Each of the twelve boxes is bounded by today in India (`notAfter={todayIstISO()}`), refuses a later day instead of hinting at it (`{ afterMax: true }`), and reports to the hook
 //      its Save reads, so the sentence it makes is the one the Save refuses with.
 //   2. The e-way bill's "Valid upto" is a plan and may run ahead: it is not bounded by today.
 //   3. The advance-tax Save, the section 140A challan, the reinvestment claim, Record this lot, Record goods back and the two TDS challan forms say a date's sentence through `useDateRefusal`
@@ -47,6 +50,10 @@ const ITC04 = "components/gst/Itc04Panel.tsx";
 const SALES_CYCLE = "components/sales/SalesCycleTab.tsx";
 const TDS_FIRM = "app/tds/page.tsx";
 const TDS_CLIENT = "app/clients/[id]/compliance/tds/page.tsx";
+const INVOICE_EDITOR = "components/invoices/InvoiceEditor.tsx";
+const PURCHASES = "app/clients/[id]/purchases/page.tsx";
+const SALES_PAGE = "app/clients/[id]/sales/page.tsx";
+const INVENTORY = "app/clients/[id]/inventory/page.tsx";
 const DRIVE = "scripts/drive/scenarios/dates.mjs";
 
 // ── readers ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -138,6 +145,27 @@ function notAnAnswer(code: string, setters: string[], extra: RegExp[] = []): str
   return setters.flatMap((s) => answersGiven(code, s).filter((v) => ![...AN_ANSWER, ...extra].some((ok) => ok.test(v))).map((v) => `${s}(${v})`));
 }
 
+/** The allowances in `patterns` that no call of `setters` in `code` uses. An allowance for a sentence the form no longer says would keep permitting its return, so each must match a live call. */
+function allowancesNobodyUses(code: string, setters: string[], patterns: RegExp[]): string[] {
+  const said = setters.flatMap((s) => answersGiven(code, s));
+  return patterns.filter((ok) => !said.some((v) => ok.test(v))).map((ok) => String(ok));
+}
+
+// What the supplier form and the recurring invoice template say THEMSELVES in their answer, each a sentence about a box that is NOT a date (it answers a press and is withdrawn by the next). The catch of the
+// template's Save names its variable `err`, the supplier form's `e`. A sentence about a date box (unreadable, blank, after today, out of order) is not here: it is the latch's.
+const SUPPLIER_SENTENCES = [
+  /^"Name is required"$/, /^gstinIssue$/,
+  /^"Opening balance must be an amount in rupees, "\s*\+\s*"e\.g\. 125000 or 125000\.50 — without commas\."$/,
+  /^"TDS rate must be a percentage, e\.g\. 10 or 7\.5\."$/, /^"Treaty rate must be a percentage, e\.g\. 10 or 7\.5\."$/,
+  /^"Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income\."$/,
+  /^dup\.duplicate_reason\s*\?\?\s*"Not added — [^"]*"$/,
+];
+const TEMPLATE_SENTENCES = [
+  /^err instanceof Error \? err\.message : "[^"]*"$/,
+  /^"Select a customer"$/, /^"Title is required"$/, /^"Select a Product\/Service for every line item"$/, /^"Add at least one line item"$/,
+  /^`"\$\{bad\.description\.trim\(\)\}": enter the rate and quantity as plain `\s*\+\s*"numbers, without commas — e\.g\. 125000 and 2\."$/,
+];
+
 /** The latch calls in a body: `if (<condition>) { <refusal>.refuse(); return; }`, the condition read with its brackets balanced (it may hold `problems[`back-${id}`]` or `!(a ?? "")`). */
 function latchesIn(body: string): Array<{ condition: string; text: string }> {
   const found: Array<{ condition: string; text: string }> = [];
@@ -181,7 +209,7 @@ function opensOnIndiasDay(body: string): string[] {
 
 // ── tests ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-test("the ten boxes for a day that has happened by the time it is recorded are bounded by today in India and refuse a later day", () => {
+test("the twelve boxes for a day that has happened by the time it is recorded are bounded by today in India and refuse a later day", () => {
   const boxes: Array<[string, string, string]> = [
     [TAX, "Instalment ${n} paid on", "an advance-tax instalment's paid-on date"],
     [TAX, 'id="sa-deposit-date"', "the section 140A challan's deposit date"],
@@ -193,6 +221,8 @@ test("the ten boxes for a day that has happened by the time it is recorded are b
     [SALES_CYCLE, "Date the goods came back, challan", "the day a whole challan's goods came back"],
     [TDS_FIRM, 'id="tds-challan-date"', "the day on a TDS challan (the firm's TDS screen)"],
     [TDS_CLIENT, 'id="tds-client-challan-date"', "the day on a TDS challan (a client's TDS tab)"],
+    [INVOICE_EDITOR, 'id="inv-sb-date"', "the day customs issued the shipping bill"],
+    [PURCHASES, 'id="no-pe-on"', "the day a foreign supplier's no-PE declaration is dated"],
   ];
   for (const [file, needle, what] of boxes) {
     const box = dateInputWith(read(file), needle);
@@ -225,6 +255,25 @@ test("each box reports to the hook its Save reads", () => {
     const body = topLevelText(panel, `function ${fn}(`);
     const hook = hookOf(dateInputWith(body, needle));
     assert.ok(hook && new RegExp(`const problem = ${hook}\\.first\\b`).test(body), `${fn}: the box reports to a hook the dialog's \`problem\` is not made from`);
+  }
+  // The eighteenth slice: the supplier form's declaration box reports to the hook its Save's latch asks (looked up inside the form's own component: the page holds other forms with a handleSave),
+  // and the invoice editor's shipping bill box to the hook its Save asks.
+  const vendors = topLevelText(read(PURCHASES), "function Vendors(");
+  assert.equal(hookOf(dateInputWith(vendors, 'id="no-pe-on"')), whatTheHandlerDoesWithTheHook(vendors, "async function handleSave(").hook, "the declaration box reports to a hook the supplier form's Save never asks");
+  const editor = read(INVOICE_EDITOR);
+  const sbHook = hookOf(dateInputWith(editor, 'id="inv-sb-date"'));
+  assert.ok(sbHook && new RegExp(`if \\(${sbHook}\\.first\\)`).test(editor), "the shipping bill box reports to a hook the invoice editor's Save never asks");
+  // The block is drawn for a supply that leaves India and ONLY then can its number, date and port code be seen, judged and put right: a value typed while the block was drawn and left behind
+  // when the supply type was changed back must not be sent from a box nobody can see (the server refuses a date after today and a port code that is not six characters, and the person would be
+  // told about a field that is not on the screen; the first version gated the date alone and a five-character port code still got through). One condition draws the block and decides the three
+  // fields, and all three payloads (an issued invoice's soft fields, a draft's, a new invoice) spread the one gated object and name none of the three themselves.
+  assert.match(editor, /const showsShippingBill = \(supplyType === "zero_rated" \|\| supplyStateCode === "96"\) && invoiceType === "Regular";/, "the shipping bill block's condition is no longer the one named showsShippingBill");
+  assert.match(editor, /const shippingBillSent = showsShippingBill \? \{\s*shipping_bill_no: shippingBillNo\.trim\(\) \|\| undefined,\s*shipping_bill_date: shippingBillDate \|\| undefined,\s*port_code: portCode\.trim\(\)\.toUpperCase\(\) \|\| undefined,\s*\} : \{\};/,
+    "the shipping bill number, date and port code are no longer gated together on the block being drawn");
+  assert.match(editor, /\{showsShippingBill && \(/, "the shipping bill block is no longer drawn by the condition that gates its fields");
+  assert.equal((editor.match(/\.\.\.shippingBillSent,/g) ?? []).length, 3, "a payload no longer spreads the gated shipping bill fields");
+  for (const key of ["shipping_bill_no", "shipping_bill_date", "port_code"]) {
+    assert.equal((editor.match(new RegExp(`\\b${key}:`, "g")) ?? []).length, 1, `${key} is named in a payload outside the gated object, so it is sent from a box that may not be drawn`);
   }
   // The bill editor: the hook its box reports to is the one its Save asks.
   const bill = read(BILL);
@@ -338,6 +387,80 @@ test("Record this lot, Record goods back and the two TDS challan forms say a dat
   assert.match(bodyOf(tdsFirm, "async function handleAdd("), /catch \(e\) \{\s*setError\(e instanceof Error \? e\.message/, "the firm's Add challan throws away the sentence of a refusal that arrives as an error status");
 });
 
+test("the supplier form and the recurring invoice template say a date's sentence through the latch and nowhere else, and the supplier form says its answers beside Save", () => {
+  // The supplier form is looked up inside its own component (the purchases page holds other forms with a `handleSave`), and the template editor inside its own (the sales page holds others).
+  const vendors = topLevelText(read(PURCHASES), "function Vendors(");
+  const recurring = topLevelText(read(SALES_PAGE), "function RecurringEditor(");
+  assert.match(vendors, /const noPeRefusal = useDateRefusal\(noPeDates\.first\);/, "the supplier form's declaration sentence is not latched");
+  const v = whatTheHandlerDoesWithTheHook(vendors, "async function handleSave(");
+  assert.equal(v.latches, 1, `the supplier form's Save has ${v.latches} latch calls: it must refuse a date once, through the latch`);
+  assert.deepEqual(v.others, [], "the supplier form's Save does something with its date problems besides the latch (a copy of a date's sentence stays after the date is right)");
+  assert.deepEqual(copiesIntoTheError(vendors, ["setFormError", "setMsg"]), [], "the supplier form copies a date's sentence into its answer");
+  // The same rule stated as what an answer MAY be made of (a rule that lists names to avoid is blind to the next name for a derived sentence, `setFormError(noPeRefusal.shown)` or a literal naming the
+  // declaration's date): nothing, the server's sentence, a failed request's own, or one of the sentences the form says ITSELF about a box that is not a date, each of which answers a press and is
+  // withdrawn by the next. A sentence about a DATE box, under whatever name, is the latch's.
+  assert.deepEqual(notAnAnswer(vendors, ["setFormError"], SUPPLIER_SENTENCES), [],
+    "the supplier form's answer holds something that is not nothing, the server's sentence, a failed request's own or one of its allowed sentences about a box that is not a date: a sentence about a DATE box belongs to the latch, and a sentence that was only reworded (or a catch variable renamed) is updated in SUPPLIER_SENTENCES");
+  assert.deepEqual(allowancesNobodyUses(vendors, ["setFormError"], SUPPLIER_SENTENCES), [], "SUPPLIER_SENTENCES allows a sentence the supplier form no longer says: delete it, or it permits the sentence's return");
+  assert.ok(clearsBeforeRefusing(vendors, "async function handleSave(", /setFormError\(null\)/), "the supplier form's Save no longer clears the answer to the last press before it refuses a date");
+  // The answer to a press is said BESIDE Save (the form is long and the page's message line is above all of it), newest first, and the page's message line is not used by the Save for an error.
+  assert.match(vendors, /\(formError \|\| noPeRefusal\.shown\) && <p role="alert"[^>]*>\{formError \|\| noPeRefusal\.shown\}<\/p>\}\s*<div className="flex gap-3 justify-end">/, "the supplier form's answer is not said beside Save, newest first");
+  assert.doesNotMatch(bodyOf(vendors, "async function handleSave("), /setMsg\(\{ type: "err"/, "the supplier form's Save says an error in the page's message line again, above the whole form");
+  // A form opened afresh or closed holds nothing of the last press.
+  assert.match(vendors, /useLayoutEffect\(\(\) => \{ setFormError\(null\); clearNoPeRefusal\(\); \}, \[showForm, editingVendor\?\.id, editOpened, clearNoPeRefusal\]\);/, "the supplier form is opened again with the last answer or sentence on it");
+  // Opening the vendor that is ALREADY on the form is a form opened afresh too (neither the form's visibility nor the vendor's id changes): the edit counter is bumped by openEdit, named by the
+  // effect above, and part of the declaration box's key so its text is reset with the rest.
+  assert.match(bodyOf(vendors, "function openEdit("), /setEditOpened\(\(n\) => n \+ 1\);/, "opening a vendor to edit no longer counts as a form opened afresh");
+  assert.match(vendors, /key=\{`\$\{editingVendor\?\.id \?\? "new"\}-\$\{editOpened\}`\}\s*id="no-pe-on"/, "the declaration box keeps its text when the vendor on the form is opened again");
+  // The template editor: a blank first day is a sentence about the box, derived from it and latched; the editor's answers are cleared first and the newest is shown first.
+  assert.match(recurring, /const startMissing = startDate \? null : "Start date: enter the date of the first invoice\.";/, "the template editor's blank-first-day sentence is not derived");
+  // The window's ORDER is a fact about the two boxes, so it is derived and latched beside the others (copied into the form's own error it stayed on the form after the cause was fixed), and the
+  // Save asks it in the same breath as the dates' own.
+  assert.match(recurring, /const orderProblem = startDate && endDate && endDate < startDate \? "End date cannot be before start date" : null;\s*const refusal = useDateRefusal\(recurringDates\.first \?\? startMissing \?\? orderProblem\);/, "the template editor's order sentence is not derived and latched");
+  assert.match(bodyOf(recurring, "async function submit("), /if \(recurringDates\.first \?\? startMissing \?\? orderProblem\) \{ refusal\.refuse\(\); return; \}/, "the template editor's Save no longer asks the order sentence with the others");
+  assert.doesNotMatch(recurring, /setError\("End date cannot be before start date"\)/, "the template editor copies the order sentence into its own error again");
+  const r = whatTheHandlerDoesWithTheHook(recurring, "async function submit(");
+  assert.equal(r.latches, 1, `the template editor's Save has ${r.latches} latch calls: it must refuse a date once, through the latch`);
+  assert.deepEqual(r.others, [], "the template editor's Save does something with its date problems besides the latch");
+  assert.deepEqual(copiesIntoTheError(recurring, ["setError"]), [], "the template editor copies a date's sentence into its error");
+  // …and as what its answer may be made of: nothing, the server's sentence, a failed request's own (here the catch's variable is `err`), or one of the sentences it says ITSELF about a box that is
+  // not a date. The blank first day, the window out of order and every other sentence about a date are the latch's, so `setError("Start date: …")` is caught whatever it is called.
+  assert.deepEqual(notAnAnswer(recurring, ["setError"], TEMPLATE_SENTENCES), [],
+    "the template editor's error holds something that is not nothing, the server's sentence, a failed request's own or one of its allowed sentences about a box that is not a date: a sentence about a DATE box belongs to the latch, and a sentence that was only reworded (or a catch variable renamed) is updated in TEMPLATE_SENTENCES");
+  assert.deepEqual(allowancesNobodyUses(recurring, ["setError"], TEMPLATE_SENTENCES), [], "TEMPLATE_SENTENCES allows a sentence the template editor no longer says: delete it, or it permits the sentence's return");
+  assert.ok(clearsBeforeRefusing(recurring, "async function submit(", /setError\(null\)/), "the template editor's Save no longer clears the answer to the last press before it refuses a date");
+  assert.match(recurring, /\(error \|\| refusal\.shown\) && <Callout tone="problem">\{error \|\| refusal\.shown\}<\/Callout>/, "the template editor's sentence is not rendered newest first");
+  // Both boxes report to the hook the latch asks.
+  const hookOf = (box: string) => /\b(\w+)\.watch\(/.exec(box)?.[1];
+  assert.equal(hookOf(dateInputWith(recurring, 'id="rec-inv-start"')), r.hook, "the template's start box reports to a hook its Save never asks");
+  assert.equal(hookOf(dateInputWith(recurring, 'id="rec-inv-end"')), r.hook, "the template's end box reports to a hook its Save never asks");
+});
+
+test("the days that are a PLAN are not bounded by today, and the stock filters read what their boxes hold", () => {
+  const recurring = topLevelText(read(SALES_PAGE), "function RecurringEditor(");
+  const start = dateInputWith(recurring, 'id="rec-inv-start"');
+  const end = dateInputWith(recurring, 'id="rec-inv-end"');
+  assert.doesNotMatch(start, /notAfter|afterMax|max=/, "the first invoice's day is bounded by today again: a template may begin ahead of it");
+  assert.doesNotMatch(end, /notAfter|afterMax|max=/, "the day a template stops is bounded by today again: it may run ahead of it");
+  assert.match(end, /notBefore=\{startDate \|\| null\}/, "the day a template stops no longer begins at its first day");
+  assert.match(recurring, /useState\(existing\?\.start_date \?\? todayIstISO\(\)\)/, "a new template no longer begins on India's day");
+  // The day a return is furnished in the §234A working is a what-if as well as a fact: the working may be asked what filing on a later day would cost, so it is not bounded either.
+  assert.doesNotMatch(dateInputWith(read(TAX), 'id="at-furnished-on"'), /notAfter|afterMax|max=/, "the day the return was furnished is bounded by today again: the §234A working may be asked about a later day");
+  // The stock register's as-at heading prints a date as a date (not the ISO text), and a ledger window whose To day is before its From day is not read.
+  const inventory = read(INVENTORY);
+  assert.match(inventory, /Closing value as at \$\{formatDate\(asAt\)\}/, "the stock register's heading prints the as-at day as ISO text again");
+  const ledger = topLevelText(inventory, "function StockLedgerDrillDown(");
+  assert.match(ledger, /const windowReversed = !!startDate && !!endDate && endDate < startDate;/, "the ledger window's order is no longer judged");
+  assert.match(bodyOf(ledger, "const load = useCallback(async () =>").replace(/^\{\s*/, "{ "), /if \(windowReversed\) \{[^}]*return;\s*\}/, "a window in the wrong order is read again");
+  assert.match(ledger, /windowReversed \? \(\s*<p role="alert"[^>]*>\s*The To day is before the From day/, "a window in the wrong order is not said in a sentence");
+  // An answer to an EARLIER window is not applied over the window on the boxes: each read has its own number, and the answer, the failure and the end of the wait ask whether it is still the latest.
+  const loadBody = bodyOf(ledger, "const load = useCallback(async () =>");
+  assert.match(ledger, /const loadSeqRef = useRef\(0\);/, "the ledger window has no request sequence");
+  assert.match(loadBody, /const seq = \+\+loadSeqRef\.current;\s*const isCurrent = \(\) => seq === loadSeqRef\.current;/, "a ledger read has no number of its own");
+  assert.equal((loadBody.match(/if \(!isCurrent\(\)\) return;/g) ?? []).length, 2, "a slow answer (or failure) of an earlier window is applied over the latest again");
+  assert.match(loadBody, /finally \{\s*if \(isCurrent\(\)\) setLoading\(false\);/, "an earlier window's answer ends the wait of the latest");
+});
+
 test("the writers and the deleters behind those two forms say what the server said", () => {
   const data = read(DATA);
   const helper = topLevelText(data, "async function writeAnswer<T>(");
@@ -390,6 +513,20 @@ test("the detectors tell the defect from the fix, in the spellings that evade a 
     "setLotError({ line: l, text: built.error });", "setLotError({ line: l, text: lotProblem });", "setBackAnswer({ id: c.id, text: backProblem });", "setError(refusal.shown);",
     'setSaveError("Challan number: enter the serial number printed on the challan.");', "setError(dates.first ?? null);", 'setBackAnswer({ id: c.id, text: `${c.document_no}: ${backProblem}` });',
   ]) assert.notDeepEqual(notAnAnswer(copy, ["setError", "setLotError", "setBackAnswer", "setSaveError"]), [], `not caught by the positive rule: ${copy}`);
+  // The eighteenth slice's two forms, whose own sentences about boxes that are not dates are allowed by exact pattern and nothing else is.
+  for (const fine of ['setFormError("Name is required");', "setFormError(gstinIssue);", 'setFormError(e instanceof Error ? e.message : "Save failed");', "setFormError(null);"]) {
+    assert.deepEqual(notAnAnswer(fine, ["setFormError"], SUPPLIER_SENTENCES), [], `refused as a copy but it is the supplier form's own answer: ${fine}`);
+  }
+  for (const copy of ["setFormError(noPeRefusal.shown);", 'setFormError("Declaration dated: enter the day the declaration was signed.");', "setFormError(noPeDates.first);", "setFormError(declarationProblem);"]) {
+    assert.notDeepEqual(notAnAnswer(copy, ["setFormError"], SUPPLIER_SENTENCES), [], `not caught by the positive rule on the supplier form: ${copy}`);
+  }
+  for (const fine of ['setError("Select a customer");', 'setError(err instanceof Error ? err.message : "Save failed");', "setError(null);"]) {
+    assert.deepEqual(notAnAnswer(fine, ["setError"], TEMPLATE_SENTENCES), [], `refused as a copy but it is the template editor's own answer: ${fine}`);
+  }
+  assert.deepEqual(allowancesNobodyUses('setError("Select a customer"); setError(null);', ["setError"], [/^"Select a customer"$/, /^"A sentence that was deleted"$/]), ['/^"A sentence that was deleted"$/'], "an allowance no call uses is not found");
+  for (const copy of ['setError("Start date: enter the date of the first invoice.");', 'setError("End date cannot be before start date");', "setError(orderProblem);", "setError(startMissing);", "setError(refusal.shown);"]) {
+    assert.notDeepEqual(notAnAnswer(copy, ["setError"], TEMPLATE_SENTENCES), [], `not caught by the positive rule on the template editor: ${copy}`);
+  }
   // …and the latch is found in the shapes the four forms use: a nullish gate, a bracketed condition, a negated parenthesis.
   for (const gate of [
     "if (dates.first ?? challanMissing) { refusal.refuse(); return; }",
@@ -417,17 +554,25 @@ test("the detectors tell the defect from the fix, in the spellings that evade a 
 // The rules above are executed by the browser, and this is what the drive must hold: the module is IMPORTED, so a scenario that is deleted, renamed, commented out or moved out of the
 // three zones fails here and not silently. Each table is built from rows, so what must exist is each row's scenarios.
 const SIX = ["advance-tax-paid-on", "self-assessment-deposit", "cgas-deposit", "irn-acknowledgement", "eway-bill-date", "bill-form-15ca",
-  "itc04-came-back", "goods-back", "firm-tds-challan", "client-tds-challan"]; // the six of the sixteenth slice and the four of the seventeenth
-const EARLIER = ["advance-tax-save", "self-assessment-challan", "reinvestment-claim", "itc04-record-lot", "goods-back-record", "firm-tds-challan-add", "client-tds-challan-save"];
+  "itc04-came-back", "goods-back", "firm-tds-challan", "client-tds-challan", "shipping-bill", "vendor-no-pe-declaration"]; // the six of the sixteenth slice, the four of the seventeenth and the two of the eighteenth
+const EARLIER = ["advance-tax-save", "self-assessment-challan", "reinvestment-claim", "itc04-record-lot", "goods-back-record", "firm-tds-challan-add", "client-tds-challan-save", "vendor-save", "recurring-invoice-save"];
+// The eighteenth slice's rows of the editor table and its scenarios of its own: the five write forms, the recurring invoice's edit and window, and the three boxes that write nothing.
+const EIGHTEENTH = ["recurring-invoice-template", "sales-invoice-shipping-bill", "vendor-no-pe-declaration", "catalogue-opening-stock-date", "catalogue-import-opening-stock-date",
+  "recurring-invoice-edit-an-untouched-stop-date-is-sent-back", "recurring-invoice-edit-a-cleared-stop-date-clears-it", "recurring-invoice-a-reversed-window-is-refused-in-a-sentence",
+  "advance-tax-return-furnished-on", "stock-register-as-at", "stock-ledger-window",
+  "shipping-bill-a-future-date-left-behind-in-a-block-that-is-no-longer-drawn-is-not-sent"];
 const DIALOGS = ["irn-dialog", "eway-bill-dialog"];
-// The four forms of the seventeenth slice whose date is REQUIRED: pressed over a blank date they say so, and the sentence goes once a date is typed.
-const REQUIRED = ["itc04-record-lot", "goods-back-record", "firm-tds-challan-add", "client-tds-challan-save"];
+// The four forms of the seventeenth slice whose date is REQUIRED, and the recurring invoice template's first day of the eighteenth: pressed over a blank date they say so, and the sentence goes
+// once a date is typed.
+const REQUIRED = ["itc04-record-lot", "goods-back-record", "firm-tds-challan-add", "client-tds-challan-save", "recurring-invoice-template"];
 // Scenarios of the reads of the seventeenth slice that run once (they type no date that a zone could read differently): a quantity's sentence, the held controls, the sentence in its row.
 const ONCE = [
   "itc04-a-quantity-that-is-not-a-quantity-is-asked-for-and-the-sentence-goes-when-it-is-right",
   "firm-tds-challan-close-and-cancel-are-held-while-add-is-out",
   "itc04-record-a-lot-is-held-while-a-lot-is-out",
   "goods-back-the-sentence-is-in-the-row-it-is-about-and-leaves-with-the-tab",
+  "stock-ledger-window-a-late-answer-to-an-earlier-window-is-not-shown",
+  "vendor-edit-opened-again-holds-none-of-the-last-answer",   // the eighteenth slice: opening the vendor already on the supplier form is a form opened afresh
 ];
 
 test("the browser drive holds every claim this guard states", async () => {
@@ -441,6 +586,7 @@ test("the browser drive holds every claim this guard states", async () => {
     ...EARLIER.map((r) => `${r}-the-answer-to-an-earlier-attempt-does-not-come-back`),
     ...DIALOGS.map((r) => `${r}-opens-on-the-indian-day`),
     "eway-bill-valid-upto-may-run-ahead",
+    ...EIGHTEENTH,
   ];
   assert.deepEqual(inThreeZones.filter((id) => !byId.has(id)), [], "a scenario of the sixteenth slice is gone from scripts/drive/scenarios/dates.mjs");
   assert.deepEqual(inThreeZones.filter((id) => JSON.stringify(byId.get(id)?.contexts) !== JSON.stringify(kit.TZ_MATRIX)), [], "a scenario of the sixteenth slice no longer runs in all three zones");

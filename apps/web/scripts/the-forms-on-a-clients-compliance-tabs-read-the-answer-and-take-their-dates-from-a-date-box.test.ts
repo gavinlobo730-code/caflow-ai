@@ -261,7 +261,7 @@ test("the TDS tab shows what recording a challan did to the compliance calendar,
 
 // The writes on the three pages whose answer is still dropped (a statement that begins `await apiFetch(` and carries a write method, so nothing reads what came back):
 // the status changes of a filing (MCA) and of a TDS return, a director's KYC change, the creation of a TDS return and the save of a statement computed from the books,
-// and the creation of a GSTR-1 and of a GSTR-3B and the save of each from the books. Each is written on the ledger line PRE-A-015 as found and not changed. The count is
+// and the creation of a GSTR-1 and of a GSTR-3B and the save of each from the books. Each is POST-A-391. The count is
 // made by reading each call's own parentheses, so a long body is counted; it can only fall.
 const DROPPED_ANSWERS: Record<string, number> = { [MCA]: 2, [TDS]: 3, [GST]: 4 };
 

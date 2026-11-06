@@ -17,6 +17,18 @@ from domain.tds.residency import (NON_RESIDENT, RESIDENTIAL_STATUSES,
 from domain.tds.section_195_rates import (
     ALL_NATURES, NATURE_BUSINESS_PROFITS_NO_PE)
 from domain.tds.section_rates import threshold_class_problem
+from models.iso_date import a_day_that_has_happened
+
+
+def _no_pe_declaration_day(v: Optional[str], *, a_blank_is_no_date: bool) -> Optional[str]:
+    """The day the foreign supplier's no-PE declaration is dated, or None when it is not stated (PRE-A-015, eighteenth slice).
+
+    It was a bare string stored as typed in a DATE column: text that is not a day came back as "Unable to … Please try again." (a 200 with `success: false`, naming no field), and a day
+    ahead was kept as the evidence for a nil deduction (s.201(1)/(1A) put the
+    consequence of a wrong nil on the deductor, so an undated declaration is a claim with no evidence behind it and a declaration dated tomorrow is not evidence yet). A declaration is a
+    document already given by the time it is filed here, so it is a real day, kept canonical, and not after today in India. A blank is no date on a new supplier and is REFUSED on an
+    update (the route drops what is empty, so a blank would be reported as saved)."""
+    return a_day_that_has_happened(v, "no_pe_declaration_on", "The no-PE declaration date cannot be after today's date in India.", a_blank_is_no_date=a_blank_is_no_date)
 
 
 def _normalise_residency(model) -> list[str]:
@@ -496,6 +508,11 @@ class VendorIn(BaseModel):
             raise ValueError("Vendor name cannot be blank.")
         return v
 
+    @field_validator("no_pe_declaration_on")
+    @classmethod
+    def _no_pe_declaration_is_a_day_that_has_happened(cls, v: Optional[str]) -> Optional[str]:
+        return _no_pe_declaration_day(v, a_blank_is_no_date=True)
+
     @field_validator("credit_limit_paise")
     @classmethod
     def _credit_limit_not_negative(cls, v):
@@ -589,6 +606,11 @@ class VendorUpdateIn(BaseModel):
     no_pe_declaration_ref: Optional[str] = None
     treaty_rate_bps: Optional[int] = None
     is_active: Optional[bool] = None
+
+    @field_validator("no_pe_declaration_on")
+    @classmethod
+    def _no_pe_declaration_is_a_day_that_has_happened(cls, v: Optional[str]) -> Optional[str]:
+        return _no_pe_declaration_day(v, a_blank_is_no_date=False)
 
     @field_validator("credit_limit_paise")
     @classmethod

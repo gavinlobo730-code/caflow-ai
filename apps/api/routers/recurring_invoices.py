@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, field_validator
 
 from models.common import api_response
+from models.iso_date import a_real_date
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.permissions import rbac
 from services import recurring_invoice_service as recurring
@@ -63,6 +64,18 @@ class RecurringTemplateIn(BaseModel):
     is_reverse_charge: bool = False
     lines: list[RecurringLineIn]
 
+    # The window is a PLAN (the first invoice's day and the day the template stops), so neither is bounded by today; each is a real day, stored as the canonical day (PRE-A-015, eighteenth
+    # slice: they were bare strings, and the service's date parser raised on "" or "30/09/2026", a 500 with no sentence). A blank stop date means none.
+    @field_validator("start_date")
+    @classmethod
+    def _start_is_a_date(cls, v: str) -> str:
+        return a_real_date(v, "start_date")
+
+    @field_validator("end_date")
+    @classmethod
+    def _end_is_a_date(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None or not str(v).strip() else a_real_date(v, "end_date")
+
     @field_validator("frequency")
     @classmethod
     def _freq(cls, v: str) -> str:
@@ -90,6 +103,18 @@ class RecurringTemplateUpdateIn(BaseModel):
     invoice_type: Optional[str] = None
     is_reverse_charge: Optional[bool] = None
     lines: Optional[list[RecurringLineIn]] = None
+
+    # An omitted start date is unchanged (the route dumps only what was sent) and a blank one is refused, since the service would read "" as a date; a blank STOP date is sent on purpose, to clear
+    # it, and is stored as none (the service keeps the key's presence as the instruction).
+    @field_validator("start_date")
+    @classmethod
+    def _start_is_a_date(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else a_real_date(v, "start_date")
+
+    @field_validator("end_date")
+    @classmethod
+    def _end_is_a_date(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None or not str(v).strip() else a_real_date(v, "end_date")
 
     @field_validator("frequency")
     @classmethod
@@ -212,13 +237,27 @@ def preview_recurring(template_id: str, count: int = Query(5, ge=1, le=24),
     return api_response(True, {"occurrences": recurring.preview_occurrences(t, count=count)})
 
 
+def _as_of(value: Optional[str]) -> Optional[str]:
+    """The day a manual run is for, or None for today. Text that is not a day is a 422 naming the field: it was handed to the date parser and answered 500 (PRE-A-015, eighteenth slice, found
+    by the independent read of its server half). The screen never sends one; a script does."""
+    if value is None or not str(value).strip():
+        return None
+    try:
+        return a_real_date(value, "as_of")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
 @router.post("/{template_id}/run")
 def run_one_recurring(template_id: str, as_of: Optional[str] = Query(None),
                       current_user: dict = Depends(rbac("accounting", "write"))):
     """Generate due DRAFT invoices for a single template now (CA-initiated)."""
+    # The template's client is asked FIRST, as on every other route here: a caller with no access to it is refused before anything about their request is judged, so a malformed day
+    # cannot tell them what a refusal would not (`tests/test_recurring_client_scope.py` holds the order for every template route).
     _assert_template_scope(current_user, template_id)
+    on_day = _as_of(as_of)
     return api_response(True, recurring.run_for_template(
-        current_user["firm_id"], template_id, as_of=as_of, actor=current_user))
+        current_user["firm_id"], template_id, as_of=on_day, actor=current_user))
 
 
 @router.post("/run")
@@ -244,11 +283,13 @@ def run_due_recurring(client_id: Optional[str] = Query(None), as_of: Optional[st
         # None means firm-wide (Partner/Manager, or mock mode with no
         # assignments table) — one call with client_id=None, exactly as before.
         targets = [None] if eff is None else sorted(eff)
+    # Access is judged first (see `run_one_recurring`); then the day the run is for.
+    on_day = _as_of(as_of)
 
     merged = {"generated": [], "skipped": [], "failed": []}
     for target in targets:
         res = recurring.generate_due_recurring_invoices(
-            current_user["firm_id"], client_id=target, as_of=as_of, actor=current_user)
+            current_user["firm_id"], client_id=target, as_of=on_day, actor=current_user)
         for key in merged:
             merged[key].extend(res.get(key) or [])
     merged.update({f"{k}_count": len(v) for k, v in list(merged.items())})

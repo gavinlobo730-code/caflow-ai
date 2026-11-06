@@ -32,7 +32,7 @@ import assert from "node:assert/strict";
 import { TZ_MATRIX, pick, sameTickDouble, expectWrites, until } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok, refuse } from "../stub.mjs";
-import { CLIENT_ID, CLIENT_ROW, ITEM, PAYROLL_RUN, VENDOR } from "../fixtures.mjs";
+import { CLIENT_ID, CLIENT_ROW, CUSTOMER, ITEM, PAYROLL_RUN, VENDOR } from "../fixtures.mjs";
 
 export const group = "dates";
 
@@ -98,6 +98,29 @@ async function openBill15ca(env) {
   await page.locator("#bill-15ca-date").waitFor({ timeout: 10000 });
 }
 
+/** The sales invoice editor on a zero-rated supply, which is when it draws the shipping bill block (GSTR-1 Table 6A, an export's refund evidence): customer and product chosen as `openInvoice`
+ *  does, the supply type set to Zero-rated. */
+async function openExportInvoice(env) {
+  const { page } = env;
+  await openInvoice(env);
+  await page.locator("#inv-supply-type").selectOption("zero_rated");
+  await page.locator("#inv-sb-date").waitFor({ timeout: 10000 });
+}
+
+/** A client's Purchases > Vendors with "Add Vendor" open on a non-resident supplier whose no-PE declaration is ticked, so the declaration's date box is on the form. */
+async function openVendorDeclaration(env) {
+  const { page, stub } = env;
+  stub.route({ method: "POST", re: /api\/vendors\/$/, reply: () => ok({ id: "v-new" }) });
+  await page.goto(env.at("/purchases/?tab=vendors"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Add Vendor" }).first().click();
+  await page.getByLabel("Name", { exact: true }).fill("Acme GmbH");
+  await page.locator("#residential-status").selectOption("non_resident");
+  await page.getByLabel("No-PE declaration on file").check();
+  await page.locator("#no-pe-on").waitFor({ timeout: 10000 });
+}
+/** The vendor form's card (the heading is "New Vendor"), so its Save is not mistaken for the toolbar's or the empty state's Add Vendor. */
+const vendorForm = (page) => page.locator("div.bg-white.rounded-xl.border").filter({ has: page.getByRole("heading", { name: "New Vendor" }) });
+
 /** The advance-tax register with an estimate typed, so the four instalments (and their paid-on dates) are drawn. */
 async function openAdvanceTaxRegister(env) {
   const { page, stub } = env;
@@ -105,6 +128,35 @@ async function openAdvanceTaxRegister(env) {
   await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
   await page.getByPlaceholder("Enter tax amount").fill("100000");
   await page.getByLabel("Instalment 1 paid on").waitFor();
+}
+
+/** What the §234A/§234B working answers (`Section234ABResult`): nothing late and nothing short, so the screen has a result to draw and the box under test is the only thing that varies. */
+const INTEREST_234AB = {
+  fy: "2026-27",
+  section_234a: { section: "234A", applies: false, base_paise: 0, months: 0, interest_paise: 0, from_date: null, to_date: null, reasons: ["The return was furnished by the due date."] },
+  section_234b: { section: "234B", applies: false, base_paise: 0, months: 0, interest_paise: 0, from_date: null, to_date: null, reasons: ["Advance tax paid is at least 90% of the assessed tax."] },
+  total_interest_paise: 0, section_140a_tax_due_paise: 10000000,
+  itr_due_date: { financial_year: "2026-27", due_date: "2027-07-31", is_audit: false, decided: true, basis: "Section 139(1): 31 July of the assessment year.", statutory_gaps: [] },
+  assessment_date: "2026-10-08", return_furnished_on: null,
+};
+
+const STOCK_ITEM = { id: "sc1", name: "Copier paper", description: null, hsn_sac: "4802", unit: "NOS", is_active: true, stock_qty_units: 40, avg_cost_paise: 25000, stock_value_paise: 1000000 };
+
+/** The stock register with one item, its closing-stock read and its movement ledger answered from the stub: `asked.summary` and `asked.ledger` collect the query string each read was sent. */
+async function openStockRegisterReads(env, asked) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { inventory: ["read", "write"], accounting: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/inventory\/items\?/, reply: () => ok([STOCK_ITEM]) });
+  stub.route({ method: "GET", re: /api\/inventory\/stock-summary\?/, reply: (req, body, url) => {
+    asked.summary.push(url.search);
+    return ok({ as_of: url.searchParams.get("as_of"), items: [{ service_catalogue_id: "sc1", name: "Copier paper", unit: "NOS", hsn_sac: "4802", qty_units: "30", value_paise: 750000,
+      avg_cost_paise: 25000, last_movement_date: "2026-06-30", movements: 3 }], total_value_paise: 750000, total_items: 1 });
+  } });
+  stub.route({ method: "GET", re: /api\/inventory\/items\/sc1\/ledger\?/, reply: (req, body, url) => {
+    asked.ledger.push(url.search);
+    return ok({ item: { id: "sc1", name: "Copier paper" }, lines: [], opening: { qty_units: "40", value_paise: 1000000, as_at: "2026-03-31" }, closing: { qty_units: "40", value_paise: 1000000, as_at: "2027-03-31" } });
+  } });
+  await page.goto(env.at("/inventory/"), { waitUntil: "networkidle" });
 }
 
 /** The §140A challan form on the same screen, filled with everything the server needs but the date. */
@@ -1338,6 +1390,40 @@ async function openRecurringBillTemplate(env) {
   await page.getByLabel("Rate (₹)", { exact: true }).fill("50000");
 }
 
+const RECURRING_INVOICE = {
+  id: "ri-1", client_id: CLIENT_ID, customer_id: CUSTOMER.id, title: "Monthly bookkeeping", description: null, frequency: "monthly",
+  start_date: "2026-11-01", end_date: "2027-10-31", next_run_date: "2026-11-01", notes: null, is_inter_state: false, status: "active",
+  supply_type: "taxable", invoice_type: "Regular", is_reverse_charge: false,
+  lines: [{ service_catalogue_id: ITEM.id, description: "Consulting", hsn_sac: "998313", quantity: 1, rate_paise: 5000000, gst_rate_bps: 1800, is_service: true }],
+};
+
+/** Sales > Recurring with "New Template" open on a customer, a title and one product line, so only the dates are left. */
+async function openRecurringInvoiceTemplate(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"], sales: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/recurring-invoices\?/, reply: () => ok([]) });
+  stub.route({ method: "POST", re: /api\/recurring-invoices$/, reply: () => ok({ id: "ri-1" }) });
+  stub.setTable("service_catalogue", [{ ...ITEM, kind: "service" }]);
+  await page.goto(env.at("/sales/?tab=recurring"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "New Template" }).first().click();
+  await pick(page, page.locator('button[aria-label="Customer"]'), "Beta Stores");
+  await page.getByLabel("Title", { exact: true }).fill("Monthly bookkeeping");
+  await pick(page, page.locator('button[aria-label="Line 1 product or service"]'), "Consulting");
+  await page.getByLabel("Line 1 rate (₹)", { exact: true }).fill("50000");
+}
+
+/** Sales > Recurring with one template that stops on 31/10/2027, "Edit" open on it: the stop date is the box to clear. */
+async function openEditRecurringInvoice(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { accounting: ["read", "write", "approve"], sales: ["read", "write"] } }) });
+  stub.route({ method: "GET", re: /api\/recurring-invoices\?/, reply: () => ok([RECURRING_INVOICE]) });
+  stub.route({ method: "PUT", re: /api\/recurring-invoices\/ri-1$/, reply: () => ok(RECURRING_INVOICE) });
+  stub.setTable("service_catalogue", [{ ...ITEM, kind: "service" }]);
+  await page.goto(env.at("/sales/?tab=recurring"), { waitUntil: "networkidle" });
+  await page.locator('button[title="Edit"]').first().click();
+  await page.locator("#rec-inv-end").waitFor();
+}
+
 /** Accounting > Trial balance import taken to its Review step with a small balanced CSV and a client chosen, so only the opening date is left. */
 async function openTrialBalanceImport(env) {
   const { page, stub } = env;
@@ -1363,6 +1449,30 @@ async function openVendorPayment(env) {
   await page.getByRole("button", { name: "Record Payment" }).first().click();
   await pick(page, page.locator('button[aria-label="Vendor"]'), "Gamma Supplies");
   await page.getByLabel("Amount (₹)", { exact: true }).fill("25000");
+}
+
+/** The sales invoice's product picker opened to its pinned "+ Add Product/Service" row, which opens the Products & Services panel (a slide-over). `how` is "new" (its New Product/Service dialog, filled with
+ *  a name, the kind Product and an opening quantity, so the box for the day that quantity is on hand as of is drawn) or "import" (its Import button, which asks for the one day an opening-stock file is as of). */
+function openCatalogue(how) {
+  return async (env) => {
+    const { page, stub } = env;
+    stub.route({ method: "POST", re: /api\/service-catalogue\/?$/, reply: () => ok({ ...ITEM, id: "sc-new", name: "Copier paper", kind: "good" }) });
+    stub.route({ method: "POST", re: /api\/service-catalogue\/bulk$/, reply: () => ok({ created: [{ id: "sc-9", name: "Copier paper" }], duplicates: [], errors: [] }) });
+    await page.goto(env.at("/sales/invoices/new/edit/"), { waitUntil: "networkidle" });
+    await page.click('button[aria-label="Line 1 product or service"]');
+    await page.locator("[role=listbox] [role=option]", { hasText: "Add Product/Service" }).first().click();
+    if (how === "import") {
+      await page.getByRole("button", { name: "Import", exact: true }).click();
+      await page.locator("#catalogue-import-opening-date").waitFor({ timeout: 10000 });
+      return;
+    }
+    await page.getByRole("button", { name: "New Product/Service" }).click();
+    const dialog = page.getByRole("dialog").last();
+    await dialog.getByPlaceholder("e.g. Statutory Audit, Steel Rod").fill("Copier paper");
+    await dialog.getByLabel("Kind").selectOption("good");
+    await dialog.getByLabel("Opening quantity (optional)").fill("10");
+    await page.locator('input[aria-label="Opening balance as of"]').waitFor({ timeout: 10000 });
+  };
 }
 
 /** Settings > Multi-currency with the firm entitled, so the Exchange rates panel under the register is drawn; a rate typed, only its date left. */
@@ -2168,6 +2278,32 @@ const EDITORS = [
       { box: (p) => p.locator("#rec-bill-end"), label: "Stop after", key: "end_date", full: "31/10/2027", iso: "2027-10-31" },
     ],
     save: (p) => p.getByRole("button", { name: "Create template", exact: true }), write: /api\/recurring-purchase-bills$/,
+  },
+  // The eighteenth slice: four more write forms get a row (the files that still hold undriven date boxes are a ledger item, POST-A-386). A template's window is a PLAN (neither end is bounded by
+  // today); the shipping bill's date and a foreign supplier's no-PE declaration date are days that have happened; an opening-stock date dates what the file or form holds.
+  {
+    id: "recurring-invoice-template", title: "Sales > Recurring > New Template: the first invoice's date and the date to stop after", open: openRecurringInvoiceTemplate,
+    eachField: true, cleared: "Start date: enter the date of the first invoice.",
+    fields: [
+      { box: (p) => p.locator("#rec-inv-start"), label: "Start date", key: "start_date", full: "01/11/2026", iso: "2026-11-01" },
+      { box: (p) => p.locator("#rec-inv-end"), label: "End date", key: "end_date", full: "31/10/2027", iso: "2027-10-31" },
+    ],
+    save: (p) => p.getByRole("button", { name: "Create template", exact: true }), write: /api\/recurring-invoices$/,
+  },
+  {
+    id: "sales-invoice-shipping-bill", shortForm: "15/01/2026", title: "Sales > invoice editor (a zero-rated supply): the day customs issued the shipping bill", open: openExportInvoice,
+    fields: [{ box: (p) => p.locator("#inv-sb-date"), label: "Shipping bill date", key: "shipping_bill_date", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save Draft" }), write: /sales-invoices\/$/,
+  },
+  {
+    id: "catalogue-opening-stock-date", title: "Sales > invoice > Add Product/Service > New Product/Service: the day an opening quantity is on hand as of (it dates the opening stock)", open: openCatalogue("new"),
+    fields: [{ box: (p) => p.locator('input[aria-label="Opening balance as of"]'), label: "Opening balance as of", key: "opening_balance_date", full: "01/04/2026", iso: "2026-04-01" }],
+    save: (p) => p.getByRole("dialog").last().getByRole("button", { name: "Create", exact: true }), write: /api\/service-catalogue\/?$/,
+  },
+  {
+    id: "vendor-no-pe-declaration", shortForm: "15/01/2026", title: "Purchases > Vendors > Add Vendor (a non-resident supplier): the day the no-PE declaration is dated", open: openVendorDeclaration,
+    fields: [{ box: (p) => p.locator("#no-pe-on"), label: "Declaration dated", key: "no_pe_declaration_on", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => vendorForm(p).getByRole("button", { name: "Add Vendor", exact: true }), write: /api\/vendors\/$/,
   },
   {
     id: "trial-balance-import-opening-date", title: "Accounting > Trial balance import: the opening date the balances are posted as at", open: openTrialBalanceImport,
@@ -3049,6 +3185,8 @@ export const scenarios = [
       save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
     { id: "recurring-bill", name: "Purchases > Recurring bills > Edit", open: openEditRecurringBill, box: "#rec-bill-end", write: /api\/recurring-purchase-bills\/rb-1$/,
       save: (p) => p.getByRole("button", { name: "Save changes", exact: true }) },
+    { id: "recurring-invoice", name: "Sales > Recurring > Edit", open: openEditRecurringInvoice, box: "#rec-inv-end", write: /api\/recurring-invoices\/ri-1$/,
+      save: (p) => p.getByRole("button", { name: "Save changes", exact: true }) },
   ].map((f) => ({
     id: `${f.id}-edit-an-untouched-stop-date-is-sent-back`,
     title: `${f.name}: an edit that leaves the stop date alone sends the stored date back`,
@@ -3070,6 +3208,8 @@ export const scenarios = [
     { id: "recurring-journal", name: "Accounting > Recurring journals > Edit", open: openEditRecurringJournal, box: "#rj-end", write: /api\/recurring-journals\/rjt-1$/,
       save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
     { id: "recurring-bill", name: "Purchases > Recurring bills > Edit", open: openEditRecurringBill, box: "#rec-bill-end", write: /api\/recurring-purchase-bills\/rb-1$/,
+      save: (p) => p.getByRole("button", { name: "Save changes", exact: true }) },
+    { id: "recurring-invoice", name: "Sales > Recurring > Edit", open: openEditRecurringInvoice, box: "#rec-inv-end", write: /api\/recurring-invoices\/ri-1$/,
       save: (p) => p.getByRole("button", { name: "Save changes", exact: true }) },
   ].map((f) => ({
     id: `${f.id}-edit-a-cleared-stop-date-clears-it`,
@@ -3093,9 +3233,11 @@ export const scenarios = [
       sentence: "End date: it is before the start date.", write: /api\/recurring-journals$/, save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
     { id: "recurring-bill", name: "Purchases > Recurring bills > New Template", open: openRecurringBillTemplate, start: "#rec-bill-start", end: "#rec-bill-end",
       sentence: "The end date cannot be before the start date.", write: /api\/recurring-purchase-bills$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
+    { id: "recurring-invoice", name: "Sales > Recurring > New Template", open: openRecurringInvoiceTemplate, start: "#rec-inv-start", end: "#rec-inv-end",
+      sentence: "End date cannot be before start date", goesWhenRight: "31/12/2026", write: /api\/recurring-invoices$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
   ].map((f) => ({
     id: `${f.id}-a-reversed-window-is-refused-in-a-sentence`,
-    title: `${f.name}: a stop date before the first date is refused in a sentence and nothing is sent`,
+    title: `${f.name}: a stop date before the first date is refused in a sentence and nothing is sent${f.goesWhenRight ? ", and the sentence goes when the window is put in order" : ""}`,
     contexts: TZ_MATRIX,
     async run(env) {
       const { page, stub } = env;
@@ -3108,6 +3250,12 @@ export const scenarios = [
       });
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a reversed window SENT A WRITE`);
+      // A sentence about what two boxes hold is derived from them, so it goes when they are put in order (copied into the form's own error it stayed until the next press). Said only by the
+      // editors that derive it: the other two still copy theirs (a ledger item).
+      if (f.goesWhenRight) {
+        await typeAndLeave(page.locator(f.end), f.goesWhenRight);
+        await until(async () => (await page.getByText(f.sentence).count()) === 0, `${f.name}: the order sentence stayed on the form after the window was put in order`, 5000);
+      }
     },
   })),
   // A screen that is about ONE financial year says so to its date boxes. Every row above leaves the screen on the current year, where
@@ -4154,6 +4302,12 @@ export const scenarios = [
       save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/ },
     { id: "client-tds-challan", name: "A client's TDS > Challans > New Challan: the day on the challan", open: openClientTdsChallan, box: (p) => p.locator("#tds-client-challan-date"), label: "Challan date",
       save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/ },
+    // The eighteenth slice: the day customs issued a shipping bill (the invoice editor copies a date's sentence into its own error, as the bill editor does) and the day a foreign supplier's
+    // no-PE declaration is dated.
+    { id: "shipping-bill", name: "Sales > invoice editor (a zero-rated supply): the shipping bill date", open: openExportInvoice, box: (p) => p.locator("#inv-sb-date"), label: "Shipping bill date",
+      save: (p) => p.getByRole("button", { name: "Save Draft" }), write: /sales-invoices\/$/, stays: true },
+    { id: "vendor-no-pe-declaration", name: "Purchases > Vendors > Add Vendor: the no-PE declaration's date", open: openVendorDeclaration, box: (p) => p.locator("#no-pe-on"), label: "Declaration dated",
+      save: (p) => vendorForm(p).getByRole("button", { name: "Add Vendor", exact: true }), write: /api\/vendors\/$/ },
   ].flatMap((f) => [{
     id: `${f.id}-a-date-after-today-is-refused`,
     title: `${f.name}: a date after today is refused in a sentence and nothing is sent${f.stays ? "" : ", and the sentence goes when the date is right"}`,
@@ -4260,12 +4414,24 @@ export const scenarios = [
       save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/ },
     { id: "client-tds-challan-save", name: "A client's TDS > Challans > New Challan: Save", open: openClientTdsChallan, box: (p) => p.locator("#tds-client-challan-date"), label: "Challan date", validFirst: "07/10/2026",
       save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/ },
+    // The eighteenth slice: the supplier form (its date is optional, so the first press is made over a blank one, which the server refuses) and the recurring invoice template (its dates are PLANS, so a
+    // day after today is no mistake: the wrong date is one that is not a day, and the right one a first day).
+    { id: "vendor-save", name: "Purchases > Vendors > Add Vendor: Add Vendor", open: openVendorDeclaration, box: (p) => p.locator("#no-pe-on"), label: "Declaration dated",
+      save: (p) => vendorForm(p).getByRole("button", { name: "Add Vendor", exact: true }), write: /api\/vendors\/$/ },
+    { id: "recurring-invoice-save", name: "Sales > Recurring > New Template: Create template", open: openRecurringInvoiceTemplate, box: (p) => p.locator("#rec-inv-start"), label: "Start date",
+      wrong: "31/02/2026", wrongSentence: `Start date: ${FEB_SENTENCE}`, goes: FEB_SENTENCE, right: "01/11/2026",
+      save: (p) => p.getByRole("button", { name: "Create template", exact: true }), write: /api\/recurring-invoices$/ },
   ].map((f) => ({
     id: `${f.id}-the-answer-to-an-earlier-attempt-does-not-come-back`,
     title: `${f.name}: after a refusal, a wrong date and then a right one, the first answer is not shown again`,
     contexts: TZ_MATRIX,
     async run(env) {
       const { page, stub } = env;
+      // The wrong date, the sentence it is refused with, the text that must be gone once the date is right, and the right date: a day after today for a fact (the default), what a row says otherwise.
+      const wrong = f.wrong ?? "15/10/2026";
+      const wrongSentence = f.wrongSentence ?? `${f.label}: ${AFTER_TODAY_SENTENCE}`;
+      const goes = f.goes ?? AFTER_TODAY_SENTENCE;
+      const right = f.right ?? "07/10/2026";
       await f.open(env);
       if (f.validFirst) await typeAndLeave(f.box(page), f.validFirst);
       const EARLIER = "A stub refusal of the earlier attempt.";
@@ -4275,13 +4441,13 @@ export const scenarios = [
       await stub.quiet();
       const tried = stub.writesTo(f.write).length;
       assert.equal(tried, 1, `${f.name}: the first attempt should have sent one write, sent ${tried}`);
-      await typeAndLeave(f.box(page), "15/10/2026");
+      await typeAndLeave(f.box(page), wrong);
       await f.save(page).click();
-      await shownInTheDialog(page, `${f.label}: ${AFTER_TODAY_SENTENCE}`, `${f.name}: a date after today was not refused in a sentence`);
+      await shownInTheDialog(page, wrongSentence, `${f.name}: the wrong date was not refused in a sentence`);
       await stub.quiet();
-      assert.equal(stub.writesTo(f.write).length, tried, `${f.name}: a date after today SENT A WRITE`);
-      await typeAndLeave(f.box(page), "07/10/2026");
-      await until(async () => (await page.getByText(AFTER_TODAY_SENTENCE).count()) === 0, `${f.name}: the date's sentence to go once the date was put right`, 5000);
+      assert.equal(stub.writesTo(f.write).length, tried, `${f.name}: the wrong date SENT A WRITE`);
+      await typeAndLeave(f.box(page), right);
+      await until(async () => (await page.getByText(goes).count()) === 0, `${f.name}: the date's sentence to go once the date was put right`, 5000);
       assert.equal(await page.getByText(EARLIER).count(), 0, `${f.name}: the answer to the first attempt CAME BACK once the date was put right`);
     },
   })),
@@ -4297,6 +4463,9 @@ export const scenarios = [
       save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/, blank: "Challan date: enter the date on the challan." },
     { id: "client-tds-challan-save", name: "A client's TDS > Challans > New Challan: Save", open: openClientTdsChallan, box: (p) => p.locator("#tds-client-challan-date"),
       save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/, blank: "Challan date: enter the date on the challan." },
+    // The eighteenth slice: the recurring invoice template's first day is REQUIRED too, but a new template opens ON India's day, so the box is cleared first (`clear`).
+    { id: "recurring-invoice-template", name: "Sales > Recurring > New Template: Create template", open: openRecurringInvoiceTemplate, box: (p) => p.locator("#rec-inv-start"), clear: true,
+      save: (p) => p.getByRole("button", { name: "Create template", exact: true }), write: /api\/recurring-invoices$/, blank: "Start date: enter the date of the first invoice." },
   ].map((f) => ({
     id: `${f.id}-a-blank-date-is-asked-for-and-the-sentence-goes-when-one-is-typed`,
     title: `${f.name}: pressed over a blank date it says so beside the button and sends nothing, and the sentence goes once a date is typed`,
@@ -4304,6 +4473,7 @@ export const scenarios = [
     async run(env) {
       const { page, stub } = env;
       await f.open(env);
+      if (f.clear) await typeAndLeave(f.box(page), "");
       assert.equal(await page.getByText(f.blank).count(), 0, `${f.name}: the sentence about a blank date was on the page before anything was pressed`);
       await f.save(page).click();
       await shownInTheDialog(page, f.blank, `${f.name}: a blank date was not asked for`);
@@ -4468,6 +4638,273 @@ export const scenarios = [
       await page.getByRole("button", { name: "Delete this claim" }).click();
       await shownInTheDialog(page, DELETE_REFUSAL, "the server's refusal of the Delete was not said over the date's sentence");
       assert.equal(await page.getByText(said).count(), 0, "the date's sentence stayed on the page beside the refusal of the Delete");
+    },
+  },
+  // ── the eighteenth slice (6-11-2026): the three boxes that write nothing ────────────────────────────────────────────────────────────────────────
+  // The day a return was FURNISHED feeds the §234A working and is saved nowhere. It is a what-if as well as a fact (what would filing on a later day cost?), so it is not bounded by today. The
+  // working is asked for a moment after the last keystroke; over a date that is not a day it is NOT asked and the working says so in the box's words, and the sentence goes with the date.
+  {
+    id: "advance-tax-return-furnished-on",
+    title: "Income Tax > Advance tax > §234A/§234B working: the day the return was furnished is read by the one rule, a date that is not a day asks for no working, and the ISO day reaches it",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "POST", re: /api\/income-tax\/interest\/234ab$/, reply: () => ok(INTEREST_234AB) });
+      await openAdvanceTaxRegister(env);
+      const box = page.locator("#at-furnished-on");
+      await box.waitFor();
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      const asked = () => stub.writesTo(/interest\/234ab$/);
+      await typeAndLeave(box, "15/1");
+      assert.equal(await box.inputValue(), "15/01/2027", "15/1 in a box of FY 2026-27 is 15 January 2027");
+      await typeAndLeave(box, "150326");
+      assert.equal(await box.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      // The estimate alone has already asked the working once (with the return not yet furnished), so only a request that carries the day typed shows the box was read. It leaves a moment after the
+      // last keystroke (a debounce), so it is waited FOR, not for the page to go quiet: "quiet" can be over before a request that has not been sent yet.
+      await until(() => asked().some((w) => JSON.parse(w.body).return_furnished_on === "2026-03-15"), "the working to be asked for the day typed (15 March 2026)", 6000);
+      await stub.quiet();
+      const before = asked().length;
+      // A date that is not a day.
+      await typeAndLeave(box, "31/02/2026");
+      assert.equal(await box.getAttribute("aria-invalid"), "true", "31/02/2026 is not marked invalid");
+      await page.getByText(`Return furnished on: ${FEB_SENTENCE}`).first().waitFor({ timeout: 4000 }).catch(() => {
+        throw new Error(`the working did not say "Return furnished on: ${FEB_SENTENCE}" over a date that is not a day`);
+      });
+      await stub.quiet();
+      assert.equal(asked().length, before, "the working was asked for over a date that is not a day");
+      // Typed in full, the ISO day reaches the working and the sentence goes.
+      await typeAndLeave(box, "15/07/2026");
+      await until(() => asked().some((w) => JSON.parse(w.body).return_furnished_on === "2026-07-15"), "a working asked for the day typed");
+      await until(async () => (await page.getByText(`Return furnished on: ${FEB_SENTENCE}`).count()) === 0, "the sentence to go once the date was right", 5000);
+      // Cleared, the return is not yet furnished, which is a question of its own and is asked as null.
+      await typeAndLeave(box, "");
+      await until(() => asked().length > 0 && JSON.parse(asked().at(-1).body).return_furnished_on === null, "a working asked as not yet furnished");
+    },
+  },
+  // The stock register's AS AT day is a filter that writes nothing: a day asks for the closing stock as at it (and the heading says so as a date, not as the ISO text), and a box that is not a day
+  // is no filter, which the box says in words, so the register falls back to the CURRENT position and its heading says that.
+  {
+    id: "stock-register-as-at",
+    title: "Inventory > Stock register: the as-at day is read by the one rule, the ISO day reaches the closing-stock read and is printed as a date, and a date that is not a day reads the current position",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      const asked = { summary: [], ledger: [] };
+      await openStockRegisterReads(env, asked);
+      const box = page.locator("#stock-as-at");
+      await box.waitFor();
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      await typeAndLeave(box, "15/1");
+      assert.equal(await box.inputValue(), "15/01/2027", "15/1 in a box of FY 2026-27 is 15 January 2027");
+      await typeAndLeave(box, "150326");
+      assert.equal(await box.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      await typeAndLeave(box, "15/07/2026");
+      await until(() => asked.summary.some((s) => s.includes("as_of=2026-07-15")), "the closing-stock read for the day typed");
+      await page.getByText("Closing value as at 15 Jul 2026").first().waitFor({ timeout: 5000 }).catch(() => {
+        throw new Error("the heading did not print the as-at day as a date (\"Closing value as at 15 Jul 2026\")");
+      });
+      // A date that is not a day is refused at the box in words, and the register is the current position again, which the heading says.
+      await typeAndLeave(box, "31/02/2026");
+      assert.equal(await box.getAttribute("aria-invalid"), "true", "31/02/2026 is not marked invalid");
+      const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+      assert.ok(alerts.includes(FEB_SENTENCE), `the box's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+      await page.getByText(/Total value/).first().waitFor({ timeout: 5000 }).catch(() => {
+        throw new Error("over a date that is not a day the heading did not say it shows the current position (\"Total value\")");
+      });
+      assert.equal(await page.getByText(/Closing value as at/).count(), 0, "the heading still said \"Closing value as at\" over a date that is not a day");
+      assert.ok(asked.summary.every((s) => /as_of=\d{4}-\d{2}-\d{2}(&|$)/.test(s)), `a closing-stock read was sent with a day that is not one: ${asked.summary.join(" | ")}`);
+    },
+  },
+  // The ledger window is read each time a box changes. An answer to an EARLIER window that arrives after the answer to the window the boxes hold now must not be shown over it (the register above has had
+  // the same guard for its as-at day since apex-bank-assets-inventory-06; the ledger's window had none, so the lines under the boxes could belong to another window than the boxes).
+  {
+    id: "stock-ledger-window-a-late-answer-to-an-earlier-window-is-not-shown",
+    title: "Inventory > an item's movement ledger: a slow answer to an earlier window does not land over the window the boxes hold now",
+    async run(env) {
+      const { page, stub } = env;
+      const line = (ref) => ({ id: `l-${ref}`, movement_date: "2026-08-02", movement_type: "purchase", reference_no: ref, quantity_delta: "5", unit_cost_paise: 25000, value_delta_paise: 125000,
+        running_qty_units: "45", running_avg_cost_paise: 25000, running_value_paise: 1125000, balance_qty_units: "45", balance_value_paise: 1125000 });
+      const answer = (ref) => ({ item: { id: "sc1", name: "Copier paper" }, lines: [line(ref)], opening: { qty_units: "40", value_paise: 1000000, as_at: "2026-06-30" },
+        closing: { qty_units: "45", value_paise: 1125000, as_at: "2027-03-31" } });
+      await openStockRegisterReads(env, { summary: [], ledger: [] });
+      stub.route({ method: "GET", re: /api\/inventory\/items\/sc1\/ledger\?.*start_date=2026-07-01/, delay: 2000, reply: () => ok(answer("OLD-WINDOW")) });
+      stub.route({ method: "GET", re: /api\/inventory\/items\/sc1\/ledger\?.*start_date=2026-08-01/, reply: () => ok(answer("NEW-WINDOW")) });
+      await page.getByText("Copier paper").first().click();
+      const from = page.getByLabel("Stock ledger from");
+      await from.waitFor();
+      // Two windows in quick succession, the first answered slowly (typeAndLeave would wait for the network to go quiet and so for the slow answer, which is the thing under test).
+      for (const day of ["01/07/2026", "01/08/2026"]) {
+        await from.fill("");
+        await from.pressSequentially(day);
+        await from.press("Tab");
+      }
+      await page.getByText("NEW-WINDOW").first().waitFor({ timeout: 5000 }).catch(() => { throw new Error("the answer to the window on the boxes was not shown"); });
+      await page.waitForTimeout(2600);   // the slow answer to the first window lands now
+      assert.equal(await page.getByText("OLD-WINDOW").count(), 0, "a slow answer to an earlier window was shown over the window the boxes hold now");
+      assert.ok((await page.getByText("NEW-WINDOW").count()) >= 1, "the answer to the window on the boxes went away");
+    },
+  },
+  // The catalogue importer asks for the ONE day an opening-stock file is as of before it asks for the file. A blank box defaults to the client's financial-year start, so text that is not a date would have
+  // dated every opening balance in the file to a day nobody chose: Continue refuses it in the box's words and goes no further, the sentence goes once a date is typed, and the day typed reaches the bulk request as ISO.
+  {
+    id: "catalogue-import-opening-stock-date",
+    title: "Sales > invoice > Add Product/Service > Import: the day an opening-stock file is as of is read by the one rule, Continue refuses a date that is not a day in a sentence that goes with it, and the ISO day reaches the bulk request",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openCatalogue("import")(env);
+      const box = page.locator("#catalogue-import-opening-date");
+      const dialog = page.getByRole("dialog").last();
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      await typeAndLeave(box, "15/1");
+      assert.equal(await box.inputValue(), "15/01/2027", "15/1 in a box of FY 2026-27 is 15 January 2027");
+      await typeAndLeave(box, "150326");
+      assert.equal(await box.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      await typeAndLeave(box, "31/02/2026");
+      assert.equal(await box.getAttribute("aria-invalid"), "true", "31/02/2026 is not marked invalid");
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+      await shownInTheDialog(page, `Opening balance as of: ${FEB_SENTENCE}`, "Continue over a date that is not a day did not say so in a sentence");
+      assert.equal(await page.locator('input[aria-label="CSV or Excel file to import"]').count(), 0, "Continue went on to the file over a date that is not a day");
+      await typeAndLeave(box, "01/04/2026");
+      await until(async () => (await page.getByText(`Opening balance as of: ${FEB_SENTENCE}`).count()) === 0, "the sentence to go once the date was right", 5000);
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+      // The importer reads the file's columns by the KEYS of its own template (`name,kind,opening_qty,opening_cost`, lower-cased), so an opening quantity and value are read only under those.
+      await page.locator('input[aria-label="CSV or Excel file to import"]').setInputFiles({
+        name: "stock.csv", mimeType: "text/csv", buffer: Buffer.from("name,kind,opening_qty,opening_cost\nCopier paper,product,10,1000\n") });
+      await page.getByRole("button", { name: /^Import \d+ rows?$/ }).click();
+      await stub.quiet();
+      const sent = stub.writesTo(/api\/service-catalogue\/bulk$/);
+      assert.equal(sent.length, 1, `expected one bulk request, saw ${sent.length}`);
+      const body = JSON.parse(sent[0].body);
+      assert.equal(body.opening_balance_date, "2026-04-01", `opening_balance_date reached the server as ${JSON.stringify(body.opening_balance_date)}`);
+      // …and the file was an opening-stock file: the row carries the quantity and value the date is for.
+      const row = (body.services ?? [])[0];
+      assert.equal(row?.opening_qty_units, 10, `the row did not carry its opening quantity: ${JSON.stringify(row)}`);
+      assert.equal(row?.opening_cost_paise, 100000, `the row did not carry its opening value: ${JSON.stringify(row)}`);
+    },
+  },
+  // An item's movement LEDGER has a window of two days. Its read carries the ISO days typed; a day that is not one is no bound (the box says so); and two days in the wrong order are not read, because
+  // the server answered "No stock movements for this item in the selected range. Held 40 throughout…" for a range that cannot exist.
+  {
+    id: "stock-ledger-window",
+    title: "Inventory > Stock register > an item's movement ledger: the From and To days are read by the one rule, the ISO days reach the read, and two days in the wrong order are refused in a sentence and not read",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      const asked = { summary: [], ledger: [] };
+      await openStockRegisterReads(env, asked);
+      await page.getByText("Copier paper").first().click();
+      const from = page.getByLabel("Stock ledger from");
+      const to = page.getByLabel("Stock ledger to");
+      await from.waitFor();
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      assert.equal(await from.inputValue(), "01/04/2026", "the From box did not open on the first day of the financial year");
+      assert.equal(await to.inputValue(), "31/03/2027", "the To box did not open on the last day of the financial year");
+      await typeAndLeave(from, "15/1");
+      assert.equal(await from.inputValue(), "15/01/2027", "15/1 in a box of FY 2026-27 is 15 January 2027");
+      await typeAndLeave(from, "150326");
+      assert.equal(await from.inputValue(), "15/03/2026", "150326 is 15/03/2026");
+      for (const [box, label] of [[from, "Stock ledger from"], [to, "Stock ledger to"]]) {
+        await typeAndLeave(box, "31/02/2026");
+        assert.equal(await box.getAttribute("aria-invalid"), "true", `${label}: 31/02/2026 is not marked invalid`);
+        const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+        assert.ok(alerts.includes(FEB_SENTENCE), `${label}: the box's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+        await typeAndLeave(box, box === from ? "01/04/2026" : "31/03/2027");
+      }
+      // Typed in full, the ISO days reach the read.
+      await typeAndLeave(from, "01/07/2026");
+      await typeAndLeave(to, "30/09/2026");
+      await until(() => asked.ledger.some((s) => s.includes("start_date=2026-07-01") && s.includes("end_date=2026-09-30")), "the ledger read for the window typed");
+      // Two days in the wrong order are refused in a sentence, and the read is not made for them. The From day stays where it is (1 July) and the To day is moved to before it, so no valid
+      // window is passed on the way (moving the From day to 30 September while the To day was still 30 September would itself be a one-day window, and a read).
+      await stub.quiet();
+      const reads = asked.ledger.length;
+      await typeAndLeave(to, "01/06/2026");
+      await page.getByText("The To day is before the From day").first().waitFor({ timeout: 5000 }).catch(() => {
+        throw new Error("a window whose To day is before its From day did not say so");
+      });
+      await page.waitForTimeout(500);
+      assert.equal(asked.ledger.length, reads, `a window in the wrong order was read: ${asked.ledger.slice(reads).join(" | ")}`);
+      assert.equal(await page.getByText(/No stock movements for this item in the selected range/).count(), 0, "a window in the wrong order was answered \"No stock movements…\"");
+      assert.equal(await page.getByText(/Held .* throughout/).count(), 0, "a window in the wrong order was answered with a position \"held throughout\"");
+      // Put in order again, the read is made for the window the boxes hold and the sentence goes.
+      await typeAndLeave(to, "31/10/2026");
+      await until(() => asked.ledger.slice(reads).some((s) => s.includes("start_date=2026-07-01") && s.includes("end_date=2026-10-31")), "the ledger read for the window put right");
+      await until(async () => (await page.getByText("The To day is before the From day").count()) === 0, "the sentence to go once the window was in order", 5000);
+    },
+  },
+  // What was typed into the shipping bill block while it was drawn and left behind when the supply type was changed back is in boxes nobody can see: none of it may be sent. The server refuses a
+  // shipping bill date after today and a port code that is not six characters (the create model, 422), so a value from a box that is gone would refuse the Save for a field not on the screen; and
+  // the invoice saves as the domestic invoice it now is. Found by the independent reads of the eighteenth slice: the date by the first, the number and the port code by the second.
+  {
+    id: "shipping-bill-a-future-date-left-behind-in-a-block-that-is-no-longer-drawn-is-not-sent",
+    title: "Sales > invoice editor: a shipping bill number, a date after today and a five-character port code typed while the block was drawn, then the supply changed back to Taxable, are not sent from the boxes that are gone, and the draft saves",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openExportInvoice(env);
+      const box = page.locator("#inv-sb-date");
+      const number = page.locator("#inv-sb-no");
+      const port = page.locator("#inv-port-code");
+      await number.fill("SB-0042");
+      await typeAndLeave(box, "15/10/2026");
+      await port.fill("INMAA");   // five characters: the port code is six
+      // While the block is drawn the date is refused (the bound-by-today scenarios drive that); here all three are left behind.
+      await page.locator("#inv-supply-type").selectOption("taxable");
+      await until(async () => (await box.count()) === 0, "the shipping bill block to go once the supply was no longer an export", 5000);
+      // Put back, the block is drawn again over what the person typed: it is still there to be seen, judged and put right.
+      await page.locator("#inv-supply-type").selectOption("zero_rated");
+      await box.waitFor({ timeout: 5000 });
+      assert.equal(await box.inputValue(), "15/10/2026", "the date typed before the block went was lost when the block came back");
+      assert.equal(await number.inputValue(), "SB-0042", "the number typed before the block went was lost when the block came back");
+      assert.equal(await port.inputValue(), "INMAA", "the port code typed before the block went was lost when the block came back");
+      // ...and gone again, which is how the Save finds it.
+      await page.locator("#inv-supply-type").selectOption("taxable");
+      await until(async () => (await box.count()) === 0, "the shipping bill block to go the second time", 5000);
+      await page.getByRole("button", { name: "Save Draft" }).click();
+      await until(() => stub.writesTo(/sales-invoices\/$/).length >= 1, "the draft to be sent over a hidden shipping bill block (a value from a box nobody can see refused the Save)", 6000);
+      await stub.quiet();
+      const sent = stub.writesTo(/sales-invoices\/$/);
+      assert.equal(sent.length, 1, `expected one draft, saw ${sent.length}`);
+      const body = JSON.parse(sent[0].body);
+      for (const key of ["shipping_bill_no", "shipping_bill_date", "port_code"]) {
+        assert.equal(key in body, false, `${key} left behind in a hidden box was sent: ${JSON.stringify(body[key])}`);
+      }
+    },
+  },
+  // Opening the vendor that is ALREADY on the supplier form is a form opened afresh: neither the form's visibility nor the vendor's id changes, so the answer to the last press stayed on a form that had
+  // been reset under it. Found by the independent read of the eighteenth slice.
+  {
+    id: "vendor-edit-opened-again-holds-none-of-the-last-answer",
+    title: "Purchases > Vendors > Edit: a Save over a name taken out says so beside Save, and the same vendor opened again holds neither that sentence nor the empty name",
+    async run(env) {
+      const { page, stub } = env;
+      stub.setTable("vendors", [{ ...VENDOR }]);
+      await page.goto(env.at("/purchases/?tab=vendors"), { waitUntil: "networkidle" });
+      const step = (what, fn) => fn().catch((e) => { throw new Error(`${what}: ${String(e.message).replace(/\s*\n\s*/g, " | ").slice(0, 900)}`); });
+      const edit = async (time) => {
+        const actions = page.getByRole("button", { name: "Actions for Gamma Supplies" });
+        // The row's menu is drawn under its button at a FIXED position, so a row at the foot of the screen (the form, when it is open, pushes the list down) has its menu below the window:
+        // the row is brought to the middle of the window first, as a person would scroll to it.
+        await step(`the row's actions button (${time} time)`, async () => {
+          await actions.evaluate((el) => el.scrollIntoView({ block: "center" }));
+          await actions.click({ timeout: 5000 });
+        });
+        await step(`the menu's Edit (${time} time)`, () => page.getByRole("button", { name: "Edit", exact: true }).click({ timeout: 5000 }));
+      };
+      await edit("first");
+      const name = page.getByLabel("Name", { exact: true });
+      await name.waitFor({ timeout: 8000 });
+      assert.equal(await name.inputValue(), "Gamma Supplies", "Edit did not open the vendor's own record");
+      await name.fill("");
+      await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+      await shownInTheDialog(page, "Name is required", "a Save over a name taken out did not say so beside Save");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/vendors\//).length, 0, "a Save over a name taken out SENT A WRITE");
+      // The same vendor again: the form is reset to the record, so the last press's sentence goes with the name that was taken out.
+      await edit("second");
+      await until(async () => (await name.inputValue()) === "Gamma Supplies", "the same vendor opened again to hold the record's name", 4000);
+      await until(async () => (await page.getByText("Name is required").count()) === 0, "the last press's sentence to go when the same vendor was opened again", 4000);
     },
   },
 ];

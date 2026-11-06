@@ -10,8 +10,7 @@ from domain.gst import uqc as _uqc
 from typing import Optional, Any
 from decimal import Decimal
 from domain.money_sentence import amount_text
-from core.ist_clock import ist_today
-from models.iso_date import a_real_date
+from models.iso_date import a_day_that_has_happened
 
 # CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
 # number not exceeding sixteen characters, using only alphabets, numerals, and
@@ -336,6 +335,11 @@ class SalesInvoiceIn(BaseModel):
     shipping_bill_date: Optional[str] = None   # YYYY-MM-DD
     port_code: Optional[str] = None
 
+    @field_validator("shipping_bill_date")
+    @classmethod
+    def _shipping_bill_is_a_day_that_has_happened(cls, v: Optional[str]) -> Optional[str]:
+        return _shipping_bill_day(v, a_blank_is_no_date=True)
+
     @field_validator("invoice_no")
     @classmethod
     def _invoice_no_shape(cls, v: str) -> str:
@@ -445,6 +449,11 @@ class SalesInvoiceUpdateIn(BaseModel):
     reference_no: Optional[str] = None
     notes: Optional[str] = None
     is_inter_state: Optional[bool] = None
+
+    @field_validator("shipping_bill_date")
+    @classmethod
+    def _shipping_bill_is_a_day_that_has_happened(cls, v: Optional[str]) -> Optional[str]:
+        return _shipping_bill_day(v, a_blank_is_no_date=False)
     # {line_id: new unit} — unit alone never affects rate/quantity/amount/GST,
     # so it's allowed on an issued invoice unlike the rest of `lines` above
     # (a full line replace, draft-only). Handled separately in the router,
@@ -569,14 +578,18 @@ def _form_15ca_day(v: Optional[str], *, a_blank_is_no_date: bool) -> Optional[st
     """The day Form 15CA was filed on the portal, or None when it is not stated (PRE-A-015, sixteenth slice).
 
     It was a bare string stored as typed. It is a real day, kept as the canonical YYYY-MM-DD, and a day after today (in India) is a filing that has not happened. On a new bill a blank
-    is no date: the acknowledgement number and the UDIN beside it are optional too (they are recorded after the remittance, which is later than the bill). On a PATCH it is REFUSED,
-    because the route reads a PATCH without what was not sent (`exclude_none`): a blank read as absent would be dropped and a success reported for a date that was not cleared."""
-    if v is None or (a_blank_is_no_date and str(v).strip() == ""):
-        return None
-    day = a_real_date(v, "form_15ca_filed_on")
-    if day > ist_today().isoformat():
-        raise ValueError("The Form 15CA date cannot be after today's date in India.")
-    return day
+    is no date: the acknowledgement number and the UDIN beside it are optional too (they are recorded after the remittance, which is later than the bill). On a PATCH it is REFUSED."""
+    return a_day_that_has_happened(v, "form_15ca_filed_on", "The Form 15CA date cannot be after today's date in India.", a_blank_is_no_date=a_blank_is_no_date)
+
+
+def _shipping_bill_day(v: Optional[str], *, a_blank_is_no_date: bool) -> Optional[str]:
+    """The day customs issued the shipping bill an export is refunded against (GSTR-1 Table 6A's sbdt; PRE-A-015, eighteenth slice), or None when it is not stated.
+
+    It was a bare string stored as typed in a DATE column: text that is not a day reached the database and came back as "Unable to … Please try again." (a 200 with `success: false`, naming
+    no field), and a day ahead was kept. Customs issues it AFTER the invoice (it is recorded on an issued invoice too), so by the day it is recorded it is in the past: a day after today
+    in India is a typing mistake. Nothing here says how far before the invoice it may be dated (no reading of customs
+    practice is assumed). A blank is no date on a new invoice and is REFUSED on an update, as the Form 15CA date is."""
+    return a_day_that_has_happened(v, "shipping_bill_date", "The shipping bill date cannot be after today's date in India.", a_blank_is_no_date=a_blank_is_no_date)
 
 
 class PurchaseBillIn(BaseModel):

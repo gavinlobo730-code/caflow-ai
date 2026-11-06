@@ -431,8 +431,6 @@ test("a <DateInput> that is anchored to another date says which side of it it be
       "a notice can reach the firm after the response date it states, and the received date defaults to today, so a due date before it is ordinary",
     "components/payroll/EmployeeDrawer.tsx#settlement-payment-date":
       "a settlement can be paid before the last working day (the money leaves on payment_date, which nothing orders against the leaving date), for example the day before a holiday",
-    "components/invoices/InvoiceEditor.tsx#inv-sb-date":
-      "the editor says customs issues the shipping bill after the invoice, but that is a customs-practice statement nobody has graded against a primary source",
   };
   const uses = usesInTree();
   const anchored = Object.entries(uses).flatMap(([file, us]) => us.filter((u) => u.anchored).map((u) => ({ file, line: u.line, id: u.id, sided: u.sided })));

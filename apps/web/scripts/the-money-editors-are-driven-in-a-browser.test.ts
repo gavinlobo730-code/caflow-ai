@@ -287,11 +287,11 @@ function dateInputsOf(rel: string): string[] {
 /** What the date scenarios drive, per editor file: the fields by id or aria-label. */
 const DRIVEN: Record<string, string[]> = {
   "components/journal/JournalEditor.tsx": ["#je-date"],
-  "components/invoices/InvoiceEditor.tsx": ["#inv-date", "#inv-due-date"],
+  "components/invoices/InvoiceEditor.tsx": ["#inv-date", "#inv-due-date", "#inv-sb-date"],
   "components/purchases/PurchaseBillEditor.tsx": ["#bill-date", "#bill-due-date", "#bill-15ca-date"],
   "components/invoices/InvoiceViewDrawer.tsx": ["[Payment date]", "[Credit note date]", "[Debit note date]"],
   "components/purchases/PurchaseBillViewDrawer.tsx": ["[Payment date]", "[Debit note date]", "[Credit note date]"],
-  "app/income-tax/advance-tax/page.tsx": ["[Instalment ${n} paid on]", "#sa-deposit-date"],
+  "app/income-tax/advance-tax/page.tsx": ["[Instalment ${n} paid on]", "#sa-deposit-date", "#at-furnished-on"],
   // The second slice (4-11-2026).
   "components/compliance/MarkFiledModal.tsx": ["#mark-filed-date"],
   "app/billing/page.tsx": ["#engagement-start", "#fee-receipt-date"],
@@ -303,14 +303,14 @@ const DRIVEN: Record<string, string[]> = {
   "components/fixed-assets/CwipTab.tsx": ["[Started on]", "[Approved completion date]", "[Now expected to complete on]", "[Incurred on]", "[Ready for use on]"],
   "components/purchases/PurchaseCycleTab.tsx": ["#po-date", "#po-expected", "#grn-received"],
   "components/sales/SalesCycleTab.tsx": ["#sc-date", "#sc-valid-until", "#sc-expected-delivery", "[Date the goods came back, challan ${c.document_no}]"],
-  "app/clients/[id]/sales/page.tsx": ["#receipt-date", "#statement-from", "#statement-to"],
+  "app/clients/[id]/sales/page.tsx": ["#receipt-date", "#statement-from", "#statement-to", "#rec-inv-start", "#rec-inv-end"],
   // The third slice (4-11-2026).
   "components/sales/SalesCreditNoteEditor.tsx": ["#sales-cn-date"],
   "components/sales/SalesDebitNoteEditor.tsx": ["#sales-dn-date"],
   "components/purchases/DebitNoteEditor.tsx": ["#purchase-dn-date"],
   "components/purchases/PurchaseCreditNoteEditor.tsx": ["#purchase-cn-date"],
   "app/accounting/loans/page.tsx": ["[Disbursement date]", "[Loan maturity date]", "[Fixed deposit start date]", "[Fixed deposit maturity date]"],
-  "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date"],
+  "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date", "#stock-as-at", "[Stock ledger from]", "[Stock ledger to]"],
   // The fourth slice (4-11-2026).
   "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from"],
   // Two files the first slices drove by rows but never listed here, so a date box added to either would have gone unseen (found by an independent read of the eighth slice).
@@ -347,7 +347,7 @@ const DRIVEN: Record<string, string[]> = {
   "components/purchases/RecurringBills.tsx": ["#rec-bill-start", "#rec-bill-end"],
   "app/accounting/recurring/page.tsx": ["#rj-start", "#rj-end"],
   "app/accounting/trial-balance-import/page.tsx": ["#tb-opening-date"],
-  "app/clients/[id]/purchases/page.tsx": ["#vendor-payment-date"],
+  "app/clients/[id]/purchases/page.tsx": ["#vendor-payment-date", "#no-pe-on"],
   // The twelfth slice (5-11-2026): the filing prompts that record a return as filed and lock its period, the loan-claim date and a year-end adjustment.
   "app/gst/gstr1/page.tsx": ["#gstr1-filed-date"],
   "app/gst/gstr3b/page.tsx": ["#gstr3b-filed-date"],
@@ -363,23 +363,15 @@ const DRIVEN: Record<string, string[]> = {
   "app/settings/statutory-values/page.tsx": ["#sv-effective-from", "#sv-notified-on"],
   "app/engagements/page.tsx": ["[Start date]", "[Expiry date]"],
   "components/inventory/LocationsAndBatches.tsx": ["[Date the stock moved]", "[Manufactured (optional)]", "[Expires (optional)]"],
+  // The eighteenth slice (6-11-2026): the two catalogue boxes that date an opening stock, which the count of what was left found beside the eight it named.
+  "components/catalogue/ProductServiceFormModal.tsx": ["[Opening balance as of]"],
+  "components/catalogue/ProductServiceManagerPanel.tsx": ["#catalogue-import-opening-date"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
  *  shrink: a field added to a driven editor must get a scenario row or be named here. */
 const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
-  "app/clients/[id]/purchases/page.tsx": { "#no-pe-on": "a foreign supplier's no-PE declaration date, shown only on the supplier form once the declaration is ticked (a later row)" },
-  "components/invoices/InvoiceEditor.tsx": { "#inv-sb-date": "the shipping bill date of an export invoice; shown only for exports (second slice)" },
-  "app/income-tax/advance-tax/page.tsx": { "#at-furnished-on": "feeds the §234A/§234B calculation and is saved nowhere, so the save claims do not apply (the working's own scenario is a later row)" },
-  "app/clients/[id]/inventory/page.tsx": {
-    "#stock-as-at": "the as-at date of the stock register: a filter that writes nothing (a later row for the window claims)",
-    "[Stock ledger from]": "the stock ledger's window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
-    "[Stock ledger to]": "the stock ledger's window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
-  },
-  "app/clients/[id]/sales/page.tsx": {
-    "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
-    "#rec-inv-end": "the recurring invoice's end date, anchored to the start (a later row)",
-  },
+  // Empty since the eighteenth slice (6-11-2026): every date box in a driven file has a row. The table stays, because a box added to a driven file must be named here with why or get a row.
 };
 
 test("every date field the drive types into is a real DateInput in the editor it names", () => {
