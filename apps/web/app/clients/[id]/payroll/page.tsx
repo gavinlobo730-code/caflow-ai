@@ -1914,8 +1914,15 @@ function StatutoryIdentityTab({ clientId }: { clientId: string }) {
   async function removePt(state: string) {
     setSaving("pt"); setSaveError(null);
     try {
-      await apiFetch(`/api/payroll/statutory-identity/pt?client_id=${clientId}&state=${state}`,
-                     { method: "DELETE" });
+      // THE ANSWER IS READ (POST-A-391, the tenth write of this shape and the last in the app): it was awaited and dropped, so a refused removal reloaded the list and said nothing.
+      const res = await apiFetch(`/api/payroll/statutory-identity/pt?client_id=${clientId}&state=${state}`,
+                                 { method: "DELETE" });
+      // `success` must be TRUE to count as accepted: apiFetch hands back null for an answer that is not JSON (a proxy's error page) and an answer with no `success` is not an
+      // acceptance, so only a success is read as one; the sentence is the page's own reading of the refusal (a string, or the 422's list of messages).
+      if ((res as { success?: boolean } | null)?.success !== true) {
+        setSaveError(refusalText(res) ?? "Couldn't remove the registration.");
+        return;
+      }
       await load();
     } catch {
       setSaveError("Couldn't remove the registration.");

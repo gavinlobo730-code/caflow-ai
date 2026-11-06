@@ -22,7 +22,11 @@
 //      date) is asked for in a sentence of its own and is never sent as `null`; the incorporation date and the challan's date are bounded by today and refuse a later day (a
 //      company that has a CIN has been incorporated; the bank has taken the tax by the day a challan is dated: the seventeenth slice, which reversed this file's earlier stance on the
 //      challan), and the other dates are not bounded (a due date is a plan, and a director may be appointed with effect from a later day).
-//   5. The writes on the three pages whose answer is still dropped are COUNTED, by reading each call's own parentheses, and the count can only fall: `DROPPED_ANSWERS`.
+//   5. No write that goes through a helper named `apiFetch` drops its answer, on these pages or on any page or component of the app (POST-A-391): a RULE, read by each call's own
+//      parentheses and its type argument (the payroll page's helper is generic). The ten writes that did are held by name: the answer is read straight after the call, a refusal says
+//      its sentence and ENDS the function before anything closes the form or reads the list again, a failed request is said and closes nothing, the last sentence is cleared when a
+//      new press begins and when the list is read again, the flag held across the request is reset in a `finally`, the Cancel of a form or dialog is held while a save is out, and the
+//      sentence is drawn as an alert INSIDE the control that raised it (above the table for a row action, inside the form or the dialog for a create or a save).
 //
 // WHAT THIS DOES NOT COVER
 //   Whether the sentence is the server's (the drive does: `tests/test_the_drives_filing_sentences_are_the_servers.py` pins the stub's words to the routers'), the other
@@ -54,6 +58,7 @@ const read = (rel: string) => stripComments(fs.readFileSync(path.join(WEB, rel),
 const MCA = "app/clients/[id]/compliance/mca/page.tsx";
 const TDS = "app/clients/[id]/compliance/tds/page.tsx";
 const GST = "app/clients/[id]/compliance/gst/page.tsx";
+const PAYROLL = "app/clients/[id]/payroll/page.tsx";
 
 /** The text between the opener at `open` (a `(`, `{` or `[`) and its match, string and template literals skipped. */
 function balanced(code: string, open: number): string {
@@ -256,32 +261,225 @@ test("the TDS tab shows what recording a challan did to the compliance calendar,
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5. WRITES WHOSE ANSWER IS STILL DROPPED
+// 5. NO WRITE DROPS ITS ANSWER (POST-A-391)
 // ═════════════════════════════════════════════════════════════════════════════
 
-// The writes on the three pages whose answer is still dropped (a statement that begins `await apiFetch(` and carries a write method, so nothing reads what came back):
-// the status changes of a filing (MCA) and of a TDS return, a director's KYC change, the creation of a TDS return and the save of a statement computed from the books,
-// and the creation of a GSTR-1 and of a GSTR-3B and the save of each from the books. Each is POST-A-391. The count is
-// made by reading each call's own parentheses, so a long body is counted; it can only fall.
-const DROPPED_ANSWERS: Record<string, number> = { [MCA]: 2, [TDS]: 3, [GST]: 4 };
+// Nine writes on the three pages used to be a statement that begins `await apiFetch(` and carries a write method, so nothing read what came back: the status changes of a filing
+// (MCA) and of a TDS return, a director's KYC change, the creation of a TDS return and the save of a statement computed from the books, and the creation of a GSTR-1 and of a
+// GSTR-3B and the save of each from the books. A refused or failed write there looked like a button that does nothing, and a refused create or save closed the form or the dialog
+// as though it had worked. They read their answers now and the count is nothing: it is a RULE (a new write on these pages that drops its answer fails), no longer a count that could
+// only fall. The count is made by reading each call's own parentheses, so a long body is counted.
+const DROPPED_ANSWERS: Record<string, number> = { [MCA]: 0, [TDS]: 0, [GST]: 0 };
 
-/** The statements `await apiFetch(…)` of a file whose call carries a write method, the call's own parentheses balanced. */
+/** The statements `await apiFetch(…)` of a file whose call carries a write method, the call's own parentheses balanced. The helper may carry a type argument
+ *  (`await apiFetch<unknown>(…)`: the payroll page's is generic, and a pattern that stopped at the `(` did not see such a call). */
 function droppedWrites(code: string): string[] {
   const out: string[] = [];
-  for (const m of code.matchAll(/^[ \t]+await apiFetch\(/gm)) {
+  for (const m of code.matchAll(/^[ \t]+await apiFetch\s*(?:<[^()\n]*>)?\s*\(/gm)) {
     const call = balanced(code, m.index + m[0].length - 1);
     if (/method:\s*"(?:POST|PATCH|PUT|DELETE)"/.test(call)) out.push(call.replace(/\s+/g, " ").slice(0, 90));
   }
   return out;
 }
 
-test("the writes whose answer is still dropped are counted, and the count only falls", () => {
+test("no write on a client compliance page drops its answer", () => {
   for (const [rel, expected] of Object.entries(DROPPED_ANSWERS)) {
     const dropped = droppedWrites(read(rel));
-    assert.ok(dropped.length <= expected, `${rel}: ${dropped.length} writes drop their answer, up from ${expected}: read the answer (\`const res = await apiFetch(…)\` and \`!res?.success\`):\n  ${dropped.join("\n  ")}`);
-    assert.equal(dropped.length, expected, `${rel}: ${expected - dropped.length} fewer writes drop their answer: lower DROPPED_ANSWERS to ${dropped.length} so the count stays exact`);
+    assert.equal(dropped.length, expected, `${rel}: ${dropped.length} writes drop their answer: read it (\`const res = await apiFetch(…)\` and \`!res?.success\`) and say a refusal beside the button that raised it:\n  ${dropped.join("\n  ")}`);
   }
 });
+
+test("no `await apiFetch(…)` write ANYWHERE in the app drops its answer: the rule is the app's, not a list of three pages", () => {
+  // The three pages had nine; the client payroll page's PT registration removal was the tenth and the last (POST-A-391). A page of this app that names a write helper `apiFetch`
+  // and awaits a POST, PATCH, PUT or DELETE without reading what comes back is a button that does nothing when the server refuses it. WHAT THIS READS is the spelling
+  // `await apiFetch(…)` (with or without a type argument) in app/ and components/: a write through another name (`api.*`, `request`, a function of lib/) is outside it, and
+  // that is written down as not done in POST-A-391's closing account, not covered here.
+  let looked = 0;
+  for (const dir of ["app", "components"]) {
+    for (const file of sources(path.join(WEB, dir))) {
+      const rel = path.relative(WEB, file);
+      const dropped = droppedWrites(read(rel));
+      looked += 1;
+      assert.deepEqual(dropped, [], `${rel}: ${dropped.length} write(s) drop their answer: read it (\`const res = await apiFetch(…)\` and \`!res?.success\`) and say a refusal beside the control that raised it`);
+    }
+  }
+  assert.ok(looked > 300, `only ${looked} files were looked at: the scan is not reading the app`);
+});
+
+/** The text of the function `name` declared after `after` in `code`, its braces balanced. */
+function functionAfter(code: string, after: string, name: string): string {
+  const from = code.indexOf(after);
+  assert.ok(from >= 0, `\`${after}\` is not in the file`);
+  const at = code.indexOf(`async function ${name}(`, from);
+  assert.ok(at >= 0, `\`async function ${name}(\` is not declared after \`${after}\``);
+  const brace = code.indexOf("{", code.indexOf(")", at));
+  return balanced(code, brace);
+}
+
+/** `const res = await apiFetch(…)` in a handler's body and what must follow it: the refusal branch, straight after the call (nothing between), and where the branch ends. */
+function afterTheCall(body: string, label: string, refusal: RegExp = /^\s*;\s*if \(!res\?\.success\) \{/) {
+  const head = "const res = await apiFetch(";
+  const callAt = body.indexOf(head);
+  assert.ok(callAt >= 0, `${label}: its answer is not read into a variable`);
+  const open = callAt + head.length - 1;
+  const callEnd = open + 1 + balanced(body, open).length + 1;
+  const found = refusal.exec(body.slice(callEnd));
+  assert.ok(found, `${label}: the refusal is not the FIRST thing done with the answer (something comes between the call and the \`if\` that looks at it: a closer placed there closes the form over a refusal)`);
+  const branchOpen = callEnd + found[0].length - 1;
+  const branch = balanced(body, branchOpen);
+  return { callAt, callEnd, branch, branchEnd: branchOpen + 1 + branch.length + 1 };
+}
+
+/** The opening tag that starts at `start`, up to the `>` that closes it (an arrow function's `=>` inside braces does not). */
+function openingTagAt(code: string, start: number): string {
+  let depth = 0;
+  for (let i = start; i < code.length; i++) {
+    const c = code[i];
+    if (c === '"' || c === "'" || c === "`") {
+      for (i++; i < code.length && code[i] !== c; i++) if (code[i] === "\\") i++;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") depth--;
+    else if (c === ">" && depth === 0) return code.slice(start, i + 1);
+  }
+  return code.slice(start);
+}
+
+/** What closes a form or a dialog, empties it, or reads the list again: none of it may happen before the refusal branch has ended, or in the catch. */
+const CLOSERS = /\b(?:setShowNew|setShowCompute)\(false\)|\b(?:closeNew|closeForm)\(\)|\bsetComputeResult\(null\)|\bload\(\)/;
+
+/** The JSX block `{showNew && (` or `{showCompute && (` of a component: where it starts and where its parenthesis closes. */
+function blockOf(tab: string, opener: string, label: string): { at: number; end: number; text: string } {
+  const at = tab.indexOf(opener);
+  assert.ok(at >= 0, `${label}: \`${opener}\` is no longer in the component`);
+  const text = balanced(tab, at + opener.length - 1);
+  return { at, end: at + opener.length + text.length, text };
+}
+
+type Where = "row" | "form" | "compute";
+type TheNine = {
+  file: string; component: string; fn: string; call: RegExp; says: string; shown: string; what: string;
+  /** The state held while the request is out (the Cancel beside it is held with it); null for a row action, which has none. */
+  flag: string | null;
+  /** Where the sentence is drawn: above the table (a row action), inside the create form, inside the compute dialog. */
+  where: Where;
+};
+/** The nine, each by the tab that holds it, the call it makes and the line it says a refusal on. `says` is the state that sentence is held in and `shown` how the screen draws it. */
+const THE_NINE: TheNine[] = [
+  { file: MCA, component: "DirectorsTab", fn: "updateKYC", call: /apiFetch\(`\/api\/mca-workspace\/directors\/\$\{id\}`/, says: "setKycError", shown: "kycError", what: "a director's KYC change", flag: null, where: "row" },
+  { file: MCA, component: "FilingsTab", fn: "updateStatus", call: /apiFetch\(`\/api\/mca-workspace\/filings\/\$\{id\}\/status`/, says: "setStatusError", shown: "statusError", what: "a filing's status change", flag: null, where: "row" },
+  { file: TDS, component: "ReturnsTab", fn: "saveNew", call: /apiFetch\("\/api\/tds-workspace\/returns"/, says: "setNewError", shown: "newError", what: "the creation of a TDS return", flag: "creating", where: "form" },
+  { file: TDS, component: "ReturnsTab", fn: "updateStatus", call: /apiFetch\(`\/api\/tds-workspace\/returns\/\$\{id\}\/status`/, says: "setStatusError", shown: "statusError", what: "a TDS return's status change", flag: null, where: "row" },
+  { file: TDS, component: "ReturnsTab", fn: "saveComputed", call: /apiFetch\("\/api\/tds-workspace\/returns"/, says: "setSaveComputedError", shown: "saveComputedError", what: "the save of a TDS statement computed from the books", flag: "savingComputed", where: "compute" },
+  { file: GST, component: "GSTR1Tab", fn: "saveNew", call: /apiFetch\("\/api\/gst-workspace\/gstr1"/, says: "setNewError", shown: "newError", what: "the creation of a GSTR-1", flag: "saving", where: "form" },
+  { file: GST, component: "GSTR1Tab", fn: "saveComputed", call: /apiFetch\("\/api\/gst-workspace\/gstr1"/, says: "setSaveComputedError", shown: "saveComputedError", what: "the save of a GSTR-1 computed from the books", flag: "savingComputed", where: "compute" },
+  { file: GST, component: "GSTR3BTab", fn: "saveNew", call: /apiFetch\("\/api\/gst-workspace\/gstr3b"/, says: "setNewError", shown: "newError", what: "the creation of a GSTR-3B", flag: "saving", where: "form" },
+  { file: GST, component: "GSTR3BTab", fn: "saveComputed", call: /apiFetch\("\/api\/gst-workspace\/gstr3b"/, says: "setSaveComputedError", shown: "saveComputedError", what: "the save of a GSTR-3B computed from the books", flag: "savingComputed", where: "compute" },
+];
+const setterOf = (flag: string) => `set${flag[0].toUpperCase()}${flag.slice(1)}`;
+
+test("the nine writes that used to drop their answer read it, hold the form or the dialog open over a refusal, and say it where the button that raised it is", () => {
+  assert.equal(THE_NINE.length, 9);
+  for (const n of THE_NINE) {
+    const code = read(n.file);
+    const tab = componentOf(code, n.component);
+    const body = functionAfter(tab, `function ${n.component}(`, n.fn);
+    const label = `${n.file}: ${n.what} (${n.component}.${n.fn})`;
+    assert.match(body, n.call, `${label}: it does not make the call this row names`);
+    assert.match(body, /const res = await apiFetch\(/, `${label}: its answer is not read into a variable`);
+    assert.match(body, /if \(!res\?\.success\) \{/, `${label}: it does not look at whether the server accepted it`);
+    assert.match(body, new RegExp(`${n.says}\\(res\\?\\.error \\?\\? "`), `${label}: a refusal's own sentence is not what it says`);
+    assert.match(body, new RegExp(`catch \\(e\\) \\{\\s*${n.says}\\(e instanceof Error && e\\.message \\? e\\.message : "`), `${label}: a request that failed is not said`);
+    // a refusal ends the function BEFORE the form closes or the list is read again: the `return` follows the sentence
+    assert.match(body, new RegExp(`${n.says}\\(res\\?\\.error \\?\\? "[^"]*"\\);\\s*(?:\\/\\/[^\\n]*\\n\\s*)*return;`), `${label}: a refusal does not stop the function before the form closes`);
+
+    // The ORDER. The refusal is the first thing done with the answer, says its sentence and returns, and nothing that closes the form or reads the list again comes before it
+    // ends (a `setShowNew(false)` placed above the `if` closed the form over a refusal and every other check here stayed green: found by the independent read).
+    const { callAt, branch, branchEnd } = afterTheCall(body, label);
+    assert.match(branch.trim(), new RegExp(`^${n.says}\\(res\\?\\.error \\?\\? "[^"]*"\\);\\s*return;$`), `${label}: the refusal branch does more than say the sentence and return`);
+    const closer = CLOSERS.exec(body);
+    assert.ok(closer, `${label}: nothing closes the form or reads the list again after a success`);
+    assert.ok(closer.index >= branchEnd, `${label}: \`${closer[0]}\` comes before the answer has been looked at: the form closes, or the list is read, over a refusal`);
+    // …and a request that failed says so and closes nothing.
+    const caught = balanced(body, body.indexOf("{", body.indexOf("catch (e)")));
+    assert.doesNotMatch(caught, CLOSERS, `${label}: a request that failed closes the form or reads the list as though it had worked`);
+    // The last answer is cleared when a new press begins (before anything goes out): a sentence about the last press is not about this one.
+    const clearAt = body.indexOf(`${n.says}(null)`);
+    assert.ok(clearAt >= 0 && clearAt < callAt, `${label}: the last sentence is not cleared when a new press begins`);
+    // The flag held across the request is set before it and reset in a `finally` (a refusal and a failure both end there).
+    if (n.flag) {
+      const set = setterOf(n.flag);
+      const onAt = body.indexOf(`${set}(true)`);
+      assert.ok(onAt >= 0 && onAt < callAt, `${label}: ${set}(true) does not come before the request`);
+      assert.match(body, new RegExp(`finally\\s*\\{\\s*${set}\\(false\\);?\\s*\\}`), `${label}: ${set}(false) is not in a finally: a refusal or a failure leaves the screen held`);
+    }
+
+    // WHERE the sentence is drawn: as an alert, in THIS tab (two tabs of one file each have their own `newError`), and INSIDE the control that raised it.
+    const drawn = new RegExp(`\\{${n.shown} && <p role="alert" className="text-xs text-state-problem">\\{${n.shown}\\}</p>\\}`).exec(tab);
+    assert.ok(drawn, `${label}: \`${n.shown}\` is not drawn as an alert`);
+    if (n.where === "row") {
+      // Above the table, outside every form, and cleared when the list is read again (a refusal of a row action is about the list as it stood).
+      assert.ok(drawn.index < tab.indexOf("<table"), `${label}: the sentence is drawn below the table, away from the button that raised it`);
+      for (const opener of ["{showNew && (", "{showCompute && ("]) {
+        if (!tab.includes(opener)) continue;
+        const block = blockOf(tab, opener, label);
+        assert.ok(drawn.index < block.at || drawn.index >= block.end, `${label}: the sentence is drawn inside a form (${opener}), where a person who is not in it never sees it`);
+      }
+      const reloaded = bodyOf(tab, /const load = useCallback\((?:async )?\(\) => \{/);
+      assert.match(reloaded, new RegExp(`${n.says}\\(null\\)`), `${label}: a list read again still shows the last refusal, though it was about the list as it stood`);
+    } else {
+      const opener = n.where === "form" ? "{showNew && (" : "{showCompute && (";
+      const block = blockOf(tab, opener, label);
+      assert.ok(drawn.index > block.at && drawn.index < block.end, `${label}: the sentence is not drawn inside the ${n.where === "form" ? "form" : "dialog"} that raised it`);
+      // The Cancel of that form or dialog is held while the save is out: Cancel in the middle of a request, then a late refusal sets a sentence on a closed dialog
+      // (and the late answer of a save that WORKED is lost).
+      const cancelAt = block.text.indexOf("Cancel</button>");
+      assert.ok(cancelAt > 0, `${label}: no Cancel in the ${n.where === "form" ? "form" : "dialog"}`);
+      const tag = openingTagAt(block.text, block.text.lastIndexOf("<button", cancelAt));
+      assert.match(tag, new RegExp(`disabled=\\{${n.flag}\\}`), `${label}: Cancel is live while the save is out`);
+      // …and Cancel empties the last sentence of that dialog, so it is not there when the dialog is opened again.
+      assert.match(tag, new RegExp(`${n.says}\\(null\\)`), `${label}: Cancel leaves the last sentence to be shown when the ${n.where === "form" ? "form" : "dialog"} is opened again`);
+    }
+  }
+});
+
+test("the TDS compute dialog's boxes that choose the statement empty the result computed for the old choice, and are held while a compute or a save is out", () => {
+  // Compute 26Q, flip the Return type to 24Q, Save as Draft: the 26Q's figures were stored as a 24Q statement (found by the independent read of POST-A-391; the save sends the
+  // form's type and the result is the old choice's). A change empties the result, and the boxes are held while a request is out so a late answer cannot land on a changed choice.
+  const tab = componentOf(read(TDS), "ReturnsTab");
+  assert.match(bodyOf(tab, /function chooseStatement\(patch: Partial<typeof computeForm>\) \{/), /setComputeResult\(null\)/, "choosing a statement does not empty the result computed for the last choice");
+  for (const aria of ["Return type", "Quarter", "Financial year (for example 2025-26)"]) {
+    const at = tab.indexOf(`aria-label="${aria}"`);
+    assert.ok(at > 0, `the compute dialog has no box labelled ${aria}`);
+    const tag = openingTagAt(tab, tab.lastIndexOf("<", at));
+    assert.match(tag, /onChange=\{\(e\) => chooseStatement\(/, `${aria}: a change does not empty the computed result (it can be saved under another form)`);
+    assert.match(tag, /disabled=\{actionInFlight\}/, `${aria}: the box is live while a compute or a save is out`);
+  }
+});
+
+test("the tenth write, the payroll page's removal of a professional tax registration, reads its answer, accepts only a success and says the page's reading of a refusal", () => {
+  const code = read(PAYROLL);
+  const body = bodyOf(code, /async function removePt\(state: string\) \{/);
+  const label = "the payroll page's removePt";
+  assert.match(body, /apiFetch\(`\/api\/payroll\/statutory-identity\/pt\?client_id=\$\{clientId\}&state=\$\{state\}`/, `${label}: it does not make the call this row names`);
+  // The refusal is the first thing done with the answer and it ACCEPTS ONLY A SUCCESS: apiFetch hands back null for an answer that is not JSON, and `=== false` read that as accepted.
+  const { callAt, branch, branchEnd } = afterTheCall(body, label, /^\s*;\s*if \(\(res as \{ success\?: boolean \} \| null\)\?\.success !== true\) \{/);
+  assert.match(branch.trim(), /^setSaveError\(refusalText\(res\) \?\? "Couldn't remove the registration\."\);\s*return;$/, `${label}: the refusal branch does not say the page's reading of the refusal (a string, or the 422's messages) and return`);
+  const closer = CLOSERS.exec(body);
+  assert.ok(closer, `${label}: nothing reads the list again after a success`);
+  assert.ok(closer.index >= branchEnd, `${label}: \`${closer[0]}\` comes before the answer has been looked at`);
+  assert.match(body, /catch \{\s*setSaveError\("Couldn't remove the registration\."\);\s*\}/, `${label}: a request that failed is not said`);
+  const clearAt = body.indexOf("setSaveError(null)");
+  assert.ok(clearAt >= 0 && clearAt < callAt, `${label}: the last sentence is not cleared when a new press begins`);
+  assert.ok(body.indexOf('setSaving("pt")') >= 0 && body.indexOf('setSaving("pt")') < callAt, `${label}: the screen is not held while the request is out`);
+  assert.match(body, /finally\s*\{\s*setSaving\(null\);?\s*\}/, `${label}: the hold is not released in a finally`);
+  // Drawn by a Callout whose tone is `problem`, which carries role="alert" (components/ui/callout.tsx), in the component that holds the removal.
+  const component = code.slice(code.lastIndexOf("\nfunction ", code.indexOf("async function removePt(")));
+  assert.match(component, /\{saveError && <Callout tone="problem">\{saveError\}<\/Callout>\}/, `${label}: the sentence is not drawn as a problem callout`);
+  assert.match(fs.readFileSync(path.join(WEB, "components/ui/callout.tsx"), "utf8"), /role=\{tone === "problem" \? "alert" : undefined\}/, "a problem callout no longer carries role=alert: the tenth sentence would be silent to a screen reader");
+});
+
 
 test("the counter sees a long body (a self-test of the way the writes are counted)", () => {
   const code = [
@@ -292,7 +490,8 @@ test("the counter sees a long body (a self-test of the way the writes are counte
     "    });",
     "    const res = await apiFetch(\"/api/y\", { method: \"POST\", body: \"{}\" });",
     "    await apiFetch(`/api/z?client_id=${clientId}`);",
+    "    await apiFetch<unknown>(\"/api/g\", { method: \"DELETE\" });",
     "}",
   ].join("\n");
-  assert.equal(droppedWrites(code).length, 1, "the long dropped write is not counted, or a read or an assigned write is");
+  assert.equal(droppedWrites(code).length, 2, "the long dropped write, or the one through a generic helper, is not counted, or a read or an assigned write is");
 });

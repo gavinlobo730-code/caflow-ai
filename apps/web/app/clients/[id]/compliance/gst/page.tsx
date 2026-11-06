@@ -549,6 +549,10 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
+  // THE ANSWERS ARE READ (POST-A-391). Creating a return and saving a computed one were awaited and dropped, so a refusal (this router answers one as HTTP 200 with success false)
+  // closed the dialog and read as a return that was saved. Each sentence is said inside the dialog, beside the button that raised it.
+  const [newError, setNewError] = useState<string | null>(null);
+  const [saveComputedError, setSaveComputedError] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -600,23 +604,27 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   }, []);
 
   async function saveNew() {
+    setNewError(null);
     if (!reg.choice.gstin) {
-      setLoadError(reg.choice.refused ?? "Choose the registration this return is for.");
+      setNewError(reg.choice.refused ?? "Choose the registration this return is for.");
       return;
     }
     setSaving(true);
     try {
-      await apiFetch("/api/gst-workspace/gstr1", {
+      const res = await apiFetch("/api/gst-workspace/gstr1", {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, period, gstin: reg.choice.gstin }),
       });
+      if (!res?.success) {
+        // The dialog stays open with the period and the registration still in it: closing on a refusal lost them and read as a return that was saved.
+        setNewError(res?.error ?? "The GSTR-1 return was not created.");
+        return;
+      }
       setShowNew(false);
       setPeriod("");
       load();
     } catch (e) {
-      // Keep the dialog open with what was typed still in it — closing on a
-      // failed save loses the period and GSTIN and reads as success.
-      setLoadError(e instanceof Error ? e.message : "Couldn't create the GSTR-1 return.");
+      setNewError(e instanceof Error && e.message ? e.message : "The GSTR-1 return was not created.");
     } finally {
       setSaving(false);
     }
@@ -661,6 +669,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
+    setSaveComputedError(null);
     // `include_amendments` is sent only when the CA asked to leave them out:
     // an absent key is the server's default (in), so an older backend that
     // does not know the field is not handed one it would have to ignore.
@@ -682,28 +691,39 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   async function saveComputed() {
     if (!computeResult) return;
     setSavingComputed(true);
+    setSaveComputedError(null);
     const d = computeResult;
-    await apiFetch("/api/gst-workspace/gstr1", {
-      method: "POST",
-      body: JSON.stringify({
-        client_id: clientId,
-        period: d.period,
-        gstin: d.gstin,
-        payload_json: d.payload,
-        summary_json: d.summary,
-        total_taxable_paise: d.taxable_total_paise,
-        total_igst_paise: d.total_igst_paise,
-        total_cgst_paise: d.total_cgst_paise,
-        total_sgst_paise: d.total_sgst_paise,
-        total_cess_paise: d.total_cess_paise,
-      }),
-    });
-    setSavingComputed(false);
-    setShowCompute(false);
-    setComputeResult(null);
-    setComputePeriod("");
-    setComputeError(null);
-    load();
+    try {
+      const res = await apiFetch("/api/gst-workspace/gstr1", {
+        method: "POST",
+        body: JSON.stringify({
+          client_id: clientId,
+          period: d.period,
+          gstin: d.gstin,
+          payload_json: d.payload,
+          summary_json: d.summary,
+          total_taxable_paise: d.taxable_total_paise,
+          total_igst_paise: d.total_igst_paise,
+          total_cgst_paise: d.total_cgst_paise,
+          total_sgst_paise: d.total_sgst_paise,
+          total_cess_paise: d.total_cess_paise,
+        }),
+      });
+      if (!res?.success) {
+        // The dialog stays open with the computed return in it: closing on a refusal lost it and read as a return that was saved.
+        setSaveComputedError(res?.error ?? "The GSTR-1 was not saved.");
+        return;
+      }
+      setShowCompute(false);
+      setComputeResult(null);
+      setComputePeriod("");
+      setComputeError(null);
+      load();
+    } catch (e) {
+      setSaveComputedError(e instanceof Error && e.message ? e.message : "The GSTR-1 was not saved.");
+    } finally {
+      setSavingComputed(false);
+    }
   }
 
   return (
@@ -759,8 +779,8 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </Button>
-            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
-              className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setSaveComputedError(null); }} disabled={savingComputed}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
 
           {computeResult && (() => {
@@ -820,6 +840,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                     />
                   );
                 })()}
+                {saveComputedError && <p role="alert" className="text-xs text-state-problem">{saveComputedError}</p>}
                 <Button variant="plain" size="none" onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
@@ -838,13 +859,14 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <RegistrationPicker state={reg} id="gstr1-new-registration"
             disabled={actionInFlight} />
+          {newError && <p role="alert" className="text-xs text-state-problem">{newError}</p>}
           <div className="flex gap-2">
             <Button variant="plain" size="none" onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </Button>
-            <button onClick={() => setShowNew(false)}
-              className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <button onClick={() => { setShowNew(false); setNewError(null); }} disabled={saving}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
         </div>
       )}
@@ -1004,6 +1026,10 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
+  // THE ANSWERS ARE READ (POST-A-391). Creating a return and saving a computed one were awaited and dropped, so a refusal (this router answers one as HTTP 200 with success false)
+  // closed the dialog and read as a return that was saved. Each sentence is said inside the dialog, beside the button that raised it.
+  const [newError, setNewError] = useState<string | null>(null);
+  const [saveComputedError, setSaveComputedError] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -1031,22 +1057,27 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveNew() {
+    setNewError(null);
     if (!reg.choice.gstin) {
-      setLoadError(reg.choice.refused ?? "Choose the registration this return is for.");
+      setNewError(reg.choice.refused ?? "Choose the registration this return is for.");
       return;
     }
     setSaving(true);
     try {
-      await apiFetch("/api/gst-workspace/gstr3b", {
+      const res = await apiFetch("/api/gst-workspace/gstr3b", {
         method: "POST",
         body: JSON.stringify({ client_id: clientId, period, gstin: reg.choice.gstin }),
       });
+      if (!res?.success) {
+        // The dialog stays open with the period and the registration still in it: closing on a refusal lost them and read as a return that was saved.
+        setNewError(res?.error ?? "The GSTR-3B return was not created.");
+        return;
+      }
       setShowNew(false);
       setPeriod("");
       load();
     } catch (e) {
-      // Same as GSTR1Tab.saveNew — the dialog stays open with its input.
-      setLoadError(e instanceof Error ? e.message : "Couldn't create the GSTR-3B return.");
+      setNewError(e instanceof Error && e.message ? e.message : "The GSTR-3B return was not created.");
     } finally {
       setSaving(false);
     }
@@ -1145,6 +1176,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
+    setSaveComputedError(null);
     const r = await apiFetch("/api/gst/gstr3b/from-books", {
       method: "POST",
       body: JSON.stringify(withRegistration({
@@ -1160,42 +1192,53 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   async function saveComputed() {
     if (!computeResult) return;
     setSavingComputed(true);
+    setSaveComputedError(null);
     const d = computeResult;
-    await apiFetch("/api/gst-workspace/gstr3b", {
-      method: "POST",
-      body: JSON.stringify({
-        client_id: clientId,
-        period: d.period,
-        gstin: d.gstin,
-        payload_json: d.payload,
-        summary_json: d.working,
-        tax_liability_paise: d.tax_liability_paise,
-        itc_claimed_paise: d.itc_claimed_paise,
-        net_tax_paise: d.net_tax_paise,
-        // The CHALLAN, beside the set-off residual. §49(4) with §2(82) bars the
-        // credit ledger from paying reverse-charge tax, so 3.1(d) is always
-        // cash and always on top of net_tax_paise. filings.tax_payable_paise is
-        // written from cash_payable_paise — it is what was actually paid.
-        rcm_cash_paise: d.rcm_cash_paise,
-        cash_payable_paise: d.cash_payable_paise,
-        // The carry-forward total rides in summary_json (`working`), which
-        // carries working.itc_utilisation. The credit ledger's opening and
-        // closing BY HEAD are sent as the block the server served, because the
-        // next return opens with this one's closing and that needs columns the
-        // save turns it into (gst-06). Dropped silently by Pydantic if the
-        // request model did not declare it — it does.
-        credit_ledger: d.credit_ledger,
-      }),
-    });
-    setSavingComputed(false);
-    setShowCompute(false);
-    setComputeResult(null);
-    setComputePeriod("");
-    // The optional date filed belongs to the period just saved: left in the box it was sent with the NEXT period's compute (section 50 interest
-    // and a late fee for a filing date nobody stated for that return).
-    setFiledOn("");
-    setComputeError(null);
-    load();
+    try {
+      const res = await apiFetch("/api/gst-workspace/gstr3b", {
+        method: "POST",
+        body: JSON.stringify({
+          client_id: clientId,
+          period: d.period,
+          gstin: d.gstin,
+          payload_json: d.payload,
+          summary_json: d.working,
+          tax_liability_paise: d.tax_liability_paise,
+          itc_claimed_paise: d.itc_claimed_paise,
+          net_tax_paise: d.net_tax_paise,
+          // The CHALLAN, beside the set-off residual. §49(4) with §2(82) bars the
+          // credit ledger from paying reverse-charge tax, so 3.1(d) is always
+          // cash and always on top of net_tax_paise. filings.tax_payable_paise is
+          // written from cash_payable_paise — it is what was actually paid.
+          rcm_cash_paise: d.rcm_cash_paise,
+          cash_payable_paise: d.cash_payable_paise,
+          // The carry-forward total rides in summary_json (`working`), which
+          // carries working.itc_utilisation. The credit ledger's opening and
+          // closing BY HEAD are sent as the block the server served, because the
+          // next return opens with this one's closing and that needs columns the
+          // save turns it into (gst-06). Dropped silently by Pydantic if the
+          // request model did not declare it — it does.
+          credit_ledger: d.credit_ledger,
+        }),
+      });
+      if (!res?.success) {
+        // The dialog stays open with the computed return in it: closing on a refusal lost it and read as a return that was saved.
+        setSaveComputedError(res?.error ?? "The GSTR-3B was not saved.");
+        return;
+      }
+      setShowCompute(false);
+      setComputeResult(null);
+      setComputePeriod("");
+      // The optional date filed belongs to the period just saved: left in the box it was sent with the NEXT period's compute (section 50 interest
+      // and a late fee for a filing date nobody stated for that return).
+      setFiledOn("");
+      setComputeError(null);
+      load();
+    } catch (e) {
+      setSaveComputedError(e instanceof Error && e.message ? e.message : "The GSTR-3B was not saved.");
+    } finally {
+      setSavingComputed(false);
+    }
   }
 
   return (
@@ -1288,8 +1331,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </Button>
-            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setFiledOn(""); }}
-              className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setSaveComputedError(null); setFiledOn(""); }} disabled={savingComputed}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
 
           {computeResult && (() => {
@@ -1494,6 +1537,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                     );
                   })()}
                 </details>
+                {saveComputedError && <p role="alert" className="text-xs text-state-problem">{saveComputedError}</p>}
                 <Button variant="plain" size="none" onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
@@ -1512,13 +1556,14 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             className="w-full border rounded px-3 py-1.5 text-sm" />
           <RegistrationPicker state={reg} id="gstr3b-new-registration"
             disabled={actionInFlight} />
+          {newError && <p role="alert" className="text-xs text-state-problem">{newError}</p>}
           <div className="flex gap-2">
             <Button variant="plain" size="none" onClick={saveNew} disabled={actionInFlight || !period || !reg.choice.gstin}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {saving ? "Saving…" : "Save Draft"}
             </Button>
-            <button onClick={() => setShowNew(false)}
-              className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <button onClick={() => { setShowNew(false); setNewError(null); }} disabled={saving}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
         </div>
       )}

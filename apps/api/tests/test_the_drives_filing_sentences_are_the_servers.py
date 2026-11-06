@@ -113,3 +113,54 @@ def test_the_statutory_values_door_says_a_hole_in_the_bands_in_the_drives_words(
         put_pt_slabs(body, {"firm_id": "F1", "role": "Partner", "id": "u1"})
     assert caught.value.status_code == 422
     assert caught.value.detail == _literal("PT_UNCOVERED_SENTENCE")
+
+
+# ── the nine writes of a client's compliance pages that used to drop their answer (POST-A-391) ─────────────────────────────────────────────────────────────
+
+COMPLIANCE_ANSWERS = Path(__file__).resolve().parents[3] / "apps" / "web" / "scripts" / "drive" / "scenarios" / "complianceAnswers.mjs"
+
+
+def _compliance_literal(name: str) -> str:
+    """The text of `const NAME = "…";` in the drive module that refuses those nine writes."""
+    m = re.search(rf"const {name} = ([`\"])((?:(?!\1).)*)\1", COMPLIANCE_ANSWERS.read_text(encoding="utf-8"), re.S)
+    assert m, f"{name} is no longer written as a constant in complianceAnswers.mjs, so the drive's copy of the server's sentence cannot be compared"
+    return m.group(2)
+
+
+def test_the_mca_doors_that_change_a_row_say_what_the_drive_says_when_they_fail():
+    """A director's KYC change and a filing's status change answer a failed update with this one sentence (an HTTP 200 with success false), which the page now says above its table."""
+    import inspect
+    from routers import mca_workspace
+    sentence = _compliance_literal("MCA_COULD_NOT_SENTENCE")
+    assert sentence == _literal("MCA_COULD_NOT_SENTENCE"), "the two drive modules speak different sentences for one MCA door"
+    for door in (mca_workspace.update_director, mca_workspace.update_filing_status):
+        assert f'api_response(False, None, "{sentence}")' in inspect.getsource(door), f"{door.__name__} no longer answers a failed update with the drive's sentence"
+
+
+def test_the_compliance_drive_modules_not_found_sentence_is_the_one_the_client_check_raises():
+    """The answers the drive refuses with a status (a 404) are `assert_client_access`'s; the new module keeps its own copy of the sentence, so it is pinned to the other module's, which is pinned to the server."""
+    assert _compliance_literal("CLIENT_NOT_FOUND_SENTENCE") == _literal("CLIENT_NOT_FOUND_SENTENCE")
+
+
+def test_the_gst_doors_that_save_a_return_say_what_the_drive_says_when_they_fail():
+    """Creating a GSTR-1 or a GSTR-3B, and saving one computed from the books, go through these two doors, which answer a failure with this sentence (an HTTP 200 with success false)."""
+    import inspect
+    from routers import gst_workspace
+    sentence = _compliance_literal("GST_COULD_NOT_SENTENCE")
+    for door in (gst_workspace.save_gstr1, gst_workspace.save_gstr3b):
+        assert f'api_response(False, None, "{sentence}")' in inspect.getsource(door), f"{door.__name__} no longer answers a failure with the drive's sentence"
+
+
+def test_the_tds_doors_say_what_the_drive_says_when_a_status_change_or_a_save_fails():
+    """A TDS return's status change is worded by `_could_not`; the save of a quarter's statement (a new return, or one computed from the books) by `create_return`'s own fallback."""
+    import inspect
+    from routers.tds_workspace import _could_not, _statement_label, create_return, update_return_status
+    assert _could_not(RuntimeError("something nobody anticipated"), "update the TDS return status")["error"] == _compliance_literal("TDS_COULD_NOT_STATUS_SENTENCE")
+    # …and the status door is the one that speaks it, with that action (a hard-coded call above would pass whatever the door did)
+    assert '_could_not(e, "update the TDS return status")' in inspect.getsource(update_return_status), "update_return_status no longer answers a failure with _could_not and the action the drive speaks"
+    label = _statement_label("26Q", "2025-26")
+    drive = _compliance_literal("TDS_COULD_NOT_SAVE_SENTENCE")
+    assert drive == f"Could not save {label} for Q1 FY 2025-26. The cause has been logged; please try again, and report it if it keeps failing."
+    source = inspect.getsource(create_return)
+    for piece in ('f"Could not save {label} for {body.quarter} FY "', 'f"{body.financial_year}. The cause has been logged; please try "', 'f"again, and report it if it keeps failing."'):
+        assert piece in source, f"create_return no longer words its fallback as the drive does: {piece}"

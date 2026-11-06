@@ -295,6 +295,8 @@ function DirectorsTab({ clientId }: { clientId: string }) {
   // own where it can tell before sending. The form stays open with it.
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The answer to a KYC change (POST-A-391): it was awaited and dropped, so a refusal changed nothing on screen and looked like a button that does nothing.
+  const [kycError, setKycError] = useState<string | null>(null);
 
   function openForm() {
     // Not while it is open (the button stays on screen above it), and a form opened for a second director holds nothing of the first: it kept the typed DIN,
@@ -316,7 +318,8 @@ function DirectorsTab({ clientId }: { clientId: string }) {
     setLoading(true);
     apiFetch(`/api/mca-workspace/directors?client_id=${clientId}`)
       .then((r) => {
-        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); }
+        // A refusal of a row action is about the list as it stood: a list that has been read again (after a director was added, say) is not what it was said about.
+        if (r.success) { setRows(arrayOrEmpty(r.data)); setLoadError(null); setKycError(null); }
         else { setRows([]); setLoadError(r.error ?? "Couldn't load directors."); }
       })
       .catch(() => { setRows([]); setLoadError("Couldn't load directors. Please try again."); })
@@ -379,12 +382,23 @@ function DirectorsTab({ clientId }: { clientId: string }) {
     }
   }
 
+  // THE ANSWER IS READ (POST-A-391). It was awaited and dropped, so a refusal (the router answers one as HTTP 200 with success false, or as a 4xx) changed
+  // nothing on the screen and the KYC looked unchanged for no reason. The sentence is said above the table, where the button that raised it is.
   async function updateKYC(id: string, kyc_status: string) {
-    await apiFetch(`/api/mca-workspace/directors/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ kyc_status }),
-    });
-    load();
+    setKycError(null);
+    try {
+      const res = await apiFetch(`/api/mca-workspace/directors/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ kyc_status }),
+      });
+      if (!res?.success) {
+        setKycError(res?.error ?? "The KYC status was not changed.");
+        return;
+      }
+      load();
+    } catch (e) {
+      setKycError(e instanceof Error && e.message ? e.message : "The KYC status was not changed.");
+    }
   }
 
   return (
@@ -440,6 +454,8 @@ function DirectorsTab({ clientId }: { clientId: string }) {
           </div>
         </div>
       )}
+
+      {kycError && <p role="alert" className="text-xs text-state-problem">{kycError}</p>}
 
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
@@ -520,6 +536,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   const newRefusal = useDateRefusal(newDates.first);
   const [newError, setNewError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // The answer to a status change (POST-A-391), said above the table.
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [confirmFiling, setConfirmFiling] = useState<Record<string, unknown> | null>(null);
   const [srn, setSrn] = useState("");
   const [filingDate, setFilingDate] = useState("");
@@ -550,6 +568,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
           const all: Record<string, unknown>[] = r.data;
           setRows(all.filter((f) => f.category === category));
           setLoadError(null);
+          // A refusal of a row action is about the list as it stood: a list read again (after a filing was created, say) is not what it was said about.
+          setStatusError(null);
         } else {
           setRows([]);
           setLoadError(r.error ?? "Couldn't load filings.");
@@ -611,12 +631,22 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
     }
   }
 
+  // THE ANSWER IS READ (POST-A-391): see updateKYC.
   async function updateStatus(id: string, status: string) {
-    await apiFetch(`/api/mca-workspace/filings/${id}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, ca_approved: true }),
-    });
-    load();
+    setStatusError(null);
+    try {
+      const res = await apiFetch(`/api/mca-workspace/filings/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, ca_approved: true }),
+      });
+      if (!res?.success) {
+        setStatusError(res?.error ?? "The filing's status was not changed.");
+        return;
+      }
+      load();
+    } catch (e) {
+      setStatusError(e instanceof Error && e.message ? e.message : "The filing's status was not changed.");
+    }
   }
 
   // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: marking a filing as "filed" requires
@@ -715,6 +745,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
           </div>
         </div>
       )}
+
+      {statusError && <p role="alert" className="text-xs text-state-problem">{statusError}</p>}
 
       {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">

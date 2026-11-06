@@ -556,6 +556,12 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const [computeResult, setComputeResult] = useState<Record<string, unknown> | null>(null);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [savingComputed, setSavingComputed] = useState(false);
+  // THE ANSWERS ARE READ (POST-A-391). The three writes of this tab were awaited and dropped, so a refusal closed the form, closed the dialog or changed nothing, and looked like a
+  // button that does nothing or, worse, like a statement that was saved. Each sentence is said where the button that raised it is.
+  const [newError, setNewError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [saveComputedError, setSaveComputedError] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -564,28 +570,59 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const load = useCallback(() => {
     setLoading(true);
     loadTdsWindow(clientId, "returns")
-      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); })
+      // A refusal of a row action is about the list as it stood: a list read again (after a return was created, say) is not what it was said about.
+      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); setStatusError(null); })
       .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS returns. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
 
   useEffect(() => { load(); }, [load]);
 
+  // The three boxes that choose WHICH statement is computed (the form, the quarter, the year). A result on the screen was computed for the old choice, and saving it
+  // under the new one stored a 26Q's figures as a 24Q statement (found by the independent read of POST-A-391): a change empties it, and the boxes are held while a
+  // compute or a save is out, so a late answer cannot land on a choice it was not computed for.
+  function chooseStatement(patch: Partial<typeof computeForm>) {
+    setComputeForm((f) => ({ ...f, ...patch }));
+    setComputeResult(null);
+    setSaveComputedError(null);
+  }
+
   async function saveNew() {
-    await apiFetch("/api/tds-workspace/returns", {
-      method: "POST",
-      body: JSON.stringify({ ...form, client_id: clientId }),
-    });
-    setShowNew(false);
-    load();
+    setNewError(null);
+    setCreating(true);
+    try {
+      const res = await apiFetch("/api/tds-workspace/returns", {
+        method: "POST",
+        body: JSON.stringify({ ...form, client_id: clientId }),
+      });
+      if (!res?.success) {
+        setNewError(res?.error ?? "The return was not created.");
+        return;
+      }
+      setShowNew(false);
+      load();
+    } catch (e) {
+      setNewError(e instanceof Error && e.message ? e.message : "The return was not created.");
+    } finally {
+      setCreating(false);
+    }
   }
 
   async function updateStatus(id: string, status: string) {
-    await apiFetch(`/api/tds-workspace/returns/${id}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, ca_approved: true }),
-    });
-    load();
+    setStatusError(null);
+    try {
+      const res = await apiFetch(`/api/tds-workspace/returns/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, ca_approved: true }),
+      });
+      if (!res?.success) {
+        setStatusError(res?.error ?? "The return's status was not changed.");
+        return;
+      }
+      load();
+    } catch (e) {
+      setStatusError(e instanceof Error && e.message ? e.message : "The return's status was not changed.");
+    }
   }
 
   // IT Act §194 series (26Q) / §192 (24Q) — derived ENTIRELY from posted
@@ -598,6 +635,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);
+    setSaveComputedError(null);
     // One endpoint per statement, chosen by what the CA picked — never by the
     // browser inspecting the books. Rule 31A(4) routes a deduction by the
     // PAYEE's residency, and the server decides that from the vendor master.
@@ -625,26 +663,37 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   async function saveComputed() {
     if (!computeResult) return;
     setSavingComputed(true);
+    setSaveComputedError(null);
     const d = computeResult;
-    await apiFetch("/api/tds-workspace/returns", {
-      method: "POST",
-      body: JSON.stringify({
-        client_id: clientId,
-        return_type: computeForm.return_type,
-        quarter: d.quarter,
-        financial_year: d.financial_year,
-        deductee_details: d.deductees,
-        total_deductions_paise: d.total_tds_deducted_paise,
-        total_deposits_paise: d.total_tds_deposited_paise,
-        deductee_count: d.deductee_count,
-        validation_errors: d.validation_errors,
-      }),
-    });
-    setSavingComputed(false);
-    setShowCompute(false);
-    setComputeResult(null);
-    setComputeError(null);
-    load();
+    try {
+      const res = await apiFetch("/api/tds-workspace/returns", {
+        method: "POST",
+        body: JSON.stringify({
+          client_id: clientId,
+          return_type: computeForm.return_type,
+          quarter: d.quarter,
+          financial_year: d.financial_year,
+          deductee_details: d.deductees,
+          total_deductions_paise: d.total_tds_deducted_paise,
+          total_deposits_paise: d.total_tds_deposited_paise,
+          deductee_count: d.deductee_count,
+          validation_errors: d.validation_errors,
+        }),
+      });
+      if (!res?.success) {
+        // The dialog stays open with the computed statement in it: closing on a refusal lost it and read as a statement that was saved.
+        setSaveComputedError(res?.error ?? "The statement was not saved.");
+        return;
+      }
+      setShowCompute(false);
+      setComputeResult(null);
+      setComputeError(null);
+      load();
+    } catch (e) {
+      setSaveComputedError(e instanceof Error && e.message ? e.message : "The statement was not saved.");
+    } finally {
+      setSavingComputed(false);
+    }
   }
 
   return (
@@ -676,19 +725,19 @@ function ReturnsTab({ clientId }: { clientId: string }) {
             General Ledger.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <select aria-label="Return type" value={computeForm.return_type} onChange={(e) => setComputeForm((f) => ({ ...f, return_type: e.target.value }))}
-              className="border rounded px-3 py-1.5 text-sm">
+            <select aria-label="Return type" value={computeForm.return_type} onChange={(e) => chooseStatement({ return_type: e.target.value })} disabled={actionInFlight}
+              className="border rounded px-3 py-1.5 text-sm disabled:opacity-50">
               <option value="26Q">26Q — Vendor / Non-Salary (residents)</option>
               <option value="27Q">27Q — Payments to Non-Residents</option>
               <option value="24Q">24Q — Salary</option>
             </select>
-            <select aria-label="Quarter" value={computeForm.quarter} onChange={(e) => setComputeForm((f) => ({ ...f, quarter: e.target.value }))}
-              className="border rounded px-3 py-1.5 text-sm">
+            <select aria-label="Quarter" value={computeForm.quarter} onChange={(e) => chooseStatement({ quarter: e.target.value })} disabled={actionInFlight}
+              className="border rounded px-3 py-1.5 text-sm disabled:opacity-50">
               {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q}>{q}</option>)}
             </select>
-            <input placeholder="FY (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={computeForm.financial_year}
-              onChange={(e) => setComputeForm((f) => ({ ...f, financial_year: e.target.value }))}
-              className="border rounded px-3 py-1.5 text-sm" />
+            <input placeholder="FY (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={computeForm.financial_year} disabled={actionInFlight}
+              onChange={(e) => chooseStatement({ financial_year: e.target.value })}
+              className="border rounded px-3 py-1.5 text-sm disabled:opacity-50" />
             <input placeholder="TAN (10 chars)" aria-label="TAN (10 characters)" value={computeForm.tan}
               onChange={(e) => setComputeForm((f) => ({ ...f, tan: e.target.value.toUpperCase() }))}
               className="border rounded px-3 py-1.5 text-sm font-mono" />
@@ -721,8 +770,8 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
               {computing ? "Computing…" : "Compute"}
             </Button>
-            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); }}
-              className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setSaveComputedError(null); }} disabled={savingComputed}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
 
           {computeResult && (() => {
@@ -811,6 +860,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                     ))}
                   </div>
                 )}
+                {saveComputedError && <p role="alert" className="text-xs text-state-problem">{saveComputedError}</p>}
                 <Button variant="plain" size="none" onClick={saveComputed} disabled={actionInFlight}
                   className="px-3 py-1 bg-state-ready-solid text-white rounded text-sm disabled:opacity-50">
                   {savingComputed ? "Saving…" : "Save as Draft"}
@@ -837,13 +887,15 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               onChange={(e) => setForm((f) => ({ ...f, financial_year: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
+          {newError && <p role="alert" className="text-xs text-state-problem">{newError}</p>}
           <div className="flex gap-2">
-            <Button variant="plain" size="none" onClick={saveNew} className="px-3 py-1 bg-brand text-white rounded text-sm">Save</Button>
-            <button onClick={() => setShowNew(false)} className="px-3 py-1 border rounded text-sm">Cancel</button>
+            <Button variant="plain" size="none" onClick={saveNew} disabled={creating} className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">{creating ? "Saving…" : "Save"}</Button>
+            <button onClick={() => { setShowNew(false); setNewError(null); }} disabled={creating} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
         </div>
       )}
 
+      {statusError && <p role="alert" className="text-xs text-state-problem">{statusError}</p>}
       <ListWindowNotice hasMore={more} what={`the latest ${rows.length} returns`} limit={rows.length} maxLimit={rows.length} />
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">
