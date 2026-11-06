@@ -21,12 +21,13 @@ import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { YearPicker } from "@/components/ui/year-picker";
 import {
-  computeReturnFromBooks, approveTDSReturn, markTDSFiled,
+  computeReturnFromBooks, approveTDSReturn, markTDSFiled, StatementIncompleteError,
   saveTDSReturn, downloadTDSJSON, currentFinancialYear, currentQuarter,
   type TDSReturnPayload, type TDSReturnStatus, type TDSQuarter, type TDSReturnType,
   type TDSDeductee,
 } from "@/lib/data/tds";
 import { Callout, GapList } from "@/components/ui/callout";
+import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
@@ -97,10 +98,12 @@ export default function TDSReturnsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [approving, setApproving] = useState(false);
+  // The request that records the statement as filed is out (the Mark as Filed dialog is held while it is).
+  const [filing, setFiling] = useState(false);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
-  const actionInFlight = approving || loading;
+  const actionInFlight = approving || loading || filing;
   const [showFiledModal, setShowFiledModal] = useState(false);
   const [prn, setPrn] = useState("");
   const [ackNumber, setAckNumber] = useState("");
@@ -112,6 +115,10 @@ export default function TDSReturnsPage() {
   const [calendarNote, setCalendarNote] = useState<string | null>(null);
   // A refusal of THIS dialog is shown in the dialog: the page's own error callout sits under the backdrop while it is open.
   const [filedError, setFiledError] = useState<string | null>(null);
+  // The server held the statement back as incomplete and said the CA may record it anyway (POST-A-402). The flag goes out only on the CA's second press.
+  // The question names the statement it was asked about and is drawn only while that statement is the one on screen: a refusal that arrives after the CA
+  // has changed the client, the form, the year or the quarter is about a statement that is gone.
+  const [heldBack, setHeldBack] = useState<{ kind: "approve" | "filed"; sentence: string; returnId: string } | null>(null);
 
   const [tab, setTab] = useState<"summary" | "deductees" | "challans" | "keying" | "json">("summary");
 
@@ -140,9 +147,16 @@ export default function TDSReturnsPage() {
     setShowDemo(false);
     setShowFiledModal(false);
     setPrn(""); setAckNumber(""); setFilingDate(""); setFiledError(null);
+    setHeldBack(null);
     setCalendarNote(null);
     setError(null);
   }, [clientId, returnType, financialYear, quarter]);
+
+  // What the filing question would record is what was typed in the dialog: when the PRN, the acknowledgement or the date changes the question is no
+  // longer about it, and the CA presses Confirm Filed again (which asks again if the statement is still held back).
+  useEffect(() => {
+    setHeldBack((h) => (h?.kind === "filed" ? null : h));
+  }, [prn, ackNumber, filingDate]);
 
   // THE SERVER BUILDS THE RETURN, FROM THE POSTED BOOKS.
   //
@@ -172,6 +186,7 @@ export default function TDSReturnsPage() {
   // offered for the next, and the date is the field the server refuses to have defaulted.
   function clearTheFiledDialog() {
     setPrn(""); setAckNumber(""); setFilingDate(""); setFiledError(null);
+    setHeldBack(null);                    // a question about the last statement is not one about the next (POST-A-402)
   }
 
   function openFiledModal() {
@@ -201,32 +216,49 @@ export default function TDSReturnsPage() {
     }
   }
 
-  async function handleApprove() {
+  // The two buttons call these with NO argument: the shared Button hands its click to a handler, and a handler that took "record it anyway"
+  // as its first parameter would be sent the click, which is truthy. The override has its own functions below.
+  async function handleApprove() { await approveStatement(false); }
+
+  async function approveStatement(recordAnyway: boolean) {
     if (!returnId) return;
+    const asked = returnId;
     setApproving(true);
+    setHeldBack(null);
+    setError(null);
     try {
-      await approveTDSReturn(returnId);
+      await approveTDSReturn(asked, recordAnyway);
       setFilingStatus("ca_approved");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Approval failed");
+      // A statement the product holds back as incomplete is ASKED about, not shown as a failure: the CA records it anyway or leaves it.
+      if (e instanceof StatementIncompleteError) setHeldBack({ kind: "approve", sentence: e.message, returnId: asked });
+      else setError(e instanceof Error ? e.message : "Approval failed");
     } finally {
       setApproving(false);
     }
   }
 
-  async function handleMarkFiled() {
+  async function handleMarkFiled() { await markFiled(false); }
+
+  async function markFiled(recordAnyway: boolean) {
     if (!returnId || !prn || !filingDate) return;
     if (dates.first) { setFiledError(dates.first); return; }
+    const asked = returnId;
     setFiledError(null);
+    setHeldBack(null);
+    setFiling(true);
     try {
-      const { calendarNote: note } = await markTDSFiled(returnId, prn, ackNumber, filingDate);
+      const { calendarNote: note } = await markTDSFiled(asked, prn, ackNumber, filingDate, recordAnyway);
       setCalendarNote(note);
       setFilingStatus("filed");
       setError(null);
       setShowFiledModal(false);
       clearTheFiledDialog();
     } catch (e) {
+      if (e instanceof StatementIncompleteError) { setHeldBack({ kind: "filed", sentence: e.message, returnId: asked }); return; }
       setFiledError(e instanceof Error ? e.message : "Failed to mark as filed");
+    } finally {
+      setFiling(false);
     }
   }
 
@@ -655,6 +687,12 @@ export default function TDSReturnsPage() {
             </div>
           </div>
 
+          {/* The approval question, beside the buttons it answers: at the top of the page it was off screen once the CA had pressed CA Approve at the foot of a long statement. */}
+          {heldBack?.kind === "approve" && heldBack.returnId === returnId && (
+            <RecordAnywayAsk sentence={heldBack.sentence} what="CA approved" busy={actionInFlight}
+              onConfirm={() => approveStatement(true)} onLeave={() => setHeldBack(null)} />
+          )}
+
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
             {(filingStatus === "prepared") && (
@@ -693,8 +731,8 @@ export default function TDSReturnsPage() {
       {/* Mark as Filed Modal */}
       {showFiledModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-brand-dark/60" onClick={() => setShowFiledModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4">
+          <div className="absolute inset-0 bg-brand-dark/60" onClick={() => { if (!filing) setShowFiledModal(false); }} />
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-semibold text-ps-ink">Mark {returnType} as Filed</h3>
             <p className="text-sm text-ps-label">Enter the details from the e-filing portal acknowledgement after successful upload on incometax.gov.in.</p>
             <div>
@@ -716,12 +754,16 @@ export default function TDSReturnsPage() {
               <p className="mt-1 text-3xs text-ps-label">The date on the portal&apos;s receipt, not today&apos;s date unless that is the day you filed.</p>
             </div>
             {filedError && <Callout tone="problem">{filedError}</Callout>}
+            {heldBack?.kind === "filed" && heldBack.returnId === returnId && (
+              <RecordAnywayAsk sentence={heldBack.sentence} what="filed" busy={filing}
+                onConfirm={() => markFiled(true)} onLeave={() => setHeldBack(null)} />
+            )}
             <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowFiledModal(false)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg">
+              <button onClick={() => setShowFiledModal(false)} disabled={filing}
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-ps-body hover:bg-ps-bg disabled:opacity-50">
                 Cancel
               </button>
-              <Button variant="plain" size="none" onClick={handleMarkFiled} disabled={!prn || !filingDate}
+              <Button variant="plain" size="none" onClick={handleMarkFiled} disabled={!prn || !filingDate || filing}
                 className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
                 Confirm Filed
               </Button>

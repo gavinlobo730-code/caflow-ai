@@ -915,27 +915,50 @@ export async function getTDSReturns(clientId: string): Promise<TDSReturn[]> {
  * enforces the explicit CA-confirmation gate, requires a PRN before "filed",
  * and records an audit-log entry + timeline event that a direct Supabase
  * write from here would silently skip. */
-export async function approveTDSReturn(returnId: string): Promise<void> {
+export async function approveTDSReturn(returnId: string, recordAnyway = false): Promise<void> {
   const resp = await authedFetch(`/api/tds-workspace/returns/${returnId}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status: "ca_approved", ca_approved: true }),
+    body: JSON.stringify({ status: "ca_approved", ca_approved: true, ...(recordAnyway ? { acknowledge_incomplete: true } : {}) }),
   });
-  if (!resp.success) throw new Error(resp.error ?? "Approval failed");
+  if (!resp.success) throw refusalOf(resp, "Approval failed");
+}
+
+/** The server holds a statement back as incomplete (no deductees recorded, or its quarter not yet over) and says the CA may record
+ *  it anyway (POST-A-402). `message` is the server's own sentence. Nothing is sent again until the CA presses "Record it anyway",
+ *  which calls the same function with `recordAnyway`; the flag is never sent on a first press and never by the code itself. */
+export class StatementIncompleteError extends Error {
+  readonly problems: string[];
+  constructor(sentence: string, problems: string[]) {
+    super(sentence);
+    this.name = "StatementIncompleteError";
+    this.problems = problems;
+  }
+}
+
+/** The error for a refused status change: the typed one where the answer carries the marker that the CA may record over it, else
+ *  the server's sentence as a plain error. */
+function refusalOf(resp: { error?: string | null; data?: unknown }, fallback: string): Error {
+  const marker = resp.data as { can_record_anyway?: unknown; incomplete?: unknown } | null | undefined;
+  if (marker?.can_record_anyway === true && typeof resp.error === "string" && resp.error) {
+    return new StatementIncompleteError(resp.error, Array.isArray(marker.incomplete) ? marker.incomplete.map(String) : []);
+  }
+  return new Error(resp.error ?? fallback);
 }
 
 /** Record the statement as filed, on the day the CA states (YYYY-MM-DD, the date on the portal's receipt). The server
  *  requires it and never defaults it, closes the calendar's obligation for the quarter itself, and answers with what
  *  became of it; the caller shows `obligationNote` of the returned data and decides nothing. */
 export async function markTDSFiled(
-  returnId: string, prn: string, ackNumber: string, filingDate: string,
+  returnId: string, prn: string, ackNumber: string, filingDate: string, recordAnyway = false,
 ): Promise<{ calendarNote: string | null }> {
   const resp = await authedFetch(`/api/tds-workspace/returns/${returnId}/status`, {
     method: "PATCH",
     body: JSON.stringify({
       status: "filed", ca_approved: true, prn, ack_number: ackNumber || null, filing_date: filingDate,
+      ...(recordAnyway ? { acknowledge_incomplete: true } : {}),
     }),
   });
-  if (!resp.success) throw new Error(resp.error ?? "Failed to mark as filed");
+  if (!resp.success) throw refusalOf(resp, "Failed to mark as filed");
   return { calendarNote: obligationNote(resp.data) };
 }
 

@@ -16,18 +16,21 @@ import pytest
 from routers.tds_workspace import UpdateReturnStatusRequest, _why_this_status_cannot_be_recorded
 from services.gst_filing_record_service import FILING_TYPE_GSTR1, FILING_TYPE_GSTR3B, FiledDateRefused, checked_filed_date
 
-DRIVE = Path(__file__).resolve().parents[3] / "apps" / "web" / "scripts" / "drive" / "scenarios" / "dates.mjs"
+SCENARIOS = Path(__file__).resolve().parents[3] / "apps" / "web" / "scripts" / "drive" / "scenarios"
+DRIVE = SCENARIOS / "dates.mjs"
+#: The drive of the statement the product holds back (POST-A-402) speaks the status door's sentences too.
+HELD_BACK_DRIVE = SCENARIOS / "heldBackStatement.mjs"
 
 
-def _text() -> str:
-    return DRIVE.read_text(encoding="utf-8")
+def _text(path: Path = DRIVE) -> str:
+    return path.read_text(encoding="utf-8")
 
 
-def _literal(name: str, params: str = "") -> str:
+def _literal(name: str, params: str = "", path: Path = DRIVE) -> str:
     """The text of `const NAME = <params> => `…`;` or `const NAME = "…";` in the drive."""
     arrow = rf"\({params}\) => " if params else ""
-    m = re.search(rf"const {name} = {arrow}([`\"])((?:(?!\1).)*)\1", _text(), re.S)
-    assert m, f"{name} is no longer written as a constant in dates.mjs, so the drive's copy of the server's sentence cannot be compared"
+    m = re.search(rf"const {name} = {arrow}([`\"])((?:(?!\1).)*)\1", _text(path), re.S)
+    assert m, f"{name} is no longer written as a constant in {path.name}, so the drive's copy of the server's sentence cannot be compared"
     return m.group(2)
 
 
@@ -164,3 +167,23 @@ def test_the_tds_doors_say_what_the_drive_says_when_a_status_change_or_a_save_fa
     source = inspect.getsource(create_return)
     for piece in ('f"Could not save {label} for {body.quarter} FY "', 'f"{body.financial_year}. The cause has been logged; please try "', 'f"again, and report it if it keeps failing."'):
         assert piece in source, f"create_return no longer words its fallback as the drive does: {piece}"
+
+
+def test_the_held_back_statement_sentences_and_marker_are_what_the_tds_door_says():
+    """The drive of the statement the product holds back (heldBackStatement.mjs) has its stub answer the first press in the status door's words and with its marker, and its rows wait
+    for those words on the screen: a reworded sentence or a changed marker would leave the stub and the rows green and the drive would be testing an answer no server gives."""
+    from routers.tds_workspace import _the_refusal
+    current = {"status": "prepared", "deductee_count": 0, "quarter_end": "2025-06-30", "quarter": "Q1", "financial_year": "2025-26"}
+    approval = _the_refusal(UpdateReturnStatusRequest(status="ca_approved", ca_approved=True), current, None)
+    assert approval.sentence == _literal("HELD_BACK_APPROVAL", path=HELD_BACK_DRIVE)
+    filing = _the_refusal(UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="PRN0000000001", filing_date="2026-10-07"),
+                          {**current, "status": "ca_approved"}, "2026-10-07")
+    assert filing.sentence == _literal("HELD_BACK_FILING", path=HELD_BACK_DRIVE)
+    # the marker, as the drive writes it: `{ can_record_anyway: true, incomplete: ["…"] }`
+    drive_marker = re.search(r"const MARKER = \{ can_record_anyway: true, incomplete: \[(?P<items>[^\]]*)\] \};", _text(HELD_BACK_DRIVE))
+    assert drive_marker, "the drive no longer writes the marker as `{ can_record_anyway: true, incomplete: [...] }`"
+    drive_items = re.findall(r'"([^"]*)"', drive_marker.group("items"))
+    assert approval.marker() == {"can_record_anyway": True, "incomplete": drive_items}
+    # …and a refusal that offers no way on has no marker at all, which is what the drive's ALREADY_FILED stub answers
+    already = _the_refusal(UpdateReturnStatusRequest(status="filed", ca_approved=True, prn="1", filing_date="2026-10-07"), {**current, "status": "filed"}, "2026-10-07")
+    assert already.sentence == _literal("ALREADY_FILED", path=HELD_BACK_DRIVE) and already.marker() is None

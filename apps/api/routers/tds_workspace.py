@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import uuid
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Annotated, Literal, Optional
 
@@ -393,7 +394,10 @@ class UpdateReturnStatusRequest(BaseModel):
     # has ended, is refused by default (see update_return_status). This is the
     # deliberate override — the same shape as gst_workspace.py's
     # `acknowledge_stale` — never defaulted true and never settable by
-    # omission, because the whole point is that the refusal is seen first.
+    # omission, because the whole point is that the refusal is seen first. The
+    # web app sends it only from the "Record it anyway" step it offers after
+    # that refusal (the answer carries `can_record_anyway`), and the audit log
+    # keeps what the statement was recorded over (POST-A-402).
     acknowledge_incomplete: bool = False
 
     @field_validator("prn", "ack_number")
@@ -1642,9 +1646,45 @@ def _the_filing_date(body: UpdateReturnStatusRequest) -> tuple[Optional[str], Op
         return None, f"{str(refusal).replace('filed_date', 'filing_date')}. Enter the date on the portal's receipt."
 
 
+@dataclass(frozen=True)
+class _Refusal:
+    """Why a status change is not recorded: the sentence for the CA, and, when the CA may knowingly record the statement over it
+    (`acknowledge_incomplete`), what is incomplete about it. An empty `incomplete` is a refusal nothing may be recorded over."""
+    sentence: str
+    incomplete: tuple[str, ...] = ()
+
+    def marker(self) -> Optional[dict]:
+        """What the answer carries beside the sentence so a screen can offer the CA's own second confirmation (POST-A-402), or
+        None for a refusal that offers none. The flag itself is never sent for the CA."""
+        return {"can_record_anyway": True, "incomplete": list(self.incomplete)} if self.incomplete else None
+
+
+def _the_quarter_has_not_ended(current: dict) -> Optional[str]:
+    """The day the statement's quarter ends, when that day is still to come (the Indian day), else None."""
+    quarter_end = str(current.get("quarter_end") or "")[:10]
+    return quarter_end if quarter_end and quarter_end > ist_today().isoformat() else None
+
+
+def _what_is_incomplete(current: dict) -> list[str]:
+    """What is incomplete about the stored statement, as phrases a sentence joins: no deductees recorded, its quarter not over."""
+    problems = []
+    if (current.get("deductee_count") or 0) == 0:
+        problems.append("it has no deductees recorded")
+    still_to_come = _the_quarter_has_not_ended(current)
+    if still_to_come:
+        problems.append(f"its quarter has not ended yet (ends {still_to_come})")
+    return problems
+
+
 def _why_this_status_cannot_be_recorded(body: UpdateReturnStatusRequest, current: dict,
                                         filed_on: Optional[str]) -> Optional[str]:
-    """The sentence for why this request cannot be recorded against the statement as it stands, or None.
+    """The sentence for why this request cannot be recorded against the statement as it stands, or None (`_the_refusal` has the rest)."""
+    refusal = _the_refusal(body, current, filed_on)
+    return refusal.sentence if refusal else None
+
+
+def _the_refusal(body: UpdateReturnStatusRequest, current: dict, filed_on: Optional[str]) -> Optional[_Refusal]:
+    """Why this request cannot be recorded against the statement as it stands, or None.
 
     It reads the request, the stored row, the date already judged by `_the_filing_date` and the clock (the quarter has to
     have ended), and decides nothing else, so every refusal is testable without a store.
@@ -1654,20 +1694,33 @@ def _why_this_status_cannot_be_recorded(body: UpdateReturnStatusRequest, current
     # request (double-click, retry) must not silently overwrite the
     # original PRN/acknowledgement with a second one.
     if body.status == "filed" and current_status == "filed":
-        return "This return has already been filed."
+        return _Refusal("This return has already been filed.")
     # AND A FILED STATEMENT DOES NOT GO BACK. `_revise_tds_return` already says so for a recompute ("a correction is
     # a correction statement on TRACES, not a recompute here"); this door let the same row be moved to pending or
     # prepared, which left a PRN and a filing date on a statement the screen then called unfiled.
     if current_status in _TDS_RETURN_FURNISHED:
         prn = current.get("prn")
-        return (f"This return was filed{f' (PRN {prn})' if prn else ''} and its status cannot be changed here. A "
-                "correction is a correction statement on TRACES, not a status change.")
+        return _Refusal(f"This return was filed{f' (PRN {prn})' if prn else ''} and its status cannot be changed here. A "
+                        "correction is a correction statement on TRACES, not a status change.")
     # AND A STATEMENT IS FILED FROM CA APPROVED. The screen offers "Mark as Filed" only there, but the door took a
     # pending or prepared statement straight to filed on the strength of the request's own `ca_approved` flag, so a
     # filed statement could carry no approver and no approval time at all.
     if body.status == "filed" and current_status != "ca_approved":
-        return (f"This return is {str(current_status or 'pending').replace('_', ' ')}. A statement is marked filed "
-                "from CA approved, so that the approval is on record: approve it first.")
+        return _Refusal(f"This return is {str(current_status or 'pending').replace('_', ' ')}. A statement is marked filed "
+                        "from CA approved, so that the approval is on record: approve it first.")
+
+    # A STATEMENT CANNOT HAVE BEEN FILED BEFORE THE QUARTER IT REPORTS ON HAD ENDED: the rule the calendar applies to the obligation
+    # (`mark_filed` refuses a date earlier than the period's end), applied to the date the CA typed BEFORE it is stored, so the two cannot
+    # disagree about it. It is asked of every filing whose quarter HAS ended, ahead of the question below and whatever the flag says (found
+    # by the independent read of POST-A-402): the CA's confirmation is for the statement the product holds back, and it was also waiving
+    # this, so two presses on a statement with no deductees recorded a filing dated before its quarter ended, which cannot be moved back. The
+    # flag waives it for ONE case only, a quarter that has not ended: then every date is before its end, and that is exactly what the CA
+    # has been told and has confirmed.
+    quarter_end = str(current.get("quarter_end") or "")[:10]
+    if (body.status == "filed" and quarter_end and filed_on and filed_on < quarter_end
+            and not _the_quarter_has_not_ended(current)):
+        return _Refusal(f"A statement for {current.get('quarter')} FY {current.get('financial_year')} cannot have been "
+                        f"filed before the quarter ended on {quarter_end}. Check the date on the receipt.")
 
     # A statement with no deductees, or whose own quarter has not yet
     # ended, is approved or filed on facts that cannot be right — a Q2
@@ -1676,23 +1729,19 @@ def _why_this_status_cannot_be_recorded(body: UpdateReturnStatusRequest, current
     # save_gstr3b's staleness check in gst_workspace.py: refused unless
     # the CA explicitly names the override, rather than silently allowed
     # or unconditionally blocked.
+    #
+    # THE SENTENCE IS FOR A PERSON, AND THE WAY ON IS A SECOND CONFIRMATION THEY GIVE (POST-A-402). It used to end "Resubmit
+    # with acknowledge_incomplete=true to record it anyway", an instruction no screen could follow: nothing in the web app
+    # sent the flag, so a CA who had filed a statement on the portal that this product held no deductees for (a shell made
+    # with "New Return", or a quarter whose books are kept elsewhere) could not record that it was filed. The answer now
+    # carries `marker()` and the screen offers "Record it anyway", which sends the flag once the CA has pressed it, never by
+    # itself and never on a first press.
     if body.status in ("ca_approved", "filed") and not body.acknowledge_incomplete:
-        problems = []
-        if (current.get("deductee_count") or 0) == 0:
-            problems.append("it has no deductees recorded")
-        quarter_end = str(current.get("quarter_end") or "")[:10]
-        if quarter_end and quarter_end > ist_today().isoformat():
-            problems.append(f"its quarter has not ended yet (ends {quarter_end})")
+        problems = _what_is_incomplete(current)
         if problems:
-            return (f"This return cannot be {body.status.replace('_', ' ')} because " + " and ".join(problems)
-                    + ". Resubmit with acknowledge_incomplete=true to record it anyway.")
-        # A statement cannot have been filed before the quarter it reports on had ended: the rule the calendar applies
-        # to the obligation (`mark_filed` refuses a date earlier than the period's end), applied to the date the CA
-        # typed BEFORE it is stored, so the two cannot disagree about it. Skipped under the override, which exists to
-        # record a statement the product would otherwise hold back.
-        if body.status == "filed" and quarter_end and filed_on < quarter_end:
-            return (f"A statement for {current.get('quarter')} FY {current.get('financial_year')} cannot have been "
-                    f"filed before the quarter ended on {quarter_end}. Check the date on the receipt.")
+            what = "CA approved" if body.status == "ca_approved" else "filed"
+            return _Refusal(f"This return cannot be recorded as {what} because " + " and ".join(problems) + ".",
+                            tuple(problems))
     return None
 
 
@@ -1740,10 +1789,10 @@ def update_return_status(
 
         # IT Act §200/§203: only Manager+ can approve/file a TDS return —
         # ca_approved=true alone is a caller-supplied flag, not proof of role.
+        # Asked of the PERSON (`can_user`: a per-person row wins, the role decides where there is none), not of the role template: a Manager whose
+        # approval of TDS the Team grid switched off still approved, filed and could record over a refusal, and an Executive it had granted it to could not.
         if body.status in ("ca_approved", "filed"):
-            from core.permissions import can
-            role = current_user.get("role", "executive")
-            if not can(role, "tds", "approve"):
+            if not can_user(current_user, "tds", "approve"):
                 return api_response(False, None,
                     "Only Manager or above can approve or file a TDS return.")
 
@@ -1773,9 +1822,9 @@ def update_return_status(
         current = _visible_or_none(current_user, current)
         if current is None:
             return api_response(False, None, "Not found")
-        refusal = _why_this_status_cannot_be_recorded(body, current, filed_on)
+        refusal = _the_refusal(body, current, filed_on)
         if refusal:
-            return api_response(False, None, refusal)
+            return api_response(False, refusal.marker(), refusal.sentence)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         update_payload: dict = {"status": body.status}
@@ -1808,8 +1857,14 @@ def update_return_status(
                     "meantime, or your access does not let you change it. Nothing was changed.")
             rec = rows[0]
 
+        # THE OVERRIDE IS WRITTEN TO THE AUDIT LOG (POST-A-402): a statement recorded over what was incomplete about it says so, with what it
+        # was, so "approved" is never read as "approved complete". `log_event` never raises (a failed insert is logged at error level, not
+        # reported to the person), as for every other audited change.
+        recorded_over = (_what_is_incomplete(current)
+                         if body.acknowledge_incomplete and body.status in ("ca_approved", "filed") else [])
         log_event(firm_id, "tds_return", return_id, "status_change",
-                  actor_id=current_user.get("auth_user_id"), new_data={"status": body.status})
+                  actor_id=current_user.get("auth_user_id"),
+                  new_data={"status": body.status, **({"recorded_over": recorded_over} if recorded_over else {})})
         if body.status == "filed":
             timeline_service.log_timeline_event(
                 client_id=rec.get("client_id", ""), firm_id=firm_id,

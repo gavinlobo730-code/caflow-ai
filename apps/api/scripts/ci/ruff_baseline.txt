@@ -403,7 +403,7 @@ routers/vendors.py :: B007 :: create_vendors_bulk :: 1
 routers/vendors.py :: B905 :: create_vendors_bulk :: 1
 routers/vendors.py :: C901 :: create_vendor :: 17
 routers/vendors.py :: C901 :: create_vendors_bulk :: 26
-routers/vendors.py :: PLR0915 :: create_vendors_bulk :: 94
+routers/vendors.py :: PLR0915 :: create_vendors_bulk :: 93
 routers/workflow_builder.py :: B006 :: manually_trigger :: 1
 routers/workflow_builder.py :: F841 :: list_approvals :: 1
 routers/workload.py :: F401 :: <module> :: 2

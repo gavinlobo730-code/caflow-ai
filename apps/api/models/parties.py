@@ -495,7 +495,11 @@ class VendorIn(BaseModel):
     no_pe_declaration_on_file: bool = False
     # Who obtained the declaration and when — s.201(1)/(1A) put the consequence
     # of a wrong nil on the DEDUCTOR, so an undated one is a claim with no
-    # evidence behind it and the register reports it (migration 311).
+    # evidence behind it and the register reports it (migration 311). The
+    # WHEN and the reference are fields of this model; the WHO is not: the
+    # server names the member whose save recorded the declaration
+    # (`no_pe_declaration_by`, domain/tds/no_pe_declaration.py), because a name
+    # a caller could send would be a name anyone could put on it (POST-A-401).
     no_pe_declaration_on: Optional[str] = None
     no_pe_declaration_ref: Optional[str] = None
     treaty_rate_bps: Optional[int] = None

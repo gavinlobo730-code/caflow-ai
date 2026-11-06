@@ -364,13 +364,16 @@ type TheNine = {
   flag: string | null;
   /** Where the sentence is drawn: above the table (a row action), inside the create form, inside the compute dialog. */
   where: Where;
+  /** True for the one write whose refusal may be a QUESTION and not a failure (POST-A-402): the refusal branch may begin with the server's marker that the
+   *  CA can record the statement anyway, which sets the question and returns, before the sentence is said. Nothing else may come first. */
+  heldBack?: true;
 };
 /** The nine, each by the tab that holds it, the call it makes and the line it says a refusal on. `says` is the state that sentence is held in and `shown` how the screen draws it. */
 const THE_NINE: TheNine[] = [
   { file: MCA, component: "DirectorsTab", fn: "updateKYC", call: /apiFetch\(`\/api\/mca-workspace\/directors\/\$\{id\}`/, says: "setKycError", shown: "kycError", what: "a director's KYC change", flag: null, where: "row" },
   { file: MCA, component: "FilingsTab", fn: "updateStatus", call: /apiFetch\(`\/api\/mca-workspace\/filings\/\$\{id\}\/status`/, says: "setStatusError", shown: "statusError", what: "a filing's status change", flag: null, where: "row" },
   { file: TDS, component: "ReturnsTab", fn: "saveNew", call: /apiFetch\("\/api\/tds-workspace\/returns"/, says: "setNewError", shown: "newError", what: "the creation of a TDS return", flag: "creating", where: "form" },
-  { file: TDS, component: "ReturnsTab", fn: "updateStatus", call: /apiFetch\(`\/api\/tds-workspace\/returns\/\$\{id\}\/status`/, says: "setStatusError", shown: "statusError", what: "a TDS return's status change", flag: null, where: "row" },
+  { file: TDS, component: "ReturnsTab", fn: "updateStatus", call: /apiFetch\(`\/api\/tds-workspace\/returns\/\$\{id\}\/status`/, says: "setStatusError", shown: "statusError", what: "a TDS return's status change", flag: null, where: "row", heldBack: true },
   { file: TDS, component: "ReturnsTab", fn: "saveComputed", call: /apiFetch\("\/api\/tds-workspace\/returns"/, says: "setSaveComputedError", shown: "saveComputedError", what: "the save of a TDS statement computed from the books", flag: "savingComputed", where: "compute" },
   { file: GST, component: "GSTR1Tab", fn: "saveNew", call: /apiFetch\("\/api\/gst-workspace\/gstr1"/, says: "setNewError", shown: "newError", what: "the creation of a GSTR-1", flag: "saving", where: "form" },
   { file: GST, component: "GSTR1Tab", fn: "saveComputed", call: /apiFetch\("\/api\/gst-workspace\/gstr1"/, says: "setSaveComputedError", shown: "saveComputedError", what: "the save of a GSTR-1 computed from the books", flag: "savingComputed", where: "compute" },
@@ -397,7 +400,11 @@ test("the nine writes that used to drop their answer read it, hold the form or t
     // The ORDER. The refusal is the first thing done with the answer, says its sentence and returns, and nothing that closes the form or reads the list again comes before it
     // ends (a `setShowNew(false)` placed above the `if` closed the form over a refusal and every other check here stayed green: found by the independent read).
     const { callAt, branch, branchEnd } = afterTheCall(body, label);
-    assert.match(branch.trim(), new RegExp(`^${n.says}\\(res\\?\\.error \\?\\? "[^"]*"\\);\\s*return;$`), `${label}: the refusal branch does more than say the sentence and return`);
+    // …except for the one write whose refusal may be a question: its branch may BEGIN with the marker check that sets the question and returns (nothing is said, closed or read again first).
+    const question = n.heldBack
+      ? "const marker = res\\?\\.data as [^;]*;\\s*if \\(marker\\?\\.can_record_anyway === true && res\\?\\.error\\) \\{\\s*setHeldBack\\(\\{ id, status, sentence: res\\.error \\}\\);\\s*return;\\s*\\}\\s*"
+      : "";
+    assert.match(branch.trim(), new RegExp(`^${question}${n.says}\\(res\\?\\.error \\?\\? "[^"]*"\\);\\s*return;$`), `${label}: the refusal branch does more than say the sentence and return`);
     const closer = CLOSERS.exec(body);
     assert.ok(closer, `${label}: nothing closes the form or reads the list again after a success`);
     assert.ok(closer.index >= branchEnd, `${label}: \`${closer[0]}\` comes before the answer has been looked at: the form closes, or the list is read, over a refusal`);
@@ -494,4 +501,80 @@ test("the counter sees a long body (a self-test of the way the writes are counte
     "}",
   ].join("\n");
   assert.equal(droppedWrites(code).length, 2, "the long dropped write, or the one through a generic helper, is not counted, or a read or an assigned write is");
+});
+
+// ── a compute that FAILS outright (POST-A-403) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// `computeFromBooks` on the TDS returns tab and on the GSTR-1 and GSTR-3B tabs set `computing`, awaited the page's own `apiFetch` and cleared the flag on the line after it. A request that THROWS (a dropped
+// connection, or a proxy's error page that arrives as a 200 and is not JSON, which `res.json()` rejects) skipped that line and nothing said what happened: the dialog stayed on "Computing…" with Compute held until
+// the page was loaded again. They are reads (nothing is saved), which is why POST-A-391, about the writes, did not take them. They have the shape the saves have: the sentence the thrown error carries, said in the
+// dialog, and the hold released in a `finally`.
+const THE_THREE_COMPUTES = [
+  { file: TDS, component: "ReturnsTab", failed: "Couldn't compute Form ${computeForm.return_type} from books.", what: "the TDS tab's compute" },
+  { file: GST, component: "GSTR1Tab", failed: "Couldn't compute GSTR-1 from books.", what: "the GSTR-1 tab's compute" },
+  { file: GST, component: "GSTR3BTab", failed: "Couldn't compute GSTR-3B from books.", what: "the GSTR-3B tab's compute" },
+];
+
+test("the three compute-from-books handlers catch a request that fails outright, say it in the dialog and release the hold in a finally", () => {
+  for (const c of THE_THREE_COMPUTES) {
+    const tab = componentOf(read(c.file), c.component);
+    const body = functionAfter(tab, `function ${c.component}(`, "computeFromBooks");
+    const label = `${c.file}: ${c.what} (${c.component}.computeFromBooks)`;
+    const onAt = body.indexOf("setComputing(true)");
+    const tryAt = body.indexOf("try {");
+    const callAt = body.indexOf("const r = await apiFetch(");
+    assert.ok(onAt >= 0 && tryAt > onAt && callAt > tryAt, `${label}: the hold is not taken before a try that holds the request`);
+    // the last result, error and save sentence are emptied before the request goes out: a sentence about the last press is not about this one
+    for (const cleared of ["setComputeError(null)", "setComputeResult(null)", "setSaveComputedError(null)"]) {
+      const at = body.indexOf(cleared);
+      assert.ok(at >= 0 && at < tryAt, `${label}: ${cleared} is not done when a new press begins`);
+    }
+    const caught = /catch \(e\) \{\s*setComputeError\(e instanceof Error && e\.message \? e\.message : `?"?([^`"]*)`?"?\);\s*\}/.exec(body);
+    assert.ok(caught, `${label}: a request that failed is not said in the dialog`);
+    assert.equal(caught[1], c.failed, `${label}: the failure's own sentence is not the refusal's wording`);
+    assert.match(body, /finally \{\s*setComputing\(false\);\s*\}/, `${label}: setComputing(false) is not in a finally: a failed request leaves the dialog on "Computing…"`);
+    assert.equal(body.match(/setComputing\(false\)/g)?.length, 1, `${label}: the hold is released somewhere other than the finally`);
+    // a refusal says its sentence (unchanged) and a success shows the result; neither returns before the finally runs
+    assert.match(body, /if \(r\.success\) setComputeResult\(r\.data as Record<string, unknown>\);\s*else setComputeError\(r\.error \?\? /, `${label}: the answer is no longer read`);
+    // the sentence is an alert, so a screen reader announces it, and it is drawn inside the dialog that raised it
+    const dialog = blockOf(tab, "{showCompute && (", label);
+    const drawn = /\{computeError && <p role="alert" className="text-state-problem text-sm">\{computeError\}<\/p>\}/.exec(dialog.text);
+    assert.ok(drawn, `${label}: the sentence is not drawn inside the compute dialog as an alert`);
+  }
+});
+
+test("a handler that holds a flag across a request releases it in a finally, anywhere in the app", () => {
+  // The flags a hold is taken with. The first version of this rule followed the name `computing` alone, and the independent read of POST-A-403 found the same defect under
+  // another name in the same file (the GSTR-1 tab's `markingFiled`: a request that threw left "Recording…" with both buttons held until the page was loaded again).
+  const HOLD = /set(Computing|Marking\w*|Saving|Busy|Posting|Submitting|Running|Generating|Approving|Filing)\(true\)/g;
+  let looked = 0;
+  const flags = new Set<string>();
+  for (const file of [...sources(path.join(WEB, "app")), ...sources(path.join(WEB, "components"))]) {
+    const rel = path.relative(WEB, file).split(path.sep).join("/");
+    const code = stripComments(fs.readFileSync(file, "utf8"));
+    for (const m of code.matchAll(HOLD)) {
+      looked++;
+      flags.add(m[1]);
+      // climb out of the blocks the call sits in (an `if`, a `try`) to the function whose body it is
+      let from = m.index!;
+      let body = "";
+      for (let guard = 0; guard < 8; guard++) {
+        let depth = 0, open = -1;
+        for (let i = from - 1; i >= 0; i--) {
+          if (code[i] === "}") depth++;
+          else if (code[i] === "{") { if (depth === 0) { open = i; break; } depth--; }
+        }
+        assert.ok(open >= 0, `${rel}: set${m[1]}(true) is not inside a block`);
+        const header = code.slice(Math.max(0, open - 160), open);
+        if (/(?:function\s*\w*\s*\([^)]*\)[^{]*|=>\s*)$/.test(header)) { body = balanced(code, open); break; }
+        from = open;
+      }
+      assert.ok(body, `${rel}: the function that holds the flag was not found`);
+      // a `finally { … set…(false) }` block, or a promise chain's `.finally(() => set…(false))` (the capital gains calculator's debounced call), which may be
+      // guarded by the effect's own `cancelled` flag (the deductions screen's: a request already in flight when the inputs change must not release a newer one's hold)
+      const released = new RegExp(`(?:finally \\{[^}]*|\\.finally\\(\\(\\) => (?:\\{\\s*if \\(!cancelled\\) )?)set${m[1]}\\(false\\)`);
+      assert.match(body, released, `${rel}: set${m[1]}(true) is not released in a finally: a request that throws leaves the screen held ("Computing…", "Recording…")`);
+    }
+  }
+  assert.ok(looked >= 20, `only ${looked} holds were looked at: the scan is not reading the app`);
+  assert.ok(flags.has("Computing") && flags.has("MarkingFiled"), `the scan no longer finds the flags it was written for (${[...flags].join(", ")})`);
 });

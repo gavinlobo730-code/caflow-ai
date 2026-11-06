@@ -637,23 +637,33 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
   async function updateStatus(id: string, status: string,
                               extra?: { arn?: string; filed_date?: string }) {
     setRowError(null);
-    const r = await apiFetch(`/api/gst-workspace/gstr1/${id}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, ca_approved: true, ...(extra ?? {}) }),
-    });
-    if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return false; }
-    if (status === "submitted") { const note = obligationNote(r.data); if (note) setClosureNotes((n) => [...n, note]); }
-    load();
-    return true;
+    // A request that FAILS (a dropped connection, a proxy's page that is not JSON) is caught and said, like a refusal (POST-A-403's class): without it
+    // the hold taken by `markFiled` below was never released and the dialog stayed on "Recording…" until the page was loaded again.
+    try {
+      const r = await apiFetch(`/api/gst-workspace/gstr1/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, ca_approved: true, ...(extra ?? {}) }),
+      });
+      if (!r.success) { setRowError(r.error ?? "Couldn't update the return."); return false; }
+      if (status === "submitted") { const note = obligationNote(r.data); if (note) setClosureNotes((n) => [...n, note]); }
+      load();
+      return true;
+    } catch (e) {
+      setRowError(e instanceof Error && e.message ? e.message : "Couldn't update the return.");
+      return false;
+    }
   }
 
   /** Record what the CA filed on the portal — the ARN and the real date. */
   async function markFiled(id: string, arn: string, filedDate: string) {
     setMarkingFiled(true);
-    const ok = await updateStatus(id, "submitted",
-                                  { arn: arn || undefined, filed_date: filedDate });
-    setMarkingFiled(false);
-    if (ok) setFilingRow(null);
+    try {
+      const ok = await updateStatus(id, "submitted",
+                                    { arn: arn || undefined, filed_date: filedDate });
+      if (ok) setFilingRow(null);
+    } finally {
+      setMarkingFiled(false);
+    }
   }
 
   // CGST Act §37 — GSTR-1 derived ENTIRELY from posted sales invoices + issued
@@ -675,17 +685,23 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
     // does not know the field is not handed one it would have to ignore.
     // `gstin` rides on every compute (GST-17): without it only the primary
     // registration could be built from this screen.
-    const r = await apiFetch("/api/gst/gstr1/from-books", {
-      method: "POST",
-      body: JSON.stringify(withRegistration({
-        client_id: clientId,
-        period: computePeriod,
-        ...(includeAmendments ? {} : { include_amendments: false }),
-      }, reg.choice)),
-    });
-    if (r.success) setComputeResult(r.data as Record<string, unknown>);
-    else setComputeError(r.error ?? "Couldn't compute GSTR-1 from books.");
-    setComputing(false);
+    // A request that FAILS is caught and said in the dialog, and the hold is released in a `finally` (POST-A-403): see the TDS tab's compute.
+    try {
+      const r = await apiFetch("/api/gst/gstr1/from-books", {
+        method: "POST",
+        body: JSON.stringify(withRegistration({
+          client_id: clientId,
+          period: computePeriod,
+          ...(includeAmendments ? {} : { include_amendments: false }),
+        }, reg.choice)),
+      });
+      if (r.success) setComputeResult(r.data as Record<string, unknown>);
+      else setComputeError(r.error ?? "Couldn't compute GSTR-1 from books.");
+    } catch (e) {
+      setComputeError(e instanceof Error && e.message ? e.message : "Couldn't compute GSTR-1 from books.");
+    } finally {
+      setComputing(false);
+    }
   }
 
   async function saveComputed() {
@@ -773,7 +789,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
               this one. Untick to build a file without them.
             </span>
           </label>
-          {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
+          {computeError && <p role="alert" className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <Button variant="plain" size="none" onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
@@ -1177,16 +1193,22 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
     setComputeError(null);
     setComputeResult(null);
     setSaveComputedError(null);
-    const r = await apiFetch("/api/gst/gstr3b/from-books", {
-      method: "POST",
-      body: JSON.stringify(withRegistration({
-        client_id: clientId, period: computePeriod,
-        ...(filedOn ? { filed_on: filedOn } : {}),
-      }, reg.choice)),
-    });
-    if (r.success) setComputeResult(r.data as Record<string, unknown>);
-    else setComputeError(r.error ?? "Couldn't compute GSTR-3B from books.");
-    setComputing(false);
+    // A request that FAILS is caught and said in the dialog, and the hold is released in a `finally` (POST-A-403): see the TDS tab's compute.
+    try {
+      const r = await apiFetch("/api/gst/gstr3b/from-books", {
+        method: "POST",
+        body: JSON.stringify(withRegistration({
+          client_id: clientId, period: computePeriod,
+          ...(filedOn ? { filed_on: filedOn } : {}),
+        }, reg.choice)),
+      });
+      if (r.success) setComputeResult(r.data as Record<string, unknown>);
+      else setComputeError(r.error ?? "Couldn't compute GSTR-3B from books.");
+    } catch (e) {
+      setComputeError(e instanceof Error && e.message ? e.message : "Couldn't compute GSTR-3B from books.");
+    } finally {
+      setComputing(false);
+    }
   }
 
   async function saveComputed() {
@@ -1325,7 +1347,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
               </p>
             </div>
           </div>
-          {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
+          {computeError && <p role="alert" className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <Button variant="plain" size="none" onClick={computeFromBooks} disabled={actionInFlight || !computePeriod}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">
