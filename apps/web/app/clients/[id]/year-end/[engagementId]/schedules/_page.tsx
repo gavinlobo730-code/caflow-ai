@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { formatPaise } from "@/lib/money/format";
+import { fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 /** Format paise → ₹ Indian number format, WITH THE SIGN PRESERVED.
  *
@@ -96,17 +97,17 @@ async function fetchSchedule(engagementId: string, type: ScheduleType): Promise<
   // declares `/{engagement_id}/schedules/{schedule_type}` under a `/year-end`
   // prefix, mounted at `/api` — so FastAPI matched nothing and ALL SEVEN tabs
   // on this page returned 404. Not one of them has ever rendered.
-  const res = await fetch(`${BASE_URL}/api/year-end/${engagementId}/schedules/${type}`, {
+  const res = await fetchPlain(`${BASE_URL}/api/year-end/${engagementId}/schedules/${type}`, {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-  });
+  }, "read");
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API error ${res.status}: ${text}`);
   }
-  const json = await res.json();
+  const json = await jsonPlain<UntypedJson>(res, "read");
   if (!json.success) throw new Error(json.error ?? "Failed to load schedule");
   return toScheduleData(json.data as ScheduleResponse);
 }

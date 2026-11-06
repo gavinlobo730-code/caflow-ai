@@ -15,6 +15,7 @@ import { formatDate } from "@/lib/services/formatting";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -44,15 +45,16 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { supabase } = await import("@/lib/supabase/client");
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${BASE}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
-  return res.json();
+  }, doing);
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 export default function YearEndPage() {

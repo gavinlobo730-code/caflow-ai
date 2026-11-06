@@ -9,6 +9,7 @@ import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
+import { fetchPlain, jsonPlain, type Doing } from "@/lib/api/failureSentence";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -159,18 +160,15 @@ export interface TaxPlanningRecord {
 export async function computeITR(req: ComputeITRRequest): Promise<ITRComputeResult> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${API_BASE}/api/income-tax/compute`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/compute`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(req),
-  });
-  if (!res.ok) throw new Error(`ITR compute failed: ${res.statusText}`);
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error ?? "ITR computation error");
-  return json.data as ITRComputeResult;
+  }, "read");
+  return readAnswer<ITRComputeResult>(res, "ITR computation error");
 }
 
 /** Compute HRA exemption under IT Act Section 10(13A). */
@@ -190,13 +188,10 @@ export async function computeHRAExemption(
   // Depends(rbac("income_tax", "compute")), and core/auth.py answers 401 when
   // there is no Bearer header. This was the one call in this file that sent
   // none, so the HRA calculator could not compute against a real deployment.
-  const res = await fetch(`${API_BASE}/api/income-tax/hra/compute?${params}`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/hra/compute?${params}`, {
     method: "POST", headers: await _authHeaders(),
-  });
-  if (!res.ok) throw new Error(`HRA compute failed: ${res.statusText}`);
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error ?? "HRA computation error");
-  return json.data;
+  }, "read");
+  return readAnswer<{ exemption_paise: number; taxable_hra_paise: number }>(res, "HRA computation error");
 }
 
 // ── Supabase Queries ───────────────────────────────────────────────────────
@@ -345,36 +340,44 @@ async function _authHeaders(): Promise<Record<string, string>> {
 }
 
 /**
- * The answer of a call that WRITES, or the server's own sentence as the Error (PRE-A-015, sixteenth slice).
+ * The answer of a call, or the server's own sentence as the Error: the ONE reader of this module's answers (PRE-A-015, sixteenth slice; POST-A-382 for the rest).
  *
- * A refusal of the request model (a 422) or of the route (a 4xx) is FastAPI's `{"detail": …}` and has no `error` key, so `json.error ?? "Failed to …: <status text>"` showed the
- * CA "Unprocessable Entity" over the sentence the server wrote (a challan with a six-digit BSR code, a deposit dated tomorrow sent by another caller). A status that is not a
- * success is read by lib/api's `errorMessage`, the one reader of it; the house envelope's `{success: false, error}` under a 200 keeps its own `error`.
+ * A refusal of the request model (a 422) or of the route (a 4xx) is FastAPI's `{"detail": …}` and has no `error` key, so a read of `error` with the status line as its fallback
+ * showed the CA "Unprocessable Entity" over the sentence the server wrote (a challan with a six-digit BSR code, a deposit dated tomorrow sent by another caller), and fourteen of
+ * the module's functions still did. A status that is not a success is read by lib/api's `errorMessage`, the one reader of it; the house envelope's `{success: false, error}` under a
+ * 200 keeps its own `error`. A request that gets no answer, and an answer that is not JSON, are said in the product's words by `fetchPlain` and `jsonPlain` (POST-A-406) and never in the
+ * browser's. `readAnswer` and `writeAnswer` differ only in what that sentence says is known: a read has no result, a write may or may not have gone through.
  */
-async function writeAnswer<T>(res: Response, failed: string): Promise<T> {
+async function answerOf<T>(res: Response, failed: string, doing: Doing): Promise<T> {
   if (!res.ok) throw new Error(await errorMessage(res));
-  const json = (await res.json()) as { success?: boolean; error?: string | null; data?: T };
-  if (!json.success) throw new Error(json.error ?? failed);
+  const json = await jsonPlain<{ success?: boolean; error?: string | null; data?: T } | null>(res, doing);
+  if (!json?.success) throw new Error(json?.error ?? failed);
   return json.data as T;
+}
+
+/** The answer of a call that changes nothing (a list, a lookup, a compute that persists nothing), or the sentence as the Error (POST-A-382). */
+function readAnswer<T>(res: Response, failed: string): Promise<T> {
+  return answerOf<T>(res, failed, "read");
+}
+
+/** The answer of a call that writes: the same, and a page that is not the product's answer says that it is not known whether the change went through. */
+function writeAnswer<T>(res: Response, failed: string): Promise<T> {
+  return answerOf<T>(res, failed, "write");
 }
 
 /** Stateless capital-gains estimator — computes only, never persists. */
 export async function computeCapitalGains(req: ComputeCapitalGainsRequest): Promise<CapitalGainsComputeResult> {
-  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/compute`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/compute`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Capital gains compute failed: ${res.statusText}`);
-  return json.data as CapitalGainsComputeResult;
+  }, "read");
+  return readAnswer<CapitalGainsComputeResult>(res, "Capital gains compute failed.");
 }
 
 export async function listCapitalGains(clientId: string): Promise<CapitalGainsRecord[]> {
-  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains?client_id=${encodeURIComponent(clientId)}`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains?client_id=${encodeURIComponent(clientId)}`, {
     headers: await _authHeaders(),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load capital gains: ${res.statusText}`);
-  return (json.data ?? []) as CapitalGainsRecord[];
+  }, "read");
+  return (await readAnswer<CapitalGainsRecord[] | null>(res, "Failed to load capital gains.")) ?? [];
 }
 
 export interface CreateCapitalGainRequest extends ComputeCapitalGainsRequest {
@@ -392,30 +395,26 @@ export interface CreateCapitalGainRequest extends ComputeCapitalGainsRequest {
 /** Computes AND persists a register entry — gain_type/tax_rate_percent/
  * indexed_cost_paise are computed server-side, never sent by the caller. */
 export async function createCapitalGain(req: CreateCapitalGainRequest): Promise<CapitalGainsRecord> {
-  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to save capital gain: ${res.statusText}`);
-  return json.data as CapitalGainsRecord;
+  }, "write");
+  return writeAnswer<CapitalGainsRecord>(res, "Failed to save capital gain.");
 }
 
 export async function deleteCapitalGain(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(id)}`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(id)}`, {
     method: "DELETE", headers: await _authHeaders(),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to delete capital gain: ${res.statusText}`);
+  }, "write");
+  await writeAnswer<unknown>(res, "Failed to delete capital gain.");
 }
 
 /** Cost Inflation Index table (Section 48, 2nd proviso) — fetched from the
  * backend so the reference display can never drift from the table the
  * engine actually computes with (see capital_gains_engine.py). */
 export async function getCiiTable(): Promise<{ ciiByFy: Record<string, number>; latestVerifiedFy: string }> {
-  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/cii-table`, { headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load CII table: ${res.statusText}`);
-  return { ciiByFy: json.data.cii_by_fy, latestVerifiedFy: json.data.latest_verified_fy };
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/cii-table`, { headers: await _authHeaders() }, "read");
+  const table = await readAnswer<{ cii_by_fy: Record<string, number>; latest_verified_fy: string }>(res, "Failed to load CII table.");
+  return { ciiByFy: table.cii_by_fy, latestVerifiedFy: table.latest_verified_fy };
 }
 
 // ── s.54 / 54B / 54EC / 54F reinvestment exemption (IT-19) ──────────────────
@@ -487,36 +486,34 @@ export async function getReinvestmentSections(): Promise<{
   asset_natures: TransferredAssetNature[];
   acquisition_kinds: AcquisitionKind[];
 }> {
-  const res = await fetch(`${API_BASE}/api/income-tax/capital-gains/sections`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/sections`, {
     headers: await _authHeaders(),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load the s.54 sections: ${res.statusText}`);
+  }, "read");
+  const answer = await readAnswer<unknown>(res, "Failed to load the s.54 sections.");
   // A payload is not its lists until something has checked it: the screen reads `.length` of both the moment its Add Transaction dialog
   // opens, so a 200 that lacked one white-screened the page (found by driving the dialog against a stub that answered `{}`). The screen's
   // own fallback labels stand in for an empty list.
   const shaped = objectWithLists<{ sections: ReinvestmentSectionInfo[]; asset_natures: TransferredAssetNature[]; acquisition_kinds: AcquisitionKind[] }>(
-    json.data, "sections", "asset_natures", "acquisition_kinds");
+    answer, "sections", "asset_natures", "acquisition_kinds");
   if (!shaped) throw new Error("The s.54 sections came back in a shape this screen cannot read.");
   return shaped;
 }
 
 export async function getCapitalGainExemption(recordId: string): Promise<CapitalGainExemption> {
-  const res = await fetch(
+  const res = await fetchPlain(
     `${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/exemption`,
-    { headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load the exemption working: ${res.statusText}`);
+    { headers: await _authHeaders() }, "read");
+  const answer = await readAnswer<unknown>(res, "Failed to load the exemption working.");
   // The screen maps `caveats` and `gaps` and counts `claims` (POST-A-149).
-  const shaped = objectWithLists<CapitalGainExemption>(json.data, "claims", "gaps", "caveats");
+  const shaped = objectWithLists<CapitalGainExemption>(answer, "claims", "gaps", "caveats");
   if (!shaped) throw new Error("The exemption working came back in a shape this screen cannot read.");
   return shaped;
 }
 
 export async function addReinvestment(recordId: string, req: ReinvestmentInput): Promise<{ id: string }> {
-  const res = await fetch(
+  const res = await fetchPlain(
     `${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments`,
-    { method: "POST", headers: await _authHeaders(), body: JSON.stringify(req) });
+    { method: "POST", headers: await _authHeaders(), body: JSON.stringify(req) }, "write");
   return writeAnswer<{ id: string }>(res, "Failed to record the claim.");
 }
 
@@ -525,8 +522,8 @@ export async function deleteReinvestment(recordId: string, claimId: string): Pro
   // path as written, and a URL split across a concatenation reads to it as an
   // endpoint no screen calls.
   const path = `/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments/${encodeURIComponent(claimId)}`;
-  const res = await fetch(`${API_BASE}${path}`,
-    { method: "DELETE", headers: await _authHeaders() });
+  const res = await fetchPlain(`${API_BASE}${path}`,
+    { method: "DELETE", headers: await _authHeaders() }, "write");
   await writeAnswer<unknown>(res, "Failed to delete the claim.");
 }
 
@@ -672,12 +669,10 @@ export interface SaveAdvanceTaxResult {
 
 /** Stateless Section 234C interest estimator — computes only, never persists. */
 export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): Promise<AdvanceTaxComputeResult> {
-  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax/compute`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax/compute`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Advance tax compute failed: ${res.statusText}`);
-  return json.data as AdvanceTaxComputeResult;
+  }, "read");
+  return readAnswer<AdvanceTaxComputeResult>(res, "Advance tax compute failed.");
 }
 
 /** The capital gains register's transfers in the year, offered as candidates for
@@ -691,13 +686,10 @@ export async function listUnforeseenIncomeCandidates(
   caveats: string[];
 }> {
   const params = new URLSearchParams({ client_id: clientId, fy });
-  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax/unforeseen-income?${params}`,
-    { headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error ?? `Failed to load the register's gains: ${res.statusText}`);
-  }
-  const data = (json.data ?? {}) as { kinds?: unknown; candidates?: unknown; caveats?: unknown };
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax/unforeseen-income?${params}`,
+    { headers: await _authHeaders() }, "read");
+  const answer = await readAnswer<unknown>(res, "Failed to load the register's gains.");
+  const data = (answer ?? {}) as { kinds?: unknown; candidates?: unknown; caveats?: unknown };
   return {
     kinds: Array.isArray(data.kinds) ? (data.kinds as { key: string; label: string }[]) : [],
     candidates: Array.isArray(data.candidates) ? (data.candidates as UnforeseenIncomeCandidate[]) : [],
@@ -771,15 +763,14 @@ export interface Section234ABResult {
  *  compliance_obligation_service.itr_due_date_for_client, the one authority for
  *  it, and comes back with its own basis. */
 export async function computeSection234ABInterest(req: Section234ABRequest): Promise<Section234ABResult> {
-  const res = await fetch(`${API_BASE}/api/income-tax/interest/234ab`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/interest/234ab`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `234A/234B compute failed: ${res.statusText}`);
+  }, "read");
+  const answer = await readAnswer<unknown>(res, "234A/234B compute failed.");
   // The screen reads the two section blocks, their reasons and the due-date basis straight into its markup, so an answer without them
   // (a server behind this screen, an error envelope that arrives as a 200) would throw in render and take the whole page down. It is
   // refused here in a sentence the page already shows as a failed check, and never as a clear month.
-  const data = objectOrNull<Section234ABResult>(json.data);
+  const data = objectOrNull<Section234ABResult>(answer);
   const a = objectWithLists<SectionInterestResult>(data?.section_234a, "reasons");
   const b = objectWithLists<SectionInterestResult>(data?.section_234b, "reasons");
   const due = objectWithLists<ITRDueDateBasis>(data?.itr_due_date, "statutory_gaps");
@@ -791,10 +782,8 @@ export async function computeSection234ABInterest(req: Section234ABRequest): Pro
 
 export async function listAdvanceTaxPayments(clientId: string, fy: string): Promise<AdvanceTaxRecord[]> {
   const params = new URLSearchParams({ client_id: clientId, fy });
-  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax?${params}`, { headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load advance tax payments: ${res.statusText}`);
-  return (json.data ?? []) as AdvanceTaxRecord[];
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax?${params}`, { headers: await _authHeaders() }, "read");
+  return (await readAnswer<AdvanceTaxRecord[] | null>(res, "Failed to load advance tax payments.")) ?? [];
 }
 
 /** Persists the recorded payment facts — due_date/required_percent are
@@ -804,9 +793,9 @@ export async function listAdvanceTaxPayments(clientId: string, fy: string): Prom
  * The answer also says what became of the client's advance-tax obligations
  * on the compliance calendar (POST-A-267). */
 export async function saveAdvanceTaxPayments(req: SaveAdvanceTaxRequest): Promise<SaveAdvanceTaxResult> {
-  const res = await fetch(`${API_BASE}/api/income-tax/advance-tax`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
-  });
+  }, "write");
   return writeAnswer<SaveAdvanceTaxResult>(res, "Failed to save advance tax payments.");
 }
 
@@ -897,22 +886,20 @@ export async function getSelfAssessmentPosition(
   if (dues?.taxDuePaise !== undefined) params.set("tax_due_paise", String(dues.taxDuePaise));
   if (dues?.interestDuePaise !== undefined) params.set("interest_due_paise", String(dues.interestDuePaise));
   if (dues?.feeDuePaise !== undefined) params.set("fee_due_paise", String(dues.feeDuePaise));
-  const res = await fetch(`${API_BASE}/api/income-tax/self-assessment?${params}`, { headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.error ?? `Failed to load self-assessment challans: ${res.statusText}`);
-  return json.data as SelfAssessmentPosition;
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/self-assessment?${params}`, { headers: await _authHeaders() }, "read");
+  return readAnswer<SelfAssessmentPosition>(res, "Failed to load self-assessment challans.");
 }
 
 export async function createSelfAssessmentChallan(req: SelfAssessmentChallanInput): Promise<SelfAssessmentChallan> {
-  const res = await fetch(`${API_BASE}/api/income-tax/self-assessment`, {
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/self-assessment`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
-  });
+  }, "write");
   return writeAnswer<SelfAssessmentChallan>(res, "Failed to record the challan.");
 }
 
 export async function deleteSelfAssessmentChallan(challanId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/income-tax/self-assessment/${challanId}`,
-    { method: "DELETE", headers: await _authHeaders() });
+  const res = await fetchPlain(`${API_BASE}/api/income-tax/self-assessment/${challanId}`,
+    { method: "DELETE", headers: await _authHeaders() }, "write");
   await writeAnswer<unknown>(res, "Failed to remove the challan.");
 }
 
@@ -991,20 +978,16 @@ async function _worksheetCall<R>(
 ): Promise<WorksheetResponse<R>> {
   const base = `${API_BASE}/api/income-tax/worksheets/${kind}`;
   const res = method === "GET"
-    ? await fetch(`${base}?${new URLSearchParams({
+    ? await fetchPlain(`${base}?${new URLSearchParams({
         client_id: clientId, financial_year: fy, use_new_regime: String(useNewRegime),
-      })}`, { headers: await _authHeaders() })
-    : await fetch(base, {
+      })}`, { headers: await _authHeaders() }, "read")
+    : await fetchPlain(base, {
         method: "PUT", headers: await _authHeaders(),
         body: JSON.stringify({
           client_id: clientId, financial_year: fy, use_new_regime: useNewRegime, payload,
         }),
-      });
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error ?? json.detail ?? `The worksheet could not be ${method === "GET" ? "read" : "saved"}: ${res.statusText}`);
-  }
-  return json.data as WorksheetResponse<R>;
+      }, "write");
+  return answerOf<WorksheetResponse<R>>(res, `The worksheet could not be ${method === "GET" ? "read" : "saved"}.`, method === "GET" ? "read" : "write");
 }
 
 /** The saved inputs (or an empty worksheet) with the result worked out for the
@@ -1060,13 +1043,9 @@ export async function getAisComputationLines(
   if (typed.other_income_paise !== undefined) {
     params.set("typed_other_income_paise", String(typed.other_income_paise));
   }
-  const res = await fetch(`${API_BASE}/api/ais/computation-lines?${params}`,
-    { headers: await _authHeaders() });
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error ?? json.detail ?? `Failed to load the AIS lines: ${res.statusText}`);
-  }
-  return json.data as AisComputationLines;
+  const res = await fetchPlain(`${API_BASE}/api/ais/computation-lines?${params}`,
+    { headers: await _authHeaders() }, "read");
+  return readAnswer<AisComputationLines>(res, "Failed to load the AIS lines.");
 }
 
 /** Accept, reject or take back one line, on the figure the CA is looking at. */
@@ -1074,16 +1053,12 @@ export async function decideAisComputationLine(
   clientId: string, fy: string, lineKey: string,
   decision: "accepted" | "rejected" | "undecided",
 ): Promise<AisComputationLine> {
-  const res = await fetch(
+  const res = await fetchPlain(
     `${API_BASE}/api/ais/computation-lines/${encodeURIComponent(lineKey)}/decision`, {
       method: "PUT", headers: await _authHeaders(),
       body: JSON.stringify({ client_id: clientId, financial_year: fy, decision }),
-    });
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error ?? json.detail ?? `The decision could not be recorded: ${res.statusText}`);
-  }
-  return json.data as AisComputationLine;
+    }, "write");
+  return writeAnswer<AisComputationLine>(res, "The decision could not be recorded.");
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

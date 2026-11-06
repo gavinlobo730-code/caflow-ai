@@ -53,7 +53,7 @@ import ts from "typescript";
  */
 const NETWORK_ROOTS = new Set([
   "supabase", "sb", "api",
-  "selectAll", "apiFetch", "apiCall", "apiGet", "apiPost", "fetch",
+  "selectAll", "apiFetch", "apiCall", "apiGet", "apiPost", "fetch", "fetchPlain",
   "getSupabaseClient",
 ]);
 

@@ -20,23 +20,25 @@ const ENTITY_FETCH_LIMIT = ENTITY_REGISTER_WINDOW_MAX;
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   // A refusal carries FastAPI's {detail} with no `error` key, so reading only
   // `.error` showed "Failed to create entity" for a 422 that had a reason.
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 import { Badge } from "@/components/ui/badge";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

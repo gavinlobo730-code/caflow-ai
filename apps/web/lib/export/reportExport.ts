@@ -14,6 +14,8 @@
  * to disagree.
  */
 
+import { browserFailureOf, failureSentence } from "../api/failureSentence.ts";
+
 export type ExportReport =
   | "ledger"
   | "trial-balance"
@@ -67,5 +69,7 @@ export function exportErrorMessage(e: unknown): string {
     }
     return `The export could not be made (error ${m[1]}).`;
   }
+  // The browser's own words for a request that got no answer ("Failed to fetch") are not a sentence for a person (POST-A-406): the plain one is said instead.
+  if (browserFailureOf(e)) return failureSentence(e, "The export could not be made.", "read");
   return raw || "The export could not be made.";
 }

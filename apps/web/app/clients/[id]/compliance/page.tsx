@@ -28,6 +28,7 @@ import { formatRangeLabel } from "@/lib/dates/periods";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
 import { api, errorMessage } from "@/lib/api";
+import { browserFailureOf, doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -39,16 +40,18 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
+  // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 type ComplianceSubTab = "all" | "gst" | "tds" | "income_tax" | "mca";
@@ -103,7 +106,8 @@ function NoticesSection({ clientId }: { clientId: string }) {
       .order("created_at", { ascending: false });
     if (error) {
       setNotices([]);
-      setNoticesError(error.message || "Couldn't load government notices.");
+      // The Supabase client words a failed fetch "TypeError: Failed to fetch"; that is the browser's, and a database's own message is left as it is.
+      setNoticesError(browserFailureOf(error) ? failureSentence(error, "Couldn't load government notices.", "read") : (error.message || "Couldn't load government notices."));
       return;
     }
     setNotices(data ?? []);
@@ -133,8 +137,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
       setNoticeText("");
       await loadNotices();
     } catch (e) {
-      setExtractError(e instanceof Error && e.message
-        ? e.message : "The notice could not be extracted. Nothing was saved.");
+      setExtractError(failureSentence(e, "The notice could not be extracted.", "write"));
     } finally {
       setExtracting(false);
     }
@@ -153,8 +156,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
         setApproveError(res?.error ?? "The notice could not be approved. No task was created.");
       }
     } catch (e) {
-      setApproveError(e instanceof Error && e.message
-        ? e.message : "The notice could not be approved. No task was created.");
+      setApproveError(failureSentence(e, "The notice could not be approved.", "write"));
     }
     loadNotices();
   }
@@ -180,7 +182,7 @@ function NoticesSection({ clientId }: { clientId: string }) {
       setEditing(null);
       await loadNotices();
     } catch (e) {
-      setEditError(e instanceof Error && e.message ? e.message : "The correction could not be saved. Nothing was changed.");
+      setEditError(failureSentence(e, "The correction could not be saved.", "write"));
     } finally {
       setEditBusy(false);
     }
@@ -332,7 +334,7 @@ export default function CompliancePage() {
     try {
       await api.complianceOps.exportCalendar({ client_id: clientId });
     } catch (e: unknown) {
-      toast({ title: "Could not download the calendar file", description: e instanceof Error ? e.message : "Try again." });
+      toast({ title: "Could not download the calendar file", description: failureSentence(e, "Try again.", "read") });
     } finally {
       setSavingCalendar(false);
     }
@@ -389,7 +391,7 @@ export default function CompliancePage() {
         setCompliance(comp);
       } catch (e) {
         setCompliance([]);
-        setLoadError(e instanceof Error ? e.message : "Couldn't load the compliance calendar.");
+        setLoadError(failureSentence(e, "Couldn't load the compliance calendar.", "read"));
       } finally {
         setLoading(false);
       }
@@ -435,7 +437,7 @@ export default function CompliancePage() {
       setCompliance(comp);
       setLoadError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Couldn't reload the compliance calendar.");
+      setLoadError(failureSentence(e, "Couldn't reload the compliance calendar.", "read"));
     }
   }
 
@@ -480,7 +482,7 @@ export default function CompliancePage() {
         });
       } catch { /* timeline is non-blocking */ }
     } catch (e) {
-      setFilingError(e instanceof Error ? e.message : "Couldn't mark this filed.");
+      setFilingError(failureSentence(e, "Couldn't mark this filed.", "write"));
     } finally {
       setFilingLoading(false);
     }
@@ -498,7 +500,7 @@ export default function CompliancePage() {
       await reloadCompliance();
       toast({ title: "Reopened", description: message });
     } catch (e) {
-      setReopenError(e instanceof Error ? e.message : "Couldn't reopen this.");
+      setReopenError(failureSentence(e, "Couldn't reopen this.", "write"));
     } finally {
       setReopening(false);
     }
@@ -556,7 +558,7 @@ export default function CompliancePage() {
             const res = await markObligationFiled(id, { filedDate: v.filedDate });
             return { kind: "success" as const, locked: describeFilingOutcome(res, "").locked };
           } catch (e) {
-            return { kind: "failed" as const, message: e instanceof Error ? e.message : "Failed" };
+            return { kind: "failed" as const, message: failureSentence(e, "Failed", "write") };
           }
         })
       );
@@ -575,7 +577,8 @@ export default function CompliancePage() {
 
       if (failed.length > 0) {
         setBulkError(
-          `Failed to mark ${failed.length} of ${ids.length} filing${ids.length === 1 ? "" : "s"} as filed: ${failed[0].message}` +
+          // "Not confirmed", not "Failed to mark": a request that got no answer says that it is not known whether it went through, and a prefix that asserts failure over that cause contradicts it.
+          `${failed.length} of ${ids.length} filing${ids.length === 1 ? "" : "s"} not confirmed as filed: ${failed[0].message}` +
             (skipCount > 0 ? ` ${skipCount} already filed (skipped).` : "")
         );
       } else {
@@ -587,7 +590,7 @@ export default function CompliancePage() {
       // means reloadCompliance() failed after the filings went through: the
       // work is done but the list on screen is stale. Selection is kept so the
       // CA can see which rows were involved.
-      setBulkError(e instanceof Error ? e.message : "Marked as filed, but the list could not be refreshed.");
+      setBulkError(failureSentence(e, "Marked as filed, but the list could not be refreshed.", "read"));
       setBulkPromptOpen(false);
     } finally {
       setBulkBusy(false);

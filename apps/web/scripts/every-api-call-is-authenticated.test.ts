@@ -82,7 +82,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Every `fetch(…)` whose argument list mentions this backend, with the WHOLE
+/** Every `fetch(…)` (or `fetchPlain(…)`) whose argument list mentions this backend, with the WHOLE
  *  call — parenthesis-balanced, so a multi-line options object is inside it and
  *  a header three lines down is not missed. A regex window would be the same
  *  mistake the backend's direct-write scan made with its 400-character cap. */
@@ -90,7 +90,8 @@ function apiCalls(): Call[] {
   const found: Call[] = [];
   for (const file of sourceFiles(ROOT)) {
     const src = stripComments(fs.readFileSync(file, "utf8"));
-    for (const m of src.matchAll(/\bfetch\(/g)) {
+    // `fetchPlain` is `fetch` whose failure is already a sentence (lib/api/failureSentence): the call that reaches the backend is the same call, so it is held to the same rule.
+    for (const m of src.matchAll(/\b(?:fetch|fetchPlain)\(/g)) {
       let depth = 0, j = src.indexOf("(", m.index!);
       for (; j < src.length; j++) {
         if (src[j] === "(") depth++;

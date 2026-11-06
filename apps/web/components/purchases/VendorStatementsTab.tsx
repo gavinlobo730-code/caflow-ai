@@ -12,6 +12,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { objectWithLists } from "@/lib/api/shape";
 import { DateInput } from "@/components/ui/date-input";
 import { formatDate } from "@/lib/dates/format";
+import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 /**
  * The supplier's account, as the client's books have it.
@@ -129,13 +130,14 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
     setStmt(null);
     try {
       const token = await authToken();
-      const res = await fetch(
+      const res = await fetchPlain(
         `${API}/api/vendors/${encodeURIComponent(vendorId)}/statement`
         + `?client_id=${encodeURIComponent(clientId)}`
         + `&start_date=${start}&end_date=${end}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        "read",
       );
-      const json = await res.json();
+      const json = await jsonPlain<UntypedJson>(res, "read");
       // The envelope before the payload, and the payload before it is mapped
       // over — this router answers its own failures as HTTP 200.
       if (!json?.success) {
@@ -144,7 +146,7 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
       }
       setStmt(objectWithLists<StmtData>(json.data, "transactions"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not generate the statement.");
+      setError(failureSentence(e, "Could not generate the statement.", "read"));
     } finally {
       setLoading(false);
     }
@@ -156,11 +158,12 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
     setError(null);
     try {
       const token = await authToken();
-      const res = await fetch(
+      const res = await fetchPlain(
         `${API}/api/vendors/${encodeURIComponent(vendorId)}/statement/pdf`
         + `?client_id=${encodeURIComponent(clientId)}`
         + `&start_date=${start}&end_date=${end}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        "read",
       );
       if (!res.ok) throw new Error("Could not download the statement.");
       const blob = await res.blob();
@@ -171,7 +174,7 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not download the statement.");
+      setError(failureSentence(e, "Could not download the statement.", "read"));
     } finally {
       setDownloading(false);
     }

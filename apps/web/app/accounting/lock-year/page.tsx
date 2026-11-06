@@ -8,6 +8,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { doingOf, errorPageSentence, fetchPlain, looksLikeMarkup, notOursSentence } from "@/lib/api/failureSentence";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -22,18 +23,23 @@ async function callApi(
   const sb = getSupabaseClient();
   const { data: { session } } = await sb.auth.getSession();
   const token = session?.access_token;
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchPlain(`${API_BASE}${path}`, {
     method,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  }, doingOf(method));
   const text = await res.text().catch(() => "");
   let json: Record<string, unknown> = {};
-  try { json = text ? (JSON.parse(text) as Record<string, unknown>) : {}; } catch { /* non-JSON error body */ }
+  let readable = text.trim() !== "";
+  try { json = text ? (JSON.parse(text) as Record<string, unknown>) : {}; } catch { readable = false; /* a body that is not JSON */ }
   if (!res.ok) {
-    const detail = json.detail ?? json.error ?? text;
+    // A gateway's page under a failed status is said as one, and not printed as the markup it is.
+    const detail = json.detail ?? json.error ?? (looksLikeMarkup(text) ? errorPageSentence(res.status) : text);
     return { success: false, data: null, error: typeof detail === "string" ? detail : "Request failed" };
   }
+  // A success whose body is not JSON (a proxy's page that arrives with a 200, or nothing at all) says nothing about whether the change went through, and "Failed to update" over a period lock was a claim
+  // that it did not (POST-A-406).
+  if (!readable) return { success: false, data: null, error: notOursSentence(doingOf(method)) };
   return json as { success: boolean; data: unknown; error: string | null };
 }
 

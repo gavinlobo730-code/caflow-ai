@@ -26,7 +26,9 @@ const MARKER = { can_record_anyway: true, incomplete: ["it has no deductees reco
 /** A refusal that offers no way on (the door's sentence for a statement that is already filed). */
 const ALREADY_FILED = "This return has already been filed.";
 const GSTIN_OF_THE_CLIENT = "27AAACA1234A1ZK";
-const JSON_WORDS = /JSON/i;
+/** What a person is told when the server's answer was not the product's own, for a request that only ASKS (lib/api/failureSentence `NOT_OURS_READ`, pinned to it by that module's unit test): a compute from the books persists nothing, so it says that no
+ *  result came back and not that something may have been recorded. The browser's own words for it ("Unexpected token '<'… is not valid JSON") are not said (POST-A-406). */
+const NOT_OURS_READ = "The server's answer was not the product's own (a network or gateway error page can do this), so no result came back. Try again in a moment.";
 
 const STATUS_ROUTE = /api\/tds-workspace\/returns\/tr-1\/status$/;
 
@@ -339,7 +341,7 @@ const computeScenarios = COMPUTES.map((spec) => ({
     stub.forgetWrites();
     const compute = page.getByRole("button", { name: "Compute", exact: true });
     await compute.click();
-    await page.getByRole("alert").filter({ hasText: JSON_WORDS }).first().waitFor({ timeout: 4000 });
+    await page.getByRole("alert").filter({ hasText: exactly(NOT_OURS_READ) }).first().waitFor({ timeout: 4000 });
     await stub.quiet();
     assert.equal(stub.writesTo(spec.route).length, 1, `${spec.what}: expected the one failed request`);
     assert.equal(await page.getByRole("button", { name: "Computing…", exact: true }).count(), 0, `${spec.what}: the dialog stayed on "Computing…" after the request failed`);
@@ -349,7 +351,7 @@ const computeScenarios = COMPUTES.map((spec) => ({
     stub.route({ method: "POST", re: spec.route, reply: (_req, raw) => ok({ ...spec.result, ...(JSON.parse(raw).period ? { period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT } : {}) }) });
     await compute.click();
     await page.getByRole("button", { name: "Save as Draft", exact: true }).waitFor({ timeout: 4000 });
-    assert.equal(await page.getByRole("alert").filter({ hasText: JSON_WORDS }).count(), 0, `${spec.what}: the sentence of the failure stayed on the screen over a computed statement`);
+    assert.equal(await page.getByRole("alert").filter({ hasText: exactly(NOT_OURS_READ) }).count(), 0, `${spec.what}: the sentence of the failure stayed on the screen over a computed statement`);
   },
 }));
 

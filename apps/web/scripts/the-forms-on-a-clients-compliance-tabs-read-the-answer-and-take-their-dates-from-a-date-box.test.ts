@@ -146,7 +146,8 @@ test("the rule finds what it is for (a self-test over the spellings a developer 
 test("the three client compliance pages hand a refusal back in the envelope every caller reads", () => {
   for (const rel of [MCA, TDS, GST]) {
     const code = read(rel);
-    const helper = bodyOf(code, /async function apiFetch\(path: string, opts\?: RequestInit\) \{/);
+    // (the GST and TDS pages' helper also takes `asked`: the word a caller gives for an estimator that persists nothing, POST-A-406)
+    const helper = bodyOf(code, /async function apiFetch\(path: string, opts\?: RequestInit(?:, asked\?: Doing)?\) \{/);
     assert.match(helper, /if \(!res\.ok\)\s*return \{\s*success: false,\s*data: null,\s*error: await errorMessage\(res\)\s*\}/,
       `${rel}: apiFetch does not return a refusal as { success: false, error } through errorMessage: every \`r.error ?? "…"\` on the page shows the fallback over the server's sentence`);
     assert.match(code, /import \{[^}]*\berrorMessage\b[^}]*\} from "@\/lib\/api"/, `${rel} does not import errorMessage`);
@@ -393,7 +394,8 @@ test("the nine writes that used to drop their answer read it, hold the form or t
     assert.match(body, /const res = await apiFetch\(/, `${label}: its answer is not read into a variable`);
     assert.match(body, /if \(!res\?\.success\) \{/, `${label}: it does not look at whether the server accepted it`);
     assert.match(body, new RegExp(`${n.says}\\(res\\?\\.error \\?\\? "`), `${label}: a refusal's own sentence is not what it says`);
-    assert.match(body, new RegExp(`catch \\(e\\) \\{\\s*${n.says}\\(e instanceof Error && e\\.message \\? e\\.message : "`), `${label}: a request that failed is not said`);
+    // A request that failed is said through the one helper (POST-A-406): the browser's words for a dropped connection are replaced by the product's sentence there.
+    assert.match(body, new RegExp(`catch \\(e\\) \\{\\s*${n.says}\\(failureSentence\\(e, "`), `${label}: a request that failed is not said`);
     // a refusal ends the function BEFORE the form closes or the list is read again: the `return` follows the sentence
     assert.match(body, new RegExp(`${n.says}\\(res\\?\\.error \\?\\? "[^"]*"\\);\\s*(?:\\/\\/[^\\n]*\\n\\s*)*return;`), `${label}: a refusal does not stop the function before the form closes`);
 
@@ -476,7 +478,7 @@ test("the tenth write, the payroll page's removal of a professional tax registra
   const closer = CLOSERS.exec(body);
   assert.ok(closer, `${label}: nothing reads the list again after a success`);
   assert.ok(closer.index >= branchEnd, `${label}: \`${closer[0]}\` comes before the answer has been looked at`);
-  assert.match(body, /catch \{\s*setSaveError\("Couldn't remove the registration\."\);\s*\}/, `${label}: a request that failed is not said`);
+  assert.match(body, /catch \(e\) \{\s*setSaveError\(failureSentence\(e, "Couldn't remove the registration\.", "write"\)\);\s*\}/, `${label}: a request that failed is not said`);
   const clearAt = body.indexOf("setSaveError(null)");
   assert.ok(clearAt >= 0 && clearAt < callAt, `${label}: the last sentence is not cleared when a new press begins`);
   assert.ok(body.indexOf('setSaving("pt")') >= 0 && body.indexOf('setSaving("pt")') < callAt, `${label}: the screen is not held while the request is out`);
@@ -528,7 +530,7 @@ test("the three compute-from-books handlers catch a request that fails outright,
       const at = body.indexOf(cleared);
       assert.ok(at >= 0 && at < tryAt, `${label}: ${cleared} is not done when a new press begins`);
     }
-    const caught = /catch \(e\) \{\s*setComputeError\(e instanceof Error && e\.message \? e\.message : `?"?([^`"]*)`?"?\);\s*\}/.exec(body);
+    const caught = /catch \(e\) \{\s*setComputeError\(failureSentence\(e, `?"?([^`"]*)`?"?, "read"\)\);\s*\}/.exec(body);
     assert.ok(caught, `${label}: a request that failed is not said in the dialog`);
     assert.equal(caught[1], c.failed, `${label}: the failure's own sentence is not the refusal's wording`);
     assert.match(body, /finally \{\s*setComputing\(false\);\s*\}/, `${label}: setComputing(false) is not in a finally: a failed request leaves the dialog on "Computing…"`);

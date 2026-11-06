@@ -31,30 +31,25 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { readWindow } from "@/lib/lists/readWindow";
 import { LEAD_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
+import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { errorMessage } from "@/lib/api";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
-  const res = await fetch(`${API}${path}`, {
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try {
-      const body = await res.json() as { error?: string; detail?: string };
-      detail = body.error ?? body.detail ?? detail;
-    } catch {
-      // body is not JSON — keep the status string
-    }
-    throw new Error(detail);
-  }
-  return res.json();
+  }, doing);
+  // A refusal is read by `errorMessage`, the one reader of it: `body.error ?? body.detail` made a validation list into "[object Object]" and a gateway's page into "HTTP 502".
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 // ---------------------------------------------------------------------------

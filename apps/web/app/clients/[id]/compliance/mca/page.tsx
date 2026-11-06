@@ -12,6 +12,7 @@ import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatCroreLakh, type PaiseInput } from "@/lib/money/format";
 import { errorMessage } from "@/lib/api";
+import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { obligationNote } from "@/lib/compliance/obligationNote";
@@ -40,16 +41,18 @@ async function getToken(): Promise<string> {
  *  body that is not JSON at all. */
 async function apiFetch(path: string, opts?: RequestInit) {
   const token = await getToken();
-  const res = await fetch(`${API}${path}`, {
+  // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
+  const doing = doingOf(opts?.method);
+  const res = await fetchPlain(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(opts?.headers ?? {}),
     },
-  });
+  }, doing);
   if (!res.ok) return { success: false, data: null, error: await errorMessage(res) };
-  return res.json();
+  return jsonPlain<UntypedJson>(res, doing);
 }
 
 // Capital is `formatCroreLakh` (lib/money/format), the SAME renderer the firm
@@ -125,7 +128,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       setLoadError(null);
     } catch (e) {
       setRows([]);
-      setLoadError(e instanceof Error ? e.message : "Couldn't load companies.");
+      setLoadError(failureSentence(e, "Couldn't load companies.", "read"));
     } finally {
       setLoading(false);
     }
@@ -180,7 +183,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
       closeForm();
       load();
     } catch (e) {
-      setSaveError(e instanceof Error && e.message ? e.message : "The company was not added.");
+      setSaveError(failureSentence(e, "The company was not added.", "write"));
     } finally {
       setSaving(false);
     }
@@ -376,7 +379,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
       closeForm();
       load();
     } catch (e) {
-      setSaveError(e instanceof Error && e.message ? e.message : "The director was not added.");
+      setSaveError(failureSentence(e, "The director was not added.", "write"));
     } finally {
       setSaving(false);
     }
@@ -397,7 +400,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
       }
       load();
     } catch (e) {
-      setKycError(e instanceof Error && e.message ? e.message : "The KYC status was not changed.");
+      setKycError(failureSentence(e, "The KYC status was not changed.", "write"));
     }
   }
 
@@ -625,7 +628,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       closeNew();
       load();
     } catch (e) {
-      setNewError(e instanceof Error && e.message ? e.message : "The filing was not created.");
+      setNewError(failureSentence(e, "The filing was not created.", "write"));
     } finally {
       setCreating(false);
     }
@@ -645,7 +648,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       }
       load();
     } catch (e) {
-      setStatusError(e instanceof Error && e.message ? e.message : "The filing's status was not changed.");
+      setStatusError(failureSentence(e, "The filing's status was not changed.", "write"));
     }
   }
 
@@ -684,7 +687,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       setConfirmFiling(null);
       load();
     } catch (err) {
-      setConfirmError(err instanceof Error ? err.message : "Failed to update status");
+      setConfirmError(failureSentence(err, "Failed to update status", "write"));
     } finally {
       setConfirming(false);
     }
