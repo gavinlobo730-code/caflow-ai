@@ -902,7 +902,8 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
         />
       )}
       {rowError && !filingRow && (
-        <p className="text-sm text-state-problem border border-state-problem-border bg-state-problem-surface rounded px-3 py-2 mb-3">
+        // role="alert": what a refused or failed row action says is announced to a screen reader (POST-A-411), as the MCA and TDS tabs' row sentences are
+        <p role="alert" className="text-sm text-state-problem border border-state-problem-border bg-state-problem-surface rounded px-3 py-2 mb-3">
           {rowError}
         </p>
       )}
@@ -1303,7 +1304,8 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
           point of the gate — swallowing it would leave a CA believing they had
           approved a return the server declined. */}
       {rowError && !filingRow && (
-        <div className="text-sm px-3 py-2 rounded bg-state-attention-surface text-state-attention border border-state-attention-border flex items-start justify-between gap-3">
+        // role="alert": announced to a screen reader like the sentence of every other tab's row action (POST-A-411)
+        <div role="alert" className="text-sm px-3 py-2 rounded bg-state-attention-surface text-state-attention border border-state-attention-border flex items-start justify-between gap-3">
           <span>{rowError}</span>
           <button onClick={() => setRowError(null)}
             className="text-xs underline shrink-0">Dismiss</button>

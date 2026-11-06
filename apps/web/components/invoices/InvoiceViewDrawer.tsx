@@ -10,6 +10,8 @@
  */
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectWithLists } from "@/lib/api/shape";
+import { errorMessage } from "@/lib/api";
+import { failureSentence, fetchPlain, plainFailure } from "@/lib/api/failureSentence";
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckCircle, Download, Pencil, Send, Trash2, Copy, CreditCard, FilePlus2,
@@ -53,11 +55,12 @@ const fmtDateTime = formatDateTime;
 
 async function viewInvoicePdf(invoiceId: string): Promise<void> {
   const token = await getAuthToken();
-  const res = await fetch(`${API}/api/sales-invoices/${invoiceId}/pdf`, {
+  const res = await fetchPlain(`${API}/api/sales-invoices/${invoiceId}/pdf`, {
     headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error("PDF generation failed");
-  const blob = await res.blob();
+  }, "read");
+  // the server's own sentence for a refusal (POST-A-410); a body that stops half way is a request that got no answer too
+  if (!res.ok) throw new Error(await errorMessage(res));
+  const blob = await res.blob().catch((e: unknown) => { throw plainFailure(e, "read"); });
   const url = URL.createObjectURL(blob);
   window.open(url, "_blank");
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -201,7 +204,7 @@ export function InvoiceViewDrawer({
 
   async function handleViewPdf() {
     try { await viewInvoicePdf(invoiceId); }
-    catch { onToast("Unable to open PDF", "error"); }
+    catch (e) { onToast(failureSentence(e, "Unable to open PDF", "read"), "error"); }
   }
 
   const customerName = inv?.customers?.name ?? "—";

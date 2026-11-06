@@ -3232,10 +3232,15 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     // "Failed to fetch" — the same underlying symptom the browser reports as
     // a misleading CORS error, since there's no response to carry a CORS
     // header). For a request that only ASKS, one retry after a short delay is
-    // safe: by then the instance has usually finished waking up. For a CHANGE it
-    // is not shown to be: a rejected fetch does not prove that the server saw
-    // nothing, because the connection can drop after it has written and before
-    // the answer arrives (POST-A-412).
+    // safe: by then the instance has usually finished waking up. A CHANGE IS NOT
+    // SENT A SECOND TIME (POST-A-412): a rejected fetch does not prove that the
+    // server saw nothing, because the connection can drop after it has written
+    // and before the answer arrives, and then a second request records an
+    // invoice, a receipt or a challan again. Nothing keys a create, so the
+    // server cannot tell the second from a second document. A change that got no
+    // answer says that it is not known whether it went through (below), and the
+    // keep-awake ping (lib/api/keepAwake) is what keeps the instance up for the
+    // first change of a session.
     //
     // A TIMEOUT IS NOT RETRIED, and that is a deliberate change.
     //
@@ -3252,9 +3257,10 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     // different failures. Only the first one is worth trying again.
     const isTimeout = e instanceof DOMException && e.name === "AbortError";
     const isNetworkFailure = e instanceof TypeError;
-    // What the person is told depends on what the request was: "please try again" is no advice for a change that may have gone through before the bound ran out (POST-A-406; the retry itself is POST-A-412).
+    // What the person is told depends on what the request was: "please try again" is no advice for a change that may have gone through before the bound ran out (POST-A-406).
     if (isTimeout) throw new Error(timedOutSentence(doing));
     if (!isNetworkFailure) throw e;
+    if (doing === "write") throw plainFailure(e, doing);
     await sleep(5_000);
     try {
       res = await fetchWithTimeout(path, options, token);

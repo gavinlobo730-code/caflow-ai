@@ -4,6 +4,9 @@
  * The five GSTR-3B row actions (Validate and CA Approve, Mark as filed, Recheck, Recompute from books, Delete) released their hold in a `finally` and said NOTHING when the request threw, so a CA who
  * pressed Approve while the connection dropped saw a button that did nothing.
  *
+ * The payroll run actions (Compute & Draft, Finalise, Recompute, Delete) swallowed every failure into nothing and said "Could not … the payroll run — the request failed.", a claim that the run was not made
+ * or not released over a request that may have been the one that posted it (POST-A-410).
+ *
  * A dropped connection cannot be driven (the runner does not allow the console error it leaves), so what a page that is not JSON says stands for it here, and the words of each engine for a dropped
  * connection are held by the unit test of `lib/api/failureSentence`. The sentences below are that module's, pinned to it by the same test.
  * No scenario has a date, so none has a zone: they are their own group and run every night.
@@ -30,6 +33,13 @@ const exactly = (text) => new RegExp(`^\\s*${text.replace(/[.*+?^${}()|[\]\\]/g,
 async function saysIt(page, sentence, what) {
   const loc = page.getByText(exactly(sentence)).first();
   await loc.waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${what}: "${sentence}" was not said`); });
+  return loc;
+}
+
+/** The sentence as an ALERT: found by its role, as a screen reader announces it, and not by its text alone (POST-A-411). A substring of the alert, because a row's alert also holds its Dismiss button. */
+async function saysItAsAlert(page, sentence, what) {
+  const loc = page.getByRole("alert").filter({ hasText: sentence }).first();
+  await loc.waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${what}: "${sentence}" was not said as an alert`); });
   return loc;
 }
 
@@ -96,7 +106,7 @@ const gstr3bRowActions = ROW_ACTIONS.map((spec) => ({
     await spec.button(page).click();
     if (spec.confirm) await spec.confirm(page);
     const sentence = spec.sentence ?? NOT_OURS_WRITE;
-    await saysIt(page, sentence, `${spec.what}: the request threw and was not said`);
+    await saysItAsAlert(page, sentence, `${spec.what}: the request threw and was not said`);
     await stub.quiet();
     assert.equal(stub.writesTo(spec.re).length, 1, `${spec.what}: expected the one failed request`);
     await noBrowserWords(page, spec.what);
@@ -159,7 +169,7 @@ const gstr3bRecompute = {
     stub.route({ method: "POST", re, ...notJson() });
     stub.forgetWrites();
     await recompute.click();
-    await saysIt(page, NOT_OURS_WRITE, "Recompute from books: the request threw and was not said");
+    await saysItAsAlert(page, NOT_OURS_WRITE, "Recompute from books: the request threw and was not said");
     await stub.quiet();
     assert.equal(stub.writesTo(re).length, 1, "Recompute from books: expected the one failed request");
     assert.equal(await page.getByRole("button", { name: "Recomputing…", exact: true }).count(), 0, "Recompute from books: the row stayed held");
@@ -278,4 +288,79 @@ const signingPageAccept = {
   },
 };
 
-export const scenarios = [...gstr3bRowActions, gstr3bMarkFiled, gstr3bRecompute, aTdsList, anIncomeTaxCompute, signingPageLoad, signingPageAccept];
+// ── the payroll run actions (POST-A-410) ────────────────────────────────────────────────────────────────────
+
+const DRAFT_RUN = { id: "run-1", status: "draft", month: "2026-08", headcount: 3, total_gross_paise: 12000000 };
+
+async function atPayrollRuns(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/payroll\/runs\?/, reply: () => ok([DRAFT_RUN]) });
+  await page.goto(env.at("/payroll/"), { waitUntil: "networkidle" });
+  // the runs are the Register tab
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await page.getByRole("button", { name: "Finalise", exact: true }).waitFor();
+}
+
+/** One run action: it goes out once, comes back as a page that is not JSON, and the person is told that it is not known whether it went through, and never that it failed. */
+const PAYROLL_ACTIONS = [
+  { id: "compute-and-draft", what: "Compute & Draft", method: "POST", re: /api\/payroll\/runs$/, claim: /Could not create the payroll run/,
+    button: (p) => p.getByRole("button", { name: "Compute & Draft", exact: true }), working: "Computing…" },
+  { id: "finalise", what: "Finalise", method: "POST", re: /api\/payroll\/runs\/run-1\/finalize$/, claim: /Could not finalize the payroll run/,
+    button: (p) => p.getByRole("button", { name: "Finalise", exact: true }), working: "Finalising…" },
+  { id: "recompute", what: "Recompute", method: "POST", re: /api\/payroll\/runs\/run-1\/recompute$/, claim: /Could not recompute the payroll run/,
+    button: (p) => p.getByRole("button", { name: "Recompute", exact: true }), working: "Rebuilding…" },
+  { id: "delete", what: "Delete (after saying yes)", method: "DELETE", re: /api\/payroll\/runs\/run-1$/, claim: /Could not delete the payroll run/,
+    button: (p) => p.getByRole("button", { name: "Delete", exact: true }), working: "Rebuilding…",
+    async confirm(p) { await p.getByRole("button", { name: /^Delete .+\?$/ }).click(); } },
+];
+
+const payrollRunActions = PAYROLL_ACTIONS.map((spec) => ({
+  id: `a-payroll-${spec.id}-that-gets-a-page-that-is-not-json-says-it-is-not-known-whether-it-went-through`,
+  title: `A client's Payroll > Runs > ${spec.what}: a page that is not JSON is said in the product's words (it is not known whether it went through) and not as "${spec.claim.source.replace(/\\/g, "")}", and the button is live again`,
+  async run(env) {
+    const { page, stub } = env;
+    await atPayrollRuns(env);
+    stub.route({ method: spec.method, re: spec.re, ...notJson() });
+    stub.forgetWrites();
+    await spec.button(page).click();
+    if (spec.confirm) await spec.confirm(page);
+    await saysItAsAlert(page, NOT_OURS_WRITE, `${spec.what}: the request threw and was not said`);
+    await stub.quiet();
+    assert.equal(stub.writesTo(spec.re).length, 1, `${spec.what}: expected the one failed request`);
+    assert.equal(await page.getByText(spec.claim).count(), 0, `${spec.what}: the page said that the action failed, over a request that may have gone through`);
+    await noBrowserWords(page, spec.what);
+    assert.equal(await page.getByRole("button", { name: spec.working, exact: true }).count(), 0, `${spec.what}: the action stayed held ("${spec.working}")`);
+    // pressing it again sends a second request: the failure left nothing stuck
+    stub.forgetWrites();
+    stub.route({ method: spec.method, re: spec.re, delay: 1200, reply: () => ok({ id: "run-1" }) });
+    await spec.button(page).click();
+    if (spec.confirm) await spec.confirm(page);
+    await until(() => stub.writesTo(spec.re).length === 1, `${spec.what}: a second press sent no request`);
+  },
+}));
+
+/**
+ * The payroll page's reader treats a failed answer with NO body as what it is (a proxy that turned the request away with nothing to say), not as "nothing came back, so the run was not
+ * made". Until an independent read found it, only a source rule held this branch: no scenario sent an empty body under a failed status, because the stub's `notJson` answers 200.
+ */
+const payrollAnEmptyAnswerUnderAFailedStatus = {
+  id: "a-payroll-finalise-that-gets-nothing-under-a-502-says-it-is-not-known-whether-it-went-through",
+  title: "A client's Payroll > Runs > Finalise: an answer with no body under a 502 is said in the product's words (it is not known whether it went through) and not as \"Could not finalize the payroll run\"",
+  async run(env) {
+    const { page, stub } = env;
+    const spec = PAYROLL_ACTIONS[1];
+    await atPayrollRuns(env);
+    stub.route({ method: spec.method, re: spec.re, status: 502, ...notJson("") });
+    stub.forgetWrites();
+    await spec.button(page).click();
+    await saysItAsAlert(page, NOT_OURS_WRITE, "Finalise: an empty answer under a 502 was not said");
+    await stub.quiet();
+    assert.equal(stub.writesTo(spec.re).length, 1, "Finalise: expected the one failed request");
+    assert.equal(await page.getByText(spec.claim).count(), 0, "Finalise: the page said that the action failed, over a request that may have gone through");
+    await noBrowserWords(page, "Finalise");
+    assert.equal(await page.getByRole("button", { name: spec.working, exact: true }).count(), 0, "Finalise: the action stayed held");
+  },
+};
+
+export const scenarios = [...gstr3bRowActions, gstr3bMarkFiled, gstr3bRecompute, aTdsList, anIncomeTaxCompute, signingPageLoad, signingPageAccept, ...payrollRunActions, payrollAnEmptyAnswerUnderAFailedStatus];

@@ -9,6 +9,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatPaise } from "@/lib/services/formatting";
 import { errorMessage } from "@/lib/api";
+import { doingOf, fetchPlain, jsonPlain } from "@/lib/api/failureSentence";
 
 export * from "./gst";
 
@@ -38,14 +39,16 @@ export async function apiCall(
   body?: unknown,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
-  const doFetch = (t?: string) => fetch(`${API}${endpoint}`, {
+  // A connection that drops, or a gateway's page that arrives with a 200, throws the product's sentence (what the request was decides it: POST-A-410, POST-A-406).
+  const doing = doingOf(method);
+  const doFetch = (t?: string) => fetchPlain(`${API}${endpoint}`, {
     method,
     headers: {
       "Content-Type": "application/json",
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-  });
+  }, doing);
   let res = await doFetch(token);
   if (res.status === 401) {
     const newToken = await refreshedAuthToken();
@@ -54,7 +57,7 @@ export async function apiCall(
   if (!res.ok) {
     return { success: false, data: null, error: await refusalSentence(res) };
   }
-  return res.json();
+  return jsonPlain<{ success: boolean; data: unknown; error: string | null }>(res, doing);
 }
 
 /**
@@ -76,7 +79,11 @@ export async function apiCall(
 async function refusalSentence(res: Response): Promise<string> {
   const message = await errorMessage(res);
   if (message.startsWith(`API error ${res.status}`)) {
-    return `The server could not complete this request (HTTP ${res.status}). Please try again in a moment.`;
+    // a 5xx is worth another try, and so are a 408 (the request took too long) and a 429 (too many requests, as a gateway's own plain-text page says it); any other 4xx will be
+    // refused again, and "try again in a moment" is no advice for it
+    return res.status >= 500 || res.status === 408 || res.status === 429
+      ? `The server could not complete this request (HTTP ${res.status}). Please try again in a moment.`
+      : `The server did not accept this request (HTTP ${res.status}).`;
   }
   return message;
 }
@@ -91,13 +98,13 @@ export async function apiGet(
   endpoint: string,
   token?: string
 ): Promise<{ success: boolean; data: unknown; error: string | null }> {
-  const doFetch = (t?: string) => fetch(`${API}${endpoint}`, {
+  const doFetch = (t?: string) => fetchPlain(`${API}${endpoint}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
     },
-  });
+  }, "read");
   let res = await doFetch(token);
   if (res.status === 401) {
     const newToken = await refreshedAuthToken();
@@ -106,5 +113,5 @@ export async function apiGet(
   if (!res.ok) {
     return { success: false, data: null, error: await refusalSentence(res) };
   }
-  return res.json();
+  return jsonPlain<{ success: boolean; data: unknown; error: string | null }>(res, "read");
 }

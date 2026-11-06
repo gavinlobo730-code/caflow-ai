@@ -30,6 +30,7 @@ import {
   validateBillDraft, withoutDocument, type BillDraftFields,
 } from "@/lib/purchases/billDraft";
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
+import { fetchPlain, jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { todayLocalISO } from "@/lib/dateMath";
 import {
@@ -845,12 +846,13 @@ export function PurchaseBillEditor({
       formData.append("file", uploadFile);
       formData.append("client_id", clientId);
       const token = await getAuthToken();
-      const res = await fetch(`${API}/api/document-intelligence-v1/extract-invoice`, {
+      // A reading is a proposal, not a record of a bill: what a dropped connection costs is the result, so it is told as one that did not come back.
+      const res = await fetchPlain(`${API}/api/document-intelligence-v1/extract-invoice`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
-      });
-      const json = await res.json();
+      }, "read");
+      const json = await jsonPlain<UntypedJson>(res, "read");
       // The uploaded file is retained server-side as ITC/audit evidence
       // regardless of whether AI extraction itself succeeded.
       if (json.data?.document_url) setDocumentUrl(json.data.document_url as string);
@@ -903,8 +905,10 @@ export function PurchaseBillEditor({
       } else {
         setError(json.error || "AI extraction failed. Please enter the bill details manually.");
       }
-    } catch {
-      setError("AI extraction failed. Please enter the bill details manually.");
+    } catch (e) {
+      // Only a request that got no answer (or a page that was not the product's) is told in the product's words. This try also holds the mapping of the reading onto the form, and a defect there
+      // is not a message for a person: it says the fixed sentence, as it did. (The request keeps the uploaded file as evidence either way, so a second try keeps a second copy: harmless.)
+      setError(e instanceof PlainFailure ? e.message : "AI extraction failed. Please enter the bill details manually.");
     } finally {
       setExtracting(false);
     }
