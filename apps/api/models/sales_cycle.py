@@ -6,10 +6,13 @@ the shape ACC-25 and GST-29 both turned out to be.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from core.ist_clock import ist_today
+from models.iso_date import a_real_date
 from domain.gst import delivery_challan as dc
 from domain.gst.gstin import problem_with
 from domain.gst.invoice_series import format_violation
@@ -434,6 +437,26 @@ class DeliveryChallanUpdateIn(BaseModel):
     def _no(cls, v):
         return _document_no(v) if v is not None else None
 
+    @field_validator("document_date", "extended_to")
+    @classmethod
+    def _days_when_sent(cls, v, info):
+        """Real days, stored as the canonical day (PRE-A-015, seventeenth slice). The route reads this PATCH without what was not sent (`None` means unchanged), so a blank date read
+        as absent would be dropped and a success reported, and one written as it came would reach a DATE column: it is refused in a sentence, and an omitted one stays omitted."""
+        return None if v is None else a_real_date(v, info.field_name)
+
+    @field_validator("received_back_on")
+    @classmethod
+    def _the_goods_are_back(cls, v):
+        """The day the goods came back has happened by the time it is recorded, so it is not after today in India. The day they went out is the challan's, which this model does not
+        hold: `sales_cycle_service.update_challan` compares the two, through the same rule (`delivery_challan.goods_back_problem`)."""
+        if v is None:
+            return None
+        day = a_real_date(v, "received_back_on")
+        problem = dc.goods_back_problem(None, date.fromisoformat(day), ist_today())
+        if problem:
+            raise ValueError(problem)
+        return day
+
     @field_validator("place_of_supply")
     @classmethod
     def _pos(cls, v):
@@ -462,14 +485,6 @@ class DeliveryChallanUpdateIn(BaseModel):
         if v not in oc.CHALLAN_STATUSES:
             raise ValueError(f"status must be one of {', '.join(oc.CHALLAN_STATUSES)}.")
         return v
-
-
-def _iso_date(v, what: str) -> str:
-    from datetime import date as _date
-    try:
-        return _date.fromisoformat(str(v).strip()[:10]).isoformat()
-    except (TypeError, ValueError):
-        raise ValueError(f"{what} must be a date as YYYY-MM-DD.")
 
 
 class ChallanReturnIn(BaseModel):
@@ -503,12 +518,14 @@ class ChallanReturnIn(BaseModel):
     @field_validator("returned_on")
     @classmethod
     def _returned_on(cls, v):
-        return _iso_date(v, "returned_on")
+        """A real day, stored as the canonical day: it was cut to its first ten characters, so "2026-08-201" read as another day (PRE-A-015, seventeenth slice). That it is not after today
+        and not before the goods went out is judged where the challan is known (`itc_04_service.record_return`)."""
+        return a_real_date(v, "returned_on")
 
     @field_validator("job_worker_challan_date")
     @classmethod
     def _jw_date(cls, v):
-        return None if v in (None, "") else _iso_date(v, "job_worker_challan_date")
+        return None if v in (None, "") else a_real_date(v, "job_worker_challan_date")
 
     @field_validator("quantity_returned", "quantity_lost_or_wasted")
     @classmethod

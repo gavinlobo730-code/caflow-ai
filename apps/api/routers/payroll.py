@@ -6009,9 +6009,11 @@ def run_ecr(
     })
 
 
-def _a_day_the_portal_has_already_seen(value: Optional[str], name: str, *, may_be_ahead: bool = False) -> Optional[str]:
+def _a_day_the_portal_has_already_seen(value: Optional[str], name: str) -> Optional[str]:
     """A date the CA wrote down about the portal (PRE-A-015): blank is the same as absent, anything else is a real day, and a day that has not come
-    yet is refused for the date of a thing ALREADY DONE (these two doors record what a person did at a portal; they plan nothing).
+    yet is refused for the date of a thing ALREADY DONE (these two doors record what a person did at a portal; they plan nothing). That includes the
+    date printed on the challan the portal gave (the thirteenth slice judged it as a day only, and the seventeenth refuses a day ahead as it does the
+    TDS challan's: a challan exists once the portal or the bank has produced it, and the model records what was done, after it was done).
 
     WHAT WAS WRONG: the record models took these dates as bare strings, the services compared them as TEXT (`paid_on < submitted_on`) and stored them
     in DATE columns, so a caller that is not the screen sent "30/09/2026" or "soon" and got a 500 from Postgres with no sentence, and a day ahead was
@@ -6019,7 +6021,7 @@ def _a_day_the_portal_has_already_seen(value: Optional[str], name: str, *, may_b
     if value is None or str(value).strip() == "":
         return None
     day = a_real_date(value, name)
-    if not may_be_ahead and date.fromisoformat(day) > ist_today():
+    if date.fromisoformat(day) > ist_today():
         raise ValueError(f"{name} cannot be in the future: this records what was already done at the portal.")
     return day
 
@@ -6116,8 +6118,7 @@ class RemittanceIn(BaseModel):
     @field_validator("submitted_on", "paid_on", "challan_date")
     @classmethod
     def _dates_of_what_was_already_done(cls, v, info):
-        # The challan's own date is judged as a day only: nothing here knows when a challan may be dated, and a statutory reading is not assumed.
-        return _a_day_the_portal_has_already_seen(v, info.field_name, may_be_ahead=info.field_name == "challan_date")
+        return _a_day_the_portal_has_already_seen(v, info.field_name)
 
 
 class RemittancePaymentIn(BaseModel):

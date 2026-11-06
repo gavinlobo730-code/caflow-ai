@@ -231,14 +231,9 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
 
     returned_on = date.fromisoformat(str(payload["returned_on"])[:10])
     sent_on = date.fromisoformat(str(challan["document_date"])[:10])
-    if returned_on < sent_on:
-        raise HTTPException(status_code=422, detail=(
-            f"The goods cannot have come back on {returned_on.isoformat()}, before "
-            f"they were sent out on {sent_on.isoformat()}."))
-    if returned_on > ist_today():
-        raise HTTPException(status_code=422, detail=(
-            "A return cannot be recorded for a date that has not happened. "
-            "Record it when the goods are back."))
+    problem = dc.goods_back_problem(sent_on, returned_on, ist_today())
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
     already = (db.table("delivery_challan_returns").select(
         "id, quantity_returned, quantity_lost_or_wasted")

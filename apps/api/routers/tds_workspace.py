@@ -277,8 +277,12 @@ class CreateChallanRequest(BaseModel):
     def _challan_date_is_a_day(cls, v):
         """The date on the challan is a real day (PRE-A-015, fourteenth slice). It was a bare string handed to `validate_posting_date`, which raised a ValueError for
         "" or "30/09/2026" that the broad handler below turned into a sentence the client's TDS tab ignored while it closed the form as though the challan was saved.
-        Only the shape is judged: nothing here knows when a challan may be dated, and a statutory reading is not assumed."""
-        return a_real_date(v, "challan_date")
+        A day after today in India is refused too (seventeenth slice): a challan is recorded from the bank's counterfoil, whose BSR code and serial number exist only once the bank has
+        taken the tax, so the tax has been deposited by the day it is dated. How far back it may go is the period lock's (`validate_posting_date`); no statutory reading is assumed here."""
+        day = a_real_date(v, "challan_date")
+        if day > ist_today().isoformat():
+            raise ValueError("The challan date cannot be after today's date in India.")
+        return day
 
     def tds_paise(self) -> int:
         """What of the total is TAX. Never negative — the components are

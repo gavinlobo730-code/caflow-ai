@@ -23,6 +23,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { minorHeadLabel } from "@/lib/tds/minorHead";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { todayIstISO } from "@/lib/dates/format";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -284,8 +285,16 @@ function ChallansTab({ clientId }: { clientId: string }) {
   // The date on the challan is REQUIRED, and was typed as plain text: a mistyped one reached the server, whose refusal this form ignored while it closed
   // and cleared itself as though the challan was recorded (PRE-A-015).
   const dates = useDateProblems();
-  // The date's sentence is said once a save has been tried and withdrawn the moment the date is right.
-  const refusal = useDateRefusal(dates.first);
+  // A sentence about what a BOX holds is said once a save has been tried and withdrawn the moment the box is right. A blank box is not an unreadable one, and its sentence is
+  // derived from the box too (it goes the moment something is typed): it is said through the same latch and not copied into the answer, where it stayed. The date is REQUIRED
+  // and said in its own words; the other text a challan is known by (the bank's record is found by its BSR code and serial number, and a deduction by its section) was stored as
+  // empty text when skipped, since the columns are NOT NULL, which a blank satisfies: only that something was typed is judged here, as at the server. In the order of the boxes.
+  const challanMissing = !form.challan_date ? "Challan date: enter the date on the challan."
+    : !form.challan_no.trim() ? "Challan number: enter the serial number printed on the challan."
+    : !form.bsr_code.trim() ? "BSR code: enter the code of the bank branch printed on the challan."
+    : !form.section.trim() ? "TDS section: enter the section this challan pays, for example 194C."
+    : !form.financial_year.trim() ? "Financial year: enter it as 2026-27." : null;
+  const refusal = useDateRefusal(dates.first ?? challanMissing);
   // Why the last Save was refused (this screen's own sentence or the server's). The form stays open with it, and with what was typed.
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -320,15 +329,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
 
   async function saveNew() {
     setSaveError(null);
-    if (dates.first) { refusal.refuse(); return; }
-    // Required, and said in the date's own words (a blank box is not an unreadable one).
-    if (!form.challan_date) { setSaveError("Challan date: enter the date on the challan."); return; }
-    // The other text a challan is known by: the bank's record is found by its BSR code and serial number and a deduction by its section, and a box skipped was
-    // stored as empty text (the columns are NOT NULL, which a blank satisfies). Only that something was typed is judged here, as at the server.
-    if (!form.challan_no.trim()) { setSaveError("Challan number: enter the serial number printed on the challan."); return; }
-    if (!form.bsr_code.trim()) { setSaveError("BSR code: enter the code of the bank branch printed on the challan."); return; }
-    if (!form.section.trim()) { setSaveError("TDS section: enter the section this challan pays, for example 194C."); return; }
-    if (!form.financial_year.trim()) { setSaveError("Financial year: enter it as 2026-27."); return; }
+    if (dates.first ?? challanMissing) { refusal.refuse(); return; }
     // Rupees typed, integer paise sent, through the exact parser rather than
     // parseInt (which would read "1,24,500" as 1) or Math.round(x * 100).
     const amount = paiseFromRupeeInput(form.amount_rupees);
@@ -395,13 +396,13 @@ function ChallansTab({ clientId }: { clientId: string }) {
               { key: "amount_rupees", placeholder: "Amount (₹)" },
               { key: "financial_year", placeholder: "FY (e.g. 2025-26)" },
             ].map(({ key, placeholder, date }: { key: string; placeholder: string; date?: boolean }) => date ? (
-              // The one date box: a typed "07/10/2026" is read by the one rule and sent as the ISO date. Only that it is a day is judged here, as at the server:
-              // nothing in this screen knows when a challan may be dated.
+              // The one date box: a typed "07/10/2026" is read by the one rule and sent as the ISO date. That it is a day, and not after today in India, is judged here,
+              // as at the server: the bank has taken the tax by the day the challan is dated. How far back it may go is the period lock's, and nothing in this screen knows.
               <label key={key} className="text-xs text-ps-label flex flex-col gap-1">
                 Challan date
-                <DateInput id="tds-client-challan-date" value={form.challan_date}
+                <DateInput id="tds-client-challan-date" value={form.challan_date} notAfter={todayIstISO()}
                   onChange={(v) => setForm((f) => ({ ...f, challan_date: v }))}
-                  onStateChange={dates.watch("challan", "Challan date")}
+                  onStateChange={dates.watch("challan", "Challan date", { afterMax: true })}
                   className="w-full border rounded px-3 py-1.5 text-sm text-ps-ink" />
               </label>
             ) : (
@@ -415,7 +416,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
               {["Q1", "Q2", "Q3", "Q4"].map((q) => <option key={q}>{q}</option>)}
             </select>
           </div>
-          {(refusal.shown ?? saveError) && <p role="alert" className="text-xs text-state-problem">{refusal.shown ?? saveError}</p>}
+          {(saveError || refusal.shown) && <p role="alert" className="text-xs text-state-problem">{saveError || refusal.shown}</p>}
           <div className="flex gap-2">
             <Button variant="plain" size="none" onClick={saveNew} disabled={saving}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">{saving ? "Saving…" : "Save"}</Button>

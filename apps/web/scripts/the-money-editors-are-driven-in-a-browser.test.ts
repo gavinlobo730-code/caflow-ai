@@ -302,7 +302,7 @@ const DRIVEN: Record<string, string[]> = {
   "components/purchases/BillsOfEntryTab.tsx": ["#boe-date"],
   "components/fixed-assets/CwipTab.tsx": ["[Started on]", "[Approved completion date]", "[Now expected to complete on]", "[Incurred on]", "[Ready for use on]"],
   "components/purchases/PurchaseCycleTab.tsx": ["#po-date", "#po-expected", "#grn-received"],
-  "components/sales/SalesCycleTab.tsx": ["#sc-date", "#sc-valid-until", "#sc-expected-delivery"],
+  "components/sales/SalesCycleTab.tsx": ["#sc-date", "#sc-valid-until", "#sc-expected-delivery", "[Date the goods came back, challan ${c.document_no}]"],
   "app/clients/[id]/sales/page.tsx": ["#receipt-date", "#statement-from", "#statement-to"],
   // The third slice (4-11-2026).
   "components/sales/SalesCreditNoteEditor.tsx": ["#sales-cn-date"],
@@ -376,7 +376,6 @@ const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
     "[Stock ledger from]": "the stock ledger's window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
     "[Stock ledger to]": "the stock ledger's window; it writes nothing, so the save claims do not apply (a later row for the window claims)",
   },
-  "components/sales/SalesCycleTab.tsx": { "[Date the goods came back, challan ${c.document_no}]": "the return date typed on a challan row (an update, not a form; a later row)" },
   "app/clients/[id]/sales/page.tsx": {
     "#rec-inv-start": "the recurring invoice's start date; the form needs a customer, lines and a schedule before it will save (a later row)",
     "#rec-inv-end": "the recurring invoice's end date, anchored to the start (a later row)",

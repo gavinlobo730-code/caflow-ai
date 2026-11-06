@@ -284,6 +284,24 @@ GOODS_KIND_EXCLUDED = "moulds_dies_jigs_fixtures_tools"
 GOODS_KINDS = (GOODS_KIND_INPUTS, GOODS_KIND_CAPITAL_GOODS, GOODS_KIND_EXCLUDED)
 
 
+def goods_back_problem(sent_on: Optional[date], back_on: date, today: date) -> Optional[str]:
+    """The sentence for a day the goods cannot have come back on, or None (PRE-A-015, seventeenth slice).
+
+    CGST Act s.143 and Rule 45 (FORM GST ITC-04): the day goods sent to a job worker come back is the day the s.143 clock stops (`deemed_supply_clock`) and the day Table 5A reports a return.
+    It has happened by the time it is recorded, so it is not after `today` (India's: the caller's), and goods cannot have come back before they went out. Those are the plain order of events:
+    no period, rate or other statutory reading is added here. It is the one rule of both doors that record it: a lot on FORM GST ITC-04 (`itc_04_service.record_return`) and the
+    whole-challan "received back" (`sales_cycle_service.update_challan`, which also asks it, for its ORDER, when only the day the goods went out is amended), which differ only in whether
+    the day the goods were sent is known where the date is first read (`sent_on` is None there, and the stored challan is compared later). Pure: no clock.
+    """
+    if sent_on is not None and back_on < sent_on:
+        return (f"The goods cannot have come back on {back_on.isoformat()}, before "
+                f"they were sent out on {sent_on.isoformat()}.")
+    if back_on > today:
+        return ("A return cannot be recorded for a date that has not happened. "
+                "Record it when the goods are back.")
+    return None
+
+
 def _add_months(d: date, months: int) -> date:
     """The same calendar day, `months` later; the month's last day if short.
 

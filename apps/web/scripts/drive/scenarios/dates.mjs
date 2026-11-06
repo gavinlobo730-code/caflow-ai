@@ -471,6 +471,39 @@ async function openItc04Lot(env) {
   await page.locator("label:has-text('Quantity returned') input").first().fill("2");
 }
 
+/** Sales > Quotes, Orders & Challans > Delivery Challans: one job-work challan sent on 1 June 2026 whose goods are not back, so "Mark a whole challan back at once" lists it with a date box
+ *  and a "Record goods back" button. The ITC-04 panel under it is answered with nothing outstanding. */
+async function openGoodsBack(env, { second = false } = {}) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /api\/customers/, reply: () => ok([{ id: "cu1", name: "Beta Stores" }]) });
+  stub.route({ method: "GET", re: /sales-cycle\/vocabulary$/, reply: () => ok({
+    quote_kinds: [], quote_statuses: [], order_statuses: [], challan_statuses: [], challan_reasons: [], goods_kinds: [],
+    not_a_tax_invoice: "", no_tax_on_a_non_supply: "", job_work_exclusion: "", rule_55_5_steps: [], copies: [], itc_04: { decided: false, readings: [], refusal: "" },
+  }) });
+  stub.route({ method: "GET", re: /sales-cycle\/itc-04\?/, reply: () => ok({
+    client_id: CLIENT_ID, financial_year: "2026-27", as_of: "2026-10-08",
+    period: { decided: true, readings: [], refusal: "", preceding_year_aato_paise: null, verified: false },
+    readings: [], selected_window: null, table_4: null, table_5a: null,
+    table_5b: { derived: false, reason: "" }, table_5c: { derived: false, reason: "" },
+    outstanding: [], gaps: [], nothing_is_filed: true, verified: false, ca_review_required: true,
+  }) });
+  const challan = (id, no, sent) => ({
+    id, document_no: no, document_date: sent, reason: "job_work", status: "issued", goods_kind: "inputs", received_back_on: null, consignee_name: "Gamma Works",
+    taxable_paise: 100000, total_paise: 100000,
+    clock: { applies: true, statute: "CGST Act s.143", months: 12, sent_on: sent, due_back_by: "2027-06-01", overdue: false, days_remaining: 236, consequence: "", gaps: [] },
+  });
+  stub.route({ method: "GET", re: /api\/sales-cycle\/challans\?/, reply: () => ok([challan("ch-1", "JW/001", "2026-06-01"), ...(second ? [challan("ch-2", "JW/002", "2026-06-15")] : [])]) });
+  stub.route({ method: "PATCH", re: /api\/sales-cycle\/challans\/ch-1\?/, reply: () => ok({ id: "ch-1", received_back_on: "2026-10-07", status: "received_back" }) });
+  await page.goto(env.at("/sales/?tab=sales-cycle"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Delivery Challans", exact: true }).click();
+  await page.getByRole("button", { name: "Record goods back", exact: true }).first().waitFor();
+}
+
+/** `openGoodsBack` with a second open challan (JW/002, sent on 15 June 2026) under the first, so a sentence can be told to be in ITS row and not in the other's. */
+const openGoodsBackTwo = (env) => openGoodsBack(env, { second: true });
+/** The row of one challan in "Mark a whole challan back at once": its number, its date box and its button, and what is said about it. */
+const goodsBackRow = (page, no) => page.getByLabel(`Date the goods came back, challan ${no}`).locator("xpath=ancestor::div[contains(@class,'flex-wrap')][1]");
+
 /** The ITR tracker (Income Tax) with one pending return listed: `how` is "single" (its own Mark Filed prompt), "batch" (the bulk prompt, one row ticked) or "add" (the Add ITR Deadline prompt on a chosen client). */
 function openItrTracker(how) {
   return async (env) => {
@@ -1019,6 +1052,10 @@ const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after 08 Oct 2026.";
 /** The instant at which the browser's day is AHEAD of India's on Kiritimati (UTC+14): 17:30 on 8 October in India and 02:00 on 9 October there. At the instant every scenario is pinned to (08:00 UTC)
  *  the day is 8 October in Los Angeles, Kolkata and Kiritimati, so only a scenario that re-pins to this one can tell India's day from the browser's. */
 const AHEAD_OF_INDIA = "2026-10-08T12:00:00Z";
+/** The instant at which INDIA has moved on to the next day while UTC and Los Angeles have not: 00:30 on 9 October in India, 09:00 on 9 October on Kiritimati, 19:00 on 8 October in UTC and 12:00 in
+ *  Los Angeles. A bound taken from the UTC clock, or from a browser that is behind India, refuses India's own today here; nothing pinned at 08:00 or at 12:00 UTC can see it, because at both the day in
+ *  UTC is India's (found by the independent read of the seventeenth slice: the project's risk window, 18:30 to 24:00 UTC, was never pinned). */
+const INDIA_NEXT_DAY = "2026-10-08T19:00:00Z";
 /** The day the page itself says it is (its own clock, in the zone the context runs in), checked against the instant the scenario pinned: a re-pin that did not take would leave the
  *  scenario passing on a day every zone agrees about. */
 async function assertBrowserDay(page, instant) {
@@ -1614,7 +1651,7 @@ const EDITORS = [
     save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add Deduction", exact: true }), write: /tds-workspace\/deductions$/,
   },
   {
-    id: "tds-challan", title: "TDS challan form",
+    id: "tds-challan", shortForm: "15/01/2026", title: "TDS challan form",
     open: onAShortScreen(openTdsChallanForm), saveInView: true, cleared: "Challan date: enter the date on the challan.",
     fields: [{ box: (p) => p.locator("#tds-challan-date"), label: "Challan date", key: "challan_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/,
@@ -1912,7 +1949,7 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Save and work out", exact: true }).first(), write: /income-tax\/worksheets\/house_property$/,
   },
   {
-    id: "itc04-lot", title: "Sales > Challans > FORM GST ITC-04: the date a lot came back and the job worker's challan date", open: openItc04Lot, eachField: true, cleared: "Give the date the goods came back.",
+    id: "itc04-lot", shortForm: "15/01/2026", title: "Sales > Challans > FORM GST ITC-04: the date a lot came back and the job worker's challan date", open: openItc04Lot, eachField: true, cleared: "Give the date the goods came back.",
     fields: [
       { box: (p) => p.locator("#itc04-came-back-on"), label: "Came back on", key: "returned_on", full: "12/09/2026", iso: "2026-09-12" },
       { box: (p) => p.locator("#itc04-challan-date"), label: "Job worker's challan date", key: "job_worker_challan_date", full: "10/09/2026", iso: "2026-09-10" },
@@ -2000,7 +2037,7 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /mca-workspace\/directors$/,
   },
   {
-    id: "client-tds-challan-date", title: "A client's TDS > Challans > New Challan: the date on the challan", open: openClientTdsChallan,
+    id: "client-tds-challan-date", shortForm: "15/01/2026", title: "A client's TDS > Challans > New Challan: the date on the challan", open: openClientTdsChallan,
     cleared: "Challan date: enter the date on the challan.",
     fields: [{ box: (p) => p.locator("#tds-client-challan-date"), label: "Challan date", key: "challan_date", full: "07/10/2026", iso: "2026-10-07" }],
     save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/,
@@ -3545,10 +3582,10 @@ export const scenarios = [
   // The challan is known by its number, its BSR code, its section and its year: a box skipped is asked for, in a sentence, and nothing is sent (a challan with a box skipped was
   // stored as empty text, which the NOT NULL columns accept).
   ...[
-    { label: "Challan No.", sentence: "Challan number: enter the serial number printed on the challan." },
-    { label: "BSR Code (7 digits)", sentence: "BSR code: enter the code of the bank branch printed on the challan." },
-    { label: "TDS Section (e.g. 194C)", sentence: "TDS section: enter the section this challan pays, for example 194C." },
-    { label: "FY (e.g. 2025-26)", sentence: "Financial year: enter it as 2026-27." },
+    { label: "Challan No.", value: "00123", sentence: "Challan number: enter the serial number printed on the challan." },
+    { label: "BSR Code (7 digits)", value: "0510308", sentence: "BSR code: enter the code of the bank branch printed on the challan." },
+    { label: "TDS Section (e.g. 194C)", value: "194C", sentence: "TDS section: enter the section this challan pays, for example 194C." },
+    { label: "FY (e.g. 2025-26)", value: "2026-27", sentence: "Financial year: enter it as 2026-27." },
   ].map((box) => ({
     id: `client-tds-challan-without-${box.label.split(" ")[0].toLowerCase().replace(/[^a-z]/g, "")}-is-asked-for-and-nothing-is-sent`,
     title: `A client's TDS > Challans > New Challan: with "${box.label}" left empty the form asks for it in a sentence and sends nothing`,
@@ -3561,13 +3598,16 @@ export const scenarios = [
       await shownInTheDialog(page, box.sentence, `a challan with "${box.label}" empty was not asked for it`);
       await stub.quiet();
       assert.equal(stub.writesTo(/api\/tds-workspace\/challans$/).length, 0, `a challan with "${box.label}" empty SENT A WRITE`);
+      // …and the sentence is withdrawn the moment the box is filled: it is derived from the box and said through the latch (it was copied into the form's error, where it stayed).
+      await page.getByLabel(box.label, { exact: true }).fill(box.value);
+      await until(async () => (await page.getByText(box.sentence).count()) === 0, `the sentence about "${box.label}" to go once the box was filled`, 5000);
     },
   })),
   // The firm-level Add Challan 281 modal asks for the same: the server now refuses a challan without its serial number or BSR code for every caller, and a validation list
   // from the server is not a sentence this screen's fetch can show (it came back as "Could not record the challan", with no reason).
   ...[
-    { name: "Serial No.", placeholder: "00001", sentence: "Challan number: enter the serial number printed on the challan." },
-    { name: "BSR Code", placeholder: "7-digit BSR code", sentence: "BSR code: enter the code of the bank branch printed on the challan." },
+    { name: "Serial No.", placeholder: "00001", value: "00045", sentence: "Challan number: enter the serial number printed on the challan." },
+    { name: "BSR Code", placeholder: "7-digit BSR code", value: "0510001", sentence: "BSR code: enter the code of the bank branch printed on the challan." },
   ].map((box) => ({
     id: `tds-add-challan-281-without-${box.name.split(" ")[0].toLowerCase()}-is-asked-for-and-nothing-is-sent`,
     title: `TDS > Challans > Add Challan 281: with "${box.name}" left empty the modal asks for it in a sentence and sends nothing`,
@@ -3580,6 +3620,9 @@ export const scenarios = [
       await shownInTheDialog(page, box.sentence, `a challan with "${box.name}" empty was not asked for it`);
       await stub.quiet();
       assert.equal(stub.writesTo(/tds-workspace\/challans$/).length, 0, `a challan with "${box.name}" empty SENT A WRITE`);
+      // …and the sentence is withdrawn the moment the box is filled (derived from the box and latched; it was copied into the dialog's error, where it stayed).
+      await form.getByPlaceholder(box.placeholder).fill(box.value);
+      await until(async () => (await page.getByText(box.sentence).count()) === 0, `the sentence about "${box.name}" to go once the box was filled`, 5000);
     },
   })),
   // The answer to a recorded challan says what became of the month's deposit obligation on the compliance calendar (the server's words); the form used to throw it away.
@@ -4102,6 +4145,15 @@ export const scenarios = [
       save: (p) => modalOf(p).getByRole("button", { name: "Record E-Way Bill", exact: true }), write: /eway-bill\/records\/ew-1\/generated$/ },
     { id: "bill-form-15ca", name: "Purchases > bill editor (a payment to a non-resident): the day Form 15CA was filed", open: openBill15ca, box: (p) => p.locator("#bill-15ca-date"), label: "Form 15CA filed on",
       save: (p) => p.getByRole("button", { name: "Save Draft" }), write: /purchase-bills\/$/, stays: true },
+    // The seventeenth slice: the day goods came back and the day the bank took the tax (a challan).
+    { id: "itc04-came-back", name: "Sales > Challans > FORM GST ITC-04: the day a lot came back", open: openItc04Lot, box: (p) => p.locator("#itc04-came-back-on"), label: "Came back on",
+      save: (p) => p.getByRole("button", { name: "Record this lot", exact: true }), write: /sales-cycle\/challans\/ch-1\/returns$/ },
+    { id: "goods-back", name: "Sales > Challans > Mark a whole challan back at once: the day the goods came back", open: openGoodsBack, box: (p) => p.getByLabel("Date the goods came back, challan JW/001"), label: "Date back, JW/001",
+      save: (p) => p.getByRole("button", { name: "Record goods back", exact: true }), write: /api\/sales-cycle\/challans\/ch-1(\?|$)/ },
+    { id: "firm-tds-challan", name: "TDS > Add Challan: the day on the challan", open: onAShortScreen(openTdsChallanForm), box: (p) => p.locator("#tds-challan-date"), label: "Challan date",
+      save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/ },
+    { id: "client-tds-challan", name: "A client's TDS > Challans > New Challan: the day on the challan", open: openClientTdsChallan, box: (p) => p.locator("#tds-client-challan-date"), label: "Challan date",
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/ },
   ].flatMap((f) => [{
     id: `${f.id}-a-date-after-today-is-refused`,
     title: `${f.name}: a date after today is refused in a sentence and nothing is sent${f.stays ? "" : ", and the sentence goes when the date is right"}`,
@@ -4149,6 +4201,27 @@ export const scenarios = [
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length >= 1, true, `${f.name}: India's today was refused or not sent`);
     },
+  }, {
+    // INDIA'S DAY IS NOT UTC'S EITHER. At 19:00 UTC it is 00:30 on 9 October in India and 09:00 on Kiritimati and still 8 October in UTC and in Los Angeles: the box takes 9 October, India's own
+    // today, in all three zones, and refuses 10 October. A bound taken from UTC's day or from a browser behind India refuses 9 October here, and the other two instants cannot tell.
+    id: `${f.id}-india-has-moved-on-to-the-next-day`,
+    title: `${f.name}: at an hour when India's day is ahead of UTC's and of Los Angeles', India's new day is saved and the day after it is refused`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context, stub } = env;
+      await context.clock.setFixedTime(new Date(INDIA_NEXT_DAY));
+      await f.open(env);
+      await assertBrowserDay(page, INDIA_NEXT_DAY);
+      await typeAndLeave(f.box(page), "10/10/2026");
+      await f.save(page).click();
+      await shownInTheDialog(page, `${f.label}: 10 Oct 2026 is after 09 Oct 2026.`, `${f.name}: the day after India's new day was not refused`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: the day after India's new day SENT A WRITE`);
+      await typeAndLeave(f.box(page), "09/10/2026");
+      await f.save(page).click();
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length >= 1, true, `${f.name}: India's new day was refused or not sent (a bound taken from UTC's day, or from a browser behind India, refuses it)`);
+    },
   }]),
   // The day an e-way bill is valid UPTO is a plan: it may run ahead of today, where its own date may not.
   {
@@ -4178,6 +4251,15 @@ export const scenarios = [
       save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/ },
     { id: "reinvestment-claim", name: "Income Tax > Capital gains > reinvestment claim: Record claim", open: onAShortScreen(openReinvestmentClaim), box: (p) => p.getByLabel("CGAS deposit date"), label: "CGAS deposit date",
       save: (p) => p.getByRole("button", { name: "Record claim", exact: true }), write: /api\/income-tax\/capital-gains\/cg-1\/reinvestments$/ },
+    // The seventeenth slice: the same four forms, whose date is REQUIRED, so the first press is made over a date that is right (`validFirst`) and the server refuses it.
+    { id: "itc04-record-lot", name: "Sales > Challans > FORM GST ITC-04: Record this lot", open: openItc04Lot, box: (p) => p.locator("#itc04-came-back-on"), label: "Came back on", validFirst: "07/10/2026",
+      save: (p) => p.getByRole("button", { name: "Record this lot", exact: true }), write: /sales-cycle\/challans\/ch-1\/returns$/ },
+    { id: "goods-back-record", name: "Sales > Challans > Mark a whole challan back at once: Record goods back", open: openGoodsBack, box: (p) => p.getByLabel("Date the goods came back, challan JW/001"), label: "Date back, JW/001", validFirst: "07/10/2026",
+      save: (p) => p.getByRole("button", { name: "Record goods back", exact: true }), write: /api\/sales-cycle\/challans\/ch-1(\?|$)/, method: "PATCH" },
+    { id: "firm-tds-challan-add", name: "TDS > Add Challan: Add", open: onAShortScreen(openTdsChallanForm), box: (p) => p.locator("#tds-challan-date"), label: "Challan date", validFirst: "07/10/2026",
+      save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/ },
+    { id: "client-tds-challan-save", name: "A client's TDS > Challans > New Challan: Save", open: openClientTdsChallan, box: (p) => p.locator("#tds-client-challan-date"), label: "Challan date", validFirst: "07/10/2026",
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/ },
   ].map((f) => ({
     id: `${f.id}-the-answer-to-an-earlier-attempt-does-not-come-back`,
     title: `${f.name}: after a refusal, a wrong date and then a right one, the first answer is not shown again`,
@@ -4185,8 +4267,9 @@ export const scenarios = [
     async run(env) {
       const { page, stub } = env;
       await f.open(env);
+      if (f.validFirst) await typeAndLeave(f.box(page), f.validFirst);
       const EARLIER = "A stub refusal of the earlier attempt.";
-      stub.route({ method: "POST", re: f.write, ...refuse(EARLIER, 422) });
+      stub.route({ method: f.method ?? "POST", re: f.write, ...refuse(EARLIER, 422) });
       await f.save(page).click();
       await shownInTheDialog(page, EARLIER, `${f.name}: the first attempt's refusal was not shown`);
       await stub.quiet();
@@ -4202,6 +4285,147 @@ export const scenarios = [
       assert.equal(await page.getByText(EARLIER).count(), 0, `${f.name}: the answer to the first attempt CAME BACK once the date was put right`);
     },
   })),
+  // A sentence about a BLANK box is derived from the box and goes when something is typed (it was copied into the form's error, where it stayed): each of the four forms whose date is REQUIRED is
+  // pressed over a blank date, says so beside its button and sends nothing, and the sentence is gone once a date is typed. (The editor table's `cleared` step runs after the latch is already on, so it
+  // cannot tell a sentence that goes from one that never came.)
+  ...[
+    { id: "itc04-record-lot", name: "Sales > Challans > FORM GST ITC-04: Record this lot", open: openItc04Lot, box: (p) => p.locator("#itc04-came-back-on"),
+      save: (p) => p.getByRole("button", { name: "Record this lot", exact: true }), write: /sales-cycle\/challans\/ch-1\/returns$/, blank: "Give the date the goods came back." },
+    { id: "goods-back-record", name: "Sales > Challans > Mark a whole challan back at once: Record goods back", open: openGoodsBack, box: (p) => p.getByLabel("Date the goods came back, challan JW/001"),
+      save: (p) => p.getByRole("button", { name: "Record goods back", exact: true }), write: /api\/sales-cycle\/challans\/ch-1(\?|$)/, blank: "Enter the date the goods on JW/001 came back." },
+    { id: "firm-tds-challan-add", name: "TDS > Add Challan: Add", open: onAShortScreen(openTdsChallanForm), box: (p) => p.locator("#tds-challan-date"),
+      save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/, blank: "Challan date: enter the date on the challan." },
+    { id: "client-tds-challan-save", name: "A client's TDS > Challans > New Challan: Save", open: openClientTdsChallan, box: (p) => p.locator("#tds-client-challan-date"),
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/tds-workspace\/challans$/, blank: "Challan date: enter the date on the challan." },
+  ].map((f) => ({
+    id: `${f.id}-a-blank-date-is-asked-for-and-the-sentence-goes-when-one-is-typed`,
+    title: `${f.name}: pressed over a blank date it says so beside the button and sends nothing, and the sentence goes once a date is typed`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await f.open(env);
+      assert.equal(await page.getByText(f.blank).count(), 0, `${f.name}: the sentence about a blank date was on the page before anything was pressed`);
+      await f.save(page).click();
+      await shownInTheDialog(page, f.blank, `${f.name}: a blank date was not asked for`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a blank date SENT A WRITE`);
+      await typeAndLeave(f.box(page), "07/10/2026");
+      await until(async () => (await page.getByText(f.blank).count()) === 0, `${f.name}: the sentence about a blank date to go once a date was typed`, 5000);
+    },
+  })),
+  // The lot form's other sentence about its boxes: a quantity that is not a number is said beside the button, nothing is sent, and the sentence goes when the quantity is right.
+  {
+    id: "itc04-a-quantity-that-is-not-a-quantity-is-asked-for-and-the-sentence-goes-when-it-is-right",
+    title: "Sales > Challans > FORM GST ITC-04: a quantity that is not a number is refused in a sentence and nothing is sent, and the sentence goes once it is right",
+    async run(env) {
+      const { page, stub } = env;
+      await openItc04Lot(env);
+      const SENTENCE = "The quantity returned is not a quantity (up to three decimals).";
+      const quantity = page.locator("label:has-text('Quantity returned') input").first();
+      await typeAndLeave(page.locator("#itc04-came-back-on"), "07/10/2026");
+      await quantity.fill("1,5");
+      await page.getByRole("button", { name: "Record this lot", exact: true }).click();
+      await shownInTheDialog(page, SENTENCE, "a quantity with a comma was not refused in a sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/sales-cycle\/challans\/ch-1\/returns$/).length, 0, "a quantity that is not a number SENT A WRITE");
+      await quantity.fill("2");
+      await until(async () => (await page.getByText(SENTENCE).count()) === 0, "the quantity's sentence to go once the quantity was right", 5000);
+      await page.getByRole("button", { name: "Record this lot", exact: true }).click();
+      await stub.quiet();
+      assert.equal(stub.writesTo(/sales-cycle\/challans\/ch-1\/returns$/).length, 1, "the lot was not recorded once the quantity was right");
+    },
+  },
+  // A lot form opened AGAIN holds nothing of the last: not the server's answer, not the sentence about its boxes. (Closing and opening is one button: "Record a lot".)
+  {
+    id: "itc04-a-lot-form-opened-again-holds-none-of-the-last-answer-or-sentence",
+    title: "Sales > Challans > FORM GST ITC-04: after a refusal and a close, the lot form opened again holds neither the server's answer nor the sentence about its boxes",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openItc04Lot(env);
+      const REFUSAL = "A stub refusal of the lot.";
+      const BLANK = "Give the date the goods came back.";
+      const toggle = page.getByRole("button", { name: "Record a lot", exact: true });
+      stub.route({ method: "POST", re: /sales-cycle\/challans\/ch-1\/returns$/, ...refuse(REFUSAL, 422) });
+      await typeAndLeave(page.locator("#itc04-came-back-on"), "07/10/2026");
+      await page.getByRole("button", { name: "Record this lot", exact: true }).click();
+      await shownInTheDialog(page, REFUSAL, "the server's refusal of the lot was not shown beside the button");
+      await toggle.click();
+      await toggle.click();
+      await page.getByText("Quantity returned", { exact: true }).waitFor();
+      await until(async () => (await page.getByText(REFUSAL).count()) === 0, "the lot form opened again without the last refusal in it", 2000);
+      // …and a sentence about its boxes (the form is blank again, so pressing says so) is gone after a close and an opening.
+      await page.getByRole("button", { name: "Record this lot", exact: true }).click();
+      await shownInTheDialog(page, BLANK, "a blank lot form was not asked for its date");
+      await toggle.click();
+      await toggle.click();
+      await page.getByText("Quantity returned", { exact: true }).waitFor();
+      await until(async () => (await page.getByText(BLANK).count()) === 0, "the lot form opened again without the last sentence about its boxes", 2000);
+    },
+  },
+  // A request that is out holds what would act on the form it belongs to: the firm dialog's Close and Cancel (a challan recorded after the dialog was closed looks like one that was cancelled)
+  // and the ITC-04 panel's "Record a lot" (the panel's `saving` is for any line, and a form opened for another line meanwhile would be closed by this one's success).
+  {
+    id: "firm-tds-challan-close-and-cancel-are-held-while-add-is-out",
+    title: "TDS > Add Challan: while Add is out the dialog's Close and Cancel are held, and live again once the answer is a refusal",
+    async run(env) {
+      const { page, stub } = env;
+      const form = await openTdsChallanForm(env);
+      await typeAndLeave(form.locator("#tds-challan-date"), "07/10/2026");
+      stub.route({ method: "POST", re: /tds-workspace\/challans$/, delay: 1800, ...refuse("A stub refusal of the challan.", 422) });
+      await form.getByRole("button", { name: "Add", exact: true }).click();
+      const close = form.getByRole("button", { name: "Close", exact: true });
+      const cancel = form.getByRole("button", { name: "Cancel", exact: true });
+      await until(async () => (await close.isDisabled({ timeout: 500 }).catch(() => false)) && (await cancel.isDisabled({ timeout: 500 }).catch(() => false)),
+        "Close and Cancel to be held while Add was out");
+      await shownInTheDialog(page, "A stub refusal of the challan.", "the refusal was not shown once the answer came");
+      assert.equal(await close.isDisabled(), false, "Close stayed held after the answer");
+      assert.equal(await cancel.isDisabled(), false, "Cancel stayed held after the answer");
+    },
+  },
+  {
+    id: "itc04-record-a-lot-is-held-while-a-lot-is-out",
+    title: "Sales > Challans > FORM GST ITC-04: while a lot is being recorded \"Record a lot\" is held, and live again once the answer is a refusal",
+    async run(env) {
+      const { page, stub } = env;
+      await openItc04Lot(env);
+      await typeAndLeave(page.locator("#itc04-came-back-on"), "07/10/2026");
+      stub.route({ method: "POST", re: /sales-cycle\/challans\/ch-1\/returns$/, delay: 1800, ...refuse("A stub refusal of the lot.", 422) });
+      await page.getByRole("button", { name: "Record this lot", exact: true }).click();
+      const toggle = page.getByRole("button", { name: "Record a lot", exact: true });
+      await until(async () => await toggle.isDisabled({ timeout: 500 }).catch(() => false), "\"Record a lot\" to be held while the lot was out");
+      await shownInTheDialog(page, "A stub refusal of the lot.", "the refusal of the lot was not shown beside the button");
+      assert.equal(await toggle.isDisabled(), false, "\"Record a lot\" stayed held after the answer");
+    },
+  },
+  // The goods-back sentence is in the ROW of the challan it is about, beside its button (with many open challans the end of the block is out of sight of the button), the server's answer names
+  // its challan (the server's sentence names none), and what was said is withdrawn when the tab is left.
+  {
+    id: "goods-back-the-sentence-is-in-the-row-it-is-about-and-leaves-with-the-tab",
+    title: "Sales > Challans > Mark a whole challan back at once: a sentence is said in the row of its own challan, the server's answer names the challan, and both go when the tab is left",
+    async run(env) {
+      const { page, stub } = env;
+      await openGoodsBackTwo(env);
+      const BLANK_2 = "Enter the date the goods on JW/002 came back.";
+      const REFUSAL = "A stub refusal of the goods back.";
+      // A blank box in the SECOND row: said in that row, and not in the first.
+      await goodsBackRow(page, "JW/002").getByRole("button", { name: "Record goods back", exact: true }).click();
+      await until(async () => (await goodsBackRow(page, "JW/002").getByText(BLANK_2).count()) === 1, "the sentence about a blank box to be said in its own row", 5000);
+      assert.equal(await goodsBackRow(page, "JW/001").getByText(/Enter the date the goods on/).count(), 0, "the sentence about the second challan's box was said in the first challan's row");
+      // The server's refusal for the FIRST challan: said in the first row with its number, and not in the second.
+      stub.route({ method: "PATCH", re: /api\/sales-cycle\/challans\/ch-1(\?|$)/, ...refuse(REFUSAL, 422) });
+      await typeAndLeave(page.getByLabel("Date the goods came back, challan JW/001"), "07/10/2026");
+      await goodsBackRow(page, "JW/001").getByRole("button", { name: "Record goods back", exact: true }).click();
+      await until(async () => (await goodsBackRow(page, "JW/001").getByText(`JW/001: ${REFUSAL}`).count()) === 1, "the server's refusal to be said in its own row, with its challan's number", 5000);
+      assert.equal(await goodsBackRow(page, "JW/002").getByText(REFUSAL).count(), 0, "the server's refusal for the first challan was said in the second challan's row");
+      assert.equal(await page.getByText(BLANK_2).count(), 0, "the sentence about the second challan's box was still on the page after the first challan was tried");
+      // Leaving the tab withdraws what was said.
+      await page.getByRole("button", { name: "Sales Orders", exact: true }).click();
+      await page.getByRole("button", { name: "Delivery Challans", exact: true }).click();
+      await page.getByRole("button", { name: "Record goods back", exact: true }).first().waitFor();
+      assert.equal(await page.getByText(REFUSAL).count(), 0, "the server's refusal was still said after the tab was left and come back to");
+    },
+  },
   // The day an IRP or an e-way bill portal printed is India's, and so is the day the dialog opens on: a browser that is already on the next day (a few hours ahead of India) must not open a box on a
   // date the box itself refuses. At 12:00 UTC it is 8 October in India and 9 October on Kiritimati; nothing is typed, and the day that is sent is India's.
   ...[
