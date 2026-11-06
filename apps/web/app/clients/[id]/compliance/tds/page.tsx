@@ -13,6 +13,7 @@ import { errorMessage } from "@/lib/api";
 import type { CalendarAnswer } from "@/lib/data/tds";
 import { Callout } from "@/components/ui/callout";
 import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
+import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -865,6 +866,9 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                     </p>
                   );
                 })()}
+                {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries posted purchase bills and advances
+                    only, so a typed deduction is not on it. The server names them (a 26Q only; a 24Q or 27Q sends no key and gets no note). */}
+                <TypedDeductionsNote raw={computeResult.excluded_typed} />
                 {((computeResult.challan_gaps as ChallanGap[]) ?? []).length > 0 && (
                   <div className="space-y-1 bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
                     {(computeResult.challan_gaps as ChallanGap[]).map((g, i) => (

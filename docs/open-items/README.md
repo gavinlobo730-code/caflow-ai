@@ -40,7 +40,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 2 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 116 | after the demo: Claude can do alone |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 118 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 167 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 197 | after the demo: only the owner or outsiders can do |
 | [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
@@ -49,9 +49,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [deletion-plan.md](deletion-plan.md) | — | which audit and plan documents can be deleted, which must stay and why, and what must be done first |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**502 open items** (22 before the demo, 480 after); 12 after-demo items are `high` priority; 27 are UNSURE. A further **150 items are parked** (not counted above).
+**504 open items** (22 before the demo, 482 after); 12 after-demo items are `high` priority; 27 are UNSURE. A further **150 items are parked** (not counted above).
 
-**Who must act.** 118 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 105 can be built now. 181 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **397 of the 502 wait on the owner.**
+**Who must act.** 120 items are Claude's alone to build, but 14 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 106 can be built now. 181 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **398 of the 504 wait on the owner.**
 
 <!-- counts:end -->
 

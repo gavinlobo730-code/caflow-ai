@@ -62,6 +62,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from domain.money_sentence import rupee_text
+
 RECORD_FILE_HEADER = "File Header (FH)"
 RECORD_BATCH_HEADER = "Batch Header (BH) — deductor / responsible person"
 RECORD_CHALLAN_DETAIL = "Challan Detail (CD)"
@@ -123,6 +125,13 @@ ORPHAN_CHALLAN_ROWS = (
     "number {challan_no}) that is not among the challans this statement "
     "read for the quarter. Listed under their own heading rather than "
     "silently dropped."
+)
+
+#: POST-A-078. The statement is built from posted purchase bills and advances, so a deduction a CA typed on the TDS screen is not on it, and this sheet is what
+#: the CA keys from: a CA keying from the sheet alone would leave those deductions off the filed statement without knowing the register holds them.
+TYPED_DEDUCTIONS_NOT_ON_THIS_SHEET = (
+    "{count} deduction(s) typed on the TDS screen for this quarter, with {tds} of tax withheld, are not on this sheet: a statement built from the books "
+    "carries posted purchase bills and advances only. Key them from the register yourself if they belong on the statement, or leave them out knowingly."
 )
 
 
@@ -206,6 +215,13 @@ def build(data: dict) -> dict[str, Any]:
         gaps.append(PAYMENT_CODE_NOT_HELD.format(
             count=len(uncoded),
             sections=", ".join(sections) if sections else "unnamed sections"))
+
+    # Only the 26Q build carries the key (the typed register holds no salary and no non-resident rows), and a statement saved before the key existed has none:
+    # an absent key is a statement that never looked, which the sheet does not turn into a claim either way.
+    typed = data.get("excluded_typed") or {}
+    if int(typed.get("count") or 0) > 0:
+        gaps.append(TYPED_DEDUCTIONS_NOT_ON_THIS_SHEET.format(
+            count=int(typed["count"]), tds=rupee_text(int(typed.get("tds_paise") or 0))))
 
     gaps.append(NO_FVU_FILE_IS_PRODUCED)
 

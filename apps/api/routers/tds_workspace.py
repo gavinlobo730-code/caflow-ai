@@ -35,6 +35,7 @@ from services import tds_challan_retraction_service as challan_retraction
 from services import tds_challan_ledger_service as challan_ledger
 from services import lower_deduction_certificate_service as ldc_service
 from domain.tds import screen_counts
+from domain.tds import manual_register
 from services.tds_register_lists_service import TDS_LIST_MAX
 from domain.money_sentence import rupee_text
 
@@ -553,6 +554,20 @@ def list_deductions(
 # the FY aggregate are all resolve_tds's answers.
 
 
+def _not_typed_here(rec: dict, *, removing: bool) -> str:
+    """The refusal for a register row a document wrote, in the words of the document that did (`manual_register.written_by_a_document`).
+
+    A row a purchase bill wrote is rebuilt on every receive, and one a vendor advance wrote follows the payment (a reversed payment loses its row): changing or
+    removing either here would look like it worked and be put back, or would leave the register short of a payment the books hold. The advance sentence does not
+    name a door ("reverse the payment"): there is none that changes the row, and a row left behind by a failed sync of an already reversed payment is not helped by it.
+    """
+    if rec.get("purchase_bill_id"):
+        return ("This deduction came from a purchase bill. Cancel or edit the bill instead." if removing
+                else "This deduction came from a purchase bill. Edit the bill instead — the register is rebuilt from it on every receive.")
+    return ("This deduction came from a vendor payment (an advance). It follows the payment and cannot be removed here."  if removing
+            else "This deduction came from a vendor payment (an advance). It follows the payment and cannot be changed here.")
+
+
 def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
                               exclude_id: Optional[str] = None) -> dict:
     """Run one hand-entered deduction through the engine and return the row to
@@ -564,9 +579,9 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     such row was a number no backend path could reproduce.
     """
     from datetime import date as _date
-    from domain.tds import manual_register
     from domain.tds.tds_computer import TDSComputer, is_company_pan, has_pan
     from domain.tds.residency import deduction_section_refusal
+    from domain.tds.section_rates import tds_rates_for, rates_are_verified as resident_rates_are_verified
     from services.tds_register_service import fy_quarter
 
     section = (body.get("section") or "").upper().strip()
@@ -588,7 +603,9 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         raise HTTPException(status_code=422, detail=refusal)
 
     prior_taxable, prior_tds = (0, 0)
-    if not _USE_MOCK and db is not None:
+    # Asked means the read RAN: `prior_manual_aggregate` returns at once, without a query, for a blank firm, client or section.
+    register_asked = bool(not _USE_MOCK and db is not None and firm_id and client_id and section)
+    if register_asked:
         prior_taxable, prior_tds = manual_register.prior_manual_aggregate(
             db, firm_id=firm_id, client_id=client_id, section=section,
             deductee_pan=pan, on=when, exclude_id=exclude_id)
@@ -626,6 +643,25 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     # have changed it, and a gap that appears only sometimes reads as a fault
     # in the data rather than a known limit of the calculation.
     gaps = [manual_register.GAP_REGISTERS_NOT_UNIFIED]
+    # AND WHEN THE YEAR WAS NOT LOOKED AT ALL. A payee with no usable PAN (blank, a placeholder, not a PAN) has no key, so the aggregate above is
+    # 0 because nothing was read, not because nothing was paid; the screen used to say "the year's total for this payee has not reached it either"
+    # over that nil (POST-A-078). The gap that names a missing PAN is added for that reason alone.
+    has_key = manual_register.usable_pan_key(pan) is not None
+    if not has_key:
+        gaps.append(manual_register.GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN)
+    # THE RATES OF A YEAR NOBODY HAS CONFIRMED. The bill and advance paths raise this gap (services/tds_register_service.py) and this door never did: the registry
+    # substitutes its latest verified year for one it does not hold, and Finance Act 2025 raised most thresholds, so s.194J at Rs 40,000 typed for FY 2024-25 comes
+    # back nil where Rs 4,000 was due (domain/tds/residency.py). The typed form answered it as confidently as any other.
+    fy = manual_register.fy_label(when)
+    rates_confirmed = resident_rates_are_verified(fy)
+    if not rates_confirmed:
+        gaps.append(manual_register.GAP_RESIDENT_RATES_UNVERIFIED)
+    # `aggregate_tested` is the one fact the screen's sentence "…and with the payments already typed for this payee in the year it is below the section's yearly
+    # threshold too" rests on: the register WAS asked and the read ran, for a payee who HAS a key, in a year whose rates are confirmed, and the section HAS a yearly
+    # limb to add them up against. Four sections deliberately have none (s.194I tests a month, s.194B a single transaction, s.192 and s.206C are not computed
+    # here: domain/tds/section_rates.py), and for them the year was never compared with anything, whatever was read.
+    section_rule = tds_rates_for(fy).sections.get(section)
+    aggregate_tested = bool(register_asked and has_key and rates_confirmed and section_rule is not None and section_rule.aggregate_threshold_paise is not None)
 
     # WHICH limb of the section's rate was applied, and why — stated on every
     # row, not only where a CA happens to ask, because a silently-applied
@@ -634,11 +670,14 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
     # alone. Mirrors is_company_pan()'s own reasoning (domain/tds/tds_computer.py):
     # the 4th character of the PAN decides, and no usable PAN defaults to the
     # higher, non-individual rate.
-    if pan and len(pan) >= 4:
-        rate_basis = (
-            f"Charged at the {'non-individual' if is_company else 'individual/HUF'} "
-            f"rate: PAN 4th character {pan[3].upper()}."
-        )
+    limb = "non-individual" if is_company else "individual/HUF"
+    if has_key:
+        rate_basis = f"Charged at the {limb} rate: PAN 4th character {pan[3].upper()}."
+    elif pan and len(pan) >= 4 and has_pan(pan):
+        # Text in the PAN box that is not a PAN, which is not one of the two placeholders either. The engine reads its 4th character all the same (whether it
+        # should is a statutory question, S28), so the sentence says what was read and that the text is not a PAN, and not "PAN 4th character" as though it were.
+        rate_basis = (f"Charged at the {limb} rate, read from the 4th character of what was typed in the PAN box. That text is not a PAN: correct it and the "
+                      "rate is read again.")
     else:
         rate_basis = (
             "Charged at the non-individual rate: no PAN is on file to read the "
@@ -686,6 +725,7 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         "rate_basis": rate_basis,
         "fy_prior_taxable_paise": prior_taxable,
         "fy_prior_tds_paise": prior_tds,
+        "aggregate_tested": aggregate_tested,
         "gaps": gaps,
         "gap_messages": [manual_register.GAP_MESSAGES[g] for g in gaps
                          if g in manual_register.GAP_MESSAGES],
@@ -822,10 +862,8 @@ def update_deduction(
         rec = _visible_or_none(current_user, got[0] if got else None)
         if rec is None:
             return api_response(False, None, "Not found")
-        if rec.get("purchase_bill_id"):
-            return api_response(False, None,
-                                "This deduction came from a purchase bill. Edit the bill "
-                                "instead — the register is rebuilt from it on every receive.")
+        if manual_register.written_by_a_document(rec):
+            return api_response(False, None, _not_typed_here(rec, removing=False))
         merged = {**rec, **{k: v for k, v in body.model_dump().items() if v is not None}}
         resolved = _resolve_manual_deduction(db, firm_id, rec["client_id"], merged,
                                              exclude_id=deduction_id)
@@ -888,10 +926,8 @@ def delete_deduction(
         rec = _visible_or_none(current_user, got[0] if got else None)
         if rec is None:
             return api_response(False, None, "Not found")
-        if rec.get("purchase_bill_id"):
-            return api_response(False, None,
-                                "This deduction came from a purchase bill. Cancel or edit "
-                                "the bill instead.")
+        if manual_register.written_by_a_document(rec):
+            return api_response(False, None, _not_typed_here(rec, removing=True))
         db.table("tds_deductions").delete().eq("id", deduction_id).eq("firm_id", firm_id).execute()
         log_event(firm_id, "tds_deduction", deduction_id, "delete",
                   actor_id=current_user.get("auth_user_id"),
