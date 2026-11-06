@@ -66,6 +66,13 @@ def get_provider(provider_name: str = "manual") -> EInvoiceProvider:
 
 _supabase = db_provider.request_db
 
+# A WRITE TO `einvoice_records` IS MADE WITH THE PRIVILEGED CLIENT (POST-A-394), NAMING THE FIRM, and a read is made with the caller's own. The routes ask the caller's tier and the client
+# (`assert_client_access`), whether the invoice is the client's (`named_row_ownership`) and, for a row-addressed route, the row's client (`_assert_record_scope`) BEFORE they call this module,
+# which is what lets the signed-in role's write grant be taken away (migration 583): a hand-made PostgREST request from a signed-in session no longer reaches an IRN record that
+# no route would have written. The record is labelled with the person of the request (`privileged_for`), so the audit trigger still names who made it.
+def _writer():
+    return db_provider.privileged_for(_supabase())
+
 
 def create_einvoice_record(
     firm_id: str,
@@ -108,7 +115,7 @@ def create_einvoice_record(
         _MOCK_RECORDS[row["id"]] = row
         return row
 
-    sb = _supabase()
+    sb = _writer()
     row = {
         "firm_id": firm_id,
         "client_id": client_id,
@@ -172,7 +179,7 @@ def record_irn_generated(
             _MOCK_RECORDS[record_id].update(update)
         return _MOCK_RECORDS.get(record_id, {})
 
-    sb = _supabase()
+    sb = _writer()
     res = sb.table("einvoice_records").update(update).eq("id", record_id).eq(
         "firm_id", firm_id
     ).execute()
@@ -199,7 +206,7 @@ def record_irn_cancelled(
             _MOCK_RECORDS[record_id].update(update)
         return _MOCK_RECORDS.get(record_id, {})
 
-    sb = _supabase()
+    sb = _writer()
     res = sb.table("einvoice_records").update(update).eq("id", record_id).eq(
         "firm_id", firm_id
     ).execute()

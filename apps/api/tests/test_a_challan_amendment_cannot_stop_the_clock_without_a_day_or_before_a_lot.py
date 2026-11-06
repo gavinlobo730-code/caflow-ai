@@ -1,0 +1,426 @@
+"""The challan amendment door cannot stop the section 143 clock without naming a day, cannot do it on a cancelled challan, cannot leave a back day beside a status that says the goods have
+not come back, and cannot give the whole challan a back day earlier than goods already returned (POST-A-383).
+
+WHAT WAS WRONG
+    `sales_cycle_service.update_challan` wrote `status: "received_back"` as it was sent. The status alone stops the s.143 job-work clock (`itc_04.balances` skips a challan in it), so one
+    hand-made amendment stopped it for goods that never came back and named no day. (The challan LIST draws its clock from the day alone, so a status-only row shows as running there
+    while ITC-04 skips it: the two readers disagreed, and a row written that way before this rule is still offered a day by the screen's "Mark a whole challan back at once".) The door also
+    stamped a back day on a CANCELLED challan, which the FORM GST ITC-04 door refuses (409, "goods can only come back on a challan that has been issued"), and took a whole-challan back day
+    earlier than goods already returned on ITC-04: the whole challan's day is the day its LAST goods came back, so it cannot be before any lot of goods returned. (The seventeenth slice
+    made the day itself honest and compared the day the goods WENT OUT with the days recorded as back; this is the other end of the pair.)
+
+WHAT IS HELD
+    * the status "received back" is refused without a day, in the patch or already on the row (422, one sentence in the domain); for a JOB-WORK challan the sentence also names the
+      lot-by-lot route, and for any other reason it does not, because the lot door refuses every reason but job work;
+    * a patch that stops the clock on a CANCELLED challan, or leaves one cancelled with a back day, is refused (409) in the sentence the ITC-04 lot door says, which is ONE function
+      (`delivery_challan.not_issued_sentence`). It is judged on the status the patch LEAVES and not only on the one stored, so `{"status": "cancelled", "received_back_on": D}` is
+      refused too, and it is asked before the missing day (the unfixable refusal first);
+    * a challan with a back day IS received back: a patch that leaves the day beside another status (`issued`, `draft`, `cancelled`) is refused (422), whether the day is in the patch
+      or on the row, so the two-step route (`received_back_on`, then `status: "cancelled"`) is closed as well;
+    * a whole-challan back day earlier than the latest lot of goods RETURNED against THIS challan (not another challan's, not another client's) is refused (422); the same day is
+      allowed; a row that records only quantity lost or wasted is not goods returned and is not counted (migration 462: whether scrap counts as received back is not a judgement this
+      product takes);
+    * an amended day the goods went out is compared with the days already recorded as back whether or not the same patch gives a back day;
+    * a DRAFT is not refused, and that is a premise, not a preference: no SCREEN issues a challan (see the last tests; the amendment door accepts `issued` from a hand-made request,
+      and the tests say so), so a draft is the state every challan made in the product is in and the whole-challan "Record goods back" is the one door that can end its clock. The
+      premise is a test over the whole API tree, the migrations and the front end, and it fails when a door that issues a challan appears.
+"""
+from __future__ import annotations
+
+import ast
+import re
+import sys
+from datetime import date
+from pathlib import Path
+
+import pytest
+from fastapi import HTTPException
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+import services.itc_04_service
+import services.sales_cycle_service as svc
+import test_itc_04_is_derived_from_the_challans_already_entered as itc
+from domain.gst import delivery_challan as dc
+from tests.e2e_harness import FakeDB
+
+INDIA_TODAY = date(2026, 10, 9)
+API = Path(__file__).resolve().parent.parent
+WEB = API.parent / "web"
+
+
+@pytest.fixture(autouse=True)
+def _india_today_is_fixed(monkeypatch):
+    monkeypatch.setattr(svc, "ist_today", lambda: INDIA_TODAY)
+    monkeypatch.setattr(services.itc_04_service, "ist_today", lambda: INDIA_TODAY)
+
+
+@pytest.fixture
+def db():
+    x = FakeDB()
+    x.seed("clients", {"id": itc.CLIENT, "firm_id": itc.FIRM, "client_name": "Mfg Co"})
+    x.seed("clients", {"id": itc.OTHER_CLIENT, "firm_id": itc.FIRM, "client_name": "Other Co"})
+    return x
+
+
+def _amend(db, challan, patch):
+    return svc.update_challan(db, itc.FIRM, challan["id"], patch)
+
+
+def _stored(db, challan):
+    return next(r for r in db.rows("delivery_challans") if r["id"] == challan["id"])
+
+
+def _refused(db, challan, patch, code):
+    with pytest.raises(HTTPException) as caught:
+        _amend(db, challan, patch)
+    assert caught.value.status_code == code, (patch, caught.value.status_code, caught.value.detail)
+    return caught.value.detail
+
+
+# ── the status alone ────────────────────────────────────────────────────────────────────────────────────────
+
+def test_the_status_received_back_is_refused_without_a_day_and_nothing_is_written(db):
+    c = itc._challan(db, "JW/1", "2026-06-01")
+    detail = _refused(db, c, {"status": "received_back"}, 422)
+    assert detail == dc.whole_challan_back_needs_a_day("job_work")
+    assert "FORM GST ITC-04" in detail, "a job-work challan is told where else the goods can be recorded back"
+    stored = _stored(db, c)
+    assert stored["status"] == "issued" and not stored.get("received_back_on"), f"a refused amendment wrote: {stored}"
+
+
+def test_a_challan_that_is_not_job_work_is_not_sent_to_a_door_that_refuses_it(db):
+    """The lot door refuses every reason but job work (422, "Only goods sent for JOB WORK are returned on ITC-04"), so the advice must not name it."""
+    c = itc._challan(db, "SA/1", "2026-06-01", reason=dc.REASON_ON_APPROVAL, goods_kind=None)
+    detail = _refused(db, c, {"status": "received_back"}, 422)
+    assert detail == dc.whole_challan_back_needs_a_day(dc.REASON_ON_APPROVAL)
+    assert "ITC-04" not in detail and "lot" not in detail, f"the sentence points a sale-on-approval challan at a door that refuses it: {detail}"
+    assert detail.startswith("A challan is marked received back with the day the goods came back. Give the day")
+
+
+def test_the_status_received_back_is_taken_with_a_day_in_the_same_patch_or_one_already_on_the_row(db):
+    c = itc._challan(db, "JW/2", "2026-06-01")
+    out = _amend(db, c, {"status": "received_back", "received_back_on": "2026-06-20"})
+    assert out["status"] == "received_back" and out["received_back_on"] == "2026-06-20"
+    # Already back, with its day on the row: saying so again names a day that is there, so it is not refused.
+    again = _amend(db, c, {"status": "received_back"})
+    assert again["status"] == "received_back"
+    # A day alone has always set the status, and still does.
+    d = itc._challan(db, "JW/3", "2026-06-01")
+    assert _amend(db, d, {"received_back_on": "2026-06-21"})["status"] == "received_back"
+
+
+def test_an_amendment_that_does_not_stop_the_clock_is_unaffected(db):
+    c = itc._challan(db, "JW/4", "2026-06-01")
+    assert _amend(db, c, {"notes": "Collected by the transporter"})["notes"] == "Collected by the transporter"
+    assert _amend(db, c, {"status": "issued"})["status"] == "issued", "the other statuses are not this rule's when there is no back day"
+    draft = itc._challan(db, "JW/4D", "2026-06-01", status="draft")
+    assert _amend(db, draft, {"notes": "n"})["notes"] == "n"
+
+
+# ── a cancelled challan has no goods to come back ───────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("patch", [{"received_back_on": "2026-06-20"}, {"status": "received_back", "received_back_on": "2026-06-20"}])
+def test_a_back_day_or_the_status_on_a_cancelled_challan_is_refused_in_the_lot_doors_sentence(db, patch):
+    c = itc._challan(db, "JW/5", "2026-06-01", status="cancelled")
+    detail = _refused(db, c, patch, 409)
+    assert detail == "Challan JW/5 is cancelled: goods can only come back on a challan that has been issued."
+    assert not _stored(db, c).get("received_back_on"), "a refused amendment wrote a day"
+    # The ITC-04 lot door says the same words for the same challan.
+    ln = itc._line(db, c, qty="10")
+    with pytest.raises(HTTPException) as lot:
+        services.itc_04_service.record_return(db, itc.FIRM, itc.CLIENT, c["id"], itc._payload(ln, returned_on="2026-06-20"), "u1")
+    assert lot.value.status_code == 409 and lot.value.detail == detail, "the two doors no longer say one sentence"
+
+
+def test_the_unfixable_refusal_comes_first_a_status_alone_on_a_cancelled_challan_is_the_409_not_an_ask_for_a_day(db):
+    c = itc._challan(db, "JW/5A", "2026-06-01", status="cancelled")
+    detail = _refused(db, c, {"status": "received_back"}, 409)
+    assert "cancelled" in detail, "a challan that cannot come back at all was asked for a day it could not use"
+
+
+def test_a_patch_that_cancels_the_challan_and_stops_its_clock_in_one_request_is_refused(db):
+    """The refusal is judged on the status the patch LEAVES: cancelling and giving a back day in one request ends cancelled with a day."""
+    c = itc._challan(db, "JW/5B", "2026-06-01")
+    detail = _refused(db, c, {"status": "cancelled", "received_back_on": "2026-06-20"}, 409)
+    assert detail == dc.not_issued_sentence("JW/5B", "cancelled")
+    stored = _stored(db, c)
+    assert stored["status"] == "issued" and not stored.get("received_back_on"), f"a refused amendment wrote: {stored}"
+
+
+def test_the_two_step_route_to_a_cancelled_challan_with_a_back_day_is_closed(db):
+    """Step one is an ordinary amendment; step two would end cancelled with the day from step one. A challan with a back day IS received back."""
+    c = itc._challan(db, "JW/5C", "2026-06-01")
+    assert _amend(db, c, {"received_back_on": "2026-06-20"})["status"] == "received_back"
+    detail = _refused(db, c, {"status": "cancelled"}, 422)
+    assert detail == dc.a_back_day_needs_a_status_that_says_so_problem("JW/5C", "2026-06-20", "cancelled")
+    assert _stored(db, c)["status"] == "received_back"
+
+
+@pytest.mark.parametrize("status", ["issued", "draft"])
+def test_a_back_day_is_not_left_beside_a_status_that_says_the_goods_have_not_come_back(db, status):
+    fresh = itc._challan(db, f"JW/5D-{status}", "2026-06-01")
+    detail = _refused(db, fresh, {"status": status, "received_back_on": "2026-06-20"}, 422)
+    assert detail == dc.a_back_day_needs_a_status_that_says_so_problem(f"JW/5D-{status}", "2026-06-20", status)
+    stored = _stored(db, fresh)
+    assert stored["status"] == "issued" and not stored.get("received_back_on"), f"a refused amendment wrote: {stored}"
+    # ...and a challan that is already back cannot be re-marked as one that is not, by the status alone.
+    back = itc._challan(db, f"JW/5E-{status}", "2026-06-01", status="received_back", received_back_on="2026-06-20")
+    _refused(db, back, {"status": status}, 422)
+    assert _stored(db, back)["status"] == "received_back"
+
+
+def test_an_edit_of_something_else_on_a_cancelled_challan_or_a_received_back_one_is_not_refused(db):
+    c = itc._challan(db, "JW/6", "2026-06-01", status="cancelled")
+    assert _amend(db, c, {"notes": "Cancelled: wrong job worker"})["notes"] == "Cancelled: wrong job worker"
+    back = itc._challan(db, "JW/6B", "2026-06-01", status="received_back", received_back_on="2026-06-20")
+    assert _amend(db, back, {"notes": "Collected"})["notes"] == "Collected", "an unrelated edit of a row that is back is not made to answer for the rule"
+    legacy = itc._challan(db, "JW/6C", "2026-06-01", status="received_back")
+    assert _amend(db, legacy, {"notes": "Legacy row: the status without a day"})["notes"].startswith("Legacy row"), "a row stored from before the rule stays editable"
+
+
+def test_the_sentence_is_one_function_in_the_domain():
+    assert dc.not_issued_sentence("JW/9", "draft") == "Challan JW/9 is draft: goods can only come back on a challan that has been issued."
+    source = (API / "services" / "itc_04_service.py").read_text(encoding="utf-8")
+    assert "dc.not_issued_sentence(" in source and "can only come back on a challan that has been issued" not in source, "the lot door spells the sentence itself again"
+    assert "can only come back on a challan that has been issued" not in (API / "services" / "sales_cycle_service.py").read_text(encoding="utf-8")
+
+
+# ── the whole challan's day is not before goods returned ───────────────────────────────────────────────────
+
+def test_a_whole_challan_back_day_before_a_lot_already_recorded_is_refused_and_the_same_day_is_allowed(db):
+    c = itc._challan(db, "JW/7", "2026-06-01")
+    ln = itc._line(db, c, qty="10")
+    itc._came_back(db, c, ln, "4", "2026-06-10")
+    itc._came_back(db, c, ln, "3", "2026-06-25")
+    detail = _refused(db, c, {"received_back_on": "2026-06-20"}, 422)
+    assert detail == dc.whole_challan_back_before_a_lot_problem("JW/7", date(2026, 6, 20), date(2026, 6, 25))
+    assert "2026-06-25" in detail and "2026-06-20" in detail and "FORM GST ITC-04" in detail
+    assert not _stored(db, c).get("received_back_on"), "a refused amendment wrote a day"
+    assert _amend(db, c, {"received_back_on": "2026-06-25"})["received_back_on"] == "2026-06-25", "the day of the latest lot is allowed"
+    later = itc._challan(db, "JW/8", "2026-06-01")
+    later_line = itc._line(db, later, qty="10")
+    itc._came_back(db, later, later_line, "4", "2026-06-10")
+    assert _amend(db, later, {"received_back_on": "2026-07-02"})["received_back_on"] == "2026-07-02", "a later day is allowed"
+
+
+def test_a_lot_that_records_only_scrap_is_not_goods_returned(db):
+    """Migration 462 allows a row with nothing returned and some quantity lost or wasted, and says whether scrap counts as received back for s.143 is not a judgement this product
+    takes. So the refusal does not take it either: it asks the day of the latest lot of goods RETURNED, and the sentence says 'returned'."""
+    c = itc._challan(db, "JW/W1", "2026-06-01")
+    ln = itc._line(db, c, qty="10")
+    itc._came_back(db, c, ln, "8", "2026-06-10")
+    itc._came_back(db, c, ln, "0", "2026-06-25", wasted="2")
+    assert _amend(db, c, {"received_back_on": "2026-06-10"})["received_back_on"] == "2026-06-10", "a scrap-only row pushed the CA to a later, wrong day"
+    again = itc._challan(db, "JW/W2", "2026-06-01")
+    again_line = itc._line(db, again, qty="10")
+    itc._came_back(db, again, again_line, "8", "2026-06-10")
+    itc._came_back(db, again, again_line, "0", "2026-06-25", wasted="2")
+    detail = _refused(db, again, {"received_back_on": "2026-06-05"}, 422)
+    assert "returned on 2026-06-10" in detail and "2026-06-25" not in detail, detail
+
+
+def test_another_challans_lot_and_another_clients_do_not_count(db):
+    c = itc._challan(db, "JW/10", "2026-06-01")
+    other = itc._challan(db, "JW/11", "2026-06-01")
+    other_ln = itc._line(db, other, qty="10")
+    itc._came_back(db, other, other_ln, "4", "2026-08-30")
+    strange = itc._challan(db, "JW/12", "2026-06-01", client=itc.OTHER_CLIENT)
+    strange_ln = itc._line(db, strange, qty="10")
+    itc._came_back(db, strange, strange_ln, "4", "2026-09-01")
+    # A lot recorded against the same challan id under another client is not this client's row either.
+    db.seed("delivery_challan_returns", {"firm_id": itc.FIRM, "client_id": itc.OTHER_CLIENT, "challan_id": c["id"], "challan_line_id": "x", "returned_on": "2026-09-15",
+                                         "quantity_returned": "1", "quantity_lost_or_wasted": "0"})
+    assert _amend(db, c, {"received_back_on": "2026-06-05"})["received_back_on"] == "2026-06-05"
+
+
+def test_the_pure_rule_asks_only_the_order_of_the_two_days():
+    assert dc.whole_challan_back_before_a_lot_problem("JW/1", date(2026, 6, 25), date(2026, 6, 25)) is None
+    assert dc.whole_challan_back_before_a_lot_problem("JW/1", date(2026, 6, 26), date(2026, 6, 25)) is None
+    assert dc.whole_challan_back_before_a_lot_problem("JW/1", date(2026, 6, 1), None) is None, "no lot recorded, nothing to be before"
+    assert dc.whole_challan_back_before_a_lot_problem("JW/1", date(2026, 6, 24), date(2026, 6, 25)) is not None
+
+
+def test_the_last_lot_stamps_a_day_that_this_rule_allows(db):
+    """The ITC-04 door stamps the LARGEST lot day when every line is back, so the two doors cannot disagree about a challan the lots finished."""
+    c = itc._challan(db, "JW/13", "2026-06-01")
+    ln = itc._line(db, c, qty="10")
+    itc._came_back(db, c, ln, "6", "2026-06-10")
+    out = itc._record(db, c, ln, returned_on="2026-06-05", quantity_returned=4.0)
+    assert out["challan_marked_received_back"] is True
+    stamped = _stored(db, c)["received_back_on"]
+    assert stamped == "2026-06-10", "the stamp is the latest lot's day, whatever order the lots were keyed in"
+    assert _amend(db, c, {"received_back_on": stamped})["received_back_on"] == stamped
+
+
+# ── the day the goods went out, amended together with the day they came back ─────────────────────────────────
+
+def test_amending_the_day_they_went_out_is_compared_with_the_lots_whether_or_not_the_patch_gives_a_back_day(db):
+    c = itc._challan(db, "JW/14", "2026-06-01")
+    ln = itc._line(db, c, qty="10")
+    itc._came_back(db, c, ln, "4", "2026-06-10")
+    # Alone: refused, as it always was.
+    _refused(db, c, {"document_date": "2026-06-20"}, 422)
+    # With a back day beside it: the lot of 10 June is still before the new sent day of 20 June, so this is refused too.
+    _refused(db, c, {"document_date": "2026-06-20", "received_back_on": "2026-06-25"}, 422)
+    stored = _stored(db, c)
+    assert stored["document_date"] == "2026-06-01" and not stored.get("received_back_on"), f"a refused amendment wrote: {stored}"
+    # A sent day on or before the lot is fine, with a back day beside it.
+    assert _amend(db, c, {"document_date": "2026-06-10", "received_back_on": "2026-06-25"})["document_date"] == "2026-06-10"
+
+
+# ── the premise on which a DRAFT is not refused ─────────────────────────────────────────────────────────────
+#
+# "No SCREEN issues a challan" is what lets a draft be left alone: the product makes a challan as a draft and has no button that issues it. It is NOT "nothing can": the request model accepts
+# any of the four statuses, so a hand-made request can set `issued` (the first test says so). The tests below read the WHOLE API tree (recursively, in any quote style, through a handle
+# variable too), the migrations and the whole front end, and fail when a door that issues a challan appears.
+
+_API_SKIP = {"tests", "scripts", "migrations", "__pycache__", ".venv", "venv", "node_modules"}
+#: The only functions that write the table, and the verb each is allowed.
+_WRITERS = {("services/sales_cycle_service.py", "create_challan"): {"insert"}, ("services/sales_cycle_service.py", "update_challan"): {"update"},
+            ("services/sales_cycle_service.py", "record_goods_back"): {"update"}}
+#: Helpers that take the table's name to READ it.
+_READ_HELPERS = {"_one", "_refuse_duplicate", "row_of_client"}
+#: Modules that list the table's name as data (the tables a delete counts), never as a client.
+_DATA_LISTS = {"routers/service_catalogue.py", "routers/firm_hsn_library.py"}
+
+
+def _api_python():
+    for path in sorted(API.rglob("*.py")):
+        rel = path.relative_to(API)
+        if any(part in _API_SKIP for part in rel.parts):
+            continue
+        yield rel.as_posix(), path.read_text(encoding="utf-8")
+
+
+def _enclosing_function(node, parents):
+    while node in parents:
+        node = parents[node]
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return node.name
+    return "<module>"
+
+
+def uses_of_the_challans_table(rel: str, source: str) -> list[str]:
+    """Every use of the name "delivery_challans" in `source` that is not a read or one of the three named writers, and every database function with 'challan' in its name, as a sentence."""
+    tree = ast.parse(source)
+    parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+    problems = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "rpc" and node.args:
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str) and "challan" in first.value.lower():
+                problems.append(f"{rel}:{node.lineno} calls the database function {first.value!r}")
+        if not (isinstance(node, ast.Constant) and node.value == "delivery_challans"):
+            continue
+        parent = parents.get(node)
+        fn = _enclosing_function(node, parents)
+        if isinstance(parent, ast.Call) and isinstance(parent.func, ast.Attribute) and parent.func.attr == "table":
+            verb_node = parents.get(parent)
+            if isinstance(verb_node, ast.Attribute) and verb_node.attr == "select":
+                continue
+            if isinstance(verb_node, ast.Attribute) and verb_node.attr in {"insert", "update", "upsert", "delete"}:
+                if verb_node.attr not in _WRITERS.get((rel, fn), set()):
+                    problems.append(f"{rel}:{node.lineno} {fn}() writes the table ({verb_node.attr})")
+                continue
+            problems.append(f"{rel}:{node.lineno} {fn}() holds the table in a variable or passes it on: a write through it cannot be seen")
+            continue
+        if isinstance(parent, ast.Call) and isinstance(parent.func, (ast.Name, ast.Attribute)):
+            callee = parent.func.id if isinstance(parent.func, ast.Name) else parent.func.attr
+            if callee in _READ_HELPERS:
+                continue
+        if rel in _DATA_LISTS and isinstance(parent, (ast.Tuple, ast.List)):
+            continue
+        problems.append(f"{rel}:{node.lineno} {fn}() names the table in a way the rule does not know")
+    return problems
+
+
+def test_the_amendment_door_accepts_issued_from_a_hand_made_request_and_no_screen_sends_it():
+    """The honest form of the premise: the model lets a request say `issued`, so what keeps a challan a draft is that nothing in the product asks for it."""
+    from models.sales_cycle import DeliveryChallanUpdateIn
+    assert DeliveryChallanUpdateIn(status="issued").status == "issued"
+
+
+def test_no_door_in_the_api_issues_a_challan_so_a_draft_is_the_state_the_product_makes():
+    """`update_challan` does not refuse a back day on a draft because no screen can make a challan anything else. If a door that issues one is added, this fails, and the draft case is
+    decided again (the whole-challan "Record goods back" would then be offered on an issued challan only, as the lot door already is) instead of staying as it was by silence."""
+    problems = []
+    for rel, text in _api_python():
+        if "challan" not in text.lower():
+            continue
+        problems += uses_of_the_challans_table(rel, text)
+    assert not problems, "the rule does not recognise a use of the challans table:\n  " + "\n  ".join(problems)
+    # The three writers exist, so the rule cannot go vacuous.
+    source = (API / "services" / "sales_cycle_service.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+    census: dict[str, int] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and node.value == "delivery_challans":
+            parent, fn = parents.get(node), _enclosing_function(node, parents)
+            verb = parents.get(parent) if isinstance(parent, ast.Call) else None
+            if isinstance(verb, ast.Attribute) and verb.attr in {"insert", "update", "upsert", "delete"}:
+                census[verb.attr] = census.get(verb.attr, 0) + 1
+                assert verb.attr in _WRITERS[("services/sales_cycle_service.py", fn)]
+    assert census == {"insert": 1, "update": 2}, f"the writers of delivery_challans in the sales cycle service changed: {census}"
+    insert = source[source.index('db.table("delivery_challans").insert('):]
+    assert '"status": "draft"' in insert[:600], "a challan is no longer made as a draft"
+    stamp = source[source.index("def record_goods_back("):]
+    assert '"status": "received_back"' in stamp[:900], "the goods-back stamp no longer writes received_back"
+
+
+def test_the_detector_sees_what_the_first_regex_did_not():
+    def flagged(src: str) -> list[str]:
+        return uses_of_the_challans_table("services/x.py", src)
+
+    assert flagged('def f(db):\n    t = db.table("delivery_challans")\n    t.update({"status": "issued"}).execute()\n'), "a write through a handle variable"
+    assert flagged("def f(db):\n    db.table('delivery_challans').update({'status': 'issued'}).execute()\n"), "a single-quoted name"
+    assert flagged('def f(db):\n    db.rpc("issue_delivery_challan", {}).execute()\n'), "a database function that issues one"
+    assert flagged('def f(db):\n    db.table("delivery_challans").delete().eq("id", 1).execute()\n'), "a delete"
+    assert flagged('def f(db):\n    (db.table("delivery_challans")\n     .upsert({}).execute())\n'), "an upsert"
+    assert not flagged('def f(db):\n    return db.table("delivery_challans").select("id").execute()\n'), "a read is left alone"
+
+
+def test_no_migration_other_than_the_two_that_made_the_table_touches_it():
+    """A database function or trigger that issues a challan would be in a migration. Today the table is named only by 392 (it made it) and 462 (the lots) and their rollbacks."""
+    named = {p.name for p in (API / "migrations").glob("*.sql") if "delivery_challans" in p.read_text(encoding="utf-8")}
+    allowed = {"392_the_sales_cycle_before_the_tax_invoice.sql", "392_the_sales_cycle_before_the_tax_invoice_rollback.sql",
+               "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return.sql", "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return_rollback.sql"}
+    assert named <= allowed, f"a migration touches delivery_challans: {sorted(named - allowed)}. Read it: if it issues a challan, a draft is no longer the state the product makes."
+
+
+def _balanced_call_arguments(text: str, name: str):
+    """The argument text of every `name(` call in `text`, read with its brackets balanced (a regex stops at the first closing bracket)."""
+    for m in re.finditer(re.escape(name) + r"\(", text):
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += {"(": 1, ")": -1}.get(text[i], 0)
+            i += 1
+        yield text[m.end():i - 1]
+
+
+def test_the_balanced_reader_sees_past_the_first_closing_bracket():
+    args = list(_balanced_call_arguments("api.updateChallan(c.id, clientId, { ...base(), status: 'issued' }); other(1)", "updateChallan"))
+    assert args == ["c.id, clientId, { ...base(), status: 'issued' }"]
+
+
+def test_the_front_end_never_asks_the_amendment_door_for_a_status():
+    sent = []
+    for folder in ("app", "components", "lib"):
+        for path in sorted((WEB / folder).rglob("*.ts*")):
+            if path.suffix not in {".ts", ".tsx"} or ".test." in path.name:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            rel = path.relative_to(WEB).as_posix()
+            for args in _balanced_call_arguments(text, "updateChallan"):
+                if re.search(r"\bstatus\b", args):
+                    sent.append(f"{rel}: updateChallan({args[:100]})")
+            # Any other PATCH to the door, whatever the wrapper is called.
+            if rel != "lib/api/index.ts":
+                for m in re.finditer(r"sales-cycle/challans/", text):
+                    if "PATCH" in text[m.end():m.end() + 220]:
+                        sent.append(f"{rel}: a PATCH to the challan door outside the one wrapper")
+    wrapper = (WEB / "lib" / "api" / "index.ts").read_text(encoding="utf-8")
+    start = wrapper.index("updateChallan:")
+    assert "status" not in wrapper[start:start + 400], "the API wrapper adds a status to the challan amendment"
+    assert not sent, "the screen asks the challan amendment door for a status, which is a door that can issue a challan:\n  " + "\n  ".join(sent)

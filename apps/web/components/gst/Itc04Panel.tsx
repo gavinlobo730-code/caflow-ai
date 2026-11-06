@@ -28,7 +28,7 @@
  * list means every lot is back, so a silent failure is a false clean result — a
  * failure is said, in one line.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Clock, Factory } from "lucide-react";
 import {
   api,
@@ -73,11 +73,15 @@ function ClockLine({ clock }: { clock: DeemedSupplyClock | null }) {
   );
 }
 
-export function Itc04Panel({ clientId, onChanged }: {
+export function Itc04Panel({ clientId, onChanged, refreshToken }: {
   clientId: string;
   /** Called after a lot is recorded, so a challan list on the same screen can
    *  reload — the last lot marks the challan received back. */
   onChanged?: () => void;
+  /** A number the screen bumps when it has changed something this statement is derived from (a challan marked wholly received back, a new job-work challan):
+   *  the panel reads the statement again when it changes. It is a PROP and not a React `key`, because a key would unmount the panel and lose the line it has just
+   *  said, the year and window chosen and any open lot form (POST-A-385). The first value is not a change: the panel reads on mount. */
+  refreshToken?: number;
 }) {
   const [year, setYear] = useState(() => financialYearChoicesAround()[0] ?? "");
   const [windowKey, setWindowKey] = useState<string | null>(null);
@@ -127,6 +131,15 @@ export function Itc04Panel({ clientId, onChanged }: {
   }, [clientId, year, windowKey]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // The screen changed something this statement is derived from: read it again, quietly (`loading && !st` shows "Loading…" only before the first statement, so the
+  // panel and what it has said stay on screen). Before POST-A-385 the screen's reload unmounted the panel and the remount did this by accident.
+  const seenToken = useRef(refreshToken);
+  useEffect(() => {
+    if (seenToken.current === refreshToken) return;
+    seenToken.current = refreshToken;
+    void load();
+  }, [refreshToken, load]);
 
   async function record(line: BalanceLine, challanId: string) {
     // A new press begins, so what the last one was answered with is no longer true.

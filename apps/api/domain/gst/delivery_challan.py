@@ -302,6 +302,44 @@ def goods_back_problem(sent_on: Optional[date], back_on: date, today: date) -> O
     return None
 
 
+def whole_challan_back_needs_a_day(reason: object) -> str:
+    """What the whole-challan door says when it is asked to mark a challan received back and is given no day anywhere (POST-A-383).
+
+    The status alone stops the s.143 clock (`itc_04.balances` skips a challan in it), so it would stop on a figure nobody can read back. For a JOB-WORK challan the sentence also names
+    the other way to end the clock, lot by lot on FORM GST ITC-04, where the last lot stamps the challan; the lot door refuses every other reason, so a challan sent on approval is not
+    offered a way it cannot follow.
+    """
+    base = "A challan is marked received back with the day the goods came back. Give the day"
+    if str(reason) == REASON_JOB_WORK:
+        return base + ", or record the returns lot by lot on FORM GST ITC-04: the last lot stamps it."
+    return base + "."
+
+
+def whole_challan_back_before_a_lot_problem(document_no: str, back_on: date, latest_returned_on: Optional[date]) -> Optional[str]:
+    """The sentence for a whole-challan back day that is EARLIER than a lot of goods already recorded as RETURNED on FORM GST ITC-04, or None (POST-A-383).
+
+    The day the whole challan came back is the day its LAST goods did, so it cannot be before any lot of goods returned against it; `latest_returned_on` is the latest of those (or None
+    when none is recorded). A row that records only quantity lost or wasted is not goods returned and is not counted: whether scrap counts as received back for s.143 is not a judgement
+    this product takes (migration 462). The other direction, a lot or the day they went out before the day the goods were sent, is `goods_back_problem`'s. Equal days are allowed. Pure: no
+    clock, no store.
+    """
+    if latest_returned_on is not None and back_on < latest_returned_on:
+        return (f"Challan {document_no} has goods recorded as returned on {latest_returned_on.isoformat()} on FORM GST ITC-04, so the day the whole challan came back "
+                f"cannot be {back_on.isoformat()}, before that.")
+    return None
+
+
+def a_back_day_needs_a_status_that_says_so_problem(document_no: object, day: object, status: object) -> str:
+    """The sentence for a challan that would carry the day its goods came back and a status that says they have not (POST-A-383): a challan with a back day IS received back."""
+    return f"Challan {document_no} has its goods back on {day}, so it is received back and cannot be marked {status}."
+
+
+def not_issued_sentence(document_no: object, status: object) -> str:
+    """What both doors that record goods coming back say of a challan that is not in the state goods can come back on (`issued`): the FORM GST ITC-04 lot door for a draft or a cancelled
+    challan, and the whole-challan amendment door for a cancelled one. One sentence, so the two cannot drift (POST-A-383)."""
+    return (f"Challan {document_no} is {status}: goods can only come back on a challan that has been issued.")
+
+
 def _add_months(d: date, months: int) -> date:
     """The same calendar day, `months` later; the month's last day if short.
 

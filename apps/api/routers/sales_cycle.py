@@ -359,11 +359,14 @@ def update_challan(
 ):
     """Amend a challan.
 
-    `received_back_on` is the one field here that changes what is OWED: a
-    challan carrying it is no longer running towards a deemed supply under
-    s.143(3)/(4). Everything else on this door is a correction to what the
-    document SAYS — the consignee, the transporter, the vehicle — which
-    Rule 55(1) requires and which a CA fills in when the lorry is booked.
+    `received_back_on` and the status "received back" are the two fields here
+    that change what is OWED: a challan carrying either is no longer running
+    towards a deemed supply under s.143(3)/(4), so the service refuses the
+    status without the day, either on a cancelled challan, and a day before a
+    lot of goods already returned (POST-A-383). Everything else on this door
+    is a correction to what the document SAYS — the consignee, the
+    transporter, the vehicle — which Rule 55(1) requires and which a CA fills
+    in when the lorry is booked.
     """
     assert_client_access(current_user, client_id)
     if _mock():

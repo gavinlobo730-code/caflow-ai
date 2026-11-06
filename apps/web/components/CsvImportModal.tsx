@@ -12,6 +12,8 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Download, Upload, AlertCircle, CheckCircle, Plus } from "lucide-react";
 import { LogoIcon } from "@/components/LogoIcon";
+import { Button } from "@/components/ui/button";
+import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { sheetToCsvWithIsoDates } from "@/lib/spreadsheet/xlsxCsv";
 import { parseCsv } from "@/lib/spreadsheet/parseCsv";
@@ -141,6 +143,7 @@ function computeMissing(
 
 export default function CsvImportModal({ title, columns, templateFilename, onImport, onClose, validateRow, resolvers, skippedHeading }: Props) {
   const [step, setStep] = useState<"upload" | "resolve" | "preview" | "importing" | "done">("upload");
+  const { flight } = useSingleFlight();
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -592,12 +595,17 @@ export default function CsvImportModal({ title, columns, templateFilename, onImp
             </button>
           )}
           {step === "preview" && validCount > 0 && (
-            <button
+            // A second click in the same moment as the first is ignored: `handleImport` moves to "importing" only after the call has started, so
+            // without the flight two clicks in one tick started two imports of the same file (POST-A-390). The flight is held until the import settles.
+            <Button
+              variant="plain"
+              size="none"
+              flight={flight}
               onClick={handleImport}
               className="px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark"
             >
               Import {validCount} row{validCount !== 1 ? "s" : ""}
-            </button>
+            </Button>
           )}
         </div>
       </div>

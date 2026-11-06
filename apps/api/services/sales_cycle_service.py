@@ -20,6 +20,7 @@ WHAT IT DOES DECIDE IS WHOSE DOCUMENT IT IS
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 from decimal import Decimal
 from typing import Optional
@@ -879,12 +880,83 @@ def _earliest_recorded_return(db, firm_id: str, client_id: str, challan_id: str)
     return date.fromisoformat(str(rows[0]["returned_on"])[:10]) if rows else None
 
 
+def _latest_returned_on(db, firm_id: str, client_id: str, challan_id: str) -> Optional[date]:
+    """The latest day goods were recorded as RETURNED on FORM GST ITC-04 against this challan (`delivery_challan_returns`), or None (POST-A-383): the day the WHOLE challan came back is
+    the day its last goods did, so it cannot be before this one. A row that records only quantity lost or wasted (migration 462 allows one) is not goods returned and is not counted:
+    whether scrap counts as received back for s.143 is not a judgement this product takes."""
+    rows = (db.table("delivery_challan_returns").select("returned_on, quantity_returned")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
+            .order("returned_on", desc=True).execute().data) or []
+    for r in rows:
+        raw = str(r.get("quantity_returned") or "0").strip()
+        # NUMERIC(10,3) comes back as a plain decimal; a value that is not one is not goods returned (no exception handler here: the service holds exactly one, and it is not around a read).
+        if re.fullmatch(r"\d+(\.\d+)?", raw) and Decimal(raw) > 0:
+            return date.fromisoformat(str(r["returned_on"])[:10])
+    return None
+
+
+def _refuse_a_status_or_day_that_cannot_stand(row: dict, fields: dict) -> None:
+    """The refusals about a challan's status and its back day, in the order that says the unfixable one first (POST-A-383). Nothing is written before any of them."""
+    stops_the_clock = bool(fields.get("received_back_on")) or fields.get("status") == "received_back"
+    # The status the patch LEAVES: the one it gives, or "received back" when it gives a day alone (the write does that), or the one stored.
+    after_status = fields.get("status") or ("received_back" if fields.get("received_back_on") else row.get("status"))
+    # The unfixable one first: goods cannot come back on a cancelled challan, whether it is cancelled already or this very patch cancels it.
+    if stops_the_clock and "cancelled" in (str(row.get("status")), str(after_status)):
+        raise HTTPException(status_code=409, detail=dc.not_issued_sentence(row.get("document_no"), "cancelled"))
+    if fields.get("status") == "received_back" and not (fields.get("received_back_on") or row.get("received_back_on")):
+        raise HTTPException(status_code=422, detail=dc.whole_challan_back_needs_a_day(row.get("reason")))
+    # A challan with a back day IS received back: this patch cannot leave the day beside a status that says the goods have not come back.
+    after_day = fields.get("received_back_on") or row.get("received_back_on")
+    if ("status" in fields or "received_back_on" in fields) and after_day and str(after_status) != "received_back":
+        raise HTTPException(status_code=422, detail=dc.a_back_day_needs_a_status_that_says_so_problem(
+            row.get("document_no"), str(after_day)[:10], after_status))
+
+
+def _refuse_a_day_that_is_out_of_order(db, firm_id: str, row: dict, challan_id: str, fields: dict) -> None:
+    """The order of the days: the goods cannot have come back before they went out, or on a day that has not come (PRE-A-015, seventeenth slice), and the whole challan's day is not
+    before goods already returned under ITC-04 (POST-A-383). The request model has judged each day alone; the day they went out is the challan's own, or the one this same amendment gives it."""
+    if not (fields.get("received_back_on") or fields.get("document_date")):
+        return
+    sent = date.fromisoformat(str(fields.get("document_date") or row["document_date"])[:10])
+    problem = None
+    if fields.get("received_back_on"):
+        back_on = date.fromisoformat(str(fields["received_back_on"])[:10])
+        problem = dc.goods_back_problem(sent, back_on, ist_today())
+        if not problem:
+            # The whole challan's day is the day its LAST goods came back, so it is not before a lot of goods already returned under ITC-04.
+            problem = dc.whole_challan_back_before_a_lot_problem(
+                row.get("document_no"), back_on, _latest_returned_on(db, firm_id, str(row["client_id"]), challan_id))
+    if not problem and fields.get("document_date"):
+        # The day they went out is amended, and that can leave the pair the wrong way round: it is compared with the days already recorded as back, the whole challan's (unless this
+        # same patch gives another) and the earliest lot's (a lot recorded under ITC-04 leaves `received_back_on` empty until every line is back). Those days were judged when they
+        # were recorded, so here they are asked only for their ORDER (a day is never after itself, so `back` stands for today), and an edit of something else never gets here, so a
+        # row stored from before this rule is not made unsaveable by it. Asked whether or not the patch also gives a back day: the pair is wrong either way.
+        recorded_days = [_earliest_recorded_return(db, firm_id, str(row["client_id"]), challan_id)]
+        if not fields.get("received_back_on"):
+            recorded_days.insert(0, row.get("received_back_on"))
+        for recorded in recorded_days:
+            if recorded:
+                back = date.fromisoformat(str(recorded)[:10])
+                problem = dc.goods_back_problem(sent, back, back)
+                if problem:
+                    break
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+
+
 def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     """Amend a challan, including recording the goods coming back.
 
-    `received_back_on` is the one field here that changes what is OWED — it
-    stops the s.143 clock — so the day it is given is judged by the rule the
-    ITC-04 door asks (`delivery_challan.goods_back_problem`) before it is written.
+    `received_back_on` and the status "received back" are the two fields here that change what is OWED — each stops the s.143 clock (`itc_04.balances` skips a challan with either) —
+    so the day it is given is judged by the rule the ITC-04 door asks (`delivery_challan.goods_back_problem`) before it is written.
+
+    THE STATUS "received back" IS NEVER SET WITHOUT THE DAY (POST-A-383): a status alone named no day and the clock stopped on a figure nobody could read back. A CANCELLED challan has no
+    goods in transit to come back, so a patch that stops the clock on one, or leaves one cancelled with a back day, is refused in the ITC-04 lot door's own sentence, judged on the status
+    the patch LEAVES and not only on the one stored (`{"status": "cancelled", "received_back_on": D}` is one request); the sentence for the cancelled challan comes before the one for the
+    missing day, because the missing day cannot be fixed on it. A challan given a back day IS received back, so a patch that gives one beside another status is refused. The whole
+    challan's day is not earlier than a lot of goods returned on ITC-04, and an amended day they went out is compared with the days already recorded as back whether or not the patch
+    gives a back day too. A DRAFT is not refused here, on a premise that is a test (`tests/test_a_challan_amendment_cannot_stop_the_clock_without_a_day_or_before_a_lot.py`): no SCREEN
+    issues a challan, so a draft is the state every challan made in the product is in, and the whole-challan "Record goods back" is the one door that can end its clock (POST-A-398).
     """
     row = _one(db, "delivery_challans", firm_id, challan_id,
                "delivery challan")
@@ -907,26 +979,8 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
                           challan_id)
     # THE INVOICE A CHALLAN IS RE-POINTED AT IS THIS CLIENT'S (POST-A-338): the one named row the update door still accepts.
     named_row_ownership.sales_invoice_is_the_clients(db, firm_id, str(row["client_id"]), fields.get("sales_invoice_id"))
-    if fields.get("received_back_on") or fields.get("document_date"):
-        # The goods cannot have come back before they went out, or on a day that has not come (PRE-A-015, seventeenth slice): the request model has judged the day alone, and the day
-        # they went out is the challan's own, or the one this same amendment gives it.
-        sent = date.fromisoformat(str(fields.get("document_date") or row["document_date"])[:10])
-        problem = None
-        if fields.get("received_back_on"):
-            problem = dc.goods_back_problem(sent, date.fromisoformat(str(fields["received_back_on"])[:10]), ist_today())
-        else:
-            # Only the day they went out is amended, and that can leave the pair the wrong way round: it is compared with the days already recorded as back, the whole challan's
-            # and the earliest lot's (a lot recorded under ITC-04 leaves `received_back_on` empty until every line is back). Those days were judged when they were recorded, so
-            # here they are asked only for their ORDER (a day is never after itself, so `back` stands for today), and an edit of something else never gets here, so a row stored
-            # from before this rule is not made unsaveable by it.
-            for recorded in (row.get("received_back_on"), _earliest_recorded_return(db, firm_id, str(row["client_id"]), challan_id)):
-                if recorded:
-                    back = date.fromisoformat(str(recorded)[:10])
-                    problem = dc.goods_back_problem(sent, back, back)
-                    if problem:
-                        break
-        if problem:
-            raise HTTPException(status_code=422, detail=problem)
+    _refuse_a_status_or_day_that_cannot_stand(row, fields)
+    _refuse_a_day_that_is_out_of_order(db, firm_id, row, challan_id, fields)
     if fields.get("received_back_on") and not fields.get("status"):
         fields["status"] = "received_back"
     fields["updated_at"] = ist_now().isoformat()
