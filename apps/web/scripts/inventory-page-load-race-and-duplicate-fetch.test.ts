@@ -129,7 +129,7 @@ test("the other four Promise.all calls inside LocationsAndBatches survive", () =
 
 test("the page passes its own already-fetched items down to LocationsAndBatches", () => {
   const s = pageSrc();
-  assert.match(s, /<LocationsAndBatches clientId=\{clientId\} asOf=\{asAt \|\| todayLocalISO\(\)\} items=\{items\} \/>/,
+  assert.match(s, /<LocationsAndBatches clientId=\{clientId\} asOf=\{asAt \|\| todayIstISO\(\)\} items=\{items\} \/>/,
     "the parent's items state must be handed down, not re-fetched by the child");
 });
 

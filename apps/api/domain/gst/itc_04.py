@@ -509,3 +509,17 @@ def statement_gaps() -> list[str]:
     return [FORM_NUMBERING, TABLE_5B_NOT_DERIVED, TABLE_5C_NOT_DERIVED,
             WASTE_IS_NOT_SUBTRACTED, TAX_ON_DEEMED_SUPPLY_NOT_COMPUTED,
             NOTHING_IS_FILED]
+
+
+def job_worker_challan_problem(challan_on: Optional[date], back_on: date) -> Optional[str]:
+    """The sentence for a job worker's challan dated after the day the goods came back, or None (POST-A-393).
+
+    The job worker's own challan travels with the goods it sends back, so the day on it is not later than the day they were received: the plain order of events, with no period, rate or other
+    statutory reading added (the same footing as `delivery_challan.goods_back_problem`, which has already judged `back_on` not after today in India, so a challan date that passes this is
+    not after today either). The challan is somebody else's document: only its ORDER against the day the goods came back is asked, never the shape of its number. Optional, as the lot door has
+    always had it: no date, no question. Pure: no clock.
+    """
+    if challan_on is not None and challan_on > back_on:
+        return (f"The job worker's challan is dated {challan_on.isoformat()}, after the day the goods came back ({back_on.isoformat()}). "
+                "A challan travels with the goods, so it cannot be later than the day they were received.")
+    return None

@@ -108,7 +108,8 @@ test("the gap the register raises can actually be answered", () => {
   // Shown on the SERVER's answer about the section, not on a browser reading
   // of the vendor's residency: the same preview that computes the tax decides
   // it, so the panel and the deduction cannot disagree about who the payee is.
-  assert.match(editor, /tds\.data\?\.tds_section === "195"/,
+  // (`tds.data.tds_section` after a `tds.data` test, or `tds.data?.tds_section`: the verdict is taken from the settled answer, POST-A-393.)
+  assert.match(editor, /tds\.data\??\.tds_section === "195"/,
     "the panel must key on the server's resolved section");
   // And the panel is INPUTS ONLY. 15CA is filed on incometax.gov.in under the
   // remitter's own login; a control here that appeared to do it would be the

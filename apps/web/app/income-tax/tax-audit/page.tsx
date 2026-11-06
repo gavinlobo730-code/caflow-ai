@@ -17,7 +17,7 @@ import { Plus, X, CheckCircle, Clock, AlertTriangle, Pencil } from "lucide-react
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
@@ -27,11 +27,11 @@ import { getClients } from "@/lib/data/clients";
 import { api, type TaxAuditDueDates, type TaxAuditApplicability } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
-import { duplicateAuditErrorMessage } from "@/lib/income-tax/taxAuditErrors";
+import { auditDateRefusalMessage, duplicateAuditErrorMessage } from "@/lib/income-tax/taxAuditErrors";
 import { PageHeader } from "@/components/ui/page-header";
 import { usePermissions } from "@/lib/auth/AuthContext";
 
@@ -160,6 +160,16 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
   // Both dates are optional and save as "not given" when blank: unreadable text is refused in the date's own sentence instead of
   // saving an audit with no report date on it (frontend_ux-19).
   const dates = useDateProblems();
+  // What the boxes hold is a sentence that is true only while it holds (a day after today stops being a problem the moment the status says the audit is not yet done), so it is derived and shown through a
+  // latch that resets, and never copied into `error`, where it would stay after its cause was put right.
+  const dateRefusal = useDateRefusal(dates.first);
+  // A status that says the act is done makes its day a statement of fact (migration 584 holds the same line in the database, for a writer that is not this screen): an audit recorded
+  // as completed or filed has an audit date that has come, one recorded as filed has a filing date that has come, India's day. An audit that is not started or in progress may carry a
+  // PLANNED day, so its boxes are not bounded.
+  // A box whose bound moves (the status is changed AFTER a day was typed) judges the day it holds again and tells this form, which then refuses the save in the box's own sentence; the box is not
+  // remounted for it, because a remount drops text that cannot be read together with the problem reported for it, and the form would save a blank.
+  const auditBound = FINISHED_STATUSES.includes(form.status) ? todayIstISO() : null;
+  const filingBound = form.status === "filed" ? todayIstISO() : null;
 
   // Until the permission map has loaded nothing is known about the person, so the form is not narrowed (a form that
   // waited would turn a slow identity call into a screen that never opens); the database refuses the write either way.
@@ -330,7 +340,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
 
   async function handleSave() {
     if (!form.clientId) { setError("Select a client"); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { setError(null); dateRefusal.refuse(); return; }
     if (lockedForYou || (!mayClose && FINISHED_STATUSES.includes(form.status))) { setError(APPROVER_ONLY); return; }
     // All money in integer paise — no floating point
     // This turnover decides whether a s.44AB tax audit applies at all. Read as
@@ -388,6 +398,8 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
       setError(code === "42501"
         ? (FINISHED_STATUSES.includes(form.status) ? APPROVER_ONLY : "You may not save a tax audit for this client.")
         : duplicateAuditErrorMessage(e as { code?: string } | null)
+          // Migration 584's own sentence: the screen asks the same question first, so this is reached only by a browser whose clock is ahead of the server's (the bound is the browser's reading of India's day).
+          ?? auditDateRefusalMessage(e as { code?: string; hint?: string; message?: string } | null)
           ?? (e instanceof Error ? e.message : "Save failed"));
     } finally {
       setSaving(false);
@@ -402,7 +414,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
           <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
-          {error && <Callout tone="problem">{error}</Callout>}
+          {(error || dateRefusal.shown) && <Callout tone="problem">{error ?? dateRefusal.shown}</Callout>}
           {/* existingMatch, not editAudit — this fired on its own the moment
               the client+FY the CA is typing turned out to already have a
               record, so unlike an explicit "Edit" click it needs to say why
@@ -558,11 +570,11 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="tax-audit-date" className={lbl}>Audit Date</label>
-              <DateInput id="tax-audit-date" value={form.auditDate} onChange={v => upd({ auditDate: v })} onStateChange={dates.watch("audit", "Audit date")} className={inputCls} />
+              <DateInput id="tax-audit-date" notAfter={auditBound} value={form.auditDate} onChange={v => upd({ auditDate: v })} onStateChange={dates.watch("audit", "Audit date", { afterMax: auditBound !== null })} className={inputCls} />
             </div>
             <div>
               <label htmlFor="tax-audit-filing-date" className={lbl}>Filing Date</label>
-              <DateInput id="tax-audit-filing-date" anchor={form.auditDate || null} notBefore={form.auditDate || null} value={form.filingDate} onChange={v => upd({ filingDate: v })} onStateChange={dates.watch("filing", "Filing date")} className={inputCls} />
+              <DateInput id="tax-audit-filing-date" anchor={form.auditDate || null} notBefore={form.auditDate || null} notAfter={filingBound} value={form.filingDate} onChange={v => upd({ filingDate: v })} onStateChange={dates.watch("filing", "Filing date", { afterMax: filingBound !== null })} className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

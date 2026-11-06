@@ -36,7 +36,9 @@
  *   restored draft, a reset). It is the one to feed `useDateProblems`, because a
  *   save has to be refused while the box holds unreadable text even though the
  *   value has not been committed yet, and the parent that restores a draft over
- *   an invalid box has to be told the box is no longer invalid.
+ *   an invalid box has to be told the box is no longer invalid. It also fires when a
+ *   bound (`min`/`max`) MOVES under a day the box holds, with that day judged again
+ *   against the new bound; text that cannot be read is not, and keeps its problem.
  *
  *   Controlled, and tolerant of being so: while the text is unreadable the
  *   parent's `value` is `""`, and that must not wipe what the person is in the
@@ -97,7 +99,12 @@
  *   box last handed up, so nothing differs. A parent that wants a reset remounts
  *   the field with a `key`; the two Clear buttons that empty a date filter (the
  *   shared table's and the bank book's) do (POST-A-126). A form that SAVES a date
- *   is not exposed: a save is refused while a box holds unreadable text.
+ *   is not exposed: a save is refused while a box holds unreadable text. That is
+ *   also why a `key` is NOT how a bound that follows another field is applied: the
+ *   remount drops the unreadable text and the problem reported for it together, and
+ *   the form then saves a blank. A bound that MOVES (`min`/`max`) is applied by the
+ *   box itself: a day it holds is judged again and the parent is told, in the
+ *   sentence a keystroke would have given it (POST-A-393).
  *
  * ── WHEN AN OVERLAY CLOSES OVER IT ──────────────────────────────────────────
  *
@@ -257,6 +264,8 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     // The parent's latest callback, so a new function every render re-runs nothing.
     const stateCallback = React.useRef(onStateChange);
     stateCallback.current = onStateChange;
+    // The bounds the parent was last told about the box against (by the mount, a value of its own, a keystroke or a commit).
+    const toldAgainst = React.useRef<{ min: string | undefined; max: string | undefined }>({ min, max });
 
     React.useEffect(() => {
       if (value === handedUp.current) return;
@@ -265,7 +274,8 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
       setBox(next);
       setTouched(false);
       stateCallback.current?.(dateFieldState(next.text, next.read));
-      // `min`/`max` only colour the hint; a change of either is not a new value.
+      toldAgainst.current = { min, max };
+      // `min`/`max` only colour the hint; a change of either is not a new value (the bound effect below tells the parent when one moves under a day the box holds).
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
 
@@ -295,6 +305,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
       const read = parseTypedDate(text, context());
       setBox({ text, read });
       stateCallback.current?.(dateFieldState(text, read));
+      toldAgainst.current = { min, max };
     }
 
     /** The person has finished: show what was understood, and hand the value up
@@ -305,6 +316,7 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
       setBox({ text, read: next.read });
       setTouched(true);
       stateCallback.current?.(state);
+      toldAgainst.current = { min, max };
       const iso = isoFromRead(next.read);
       if (iso === handedUp.current) return;
       handedUp.current = iso;
@@ -316,6 +328,18 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     const shown: TypedDate = box.read.kind === "date" ? parseTypedDate(box.read.iso, { min, max }) : box.read;
     const message = shown.kind === "empty" ? null : shown.message;
     const showMessage = message !== null && touched && !focused;
+
+    // A bound that FOLLOWS another field (a filing date that cannot be after today once the status says filed; a challan date that cannot be after the day the goods came back) moves after a day was
+    // typed. The hint above is judged against the bound of every render, but a parent that refuses a day past the bound (`afterMax`) hears only what the box reports, so it is told again when the
+    // bound moves. Text that cannot be read is judged against no bound, so its problem stays where it is. A value that changed in the same render was already read against the new bound by the effect
+    // above, which is why the ref is what the parent was last told it against: the box is not read twice, and never from a state that has not caught up.
+    React.useEffect(() => {
+      if (toldAgainst.current.min === min && toldAgainst.current.max === max) return;
+      toldAgainst.current = { min, max };
+      if (shown.kind === "date") stateCallback.current?.(dateFieldState(box.text, shown));
+      // The bound is what fires this; the box and its verdict are read as they are when it does.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [min, max]);
 
     return (
       <DateFieldView

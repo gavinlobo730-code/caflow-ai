@@ -30,12 +30,12 @@ import { StockAgeingPanel } from "@/components/inventory/StockAgeing";
 import { ReorderPanel } from "@/components/inventory/ReorderPanel";
 import { UnrecordedStockPanel } from "@/components/inventory/UnrecordedStockPanel";
 
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 interface StockItem {
   id: string;
   name: string;
@@ -484,7 +484,7 @@ export default function InventoryPage() {
             this component independently calling api.inventory.items() again
             on every load, the same request this page had just made. */}
         <div className="mb-4">
-          <LocationsAndBatches clientId={clientId} asOf={asAt || todayLocalISO()} items={items} />
+          <LocationsAndBatches clientId={clientId} asOf={asAt || todayIstISO()} items={items} />
         </div>
 
         {/* INV-04 — how long the units ON HAND have been held. Beside
@@ -494,7 +494,7 @@ export default function InventoryPage() {
             "what do I hold" first, "how old is it" second. The as-at date is
             the register's own, so the three agree. */}
         <div className="mb-4">
-          <StockAgeingPanel clientId={clientId} asOf={asAt || todayLocalISO()} />
+          <StockAgeingPanel clientId={clientId} asOf={asAt || todayIstISO()} />
         </div>
 
         {/* INV-03 — what to buy. Beneath the ageing because the order of the
@@ -503,7 +503,7 @@ export default function InventoryPage() {
             only one that asks for an action. Renders nothing when the client
             keeps no goods. */}
         <div className="mb-4">
-          <ReorderPanel clientId={clientId} asOf={asAt || todayLocalISO()} />
+          <ReorderPanel clientId={clientId} asOf={asAt || todayIstISO()} />
         </div>
       </div>
 
@@ -775,7 +775,7 @@ function AdjustStockModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [direction, setDirection] = useState<"increase" | "decrease">("decrease");
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("physical_count_shortage");
@@ -921,7 +921,7 @@ function NrvWritedownModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [nrvPerUnit, setNrvPerUnit] = useState("");
   const [writedownDate, setWritedownDate] = useState(today);
   const [referenceNo, setReferenceNo] = useState("");

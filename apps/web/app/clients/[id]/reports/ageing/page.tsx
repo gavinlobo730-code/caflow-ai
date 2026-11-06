@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, RefreshCw, AlertTriangle, Info, Loader2, ChevronDown, Check,
@@ -14,7 +14,6 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
-import { todayLocalISO } from "@/lib/dateMath";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout, GapList } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
@@ -22,7 +21,8 @@ import { DataTable } from "@/components/ui/data-table";
 import ReportExportButtons from "@/components/accounting/ReportExportButtons";
 import type { Column } from "@/lib/table/types";
 import { DateInput } from "@/components/ui/date-input";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 /**
  * Trade Receivables and Trade Payables ageing schedules — the notes to the
  * balance sheet required by Schedule III to the Companies Act 2013 as amended
@@ -177,7 +177,14 @@ export default function ClientAgeingSchedulePage() {
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("note");
-  const [asOf, setAsOf] = useState<string>(todayLocalISO());
+  // India's day, not the browser's. A note to a balance sheet is aged against ONE date, so a blank box or text that is not a date is NOT read: the server answers a missing date as at
+  // today, which put today's figures under a box that said nothing (or said, in its own sentence, that it was not a date).
+  const [asOf, setAsOf] = useState<string>(todayIstISO());
+  const dates = useDateProblems();
+  // The LATEST reading asked for, per kind. A slow answer for a date the box no longer holds (cleared, or changed) arrives after the screen has moved on, and used to be drawn over it: the
+  // old schedule under a cleared box, beside the note that says nothing is shown. An answer that is not the latest asked for is dropped.
+  const latestSchedule = useRef(0);
+  const latestDetail = useRef(0);
   const [schedule, setSchedule] = useState<AgeingSchedule | null>(null);
   const [invoices, setInvoices] = useState<AgeingDocument[] | null>(null);
   const [bills, setBills] = useState<AgeingDocument[] | null>(null);
@@ -195,27 +202,34 @@ export default function ClientAgeingSchedulePage() {
 
   const load = useCallback(async () => {
     if (!clientId) return;
+    const mine = ++latestSchedule.current;
+    // No date, no reading, and nothing left on the screen from the last one.
+    if (!asOf) { setSchedule(null); setError(null); setDetailError(null); setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
       const r = await api.accounting.scheduleIiiAgeing(clientId, asOf) as ApiResp<AgeingSchedule>;
+      if (mine !== latestSchedule.current) return;
       if (!r.success) throw new Error(r.error ?? "Could not build the ageing schedule");
       setSchedule(objectOrNull(r.data));
     } catch (e) {
+      if (mine !== latestSchedule.current) return;
       setError(e instanceof Error ? e.message : "Could not build the ageing schedule");
     } finally {
-      setLoading(false);
+      if (mine === latestSchedule.current) setLoading(false);
     }
   }, [clientId, asOf]);
 
   const loadDetail = useCallback(async () => {
-    if (!clientId) return;
+    if (!clientId || !asOf) return;
+    const mine = ++latestDetail.current;
     setDetailError(null);
     try {
       const [ar, ap] = await Promise.all([
         api.ageing.receivables(clientId, asOf),
         api.ageing.payables(clientId, asOf),
       ]);
+      if (mine !== latestDetail.current) return;
       setInvoices(ar.success ? ar.data.invoices ?? [] : []);
       setBills(ap.success ? ap.data.bills ?? [] : []);
       setArAdvances(ar.success ? {
@@ -235,6 +249,7 @@ export default function ClientAgeingSchedulePage() {
       if (!ar.success) setDetailError(ar.error ?? "Could not load the open invoices");
       else if (!ap.success) setDetailError(ap.error ?? "Could not load the open bills");
     } catch (e) {
+      if (mine !== latestDetail.current) return;
       setDetailError(e instanceof Error ? e.message : "Could not load the open documents");
     }
   }, [clientId, asOf]);
@@ -358,10 +373,11 @@ export default function ClientAgeingSchedulePage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-2xs text-ps-label">As at</label>
-          <DateInput aria-label="Ageing as at"
+          <label htmlFor="ageing-as-at" className="text-2xs text-ps-label">As at</label>
+          <DateInput id="ageing-as-at" aria-label="Ageing as at"
             value={asOf}
-            onChange={(v) => { setAsOf(v); setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); }}
+            onChange={(v) => { setAsOf(v); latestDetail.current += 1; setInvoices(null); setBills(null); setArAdvances(null); setApAdvances(null); }}
+            onStateChange={dates.watch("asOf", "As at")}
             className="text-2xs border border-ps-border rounded-lg px-2.5 py-1.5 text-ps-body"
           />
           <button
@@ -397,6 +413,12 @@ export default function ClientAgeingSchedulePage() {
       )}
 
       {error && <Callout tone="problem">{error}</Callout>}
+
+      {!asOf && (
+        <Callout tone="note">
+          As at: enter the date this schedule is as at. It is aged against one date, so nothing is shown until the box holds one{dates.first ? " (the box says why it cannot read what it holds)" : ""}.
+        </Callout>
+      )}
 
       {detailError && (
         <div className="flex items-start gap-2.5 bg-state-attention-surface border border-amber-100 rounded-xl px-4 py-3">

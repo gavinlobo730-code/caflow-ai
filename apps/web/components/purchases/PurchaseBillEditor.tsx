@@ -649,6 +649,18 @@ export function PurchaseBillEditor({
     excludeBillId: isEdit ? existing?.id : undefined,
     enabled: !!selectedVendor?.tds_applicable,
   });
+  // Form 15CA / 15CB belong to a remittance under section 195, and the block is drawn when the SERVER says this bill withholds under it. What is not drawn is not sent: a value typed
+  // while the bill was a section 195 one, kept in the state after the vendor or the lines changed it to another, was sent with a bill the block no longer shows.
+  // The block follows the server's SETTLED answers, and only those. A reading that FAILED, or is out again after it failed (the preview clears its answer when it fails and its error when it
+  // starts again), has not said the bill is NOT a section 195 one, only that it cannot say yet; a block that vanished with the person's acknowledgement number in it, followed by a bill saved
+  // without it, would drop what they typed with no word, and one that unmounted under the cursor when the last character was deleted could not be typed in again. So an error or a reading in
+  // progress leaves the block as it was (and what is drawn is sent), a block that was never drawn is not drawn by one, and a reading that settles decides again.
+  const form15Verdict = useRef(false);
+  if (!tds.loading) {
+    if (tds.data) form15Verdict.current = tds.data.tds_section === "195";
+    else if (tds.error === null) form15Verdict.current = false;
+  }
+  const form15Drawn = form15Verdict.current;
   const tdsPaise = tds.data?.tds_paise ?? null;
   // In the bill's own currency when there is one — the server froze the rate,
   // so converting an INR deduction back here would be a second conversion.
@@ -661,7 +673,7 @@ export function PurchaseBillEditor({
   // says so beside the button. The sentence is a pure function of the date on file (the snapshot the form opened with) and the box, so it is derived and latched, never copied into `error`;
   // the box's own sentence for text that is not a day comes first (an unreadable box hands up "" too), and a box that is not drawn (the section is drawn only for a payment the server
   // previews under section 195) is not one the person can empty.
-  const form15caCleared = tds.data?.tds_section === "195" && !dates.problems.form15caFiledOn
+  const form15caCleared = form15Drawn && !dates.problems.form15caFiledOn
     ? removedDateProblem("The Form 15CA date", initialSnapshot.current.form15caFiledOn, form15caFiledOn)
     : null;
   const form15caRefusal = useDateRefusal(form15caCleared);
@@ -931,9 +943,9 @@ export function PurchaseBillEditor({
               // Form 15CA is filed at the time of remittance, which is after
               // the bill is booked. `_SOFT_BILL_UPDATE_FIELDS` allows all
               // three for exactly that reason.
-              form_15ca_ack_no: form15caAckNo.trim() || undefined,
-              form_15ca_filed_on: form15caFiledOn || undefined,
-              form_15cb_udin: form15cbUdin.trim() || undefined,
+              form_15ca_ack_no: form15Drawn ? form15caAckNo.trim() || undefined : undefined,
+              form_15ca_filed_on: form15Drawn ? form15caFiledOn || undefined : undefined,
+              form_15cb_udin: form15Drawn ? form15cbUdin.trim() || undefined : undefined,
             }
           : {
               bill_date: billDate,
@@ -947,9 +959,9 @@ export function PurchaseBillEditor({
               // Form 15CA is filed at the time of remittance, which is after
               // the bill is booked. `_SOFT_BILL_UPDATE_FIELDS` allows all
               // three for exactly that reason.
-              form_15ca_ack_no: form15caAckNo.trim() || undefined,
-              form_15ca_filed_on: form15caFiledOn || undefined,
-              form_15cb_udin: form15cbUdin.trim() || undefined,
+              form_15ca_ack_no: form15Drawn ? form15caAckNo.trim() || undefined : undefined,
+              form_15ca_filed_on: form15Drawn ? form15caFiledOn || undefined : undefined,
+              form_15cb_udin: form15Drawn ? form15cbUdin.trim() || undefined : undefined,
             };
         const upd = await apiCall(`/api/purchase-bills/${existing.id}`, "PATCH", patchPayload, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update bill");
@@ -973,9 +985,9 @@ export function PurchaseBillEditor({
             lines: linePayload,
             currency: isForeign ? currency : undefined,
             exchange_rate: isForeign ? exchangeRate : undefined,
-            form_15ca_ack_no: form15caAckNo.trim() || undefined,
-            form_15ca_filed_on: form15caFiledOn || undefined,
-            form_15cb_udin: form15cbUdin.trim() || undefined,
+            form_15ca_ack_no: form15Drawn ? form15caAckNo.trim() || undefined : undefined,
+            form_15ca_filed_on: form15Drawn ? form15caFiledOn || undefined : undefined,
+            form_15cb_udin: form15Drawn ? form15cbUdin.trim() || undefined : undefined,
           },
           token,
         );
@@ -1366,7 +1378,7 @@ export function PurchaseBillEditor({
             RECORDED HERE, NEVER FILED FROM HERE. 15CA is filed on
             incometax.gov.in under the remitter's own login; this is where the
             acknowledgement goes afterwards. CLAUDE.md: never auto-submit. */}
-        {tds.data?.tds_section === "195" && (
+        {form15Drawn && (
           <section className="bg-white rounded-xl border border-ps-border p-4">
             <h2 className="text-xs font-semibold text-ps-body">
               Foreign remittance — Form 15CA / 15CB (IT Act §195(6), Rule 37BB)

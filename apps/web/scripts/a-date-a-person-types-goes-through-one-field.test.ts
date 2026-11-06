@@ -524,16 +524,16 @@ test("every <DateInput> in the product is named to a screen reader", () => {
 /**
  * Part 3's second list: the DateInputs that do NOT report their state, file -> count.
  * Each is a FILTER (blank means no bound, so an unreadable date costs a filter,
- * and the message under the box is the whole answer), with one exception named in
- * its reason: the ageing as-at, whose blank is not "no bound" but TODAY. (The customer
- * statement window was another until the eighth drive slice, 5-11-2026: its Email posted
- * the dates, and it now sends the statement shown.) A form that saves a date is gated
+ * and the message under the box is the whole answer). (The ageing as-at was an exception
+ * until POST-A-393: its blank is not "no bound" but TODAY, the server answers a missing date as
+ * at today, so it reports its state now and reads nothing for a blank or unreadable box. The
+ * customer statement window was another until the eighth drive slice, 5-11-2026: its Email
+ * posted the dates, and it now sends the statement shown.) A form that saves a date is gated
  * with `useDateProblems` instead, and a file is never added here.
  */
 const UNGATED: Record<string, { count: number; reason: string }> = {
   "app/clients/[id]/accounting/page.tsx": { count: 2, reason: "the ledger's from and to; blank is an unbounded ledger, nothing is saved" },
   "app/clients/[id]/inventory/page.tsx": { count: 3, reason: "stock as-at date and the stock ledger's range; nothing is saved" },
-  "app/clients/[id]/reports/ageing/page.tsx": { count: 1, reason: "ageing as-at date; a read, and a blank is not declined: the server answers as at today under a box that shows its own sentence" },
   "app/portal/dashboard/page.tsx": { count: 2, reason: "the client portal's statement period; nothing is saved" },
   "app/reports/page.tsx": { count: 2, reason: "a report's custom period; nothing is saved" },
   "app/settings/audit-log/page.tsx": { count: 2, reason: "the audit log's date filter; nothing is saved" },

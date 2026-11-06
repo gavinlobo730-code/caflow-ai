@@ -472,9 +472,12 @@ export function Itc04Panel({ clientId, onChanged, refreshToken }: {
                       </label>
                       <label className="space-y-1">
                         <span className="text-ps-label">Job worker&apos;s challan date</span>
+                        {/* A challan travels with the goods it sends back, so its day is not after the day they came back (the server asks the same, POST-A-393). The bound is only a hint
+                            on the box, so `afterMax` makes a later day a problem the form is held for; the box judges the day it holds again when the came-back day changes (it is not remounted: a
+                            remount would drop text that cannot be read together with the problem reported for it). */}
                         <DateInput id="itc04-challan-date" financialYear={lot.returned_on ? undefined : year} anchor={lot.returned_on || null} notAfter={lot.returned_on || null} value={lot.job_worker_challan_date}
                                onChange={(v) => setLot({ ...lot, job_worker_challan_date: v })}
-                               onStateChange={lotDates.watch("challan-date", "Job worker's challan date")}
+                               onStateChange={lotDates.watch("challan-date", "Job worker's challan date", { afterMax: true })}
                                className="block w-full rounded border border-ps-border px-2 py-1" />
                       </label>
                       <label className="space-y-1">
