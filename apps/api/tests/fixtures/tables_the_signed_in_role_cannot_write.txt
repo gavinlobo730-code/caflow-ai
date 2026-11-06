@@ -13,6 +13,7 @@
 # 563 closes the six document headers and their six lines tables of POST-A-335 part 2 (client_sales_invoices, purchase_bills, credit_notes,
 # debit_notes, purchase_credit_notes, sales_debit_notes and the six lines tables).
 # 564 closes tds_lower_deduction_certificates (POST-A-359): the s.197 certificate is recorded by the API since POST-A-293.
+# 583 closes einvoice_records, eway_bill_records and self_assessment_challans (POST-A-394): the IRN and e-way bill records and the section 140A challans are written by the API's privileged client since the change that shipped before it.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -80,6 +81,7 @@ documents
 dsc_records
 ecommerce_operator_supplies
 ecommerce_operator_unregistered_supplies
+einvoice_records
 email_outbox
 email_suppressions
 email_templates
@@ -91,6 +93,7 @@ entity_relationships
 entity_to_entity_relationships
 epfo_ecr_filings
 escalation_rules
+eway_bill_records
 fee_receipts
 filings
 firm_branding
@@ -180,6 +183,7 @@ sales_quotation_lines
 sales_quotations
 scheduler_claims
 scheduler_runs
+self_assessment_challans
 statutory_remittances
 stock_count_lines
 stock_count_sessions
