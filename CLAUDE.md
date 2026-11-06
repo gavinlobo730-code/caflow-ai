@@ -1898,7 +1898,7 @@ Read the relevant one before changing a subsystem.
 
 **`docs/open-items/` ANSWERS "WHAT IS LEFT", AND THE AUDIT DOCUMENTS THAT USED TO
 ARE DELETED** (2-8 October 2026). Start at `docs/open-items/README.md`: six
-files of one-line items, split by WHEN (before or after the demo) and by WHO
+files (and `new-findings.md`) of one-line items, split by WHEN (before or after the demo) and by WHO
 must act (`A` Claude alone, `B` the owner decides or a live session is needed
 and Claude builds, `C` only the owner or someone outside this container), with
 stable ids (`PRE-A-001`, `POST-B-017`; never renumbered, a closed item's line
