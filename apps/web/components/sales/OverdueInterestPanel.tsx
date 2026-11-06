@@ -19,7 +19,7 @@
  * is LISTED, with the balance the rate would apply to and no figure — a nil that
  * means "nobody can tell" must not look like a nil that means "none".
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Loader2, RefreshCw } from "lucide-react";
 import {
   api,
@@ -30,8 +30,8 @@ import {
   type LateInterestTerms,
 } from "@/lib/api";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
-import { todayLocalISO } from "@/lib/dateMath";
 import { dayLabel } from "@/lib/dates/dayLabel";
+import { todayIstISO } from "@/lib/dates/format";
 import { formatPaise } from "@/lib/money/format";
 import { BASIS_CHOICES, ratePercentText, termsPayload, type TermsText } from "@/lib/sales/lateInterest";
 import { Button } from "@/components/ui/button";
@@ -79,13 +79,20 @@ export default function OverdueInterestPanel({
    *  the tab state and the address bar. */
   onOpenInvoice?: (invoiceId: string) => void;
 }) {
-  const [asOf, setAsOf] = useState(todayLocalISO());
+  // India's day, not the browser's.
+  const [asOf, setAsOf] = useState(todayIstISO());
   // An "As at" that is not a date reads as blank, and the draft was sent with that blank: the server REFUSES it (422, "as_of_date must be a date
   // (YYYY-MM-DD)", in its own words, not the field's), so no draft was made, but a write went out and the person was told in a sentence about a
   // field name they never saw (found by driving the tab, 4-11-2026; an independent read corrected my first account of it, which had the server
   // reading a blank as today: that holds for a date left out, not for an empty string).
   const dates = useDateProblems();
   const [preview, setPreview] = useState<LateInterestPreview | null>(null);
+  // The date the table on screen was worked out for. The box can already hold another one (a newly typed date whose read is still out, or whose read failed), and a draft is
+  // computed as at the BOX's date: Prepare is held until the table is the box's.
+  const [previewFor, setPreviewFor] = useState<string | null>(null);
+  // The LATEST reading asked for: an answer that arrives after a newer date was asked for is dropped, so the table and the date it is for always belong to the same reading (answers arriving
+  // out of order left the older date's table on screen, with Prepare held until Refresh).
+  const latest = useRef(0);
   const [terms, setTerms] = useState<LateInterestTerms[]>([]);
   const [edits, setEdits] = useState<Record<string, TermsText>>({});
   const [loading, setLoading] = useState(true);
@@ -101,7 +108,9 @@ export default function OverdueInterestPanel({
   const [drafted, setDrafted] = useState<LateInterestDrafts | null>(null);
 
   const load = useCallback(async () => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return;
+    // Counted before the blank test, as the ageing page does: an answer still out for the date the box held must not land under a box that now holds nothing.
+    const mine = ++latest.current;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { setLoading(false); return; }
     setLoading(true);
     setLoadError(null);
     try {
@@ -109,8 +118,10 @@ export default function OverdueInterestPanel({
         api.lateInterest.preview(clientId, asOf),
         api.lateInterest.terms(clientId),
       ]);
+      if (mine !== latest.current) return;
       if (p.success && p.data) {
         setPreview(objectWithLists<LateInterestPreview>(p.data, "parties", "caveats", "gaps"));
+        setPreviewFor(asOf);
       } else {
         setLoadError(p.error || "Interest could not be worked out.");
       }
@@ -126,13 +137,18 @@ export default function OverdueInterestPanel({
         });
       }
     } catch (e) {
+      if (mine !== latest.current) return;
       setLoadError(errorText(e));
     } finally {
-      setLoading(false);
+      if (mine === latest.current) setLoading(false);
     }
   }, [clientId, asOf]);
 
   useEffect(() => { void load(); }, [load]);
+  // The reload that a save or a draft asks for is the CURRENT one. A handler started under one date and finished under another would call the `load` of the render it was started in, read the
+  // table for the OLD date and count as the latest request, so the read already out for the date now in the box would be dropped and nothing would be left to bring the table back to it.
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   async function saveTerms(customerId: string) {
     const edit = edits[customerId];
@@ -149,7 +165,7 @@ export default function OverdueInterestPanel({
       if (!r.success) throw new Error(r.error || "The terms were not saved.");
       setMsg({ type: "ok", text: "Interest terms saved." });
       setEdits((prev) => { const next = { ...prev }; delete next[customerId]; return next; });
-      await load();
+      await loadRef.current();
     } catch (e) {
       setMsg({ type: "err", text: errorText(e) });
     } finally {
@@ -157,9 +173,16 @@ export default function OverdueInterestPanel({
     }
   }
 
+  // Why Prepare is held: the box holds a date and the table on screen is for another (the read for the new date is out, or failed). A box that holds NO date is not held: pressing Prepare over
+  // it answers in its own sentence (a blank or unreadable As at has one, below), which a held button could not.
+  const heldReason = preview && /^\d{4}-\d{2}-\d{2}$/.test(asOf) && previewFor !== asOf
+    ? `The table below is worked out as at ${dayLabel(previewFor)}. Prepare opens again once it is worked out as at ${dayLabel(asOf)}.`
+    : null;
+
   async function prepare(party: LateInterestParty) {
     if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { setMsg({ type: "err", text: "As at: enter the date the interest is worked out to." }); return; }
+    if (heldReason) { setMsg({ type: "err", text: heldReason }); return; }
     setBusy(`draft:${party.customer_id}`);
     setMsg(null);
     setDrafted(null);
@@ -176,7 +199,7 @@ export default function OverdueInterestPanel({
         failed: arrayOrEmpty(data.failed),
         caveats: arrayOrEmpty(data.caveats),
       });
-      await load();
+      await loadRef.current();
     } catch (e) {
       setMsg({ type: "err", text: errorText(e) });
     } finally {
@@ -225,6 +248,8 @@ export default function OverdueInterestPanel({
         <Callout tone={msg.type === "ok" ? "note" : "problem"}>{msg.text}</Callout>
       )}
       {loadError && <Callout tone="problem">{loadError}</Callout>}
+      {/* Why Prepare is held, in words: a title on a disabled button is not seen on a touch screen and is unreliable for assistive technology, and after a failed read the figures below are another date's. */}
+      {heldReason && !loading && <Callout tone="note">{heldReason}</Callout>}
 
       {preview && (
         <Callout tone="note" title="How this is worked out">
@@ -291,9 +316,13 @@ export default function OverdueInterestPanel({
       {loading && !preview ? (
         <p className="p-4 text-sm text-ps-hint">Working out interest…</p>
       ) : parties.length === 0 ? (
-        <p className="p-4 text-sm text-ps-hint">
-          Nothing is overdue as at {dayLabel(asOf)}.
-        </p>
+        // Said only of a table that was worked out, and for the date it was worked out for: a reading that failed is not "nothing overdue", and while the table for a newly typed date is
+        // out the empty table on screen is the previous date's.
+        preview ? (
+          <p className="p-4 text-sm text-ps-hint">
+            Nothing is overdue as at {dayLabel(previewFor ?? asOf)}.
+          </p>
+        ) : null
       ) : (
         <div className="overflow-x-auto rounded border border-ps-border">
           <table className="w-full text-sm">
@@ -320,6 +349,7 @@ export default function OverdueInterestPanel({
                     onToggle={() => setOpen((o) => ({ ...o, [p.customer_id]: !isOpen }))}
                     busy={busy === `draft:${p.customer_id}`}
                     anyBusy={busy !== null}
+                    held={heldReason}
                     flight={flight}
                     onPrepare={() => prepare(p)}
                   />
@@ -451,7 +481,7 @@ export default function OverdueInterestPanel({
 }
 
 function PartyRows({
-  party, docs, isOpen, onToggle, busy, anyBusy, onPrepare, flight,
+  party, docs, isOpen, onToggle, busy, anyBusy, held, onPrepare, flight,
 }: {
   party: LateInterestParty;
   docs: LateInterestDocument[];
@@ -459,6 +489,8 @@ function PartyRows({
   onToggle: () => void;
   busy: boolean;
   anyBusy: boolean;
+  /** Why Prepare is held, or null: the table on screen is not the one for the date in the box. */
+  held: string | null;
   /** Handed back to the Button, which holds the promise it returns: a second click
    *  while the draft is being made is ignored, not queued. */
   onPrepare: () => unknown;
@@ -495,10 +527,10 @@ function PartyRows({
             variant="plain" size="none" spinner={false} flight={flight}
             type="button"
             onClick={() => onPrepare()}
-            disabled={!hasInterest || anyBusy}
-            title={hasInterest
+            disabled={!hasInterest || anyBusy || held !== null}
+            title={held ?? (hasInterest
               ? "Make a draft sales invoice for this interest. Nothing is posted until it is issued."
-              : "There is no interest to draft as at this date."}
+              : "There is no interest to draft as at this date.")}
             className="inline-flex items-center gap-1 rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50"
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}

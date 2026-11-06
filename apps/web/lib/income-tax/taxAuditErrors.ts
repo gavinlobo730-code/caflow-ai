@@ -20,6 +20,7 @@
 export interface PostgrestLikeError {
   code?: string | null;
   message?: string | null;
+  hint?: string | null;
 }
 
 /** Postgres error code 23505 is `unique_violation`. Matched on the CODE —
@@ -33,4 +34,17 @@ export function duplicateAuditErrorMessage(
   if (!error || error.code !== "23505") return null;
   return "An audit record for this client and financial year already exists "
     + "— edit it instead of adding another.";
+}
+
+/** The hint migration 584's trigger puts on its refusal: the audit was recorded as done with a day that has not come. */
+export const AUDIT_DATE_REFUSAL_HINT = "tax_audits_dates_follow_the_status";
+
+/** Migration 584 refuses an audit recorded as completed or filed with an audit date that has not come, and one recorded as filed with such a filing date, in a sentence written for
+ *  a person (the dates are India's). It is raised as a check violation (23514) with the hint above; a CHECK constraint of the same table raises the same code in the database's
+ *  own wording, which is NOT a sentence for a person, so the hint is what is matched. The message IS the sentence and is returned as it is. Null for anything else. */
+export function auditDateRefusalMessage(
+  error: PostgrestLikeError | null | undefined,
+): string | null {
+  if (!error || error.code !== "23514" || error.hint !== AUDIT_DATE_REFUSAL_HINT) return null;
+  return typeof error.message === "string" && error.message.trim() ? error.message.trim() : null;
 }

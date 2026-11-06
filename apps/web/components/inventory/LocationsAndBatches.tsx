@@ -24,7 +24,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, AlertCircle, Info, Warehouse, ArrowRightLeft, Trash2, Boxes, RotateCcw } from "lucide-react";
 import { request } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
-import { todayLocalISO } from "@/lib/dateMath";
 import { todayIstISO } from "@/lib/dates/format";
 import { parseQuantity } from "@/lib/money/rupeeInput";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -492,7 +491,8 @@ function TransferPanel({ clientId, godowns, detail, onDone }: {
   const [to, setTo] = useState(godowns[1]?.id ?? "");
   const [item, setItem] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [when, setWhen] = useState(todayLocalISO());
+  // India's day, not the browser's: a transfer recorded in the small hours in India from a browser set to another zone started from yesterday or tomorrow.
+  const [when, setWhen] = useState(todayIstISO());
   const [decision, setDecision] = useState<{ is_supply: boolean | null; reason: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

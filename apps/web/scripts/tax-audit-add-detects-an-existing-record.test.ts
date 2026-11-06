@@ -70,7 +70,7 @@ test("the CA is told when the form filled itself in on its own", () => {
 });
 
 test("the residual-collision translator is wired in, not re-implemented inline", () => {
-  assert.match(src, /import\s*\{\s*duplicateAuditErrorMessage\s*\}\s*from\s*"@\/lib\/income-tax\/taxAuditErrors"/,
+  assert.match(src, /import\s*\{[^}]*\bduplicateAuditErrorMessage\b[^}]*\}\s*from\s*"@\/lib\/income-tax\/taxAuditErrors"/,
     "a second, ad-hoc 23505 check beside this one is how the two drift");
   assert.match(src, /duplicateAuditErrorMessage\(/);
 });

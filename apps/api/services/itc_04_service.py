@@ -232,6 +232,12 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
     problem = dc.goods_back_problem(sent_on, returned_on, ist_today())
     if problem:
         raise HTTPException(status_code=422, detail=problem)
+    # The job worker's own challan travels with the goods: not later than the day they came back (the box only hinted it; a date after it was stored).
+    worker_challan_on = payload.get("job_worker_challan_date")
+    problem = itc.job_worker_challan_problem(
+        date.fromisoformat(str(worker_challan_on)[:10]) if worker_challan_on else None, returned_on)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
     already = (db.table("delivery_challan_returns").select(
         "id, quantity_returned, quantity_lost_or_wasted")
