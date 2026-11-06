@@ -39,6 +39,10 @@ function sendJson(res, body, status = 200) {
   res.end(text);
 }
 
+/** An answer that is not JSON at all (a proxy's error page that arrives with a 200): the browser's `res.json()` throws, which is the one way a page's own catch is reached without a
+ *  connection being dropped (a dropped connection is a console error the runner does not allow). */
+export const notJson = (text = "<html><body>Bad gateway</body></html>") => ({ raw: text, reply: () => ({}) });
+
 /** The house envelope, which is what `lib/api` unwraps. */
 export const ok = (data) => ({ success: true, data, error: null });
 /**
@@ -161,6 +165,10 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
           if (isWrite && born === generation) { inFlight -= 1; touch(); }
           if (res.destroyed || res.writableEnded) return;
           if (status >= 400) refusals += 1;
+          if (route?.raw !== undefined) {
+            res.writeHead(status, { "content-type": "text/html", "content-length": Buffer.byteLength(route.raw) });
+            return res.end(route.raw);
+          }
           sendJson(res, out, status);
         }, wait);
       });
