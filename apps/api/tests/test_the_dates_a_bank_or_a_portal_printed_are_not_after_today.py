@@ -21,7 +21,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-import models.invoices
+import models.iso_date
 import routers.einvoice
 import routers.eway_bill
 import routers.income_tax
@@ -40,7 +40,8 @@ THE_SENTENCE = "cannot be after today's date in India."
 def _india_today_is_fixed(monkeypatch):
     """Every module that asks India's day gets the fixed one. A model that read the UTC clock or `date.today()` would not see it and these tests would fail. raising=False so the
     same file can be run against the code before this slice (the control for "fails without the change")."""
-    for module in (routers.income_tax, routers.einvoice, routers.eway_bill, models.invoices):
+    # `models.iso_date` is the module that asks for a Form 15CA date, a shipping bill date and a no-PE declaration date (the eighteenth slice moved the question there from `models.invoices`).
+    for module in (routers.income_tax, routers.einvoice, routers.eway_bill, models.iso_date):
         monkeypatch.setattr(module, "ist_today", lambda: INDIA_TODAY, raising=False)
 
 

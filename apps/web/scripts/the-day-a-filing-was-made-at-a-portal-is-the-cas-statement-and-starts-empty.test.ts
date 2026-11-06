@@ -18,9 +18,9 @@
 // TWO BOXES ARE EXEMPT, BY NAME, AND THE REASONS ARE HERE
 //   gstr3b-compute-filed-on : the optional "what if it were filed on" date of Compute from Books. It is a question, not a record, and a date ahead is what a CA asks it about.
 //   tax-audit-filing-date   : the audit tracker also holds audits that are not started or in progress, so its dates may be planned ones. A future date on an audit recorded as
-//                             completed or filed is wrong and is NOT caught here (it is written down on the ledger line).
+//                             completed or filed is wrong and is NOT caught here (it is POST-A-393).
 //
-// WHAT THIS DOES NOT COVER (so nobody reads it as wider than it is; each is on the ledger line PRE-A-015 as the next slice)
+// WHAT THIS DOES NOT COVER (so nobody reads it as wider than it is; each was a slice of PRE-A-015, which is closed: what is left is POST-A-386 to POST-A-396)
 //   Dates that record a PAYMENT or a receipt after the fact and are not named for a filing. They state something that has already happened. Six are bounded by today in India by
 //   the sixteenth slice's own guard (the-dates-a-bank-or-a-portal-printed-are-bounded-by-todays-date-in-india.test.ts): the advance-tax instalments' "paid on" dates, the §140A
 //   challan's "Deposited on", a CGAS deposit date, the Form 15CA date and the e-invoice and e-way bill dates. Still not bounded: the TDS challan date, the job worker's challan

@@ -189,6 +189,27 @@ def test_naming_a_client_you_are_on_runs_exactly_that_one(deny, monkeypatch):
     assert calls == [MINE]
 
 
+def test_access_is_asked_before_the_day_a_run_is_for_on_both_run_routes(deny, monkeypatch):
+    """A caller with no access to the client is refused (404) whatever day they asked for: the day is judged after access, so a malformed one cannot tell them what a refusal would not
+    (PRE-A-015, eighteenth slice: a first version judged the day first and broke the per-template route's order; the firm-wide route's order was held by nothing). The same caller with
+    access, and a day that is not one, is a 422 naming the field, and nothing runs."""
+    calls = _spy(monkeypatch)
+    with pytest.raises(HTTPException) as refused:
+        ri.run_due_recurring(client_id=THEIRS, as_of="soon", current_user=USER)
+    assert refused.value.status_code == 404, f"the day was judged before the caller's access ({refused.value.status_code}: {refused.value.detail})"
+    with pytest.raises(HTTPException) as bad_day:
+        ri.run_due_recurring(client_id=MINE, as_of="soon", current_user=USER)
+    assert bad_day.value.status_code == 422 and "as_of must be a date written YYYY-MM-DD." in str(bad_day.value.detail)
+    assert calls == [], "a run was started over a refused request"
+    monkeypatch.setattr(ri.recurring, "run_for_template", lambda *a, **k: pytest.fail("a run was started over a refused request"))
+    with pytest.raises(HTTPException) as theirs:
+        ri.run_one_recurring("T-THEIRS", as_of="soon", current_user=USER)
+    assert theirs.value.status_code == 404
+    with pytest.raises(HTTPException) as mine:
+        ri.run_one_recurring("T-MINE", as_of="soon", current_user=USER)
+    assert mine.value.status_code == 422
+
+
 def test_an_assigned_role_with_no_clients_generates_nothing(deny, monkeypatch):
     """An empty assignment set means no books to write into — not "all of them",
     which is what an unguarded `client_id=None` would have meant."""

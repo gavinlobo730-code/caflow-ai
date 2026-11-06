@@ -285,7 +285,7 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Needed:** Rule 28AA of the Income-tax Rules 1961 as amended, the corresponding rule of the Rules made under the Income-tax Act 2025, and the form of the application and of the certificate.
 - **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
 - **Stays unbuilt meanwhile:** Refusing a certificate whose period runs past one financial year, and any change to the screen's sentence about the rule, which stays as it was.
-- **Ledger:** PRE-A-015
+- **Ledger:** POST-A-389
 
 ## 5. Wait-until-asked items the goal probably needs
 

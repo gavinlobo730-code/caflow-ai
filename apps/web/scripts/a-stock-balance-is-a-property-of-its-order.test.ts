@@ -92,8 +92,8 @@ test("a range with no movements still shows what was held", () => {
 test("the register can be asked as at a date, and says which it is showing", () => {
   assert.match(src, /api\.inventory\.stockSummary\(\{ client_id: clientId, as_of: asAt \}\)/,
     "the as-at register must call the server's stock-summary endpoint");
-  assert.match(src, /Closing value as at \$\{asAt\}/,
-    "the subtitle must name the date when one is asked for");
+  assert.match(src, /Closing value as at \$\{formatDate\(asAt\)\}/,
+    "the subtitle must name the date when one is asked for, printed as a date and not as ISO text");
   assert.match(src, /id="stock-as-at"/, "and there must be a control to ask with");
 });
 

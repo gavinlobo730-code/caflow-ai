@@ -414,7 +414,7 @@ export default function InventoryPage() {
           <p className="text-xs text-ps-hint mt-0.5">
             {loadFailed
               ? "Couldn't load the stock register"
-              : `${items.length} stock-tracked product${items.length !== 1 ? "s" : ""} · ${asAt ? `Closing value as at ${asAt}` : "Total value"} ${formatServicePrice(totalValue) || "₹0"}`}
+              : `${items.length} stock-tracked product${items.length !== 1 ? "s" : ""} · ${asAt ? `Closing value as at ${formatDate(asAt)}` : "Total value"} ${formatServicePrice(totalValue) || "₹0"}`}
           </p>
         </div>
         <div className="flex items-end gap-3">
@@ -573,14 +573,27 @@ function StockLedgerDrillDown({
   const [loadFailed, setLoadFailed] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [writedownOpen, setWritedownOpen] = useState(false);
+  // A window whose To day is before its From day holds no days at all. It was read anyway, and the empty answer said the item had held its opening position throughout, for a range that
+  // cannot exist; it is not read, and the panel says why. A blank or unreadable box is no bound (the box says so itself), so only two days in the wrong order are refused.
+  const windowReversed = !!startDate && !!endDate && endDate < startDate;
+  // Each read has its own number, and an answer is applied only while its number is still the latest, so a slower answer to an EARLIER window cannot land over the window on the boxes
+  // (the register above has the same guard for its as-at day).
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
+    const isCurrent = () => seq === loadSeqRef.current;
+    if (windowReversed) {
+      setLines([]); setOpening(null); setClosing(null); setLoadFailed(false); setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = (await api.inventory.ledger(item.id, { client_id: clientId, start_date: startDate, end_date: endDate })) as {
         success: boolean;
         data: { item: unknown; lines: StockLedgerLine[]; opening: LedgerEdge; closing: LedgerEdge } | null;
       };
+      if (!isCurrent()) return;
       if (res.success && res.data) {
         setLines(arrayOrEmpty(objectOrNull<{ lines?: unknown }>(res.data)?.lines));
         setOpening(res.data.opening ?? null);
@@ -593,14 +606,15 @@ function StockLedgerDrillDown({
         setLoadFailed(true);
       }
     } catch {
+      if (!isCurrent()) return;
       setLines([]);
       setOpening(null);
       setClosing(null);
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [clientId, item.id, startDate, endDate]);
+  }, [clientId, item.id, startDate, endDate, windowReversed]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -651,6 +665,10 @@ function StockLedgerDrillDown({
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <TableSkeleton cols={7} rows={4} />
+          ) : windowReversed ? (
+            <p role="alert" className="text-center py-10 text-sm text-state-problem">
+              The To day is before the From day, so there is nothing to show. Put the two days in order.
+            </p>
           ) : loadFailed ? (
             <div className="text-center py-10">
               <p className="text-sm text-red-600 font-medium mb-2">Couldn&apos;t load the stock ledger — the request failed or timed out.</p>

@@ -643,7 +643,7 @@ const AWAITS_A_PROP_CALLBACK: Record<string, { count: number; why: string }> = {
   "components/CsvImportModal.tsx": {
     count: 1,
     why: "NOT harmless: a second Import in one tick imports the file twice. It is shared by ten screens and is "
-      + "the upload screens' to convert (PRE-A-001); named here so the rule does not read it as clean",
+      + "the upload screens' to convert (POST-A-390); named here so the rule does not read it as clean",
   },
 };
 

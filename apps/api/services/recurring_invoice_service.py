@@ -196,6 +196,18 @@ def _assert_edited_lines_are_the_clients(db, firm_id: str, existing: dict, data:
         assert_items_are_the_clients(db, firm_id, existing.get("client_id") or "", data["lines"])
 
 
+def _assert_the_window_stays_in_order(fields: dict, existing: dict) -> None:
+    """An edit that moves an end of the window does not leave it the wrong way round: create has always refused that (`_validate`), and an edit that moves only one of the two ends could
+    leave it so (PRE-A-015, eighteenth slice). The window the template will have is what was sent, else what is stored. It is judged only when an edit moves an end, so a template stored
+    before the rule is not made uneditable by it (a title or a note can still be changed, and the screen, which sends both days on every save, asks the person there)."""
+    if "start_date" not in fields and "end_date" not in fields:
+        return
+    start = fields.get("start_date", existing.get("start_date"))
+    end = fields["end_date"] if "end_date" in fields else existing.get("end_date")
+    if start and end and _d(end) < _d(start):
+        raise HTTPException(status_code=422, detail="end_date cannot be before start_date.")
+
+
 def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict:
     _validate_classification(data)
     existing = get_template(firm_id, template_id, db=db)
@@ -212,6 +224,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
         fields["start_date"] = _d(data["start_date"]).isoformat()
     if "end_date" in data:
         fields["end_date"] = _d(data["end_date"]).isoformat() if data.get("end_date") else None
+    _assert_the_window_stays_in_order(fields, existing)
     # Re-base the next run when the schedule's shape changes (idempotency still
     # prevents duplicate invoices for occurrence dates already generated).
     if "start_date" in fields or "frequency" in fields:

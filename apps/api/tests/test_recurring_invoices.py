@@ -228,6 +228,35 @@ def test_update_rebases_next_run_on_schedule_change():
     assert updated["next_run_date"] == "2026-09-15"
 
 
+def test_an_edit_that_leaves_the_window_the_wrong_way_round_is_refused_and_one_that_mends_it_is_not():
+    """Create has always refused a stop date before the start; an edit that moves only ONE end could leave it so (PRE-A-015, eighteenth slice)."""
+    from fastapi import HTTPException
+    t = _make(freq="monthly", start="2026-06-01", end="2026-12-31")
+    for edit in ({"end_date": "2026-05-31"}, {"start_date": "2027-01-15"}, {"start_date": "2027-01-15", "end_date": "2026-12-31"}):
+        with pytest.raises(HTTPException) as caught:
+            rec.update_template("F1", t["id"], edit)
+        assert caught.value.status_code == 422 and "end_date cannot be before start_date" in str(caught.value.detail), edit
+    assert rec.update_template("F1", t["id"], {"start_date": "2026-07-01", "end_date": "2026-07-01"})["end_date"] == "2026-07-01", "the same day is a window of one day"
+    assert rec.update_template("F1", t["id"], {"start_date": "2027-01-15", "end_date": "2027-06-30"})["start_date"] == "2027-01-15", "both ends moved together"
+    assert rec.update_template("F1", t["id"], {"end_date": None})["end_date"] is None, "an explicit no stop date clears it"
+    assert rec.update_template("F1", t["id"], {"start_date": "2028-01-01"})["start_date"] == "2028-01-01", "with no stop date any start is a window"
+
+
+def test_a_template_stored_with_its_window_reversed_can_still_be_renamed_and_is_asked_only_when_an_end_is_moved():
+    """The rule judges an edit that MOVES an end. A row stored before the rule (reversed) is not made uneditable by it: a title or a note can still be changed (found by the independent read of
+    the eighteenth slice's server half, which showed that every edit was being judged). Moving an end, and leaving the window reversed, is refused; mending it is not."""
+    from fastapi import HTTPException
+    t = _make(freq="monthly", start="2026-06-01", end="2026-12-31")
+    stored = next(r for r in rec.MOCK_RECURRING_TEMPLATES if r["id"] == t["id"])
+    stored["start_date"], stored["end_date"] = "2029-01-01", "2028-01-01"   # as an older door could have left it
+    assert rec.update_template("F1", t["id"], {"title": "Renamed"})["title"] == "Renamed"
+    assert rec.update_template("F1", t["id"], {"notes": "a note"})["notes"] == "a note"
+    with pytest.raises(HTTPException) as caught:
+        rec.update_template("F1", t["id"], {"end_date": "2028-06-01"})   # moves an end and the window is still reversed
+    assert caught.value.status_code == 422
+    assert rec.update_template("F1", t["id"], {"end_date": "2029-06-01"})["end_date"] == "2029-06-01"
+
+
 def test_update_replaces_lines():
     t = _make(rate=100000)
     rec.update_template("F1", t["id"], {"lines": [

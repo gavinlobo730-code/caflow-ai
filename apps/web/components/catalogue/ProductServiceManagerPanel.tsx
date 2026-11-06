@@ -440,6 +440,7 @@ export function ProductServiceManagerPanel({
           <label className="block space-y-1">
             <span className="block text-xs font-medium text-ps-label">Opening balance as of (optional)</span>
             <DateInput
+              id="catalogue-import-opening-date"
               autoFocus
               value={openingBalanceDate}
               onChange={setOpeningBalanceDate}

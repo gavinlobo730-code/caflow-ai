@@ -2,7 +2,7 @@
 
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { arrayOrEmpty } from "@/lib/api/shape";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw, Pencil } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
@@ -65,9 +65,9 @@ import { gstinProblem } from "@/lib/gst/gstin";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { toast } from "@/components/ui/use-toast";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -1455,9 +1455,13 @@ function Vendors({ clientId }: { clientId: string }) {
   // status or TDS section corrected from inside the client workspace at all
   // — the row menu only ever offered Deactivate/Reactivate/Delete.
   const [editingVendor, setEditingVendor] = useState<VendorRow | null>(null);
+  // Counts the times a vendor was opened to edit: opening the vendor that is already on the form is a form opened afresh, though neither `showForm` nor the vendor's id changed.
+  const [editOpened, setEditOpened] = useState(0);
   const [showImport, setShowImport] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  // What the last press of Save was answered with (a refusal of a box, the server's sentence), said beside the button; the page's `msg` above is for what happened to the list.
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [gstin, setGstin] = useState("");
@@ -1503,6 +1507,9 @@ function Vendors({ clientId }: { clientId: string }) {
   // read as blank, so a declaration dated by hand was saved as undated with nothing said (frontend_ux-19). The box is only on the form while
   // the declaration is ticked, and a hidden box takes its problem with it.
   const noPeDates = useDateProblems();
+  // The sentence about the box is derived from it and said beside Save once a save has been tried, and goes the moment the date is right.
+  const noPeRefusal = useDateRefusal(noPeDates.first);
+  const clearNoPeRefusal = noPeRefusal.clear;
   const [noPeDeclarationRef, setNoPeDeclarationRef] = useState("");
   const [treatyRate, setTreatyRate] = useState("");
 
@@ -1567,6 +1574,9 @@ function Vendors({ clientId }: { clientId: string }) {
     return () => { alive = false; };
   }, []);
 
+  // A form opened afresh (a new vendor, or another one to edit) or closed holds nothing of the last press: not what it was answered with, and not the sentence about its boxes.
+  useLayoutEffect(() => { setFormError(null); clearNoPeRefusal(); }, [showForm, editingVendor?.id, editOpened, clearNoPeRefusal]);
+
   /** Bulk-import vendors through /api/vendors/bulk — one request for the whole
    *  file instead of one POST per row. Duplicates (GSTIN/PAN already on file
    *  for this client) are the backend's own guard doing its job, not a
@@ -1607,6 +1617,7 @@ function Vendors({ clientId }: { clientId: string }) {
    * would be the exact second-write-path CLAUDE.md's PUR-16 already warns
    * against. */
   function openEdit(v: VendorRow) {
+    setEditOpened((n) => n + 1);
     setEditingVendor(v);
     // A stale "this looks like an existing vendor" banner from an earlier
     // create is about a DIFFERENT vendor and has no place over an edit.
@@ -1641,33 +1652,33 @@ function Vendors({ clientId }: { clientId: string }) {
   }
 
   async function handleSave() {
-    if (!name.trim()) { setMsg({ type: "err", text: "Name is required" }); return; }
+    // A new press begins, so what the last one said is no longer true. The answer to a press is said beside Save, under the form it is about: the form is long, and the page's
+    // message line is above all of it, out of sight of the button that was pressed.
+    setFormError(null);
+    if (!name.trim()) { setFormError("Name is required"); return; }
     const gstinIssue = gstinProblem(gstin);
-    if (gstinIssue) { setMsg({ type: "err", text: gstinIssue }); return; }
+    if (gstinIssue) { setFormError(gstinIssue); return; }
     // Read exactly before anything is saved. The old form was
     // Math.round(parseFloat(x) * 100), which reads "1,25,000" as 1 and a blank
     // field as NaN — JSON.stringify sends that as null, so an opening balance
     // could reach the API as no value at all.
     const opening = paiseFromRupeeInput(openingBalance || "0");
     if (opening === null) {
-      setMsg({ type: "err", text: "Opening balance must be an amount in rupees, "
-                                  + "e.g. 125000 or 125000.50 — without commas." });
+      setFormError("Opening balance must be an amount in rupees, "
+                   + "e.g. 125000 or 125000.50 — without commas.");
       return;
     }
     if (tdsApplicable && bpsFromPercentInput(tdsRate) === null) {
-      setMsg({ type: "err", text: "TDS rate must be a percentage, e.g. 10 or 7.5." });
+      setFormError("TDS rate must be a percentage, e.g. 10 or 7.5.");
       return;
     }
     if (residentialStatus === "non_resident" && treatyRate.trim() && bpsFromPercentInput(treatyRate) === null) {
-      setMsg({ type: "err", text: "Treaty rate must be a percentage, e.g. 10 or 7.5." });
+      setFormError("Treaty rate must be a percentage, e.g. 10 or 7.5.");
       return;
     }
-    if (noPeDates.first) {
-      setMsg({ type: "err", text: noPeDates.first });
-      return;
-    }
+    if (noPeDates.first) { noPeRefusal.refuse(); return; }
     if (residentialStatus === "non_resident" && natureOfIncome === "business_profits_no_pe" && !noPeDeclaration) {
-      setMsg({ type: "err", text: "Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income." });
+      setFormError("Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income.");
       return;
     }
     setSaving(true);
@@ -1745,8 +1756,8 @@ function Vendors({ clientId }: { clientId: string }) {
         // editing an already-unique row, not minting a new one.
         const dup = result.data as { duplicate?: boolean; duplicate_reason?: string } | null;
         if (dup?.duplicate) {
-          setMsg({ type: "err", text: dup.duplicate_reason
-            ?? "Not added — a vendor with this GSTIN or PAN already exists for this client. Nothing was changed." });
+          setFormError(dup.duplicate_reason
+            ?? "Not added — a vendor with this GSTIN or PAN already exists for this client. Nothing was changed.");
           return;
         }
         // PUR-32. The vendor WAS created; this names what it resembles, and is
@@ -1766,7 +1777,7 @@ function Vendors({ clientId }: { clientId: string }) {
       setNoPeDeclarationOn(""); setNoPeDeclarationRef("");
       load();
     } catch (e) {
-      setMsg({ type: "err", text: e instanceof Error ? e.message : "Save failed" });
+      setFormError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -2357,11 +2368,12 @@ function Vendors({ clientId }: { clientId: string }) {
                     <div>
                       <label htmlFor="no-pe-on" className="block text-xs font-medium text-ps-label mb-1">Declaration dated</label>
                       <DateInput
-                        key={editingVendor?.id ?? "new"}
+                        key={`${editingVendor?.id ?? "new"}-${editOpened}`}
                         id="no-pe-on"
                         value={noPeDeclarationOn}
+                        notAfter={todayIstISO()}
                         onChange={setNoPeDeclarationOn}
-                        onStateChange={noPeDates.watch("noPe", "Declaration dated")}
+                        onStateChange={noPeDates.watch("noPe", "Declaration dated", { afterMax: true })}
                         className="w-full px-3 py-1.5 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                       />
                     </div>
@@ -2470,6 +2482,8 @@ function Vendors({ clientId }: { clientId: string }) {
             )}
           </div>
 
+          {/* The answer to the last press of Save, beside it. What the last press said wins over the sentence about a box: it is the newer. */}
+          {(formError || noPeRefusal.shown) && <p role="alert" className="text-xs text-state-problem text-right">{formError || noPeRefusal.shown}</p>}
           <div className="flex gap-3 justify-end">
             <button onClick={() => { setShowForm(false); setEditingVendor(null); }} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <Button variant="plain" size="none" onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">

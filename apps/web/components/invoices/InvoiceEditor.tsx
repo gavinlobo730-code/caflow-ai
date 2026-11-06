@@ -58,6 +58,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { todayIstISO } from "@/lib/dates/format";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -698,10 +699,21 @@ export function InvoiceEditor({
     setFocusProductRow(nextIdx);
   }
 
+  // The shipping bill block is drawn for a supply that leaves India, and ONLY then are its number, date and port code things the person can see, judge and put right. The server refuses a
+  // shipping bill date after today and a port code that is not six characters, so a value typed while the block was drawn and left behind when the supply type was changed back would be sent
+  // from a box that is no longer there, and refused for a field nobody can see (found by the independent reads of the eighteenth slice, the date first and then the other two): the three are
+  // sent when the block is drawn and none of them when it is not, and the block's own condition below is this one.
+  const showsShippingBill = (supplyType === "zero_rated" || supplyStateCode === "96") && invoiceType === "Regular";
+
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
   async function save(action: SaveAction) {
     setAttempted(true);
     if (dates.first) { setError(dates.first); return; }
+    const shippingBillSent = showsShippingBill ? {
+      shipping_bill_no: shippingBillNo.trim() || undefined,
+      shipping_bill_date: shippingBillDate || undefined,
+      port_code: portCode.trim().toUpperCase() || undefined,
+    } : {};
     // Locked (issued) edit only touches soft fields — the frozen fields are the
     // already-saved invoice and needn't (and might not) satisfy current
     // create-time validation, e.g. a line saved before service_catalogue_id
@@ -760,9 +772,7 @@ export function InvoiceEditor({
             credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
             // Sent even on an ISSUED invoice — see the state declaration above.
             // This is the only moment the shipping bill exists to be recorded.
-            shipping_bill_no: shippingBillNo.trim() || undefined,
-            shipping_bill_date: shippingBillDate || undefined,
-            port_code: portCode.trim().toUpperCase() || undefined,
+            ...shippingBillSent,
             line_units: Object.keys(lineUnits).length ? lineUnits : undefined,
           }, token);
           if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
@@ -785,9 +795,7 @@ export function InvoiceEditor({
           // changing which GSTR-1 table an issued invoice belongs to needs a
           // credit note (CGST §34), not a silent edit.
           ...toClassificationPayload({ supplyType, invoiceType, isReverseCharge }),
-          shipping_bill_no: shippingBillNo.trim() || undefined,
-          shipping_bill_date: shippingBillDate || undefined,
-          port_code: portCode.trim().toUpperCase() || undefined,
+          ...shippingBillSent,
           lines: linePayload,
           ...docDiscountPayload,
         }, token);
@@ -808,9 +816,7 @@ export function InvoiceEditor({
           notes: notes.trim() || undefined,
           round_off_enabled: roundOffEnabled,
           ...toClassificationPayload({ supplyType, invoiceType, isReverseCharge }),
-          shipping_bill_no: shippingBillNo.trim() || undefined,
-          shipping_bill_date: shippingBillDate || undefined,
-          port_code: portCode.trim().toUpperCase() || undefined,
+          ...shippingBillSent,
           lines: linePayload,
           ...docDiscountPayload,
           currency: isForeign ? currency : undefined,
@@ -1240,8 +1246,7 @@ export function InvoiceEditor({
               Editable after issue, unlike everything above it. Customs issues
               the shipping bill AFTER the invoice, so freezing these at issue
               would mean they could never be recorded at all. */}
-          {(supplyType === "zero_rated" || supplyStateCode === "96")
-            && invoiceType === "Regular" && (
+          {showsShippingBill && (
             <div className="mt-3 pt-3 border-t border-ps-border">
               <p className="text-xs font-medium text-ps-label mb-2">
                 Shipping bill
@@ -1261,8 +1266,11 @@ export function InvoiceEditor({
                 </div>
                 <div>
                   <label htmlFor="inv-sb-date" className="block text-xs font-medium text-ps-label mb-1">Shipping bill date</label>
+                  {/* The anchor is the invoice date and only picks the year of a short date typed here (15/4); it is not a side: customs normally issues the bill AFTER the invoice but nothing here
+                      reads how far before it one may be dated, so the box is bounded by today in India (a day that has happened) and by nothing relative to the anchor. */}
                   <DateInput id="inv-sb-date" value={shippingBillDate}
-                    onChange={setShippingBillDate} onStateChange={dates.watch("shippingBillDate", "Shipping bill date")}
+                    notAfter={todayIstISO()}
+                    onChange={setShippingBillDate} onStateChange={dates.watch("shippingBillDate", "Shipping bill date", { afterMax: true })}
                     anchor={invoiceDate}
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
