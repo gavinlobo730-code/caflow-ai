@@ -149,6 +149,9 @@ test("an engagement letter refuses an expiry before its start, in a sentence der
   assert.match(modal, /<button onClick=\{onClose\} disabled=\{saving\} aria-label="Close"/, "the header Close is live while a Create is out");
   assert.match(modal, /onClick=\{onClose\}\s+disabled=\{saving\}\s+className="flex-1 rounded-lg border/, "Cancel is live while a Create is out");
   assert.match(modal, /if \(open\) \{\s*clearRefusal\(\);[\s\S]{0,700}setErr\(null\);/, "the dialog is opened again with the last refusal on it");
+  // …and it is emptied BEFORE the first paint: the dialog stays mounted and is shown by `open`, so the reset in an ordinary effect ran after the first frame, which drew the last
+  // refusal for a moment (found by the sixteenth slice's whole-group run: the scenario for it failed as soon as it ran on a faster machine than the one it was written on).
+  assert.match(modal, /useLayoutEffect\(\(\) => \{\s*if \(open\) \{\s*clearRefusal\(\);/, "the dialog is emptied in an effect that runs after its first paint: it is drawn for a frame with the last refusal on it");
   // The page words a refusal through the one helper (a validation error's detail is a list: "[object Object]").
   assert.match(code, /if \(!res\.ok\) throw new Error\(await errorMessage\(res\)\);/, "the page's own fetch reads a refusal itself again");
   assert.match(code, /import \{ errorMessage \} from "@\/lib\/api\/index";/);

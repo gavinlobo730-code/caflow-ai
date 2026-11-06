@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
@@ -231,7 +231,9 @@ function CreateEngagementModal({ open, onClose, templates, onCreated, initialLea
     if (sentence) sentenceRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [sentence]);
 
-  useEffect(() => {
+  // BEFORE THE FIRST PAINT. The dialog stays mounted and is shown by `open`, so the reset belongs where the browser has not drawn it yet: in an ordinary effect it ran after the
+  // first frame, which drew the last letter's refusal for a moment (the fifteenth slice's scenario for it failed as soon as it ran on a faster machine than the one it was written on).
+  useLayoutEffect(() => {
     if (open) {
       clearRefusal();
       setForm({

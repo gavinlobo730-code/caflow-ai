@@ -53,6 +53,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { todayIstISO } from "@/lib/dates/format";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -1370,8 +1371,8 @@ export function PurchaseBillEditor({
                 <label htmlFor="bill-15ca-date" className="block text-xs font-medium text-ps-label mb-1">
                   Form 15CA filed on
                 </label>
-                <DateInput id="bill-15ca-date" value={form15caFiledOn}
-                  onChange={setForm15caFiledOn} onStateChange={dates.watch("form15caFiledOn", "Form 15CA filed on")}
+                <DateInput id="bill-15ca-date" value={form15caFiledOn} notAfter={todayIstISO()}
+                  onChange={setForm15caFiledOn} onStateChange={dates.watch("form15caFiledOn", "Form 15CA filed on", { afterMax: true })}
                   anchor={form15caFiledOn || billDate}
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>

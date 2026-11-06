@@ -20,7 +20,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from core.exceptions import _sqlstate
-from core.ist_clock import portal_day
+from core.ist_clock import ist_today, portal_day
 from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
@@ -96,6 +96,9 @@ class RecordIRNRequest(BaseModel):
         day = portal_day(v)
         if day is None:
             raise ValueError("must be a date, YYYY-MM-DD: the day the e-invoice portal printed")
+        # The portal has printed it, so it has come (PRE-A-015, sixteenth slice).
+        if day > ist_today():
+            raise ValueError("The acknowledgement date cannot be after today's date in India.")
         return day.isoformat()
 
 

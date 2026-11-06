@@ -10,6 +10,8 @@ from domain.gst import uqc as _uqc
 from typing import Optional, Any
 from decimal import Decimal
 from domain.money_sentence import amount_text
+from core.ist_clock import ist_today
+from models.iso_date import a_real_date
 
 # CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
 # number not exceeding sixteen characters, using only alphabets, numerals, and
@@ -563,6 +565,20 @@ class PurchaseBillLineIn(BaseModel):
         return self
 
 
+def _form_15ca_day(v: Optional[str], *, a_blank_is_no_date: bool) -> Optional[str]:
+    """The day Form 15CA was filed on the portal, or None when it is not stated (PRE-A-015, sixteenth slice).
+
+    It was a bare string stored as typed. It is a real day, kept as the canonical YYYY-MM-DD, and a day after today (in India) is a filing that has not happened. On a new bill a blank
+    is no date: the acknowledgement number and the UDIN beside it are optional too (they are recorded after the remittance, which is later than the bill). On a PATCH it is REFUSED,
+    because the route reads a PATCH without what was not sent (`exclude_none`): a blank read as absent would be dropped and a success reported for a date that was not cleared."""
+    if v is None or (a_blank_is_no_date and str(v).strip() == ""):
+        return None
+    day = a_real_date(v, "form_15ca_filed_on")
+    if day > ist_today().isoformat():
+        raise ValueError("The Form 15CA date cannot be after today's date in India.")
+    return day
+
+
 class PurchaseBillIn(BaseModel):
     """Create a purchase bill. IT Act §194C/194I/194J: TDS from vendor master."""
     client_id: str
@@ -607,6 +623,11 @@ class PurchaseBillIn(BaseModel):
         if not v:
             raise ValueError("Bill must have at least one line.")
         return v
+
+    @field_validator("form_15ca_filed_on")
+    @classmethod
+    def _the_15ca_has_been_filed(cls, v):
+        return _form_15ca_day(v, a_blank_is_no_date=True)
 
 
 class PurchaseBillUpdateIn(BaseModel):
@@ -661,6 +682,11 @@ class PurchaseBillUpdateIn(BaseModel):
     # {line_id: new unit} — always allowed regardless of status, same
     # rationale as SalesInvoiceUpdateIn.line_units above.
     line_units: Optional[dict[str, str]] = None
+
+    @field_validator("form_15ca_filed_on")
+    @classmethod
+    def _the_15ca_has_been_filed(cls, v):
+        return _form_15ca_day(v, a_blank_is_no_date=False)
 
     @field_validator("line_units")
     @classmethod

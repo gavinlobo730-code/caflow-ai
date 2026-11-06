@@ -32,7 +32,7 @@ import assert from "node:assert/strict";
 import { TZ_MATRIX, pick, sameTickDouble, expectWrites, until } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok, refuse } from "../stub.mjs";
-import { CLIENT_ID, CLIENT_ROW, ITEM, PAYROLL_RUN } from "../fixtures.mjs";
+import { CLIENT_ID, CLIENT_ROW, ITEM, PAYROLL_RUN, VENDOR } from "../fixtures.mjs";
 
 export const group = "dates";
 
@@ -82,6 +82,20 @@ async function openBill(env) {
   await pick(page, page.locator('button[aria-label="Vendor"]'), "Gamma Supplies");
   await page.fill('input[placeholder="INV-001"]', "GS/2026/114");
   await pick(page, page.locator('button[aria-label="Line 1 product or service"]'), "Consulting");
+}
+
+/** The purchase bill editor for a payee the server previews under section 195 (a payment to a non-resident), which is when it asks for Form 15CA, Form 15CB and the day the first was
+ *  filed: the TDS preview is stubbed in the server's shape (`ServerTdsPreview`), the 15CA section is drawn and the bill is otherwise filled as `openBill` fills it. */
+async function openBill15ca(env) {
+  const { page, stub } = env;
+  stub.setTable("vendors", [{ ...VENDOR, tds_applicable: true, tds_section: "195", tds_rate_bps: 2000 }]);
+  stub.route({ method: "POST", re: /purchase-bills\/tds-preview/, reply: () => ok({
+    taxable_amount_paise: 100000, total_paise: 118000, total_gst_paise: 18000, tds_paise: 20800, tds_rate_bps: 2000, tds_section: "195", tds_surcharge_paise: 0, tds_cess_paise: 800,
+    tds_nature_of_income: "Fees for technical services", tds_basis: "Part II of the First Schedule", tds_citation: "s.195", tds_shortfall_paise: 0, net_payable_paise: 97200,
+    txn_currency: "INR", txn_total: 1180, txn_net_payable: 972 }) });
+  await openBill(env);
+  await page.getByLabel("Line 1 rate", { exact: true }).fill("1000");
+  await page.locator("#bill-15ca-date").waitFor({ timeout: 10000 });
 }
 
 /** The advance-tax register with an estimate typed, so the four instalments (and their paid-on dates) are drawn. */
@@ -1002,6 +1016,18 @@ const MCA_DUPLICATE_DIN_SENTENCE = "This DIN is already recorded for this client
 const TDS_COULD_NOT_CHALLAN_SENTENCE = "Could not record the TDS challan. The cause has been logged; please try again, and report it if it keeps failing.";
 /** What a box that refuses a date after today says about 15 October 2026 at the pinned clock (8 October 2026). */
 const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after 08 Oct 2026.";
+/** The instant at which the browser's day is AHEAD of India's on Kiritimati (UTC+14): 17:30 on 8 October in India and 02:00 on 9 October there. At the instant every scenario is pinned to (08:00 UTC)
+ *  the day is 8 October in Los Angeles, Kolkata and Kiritimati, so only a scenario that re-pins to this one can tell India's day from the browser's. */
+const AHEAD_OF_INDIA = "2026-10-08T12:00:00Z";
+/** The day the page itself says it is (its own clock, in the zone the context runs in), checked against the instant the scenario pinned: a re-pin that did not take would leave the
+ *  scenario passing on a day every zone agrees about. */
+async function assertBrowserDay(page, instant) {
+  const seen = await page.evaluate(() => ({ day: new Date().toLocaleDateString("en-CA"), zone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+  const expected = new Date(instant).toLocaleDateString("en-CA", { timeZone: seen.zone });
+  assert.equal(seen.day, expected, `the page's clock is not at ${instant}: it says ${seen.day} in ${seen.zone}`);
+  if (seen.zone === "Pacific/Kiritimati") assert.equal(seen.day, "2026-10-09", "the browser is not a day ahead of India on Kiritimati at this instant, so this scenario cannot tell the two days apart");
+  return seen;
+}
 /** What the statutory-values screen says, derived from its boxes, when a notification names no source or one of its two days (the start of the sentence is enough to find it). */
 const STATUTORY_REQUIRED_SENTENCE = "The notification reference, its date and the effective-from date are all required";
 /** What the new-letter modal says while its Expiry box is before its Start box. */
@@ -1523,7 +1549,7 @@ async function openReinvestmentClaim(env) {
   stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\?/, reply: () => ok([record]) });
   stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\/sections$/, reply: () => ok({ sections: [], asset_natures: [], acquisition_kinds: [] }) });
   stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\/cg-1\/exemption$/, reply: () => ok({
-    gain_paise: 40_00_000_00, total_exemption_paise: 0, taxable_gain_paise: 40_00_000_00, claims: [], gaps: [], caveats: [] }) });
+    gain_paise: 40_00_000_00, total_exemption_paise: 0, taxable_gain_paise: 40_00_000_00, claims: env.claims ?? [], gaps: [], caveats: [] }) });
   stub.route({ method: "POST", re: /api\/income-tax\/capital-gains\/cg-1\/reinvestments$/, reply: () => ok({ id: "ri-1" }) });
   await openCapitalGainsRegisterTab(env);
   await page.getByRole("button", { name: "Exemption", exact: true }).first().click();
@@ -1564,17 +1590,22 @@ const EDITORS = [
     save: (p) => modalOf(p).getByRole("button", { name: "Record Payment", exact: true }), write: /purchase-payments$/,
   },
   {
-    id: "record-irn", title: "Record IRN on an issued invoice", open: openRecordIrn,
+    id: "record-irn", shortForm: "15/01/2026", title: "Record IRN on an issued invoice", open: openRecordIrn,
     fields: [{ box: (p) => modalOf(p).locator('input[aria-label="Acknowledgement date"]'), label: "Acknowledgement date", key: "ack_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => modalOf(p).getByRole("button", { name: "Record IRN", exact: true }), write: /einvoice\/records\/ei-1\/irn-generated$/,
   },
   {
-    id: "record-eway-bill", title: "Record E-Way Bill on an issued invoice", open: openRecordEway,
+    id: "record-eway-bill", shortForm: "15/01/2026", title: "Record E-Way Bill on an issued invoice", open: openRecordEway,
     fields: [
       { box: (p) => modalOf(p).locator('input[aria-label="EWB date"]'), label: "EWB date", key: "ewb_date", full: "15/07/2026", iso: "2026-07-15" },
       { box: (p) => modalOf(p).locator('input[aria-label="Valid upto"]'), label: "Valid upto", key: "ewb_valid_upto", full: "16/07/2026", iso: "2026-07-16" },
     ],
     save: (p) => modalOf(p).getByRole("button", { name: "Record E-Way Bill", exact: true }), write: /eway-bill\/records\/ew-1\/generated$/,
+  },
+  {
+    id: "bill-form-15ca", shortForm: "15/01/2026", title: "purchase bill editor (a payment to a non-resident): the day Form 15CA was filed", open: openBill15ca,
+    fields: [{ box: (p) => p.locator("#bill-15ca-date"), label: "Form 15CA filed on", key: "form_15ca_filed_on", full: "15/07/2026", iso: "2026-07-15" }],
+    save: (p) => p.getByRole("button", { name: "Save Draft" }), write: /purchase-bills\/$/,
   },
   {
     id: "tds-deduction", title: "TDS deduction form",
@@ -1589,7 +1620,7 @@ const EDITORS = [
     save: (p) => p.locator("div.fixed").getByRole("button", { name: "Add", exact: true }), write: /tds-workspace\/challans$/,
   },
   {
-    id: "advance-tax-register", title: "advance-tax register",
+    id: "advance-tax-register", shortForm: "15/01/2026", title: "advance-tax register",
     open: openAdvanceTaxRegister,
     fields: [{
       box: (p) => p.getByLabel("Instalment 1 paid on"), label: "Instalment 1 paid on", key: "installments[0].paid_date",
@@ -1598,7 +1629,7 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/,
   },
   {
-    id: "self-assessment-challan", title: "§140A challan form",
+    id: "self-assessment-challan", shortForm: "15/01/2026", title: "§140A challan form",
     open: openSelfAssessmentChallan,
     fields: [{ box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on", key: "deposit_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/,
@@ -2552,24 +2583,25 @@ export const scenarios = [
     },
   },
   // A date that belongs AFTER another is read after it. The anchor's financial year decides the year of a short form, so a valid-upto typed `2/4`
-  // beside a bill dated 31/03/2027 (the last day of FY 2026-27) came out as 02/04/2026, a year BEFORE the bill, and the field showed it without a word.
+  // beside a bill dated 31/03/2026 (the last day of FY 2025-26) came out as 02/04/2025, a year BEFORE the bill, and the field showed it without a word. (The bill is dated in the
+  // past: since the sixteenth slice its own date may not be after today, so the last day of the year that has just ended is the one that can be driven.)
   {
     id: "record-eway-bill-a-short-valid-upto-is-read-after-the-bill-date",
-    title: "Record E-Way Bill: a short valid-upto beside a bill dated on the last day of the financial year is read in the NEXT year, and a typed year is left alone",
+    title: "Record E-Way Bill: a short valid-upto beside a bill dated on the last day of the financial year is read in the NEXT year (the year that has just ended: a bill dated in the future is refused), and a typed year is left alone",
     contexts: TZ_MATRIX,
     async run(env) {
       const { page, stub } = env;
       await openRecordEway(env);
       const bill = modalOf(page).locator('input[aria-label="EWB date"]');
       const valid = modalOf(page).locator('input[aria-label="Valid upto"]');
-      await typeAndLeave(bill, "31/03/2027");
+      await typeAndLeave(bill, "31/03/2026");
       await typeAndLeave(valid, "2/4");
-      assert.equal(await valid.inputValue(), "02/04/2027", "2/4 beside a bill of 31/03/2027 was read before the bill");
+      assert.equal(await valid.inputValue(), "02/04/2026", "2/4 beside a bill of 31/03/2026 was read before the bill");
       await typeAndLeave(valid, "0204");
-      assert.equal(await valid.inputValue(), "02/04/2027", "the four-digit short form moved differently");
-      await typeAndLeave(valid, "2/4/2026");
-      assert.equal(await valid.inputValue(), "02/04/2026", "a year the person typed was moved");
-      await modalOf(page).getByText(/is before 31 Mar 2027/).waitFor({ timeout: 4000 }).catch(() => {
+      assert.equal(await valid.inputValue(), "02/04/2026", "the four-digit short form moved differently");
+      await typeAndLeave(valid, "2/4/2025");
+      assert.equal(await valid.inputValue(), "02/04/2025", "a year the person typed was moved");
+      await modalOf(page).getByText(/is before 31 Mar 2026/).waitFor({ timeout: 4000 }).catch(() => {
         throw new Error("a valid-upto typed in full before the bill's date was shown no hint");
       });
       await typeAndLeave(valid, "2/4");
@@ -2578,8 +2610,8 @@ export const scenarios = [
       const writes = stub.writesTo(/eway-bill\/records\/ew-1\/generated$/);
       assert.equal(writes.length, 1, `expected one write, saw ${writes.length}`);
       const body = JSON.parse(writes[0].body);
-      assert.equal(body.ewb_date, "2027-03-31");
-      assert.equal(body.ewb_valid_upto, "2027-04-02", "the valid-upto that reached the server is the one before the bill");
+      assert.equal(body.ewb_date, "2026-03-31");
+      assert.equal(body.ewb_valid_upto, "2026-04-02", "the valid-upto that reached the server is the one before the bill");
     },
   },
   // A required date that is CLEARED reports "empty", not a problem, so a gate over unreadable text alone sends a blank (the server takes it into a
@@ -3822,8 +3854,10 @@ export const scenarios = [
       await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
       await shownInTheDialog(page, "A stub refusal of the letter.", "the server's refusal was not shown");
       await reopen();
+      // The sentence is asked at once (the reset runs before the first paint, so there is no frame that draws the last one); a BOX is asked for its settled text, because the shared date
+      // box takes its text from the parent's reset in an effect after the paint, and one frame of the last day is not what is being asked about here.
       assert.equal(await page.getByText("A stub refusal of the letter.").count(), 0, "the dialog was opened again with the server's last refusal still on it");
-      assert.equal(await dialog.getByLabel("Title", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's title");
+      await until(async () => (await dialog.getByLabel("Title", { exact: true }).inputValue()) === "", "the dialog to be opened without the last letter's title in it", 1500);
       // …and one from the boxes.
       await dialog.getByLabel("Title", { exact: true }).fill("Another letter");
       await typeAndLeave(dialog.getByLabel("Start date", { exact: true }), "01/04/2026");
@@ -3832,8 +3866,8 @@ export const scenarios = [
       await shownInTheDialog(page, ENGAGEMENT_ORDER_SENTENCE, "the order of the dates was not refused");
       await reopen();
       assert.equal(await page.getByText(ENGAGEMENT_ORDER_SENTENCE).count(), 0, "the dialog was opened again with the last order refusal still on it");
-      assert.equal(await dialog.getByLabel("Start date", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's start date");
-      assert.equal(await dialog.getByLabel("Expiry date", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's expiry date");
+      await until(async () => (await dialog.getByLabel("Start date", { exact: true }).inputValue()) === "", "the dialog to be opened without the last letter's start date in it", 1500);
+      await until(async () => (await dialog.getByLabel("Expiry date", { exact: true }).inputValue()) === "", "the dialog to be opened without the last letter's expiry date in it", 1500);
     },
   },
   // The card scrolls when the window is short, and the sentence is at its top while the button that raised it is at the bottom: it must be brought into view, or pressing Create
@@ -4046,6 +4080,170 @@ export const scenarios = [
       const sent = stub.writesTo(/api\/inventory\/transfer$/);
       assert.equal(sent.length, 1, `expected one write, saw ${sent.length}`);
       assert.equal(JSON.parse(sent[0].body).quantity, "1500");
+    },
+  },
+  // ── the sixteenth slice (6-11-2026) ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  // A date a BANK or a PORTAL printed has happened by the time it is recorded: an advance-tax instalment's paid-on date, the section 140A challan's deposit date, a Capital Gains Accounts
+  // Scheme deposit, the IRP's acknowledgement day, the e-way bill's own date and the day Form 15CA was filed. A day after today in India is a typing mistake; none of the six boxes had any
+  // bound, and five of the six reached a server that stored the day (the advance-tax instalment's paid date was already refused there). Each is refused in a sentence before anything is
+  // sent, and the sentence goes when the date is right. A second table runs each at an hour when the browser's day is AHEAD of India's, because at the hour every other scenario is pinned to
+  // the day is the same in all three zones and only that one can tell India's day from the browser's.
+  //   stays : the form copies a date's sentence into its own error, where it stays until the next Save (the purchase bill editor does this for every one of its dates)
+  ...[
+    { id: "advance-tax-paid-on", name: "Income Tax > Advance tax: an instalment's paid-on date", open: openAdvanceTaxRegister, box: (p) => p.getByLabel("Instalment 1 paid on"), label: "Instalment 1 paid on",
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/ },
+    { id: "self-assessment-deposit", name: "Income Tax > Advance tax > §140A challan: the day it was deposited", open: openSelfAssessmentChallan, box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on",
+      save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/ },
+    { id: "cgas-deposit", name: "Income Tax > Capital gains > reinvestment claim: the CGAS deposit date", open: onAShortScreen(openReinvestmentClaim), box: (p) => p.getByLabel("CGAS deposit date"), label: "CGAS deposit date",
+      save: (p) => p.getByRole("button", { name: "Record claim", exact: true }), write: /api\/income-tax\/capital-gains\/cg-1\/reinvestments$/ },
+    { id: "irn-acknowledgement", name: "Invoice > Record IRN: the acknowledgement date", open: openRecordIrn, box: (p) => modalOf(p).locator('input[aria-label="Acknowledgement date"]'), label: "Acknowledgement date",
+      save: (p) => modalOf(p).getByRole("button", { name: "Record IRN", exact: true }), write: /einvoice\/records\/ei-1\/irn-generated$/ },
+    { id: "eway-bill-date", name: "Invoice > Record E-Way Bill: the bill's own date", open: openRecordEway, box: (p) => modalOf(p).locator('input[aria-label="EWB date"]'), label: "EWB date",
+      save: (p) => modalOf(p).getByRole("button", { name: "Record E-Way Bill", exact: true }), write: /eway-bill\/records\/ew-1\/generated$/ },
+    { id: "bill-form-15ca", name: "Purchases > bill editor (a payment to a non-resident): the day Form 15CA was filed", open: openBill15ca, box: (p) => p.locator("#bill-15ca-date"), label: "Form 15CA filed on",
+      save: (p) => p.getByRole("button", { name: "Save Draft" }), write: /purchase-bills\/$/, stays: true },
+  ].flatMap((f) => [{
+    id: `${f.id}-a-date-after-today-is-refused`,
+    title: `${f.name}: a date after today is refused in a sentence and nothing is sent${f.stays ? "" : ", and the sentence goes when the date is right"}`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await f.open(env);
+      const said = `${f.label}: ${AFTER_TODAY_SENTENCE}`;
+      await typeAndLeave(f.box(page), "15/10/2026");
+      // The advance-tax page also draws a date's sentence live (it recomputes the estimate 400 ms after a date is left), so the sentence may already be on the page: Save's own refusal is the
+      // one that ADDS to it.
+      await stub.quiet();
+      await page.waitForTimeout(700);
+      const already = await page.getByText(said).count();
+      await f.save(page).click();
+      await until(async () => (await page.getByText(said).count()) >= already + 1, `${f.name}: Save did not say the date's sentence (it was on the page ${already} time(s) before)`, 5000);
+      await shownInTheDialog(page, said, `${f.name}: a date after today was not refused in a sentence`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a date after today SENT A WRITE`);
+      await typeAndLeave(f.box(page), "07/10/2026");
+      // The sentence goes when the date is right. (The advance-tax page also shows a live compute error that clears with the next answer, so this polls for a few seconds
+      // rather than looking once: a sentence copied into the form's error stays for ever, which is what this tells from.)
+      if (!f.stays) await until(async () => (await page.getByText(said).count()) === 0, `${f.name}: the refusal to go once the date was put right`, 5000);
+      await f.save(page).click();
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length >= 1, true, `${f.name}: the form did not save once the date was a day that has come`);
+    },
+  }, {
+    // The bound is INDIA's day. At 12:00 UTC it is 8 October in India (and in Los Angeles) and 9 October on Kiritimati: the box there refuses 9 October, the browser's own today, and takes 8.
+    id: `${f.id}-the-bound-is-the-indian-day`,
+    title: `${f.name}: at an hour when the browser's day is ahead of India's, the day after India's today is refused and India's today is saved`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context, stub } = env;
+      await context.clock.setFixedTime(new Date(AHEAD_OF_INDIA));
+      await f.open(env);
+      await assertBrowserDay(page, AHEAD_OF_INDIA);
+      await typeAndLeave(f.box(page), "09/10/2026");
+      await f.save(page).click();
+      await shownInTheDialog(page, `${f.label}: 09 Oct 2026 is after 08 Oct 2026.`, `${f.name}: the day after India's today was not refused (on Kiritimati it is the browser's own today)`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: the day after India's today SENT A WRITE`);
+      await typeAndLeave(f.box(page), "08/10/2026");
+      await f.save(page).click();
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length >= 1, true, `${f.name}: India's today was refused or not sent`);
+    },
+  }]),
+  // The day an e-way bill is valid UPTO is a plan: it may run ahead of today, where its own date may not.
+  {
+    id: "eway-bill-valid-upto-may-run-ahead",
+    title: "Invoice > Record E-Way Bill: the bill's date is today and it is valid upto a day ahead: nothing is refused and both days are sent",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openRecordEway(env);
+      await typeAndLeave(modalOf(page).locator('input[aria-label="EWB date"]'), "08/10/2026");
+      await typeAndLeave(modalOf(page).locator('input[aria-label="Valid upto"]'), "11/10/2026");
+      await modalOf(page).getByRole("button", { name: "Record E-Way Bill", exact: true }).click();
+      await stub.quiet();
+      const sent = stub.writesTo(/eway-bill\/records\/ew-1\/generated$/);
+      assert.equal(sent.length, 1, `expected one write, saw ${sent.length}`);
+      const body = JSON.parse(sent[0].body);
+      assert.equal(body.ewb_date, "2026-10-08", "today was refused or sent as another day");
+      assert.equal(body.ewb_valid_upto, "2026-10-11", "a validity running ahead of today was refused or sent as another day");
+    },
+  },
+  // What the server said to an EARLIER attempt is the form's error, and the next attempt clears it. The three income-tax forms say a date's sentence through the latch, and the error they
+  // kept sat hidden under it and came back when the date was put right: a Save that was refused, then tried over a wrong date, then over a right one, must not show the first answer again.
+  ...[
+    { id: "advance-tax-save", name: "Income Tax > Advance tax: Save", open: openAdvanceTaxRegister, box: (p) => p.getByLabel("Instalment 1 paid on"), label: "Instalment 1 paid on",
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/ },
+    { id: "self-assessment-challan", name: "Income Tax > Advance tax > §140A challan: Record challan", open: openSelfAssessmentChallan, box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on",
+      save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/ },
+    { id: "reinvestment-claim", name: "Income Tax > Capital gains > reinvestment claim: Record claim", open: onAShortScreen(openReinvestmentClaim), box: (p) => p.getByLabel("CGAS deposit date"), label: "CGAS deposit date",
+      save: (p) => p.getByRole("button", { name: "Record claim", exact: true }), write: /api\/income-tax\/capital-gains\/cg-1\/reinvestments$/ },
+  ].map((f) => ({
+    id: `${f.id}-the-answer-to-an-earlier-attempt-does-not-come-back`,
+    title: `${f.name}: after a refusal, a wrong date and then a right one, the first answer is not shown again`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await f.open(env);
+      const EARLIER = "A stub refusal of the earlier attempt.";
+      stub.route({ method: "POST", re: f.write, ...refuse(EARLIER, 422) });
+      await f.save(page).click();
+      await shownInTheDialog(page, EARLIER, `${f.name}: the first attempt's refusal was not shown`);
+      await stub.quiet();
+      const tried = stub.writesTo(f.write).length;
+      assert.equal(tried, 1, `${f.name}: the first attempt should have sent one write, sent ${tried}`);
+      await typeAndLeave(f.box(page), "15/10/2026");
+      await f.save(page).click();
+      await shownInTheDialog(page, `${f.label}: ${AFTER_TODAY_SENTENCE}`, `${f.name}: a date after today was not refused in a sentence`);
+      await stub.quiet();
+      assert.equal(stub.writesTo(f.write).length, tried, `${f.name}: a date after today SENT A WRITE`);
+      await typeAndLeave(f.box(page), "07/10/2026");
+      await until(async () => (await page.getByText(AFTER_TODAY_SENTENCE).count()) === 0, `${f.name}: the date's sentence to go once the date was put right`, 5000);
+      assert.equal(await page.getByText(EARLIER).count(), 0, `${f.name}: the answer to the first attempt CAME BACK once the date was put right`);
+    },
+  })),
+  // The day an IRP or an e-way bill portal printed is India's, and so is the day the dialog opens on: a browser that is already on the next day (a few hours ahead of India) must not open a box on a
+  // date the box itself refuses. At 12:00 UTC it is 8 October in India and 9 October on Kiritimati; nothing is typed, and the day that is sent is India's.
+  ...[
+    { id: "irn-dialog", name: "Invoice > Record IRN", open: openRecordIrn, button: "Record IRN", write: /einvoice\/records\/ei-1\/irn-generated$/, key: "ack_date" },
+    { id: "eway-bill-dialog", name: "Invoice > Record E-Way Bill", open: openRecordEway, button: "Record E-Way Bill", write: /eway-bill\/records\/ew-1\/generated$/, key: "ewb_date" },
+  ].map((f) => ({
+    id: `${f.id}-opens-on-the-indian-day`,
+    title: `${f.name}: at an hour when the browser's day is ahead of India's the dialog opens on India's day and nothing is refused`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context, stub } = env;
+      await context.clock.setFixedTime(new Date(AHEAD_OF_INDIA));
+      await f.open(env);
+      await assertBrowserDay(page, AHEAD_OF_INDIA);
+      await modalOf(page).getByRole("button", { name: f.button, exact: true }).click();
+      await stub.quiet();
+      const sent = stub.writesTo(f.write);
+      assert.equal(sent.length, 1, `${f.name}: expected one write, saw ${sent.length}: the dialog opened on a day it refuses`);
+      assert.equal(JSON.parse(sent[0].body)[f.key], "2026-10-08", `${f.name}: the dialog opened on another day than India's`);
+    },
+  })),
+  // The newest answer is the one shown: a claim's delete that the server refuses is said over the sentence of a date that was refused a moment before (the date's sentence is only the answer to the
+  // Record that was tried, and a delete is another action; the delete's refusal used to wait, hidden under it, until the date was put right).
+  {
+    id: "reinvestment-claim-a-refused-delete-is-said-over-an-earlier-date-sentence",
+    title: "Income Tax > Capital gains > reinvestment claim: after a CGAS date after today was refused, the server's refusal of a Delete is said, and the date's sentence does not hide it",
+    async run(env) {
+      const { page, stub } = env;
+      env.claims = [{
+        id: "ri-0", section: "54F", heading: "Net consideration invested in a residential house", new_asset_description: "Flat 12, Greenfield Towers", allowed: true,
+        exemption_paise: 10_00_000_00, amount_considered_paise: 10_00_000_00, deadline: "2028-05-10", within_time: true, working: [], gaps: [], caveats: [],
+      }];
+      await onAShortScreen(openReinvestmentClaim)(env);
+      const DELETE_REFUSAL = "A stub refusal of the delete.";
+      stub.route({ method: "DELETE", re: /api\/income-tax\/capital-gains\/cg-1\/reinvestments\/ri-0$/, ...refuse(DELETE_REFUSAL, 409) });
+      const said = `CGAS deposit date: ${AFTER_TODAY_SENTENCE}`;
+      await typeAndLeave(page.getByLabel("CGAS deposit date"), "15/10/2026");
+      await page.getByRole("button", { name: "Record claim", exact: true }).click();
+      await shownInTheDialog(page, said, "a CGAS date after today was not refused in a sentence");
+      await page.getByRole("button", { name: "Delete this claim" }).click();
+      await shownInTheDialog(page, DELETE_REFUSAL, "the server's refusal of the Delete was not said over the date's sentence");
+      assert.equal(await page.getByText(said).count(), 0, "the date's sentence stayed on the page beside the refusal of the Delete");
     },
   },
 ];

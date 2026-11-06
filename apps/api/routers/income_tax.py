@@ -1163,6 +1163,14 @@ class ReinvestmentIn(BaseModel):
     new_asset_transferred_on: Optional[date] = None
     notes: Optional[str] = None
 
+    @field_validator("cgas_deposit_date")
+    @classmethod
+    def _the_deposit_has_been_made(cls, v: Optional[date]) -> Optional[date]:
+        """A deposit in the Capital Gains Accounts Scheme is recorded after the bank has taken it: a day after today (in India) has not happened (PRE-A-015, sixteenth slice)."""
+        if v and v > ist_today():
+            raise ValueError("The deposit date cannot be after today's date in India.")
+        return v
+
     @field_validator("section")
     @classmethod
     def known_section(cls, v: str) -> str:
@@ -2111,6 +2119,14 @@ class SelfAssessmentChallanIn(BaseModel):
     minor_head: str = sa_domain.MINOR_HEAD_SELF_ASSESSMENT
     bank_name: Optional[str] = None
     notes: Optional[str] = None
+
+    @field_validator("deposit_date")
+    @classmethod
+    def _the_tax_has_been_deposited(cls, v: date) -> date:
+        """The counterfoil of a challan the bank has taken: a day after today (in India) is not a deposit (PRE-A-015, sixteenth slice). The date was only a real day before."""
+        if v > ist_today():
+            raise ValueError("The deposit date cannot be after today's date in India.")
+        return v
 
     @field_validator("bsr_code")
     @classmethod

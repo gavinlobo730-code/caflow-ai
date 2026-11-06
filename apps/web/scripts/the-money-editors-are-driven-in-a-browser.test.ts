@@ -288,7 +288,7 @@ function dateInputsOf(rel: string): string[] {
 const DRIVEN: Record<string, string[]> = {
   "components/journal/JournalEditor.tsx": ["#je-date"],
   "components/invoices/InvoiceEditor.tsx": ["#inv-date", "#inv-due-date"],
-  "components/purchases/PurchaseBillEditor.tsx": ["#bill-date", "#bill-due-date"],
+  "components/purchases/PurchaseBillEditor.tsx": ["#bill-date", "#bill-due-date", "#bill-15ca-date"],
   "components/invoices/InvoiceViewDrawer.tsx": ["[Payment date]", "[Credit note date]", "[Debit note date]"],
   "components/purchases/PurchaseBillViewDrawer.tsx": ["[Payment date]", "[Debit note date]", "[Credit note date]"],
   "app/income-tax/advance-tax/page.tsx": ["[Instalment ${n} paid on]", "#sa-deposit-date"],
@@ -370,7 +370,6 @@ const DRIVEN: Record<string, string[]> = {
 const NOT_YET_DRIVEN: Record<string, Record<string, string>> = {
   "app/clients/[id]/purchases/page.tsx": { "#no-pe-on": "a foreign supplier's no-PE declaration date, shown only on the supplier form once the declaration is ticked (a later row)" },
   "components/invoices/InvoiceEditor.tsx": { "#inv-sb-date": "the shipping bill date of an export invoice; shown only for exports (second slice)" },
-  "components/purchases/PurchaseBillEditor.tsx": { "#bill-15ca-date": "the Form 15CA date; shown only for a foreign payee (second slice)" },
   "app/income-tax/advance-tax/page.tsx": { "#at-furnished-on": "feeds the §234A/§234B calculation and is saved nowhere, so the save claims do not apply (the working's own scenario is a later row)" },
   "app/clients/[id]/inventory/page.tsx": {
     "#stock-as-at": "the as-at date of the stock register: a filter that writes nothing (a later row for the window claims)",

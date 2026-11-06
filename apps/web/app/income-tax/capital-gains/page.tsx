@@ -44,7 +44,7 @@ import { Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
@@ -64,7 +64,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 
 /** Anything the compute endpoint accepts. The calculator and the register
  *  have different vocabularies and the backend takes the union of both. */
@@ -345,6 +345,8 @@ export default function CapitalGainsPage() {
   const [exemptError, setExemptError] = useState("");
   // Both dates in a reinvestment claim are optional and read as "not given" when blank: unreadable text is refused instead (frontend_ux-19).
   const claimDates = useDateProblems();
+  // A Record claim over a date that is wrong says so once, and the sentence goes when the date is right (a copy of it in `exemptError` stayed after the fix).
+  const claimRefusal = useDateRefusal(claimDates.first);
   const [claimForm, setClaimForm] = useState({ ...BLANK_CLAIM });
 
   useEffect(() => {
@@ -370,11 +372,15 @@ export default function CapitalGainsPage() {
     setExemptFor(r);
     setClaimForm({ ...BLANK_CLAIM });
     setExemptError("");
+    claimRefusal.clear();
     await loadExemption(r.id);
   }
 
   async function saveClaim() {
-    if (claimDates.first) { setExemptError(claimDates.first); return; }
+    // A new attempt begins, so what the last one said is no longer true. (The date's own sentence is in the latch, not here: what this clears
+    // is a refusal of the server or of the description, which was hidden under the date's sentence and came back when that went.)
+    setExemptError("");
+    if (claimDates.first) { claimRefusal.refuse(); return; }
     if (!exemptFor || !claimForm.new_asset_description.trim()) {
       setExemptError("Describe what was bought.");
       return;
@@ -990,7 +996,8 @@ export default function CapitalGainsPage() {
                 </div>
 
                 <div className="px-5 py-4 space-y-4">
-                  {exemptError && <Callout tone="problem">{exemptError}</Callout>}
+                  {/* The newest answer is shown: saveClaim clears `exemptError` before it refuses a date, so one that is here came after the date's sentence (a refused delete, say). */}
+                  {(exemptError || claimRefusal.shown) && <Callout tone="problem">{exemptError || claimRefusal.shown}</Callout>}
 
                   {exemption && (
                     <div className="grid grid-cols-3 gap-3">
@@ -1129,10 +1136,10 @@ export default function CapitalGainsPage() {
                       <div>
                         <label className="text-xs font-medium text-ps-body block mb-1">Deposited on</label>
                         <DateInput className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm"
-                               aria-label="CGAS deposit date"
+                               aria-label="CGAS deposit date" notAfter={todayIstISO()}
                                value={claimForm.cgas_date}
                                onChange={v => setClaimForm(f => ({ ...f, cgas_date: v }))}
-                               onStateChange={claimDates.watch("cgas", "CGAS deposit date")} />
+                               onStateChange={claimDates.watch("cgas", "CGAS deposit date", { afterMax: true })} />
                       </div>
                     </div>
 

@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Modal as ModalShell } from "@/components/ui/modal";
 import { apiCall, apiGet, getAuthToken, fmt, type InvoiceDetail } from "@/lib/invoices/shared";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
@@ -398,7 +398,8 @@ function PrepareIrnModal({ busy, derived, onClose, onSubmit }: { busy: boolean; 
 }
 
 function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: () => void; onSubmit: (f: { irn: string; ack_number: string; ack_date: string; qr_data: string }) => unknown }) {
-  const today = todayLocalISO();
+  // India's day, which is the one the acknowledgement date is bounded by (see RecordEwayModal).
+  const today = todayIstISO();
   const [irn, setIrn] = useState(""); const [ack, setAck] = useState(""); const [date, setDate] = useState(today); const [qr, setQr] = useState("");
   const ok = irn.trim().length > 0 && ack.trim().length > 0;
   // The acknowledgement date is printed on the invoice and dates the IRN in its timeline: text that is not a date read as blank and went to the
@@ -412,7 +413,7 @@ function RecordIrnModal({ busy, onClose, onSubmit }: { busy: boolean; onClose: (
     <ModalShell title="Record IRN" note="Enter the IRN details from the IRP portal (# CA REVIEW REQUIRED — recorded, not submitted)." onClose={onClose}>
       <Field label="IRN"><input value={irn} onChange={(e) => setIrn(e.target.value)} placeholder="64-char IRN" className={inputCls} /></Field>
       <Field label="Acknowledgement no."><input value={ack} onChange={(e) => setAck(e.target.value)} className={inputCls} /></Field>
-      <Field label="Acknowledgement date"><DateInput aria-label="Acknowledgement date" value={date} onChange={setDate} onStateChange={dates.watch("ack", "Acknowledgement date")} className={inputCls} /></Field>
+      <Field label="Acknowledgement date"><DateInput aria-label="Acknowledgement date" notAfter={todayIstISO()} value={date} onChange={setDate} onStateChange={dates.watch("ack", "Acknowledgement date", { afterMax: true })} className={inputCls} /></Field>
       <Field label="Signed QR payload (optional)"><textarea value={qr} onChange={(e) => setQr(e.target.value)} rows={2} className={inputCls} /></Field>
       {refusal.shown && <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>}
       {/* The write's promise is handed back so the shared Button holds a second click while it runs. */}
@@ -478,7 +479,9 @@ function PrepareEwayModal({ busy, invoice, onClose, onSubmit }: { busy: boolean;
 }
 
 function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean; recordId: string; onClose: () => void; onSubmit: (f: { ewb_number: string; ewb_date: string; ewb_valid_upto: string }) => unknown }) {
-  const today = todayLocalISO();
+  // India's day, which is the one the bill's own date is bounded by: a browser a few hours ahead of India is already on the next day, and the box
+  // would open on a date it refuses.
+  const today = todayIstISO();
   const [num, setNum] = useState(""); const [date, setDate] = useState(today); const [valid, setValid] = useState(today);
   // WHAT RULE 138(10) SAYS THIS BILL IS VALID UNTIL, from the distance recorded
   // when the record was prepared. "Valid upto" used to default to TODAY, which
@@ -521,7 +524,7 @@ function RecordEwayModal({ busy, recordId, onClose, onSubmit }: { busy: boolean;
     <ModalShell title="Record E-Way Bill" note="Enter the EWB details from the NIC portal." onClose={onClose}>
       <Field label="E-Way Bill number"><input value={num} onChange={(e) => setNum(e.target.value)} placeholder="12-digit EWB no." className={inputCls} /></Field>
       <div className="grid grid-cols-2 gap-2">
-        <Field label="EWB date"><DateInput aria-label="EWB date" value={date} onChange={setDate} onStateChange={dates.watch("ewb", "EWB date")} className={inputCls} /></Field>
+        <Field label="EWB date"><DateInput aria-label="EWB date" notAfter={todayIstISO()} value={date} onChange={setDate} onStateChange={dates.watch("ewb", "EWB date", { afterMax: true })} className={inputCls} /></Field>
         <Field label="Valid upto">
           <DateInput aria-label="Valid upto" anchor={date || null} notBefore={date || null} value={valid}
             onChange={(v) => { setValidTouched(true); setValid(v); }}

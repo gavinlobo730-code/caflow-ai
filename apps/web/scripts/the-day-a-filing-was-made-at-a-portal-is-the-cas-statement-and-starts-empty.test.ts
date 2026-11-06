@@ -21,10 +21,11 @@
 //                             completed or filed is wrong and is NOT caught here (it is written down on the ledger line).
 //
 // WHAT THIS DOES NOT COVER (so nobody reads it as wider than it is; each is on the ledger line PRE-A-015 as the next slice)
-//   Dates that record a PAYMENT or a receipt after the fact and are not named for a filing: the advance-tax instalments' "paid on" dates, the §140A challan's "Deposited on", the
-//   TDS challan date, a CGAS deposit date, the Form 15CA date, the job worker's challan date, the e-invoice and e-way acknowledgement dates and a goods-back date. They state
-//   something that has already happened and are not bounded by today. Also not followed: a box named only by a template literal or by its visible label, a value passed in as a
-//   prop, and whether the save handler consults the box's problem (`dates.first`): every matched box's page does today.
+//   Dates that record a PAYMENT or a receipt after the fact and are not named for a filing. They state something that has already happened. Six are bounded by today in India by
+//   the sixteenth slice's own guard (the-dates-a-bank-or-a-portal-printed-are-bounded-by-todays-date-in-india.test.ts): the advance-tax instalments' "paid on" dates, the §140A
+//   challan's "Deposited on", a CGAS deposit date, the Form 15CA date and the e-invoice and e-way bill dates. Still not bounded: the TDS challan date, the job worker's challan
+//   date and a goods-back date. Also not followed: a box named only by a template literal or by its visible label, a value passed in as a prop, and whether the save handler
+//   consults the box's problem (`dates.first`): every matched box's page does today.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
