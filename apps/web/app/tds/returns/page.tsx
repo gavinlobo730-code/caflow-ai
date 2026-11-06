@@ -35,6 +35,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
 
 import { Button } from "@/components/ui/button";
+import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 }
@@ -467,6 +468,10 @@ export default function TDSReturnsPage() {
                       </p>
                     </div>
                   )}
+
+                  {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries posted purchase bills and advances
+                      only, so a typed deduction is not on it. The server names them; this draws what it said and adds nothing to the totals above. */}
+                  <TypedDeductionsNote raw={result.excluded_typed} />
 
                   <div className="text-xs text-ps-label space-y-1">
                     <p>Form: <strong>{result.form}</strong>{result.act ? ` (${result.act})` : ""}</p>

@@ -377,40 +377,55 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
               (read off the PAN's 4th character), on whether a PAN is on file at
               all (s.206AA floors it at 20%), and on the year's running total.
               A box here invited a number that the server would then ignore. */}
+          {/* WHAT THE FORM SAYS ABOUT THE TAX IS THE SERVER'S ANSWER FOR THE INPUTS IN THE BOXES, OR NOTHING. The previous quote used to stay on screen while
+              the next was fetched (only the figure turned into an ellipsis), so the sentences below described the PAN, the section or the amount that had just
+              been typed over; `shown` is empty while a quote is out. */}
+          {(() => {
+            const shown = quoting ? null : quote;
+            return (
           <div className="col-span-2 bg-blue-50 rounded-lg px-3 py-2 space-y-1">
             <div className="flex justify-between items-center">
               <span className="text-xs text-blue-700 font-medium">
-                TDS {quote && quote.explain.applies ? `§${section} @ ${quote.tds_rate_pct}%` : "on this payment"}
+                TDS {shown && shown.explain.applies ? `§${section} @ ${shown.tds_rate_pct}%` : "on this payment"}
               </span>
               <span className="text-sm font-semibold text-blue-900">
                 {quoting ? "…" : quote ? formatPaise(quote.tds_paise) : "—"}
               </span>
             </div>
-            {quote && !quote.explain.applies && (
+            {/* "…and with the payments already typed for this payee in the year it is below the section's yearly threshold too" is a statement about what the
+                server ADDED UP, so it is said only when the server says it did (`aggregate_tested`): the register was asked, the payee has a usable PAN to be
+                looked up by (a blank, a placeholder or text that is not a PAN has none, and the nil is then "not looked for"), the year's rates are confirmed
+                (otherwise the server's gap says so), and the section HAS a yearly threshold to add them up against (s.194I tests a month and s.194B one transaction). A server that predates the field says nothing, which is not
+                "tested" either (POST-A-078). What was added up is the typed deductions, and the standing sentence below says the purchase bills are not in it. */}
+            {shown && !shown.explain.applies && (
               <p className="text-2xs text-blue-800">
-                Nothing is deducted — this payment is below §{section}&apos;s threshold, and
-                the year&apos;s total for this payee has not reached it either.
+                Nothing is deducted — this payment is below §{section}&apos;s threshold
+                {shown.explain.aggregate_tested === true
+                  ? ", and with the payments already typed on this screen for this payee in the year it is below the section's yearly threshold too."
+                  : "."}
               </p>
             )}
-            {quote?.explain.rate_basis && (
-              <p className="text-2xs text-blue-800">{quote.explain.rate_basis}</p>
+            {shown?.explain.rate_basis && (
+              <p className="text-2xs text-blue-800">{shown.explain.rate_basis}</p>
             )}
-            {quote && quote.explain.fy_prior_tds_paise > 0 && (
+            {shown && shown.explain.fy_prior_tds_paise > 0 && (
               <p className="text-2xs text-blue-800">
                 Charged on the year&apos;s aggregate for this payee, crediting the{" "}
-                {formatPaise(quote.explain.fy_prior_tds_paise)} already withheld (IT Act §200).
+                {formatPaise(shown.explain.fy_prior_tds_paise)} already withheld (IT Act §200).
               </p>
             )}
-            {quote && quote.quarter && (
+            {shown && shown.quarter && (
               <p className="text-3xs text-blue-700">
-                Recorded in {quote.quarter}, derived from the payment date.
+                Recorded in {shown.quarter}, derived from the payment date.
               </p>
             )}
-            {quote?.explain.gap_messages.map((m) => (
+            {shown?.explain.gap_messages.map((m) => (
               <p key={m} className="text-2xs text-state-attention bg-state-attention-surface rounded px-2 py-1">{m}</p>
             ))}
             {quoteErr && <p className="text-2xs text-red-600">{quoteErr}</p>}
           </div>
+            );
+          })()}
           <div>
             <label htmlFor="tds-payment-date" className="text-xs font-medium text-ps-body block mb-1">Payment Date</label>
             <DateInput id="tds-payment-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={paymentDate} onChange={setPaymentDate} onStateChange={dates.watch("paymentDate", "Payment date")} />

@@ -56,6 +56,11 @@ not earn. `domain/tds/purchase_return.py` is the rule; both note routers now
 resync the register on issue, which its own docstring always claimed happened
 "on every transition".
 
+THE REGISTER'S TYPED ROWS ARE NAMED ON A 26Q, NOT ADDED (POST-A-078). A deduction a CA typed on the TDS screen is a register row that neither a bill nor an advance
+wrote, so it is on no statement built from the books. `tds_26q_from_books` reads them to NAME them in `excluded_typed` (how many, the tax, each row) and adds none
+to a total: they have no journal behind them, so adding them would stop the tie-out above meaning what it says. Carrying them needs the typed row's tax to be the
+bill path's resolver's first, and that is the rest of POST-A-078.
+
 Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
 from __future__ import annotations
@@ -68,6 +73,7 @@ from domain.tds import deductee_payment_code as _deductee_payment_code
 from core.ist_clock import month_end_date
 from domain.tds import challan_mapping
 from domain.tds import keying_sheet as _keying_sheet
+from domain.tds import manual_register
 from domain.tds.tds_computer import (
     TDSComputer, TDSDeducteeRecord, TDS27QDeducteeRecord,
 )
@@ -185,6 +191,62 @@ def _withholding_advances(db, firm_id: str, client_id: str, start: str, end: str
             .gt("tds_base_paise", 0)
             .gte("payment_date", start).lte("payment_date", end))
     return [r for r in rows if not r.get("is_reversed")]
+
+
+def _typed_deductions_in_quarter(db, firm_id: str, client_id: str, start: str, end: str) -> list[dict]:
+    """The deductions a CA TYPED on the TDS screen for this quarter that withheld tax: `tds_deductions` rows that neither a purchase bill nor a vendor advance wrote
+    (`manual_register.written_by_a_document`), except salary (a typed section 192 is refused at the door and belongs to 24Q).
+
+    The 26Q built from the books reads posted purchase bills and advances only, so these never reach it. They are read here to be NAMED, not to be added: they have no
+    journal behind them (the typed register is a book of its own), so adding them would break the tie-out with the TDS Payable control account that
+    `reconciliation` reports, and a figure nobody can trace is worse than a figure the statement says it left out (POST-A-078).
+
+    A row that withheld nothing is not one: a statement reports DEDUCTIONS (bills are read with `tds_paise > 0` and advances are dropped when they withheld nothing),
+    and a payment recorded below its section's limit is a register entry that counts toward the year's total, not tax to key.
+
+    NOT GUARDED, ON PURPOSE. If this read fails the statement fails with it, as it does when any of its other reads fail. The one way to build the statement
+    without it is to build one that says nothing about the register, and silence is the failure this read exists to remove.
+    """
+    # The rows a document wrote are told apart in Python, as `manual_register.prior_manual_aggregate` does: the quarter's document-written rows are one per bill or
+    # advance this function already reads whole, so the read stays the size of the quarter's documents, and no query here depends on a filter the stand-ins for the
+    # database in the statement tests do not have.
+    rows = fetch_all(lambda: db.table("tds_deductions")
+            .select("id, deductee_name, deductee_pan, section, transaction_date, payment_amount_paise, tds_paise, purchase_bill_id, purchase_payment_id")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .gte("transaction_date", start).lte("transaction_date", end))
+    return [r for r in rows
+            if not manual_register.written_by_a_document(r)
+            and int(r.get("tds_paise") or 0) > 0
+            and (r.get("section") or "") != "192"]
+
+
+#: The sentence the two return screens show after the count and the tax (the drive's copy of it is compared with this by a test). It does not repeat
+#: the lead, which the screen writes from the count and the tax: that these are the deductions typed on the TDS screen, and that they are not on the statement.
+EXCLUDED_TYPED_REASON = (
+    "A statement built from the books carries posted purchase bills and advances only, so deductions typed on the TDS screen are not in its totals. "
+    "Key them from the register when you key the statement, or leave them out knowingly."
+)
+
+
+def _excluded_typed(rows: list[dict], section_labels: dict[str, str]) -> dict:
+    """What the statement leaves out: how many typed deductions the quarter holds, the tax they withheld, and each one.
+
+    A row's section goes out the way a deductee's does (TDS-17): the label the PERIOD's own Act uses as `section`, the stored routing key beside it as
+    `section_1961`, translated here at the emission and never in the store.
+    """
+    return {
+        "count": len(rows),
+        "payment_paise": sum(int(r.get("payment_amount_paise") or 0) for r in rows),
+        "tds_paise": sum(int(r.get("tds_paise") or 0) for r in rows),
+        "reason": EXCLUDED_TYPED_REASON,
+        "deductions": [
+            {"id": r.get("id"), "deductee_name": r.get("deductee_name"), "deductee_pan": r.get("deductee_pan"),
+             "section": section_labels.get(str(r.get("section") or "").strip(), r.get("section")), "section_1961": r.get("section"),
+             "transaction_date": str(r.get("transaction_date") or "")[:10], "payment_amount_paise": int(r.get("payment_amount_paise") or 0),
+             "tds_paise": int(r.get("tds_paise") or 0)}
+            for r in sorted(rows, key=lambda r: (str(r.get("transaction_date") or ""), str(r.get("id") or "")))
+        ],
+    }
 
 
 def _as_deduction_event(row: dict, *, kind: str) -> dict:
@@ -544,7 +606,10 @@ def tds_26q_from_books(
         deductor_address=deductor_address, financial_year=fy, quarter=quarter,
         deductees=deductees, challans=[dict(c) for c in challans],
     )
-    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees])
+    # The typed deductions this statement leaves out (POST-A-078) are read here so that their sections are labelled by the same call as the deductees', and a
+    # section the period's Act has no code for is named once, in the same gap.
+    typed_rows = _typed_deductions_in_quarter(db, firm_id, client_id, start, end)
+    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees] + [r.get("section") for r in typed_rows])
     # TDS-31: the numeric payment code each row of a 2025-Act statement
     # carries, asked of the rows the PAYLOAD holds (26Q drops §192 rows).
     _pay_rows, _pay_notes = _payment_codes(fy, payload.deductees)
@@ -630,6 +695,9 @@ def tds_26q_from_books(
                 for e in excluded_non_resident
             ],
         },
+        # WHAT THE STATEMENT LEAVES OUT THAT THE REGISTER HOLDS (POST-A-078): the deductions typed on the TDS screen for this quarter. Named with their count, tax
+        # and each row, like the non-resident payments above, because a statement that is silent about them reads as a complete one.
+        "excluded_typed": _excluded_typed(typed_rows, _sec_labels),
         "validation_errors": payload.validation_errors,
         "warnings": payload.warnings,
         "reconciliation": {

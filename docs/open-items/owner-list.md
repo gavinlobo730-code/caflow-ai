@@ -2,7 +2,7 @@
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
-**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (24, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
+**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (28, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
 
 **How many ledger items wait on you:** the ledger README's "Who must act" line counts them and is generated from the ledger itself. It is every item lettered B (you decide first) or C (only you or someone outside can do), plus the items lettered A that carry the `waits on owner` marker. Those marked items are the ones whose question is in section 4 below: S14 (POST-A-343), S15 (POST-A-348), S16 (POST-A-055), S17 (POST-A-059 and POST-A-064), S18 (POST-A-067), S19 (POST-A-114) and S20 (POST-A-063). Answering a question removes the marker and Claude builds the item.
 
@@ -286,6 +286,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
 - **Stays unbuilt meanwhile:** Refusing a certificate whose period runs past one financial year, and any change to the screen's sentence about the rule, which stays as it was.
 - **Ledger:** POST-A-389
+
+### S28. Section 206AA: is a PAN typed as text that is not shaped like a PAN "not furnished" for the 20% floor?
+
+- **Question:** The typed deduction form takes whatever is typed in the PAN box. The product floors the rate at 20% only for a blank or for the two placeholders (PANNOTAVBL, PANAPPLIED); any other text, such as "ABC", is treated as a PAN: it escapes the floor and its fourth character picks the individual or company rate. Is a PAN that is not in the ten-character shape (five letters, four digits, a letter) "not furnished" for section 206AA with Rule 37BC, so the 20% floor applies? Or must the deductor refuse it? And what does the section say of a PAN that is well formed but inoperative, or wrongly quoted? (The product now also refuses such text as a key for a payee's year, which is a separate matter and needs no reading.)
+- **Needed:** Section 206AA of the Income-tax Act 1961 with Rule 37BC, any CBDT circular on a wrongly quoted or invalid PAN, and the corresponding section of the Income-tax Act 2025.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Any change to the 20% floor for text that is not a PAN, and any refusal of such text at the typed door.
+- **Ledger:** POST-A-408
 
 ## 5. Wait-until-asked items the goal probably needs
 

@@ -188,6 +188,9 @@ export interface TDSReturnPayload {
     tds_paise: number;
     reason: string;
   };
+  /** POST-A-078. The deductions typed on the TDS screen for the quarter that a 26Q built from the books leaves out. Present on a 26Q only, and read through
+   *  `readExcludedTyped` (`lib/tds/excludedTyped.ts`), which draws nothing it cannot read whole; a server that predates it sends no key. */
+  excluded_typed?: unknown;
   /** TDS-16. Present only on a from-books build — see TDSKeyingSheet above. */
   keying_sheet?: TDSKeyingSheet;
   period?: {
@@ -415,6 +418,12 @@ export type DeductionExplain = {
   rate_basis: string;
   fy_prior_taxable_paise: number;
   fy_prior_tds_paise: number;
+  /** Whether the server ADDED UP the payee's earlier typed payments of the year against the section's yearly threshold before it answered (POST-A-078). True only
+   *  when the register was asked, the payee has a usable PAN to be looked up by (not blank, not a placeholder such as PANNOTAVBL, not text that is not a PAN), the
+   *  financial year's rates are confirmed (an unconfirmed year gets the `resident_tds_rates_not_verified` gap instead) and the section has a yearly threshold at all
+   *  (s.194I tests a month and s.194B one transaction). False otherwise, and a nil is then "not tested" and never "none". A
+   *  server that predates it sends no key, which is not true either: only `true` lets a screen say the year's total is below a threshold. */
+  aggregate_tested?: boolean;
   gaps: string[];
   gap_messages: string[];
 };
