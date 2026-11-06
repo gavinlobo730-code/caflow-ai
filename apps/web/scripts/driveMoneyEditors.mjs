@@ -32,10 +32,26 @@
  *
  * --only <text>    run the scenarios whose group or id starts with, or equals, the text
  * --report <file>  also write the verdict as JSON and, under GitHub Actions, a table on the run's summary page
- * --no-tz-matrix   run each date scenario once, not under en-US/Los Angeles, en-IN/Kolkata and en-GB/Kiritimati
+ * --no-tz-matrix   run each date scenario once, not under en-US/Los Angeles, en-IN/Kolkata and en-GB/Kiritimati (the first of them)
+ * --zone <which>   which of those zones the date scenarios run under: `all` (the default), `rotate` (ONE zone, the matrix's zones in turn,
+ *                  a new one each INDIAN day, with the part below) or the id of one zone (`Asia/Kolkata`). A scenario with no context in the
+ *                  chosen zone runs all of its own.
+ * --shard <which>  which half of the date group to drive: `all` (the default for a zone that is not `rotate`), `rotate` (the default for
+ *                  `--zone rotate`: one half, a new one every third Indian day) or 0 or 1. The other groups run in full whatever the part.
+ *                  What the nightly asks for is `--zone rotate`: a zone and a half a night, so a night fits its allowance and over six
+ *                  nights every zone sees every date scenario once (`drive/kit.mjs` holds the rule, `the-nightly-drive-...test.ts` the proof).
+ * --stop-after <minutes>  a deadline for the drive: after it the runner STARTS NO MORE scenarios, writes its report (`complete: false`, the runs it did not drive named in
+ *                  `not_driven`) and exits 1. The workflow's job has an allowance, and a job that runs past it is cancelled WITHOUT running its later steps, the one that uploads
+ *                  this report among them: the run of 6 November 2026 ran 55 minutes against 45 and left nothing. A runner that stops itself leaves the report and the job red.
+ * --list           print the runs that would be driven, one a line, and exit 0 before any build or browser is needed (what the tests of the rotation read)
+ * --now <instant>  read the rotation at this instant (`2026-11-07T00:30:00Z`, with its zone) and not at the real clock, to reproduce a night or to test the runner's own use of it
  * --shots          keep a screenshot of every failed scenario in .smoke/drive/
  * --out <dir>      drive another export than out/ (a build of an earlier commit, a patched copy)
  * --no-headers     drive WITHOUT out/_headers (not the product as it is served)
+ *
+ * Both spellings of a flag with a value, `--zone rotate` and `--zone=rotate`, are read. NOTHING IS IGNORED: a flag the runner does not know, a value on a flag that takes none
+ * (`--shots=1`), a missing or empty value, a flag given twice and a bare word are each refused with exit 2, because a run that ignores what it was given drives something
+ * other than what was asked.
  *
  * PROBE_REACHABLE=1  after each four-second wait for a sentence, ask the browser whether the person could reach it (a trial click): a sentence drawn
  *                  BEHIND an overlay (a page's message line under a drawer's backdrop) is "visible" to Playwright and is not where the person is
@@ -50,8 +66,8 @@
  * a new date field is one more row in `EDITORS` in `scenarios/dates.mjs`. Do not name a file `test-*.mjs` or
  * `*.test.*`: `pnpm test` would run it without a browser.
  *
- * EXIT. 0: every scenario held. 1: a scenario failed (the report is written first). 2: it could not tell: no
- * export, an export not built for this port, no Playwright, or nothing ran.
+ * EXIT. 0: every scenario held (or `--list` listed). 1: a scenario failed, or the deadline of `--stop-after` came before the end (the report is written first). 2: it could
+ * not tell: no export, an export not built for this port, no Playwright, nothing ran, or an argument it will not guess at.
  *
  * NOT A PULL-REQUEST CHECK AND NOT A REQUIRED ONE, like the walk beside it: it needs the export and a Chromium,
  * so `.github/workflows/smoke-walk.yml` runs it after the walk, nightly and on demand, on the same build.
@@ -66,7 +82,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseRules, resolve as resolveRule, rulesCloudflareKeeps } from "./check-live-redirects.mjs";
 import { headersFor, parseHeadersFile } from "./security-headers.mjs";
 import { ACCOUNTS, CLIENT_ID, CLIENT_ROW, CUSTOMER, FAKE_FIRM_ROW, FAKE_SESSION, FAKE_USERS_ROW, ITEM, JOURNAL_ENTRIES, NOW, VENDOR } from "./drive/fixtures.mjs";
-import { installedChromium, loadPlaywright } from "./drive/kit.mjs";
+import {
+  SHARDS, contextsFor, deadlinePassed, inShard, installedChromium, loadPlaywright, parseArgs, partOfTheNight, reportOf, resolveNow, resolveShard, resolveStopAfter, resolveZone,
+} from "./drive/kit.mjs";
 import { createStub, ok } from "./drive/stub.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,22 +95,77 @@ const SCENARIO_DIR = path.join(__dirname, "drive", "scenarios");
 /** The port `pnpm smoke:build` bakes into the bundle (the walk's `SMOKE_PORT`, the same default). */
 const PORT = Number(process.env.SMOKE_PORT || 4319);
 
-const args = process.argv.slice(2);
-const valueOf = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : null);
-const only = valueOf("--only");
-const reportPath = valueOf("--report");
-const shots = args.includes("--shots");
-const noTzMatrix = args.includes("--no-tz-matrix");
-/** The export to drive: `out/`, or another directory of the same shape (a build of an earlier commit, to see a
- *  fix fail without it, or a copy with the guard patched out of the compiled chunks, as a negative control). */
-const OUT = path.resolve(valueOf("--out") ?? path.join(WEB, "out"));
-if (args.includes("--report") && (!reportPath || reportPath.startsWith("--"))) {
-  console.error("--report needs a file path, e.g. --report .smoke/drive-report.json");
+// `parseArgs` (drive/kit.mjs) reads both spellings of a flag with a value and refuses everything it cannot use: a run that ignores a flag it was given drives something other than what was asked.
+const parsed = parseArgs(process.argv.slice(2));
+if (parsed.problem) {
+  console.error(parsed.problem);
   process.exit(2);
 }
-if (args.includes("--only") && (!only || only.startsWith("--"))) {
-  console.error("--only needs a group or scenario id, e.g. --only dates");
+const flags = parsed.flags;
+const only = flags["--only"] ?? null;
+const reportPath = flags["--report"] ?? null;
+const shots = Boolean(flags["--shots"]);
+const noTzMatrix = Boolean(flags["--no-tz-matrix"]);
+const noHeaders = Boolean(flags["--no-headers"]);
+const listOnly = Boolean(flags["--list"]);
+/** The export to drive: `out/`, or another directory of the same shape (a build of an earlier commit, to see a
+ *  fix fail without it, or a copy with the guard patched out of the compiled chunks, as a negative control). */
+const OUT = path.resolve(flags["--out"] ?? path.join(WEB, "out"));
+/** The zone(s) the date scenarios run under: `all`, or the one zone `--zone` chose (`rotate` is chosen by the INDIAN day of this run), and the part of the date group: `all`, or the one shard
+ *  `--shard` chose (`rotate`, which a rotating zone implies, is chosen by the same day). The nightly drives one of each. `--now` moves the instant the rotation is read at. */
+let zone = "all";
+let shard = "all";
+let stopAfter = null;
+const realNow = Date.now();
+let chosenAt = realNow;
+try {
+  chosenAt = resolveNow(flags["--now"], realNow);
+  zone = flags["--zone"] === undefined ? "all" : resolveZone(flags["--zone"], chosenAt);
+  shard = resolveShard(flags["--shard"], flags["--zone"] ?? "all", chosenAt);
+  stopAfter = resolveStopAfter(flags["--stop-after"]);
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e));
   process.exit(2);
+}
+const night = partOfTheNight(chosenAt);
+console.log(
+  `Date scenarios: ${zone === "all" ? "every zone of the matrix" : `${zone} only`}, ${shard === "all" ? "the whole group" : `part ${shard + 1} of ${SHARDS}`}` +
+  `${flags["--zone"] === "rotate" ? ` (the Indian day ${night.day}, by --zone rotate${flags["--now"] ? `, read at ${flags["--now"]}` : ""})` : ""}` +
+  `${stopAfter === null ? "" : `; a deadline of ${stopAfter} minutes for the drive`}.`);
+
+// ── The scenarios: every module in scripts/drive/scenarios/ ─────────────────────────────────────────────
+// Discovered, not listed, so a scenario file cannot be written and forgotten. A module exports `group` (a
+// word) and `scenarios` (an array of { id, title, run(env), contexts? }). They are read BEFORE the export is looked for, so `--list` needs no build.
+const modules = [];
+for (const file of fs.readdirSync(SCENARIO_DIR).filter((f) => f.endsWith(".mjs")).sort()) {
+  const mod = await import(pathToFileURL(path.join(SCENARIO_DIR, file)).href);
+  if (typeof mod.group !== "string" || !Array.isArray(mod.scenarios)) {
+    console.error(`scripts/drive/scenarios/${file} must export \`group\` (a string) and \`scenarios\` (an array).`);
+    process.exit(2);
+  }
+  modules.push({ file, group: mod.group, scenarios: mod.scenarios });
+}
+
+/** Expand a scenario into the runs it asks for: one, or one per browser context under the matrix. */
+function runsOf(group, scenario) {
+  const base = { group, id: `${group}/${scenario.id}`, title: scenario.title, run: scenario.run };
+  if (!inShard(group, scenario.id, shard)) return [];
+  if (!scenario.contexts) return [{ ...base, context: null }];
+  const inZone = contextsFor(scenario.contexts, zone);
+  const contexts = noTzMatrix ? inZone.slice(0, 1) : inZone;
+  return contexts.map((c) => ({ ...base, id: `${base.id} [${c.locale} ${c.timezoneId}]`, context: c }));
+}
+const selected = modules.flatMap((m) => m.scenarios.flatMap((s) => runsOf(m.group, s)))
+  .filter((r) => !only || r.group === only || r.id === only || r.id.startsWith(only));
+if (!selected.length) {
+  console.error(only ? `No scenario matches --only ${only}.` : "No scenarios were found under scripts/drive/scenarios/.");
+  process.exit(2);
+}
+if (listOnly) {
+  // ONE write, and the exit waits for it: `process.exit` straight after a large `console.log` to a PIPE (which is how a test reads this) drops what the pipe has not yet taken, and through a
+  // slow reader the whole drive's list (a thousand lines) came back 218 lines short.
+  await new Promise((resolve) => process.stdout.write(`${selected.map((r) => r.id).join("\n")}\n${selected.length} run(s) selected.\n`, resolve));
+  process.exit(0);
 }
 
 if (!fs.existsSync(OUT)) {
@@ -116,7 +189,7 @@ if (!fs.existsSync(OUT)) {
 
 let headerRules = [];
 let cspState = "not applied (--no-headers)";
-if (args.includes("--no-headers")) {
+if (noHeaders) {
   console.log("--no-headers: driving WITHOUT out/_headers. This is not the product as it is served.");
 } else {
   const headersFile = path.join(OUT, "_headers");
@@ -149,33 +222,6 @@ function resolveBuilt(url) {
   let file = path.join(OUT, target);
   if (!path.extname(file)) file = path.join(file, "index.html");
   return file.startsWith(OUT) && fs.existsSync(file) ? file : null;
-}
-
-// ── The scenarios: every module in scripts/drive/scenarios/ ─────────────────────────────────────────────
-// Discovered, not listed, so a scenario file cannot be written and forgotten. A module exports `group` (a
-// word) and `scenarios` (an array of { id, title, run(env), contexts? }).
-const modules = [];
-for (const file of fs.readdirSync(SCENARIO_DIR).filter((f) => f.endsWith(".mjs")).sort()) {
-  const mod = await import(pathToFileURL(path.join(SCENARIO_DIR, file)).href);
-  if (typeof mod.group !== "string" || !Array.isArray(mod.scenarios)) {
-    console.error(`scripts/drive/scenarios/${file} must export \`group\` (a string) and \`scenarios\` (an array).`);
-    process.exit(2);
-  }
-  modules.push({ file, group: mod.group, scenarios: mod.scenarios });
-}
-
-/** Expand a scenario into the runs it asks for: one, or one per browser context under the matrix. */
-function runsOf(group, scenario) {
-  const base = { group, id: `${group}/${scenario.id}`, title: scenario.title, run: scenario.run };
-  if (!scenario.contexts) return [{ ...base, context: null }];
-  const contexts = noTzMatrix ? scenario.contexts.slice(0, 1) : scenario.contexts;
-  return contexts.map((c) => ({ ...base, id: `${base.id} [${c.locale} ${c.timezoneId}]`, context: c }));
-}
-const selected = modules.flatMap((m) => m.scenarios.flatMap((s) => runsOf(m.group, s)))
-  .filter((r) => !only || r.group === only || r.id === only || r.id.startsWith(only));
-if (!selected.length) {
-  console.error(only ? `No scenario matches --only ${only}.` : "No scenarios were found under scripts/drive/scenarios/.");
-  process.exit(2);
 }
 
 // ── The tables every scenario starts from ───────────────────────────────────────────────────────────────
@@ -219,7 +265,27 @@ const results = [];
 const escaped = new Set();
 const started = Date.now();
 
+/** The report, as it stands (`reportOf` in drive/kit.mjs builds it). It is written as the run goes (at most every 20 seconds) and again at the end. This alone does NOT save the report of a run that
+ *  the JOB cancels: a job that times out is cancelled and its later steps, the upload among them, never run (the run of 6 November 2026 ran 55 minutes against 45, and the step after the drive was
+ *  still `pending` when it ended). What saves it is the DEADLINE below, which ends the drive before the job's allowance and leaves the job to upload what was written. The file written as the
+ *  run goes is the report of a drive that is killed in any other way (a machine that is lost, a Ctrl-C). `final` is the write at the end, which the 20-second throttle does not apply to. */
+let reportWrittenAt = 0;
+let stoppedAtDeadline = false;
+function writeReport(complete, final = false) {
+  if (!reportPath) return;
+  if (!final && Date.now() - reportWrittenAt < 20_000) return;
+  reportWrittenAt = Date.now();
+  const report = reportOf({
+    complete, stoppedAtDeadline, only, tzMatrix: !noTzMatrix, zone, shard, stopAfter, chosenAtMs: chosenAt, csp: cspState, pinnedClock: NOW,
+    commit: process.env.GITHUB_SHA || null, selected, results, escaped: [...escaped], startedMs: started, nowMs: Date.now(),
+  });
+  fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
+}
+
 for (const run of selected) {
+  // THE DEADLINE (`--stop-after`): no scenario is STARTED after it. One that is running finishes (or times out, at most SCENARIO_TIMEOUT_MS), so the drive ends at most that much past it.
+  if (deadlinePassed(started, Date.now(), stopAfter)) { stoppedAtDeadline = true; break; }
   const t0 = Date.now();
   stub.reset(baseline());
   stub.route({ method: "GET", re: /service-catalogue/, reply: () => ok([ITEM]) });
@@ -321,6 +387,7 @@ for (const run of selected) {
     if (error) console.log(`       ${error}`);
     for (const p of [...new Set(problems)].slice(0, 4)) console.log(`       ${p}`);
   }
+  writeReport(false);
 }
 
 await browser.close();
@@ -328,10 +395,16 @@ await stub.stop();
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length} scenario(s) driven, ${failed.length} failed. CSP ${cspState}.`);
+if (stoppedAtDeadline) {
+  console.log(`STOPPED AT ITS DEADLINE (--stop-after ${stopAfter} minutes): ${results.length} of ${selected.length} run(s) driven; the ${selected.length - results.length} not driven are named in the report.`);
+}
 if (escaped.size) {
   console.log(`BLOCKED: a screen reached for a host that is not the stub: ${[...escaped].join(", ")}. Nothing was contacted.`);
 }
 if (process.env.GITHUB_ACTIONS === "true") {
+  if (stoppedAtDeadline) {
+    console.log(`::error title=Money-editor drive stopped at its deadline::${results.length} of ${selected.length} run(s) were driven in ${stopAfter} minutes; the rest are named in the report. The drive has outgrown its allowance: see the-nightly-drive-fits-its-allowance-and-visits-each-zone-in-turn.test.ts.`);
+  }
   for (const f of failed.slice(0, 10)) {
     const first = (f.error ?? f.problems[0] ?? "failed").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
     console.log(`::error title=Money-editor drive: ${f.id.replace(/[,:]/g, " ")} failed::${first.slice(0, 300)}`);
@@ -339,27 +412,14 @@ if (process.env.GITHUB_ACTIONS === "true") {
 }
 
 if (reportPath) {
-  const report = {
-    generated_at: new Date().toISOString(),
-    commit: process.env.GITHUB_SHA || null,
-    mode: { only, tz_matrix: !noTzMatrix },
-    csp: cspState,
-    pinned_clock: NOW,
-    ok: failed.length === 0 && escaped.size === 0,
-    scenarios_driven: results.length,
-    failed: failed.map((f) => ({ id: f.id, error: f.error, problems: f.problems })),
-    scenarios: results,
-    blocked_hosts: [...escaped],
-    duration_ms: Date.now() - started,
-  };
-  fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
-  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
+  writeReport(!stoppedAtDeadline, true);
   console.log(`report written to ${reportPath}`);
   if (process.env.GITHUB_STEP_SUMMARY) {
     const lines = [
-      `### Money-editor drive: ${failed.length ? "FAILED" : "clean"}`,
+      `### Money-editor drive: ${stoppedAtDeadline ? "STOPPED AT ITS DEADLINE" : failed.length ? "FAILED" : "clean"}`,
       "",
-      `${results.length} scenarios driven in Chromium against the smoke build, ${failed.length} failed.`,
+      `${results.length} of ${selected.length} scenarios driven in Chromium against the smoke build, ${failed.length} failed. Date scenarios: ${zone === "all" ? "every zone of the matrix" : `${zone} only`}, ${shard === "all" ? "the whole group" : `part ${shard + 1} of ${SHARDS}`}.` +
+        `${stoppedAtDeadline ? ` It was stopped at its deadline of ${stopAfter} minutes: ${selected.length - results.length} not driven (named in the report).` : ""}`,
       "",
     ];
     if (failed.length) {
@@ -373,4 +433,4 @@ if (reportPath) {
   }
 }
 
-process.exit(failed.length || escaped.size ? 1 : 0);
+process.exit(failed.length || escaped.size || stoppedAtDeadline ? 1 : 0);
