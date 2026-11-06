@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Keep the counts in docs/open-items/README.md true.
 
-The open-items ledger (docs/open-items/) is six files of one-line items plus a parked file. The README states how many
-items each file holds, so a person closing an item has two things to do: delete its line, and make the counts agree.
-This script does the second. Parked items are counted on their own and are not part of the open total. Run it after closing or adding an item:
+The open-items ledger (docs/open-items/) is six files of one-line items (the BACKLOG), a file of NEW FINDINGS (everything found from 6 November 2026 on, kept apart so
+the backlog's number shows progress on its own) and a parked file. The README states how many items each file holds, so a person closing an item has two things to do:
+delete its line, and make the counts agree. This script does the second. Parked items are counted on their own and are not part of the open total; the new findings are
+counted on their own too, beside the backlog's total and not inside it. Run it after closing or adding an item:
 
     python3 scripts/open_items_counts.py            # rewrite the block in README.md
     python3 scripts/open_items_counts.py --check    # exit 1 if the block is out of date (the test does this)
@@ -29,11 +30,13 @@ SECTIONS = [
     ("post-demo-B-ours.md", "after the demo: owner decides first, then Claude builds"),
     ("post-demo-C-yours.md", "after the demo: only the owner or outsiders can do"),
 ]
+NEW_FINDINGS = ("new-findings.md", "everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total")
 PARKED = ("post-demo-parked.md", "after the demo: parked until someone asks or the work is sized down; NOT counted as open")
 OTHERS = [
     ("decisions-and-strategy.md", "the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap"),
     ("checked-closed.md", "what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it"),
     ("deletion-plan.md", "which audit and plan documents can be deleted, which must stay and why, and what must be done first"),
+    ("progress.md", "the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days)"),
     ("coming-soon.md", "the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id"),
 ]
 
@@ -72,18 +75,38 @@ def render_block(ledger: Path = LEDGER) -> str:
         by_letter[letter] += n
         pre += n if name.startswith("pre-") else 0
         rows.append(f"| [{name}]({name}) | {n} | {desc} |")
+    new_total, new_pre, new_high, new_unsure, new_waiting_a = 0, 0, 0, 0, 0
+    new_by_letter = {"A": 0, "B": 0, "C": 0}
+    for line, m in read_items(ledger / NEW_FINDINGS[0]):
+        new_total += 1
+        head = line.split(" — **", 1)[0]
+        letter = re.search(r"-([ABC])-", head)[1]
+        new_by_letter[letter] += 1
+        new_pre += 1 if head.startswith("- **PRE-") else 0
+        if m and m["prio"] == "high":
+            new_high += 1
+        if " · UNSURE" in head:
+            new_unsure += 1
+        if letter == "A" and WAITS_ON_OWNER in head:
+            new_waiting_a += 1
+    rows.append(f"| [{NEW_FINDINGS[0]}]({NEW_FINDINGS[0]}) | {new_total} | {NEW_FINDINGS[1]} |")
     parked = sum(1 for _ in read_items(ledger / PARKED[0]))
     rows.append(f"| [{PARKED[0]}]({PARKED[0]}) | {parked} | {PARKED[1]} |")
     for name, desc in OTHERS:
         rows.append(f"| [{name}]({name}) | — | {desc} |")
     lines = [START, "", "| file | items | what it holds |", "|---|---|---|", *rows, "",
-             f"**{total} open items** ({pre} before the demo, {total - pre} after); {high} after-demo items are `high` priority; {unsure} are UNSURE. "
+             f"**THE BACKLOG: {total} open items** ({pre} before the demo, {total - pre} after); {high} after-demo items are `high` priority; {unsure} are UNSURE. "
              f"A further **{parked} items are parked** (not counted above).",
              "",
-             f"**Who must act.** {by_letter['A']} items are Claude's alone to build, but {waiting_a} of them are marked `waits on owner` "
+             f"**Who must act (backlog).** {by_letter['A']} items are Claude's alone to build, but {waiting_a} of them are marked `waits on owner` "
              f"(a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so "
              f"{by_letter['A'] - waiting_a} can be built now. {by_letter['B']} need the owner to decide first and {by_letter['C']} only the owner "
              f"or someone outside this container can do. In all **{by_letter['B'] + by_letter['C'] + waiting_a} of the {total} wait on the owner.**",
+             "",
+             f"**NEW FINDINGS: {new_total} open** ({new_pre} before the demo, {new_total - new_pre} after; {new_high} `high` priority; {new_unsure} UNSURE), counted apart from the backlog. "
+             f"{new_by_letter['A']} are Claude's alone to build ({new_waiting_a} of them `waits on owner`, so {new_by_letter['A'] - new_waiting_a} can be built now), "
+             f"{new_by_letter['B']} need the owner to decide first and {new_by_letter['C']} only the owner or someone outside this container can do. "
+             f"The day by day numbers are in [progress.md](progress.md).",
              "", END]
     return "\n".join(lines)
 

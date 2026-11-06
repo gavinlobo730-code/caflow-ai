@@ -11,8 +11,11 @@ WHY THIS EXISTS
 
       * an item is exactly one line, `- **PRE-A-001** · `theme` · priority ...`, in the file its id belongs to
         (PRE-A in pre-demo-A-mine.md, POST-C in post-demo-C-yours.md, ...);
-      * ids are unique across all six files and are never reused by a different item (the test cannot see
-        history, so it checks only uniqueness; the README says never renumber);
+      * ids are unique across all six files, the new-findings file and the parked file and are never reused by a different
+        item (the test cannot see history, so it checks only uniqueness; the README says never renumber);
+      * THE BACKLOG DOES NOT GROW (the owner's rule of 7 November 2026): a backlog file may hold only an id that was in the
+        ledger on the evening of 5 November 2026 (`tests/fixtures/ledger_backlog_baseline.txt`); a finding made later is
+        written in `new-findings.md`, which is counted apart so the backlog's number shows progress on its own;
       * every line names an allowed theme and priority and has a bold title;
       * an id cited in the README's lists or in decisions-and-strategy.md exists (closing an item without
         removing it from those lists leaves a dangling reference, which is how an index rots);
@@ -41,6 +44,10 @@ SECTIONS = {
     "post-demo-B-ours.md": "POST-B",
     "post-demo-C-yours.md": "POST-C",
 }
+#: The new-findings file holds a finding of any kind made from 6 November 2026 on, so it takes an id of any of the six prefixes.
+NEW_FINDINGS_FILE = "new-findings.md"
+#: The ids the backlog held on the evening of 5 November 2026 (IST): the only ids a backlog file or the parked file may hold.
+BASELINE = REPO / "apps" / "api" / "tests" / "fixtures" / "ledger_backlog_baseline.txt"
 #: The parked file holds after-demo items of any letter, never a pre-demo one (README, "post-demo-parked.md").
 PARKED_FILE = "post-demo-parked.md"
 PARKED_PREFIXES = {"POST-A", "POST-B", "POST-C"}
@@ -69,14 +76,14 @@ def _lines(name: str):
 
 def _items():
     """Yield (file, line_no, line, match-or-None) for every bullet in the section files."""
-    for name in [*SECTIONS, PARKED_FILE]:
+    for name in [*SECTIONS, NEW_FINDINGS_FILE, PARKED_FILE]:
         for n, line in enumerate(_lines(name), 1):
             if line.startswith("- "):
                 yield name, n, line, ITEM.match(line)
 
 
 def test_the_ledger_has_its_files():
-    for name in [*SECTIONS, PARKED_FILE, "README.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md", "coming-soon.md", "decisions-taken-2026-10-14.md", "owner-list.md"]:
+    for name in [*SECTIONS, NEW_FINDINGS_FILE, PARKED_FILE, "README.md", "progress.md", "decisions-and-strategy.md", "checked-closed.md", "deletion-plan.md", "coming-soon.md", "decisions-taken-2026-10-14.md", "owner-list.md"]:
         assert (LEDGER / name).is_file(), f"docs/open-items/{name} is missing"
 
 
@@ -88,7 +95,10 @@ def test_every_bullet_in_a_section_file_is_a_well_formed_item_in_the_right_file(
         if not m:
             bad.append(f"{name}:{n} is not `- **ID** · `theme` · priority ...`: {line[:90]}")
             continue
-        if name == PARKED_FILE:
+        if name == NEW_FINDINGS_FILE:
+            if m["prefix"] not in {*SECTIONS.values()}:
+                bad.append(f"{name}:{n} carries id {m['id']} with a prefix the ledger does not use")
+        elif name == PARKED_FILE:
             if m["prefix"] not in PARKED_PREFIXES:
                 bad.append(f"{name}:{n} carries id {m['id']}: a pre-demo item is never parked")
         elif m["prefix"] != SECTIONS[name]:
@@ -101,7 +111,20 @@ def test_every_bullet_in_a_section_file_is_a_well_formed_item_in_the_right_file(
     assert not bad, "\n".join(bad[:25])
 
 
-def test_ids_are_unique_across_the_six_files_and_the_parked_file():
+def test_the_backlog_does_not_grow_a_finding_made_since_5_november_goes_to_the_new_findings_file():
+    baseline = {ln.strip() for ln in BASELINE.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")}
+    assert len(baseline) > 600, f"{BASELINE.name} lost its ids ({len(baseline)})"
+    grown = []
+    for name, n, _line, m in _items():
+        if m and name != NEW_FINDINGS_FILE and m["id"] not in baseline:
+            grown.append(f"{name}:{n} {m['id']} was not in the ledger on the evening of 5 November 2026: a finding made since goes in new-findings.md")
+    assert not grown, "\n".join(grown[:20])
+    # and the new-findings file holds none of the backlog's ids: a line is in one list or the other
+    both = [f"new-findings.md:{n} {m['id']} is a backlog id" for name, n, _l, m in _items() if m and name == NEW_FINDINGS_FILE and m["id"] in baseline]
+    assert not both, "\n".join(both[:20])
+
+
+def test_ids_are_unique_across_the_six_files_the_new_findings_file_and_the_parked_file():
     ids = {}
     dup = []
     for name, n, _line, m in _items():
