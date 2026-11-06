@@ -51,6 +51,13 @@ class ManualEWayProvider(EWayBillProvider):
 
 _supabase = db_provider.request_db
 
+# A WRITE TO `eway_bill_records` IS MADE WITH THE PRIVILEGED CLIENT (POST-A-394), NAMING THE FIRM, and a read is made with the caller's own. The routes ask the caller's tier and the client
+# (`assert_client_access`), whether the invoice is the client's (`named_row_ownership`) and, for a row-addressed route, the row's client (`_assert_ewb_scope`) BEFORE they call this module,
+# which is what lets the signed-in role's write grant be taken away (migration 583). The record is labelled with the person of the request (`privileged_for`), so the audit trigger still names
+# who made it.
+def _writer():
+    return db_provider.privileged_for(_supabase())
+
 
 def create_eway_bill(
     firm_id: str,
@@ -102,7 +109,7 @@ def create_eway_bill(
         _MOCK_RECORDS[row["id"]] = row
         return row
 
-    sb = _supabase()
+    sb = _writer()
     row = {
         "firm_id": firm_id,
         "client_id": client_id,
@@ -153,7 +160,7 @@ def record_ewb_generated(
             _MOCK_RECORDS[record_id].update(update)
         return _MOCK_RECORDS.get(record_id, {})
 
-    sb = _supabase()
+    sb = _writer()
     res = sb.table("eway_bill_records").update(update).eq("id", record_id).eq(
         "firm_id", firm_id
     ).execute()
@@ -177,7 +184,7 @@ def record_ewb_extended(
             _MOCK_RECORDS[record_id].update(update)
         return _MOCK_RECORDS.get(record_id, {})
 
-    sb = _supabase()
+    sb = _writer()
     res = sb.table("eway_bill_records").update(update).eq("id", record_id).eq(
         "firm_id", firm_id
     ).execute()
@@ -199,7 +206,7 @@ def record_ewb_cancelled(
             _MOCK_RECORDS[record_id].update(update)
         return _MOCK_RECORDS.get(record_id, {})
 
-    sb = _supabase()
+    sb = _writer()
     res = sb.table("eway_bill_records").update(update).eq("id", record_id).eq(
         "firm_id", firm_id
     ).execute()

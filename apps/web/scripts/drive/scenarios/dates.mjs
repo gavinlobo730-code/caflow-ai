@@ -32,7 +32,7 @@ import assert from "node:assert/strict";
 import { TZ_MATRIX, pick, sameTickDouble, expectWrites, until } from "../kit.mjs";
 import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeductionForm } from "../flows.mjs";
 import { ok, refuse } from "../stub.mjs";
-import { CLIENT_ID, CLIENT_ROW, CUSTOMER, ITEM, PAYROLL_RUN, VENDOR } from "../fixtures.mjs";
+import { CLIENT_ID, CLIENT_ROW, CUSTOMER, ITEM, PAYROLL_RUN, VENDOR, billRow, invoiceDetail } from "../fixtures.mjs";
 
 export const group = "dates";
 
@@ -84,15 +84,18 @@ async function openBill(env) {
   await pick(page, page.locator('button[aria-label="Line 1 product or service"]'), "Consulting");
 }
 
+/** What the server previews for a payee under section 195 (`ServerTdsPreview`): it is what makes the bill editor draw its Form 15CA / 15CB block. */
+const TDS_195_PREVIEW = {
+  taxable_amount_paise: 100000, total_paise: 118000, total_gst_paise: 18000, tds_paise: 20800, tds_rate_bps: 2000, tds_section: "195", tds_surcharge_paise: 0, tds_cess_paise: 800,
+  tds_nature_of_income: "Fees for technical services", tds_basis: "Part II of the First Schedule", tds_citation: "s.195", tds_shortfall_paise: 0, net_payable_paise: 97200,
+  txn_currency: "INR", txn_total: 1180, txn_net_payable: 972 };
+
 /** The purchase bill editor for a payee the server previews under section 195 (a payment to a non-resident), which is when it asks for Form 15CA, Form 15CB and the day the first was
  *  filed: the TDS preview is stubbed in the server's shape (`ServerTdsPreview`), the 15CA section is drawn and the bill is otherwise filled as `openBill` fills it. */
 async function openBill15ca(env) {
   const { page, stub } = env;
   stub.setTable("vendors", [{ ...VENDOR, tds_applicable: true, tds_section: "195", tds_rate_bps: 2000 }]);
-  stub.route({ method: "POST", re: /purchase-bills\/tds-preview/, reply: () => ok({
-    taxable_amount_paise: 100000, total_paise: 118000, total_gst_paise: 18000, tds_paise: 20800, tds_rate_bps: 2000, tds_section: "195", tds_surcharge_paise: 0, tds_cess_paise: 800,
-    tds_nature_of_income: "Fees for technical services", tds_basis: "Part II of the First Schedule", tds_citation: "s.195", tds_shortfall_paise: 0, net_payable_paise: 97200,
-    txn_currency: "INR", txn_total: 1180, txn_net_payable: 972 }) });
+  stub.route({ method: "POST", re: /purchase-bills\/tds-preview/, reply: () => ok(TDS_195_PREVIEW) });
   await openBill(env);
   await page.getByLabel("Line 1 rate", { exact: true }).fill("1000");
   await page.locator("#bill-15ca-date").waitFor({ timeout: 10000 });
@@ -120,6 +123,60 @@ async function openVendorDeclaration(env) {
 }
 /** The vendor form's card (the heading is "New Vendor"), so its Save is not mistaken for the toolbar's or the empty state's Add Vendor. */
 const vendorForm = (page) => page.locator("div.bg-white.rounded-xl.border").filter({ has: page.getByRole("heading", { name: "New Vendor" }) });
+
+// ── the four edit screens that hold a date on file (POST-A-388) ────────────────────────────────────────
+
+/** An ISSUED export invoice opened to edit, with its shipping bill on file: the soft fields of an issued invoice are the ones left editable, and the shipping bill is the one that exists only
+ *  after the goods have left, so this is where it is recorded and corrected. */
+async function openIssuedExportInvoice(env) {
+  const { page, stub } = env;
+  const detail = { ...invoiceDetail("issued", "inv-9"), supply_type: "zero_rated", invoice_type: "Regular", shipping_bill_no: "SB-0042", shipping_bill_date: "2026-07-15", port_code: "INMAA" };
+  stub.route({ method: "GET", re: /sales-invoices\/inv-9$/, reply: () => ok(detail) });
+  stub.route({ method: "PATCH", re: /sales-invoices\/inv-9$/, reply: () => ok({ id: "inv-9" }) });
+  await page.goto(env.at("/sales/invoices/inv-9/edit/"), { waitUntil: "networkidle" });
+  await page.locator("#inv-sb-date").waitFor({ timeout: 10000 });
+}
+
+/** A draft purchase bill from a payee the server previews under section 195, opened to edit, with the day Form 15CA was filed on file. */
+async function openBillWith15caOnFile(env) {
+  const { page, stub } = env;
+  stub.setTable("vendors", [{ ...VENDOR, tds_applicable: true, tds_section: "195", tds_rate_bps: 2000 }]);
+  stub.route({ method: "POST", re: /purchase-bills\/tds-preview/, reply: () => ok(TDS_195_PREVIEW) });
+  const bill = { ...billRow("draft", "b9"), form_15ca_ack_no: "ACK-0042", form_15ca_filed_on: "2026-07-15", form_15cb_udin: null };
+  stub.route({ method: "GET", re: /purchase-bills\/b9$/, reply: () => ok(bill) });
+  stub.route({ method: "PATCH", re: /purchase-bills\/b9$/, reply: () => ok({ id: "b9" }) });
+  await page.goto(env.at("/purchases/bills/b9/edit/"), { waitUntil: "networkidle" });
+  await page.locator("#bill-15ca-date").waitFor({ timeout: 10000 });
+}
+
+/** A non-resident supplier with a no-PE declaration and its date on file, opened from the row's menu to edit. */
+async function openVendorWithDeclarationOnFile(env) {
+  const { page, stub } = env;
+  stub.setTable("vendors", [{ ...VENDOR, residential_status: "non_resident", no_pe_declaration_on_file: true, no_pe_declaration_on: "2026-07-15", no_pe_declaration_ref: "DECL/2026/07" }]);
+  stub.route({ method: "PATCH", re: /api\/vendors\/v1$/, reply: () => ok({ id: "v1" }) });
+  await page.goto(env.at("/purchases/?tab=vendors"), { waitUntil: "networkidle" });
+  // The row's menu is drawn under its button at a fixed position (POST-A-395): the row is brought to the middle of the window first, as a person would scroll to it.
+  const actions = page.getByRole("button", { name: "Actions for Gamma Supplies" });
+  await actions.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await actions.click({ timeout: 5000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click({ timeout: 5000 });
+  await page.locator("#no-pe-on").waitFor({ timeout: 10000 });
+}
+
+/** A bank account with no balance and an opening-balance date on file (the only kind whose date could be emptied), opened from the Accounts tab to edit. */
+async function openBankAccountWithDateOnFile(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { banking: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /api\/banking\/accounts\/deletable\?/, reply: () => ok({}) });
+  stub.route({ method: "GET", re: /api\/banking\/accounts\?/, reply: () => ok([
+    { id: "ba-1", client_id: CLIENT_ID, bank_name: "Axis Bank", account_no: "918020033445566", ifsc: "UTIB0000915", account_type: "Current", is_active: true,
+      opening_balance_paise: 0, opening_balance_date: "2026-04-01", coa_account_id: null, currency: "INR" }]) });
+  stub.route({ method: "PATCH", re: /api\/banking\/accounts\/ba-1$/, reply: () => ok({ id: "ba-1" }) });
+  await page.goto(env.at("/bank/?tab=entries"), { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Accounts", exact: true }).click();
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  await page.locator("#bank-opening-date").waitFor({ timeout: 10000 });
+}
 
 /** The advance-tax register with an estimate typed, so the four instalments (and their paid-on dates) are drawn. */
 async function openAdvanceTaxRegister(env) {
@@ -4533,6 +4590,32 @@ export const scenarios = [
       await until(async () => (await page.getByText(BLANK).count()) === 0, "the lot form opened again without the last sentence about its boxes", 2000);
     },
   },
+  // Recording a lot calls the tab's reload, which used to replace the whole tab with "Loading…" and unmount the panel: the success line, the year and window chosen and any other open lot form went with it, and
+  // the person saw the list change without being told it had worked (POST-A-385). The tab now stays drawn after its first read, so the line the panel said is still there when the reload has landed.
+  {
+    id: "itc04-the-last-lot-recorded-keeps-the-panel-drawn-and-its-success-line-is-seen",
+    title: "Sales > Challans > FORM GST ITC-04: after the last lot is recorded the tab reloads its lists WITHOUT replacing itself with Loading…, and the panel's \"Recorded. That was the last lot\" line is still on the screen",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      let tabReads = 0;
+      stub.route({ method: "GET", re: /sales-cycle\/quotations/, reply: () => { tabReads += 1; return ok([]); } });
+      await openItc04Lot(env);
+      const SAID = "Recorded. That was the last lot";
+      stub.route({ method: "POST", re: /sales-cycle\/challans\/ch-1\/returns$/, reply: () => ok({ id: "ret-1", challan_marked_received_back: true }) });
+      await typeAndLeave(page.locator("#itc04-came-back-on"), "07/10/2026");
+      const readsBefore = tabReads;
+      await page.getByRole("button", { name: "Record this lot", exact: true }).click();
+      await shownInTheDialog(page, SAID, "the panel did not say that the last lot was recorded");
+      // The tab's reload has been asked for and has landed: it read its lists again, and nothing has been left loading.
+      await until(() => tabReads > readsBefore, "the tab to reload its lists after the lot was recorded", 6000);
+      await stub.quiet();
+      await page.waitForLoadState("networkidle");
+      await page.waitForTimeout(400);
+      assert.equal(await page.getByText("Loading…").count(), 0, "the tab is still loading, or was replaced by Loading… and has not come back");
+      assert.ok((await page.getByText(SAID).count()) >= 1, "the success line was lost when the tab reloaded: the panel was unmounted and the person was not told it worked");
+    },
+  },
   // A request that is out holds what would act on the form it belongs to: the firm dialog's Close and Cancel (a challan recorded after the dialog was closed looks like one that was cancelled)
   // and the ITC-04 panel's "Record a lot" (the panel's `saving` is for any line, and a form opened for another line meanwhile would be closed by this one's success).
   {
@@ -4905,6 +4988,198 @@ export const scenarios = [
       await edit("second");
       await until(async () => (await name.inputValue()) === "Gamma Supplies", "the same vendor opened again to hold the record's name", 4000);
       await until(async () => (await page.getByText("Name is required").count()) === 0, "the last press's sentence to go when the same vendor was opened again", 4000);
+    },
+  },
+  // A date on file is REPLACED and not emptied (POST-A-388). The four edit screens sent an emptied date as nothing (`date || undefined`, the bank account's as `null`), the PATCH routes read their body
+  // with `exclude_none`, the stored date stayed, and the screen said it saved. Now pressing Save over a date taken out is refused in a sentence beside the button and sends nothing, text that is not a
+  // day keeps the box's own sentence, the sentence goes once a corrected date is typed, and the corrected day is what reaches the server.
+  ...[
+    { id: "shipping-bill", name: "Sales > an issued export invoice > Edit: the shipping bill date", open: openIssuedExportInvoice, box: (p) => p.locator("#inv-sb-date"),
+      save: "Save Changes", writes: /sales-invoices\/inv-9$/, key: "shipping_bill_date", onFile: "15/07/2026", sentence: "The shipping bill date on file can be corrected but not removed: enter the corrected date." },
+    { id: "form-15ca", name: "Purchases > a draft bill from a payee under section 195 > Edit: the day Form 15CA was filed", open: openBillWith15caOnFile, box: (p) => p.locator("#bill-15ca-date"),
+      save: "Save Changes", writes: /purchase-bills\/b9$/, key: "form_15ca_filed_on", onFile: "15/07/2026", sentence: "The Form 15CA date on file can be corrected but not removed: enter the corrected date." },
+    { id: "no-pe-declaration", name: "Purchases > Vendors > Edit a non-resident supplier: the no-PE declaration's date", open: openVendorWithDeclarationOnFile, box: (p) => p.locator("#no-pe-on"),
+      save: "Save Changes", writes: /api\/vendors\/v1$/, key: "no_pe_declaration_on", onFile: "15/07/2026",
+      sentence: "The no-PE declaration date on file can be corrected but not removed: enter the corrected date, or untick the declaration if there is none." },
+    { id: "bank-opening-date", name: "Bank > Accounts > Edit an account with no balance: the date the opening balance is as at", open: openBankAccountWithDateOnFile, box: (p) => p.locator("#bank-opening-date"),
+      save: "Save Changes", writes: /api\/banking\/accounts\/ba-1$/, key: "opening_balance_date", onFile: "01/04/2026", sentence: "The opening balance date on file can be corrected but not removed: enter the corrected date." },
+  ].map((row) => ({
+    id: `a-date-on-file-is-replaced-and-not-emptied-${row.id}`,
+    title: `${row.name}: emptying the box and pressing Save is refused beside the button and sends nothing, text that is not a day keeps the box's own sentence, the sentence goes once a corrected date is typed, and the corrected day reaches the server as ISO`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await row.open(env);
+      const box = row.box(page);
+      const save = page.getByRole("button", { name: row.save, exact: true });
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      assert.equal(await box.inputValue(), row.onFile, "the box did not open on the date on file");
+      // Taken out and Save pressed: said beside the button, in the box's words, and nothing is sent. A second press says it again and still sends nothing.
+      await typeAndLeave(box, "");
+      for (const press of ["first", "second"]) {
+        await save.click();
+        // On the screen when the press is answered, before anything is scrolled to it: the long editors draw it at the foot of the page, away from the toolbar's Save, and bring it into view.
+        await until(async () => {
+          const at = await page.getByText(row.sentence).first().boundingBox();
+          const height = page.viewportSize()?.height ?? 0;
+          return !!at && at.y >= 0 && at.y + at.height <= height;
+        }, `the sentence to be inside the window when Save (${press} time) over a date taken out was pressed`, 4000);
+        await shownInTheDialog(page, row.sentence, `pressing Save (${press} time) over a date taken out did not say so`);
+        await stub.quiet();
+        assert.equal(stub.writesTo(row.writes).length, 0, `a Save (${press} time) over a date taken out SENT A WRITE, and the screen would have said it saved`);
+      }
+      // Text that is not a day is the box's own sentence and not the removal sentence: the box says what it could not read.
+      await typeAndLeave(box, "31/02/2026");
+      await save.click();
+      await shownInTheDialog(page, FEB_SENTENCE, "pressing Save over text that is not a day did not name the box's own sentence");
+      assert.equal(await page.getByText(row.sentence).count(), 0, "the removal sentence was said over text that is not a day");
+      await stub.quiet();
+      assert.equal(stub.writesTo(row.writes).length, 0, "a Save over text that is not a day SENT A WRITE");
+      // A corrected date: the sentence goes, and the day typed is what is sent.
+      await typeAndLeave(box, "16/07/2026");
+      await until(async () => (await page.getByText(row.sentence).count()) === 0, "the sentence to go once a corrected date was typed", 5000);
+      await save.click();
+      await until(() => stub.writesTo(row.writes).length >= 1, "the corrected date to be sent", 6000);
+      await stub.quiet();
+      const sent = stub.writesTo(row.writes);
+      assert.equal(sent.length, 1, `expected one request for the corrected date, saw ${sent.length}`);
+      const body = JSON.parse(sent[0].body);
+      assert.equal(body[row.key], "2026-07-16", `${row.key} reached the server as ${JSON.stringify(body[row.key])}`);
+    },
+  })),
+  // The date left alone is sent as it was: the rule does not stand in the way of an edit that keeps the date. All four screens, because the date on file is read from a different place on each (the
+  // invoice editor's and the bill editor's snapshot, the supplier form's row, the bank modal's account), and a false refusal of an untouched edit would be the worst way for any of them to be wrong.
+  ...[
+    { id: "shipping-bill", name: "Sales > an issued export invoice > Edit", open: openIssuedExportInvoice, box: (p) => p.locator("#inv-sb-date"), save: "Save Changes", writes: /sales-invoices\/inv-9$/, key: "shipping_bill_date", onFileIso: "2026-07-15" },
+    { id: "form-15ca", name: "Purchases > a draft bill from a payee under section 195 > Edit", open: openBillWith15caOnFile, box: (p) => p.locator("#bill-15ca-date"), save: "Save Changes", writes: /purchase-bills\/b9$/, key: "form_15ca_filed_on", onFileIso: "2026-07-15" },
+    { id: "no-pe-declaration", name: "Purchases > Vendors > Edit a non-resident supplier", open: openVendorWithDeclarationOnFile, box: (p) => p.locator("#no-pe-on"), save: "Save Changes", writes: /api\/vendors\/v1$/, key: "no_pe_declaration_on", onFileIso: "2026-07-15" },
+    { id: "bank-opening-date", name: "Bank > Accounts > Edit", open: openBankAccountWithDateOnFile, box: (p) => p.locator("#bank-opening-date"), save: "Save Changes", writes: /api\/banking\/accounts\/ba-1$/, key: "opening_balance_date", onFileIso: "2026-04-01" },
+  ].map((row) => ({
+    id: `a-date-on-file-left-alone-is-sent-as-it-was-${row.id}`,
+    title: `${row.name}: a Save that leaves the date on file alone sends that date, and the removal sentence is not said`,
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await row.open(env);
+      await page.getByRole("button", { name: row.save, exact: true }).click();
+      await until(() => stub.writesTo(row.writes).length >= 1, "the unchanged date to be sent", 6000);
+      await stub.quiet();
+      const sent = stub.writesTo(row.writes);
+      assert.equal(sent.length, 1, `expected one request, saw ${sent.length}`);
+      const body = JSON.parse(sent[0].body);
+      assert.equal(body[row.key], row.onFileIso, `the date on file was not sent as it was: ${JSON.stringify(body[row.key])}`);
+      assert.equal(await page.getByText(/on file can be corrected but not removed/).count(), 0, "the removal sentence was said over a date left alone");
+    },
+  })),
+  // A form opened AGAIN holds none of the last press's sentence: the supplier form's layout effect clears the latch whenever a vendor is opened, and the sentence is a function of the date on file
+  // and the box, so after Cancel and Edit the date is back in the box and nothing is said.
+  {
+    id: "a-date-on-file-the-supplier-form-opened-again-holds-none-of-the-last-sentence",
+    title: "Purchases > Vendors > Edit a non-resident supplier: after a Save over the date taken out is refused, Cancel and Edit again open the form with the date back in the box and the sentence gone",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openVendorWithDeclarationOnFile(env);
+      const sentence = "The no-PE declaration date on file can be corrected but not removed: enter the corrected date, or untick the declaration if there is none.";
+      const box = page.locator("#no-pe-on");
+      await typeAndLeave(box, "");
+      await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+      await shownInTheDialog(page, sentence, "pressing Save over the declaration date taken out did not say so");
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await box.waitFor({ state: "detached", timeout: 5000 });
+      const actions = page.getByRole("button", { name: "Actions for Gamma Supplies" });
+      await actions.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      await actions.click({ timeout: 5000 });
+      await page.getByRole("button", { name: "Edit", exact: true }).click({ timeout: 5000 });
+      await box.waitFor({ timeout: 10000 });
+      assert.equal(await box.inputValue(), "15/07/2026", "the form opened again did not hold the date on file");
+      assert.equal(await page.getByText(sentence).count(), 0, "the form opened again still held the last press's sentence");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/vendors\/v1$/).length, 0, "a refused Save or a Cancel SENT A WRITE");
+    },
+  },
+  // The way out the no-PE sentence promises: unticking the declaration is how a declaration that does not exist is withdrawn. The flag goes to the server as false, the date box is gone from the form
+  // with the tick, and nothing is refused.
+  {
+    id: "a-date-on-file-unticking-the-declaration-is-the-way-out-and-is-sent",
+    title: "Purchases > Vendors > Edit a non-resident supplier: unticking the no-PE declaration takes the date box away, nothing is refused, and the save sends the declaration as not on file",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openVendorWithDeclarationOnFile(env);
+      await page.getByLabel("No-PE declaration on file").uncheck();
+      await page.locator("#no-pe-on").waitFor({ state: "detached", timeout: 5000 });
+      await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+      await until(() => stub.writesTo(/api\/vendors\/v1$/).length >= 1, "the save to be sent once the declaration was unticked", 6000);
+      await stub.quiet();
+      const sent = stub.writesTo(/api\/vendors\/v1$/);
+      assert.equal(sent.length, 1, `expected one request, saw ${sent.length}`);
+      const body = JSON.parse(sent[0].body);
+      assert.equal(body.no_pe_declaration_on_file, false, `the declaration was not sent as withdrawn: ${JSON.stringify(body.no_pe_declaration_on_file)}`);
+      assert.equal(await page.getByText(/on file can be corrected but not removed/).count(), 0, "the removal sentence was said over a declaration that was withdrawn");
+    },
+  },
+  // With a balance typed and the date taken out, the older sentence (a balance needs the date it is as at) is the true one and is the only one said: two alerts would say it twice.
+  {
+    id: "a-date-on-file-the-bank-modal-says-the-balance-sentence-alone-when-a-balance-is-typed",
+    title: "Bank > Accounts > Edit an account with no balance: the date taken out says the removal sentence, and once a balance is typed the same press says only that a balance needs its date, with no request",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      await openBankAccountWithDateOnFile(env);
+      const removal = "The opening balance date on file can be corrected but not removed: enter the corrected date.";
+      const balance = "An opening balance needs the date it is the balance as at";
+      await typeAndLeave(page.locator("#bank-opening-date"), "");
+      await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+      await shownInTheDialog(page, removal, "a zero-balance account's date taken out did not say so");
+      await page.getByLabel("Opening Balance (₹)").fill("5000");
+      await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+      await shownInTheDialog(page, balance, "a balance with no date was not told that it needs one");
+      assert.equal(await page.getByText(removal).count(), 0, "both sentences were said at once");
+      await stub.quiet();
+      assert.equal(stub.writesTo(/api\/banking\/accounts\/ba-1$/).length, 0, "a Save over a balance with no date SENT A WRITE");
+    },
+  },
+  // Marking a WHOLE challan back is a write that changes what the ITC-04 panel below it is derived from. The panel stays drawn through the tab's reload (POST-A-385), so it has to be told to read again:
+  // the first version of that fix kept the panel drawn and stale, because the remount that used to re-read it was gone.
+  {
+    id: "itc04-marking-a-whole-challan-back-reads-the-panel-again",
+    title: "Sales > Challans: after \"Record goods back\" on a whole job-work challan the ITC-04 panel under the list reads its statement again and no longer lists that challan's goods as outstanding",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      let marked = false;
+      const outstanding = [{
+        challan_id: "ch-1", challan_no: "JW/001", challan_date: "2026-06-01", job_worker: { name: "Gamma Works" }, goods_kind: "inputs",
+        lines: [{ challan_line_id: "cl-1", description: "Steel sheet", uqc: "KGS", sent: "5", returned: "0", lost_or_wasted: "0", outstanding: "5", taxable_value_at_stake_paise: 100000 }],
+        taxable_value_at_stake_paise: 100000,
+        clock: { applies: true, due_back_by: "2027-06-01", days_remaining: 236, overdue: false, consequence: "", gaps: [] },
+      }];
+      stub.route({ method: "GET", re: /api\/customers/, reply: () => ok([{ id: "cu1", name: "Beta Stores" }]) });
+      stub.route({ method: "GET", re: /sales-cycle\/vocabulary$/, reply: () => ok({
+        quote_kinds: [], quote_statuses: [], order_statuses: [], challan_statuses: [], challan_reasons: [], goods_kinds: [],
+        not_a_tax_invoice: "", no_tax_on_a_non_supply: "", job_work_exclusion: "", rule_55_5_steps: [], copies: [], itc_04: { decided: false, readings: [], refusal: "" },
+      }) });
+      stub.route({ method: "GET", re: /sales-cycle\/itc-04\?/, reply: () => ok({
+        client_id: CLIENT_ID, financial_year: "2026-27", as_of: "2026-10-08",
+        period: { decided: true, readings: [], refusal: "", preceding_year_aato_paise: null, verified: false },
+        readings: [], selected_window: null, table_4: null, table_5a: null,
+        table_5b: { derived: false, reason: "" }, table_5c: { derived: false, reason: "" },
+        outstanding: marked ? [] : outstanding, gaps: [], nothing_is_filed: true, verified: false, ca_review_required: true,
+      }) });
+      stub.route({ method: "GET", re: /api\/sales-cycle\/challans\?/, reply: () => ok([{
+        id: "ch-1", document_no: "JW/001", document_date: "2026-06-01", reason: "job_work", status: marked ? "received_back" : "issued", goods_kind: "inputs",
+        received_back_on: marked ? "2026-10-07" : null, consignee_name: "Gamma Works", taxable_paise: 100000, total_paise: 100000,
+        clock: { applies: true, statute: "CGST Act s.143", months: 12, sent_on: "2026-06-01", due_back_by: "2027-06-01", overdue: false, days_remaining: 236, consequence: "", gaps: [] },
+      }]) });
+      stub.route({ method: "PATCH", re: /api\/sales-cycle\/challans\/ch-1\?/, reply: () => { marked = true; return ok({ id: "ch-1", received_back_on: "2026-10-07", status: "received_back" }); } });
+      await page.goto(env.at("/sales/?tab=sales-cycle"), { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: "Delivery Challans", exact: true }).click();
+      await page.getByText("Steel sheet").first().waitFor({ timeout: 10000 });
+      await typeAndLeave(page.getByLabel("Date the goods came back, challan JW/001"), "07/10/2026");
+      await page.getByRole("button", { name: "Record goods back", exact: true }).click();
+      await until(() => marked, "the whole challan to be marked back", 6000);
+      await until(async () => (await page.getByText("Steel sheet").count()) === 0, "the ITC-04 panel to stop listing the goods of the challan that was marked back (it was not told to read again)", 8000);
     },
   },
 ];

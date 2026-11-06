@@ -16,7 +16,7 @@
  * `domain/gst/delivery_challan.py`'s answers, served through
  * `GET /api/sales-cycle/vocabulary` so no label lives here.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { AlertTriangle, Clock, FileText, Info, Plus, Truck, X } from "lucide-react";
 import {
@@ -101,8 +101,19 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   });
   const [lines, setLines] = useState([{ ...BLANK_LINE }]);
 
+  // The tab shows "Loading…" for the FIRST read of a client's lists and keeps itself drawn for every read after it (POST-A-385). A reload replaced the whole tab with "Loading…", which unmounted the
+  // FORM GST ITC-04 panel inside it: recording a lot calls `onChanged` (this reload), so the panel's "Recorded. That was the last lot — … its s.143 clock has stopped." line, the year and window it had
+  // chosen and any other open lot form were lost, and the person saw the list change without being told it had worked. Keyed by the client, because a tab reused for another client must not show
+  // the last client's lists while the new ones load.
+  const loadedFor = useRef<string | null>(null);
+  // Which read is the latest: a reload can be asked for while an earlier one is in flight (the panel does not wait for it), and the last ANSWER must not win over the last QUESTION.
+  const latestRead = useRef(0);
+  // Bumped when a reload has landed, so the ITC-04 panel inside the tab reads its statement again: it is derived from the challans this tab changes ("Record goods back", a new
+  // job-work challan), and before POST-A-385 it was re-read only because the reload unmounted and remounted it. A prop, not a key, so the panel keeps what it has said.
+  const [itc04Refresh, setItc04Refresh] = useState(0);
   const load = useCallback(async () => {
-    setLoading(true);
+    const mine = ++latestRead.current;
+    if (loadedFor.current !== clientId) setLoading(true);
     setLoadFailed(false);
     try {
       const [v, q, o, c, cust] = await Promise.all([
@@ -112,15 +123,22 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
         api.salesCycle.challans(clientId),
         api.customers.list(clientId),
       ]);
+      if (mine !== latestRead.current) return;   // a later read has been asked for: its answer is the one to show
       if (v.success && v.data) setVocab(objectWithLists<SalesCycleVocabulary>(v.data, "challan_reasons", "goods_kinds", "quote_kinds"));
       if (q.success && q.data) setQuotations(arrayOrEmpty(q.data));
       if (o.success && o.data) setOrders(arrayOrEmpty(o.data));
       if (c.success && c.data) setChallans(arrayOrEmpty(c.data));
       if (cust.success && cust.data) setCustomers(arrayOrEmpty<Customer>(cust.data));
+      // Only a read that CAME BACK counts as the first: "Try again" after a failed first read blocks with "Loading…" again, and does not show lists that were never read as empty ones.
+      loadedFor.current = clientId;
+      setItc04Refresh((n) => n + 1);
     } catch {
+      if (mine !== latestRead.current) return;
+      // A failed read, first or later, is answered with the could-not-be-loaded box; "Try again" is then a first read again and blocks with "Loading…" until it answers.
+      loadedFor.current = null;
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (mine === latestRead.current) setLoading(false);
     }
   }, [clientId]);
 
@@ -736,7 +754,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             </div>
           )}
 
-          <Itc04Panel clientId={clientId} onChanged={() => void load()} />
+          <Itc04Panel clientId={clientId} onChanged={() => void load()} refreshToken={itc04Refresh} />
 
           {detail && (
             <div className="rounded border border-ps-border bg-white p-4">

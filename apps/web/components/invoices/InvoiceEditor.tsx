@@ -57,7 +57,8 @@ import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { removedDateProblem } from "@/lib/dates/removedDate";
 import { todayIstISO } from "@/lib/dates/format";
 
 type SaveAction = "draft" | "issue" | "send";
@@ -705,10 +706,38 @@ export function InvoiceEditor({
   // sent when the block is drawn and none of them when it is not, and the block's own condition below is this one.
   const showsShippingBill = (supplyType === "zero_rated" || supplyStateCode === "96") && invoiceType === "Regular";
 
+  // A shipping bill date on file is replaced and not emptied (POST-A-388). The PATCH routes read their body with `exclude_none`, so a box the person emptied sends nothing, the stored date stays, and
+  // the screen said the invoice was saved. A shipping bill is the evidence of the export (CGST Rule 96(1) matches the refund against it), so the screen does not offer taking it away: it says so
+  // beside the button. The sentence is a pure function of the date on file (the snapshot the form opened with, or last saved) and the box, so it is derived and latched here, never copied into
+  // `error`; the box's own sentence for text that is not a day comes first (an unreadable box hands up "" too), and a box that is not drawn is not one the person can empty.
+  const shippingBillCleared = showsShippingBill && !dates.problems.shippingBillDate
+    ? removedDateProblem("The shipping bill date", initialSnapshot.current.shippingBillDate, shippingBillDate)
+    : null;
+  const shippingBillRefusal = useDateRefusal(shippingBillCleared);
+  // The editor is long and its Save is in the toolbar, so the sentence (drawn at the foot, where the form's answers are) is brought into view when it appears: a press that changes nothing
+  // visible is the failure this exists to end.
+  const shippingBillRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shippingBillRefusal.shown) shippingBillRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [shippingBillRefusal.shown]);
+
+  // What the server holds after a save that went through is what was SENT. The shipping bill fields go only while their block is drawn (`shippingBillSent`), so values typed into a block
+  // that was not drawn at that save are still unsaved: they stay out of the snapshot, which is also what "on file" above reads, and they still count as an unsaved change.
+  function snapshotOfWhatWasSaved() {
+    return showsShippingBill ? currentSnapshot : {
+      ...currentSnapshot,
+      shippingBillNo: initialSnapshot.current.shippingBillNo,
+      shippingBillDate: initialSnapshot.current.shippingBillDate,
+      portCode: initialSnapshot.current.portCode,
+    };
+  }
+
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
   async function save(action: SaveAction) {
     setAttempted(true);
     if (dates.first) { setError(dates.first); return; }
+    // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
+    if (shippingBillCleared) { setError(null); shippingBillRefusal.refuse(); return; }
     const shippingBillSent = showsShippingBill ? {
       shipping_bill_no: shippingBillNo.trim() || undefined,
       shipping_bill_date: shippingBillDate || undefined,
@@ -801,7 +830,7 @@ export function InvoiceEditor({
         }, token);
         if (!upd.success) throw new Error(upd.error ?? "Failed to update invoice");
         // The draft on the server is what the editor shows now, so a failed issue below leaves nothing unsaved.
-        initialSnapshot.current = currentSnapshot;
+        initialSnapshot.current = snapshotOfWhatWasSaved();
       } else {
         const created = await apiCall("/api/sales-invoices/", "POST", {
           client_id: clientId,
@@ -833,7 +862,7 @@ export function InvoiceEditor({
         invoiceId = inv?.id ?? "";
         if (invoiceId) {
           setCreatedDraftId(invoiceId);
-          initialSnapshot.current = currentSnapshot;
+          initialSnapshot.current = snapshotOfWhatWasSaved();
         }
         // A firm that switched BLOCKING on never reaches here — the server
         // 422s and the catch below shows the same sentence. This is the
@@ -1598,6 +1627,7 @@ export function InvoiceEditor({
         </section>
 
         {error && <Callout tone="problem">{error}</Callout>}
+        {shippingBillRefusal.shown && <div ref={shippingBillRefusalRef}><Callout tone="problem">{shippingBillRefusal.shown}</Callout></div>}
       </div>
     </InvoiceWorkspaceLayout>
   );

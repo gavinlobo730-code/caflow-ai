@@ -391,7 +391,9 @@ test("the supplier form and the recurring invoice template say a date's sentence
   // The supplier form is looked up inside its own component (the purchases page holds other forms with a `handleSave`), and the template editor inside its own (the sales page holds others).
   const vendors = topLevelText(read(PURCHASES), "function Vendors(");
   const recurring = topLevelText(read(SALES_PAGE), "function RecurringEditor(");
-  assert.match(vendors, /const noPeRefusal = useDateRefusal\(noPeDates\.first\);/, "the supplier form's declaration sentence is not latched");
+  // The box's own sentence first, then the sentence about the date on file (POST-A-388, `an-edit-screen-does-not-say-saved-over-a-date-it-was-asked-to-remove.test.ts` holds that half): both are
+  // derived from what the boxes hold, so both are the latch's.
+  assert.match(vendors, /const noPeRefusal = useDateRefusal\(noPeDates\.first \?\? noPeCleared\);/, "the supplier form's declaration sentence is not latched");
   const v = whatTheHandlerDoesWithTheHook(vendors, "async function handleSave(");
   assert.equal(v.latches, 1, `the supplier form's Save has ${v.latches} latch calls: it must refuse a date once, through the latch`);
   assert.deepEqual(v.others, [], "the supplier form's Save does something with its date problems besides the latch (a copy of a date's sentence stays after the date is right)");

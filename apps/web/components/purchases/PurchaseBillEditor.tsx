@@ -52,7 +52,8 @@ import { formatPaise } from "@/lib/money/format";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { removedDateProblem } from "@/lib/dates/removedDate";
 import { todayIstISO } from "@/lib/dates/format";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
@@ -655,6 +656,22 @@ export function PurchaseBillEditor({
     ? (isForeign ? tds.data.txn_net_payable : tds.data.net_payable_paise)
     : null;
 
+  // A Form 15CA date on file is replaced and not emptied (POST-A-388). The PATCH route reads its body with `exclude_none` and this form sends the date as `date || undefined`, so a box the person
+  // emptied sends nothing, the stored date stays, and the screen said the bill was saved. Form 15CA is the evidence of a remittance (Rule 37BB), so the screen does not offer taking it away: it
+  // says so beside the button. The sentence is a pure function of the date on file (the snapshot the form opened with) and the box, so it is derived and latched, never copied into `error`;
+  // the box's own sentence for text that is not a day comes first (an unreadable box hands up "" too), and a box that is not drawn (the section is drawn only for a payment the server
+  // previews under section 195) is not one the person can empty.
+  const form15caCleared = tds.data?.tds_section === "195" && !dates.problems.form15caFiledOn
+    ? removedDateProblem("The Form 15CA date", initialSnapshot.current.form15caFiledOn, form15caFiledOn)
+    : null;
+  const form15caRefusal = useDateRefusal(form15caCleared);
+  // The editor is long and its Save is in the toolbar, so the sentence (drawn at the foot, where the form's answers are) is brought into view when it appears: a press that changes nothing
+  // visible is the failure this exists to end.
+  const form15caRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (form15caRefusal.shown) form15caRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [form15caRefusal.shown]);
+
   const accountNameById = new Map(accounts.map((a) => [a.id ?? "", a.account_name ?? a.name ?? ""]));
   const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
   // PUR-05. `itc_eligible` and `blocked_credit_reason` have been on the API,
@@ -885,6 +902,8 @@ export function PurchaseBillEditor({
   async function save() {
     setAttempted(true);
     if (dates.first) { setError(dates.first); return; }
+    // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
+    if (form15caCleared) { setError(null); form15caRefusal.refuse(); return; }
     if (!validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.unread ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
       return;
@@ -1744,6 +1763,7 @@ export function PurchaseBillEditor({
           </div>
         )}
         {error && <Callout tone="problem">{error}</Callout>}
+        {form15caRefusal.shown && <div ref={form15caRefusalRef}><Callout tone="problem">{form15caRefusal.shown}</Callout></div>}
       </div>
     </InvoiceWorkspaceLayout>
   );

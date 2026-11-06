@@ -66,6 +66,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { toast } from "@/components/ui/use-toast";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { removedDateProblem } from "@/lib/dates/removedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -1507,8 +1508,15 @@ function Vendors({ clientId }: { clientId: string }) {
   // read as blank, so a declaration dated by hand was saved as undated with nothing said (frontend_ux-19). The box is only on the form while
   // the declaration is ticked, and a hidden box takes its problem with it.
   const noPeDates = useDateProblems();
+  // A declaration date on file is replaced and not emptied (POST-A-388). The supplier PATCH reads its body with `exclude_none` and this form sends the date as `date || undefined`, so a box the
+  // person emptied sent nothing, the stored date stayed, and the screen said the supplier was saved. A signed declaration is the evidence a nil withholding rests on (s.201(1)/(1A) put the
+  // consequence of a wrong nil on the deductor), so the form does not offer taking its date away; if there is no declaration the way to say so is the tick, which is why the sentence names it.
+  // Derived from the date on file and the box, so it is latched with the box's own sentence and never copied into the form's error; unreadable text has its own sentence, which comes first.
+  const noPeCleared = editingVendor && residentialStatus === "non_resident" && noPeDeclaration && !noPeDates.problems.noPe
+    ? removedDateProblem("The no-PE declaration date", editingVendor.no_pe_declaration_on, noPeDeclarationOn, "untick the declaration if there is none")
+    : null;
   // The sentence about the box is derived from it and said beside Save once a save has been tried, and goes the moment the date is right.
-  const noPeRefusal = useDateRefusal(noPeDates.first);
+  const noPeRefusal = useDateRefusal(noPeDates.first ?? noPeCleared);
   const clearNoPeRefusal = noPeRefusal.clear;
   const [noPeDeclarationRef, setNoPeDeclarationRef] = useState("");
   const [treatyRate, setTreatyRate] = useState("");
@@ -1676,7 +1684,7 @@ function Vendors({ clientId }: { clientId: string }) {
       setFormError("Treaty rate must be a percentage, e.g. 10 or 7.5.");
       return;
     }
-    if (noPeDates.first) { noPeRefusal.refuse(); return; }
+    if (noPeDates.first ?? noPeCleared) { noPeRefusal.refuse(); return; }
     if (residentialStatus === "non_resident" && natureOfIncome === "business_profits_no_pe" && !noPeDeclaration) {
       setFormError("Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income.");
       return;

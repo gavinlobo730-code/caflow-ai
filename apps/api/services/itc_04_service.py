@@ -225,9 +225,7 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
             f"Challan {challan.get('document_no')} is marked wholly received back "
             "— there is nothing left on it to return."))
     if str(challan.get("status")) != "issued":
-        raise HTTPException(status_code=409, detail=(
-            f"Challan {challan.get('document_no')} is {challan.get('status')}: goods "
-            "can only come back on a challan that has been issued."))
+        raise HTTPException(status_code=409, detail=dc.not_issued_sentence(challan.get("document_no"), challan.get("status")))
 
     returned_on = date.fromisoformat(str(payload["returned_on"])[:10])
     sent_on = date.fromisoformat(str(challan["document_date"])[:10])

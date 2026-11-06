@@ -640,11 +640,8 @@ test("a function handed to a component's on… prop that starts a write and drop
 const AWAITS_A_PROP_CALLBACK: Record<string, { count: number; why: string }> = {
   "app/settings/email-templates/page.tsx": { count: 1, why: "saves a template by key: a second save writes the same row again" },
   "app/team/page.tsx": { count: 1, why: "changes a member's role to the value shown: a second change is the same change" },
-  "components/CsvImportModal.tsx": {
-    count: 1,
-    why: "NOT harmless: a second Import in one tick imports the file twice. It is shared by ten screens and is "
-      + "the upload screens' to convert (POST-A-390); named here so the rule does not read it as clean",
-  },
+  // The shared import dialog's "Import N rows" left this table when it took the flight (POST-A-390): a second Import in one tick imported the file twice, on every one of the ten screens that
+  // share it, and the table's own words for it were "NOT harmless". It is `components/CsvImportModal.tsx`; `scripts/drive/scenarios/csvImport.mjs` presses it twice in one tick.
 };
 
 /** `on…` props given a function that starts a write and drops the promise, where nothing holds a click. */

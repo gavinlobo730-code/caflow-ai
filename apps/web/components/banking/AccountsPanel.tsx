@@ -37,7 +37,8 @@ import { AiDisclosure } from "@/components/ai/AiDisclosure";
 import { SavedColumnMappings } from "@/components/banking/SavedColumnMappings";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { removedDateProblem } from "@/lib/dates/removedDate";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -416,6 +417,14 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   const [openingDate, setOpeningDate] = useState(account?.opening_balance_date ?? "");
   // Unreadable text in the date box holds the save and says why: the box hands up "" for it, which is also what a blank box hands up.
   const dates = useDateProblems();
+  // An opening balance date on file is replaced and not emptied (POST-A-388). The update sends `opening_balance_date: openingDate || null` and the route reads its body with `exclude_none`
+  // (`routers/banking.py` says the date "cannot be CLEARED through here at all"), so a box the person emptied changed nothing and the screen said the account was saved. With a balance
+  // the older sentence below (a balance needs the date it is as at) is the true one and comes first; this is the zero-balance account, the only one whose date could be emptied. Derived
+  // from the date on file and the box, so it is latched and never copied into `error`; unreadable text has its own sentence, which comes first.
+  const openingCleared = editing && !dates.problems.openingDate
+    ? removedDateProblem("The opening balance date", account?.opening_balance_date, openingDate)
+    : null;
+  const openingRefusal = useDateRefusal(openingCleared);
   const [coaId, setCoaId] = useState(account?.coa_account_id ?? "");
   const [isActive, setIsActive] = useState(account?.is_active ?? true);
   const [coaAccounts, setCoaAccounts] = useState<CoaAccountLite[]>([]);
@@ -486,6 +495,8 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
                + "Book cannot tell which transactions the figure already includes.");
       return;
     }
+    // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
+    if (openingCleared) { setError(null); openingRefusal.refuse(); return; }
     setSaving(true); setError(null);
     try {
       const res = (editing
@@ -584,6 +595,8 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
           </div>
         </div>
         {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
+        {/* The form's own answer to the press comes first: with a balance and no date the older sentence is the true one, and two alerts would say it twice. */}
+        {!error && openingRefusal.shown && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{openingRefusal.shown}</p>}
         <div className="flex gap-3 justify-end">
           <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
