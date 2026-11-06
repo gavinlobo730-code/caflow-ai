@@ -71,7 +71,7 @@ const TDS_IMPORT_COLUMNS = [
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { formatPaise } from "@/lib/services/formatting";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { RetractChallanModal } from "@/components/tds/RetractChallanModal";
@@ -95,7 +95,7 @@ import { Callout } from "@/components/ui/callout";
 import { panProblem } from "@/lib/identifiers/pan";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
@@ -624,15 +624,20 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
   const [saving, setSaving] = useState(false);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
   const dates = useDateProblems();
+  // A sentence about what a BOX holds (it is blank, it is not a day, it is after today) is derived from the boxes and said through the latch: shown once Add was pressed and
+  // withdrawn the moment the box is right. It was copied into `error`, where it stayed after the box was put right. The challan is known by its date, serial number and BSR
+  // code, and the server refuses it without them for every caller (a blank one was stored as empty text, which the NOT NULL columns accept): said here in the same words as a
+  // client's Challans tab, so the CA is told which box, in the order of the boxes. A validation list from the server is not a sentence this screen's fetch can show, and it
+  // would have come back as "Could not record the challan" with no reason.
+  const challanMissing = !challanDate ? "Challan date: enter the date on the challan."
+    : !serialNo.trim() ? "Challan number: enter the serial number printed on the challan."
+    : !bsrCode.trim() ? "BSR code: enter the code of the bank branch printed on the challan." : null;
+  const refusal = useDateRefusal(dates.first ?? challanMissing);
 
   async function handleAdd() {
-    if (dates.first) { setError(dates.first); return; }
-    // The challan is known by its date, serial number and BSR code, and the server refuses it without them for every caller (a blank one was stored as empty text,
-    // which the NOT NULL columns accept): said here in the same words as a client's Challans tab, so the CA is told which box. A validation list from the server
-    // is not a sentence this screen's fetch can show, and it would have come back as "Could not record the challan" with no reason.
-    if (!challanDate) { setError("Challan date: enter the date on the challan."); return; }
-    if (!serialNo.trim()) { setError("Challan number: enter the serial number printed on the challan."); return; }
-    if (!bsrCode.trim()) { setError("BSR code: enter the code of the bank branch printed on the challan."); return; }
+    // A new press begins, so what the last one said is no longer true.
+    setError(null);
+    if (dates.first ?? challanMissing) { refusal.refuse(); return; }
     // Convert to paise — integer arithmetic, never float
     const amtPaise = paiseFromRupeeInput(amtRupees || "0");
     if (amtPaise === null) {
@@ -693,7 +698,8 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Add Challan 281</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
+          {/* Held while a request is out, as Add is: a challan recorded after the dialog was closed (and perhaps opened again) looks like one that was cancelled. */}
+          <button onClick={onClose} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X className="w-4 h-4 text-ps-hint" /></button>
         </div>
         <div className="space-y-3">
           <div>
@@ -703,7 +709,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="tds-challan-date" className="text-xs font-medium text-ps-body block mb-1">Challan Date</label>
-              <DateInput id="tds-challan-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanDate} onChange={setChallanDate} onStateChange={dates.watch("challanDate", "Challan date")} />
+              <DateInput id="tds-challan-date" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={challanDate} notAfter={todayIstISO()} onChange={setChallanDate} onStateChange={dates.watch("challanDate", "Challan date", { afterMax: true })} />
             </div>
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Serial No.</label>
@@ -752,7 +758,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
           {/* Without this the refusal above would be silent, which is worse
               than the coercion it replaced: the CA would press Add and nothing
               would happen. */}
-          {error && <Callout tone="problem">{error}</Callout>}
+          {(error || refusal.shown) && <Callout tone="problem">{error || refusal.shown}</Callout>}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
@@ -782,7 +788,7 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
+          <button onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg disabled:opacity-50">Cancel</button>
           {/* The shared button, for the reason given on Add Deduction: a challan recorded twice doubles what the register says was deposited. */}
           <Button type="button" variant="plain" size="none" onClick={handleAdd} disabled={saving}
             className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">

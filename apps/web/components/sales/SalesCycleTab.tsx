@@ -32,7 +32,8 @@ import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { Itc04Panel } from "@/components/gst/Itc04Panel";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { todayIstISO } from "@/lib/dates/format";
 
 type Tab = "quotations" | "orders" | "challans";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -65,6 +66,18 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   // one challan's unreadable date holds that challan's button and nothing else.
   const [backOn, setBackOn] = useState<Record<string, string>>({});
   const backDates = useDateProblems();
+  // The challan whose "Record goods back" was pressed last, and what the server answered that press with, for WHICH challan (the answer to an attempt: cleared by the next
+  // press). Each is said in its own challan's row, beside the button that raised it: with many challans open the block's end is out of sight of the button, and a late answer
+  // to one challan must not stand in another's row.
+  const [backTried, setBackTried] = useState<string | null>(null);
+  const [backAnswer, setBackAnswer] = useState<{ id: string; text: string } | null>(null);
+  const backNo = challans.find((c) => c.id === backTried)?.document_no;
+  const backProblem = backTried === null ? null
+    : (backDates.problems[`back-${backTried}`] ?? ((backOn[backTried] ?? "") ? null : `Enter the date the goods on ${backNo ?? "the challan"} came back.`));
+  const backRefusal = useDateRefusal(backProblem);
+  /** What is said in one challan's row: the server's answer to the press on THAT challan (named, because the server's sentence names no challan), or else the sentence about its box. */
+  const backSaid = (c: DeliveryChallan): string | null =>
+    (backAnswer && backAnswer.id === c.id ? `${c.document_no}: ${backAnswer.text}` : null) || (backTried === c.id ? backRefusal.shown : null);
   const [detail, setDetail] = useState<ChallanParticulars | null>(null);
   const [position, setPosition] = useState<OrderPosition | null>(null);
 
@@ -201,24 +214,24 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   async function markBack(challan: DeliveryChallan) {
     // Recording goods back stops the s.143 clock for the whole challan, so it is a button the person presses on a date they can read, and
     // not the act of picking a date (the box used to write the moment a date was chosen, and a half-typed one was a write).
-    const unreadable = backDates.problems[`back-${challan.id}`];
-    if (unreadable) { setMsg({ type: "err", text: unreadable }); return; }
+    // A new press begins, so what the last one was answered with is no longer true; a sentence about THE BOX is derived from it (`backProblem`) and said
+    // through the latch, and is not copied into the answer, where it would stay after the date is right.
+    setBackAnswer(null);
+    setBackTried(challan.id);
+    if (backDates.problems[`back-${challan.id}`] || !(backOn[challan.id] ?? "")) { backRefusal.refuse(); return; }
     const on = backOn[challan.id] ?? "";
-    if (!on) {
-      setMsg({ type: "err", text: `Enter the date the goods on ${challan.document_no} came back.` });
-      return;
-    }
     // A refusal arrives as a thrown sentence (the API answers it with an error status), and it used to escape here unshown: the person pressed
-    // the box, nothing happened and nothing said why. `save()` above has always caught it; this did not.
+    // the box, nothing happened and nothing said why. `save()` above has always caught it; this did not. It is said beside the button, in the block
+    // the button is in: the page's message line is above the whole tab, out of sight of a long list of challans.
     try {
       const res = await api.salesCycle.updateChallan(challan.id, clientId,
         { received_back_on: on });
       if (!res.success) {
-        setMsg({ type: "err", text: res.error || "That was refused." });
+        setBackAnswer({ id: challan.id, text: res.error || "That was refused." });
         return;
       }
     } catch (e) {
-      setMsg({ type: "err", text: e instanceof Error ? e.message : "That was refused." });
+      setBackAnswer({ id: challan.id, text: e instanceof Error ? e.message : "That was refused." });
       return;
     }
     setBackOn((prev) => {
@@ -226,6 +239,8 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       delete next[challan.id];
       return next;
     });
+    setBackTried(null);
+    backRefusal.clear();
     await load();
   }
 
@@ -297,7 +312,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
-            onClick={() => { setTab(id); setShowForm(false); setDetail(null); }}
+            onClick={() => { setTab(id); setShowForm(false); setDetail(null); setBackTried(null); setBackAnswer(null); backRefusal.clear(); }}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
               tab === id ? "bg-brand text-white" : "bg-ps-muted text-ps-body"
             }`}
@@ -701,9 +716,10 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                         aria-label={`Date the goods came back, challan ${c.document_no}`}
                         value={backOn[c.id] ?? ""}
                         onChange={(v) => setBackOn((prev) => ({ ...prev, [c.id]: v }))}
-                        onStateChange={backDates.watch(`back-${c.id}`, `Date back, ${c.document_no}`)}
+                        onStateChange={backDates.watch(`back-${c.id}`, `Date back, ${c.document_no}`, { afterMax: true })}
                         anchor={c.document_date}
                         notBefore={c.document_date}
+                        notAfter={todayIstISO()}
                         className="rounded border border-ps-border px-2 py-1"
                       />
                       <Button variant="plain" size="none"
@@ -712,6 +728,8 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                       >
                         Record goods back
                       </Button>
+                      {/* In the row of the challan it is about, beside its button. The newest answer is shown: the server's answer to a press clears with the next press, so one that is here came after the date's sentence. */}
+                      {backSaid(c) && <p role="alert" className="basis-full text-xs text-state-problem">{backSaid(c)}</p>}
                     </div>
                   ))}
               </div>

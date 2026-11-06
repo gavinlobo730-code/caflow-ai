@@ -47,9 +47,9 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { formatPaise } from "@/lib/money/format";
 import { BLANK_LOT, clockText, clockTone, lotBody, type LotForm } from "@/lib/gst/itc04";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 
 const TONE_CLASS = {
   problem: "text-state-problem",
@@ -93,6 +93,16 @@ export function Itc04Panel({ clientId, onChanged }: {
   // optional: text that is not a date read as blank, so the first said the date was missing about a box that held one and the second
   // recorded the lot without it (frontend_ux-19).
   const lotDates = useDateProblems();
+  // What a press of "Record this lot" was answered with (the server's refusal, or the request failing) and for WHICH line: the form's answer, said in the form beside the
+  // button (the panel's message line is above the whole statement) and cleared by the next press. A sentence about what the BOXES hold (a date that is not a day or is
+  // after today, a missing day, a quantity that is not one) is derived from them and said through the latch, never copied into the answer, where it stayed after it
+  // was put right.
+  const [lotError, setLotError] = useState<{ line: string; text: string } | null>(null);
+  const lotBuilt = lotFor ? lotBody(clientId, lotFor, lot) : null;
+  const lotProblem = lotDates.first ?? (lotBuilt && !lotBuilt.ok ? lotBuilt.error : null);
+  const lotRefusal = useDateRefusal(lotProblem);
+  // Only the open lot's own answer is shown in its form (a late answer to another line is not this form's).
+  const lotAnswer = lotError && lotError.line === lotFor ? lotError.text : null;
 
   const load = useCallback(async () => {
     if (!clientId || !year) return;
@@ -119,21 +129,16 @@ export function Itc04Panel({ clientId, onChanged }: {
   useEffect(() => { void load(); }, [load]);
 
   async function record(line: BalanceLine, challanId: string) {
-    if (lotDates.first) {
-      setMsg({ type: "err", text: lotDates.first });
-      return;
-    }
+    // A new press begins, so what the last one was answered with is no longer true.
+    setLotError(null);
     const built = lotBody(clientId, line.challan_line_id, lot);
-    if (!built.ok) {
-      setMsg({ type: "err", text: built.error });
-      return;
-    }
+    if (lotDates.first || !built.ok) { lotRefusal.refuse(); return; }
     setSaving(true);
     setMsg(null);
     try {
       const res = await api.salesCycle.recordChallanReturn(challanId, built.body);
       if (!res.success) {
-        setMsg({ type: "err", text: res.error || "That return was refused." });
+        setLotError({ line: line.challan_line_id, text: res.error || "That return was refused." });
         return;
       }
       setMsg({
@@ -144,10 +149,12 @@ export function Itc04Panel({ clientId, onChanged }: {
       });
       setLotFor(null);
       setLot({ ...BLANK_LOT });
+      lotRefusal.clear();
       await load();
       onChanged?.();
-    } catch {
-      setMsg({ type: "err", text: "Couldn't record that return. Nothing was saved." });
+    } catch (e) {
+      // The API answers a refusal ("The goods cannot have come back on … before they were sent out on …") with an error status, which arrives as a thrown sentence.
+      setLotError({ line: line.challan_line_id, text: e instanceof Error ? e.message : "Couldn't record that return. Nothing was saved." });
     } finally {
       setSaving(false);
     }
@@ -402,12 +409,16 @@ export function Itc04Panel({ clientId, onChanged }: {
                             {formatPaise(l.taxable_value_at_stake_paise)}
                           </td>
                           <td className="py-1 text-right">
+                            {/* Held while a request is out: `saving` is the panel's, and a form opened for another line meanwhile would show this line's late answer and be closed by its success. */}
                             <button
                               type="button"
-                              className="text-brand hover:underline"
+                              disabled={saving}
+                              className="text-brand hover:underline disabled:opacity-50"
                               onClick={() => {
                                 setLotFor(lotFor === l.challan_line_id ? null : l.challan_line_id);
                                 setLot({ ...BLANK_LOT });
+                                setLotError(null);
+                                lotRefusal.clear();
                                 setMsg(null);
                               }}
                             >
@@ -423,9 +434,9 @@ export function Itc04Panel({ clientId, onChanged }: {
                     <div key={l.challan_line_id} className="mt-3 grid gap-2 sm:grid-cols-3 text-xs">
                       <label className="space-y-1">
                         <span className="text-ps-label">Came back on</span>
-                        <DateInput id="itc04-came-back-on" financialYear={year} value={lot.returned_on}
+                        <DateInput id="itc04-came-back-on" financialYear={year} notAfter={todayIstISO()} value={lot.returned_on}
                                onChange={(v) => setLot({ ...lot, returned_on: v })}
-                               onStateChange={lotDates.watch("returned", "Came back on")}
+                               onStateChange={lotDates.watch("returned", "Came back on", { afterMax: true })}
                                className="block w-full rounded border border-ps-border px-2 py-1" />
                       </label>
                       <label className="space-y-1">
@@ -459,6 +470,10 @@ export function Itc04Panel({ clientId, onChanged }: {
                                onChange={(e) => setLot({ ...lot, nature_of_job_work: e.target.value })}
                                className="block w-full rounded border border-ps-border px-2 py-1" />
                       </label>
+                      {/* The newest answer is shown: the server's answer to a press clears with the next press, so one that is here came after the boxes' sentence. */}
+                      {(lotAnswer || lotRefusal.shown) && (
+                        <p role="alert" className="sm:col-span-3 text-state-problem">{lotAnswer || lotRefusal.shown}</p>
+                      )}
                       <div className="sm:col-span-3 flex items-center gap-3">
                         <Button variant="plain" size="none" spinner={false}
                                 type="button" disabled={saving}

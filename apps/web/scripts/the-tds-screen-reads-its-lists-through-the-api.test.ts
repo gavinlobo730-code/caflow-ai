@@ -54,7 +54,9 @@ test("the data module's four readers ask the API for a window at the ceiling and
 
 test("every figure on the screen is the server's: no sum, no count and no overdue test over rows the page holds", () => {
   assert.ok(!/(deductions|challans|returns|certificates)\.(reduce|filter)\(/.test(PAGE), "the page adds up or counts a list it holds");
-  assert.ok(!/todayIstISO|r\.due_date\s*<|c\.status === "pending"/.test(PAGE), "the page decides Overdue or Pending itself");
+  // `todayIstISO` is the bound of the Add Challan dialog's date box (the seventeenth slice): what is forbidden is India's day set against a due date, which is how the page
+  // would decide Overdue itself.
+  assert.ok(!/due_date[^\n]{0,60}todayIstISO|todayIstISO[^\n]{0,60}due_date|r\.due_date\s*<|c\.status === "pending"/.test(PAGE), "the page decides Overdue or Pending itself");
   assert.ok(!/const FILED\b|FILED\.has/.test(PAGE), "the page keeps its own list of filed statuses");
   assert.ok(/deductionTotals\.payment_amount_paise/.test(PAGE) && /deductionTotals\.tds_paise/.test(PAGE), "the footer is not the server's totals");
   assert.ok(/returnCounts\.not_filed/.test(PAGE) && /returnCounts\.filed/.test(PAGE) && /returnCounts\.overdue/.test(PAGE), "the Returns tab is not the server's counts");

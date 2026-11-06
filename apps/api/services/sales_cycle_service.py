@@ -20,6 +20,7 @@ WHAT IT DOES DECIDE IS WHOSE DOCUMENT IT IS
 from __future__ import annotations
 
 import logging
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 
@@ -870,12 +871,20 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
     return {**row, **fields}
 
 
+def _earliest_recorded_return(db, firm_id: str, client_id: str, challan_id: str) -> Optional[date]:
+    """The earliest day a lot of this challan's goods was recorded as back on FORM GST ITC-04 (`delivery_challan_returns`), or None (PRE-A-015, seventeenth slice)."""
+    rows = (db.table("delivery_challan_returns").select("returned_on")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
+            .order("returned_on").limit(1).execute().data) or []
+    return date.fromisoformat(str(rows[0]["returned_on"])[:10]) if rows else None
+
+
 def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     """Amend a challan, including recording the goods coming back.
 
     `received_back_on` is the one field here that changes what is OWED — it
-    stops the s.143 clock — so it is the field `record_goods_back` exists for,
-    and this path routes through the same write.
+    stops the s.143 clock — so the day it is given is judged by the rule the
+    ITC-04 door asks (`delivery_challan.goods_back_problem`) before it is written.
     """
     row = _one(db, "delivery_challans", firm_id, challan_id,
                "delivery challan")
@@ -898,6 +907,26 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
                           challan_id)
     # THE INVOICE A CHALLAN IS RE-POINTED AT IS THIS CLIENT'S (POST-A-338): the one named row the update door still accepts.
     named_row_ownership.sales_invoice_is_the_clients(db, firm_id, str(row["client_id"]), fields.get("sales_invoice_id"))
+    if fields.get("received_back_on") or fields.get("document_date"):
+        # The goods cannot have come back before they went out, or on a day that has not come (PRE-A-015, seventeenth slice): the request model has judged the day alone, and the day
+        # they went out is the challan's own, or the one this same amendment gives it.
+        sent = date.fromisoformat(str(fields.get("document_date") or row["document_date"])[:10])
+        problem = None
+        if fields.get("received_back_on"):
+            problem = dc.goods_back_problem(sent, date.fromisoformat(str(fields["received_back_on"])[:10]), ist_today())
+        else:
+            # Only the day they went out is amended, and that can leave the pair the wrong way round: it is compared with the days already recorded as back, the whole challan's
+            # and the earliest lot's (a lot recorded under ITC-04 leaves `received_back_on` empty until every line is back). Those days were judged when they were recorded, so
+            # here they are asked only for their ORDER (a day is never after itself, so `back` stands for today), and an edit of something else never gets here, so a row stored
+            # from before this rule is not made unsaveable by it.
+            for recorded in (row.get("received_back_on"), _earliest_recorded_return(db, firm_id, str(row["client_id"]), challan_id)):
+                if recorded:
+                    back = date.fromisoformat(str(recorded)[:10])
+                    problem = dc.goods_back_problem(sent, back, back)
+                    if problem:
+                        break
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
     if fields.get("received_back_on") and not fields.get("status"):
         fields["status"] = "received_back"
     fields["updated_at"] = ist_now().isoformat()
@@ -908,7 +937,11 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
 
 def record_goods_back(db, firm_id: str, challan_id: str,
                       received_back_on: str) -> dict:
-    """Stop the s.143 clock. The one update that changes what is owed."""
+    """Stop the s.143 clock. The one update that changes what is owed.
+
+    It writes the day it is given. Its only caller, `itc_04_service.record_return`, has judged every lot's day (`delivery_challan.goods_back_problem`) before this stamps the largest,
+    and `update_challan` judges the day it is given before it writes its own; a new caller must judge a day with that rule first (a test pins that there is only the one).
+    """
     row = _one(db, "delivery_challans", firm_id, challan_id,
                "delivery challan")
     (db.table("delivery_challans")

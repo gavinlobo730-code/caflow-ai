@@ -19,8 +19,9 @@
 //      empty-state action calls the same function), refuses an unreadable date before any request, reads the answer (`const res = await apiFetch(…)`), RETURNS from
 //      the refusal branch and only then closes, shows the sentence inside the form (`role="alert"`), holds its Save while a request is out and holds its Cancel too.
 //   4. The dates: an optional one (a company's incorporation, a director's appointment) is sent as `null` when blank; a REQUIRED one (a filing's due date, a challan's
-//      date) is asked for in a sentence of its own and is never sent as `null`; the incorporation date is bounded by today and refuses a later day, and the other
-//      dates are not bounded (a due date is a plan; nothing here knows when a challan may be dated).
+//      date) is asked for in a sentence of its own and is never sent as `null`; the incorporation date and the challan's date are bounded by today and refuse a later day (a
+//      company that has a CIN has been incorporated; the bank has taken the tax by the day a challan is dated: the seventeenth slice, which reversed this file's earlier stance on the
+//      challan), and the other dates are not bounded (a due date is a plan, and a director may be appointed with effect from a later day).
 //   5. The writes on the three pages whose answer is still dropped are COUNTED, by reading each call's own parentheses, and the count can only fall: `DROPPED_ANSWERS`.
 //
 // WHAT THIS DOES NOT COVER
@@ -159,7 +160,8 @@ const FORMS: Form[] = [
   { rel: MCA, name: "Add Company", component: "CompaniesTab", reset: "EMPTY_COMPANY_FORM", open: "openForm", close: "closeForm", saving: "saving", error: "saveError", first: "dates.first", refuse: "refusal.refuse()", dateId: "mca-company-incorporated", closeCall: "closeForm()" },
   { rel: MCA, name: "Add Director", component: "DirectorsTab", reset: "EMPTY_DIRECTOR_FORM", open: "openForm", close: "closeForm", saving: "saving", error: "saveError", first: "dates.first", refuse: "refusal.refuse()", dateId: "mca-director-appointment", closeCall: "closeForm()" },
   { rel: MCA, name: "New Filing", component: "FilingsTab", reset: "EMPTY_FILING_FORM", open: "openNew", close: "closeNew", saving: "creating", error: "newError", first: "newDates.first", refuse: "newRefusal.refuse()", dateId: "mca-new-filing-due-date", closeCall: "closeNew()" },
-  { rel: TDS, name: "New Challan", component: "ChallansTab", reset: "EMPTY_CHALLAN_FORM", open: "openForm", close: "closeForm", saving: "saving", error: "saveError", first: "dates.first", refuse: "refusal.refuse()", dateId: "tds-client-challan-date", closeCall: "closeForm()" },
+  // The challan's blank-box sentences (date, number, BSR code, section, year) are DERIVED from its boxes and said through the same latch (seventeenth slice), so its gate asks both.
+  { rel: TDS, name: "New Challan", component: "ChallansTab", reset: "EMPTY_CHALLAN_FORM", open: "openForm", close: "closeForm", saving: "saving", error: "saveError", first: "dates.first ?? challanMissing", refuse: "refusal.refuse()", dateId: "tds-client-challan-date", closeCall: "closeForm()" },
 ];
 const setter = (state: string) => `set${state[0].toUpperCase()}${state.slice(1)}`;
 
@@ -230,16 +232,20 @@ test("an optional date is sent as null when blank; a required one is asked for i
   ]) assert.ok(tds.includes(`"${sentence}"`), `the challan form no longer asks for it in a sentence: ${sentence}`);
 });
 
-test("the incorporation date is bounded by today and refuses a later day; the due date and the challan's date are not bounded", () => {
-  const company = dateInputWithId(read(MCA), "mca-company-incorporated");
-  assert.ok(company, "the incorporation DateInput is gone");
-  assert.match(company, /notAfter=\{todayIstISO\(\)\}/, "a company that has a CIN has been incorporated: the box is bounded by today in India");
-  assert.match(company, /\{ afterMax: true \}/, "…and a later day is refused, not merely hinted");
-  // A due date is a plan, a director may be appointed with effect from a later day, and nothing here knows when a challan may be dated (no statutory reading is assumed).
-  for (const [rel, id] of [[MCA, "mca-new-filing-due-date"], [TDS, "tds-client-challan-date"], [MCA, "mca-director-appointment"]] as const) {
+test("the incorporation date and the challan's date are bounded by today and refuse a later day; the due date and a director's appointment are not bounded", () => {
+  // A company that has a CIN has been incorporated, and the bank has taken the tax by the day a challan is dated (the seventeenth slice reversed this file's earlier stance that a
+  // challan's date is judged as a day only; how far back it may go is the period lock's, and no statutory reading is assumed in the box).
+  for (const [rel, id, what] of [[MCA, "mca-company-incorporated", "a company that has a CIN has been incorporated"], [TDS, "tds-client-challan-date", "the bank has taken the tax by the day a challan is dated"]] as const) {
     const box = dateInputWithId(read(rel), id);
     assert.ok(box, `the DateInput ${id} is gone`);
-    assert.doesNotMatch(box, /notAfter|afterMax|max=/, `${id} is bounded: a due date is a plan, a challan's date is judged as a day only, and an appointment may be dated ahead`);
+    assert.match(box, /notAfter=\{todayIstISO\(\)\}/, `${what}: the box ${id} is bounded by today in India`);
+    assert.match(box, /\{ afterMax: true \}/, `…and a later day is refused, not merely hinted (${id})`);
+  }
+  // A due date is a plan, and a director may be appointed with effect from a later day.
+  for (const [rel, id] of [[MCA, "mca-new-filing-due-date"], [MCA, "mca-director-appointment"]] as const) {
+    const box = dateInputWithId(read(rel), id);
+    assert.ok(box, `the DateInput ${id} is gone`);
+    assert.doesNotMatch(box, /notAfter|afterMax|max=/, `${id} is bounded: a due date is a plan, and an appointment may be dated ahead`);
   }
 });
 

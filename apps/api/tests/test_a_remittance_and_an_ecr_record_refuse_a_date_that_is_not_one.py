@@ -11,7 +11,9 @@ WHAT IS HELD
     A date that is not a real day is a 422 naming the field, in the one rule every model of this kind shares (`models/iso_date.a_real_date`); blank is the
     same as absent (the service then dates the record today, as it always did); a real one is stored in its canonical form. The dates of things already
     done (the filing, the payment, the approval) are refused when they have not come yet (IST), because both doors record what a person did at a portal
-    and plan nothing. The challan's own date is judged as a day only: nothing here knows when a challan may be dated and a statutory reading is not assumed.
+    and plan nothing. The challan's own date was judged as a day only here (nothing here knows when a challan may be dated, and a statutory reading is not
+    assumed), and the seventeenth slice refuses a day after today for it too: the challan is what the portal gave once the thing was done, and the record
+    is of what was done (`tests/test_the_day_goods_came_back_and_the_day_the_bank_took_the_tax_are_not_after_today.py`).
 """
 from __future__ import annotations
 
@@ -54,7 +56,7 @@ def test_an_ecr_date_that_is_not_a_real_day_is_refused_naming_the_field(field, b
     assert f"{field} must be a date written YYYY-MM-DD." in str(caught.value)
 
 
-@pytest.mark.parametrize("field", ["submitted_on", "paid_on"])
+@pytest.mark.parametrize("field", ["submitted_on", "paid_on", "challan_date"])
 def test_a_remittance_filed_or_paid_on_a_day_that_has_not_come_is_refused(field):
     with pytest.raises(ValidationError) as caught:
         _remittance(**{field: TOMORROW})
@@ -66,10 +68,6 @@ def test_an_ecr_submitted_or_approved_on_a_day_that_has_not_come_is_refused(fiel
     with pytest.raises(ValidationError) as caught:
         ECRFiledIn(**{field: TOMORROW})
     assert f"{field} cannot be in the future" in str(caught.value)
-
-
-def test_the_challan_date_is_judged_as_a_day_only():
-    assert _remittance(challan_date=TOMORROW).challan_date == TOMORROW
 
 
 @pytest.mark.parametrize("blank", ["", "   "])

@@ -1,4 +1,4 @@
-// THE DAYS A BANK OR A PORTAL PRINTED CANNOT BE AFTER TODAY IN INDIA, AND A SENTENCE ABOUT THEM GOES WHEN THEY ARE PUT RIGHT (PRE-A-015, sixteenth slice).
+// THE DAYS A BANK OR A PORTAL PRINTED, AND THE DAY GOODS CAME BACK, CANNOT BE AFTER TODAY IN INDIA, AND A SENTENCE ABOUT THEM GOES WHEN THEY ARE PUT RIGHT (PRE-A-015, sixteenth and seventeenth slices).
 //   node --experimental-strip-types --test scripts/the-dates-a-bank-or-a-portal-printed-are-bounded-by-todays-date-in-india.test.ts
 //
 // THE DEFECT
@@ -7,15 +7,21 @@
 //   had any bound, and five of the six reached a server that stored a day that had not come (the advance-tax instalment's paid date was already refused there). The three income-tax
 //   forms also copied the date's sentence into their own error, where it stayed after the date was put right, and the answer to an EARLIER attempt (the server's refusal) sat hidden
 //   under the date's sentence and came back when the date was put right.
+//   The seventeenth slice holds four more boxes to the same rules: the day a lot of goods came back on FORM GST ITC-04, the day a whole challan's goods came back (which stops the
+//   s.143 clock), and the day on a TDS challan on the firm's TDS screen and on a client's TDS tab (the bank has taken the tax by the day it is dated).
 //
 // THE RULES (each read from the source as a RULE and not as one spelling of it, with the detectors tried below on the spellings that evade a looser reading; each EXECUTED by the browser
 // drive, scripts/drive/scenarios/dates.mjs, whose scenarios the last test imports and requires; the server half is tests/test_the_dates_a_bank_or_a_portal_printed_are_not_after_today.py)
-//   1. Each of the six boxes is bounded by today in India (`notAfter={todayIstISO()}`), refuses a later day instead of hinting at it (`{ afterMax: true }`), and reports to the hook
+//   1. Each of the ten boxes is bounded by today in India (`notAfter={todayIstISO()}`), refuses a later day instead of hinting at it (`{ afterMax: true }`), and reports to the hook
 //      its Save reads, so the sentence it makes is the one the Save refuses with.
 //   2. The e-way bill's "Valid upto" is a plan and may run ahead: it is not bounded by today.
-//   3. The advance-tax Save, the section 140A challan and the reinvestment claim say a date's sentence through `useDateRefusal` and nowhere else: their handler mentions the hook that
+//   3. The advance-tax Save, the section 140A challan, the reinvestment claim, Record this lot, Record goods back and the two TDS challan forms say a date's sentence through `useDateRefusal`
+//      and nowhere else: their handler mentions the hook that
 //      holds the date problems only inside the latch call, and no call of the form's error setter takes anything from a date hook. Each handler clears what the last attempt said
 //      BEFORE it refuses, and the form's own answer is shown in preference to the latch (it is the newer: a refused Delete is said over a date that was refused a moment before).
+//      For the four forms of the seventeenth slice the rule is stated the other way round, as what an ANSWER may be made of (nothing, the server's sentence, or a failed request's own
+//      sentence), because a rule that lists the names to avoid is blind to the next name for a sentence derived from the boxes (`challanMissing`, `lotProblem`, a builder's `.error`).
+//      The sentence of an answer is said in the form that raised it, beside its button, and for the goods-back rows in the row of the challan it is about.
 //   4. Their three writers and two deleters (lib/data/income-tax.ts) read a refusal through lib/api's `errorMessage`, so a 422 or a 4xx shows the server's sentence and not
 //      "Unprocessable Entity" (FastAPI's `{"detail": …}` has no `error` key).
 //   5. The Record IRN and Record E-Way Bill dialogs open on India's day (`todayIstISO()`), not the browser's: their date boxes are bounded by India's today, and a browser already on
@@ -37,6 +43,10 @@ const CG = "app/income-tax/capital-gains/page.tsx";
 const PANEL = "components/invoices/CompliancePanel.tsx";
 const BILL = "components/purchases/PurchaseBillEditor.tsx";
 const DATA = "lib/data/income-tax.ts";
+const ITC04 = "components/gst/Itc04Panel.tsx";
+const SALES_CYCLE = "components/sales/SalesCycleTab.tsx";
+const TDS_FIRM = "app/tds/page.tsx";
+const TDS_CLIENT = "app/clients/[id]/compliance/tds/page.tsx";
 const DRIVE = "scripts/drive/scenarios/dates.mjs";
 
 // ── readers ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -100,18 +110,57 @@ function callsOf(code: string, name: string): string[] {
 
 /** Anything that takes a date's sentence, a date hook or its problems into a call of the form's own error setter, in any spelling. */
 function copiesIntoTheError(code: string, setters: string[]): string[] {
-  return setters.flatMap((s) => callsOf(code, s).filter((arg) => /\b\w*Dates\b|\.first\b|\.problems\b/.test(arg)).map((arg) => `${s}(${arg})`));
+  return setters.flatMap((s) => callsOf(code, s).filter((arg) => /\b(?:\w*Dates|dates)\b|\.first\b|\.problems\b/.test(arg)).map((arg) => `${s}(${arg})`));
 }
 
-/** What a handler does with its date hook besides the latch: `{ latch, others }`. The latch is `if (<hook>.first) { <refusal>.refuse(); return; }` and there must be exactly one;
- *  everything else in the body that names a date hook or a `.first` is an `other`. */
+/** The value each call of an answer setter hands over: its argument, or the `text:` of an object argument (`{ line, text }`, `{ id, text }`). */
+function answersGiven(code: string, setter: string): string[] {
+  return callsOf(code, setter).map((raw) => {
+    const arg = raw.trim();
+    if (!arg.startsWith("{")) return arg;
+    const at = arg.indexOf("text:");
+    return at < 0 ? arg : arg.slice(at + "text:".length, arg.lastIndexOf("}")).trim();
+  });
+}
+
+/** What a form's own answer may be made of: nothing, the server's sentence, or a failed request's own sentence (each with a literal for when it said none). Everything else, whatever
+ *  it is called, is a copy of a sentence about the boxes (a date hook, a derived `…Missing` or `…Problem`, a builder's `.error`, a literal naming a blank box): that is said through the
+ *  latch and goes when the box is right. Stated as what is allowed, so a new name for a derived sentence cannot slip past a list of names. */
+const AN_ANSWER = [
+  /^null$/,
+  /^""$/,
+  /^res\??\.error(?: (?:\?\?|\|\|) "[^"]*")?$/,
+  /^e instanceof Error(?: && e\.message)? \? e\.message : "[^"]*"$/,
+];
+
+/** The calls of `setters` in `code` that hand over anything but an answer; `extra` is what the form may also say itself, by exact pattern. */
+function notAnAnswer(code: string, setters: string[], extra: RegExp[] = []): string[] {
+  return setters.flatMap((s) => answersGiven(code, s).filter((v) => ![...AN_ANSWER, ...extra].some((ok) => ok.test(v))).map((v) => `${s}(${v})`));
+}
+
+/** The latch calls in a body: `if (<condition>) { <refusal>.refuse(); return; }`, the condition read with its brackets balanced (it may hold `problems[`back-${id}`]` or `!(a ?? "")`). */
+function latchesIn(body: string): Array<{ condition: string; text: string }> {
+  const found: Array<{ condition: string; text: string }> = [];
+  for (const m of body.matchAll(/if \(/g)) {
+    const at = m.index ?? 0;
+    const condition = balancedFrom(body, at + 3);
+    const tail = /^ \{ \w+\.refuse\(\); return; \}/.exec(body.slice(at + 3 + condition.length));
+    if (tail) found.push({ condition: condition.slice(1, -1), text: body.slice(at, at + 3 + condition.length + tail[0].length) });
+  }
+  return found;
+}
+
+const A_DATE_HOOK = /\b(?:\w*Dates|dates)\b/;
+
+/** What a handler does with its date hook besides the latch: `{ hook, latches, others }`. The latch is `if (<condition>) { <refusal>.refuse(); return; }` and there must be exactly one;
+ *  the hook is the date hook its condition asks; everything else in the body that names a date hook or a `.first` is an `other`. */
 function whatTheHandlerDoesWithTheHook(code: string, header: string): { hook: string | null; latches: number; others: string[] } {
   const body = bodyOf(code, header);
-  const latch = /if \((\w+)\.first\) \{ \w+\.refuse\(\); return; \}/g;
-  const latches = [...body.matchAll(latch)];
-  const rest = body.replace(latch, " ");
-  const others = [...rest.matchAll(/\b\w*Dates\b[^\n]{0,60}|[\w.]+\.first\b[^\n]{0,60}/g)].map((m) => m[0]);
-  return { hook: latches[0]?.[1] ?? null, latches: latches.length, others };
+  const latches = latchesIn(body);
+  let rest = body;
+  for (const l of latches) rest = rest.replace(l.text, " ");
+  const others = [...rest.matchAll(/\b(?:\w*Dates|dates)\b[^\n]{0,60}|[\w.]+\.first\b[^\n]{0,60}/g)].map((m) => m[0]);
+  return { hook: latches[0] ? (A_DATE_HOOK.exec(latches[0].condition)?.[0] ?? null) : null, latches: latches.length, others };
 }
 
 /** Whether the handler has cleared the form's error by the time it first refuses a date. */
@@ -132,7 +181,7 @@ function opensOnIndiasDay(body: string): string[] {
 
 // ── tests ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-test("the six boxes for a day a bank or a portal printed are bounded by today in India and refuse a later day", () => {
+test("the ten boxes for a day that has happened by the time it is recorded are bounded by today in India and refuse a later day", () => {
   const boxes: Array<[string, string, string]> = [
     [TAX, "Instalment ${n} paid on", "an advance-tax instalment's paid-on date"],
     [TAX, 'id="sa-deposit-date"', "the section 140A challan's deposit date"],
@@ -140,6 +189,10 @@ test("the six boxes for a day a bank or a portal printed are bounded by today in
     [PANEL, 'aria-label="Acknowledgement date"', "the IRP's acknowledgement date"],
     [PANEL, 'aria-label="EWB date"', "the e-way bill's own date"],
     [BILL, 'id="bill-15ca-date"', "the day Form 15CA was filed"],
+    [ITC04, 'id="itc04-came-back-on"', "the day a lot of goods came back (ITC-04)"],
+    [SALES_CYCLE, "Date the goods came back, challan", "the day a whole challan's goods came back"],
+    [TDS_FIRM, 'id="tds-challan-date"', "the day on a TDS challan (the firm's TDS screen)"],
+    [TDS_CLIENT, 'id="tds-client-challan-date"', "the day on a TDS challan (a client's TDS tab)"],
   ];
   for (const [file, needle, what] of boxes) {
     const box = dateInputWith(read(file), needle);
@@ -148,7 +201,7 @@ test("the six boxes for a day a bank or a portal printed are bounded by today in
   }
 });
 
-test("each of the six boxes reports to the hook its Save reads", () => {
+test("each box reports to the hook its Save reads", () => {
   const tax = read(TAX);
   const cg = read(CG);
   const hookOf = (box: string) => /\b(\w+)\.watch\(/.exec(box)?.[1];
@@ -156,6 +209,16 @@ test("each of the six boxes reports to the hook its Save reads", () => {
   assert.equal(hookOf(dateInputWith(tax, "Instalment ${n} paid on")), whatTheHandlerDoesWithTheHook(tax, "async function handleSave(").hook, "an instalment's paid-on box reports to a hook the Save never asks");
   assert.equal(hookOf(dateInputWith(tax, 'id="sa-deposit-date"')), whatTheHandlerDoesWithTheHook(tax, "async function handleAddChallan(").hook, "the §140A deposit box reports to a hook Record challan never asks");
   assert.equal(hookOf(dateInputWith(cg, 'aria-label="CGAS deposit date"')), whatTheHandlerDoesWithTheHook(cg, "async function saveClaim(").hook, "the CGAS box reports to a hook Record claim never asks");
+  // The four of the seventeenth slice.
+  const itc = read(ITC04);
+  assert.equal(hookOf(dateInputWith(itc, 'id="itc04-came-back-on"')), whatTheHandlerDoesWithTheHook(itc, "async function record(").hook, "the came-back box reports to a hook Record this lot never asks");
+  const sc = read(SALES_CYCLE);
+  assert.equal(hookOf(dateInputWith(sc, "Date the goods came back, challan")), whatTheHandlerDoesWithTheHook(sc, "async function markBack(").hook, "a goods-back box reports to a hook Record goods back never asks");
+  // The handlers are looked up INSIDE their own component: the client TDS page holds four `saveNew`, and the first match is not necessarily this form's.
+  const tdsFirm = topLevelText(read(TDS_FIRM), "function AddChallanModal(");
+  assert.equal(hookOf(dateInputWith(tdsFirm, 'id="tds-challan-date"')), whatTheHandlerDoesWithTheHook(tdsFirm, "async function handleAdd(").hook, "the firm TDS challan box reports to a hook Add never asks");
+  const tdsClient = topLevelText(read(TDS_CLIENT), "function ChallansTab(");
+  assert.equal(hookOf(dateInputWith(tdsClient, 'id="tds-client-challan-date"')), whatTheHandlerDoesWithTheHook(tdsClient, "async function saveNew(").hook, "the client TDS challan box reports to a hook Save never asks");
   // The two portal dialogs: `problem` is made from the hook the box reports to.
   const panel = read(PANEL);
   for (const [fn, needle] of [["RecordIrnModal", 'aria-label="Acknowledgement date"'], ["RecordEwayModal", 'aria-label="EWB date"']] as const) {
@@ -175,7 +238,7 @@ test("an e-way bill's valid-upto day is a plan and may run ahead", () => {
   assert.match(validUpto, /notBefore=\{date \|\| null\}/, "the validity no longer begins at the bill's own date");
 });
 
-test("the advance-tax Save, the section 140A challan and the reinvestment claim say a date's sentence through the latch and nowhere else", () => {
+test("the forms of the sixteenth and seventeenth slices say a date's sentence through the latch and nowhere else", () => {
   const tax = read(TAX);
   const cg = read(CG);
   assert.match(tax, /const advRefusal = useDateRefusal\(advDates\.first\);/);
@@ -203,6 +266,76 @@ test("the advance-tax Save, the section 140A challan and the reinvestment claim 
   assert.match(cg, /\(exemptError \|\| claimRefusal\.shown\) && <Callout tone="problem">\{exemptError \|\| claimRefusal\.shown\}<\/Callout>/, "the claim's sentence is not rendered newest first");
   // The claim form is opened with nothing on it.
   assert.match(cg, /setExemptError\(""\);\s*claimRefusal\.clear\(\);/, "the claim form is opened again with the last sentence on it");
+});
+
+test("Record this lot, Record goods back and the two TDS challan forms say a date's sentence through the latch and nowhere else, and show the newest answer", () => {
+  const itc = read(ITC04);
+  const sc = read(SALES_CYCLE);
+  // The two TDS forms are looked up inside their own component (the firm page and the client page hold other forms with a `handleAdd`/`saveNew` and a setter of the same name).
+  const tdsFirm = topLevelText(read(TDS_FIRM), "function AddChallanModal(");
+  const tdsClient = topLevelText(read(TDS_CLIENT), "function ChallansTab(");
+  for (const [code, header, what] of [
+    [itc, "async function record(", "Record this lot"],
+    [sc, "async function markBack(", "Record goods back"],
+    [tdsFirm, "async function handleAdd(", "the firm's Add challan"],
+    [tdsClient, "async function saveNew(", "a client's New Challan"],
+  ] as const) {
+    const d = whatTheHandlerDoesWithTheHook(code, header);
+    assert.equal(d.latches, 1, `${what} has ${d.latches} latch calls: it must refuse a date once, through the latch`);
+    assert.deepEqual(d.others, [], `${what} does something with its date problems besides the latch (a copy of a date's sentence stays after the date is right)`);
+  }
+  // THE ANSWER IS WHAT THE SERVER SAID. Every call of the form's answer setter hands over nothing, the server's sentence or a failed request's own: a sentence about the boxes (the date,
+  // a blank box, a quantity that is not one) is derived and latched, whatever the derived value is called. The firm dialog also says three sentences about its amounts itself, and each
+  // of its four amount boxes withdraws the answer the moment it changes, so they cannot outlive the box (asserted just below).
+  const AMOUNT_SENTENCES = [/^"Amount must be in rupees[^"]*"$/, /^"Surcharge, interest and penalty (?:must be|together come)[^"]*"$/];
+  assert.deepEqual(notAnAnswer(itc, ["setLotError"]), [], "the ITC-04 panel says something besides the server's answer in its lot answer");
+  assert.deepEqual(notAnAnswer(sc, ["setBackAnswer"]), [], "the goods-back block says something besides the server's answer in its answer");
+  assert.deepEqual(notAnAnswer(tdsFirm, ["setError"], AMOUNT_SENTENCES), [], "the firm TDS challan dialog says something besides the server's answer (or an amount's sentence) in its error");
+  assert.deepEqual(notAnAnswer(tdsClient, ["setSaveError"]), [], "the client TDS Challans tab says something besides the server's answer in its error");
+  assert.equal((tdsFirm.match(/(?:setAmtRupees|setSurchargeRupees|setInterestRupees|setPenaltyRupees)\(e\.target\.value\); setError\(null\);/g) ?? []).length, 4, "an amount box of the firm dialog no longer withdraws the error when it changes");
+  // The ITC-04 panel's page-level message line says only that a lot was recorded.
+  assert.deepEqual(callsOf(itc, "setMsg").filter((a) => a.trim() !== "null" && !/type: "ok"/.test(a)), [], "the ITC-04 panel's message line says something besides a success");
+  // The older name-based reading still holds on the files: nothing takes a date hook into a setter.
+  assert.deepEqual(copiesIntoTheError(itc, ["setMsg", "setLotError"]), [], "the ITC-04 panel copies a date's sentence into its answer");
+  assert.deepEqual(copiesIntoTheError(sc, ["setBackAnswer"]), [], "the goods-back block copies a date's sentence into its answer");
+  assert.deepEqual(copiesIntoTheError(tdsFirm, ["setError"]), [], "the firm TDS challan dialog copies a date's sentence into its error");
+  assert.deepEqual(copiesIntoTheError(tdsClient, ["setSaveError"]), [], "the client TDS Challans tab copies a date's sentence into its error");
+  // What the last press said is cleared before this one refuses.
+  assert.ok(clearsBeforeRefusing(itc, "async function record(", /setLotError\(null\)/), "Record this lot no longer clears the answer to the last press before it refuses a date");
+  assert.ok(clearsBeforeRefusing(sc, "async function markBack(", /setBackAnswer\(null\)/), "Record goods back no longer clears the answer to the last press before it refuses a date");
+  assert.ok(clearsBeforeRefusing(tdsFirm, "async function handleAdd(", /setError\(null\)/), "the firm's Add challan no longer clears the answer to the last press before it refuses a date");
+  assert.ok(clearsBeforeRefusing(tdsClient, "async function saveNew(", /setSaveError\(null\)/), "a client's New Challan no longer clears the answer to the last press before it refuses a date");
+  // The newest answer is shown first.
+  assert.match(itc, /\(lotAnswer \|\| lotRefusal\.shown\) && \(\s*<p role="alert"[^>]*>\{lotAnswer \|\| lotRefusal\.shown\}<\/p>/, "the lot's sentence is not rendered newest first");
+  assert.match(tdsFirm, /\(error \|\| refusal\.shown\) && <Callout tone="problem">\{error \|\| refusal\.shown\}<\/Callout>/, "the firm TDS challan sentence is not rendered newest first");
+  assert.match(tdsClient, /\(saveError \|\| refusal\.shown\) && <p role="alert"[^>]*>\{saveError \|\| refusal\.shown\}<\/p>/, "the client TDS challan sentence is not rendered newest first");
+  // THE GOODS-BACK SENTENCE IS IN THE ROW OF THE CHALLAN IT IS ABOUT, beside its button: the server's answer for that challan (named, since the server's sentence names none) is
+  // shown over the sentence about the box, a late answer to another challan is not shown in this row, and both are withdrawn when the tab is left.
+  assert.match(sc, /const backSaid = \(c: DeliveryChallan\): string \| null =>\s*\(backAnswer && backAnswer\.id === c\.id \? `\$\{c\.document_no\}: \$\{backAnswer\.text\}` : null\) \|\| \(backTried === c\.id \? backRefusal\.shown : null\);/, "the goods-back sentence is not made per challan, newest first");
+  assert.match(sc, /\{backSaid\(c\) && <p role="alert"[^>]*>\{backSaid\(c\)\}<\/p>\}/, "the goods-back sentence is not rendered in the row it is about");
+  assert.match(sc, /setTab\(id\);[^}]*setBackTried\(null\); setBackAnswer\(null\); backRefusal\.clear\(\);/, "leaving the tab no longer withdraws the goods-back sentences");
+  // The sentence about a goods-back box is derived from the box and latched (the date's sentence, or the missing date named with its challan).
+  assert.match(sc, /const backProblem = backTried === null \? null\s*: \(backDates\.problems\[`back-\$\{backTried\}`\] \?\? \(\(backOn\[backTried\] \?\? ""\) \? null : `Enter the date the goods on \$\{backNo \?\? "the challan"\} came back\.`\)\);\s*const backRefusal = useDateRefusal\(backProblem\);/, "the goods-back box's sentences are not derived from the box and latched");
+  // A blank challan date, number and BSR code (and, on a client's tab, the section and the year) are sentences about the boxes too: derived and latched, and not an answer.
+  assert.match(tdsFirm, /const challanMissing = !challanDate \? "Challan date: enter the date on the challan\."\s*: !serialNo\.trim\(\) \? "Challan number: [^"]*"\s*: !bsrCode\.trim\(\) \? "BSR code: [^"]*" : null;\s*const refusal = useDateRefusal\(dates\.first \?\? challanMissing\);/, "the firm TDS challan dialog's blank-box sentences are not derived and latched");
+  assert.match(tdsClient, /const challanMissing = !form\.challan_date \? "Challan date: enter the date on the challan\."\s*: !form\.challan_no\.trim\(\) \? "Challan number: [^"]*"\s*: !form\.bsr_code\.trim\(\) \? "BSR code: [^"]*"\s*: !form\.section\.trim\(\) \? "TDS section: [^"]*"\s*: !form\.financial_year\.trim\(\) \? "Financial year: [^"]*" : null;\s*const refusal = useDateRefusal\(dates\.first \?\? challanMissing\);/, "the client TDS tab's blank-box sentences are not derived and latched");
+  // The lot form's other sentences (the builder's) are derived from the boxes too.
+  assert.match(itc, /const lotProblem = lotDates\.first \?\? \(lotBuilt && !lotBuilt\.ok \? lotBuilt\.error : null\);\s*const lotRefusal = useDateRefusal\(lotProblem\);/, "the lot form's sentences are not derived from its boxes and latched");
+  // The lot's answer is for the lot that raised it, and an answer to another line is not shown in the open form.
+  assert.match(itc, /const \[lotError, setLotError\] = useState<\{ line: string; text: string \} \| null>\(null\);/, "the lot's answer is no longer tied to its line");
+  assert.match(itc, /const lotAnswer = lotError && lotError\.line === lotFor \? lotError\.text : null;/, "an answer to another line is shown in the open lot form");
+  // …and "Record a lot" is held while a request is out (`saving` is the panel's), or a form opened for another line meanwhile would be closed by this one's success.
+  const toggleAt = itc.indexOf("Record a lot");
+  assert.match(itc.slice(itc.lastIndexOf("<button", toggleAt), toggleAt), /disabled=\{saving\}/, "\"Record a lot\" is live while a lot is being recorded");
+  // A lot form opened (or closed) holds nothing of the last one: its boxes, its answer and its latched sentence.
+  assert.match(itc, /setLotFor\(lotFor === l\.challan_line_id \? null : l\.challan_line_id\);\s*setLot\(\{ \.\.\.BLANK_LOT \}\);\s*setLotError\(null\);\s*lotRefusal\.clear\(\);/, "a lot form is opened again with the last answer or sentence on it");
+  // The firm dialog cannot be left while Add is out, by its X or by Cancel (the client tab holds its Cancel in the same way).
+  assert.equal((tdsFirm.match(/onClick=\{onClose\} disabled=\{saving\}/g) ?? []).length, 2, "the firm TDS challan dialog can be closed while Add is out");
+  assert.match(tdsClient, /<button onClick=\{closeForm\} disabled=\{saving\}/, "the client TDS challan form can be cancelled while Save is out");
+  // The server's refusal reaches the screen as the sentence it is (the catch used to throw it away; FastAPI answers a refusal with an error status, which arrives as a thrown sentence).
+  assert.match(bodyOf(itc, "async function record("), /catch \(e\) \{[^}]*setLotError\(\{ line: line\.challan_line_id, text: e instanceof Error \? e\.message/, "Record this lot throws away the sentence of a refusal that arrives as an error status");
+  assert.match(bodyOf(sc, "async function markBack("), /catch \(e\) \{\s*setBackAnswer\(\{ id: challan\.id, text: e instanceof Error \? e\.message/, "Record goods back throws away the sentence of a refusal that arrives as an error status");
+  assert.match(bodyOf(tdsFirm, "async function handleAdd("), /catch \(e\) \{\s*setError\(e instanceof Error \? e\.message/, "the firm's Add challan throws away the sentence of a refusal that arrives as an error status");
 });
 
 test("the writers and the deleters behind those two forms say what the server said", () => {
@@ -247,6 +380,27 @@ test("the detectors tell the defect from the fix, in the spellings that evade a 
   // The clear must come first.
   assert.ok(clearsBeforeRefusing(good, "async function handleSave(", /setError\(null\)/));
   assert.ok(!clearsBeforeRefusing(`async function handleSave() { ${latch} setError(null); }`, "async function handleSave(", /setError\(null\)/));
+  // The positive rule: what an answer may be, tried on the spellings that slipped past the name list (found by the independent read of the seventeenth slice).
+  for (const fine of [
+    "setError(null);", 'setError("");', 'setLotError({ line: l, text: res.error || "That return was refused." });', 'setBackAnswer({ id: c.id, text: e instanceof Error ? e.message : "x" });',
+    'setSaveError(res?.error ?? "The challan was not recorded.");', 'setSaveError(e instanceof Error && e.message ? e.message : "The challan was not recorded.");',
+  ]) assert.deepEqual(notAnAnswer(fine, ["setError", "setLotError", "setBackAnswer", "setSaveError"]), [], `refused as a copy but it is an answer: ${fine}`);
+  for (const copy of [
+    'setError("Challan date: enter the date on the challan."); return;', "setError(challanMissing);", "setSaveError(challanMissing);", "setLotError(built.error);",
+    "setLotError({ line: l, text: built.error });", "setLotError({ line: l, text: lotProblem });", "setBackAnswer({ id: c.id, text: backProblem });", "setError(refusal.shown);",
+    'setSaveError("Challan number: enter the serial number printed on the challan.");', "setError(dates.first ?? null);", 'setBackAnswer({ id: c.id, text: `${c.document_no}: ${backProblem}` });',
+  ]) assert.notDeepEqual(notAnAnswer(copy, ["setError", "setLotError", "setBackAnswer", "setSaveError"]), [], `not caught by the positive rule: ${copy}`);
+  // …and the latch is found in the shapes the four forms use: a nullish gate, a bracketed condition, a negated parenthesis.
+  for (const gate of [
+    "if (dates.first ?? challanMissing) { refusal.refuse(); return; }",
+    "if (backDates.problems[`back-${challan.id}`] || !(backOn[challan.id] ?? \"\")) { backRefusal.refuse(); return; }",
+    "if (lotDates.first || !built.ok) { lotRefusal.refuse(); return; }",
+  ]) {
+    const one = whatTheHandlerDoesWithTheHook(`async function go() { setX(null); ${gate} setSaving(true); }`, "async function go(");
+    assert.equal(one.latches, 1, `the latch is not found: ${gate}`);
+    assert.deepEqual(one.others, [], `the latch is read as a copy: ${gate}`);
+    assert.ok(one.hook, `the latch's hook is not found: ${gate}`);
+  }
   // A dialog that opens on India's day, and the clocks that evade a regex for one.
   const dialog = (today: string) => `function RecordIrnModal() { ${today} const [date, setDate] = useState(today); }`;
   assert.deepEqual(opensOnIndiasDay(dialog("const today = todayIstISO();")), []);
@@ -262,22 +416,35 @@ test("the detectors tell the defect from the fix, in the spellings that evade a 
 
 // The rules above are executed by the browser, and this is what the drive must hold: the module is IMPORTED, so a scenario that is deleted, renamed, commented out or moved out of the
 // three zones fails here and not silently. Each table is built from rows, so what must exist is each row's scenarios.
-const SIX = ["advance-tax-paid-on", "self-assessment-deposit", "cgas-deposit", "irn-acknowledgement", "eway-bill-date", "bill-form-15ca"];
-const EARLIER = ["advance-tax-save", "self-assessment-challan", "reinvestment-claim"];
+const SIX = ["advance-tax-paid-on", "self-assessment-deposit", "cgas-deposit", "irn-acknowledgement", "eway-bill-date", "bill-form-15ca",
+  "itc04-came-back", "goods-back", "firm-tds-challan", "client-tds-challan"]; // the six of the sixteenth slice and the four of the seventeenth
+const EARLIER = ["advance-tax-save", "self-assessment-challan", "reinvestment-claim", "itc04-record-lot", "goods-back-record", "firm-tds-challan-add", "client-tds-challan-save"];
 const DIALOGS = ["irn-dialog", "eway-bill-dialog"];
+// The four forms of the seventeenth slice whose date is REQUIRED: pressed over a blank date they say so, and the sentence goes once a date is typed.
+const REQUIRED = ["itc04-record-lot", "goods-back-record", "firm-tds-challan-add", "client-tds-challan-save"];
+// Scenarios of the reads of the seventeenth slice that run once (they type no date that a zone could read differently): a quantity's sentence, the held controls, the sentence in its row.
+const ONCE = [
+  "itc04-a-quantity-that-is-not-a-quantity-is-asked-for-and-the-sentence-goes-when-it-is-right",
+  "firm-tds-challan-close-and-cancel-are-held-while-add-is-out",
+  "itc04-record-a-lot-is-held-while-a-lot-is-out",
+  "goods-back-the-sentence-is-in-the-row-it-is-about-and-leaves-with-the-tab",
+];
 
 test("the browser drive holds every claim this guard states", async () => {
   const drive = await import(pathToFileURL(path.join(WEB, DRIVE)).href);
   const kit = await import(pathToFileURL(path.join(WEB, "scripts/drive/kit.mjs")).href);
   const byId = new Map<string, { id: string; contexts?: unknown }>((drive.scenarios as Array<{ id: string; contexts?: unknown }>).map((s) => [s.id, s]));
   const inThreeZones = [
-    ...SIX.flatMap((r) => [`${r}-a-date-after-today-is-refused`, `${r}-the-bound-is-the-indian-day`]),
+    ...SIX.flatMap((r) => [`${r}-a-date-after-today-is-refused`, `${r}-the-bound-is-the-indian-day`, `${r}-india-has-moved-on-to-the-next-day`]),
+    ...REQUIRED.map((r) => `${r}-a-blank-date-is-asked-for-and-the-sentence-goes-when-one-is-typed`),
+    "itc04-a-lot-form-opened-again-holds-none-of-the-last-answer-or-sentence",
     ...EARLIER.map((r) => `${r}-the-answer-to-an-earlier-attempt-does-not-come-back`),
     ...DIALOGS.map((r) => `${r}-opens-on-the-indian-day`),
     "eway-bill-valid-upto-may-run-ahead",
   ];
   assert.deepEqual(inThreeZones.filter((id) => !byId.has(id)), [], "a scenario of the sixteenth slice is gone from scripts/drive/scenarios/dates.mjs");
   assert.deepEqual(inThreeZones.filter((id) => JSON.stringify(byId.get(id)?.contexts) !== JSON.stringify(kit.TZ_MATRIX)), [], "a scenario of the sixteenth slice no longer runs in all three zones");
+  assert.deepEqual(ONCE.filter((id) => !byId.has(id)), [], "a scenario of the reads of the seventeenth slice is gone from scripts/drive/scenarios/dates.mjs");
   assert.ok(byId.has("reinvestment-claim-a-refused-delete-is-said-over-an-earlier-date-sentence"), "the scenario that holds a refused Delete over an earlier date sentence is gone");
   assert.ok([...byId.keys()].some((id) => id.startsWith("bill-form-15ca")), "the editor-table row for the Form 15CA date is gone");
   // The hour the second table pins is one at which the browser's day is AHEAD of India's on Kiritimati, or the table cannot tell the two days apart.
@@ -285,4 +452,10 @@ test("the browser drive holds every claim this guard states", async () => {
   assert.ok(pin, "the instant the sixteenth slice re-pins to is not stated");
   const day = (zone: string) => new Date(pin as string).toLocaleDateString("en-CA", { timeZone: zone });
   assert.ok(day("Pacific/Kiritimati") > day("Asia/Kolkata"), `at ${pin} the day on Kiritimati (${day("Pacific/Kiritimati")}) is not ahead of India's (${day("Asia/Kolkata")})`);
+  // …and the hour at which INDIA has moved on while UTC and Los Angeles have not, or a bound taken from UTC's day (or from a browser behind India) cannot be told from India's.
+  const next = /const INDIA_NEXT_DAY = "([^"]+)"/.exec(fs.readFileSync(path.join(WEB, DRIVE), "utf8"))?.[1];
+  assert.ok(next, "the instant at which India's day is ahead of UTC's is not stated");
+  const dayThen = (zone: string) => new Date(next as string).toLocaleDateString("en-CA", { timeZone: zone });
+  assert.ok(dayThen("Asia/Kolkata") > dayThen("UTC"), `at ${next} the day in India (${dayThen("Asia/Kolkata")}) is not ahead of UTC's (${dayThen("UTC")})`);
+  assert.ok(dayThen("Asia/Kolkata") > dayThen("America/Los_Angeles"), `at ${next} the day in India (${dayThen("Asia/Kolkata")}) is not ahead of Los Angeles' (${dayThen("America/Los_Angeles")})`);
 });

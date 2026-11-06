@@ -17,8 +17,9 @@ WHAT IS HELD
     A date that is not a real day is a 422 naming the field (`models/iso_date.a_real_date`); the one OPTIONAL date left (the company's incorporation date,
     `mca_companies.incorp_date` is nullable) left blank is the same as absent; a real one is stored in its canonical form. An incorporation date is refused when it
     has not come yet (IST), because it records a thing already done: a company that has a CIN has been incorporated. A due date and a cessation date are plans and
-    may be any day. The challan's date is judged as a day only, the stance the payroll challan date takes: nothing here knows when a challan may be dated and a
-    statutory reading is not assumed. A blank cessation date on the PATCH is refused, not read as absent, because the route drops what was not sent and would
+    may be any day. The challan's date is a real day, and from the seventeenth slice it is not after today in India either: a challan is recorded from the bank's counterfoil,
+    whose BSR code and serial number exist only once the bank has taken the tax (how far back it may go is the period lock's, and no statutory reading is assumed here; this file
+    first held it to being a day only). A blank cessation date on the PATCH is refused, not read as absent, because the route drops what was not sent and would
     have reported a success for a change it never made.
 """
 from __future__ import annotations
@@ -126,8 +127,13 @@ def test_a_challan_date_that_is_not_a_real_day_is_refused_naming_the_field(bad):
     assert "challan_date must be a date written YYYY-MM-DD." in str(caught.value)
 
 
-def test_the_challan_date_is_judged_as_a_day_only():
-    assert _challan(challan_date=TOMORROW).challan_date == TOMORROW
+def test_a_challan_dated_after_today_is_refused_and_today_is_allowed():
+    """The seventeenth slice reversed this file's earlier stance (a day only): the bank has taken the tax by the day the challan is dated. The rule's own tests are in
+    test_the_day_goods_came_back_and_the_day_the_bank_took_the_tax_are_not_after_today.py; this holds the sentence at the door that the rest of this file drives."""
+    with pytest.raises(ValidationError) as caught:
+        _challan(challan_date=TOMORROW)
+    assert "The challan date cannot be after today's date in India." in str(caught.value)
+    assert _challan(challan_date=ist_today().isoformat()).challan_date == ist_today().isoformat()
 
 
 def test_a_challan_date_is_stored_in_its_canonical_form():
