@@ -16,6 +16,7 @@ from models.common import api_response
 from domain.party_duplicates import possible_duplicates, same_party_sentence
 from models.parties import VendorIn, VendorUpdateIn
 from domain.tds.section_rates import threshold_class_problem
+from domain.tds.no_pe_declaration import declarant_write
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services import party_erasure
@@ -251,6 +252,9 @@ def create_vendor(
         payload["firm_id"] = current_user.get("firm_id")
         payload["is_active"] = True
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        # POST-A-401: a declaration recorded with this supplier is attributed to the member recording it (users.id, the
+        # internal id the column references), or the register's "nobody recorded who obtained it" gap could never clear.
+        payload.update(declarant_write(sent=payload, stored=None, actor_id=current_user.get("id")))
 
         gstin = _norm(payload.get("gstin"))
         # Shape AND check digit (CGST Act s.25) — see routers/customers.py for
@@ -506,8 +510,11 @@ def create_vendors_bulk(
             errors.append({"index": i, "name": name, "error": _gstin_problem})
             continue
         payload["firm_id"] = current_user.get("firm_id")
-        payload["is_active"] = True
-        payload["created_at"] = datetime.now(timezone.utc).isoformat()
+        # POST-A-401: a declaration recorded with the supplier is attributed to the member of the request, as create_vendor does. Folded with the
+        # two assignments before it into one statement, because this function is on the ruff ratchet's size baseline and may not grow; `firm_id` stays
+        # a visible assignment because the firm-scope guard reads the payload's firm from it.
+        payload.update(is_active=True, created_at=datetime.now(timezone.utc).isoformat(),
+                       **declarant_write(sent=payload, stored=None, actor_id=current_user.get("id")))
         valid_items.append((i, payload))
 
     if not valid_items:
@@ -690,6 +697,11 @@ def update_vendor(
         # can post a real GL journal, so the refusal must land before that fetch
         # even decides whether anything changed, let alone before the update.
         prior = _load_vendor_or_404(current_user, vendor_id)
+
+        # POST-A-401. A save that RECORDS the no-PE declaration (ticked and dated, changed or not yet attributed) names the
+        # member who made it; one that takes the declaration off file empties the name. Asked of the stored row and the
+        # fields this request carries, because a PATCH names only what it changes.
+        data.update(declarant_write(sent=data, stored=prior, actor_id=current_user.get("id")))
 
         # TDS-30. The model judged the §194A limit class against the section
         # only where one request carried both. A PATCH carrying just the

@@ -71,8 +71,12 @@ test("every call to markTDSFiled passes a date as its fourth argument", () => {
     const src = code(rel);
     for (const m of src.matchAll(/\bmarkTDSFiled\(/g)) {
       if (src.slice(Math.max(0, m.index - 30), m.index).includes("function ")) continue;
-      calls.push(`${rel}: ${topLevelArgs(argumentsOf(src, m.index + m[0].length - 1)).length}`);
-      assert.equal(topLevelArgs(argumentsOf(src, m.index + m[0].length - 1)).length, 4, `${rel} calls markTDSFiled without a date`);
+      const args = topLevelArgs(argumentsOf(src, m.index + m[0].length - 1));
+      calls.push(`${rel}: ${args.length}`);
+      // Four arguments, the date the fourth; or five, where the fifth is the CA's second confirmation (POST-A-402) and nothing but that variable.
+      assert.ok(args.length === 4 || args.length === 5, `${rel} calls markTDSFiled without a date`);
+      assert.equal(args[3], "filingDate", `${rel} passes ${args[3]} where the date the CA stated goes`);
+      if (args.length === 5) assert.equal(args[4], "recordAnyway", `${rel} passes ${args[4]} as the CA's confirmation to record the statement anyway`);
     }
   }
   assert.ok(calls.length >= 1, "no caller found: the scan has gone blind");
@@ -84,8 +88,8 @@ test("the screen asks for the date, starts it blank, and cannot confirm without 
   assert.doesNotMatch(src, /useState\(todayIst|useState\(new Date|setFilingDate\(todayIst|setFilingDate\(new Date/,
     "the screen fills the filing date in for the CA");
   assert.match(src, /<DateInput id="tds-filing-date"[^>]*value=\{filingDate\} onChange=\{setFilingDate\}/);
-  assert.match(src, /disabled=\{!prn \|\| !filingDate\}/, "Confirm Filed is enabled with no date");
-  assert.match(src, /markTDSFiled\(returnId, prn, ackNumber, filingDate\)/);
+  assert.match(src, /disabled=\{!prn \|\| !filingDate \|\| filing\}/, "Confirm Filed is enabled with no date, or while the request that records the filing is out");
+  assert.match(src, /markTDSFiled\(asked, prn, ackNumber, filingDate, recordAnyway\)/);
 });
 
 test("the date is cleared when the client, the form, the year or the quarter changes, so one statement's date is not carried to another", () => {
@@ -94,7 +98,8 @@ test("the date is cleared when the client, the form, the year or the quarter cha
   // approved and ready to be marked filed under a "Mark 24Q as Filed" heading (the twelfth slice of the browser drive, PRE-A-015).
   const reset = /useEffect\(\(\) => \{([\s\S]*?)\}, \[clientId, returnType, financialYear, quarter\]\)/.exec(src);
   assert.ok(reset, "the reset on a changed client, form, year or quarter is gone");
-  for (const cleared of ["setResult(null)", "setReturnId(null)", 'setPrn("")', 'setAckNumber("")', 'setFilingDate("")', "setFiledError(null)", "setCalendarNote(null)"]) {
+  // …including the question the product asks of a statement it holds back (POST-A-402): it names a statement that is gone once the selector changes.
+  for (const cleared of ["setResult(null)", "setReturnId(null)", 'setPrn("")', 'setAckNumber("")', 'setFilingDate("")', "setFiledError(null)", "setCalendarNote(null)", "setHeldBack(null)"]) {
     assert.ok(reset[1].includes(cleared), `the change does not clear ${cleared}`);
   }
 });
@@ -103,7 +108,7 @@ test("the dialog belongs to one statement: opening it, computing another and a s
   const src = code(PAGE);
   const clear = /function clearTheFiledDialog\(\) \{([\s\S]*?)\n  \}/.exec(src);
   assert.ok(clear, "clearTheFiledDialog is gone");
-  for (const cleared of ['setPrn("")', 'setAckNumber("")', 'setFilingDate("")', "setFiledError(null)"]) {
+  for (const cleared of ['setPrn("")', 'setAckNumber("")', 'setFilingDate("")', "setFiledError(null)", "setHeldBack(null)"]) {
     assert.ok(clear[1].includes(cleared), `clearTheFiledDialog does not clear ${cleared}`);
   }
   const open = /function openFiledModal\(\) \{([\s\S]*?)\n  \}/.exec(src);
@@ -113,15 +118,15 @@ test("the dialog belongs to one statement: opening it, computing another and a s
   const compute = /async function handleCompute\(\) \{([\s\S]*?)\n  \}/.exec(src);
   assert.ok(compute && compute[1].includes("clearTheFiledDialog()") && compute[1].includes("setCalendarNote(null)"),
     "computing another statement leaves the last one's PRN, date and calendar note on screen");
-  const filed = /async function handleMarkFiled\(\) \{([\s\S]*?)\n  \}/.exec(src);
+  const filed = /async function markFiled\(recordAnyway: boolean\) \{([\s\S]*?)\n  \}/.exec(src);
   assert.ok(filed && filed[1].includes("clearTheFiledDialog()") && filed[1].includes("setError(null)"),
     "a successful filing leaves its PRN and date in the dialog");
 });
 
 test("a refusal of the dialog is shown IN the dialog, because the page's callout sits under the backdrop", () => {
   const src = code(PAGE);
-  const filed = /async function handleMarkFiled\(\) \{([\s\S]*?)\n  \}/.exec(src);
-  assert.ok(filed, "handleMarkFiled is gone");
+  const filed = /async function markFiled\(recordAnyway: boolean\) \{([\s\S]*?)\n  \}/.exec(src);
+  assert.ok(filed, "markFiled is gone");
   assert.doesNotMatch(filed[1], /setError\((?!null)/, "a refusal is sent to the page's callout behind the backdrop");
   assert.match(filed[1], /setFiledError\(e instanceof Error/);
   assert.match(src, /\{filedError && <Callout tone="problem">\{filedError\}<\/Callout>\}/, "the dialog never shows its error");

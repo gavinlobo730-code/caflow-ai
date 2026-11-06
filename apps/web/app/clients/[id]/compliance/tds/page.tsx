@@ -12,6 +12,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
 import type { CalendarAnswer } from "@/lib/data/tds";
 import { Callout } from "@/components/ui/callout";
+import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -561,6 +562,9 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const [newError, setNewError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  // The server held a statement back as incomplete and said the CA may record it anyway (POST-A-402): the statement, what was asked for, and the
+  // server's sentence. The flag is sent only by the CA's second press ("Record it anyway"), never by the code and never on a first press.
+  const [heldBack, setHeldBack] = useState<{ id: string; status: string; sentence: string } | null>(null);
   const [saveComputedError, setSaveComputedError] = useState<string | null>(null);
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
@@ -570,8 +574,9 @@ function ReturnsTab({ clientId }: { clientId: string }) {
   const load = useCallback(() => {
     setLoading(true);
     loadTdsWindow(clientId, "returns")
-      // A refusal of a row action is about the list as it stood: a list read again (after a return was created, say) is not what it was said about.
-      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); setStatusError(null); })
+      // A refusal of a row action is about the list as it stood: a list read again (after a return was created, say) is not what it was said about, and
+      // neither is a question the server asked about one of its rows (POST-A-402).
+      .then(({ rows, hasMore }) => { setRows(rows); setMore(hasMore); setLoadError(null); setStatusError(null); setHeldBack(null); })
       .catch((e) => { setRows([]); setMore(false); setLoadError(e instanceof Error ? e.message : "Couldn't load TDS returns. Please try again."); })
       .finally(() => setLoading(false));
   }, [clientId]);
@@ -608,14 +613,23 @@ function ReturnsTab({ clientId }: { clientId: string }) {
     }
   }
 
-  async function updateStatus(id: string, status: string) {
+  async function updateStatus(id: string, status: string, recordAnyway = false) {
     setStatusError(null);
+    setHeldBack(null);
     try {
       const res = await apiFetch(`/api/tds-workspace/returns/${id}/status`, {
         method: "PATCH",
-        body: JSON.stringify({ status, ca_approved: true }),
+        body: JSON.stringify({ status, ca_approved: true, ...(recordAnyway ? { acknowledge_incomplete: true } : {}) }),
       });
+      // A statement the product holds back as incomplete, with the server's marker that the CA may record it anyway, is ASKED about (the second
+      // confirmation below the table) and not shown as a failure (POST-A-402); any other refusal is said as it always was. The source guard holds
+      // this exact shape: the detour returns before anything is said, closed or read again.
       if (!res?.success) {
+        const marker = res?.data as { can_record_anyway?: unknown } | null | undefined;
+        if (marker?.can_record_anyway === true && res?.error) {
+          setHeldBack({ id, status, sentence: res.error });
+          return;
+        }
         setStatusError(res?.error ?? "The return's status was not changed.");
         return;
       }
@@ -643,21 +657,28 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       "24Q": "/api/tds/24q/from-books",
       "27Q": "/api/tds/27q/from-books",
     }[computeForm.return_type] ?? "/api/tds/26q/from-books";
-    const r = await apiFetch(path, {
-      method: "POST",
-      body: JSON.stringify({
-        client_id: clientId,
-        financial_year: computeForm.financial_year,
-        quarter: computeForm.quarter,
-        tan: computeForm.tan,
-        deductor_name: computeForm.deductor_name,
-        deductor_pan: computeForm.deductor_pan,
-        deductor_address: computeForm.deductor_address,
-      }),
-    });
-    if (r.success) setComputeResult(r.data as Record<string, unknown>);
-    else setComputeError(r.error ?? `Couldn't compute Form ${computeForm.return_type} from books.`);
-    setComputing(false);
+    // A request that FAILS (a dropped connection, a proxy's page that arrives as a 200 and is not JSON, which `res.json()` rejects) is caught and said in the dialog, and the hold is released in
+    // a `finally`: without them the dialog stayed on "Computing…" with Compute held until the page was loaded again (POST-A-403).
+    try {
+      const r = await apiFetch(path, {
+        method: "POST",
+        body: JSON.stringify({
+          client_id: clientId,
+          financial_year: computeForm.financial_year,
+          quarter: computeForm.quarter,
+          tan: computeForm.tan,
+          deductor_name: computeForm.deductor_name,
+          deductor_pan: computeForm.deductor_pan,
+          deductor_address: computeForm.deductor_address,
+        }),
+      });
+      if (r.success) setComputeResult(r.data as Record<string, unknown>);
+      else setComputeError(r.error ?? `Couldn't compute Form ${computeForm.return_type} from books.`);
+    } catch (e) {
+      setComputeError(e instanceof Error && e.message ? e.message : `Couldn't compute Form ${computeForm.return_type} from books.`);
+    } finally {
+      setComputing(false);
+    }
   }
 
   async function saveComputed() {
@@ -763,7 +784,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               {deductorGaps.map(g => <p key={g.code}>{g.message}</p>)}
             </div>
           )}
-          {computeError && <p className="text-state-problem text-sm">{computeError}</p>}
+          {computeError && <p role="alert" className="text-state-problem text-sm">{computeError}</p>}
           <div className="flex gap-2">
             <Button variant="plain" size="none" onClick={computeFromBooks}
               disabled={actionInFlight || !computeForm.financial_year || !computeForm.tan || !computeForm.deductor_name || !computeForm.deductor_pan}
@@ -896,6 +917,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       )}
 
       {statusError && <p role="alert" className="text-xs text-state-problem">{statusError}</p>}
+      {heldBack && (
+        <RecordAnywayAsk sentence={heldBack.sentence} what={heldBack.status === "filed" ? "filed" : "CA approved"}
+          onConfirm={() => updateStatus(heldBack.id, heldBack.status, true)} onLeave={() => setHeldBack(null)} />
+      )}
       <ListWindowNotice hasMore={more} what={`the latest ${rows.length} returns`} limit={rows.length} maxLimit={rows.length} />
       {loading ? <TableSkeleton cols={6} bare /> : (
         <table className="w-full text-sm border-collapse">

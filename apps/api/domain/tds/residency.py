@@ -295,9 +295,11 @@ GAP_MESSAGES: dict[str, str] = {
         "is filed.",
     GAP_NO_PE_DECLARATION_UNDATED:
         "Nil was withheld on the payee having no permanent establishment in "
-        "India, but the declaration has no date or nobody recorded who "
-        "obtained it. s.201(1) makes a deductor who fails to deduct an assessee "
-        "in default — record the date and the reference on the vendor.",
+        "India, but the declaration has no date, or no member has recorded it "
+        "here. s.201(1) makes a deductor who fails to deduct an assessee in "
+        "default — record the date and the reference on the vendor and save "
+        "it: the member who saves them is the one the declaration is "
+        "attributed to.",
     GAP_CREDIT_MOVED_AFTER_DEDUCTION:
         "A note has changed what was credited to this payee since the tax was "
         "deducted, and the deductee row still reports the original amount. The "
