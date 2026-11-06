@@ -3854,8 +3854,10 @@ export const scenarios = [
       await dialog.getByRole("button", { name: "Create Engagement", exact: true }).click();
       await shownInTheDialog(page, "A stub refusal of the letter.", "the server's refusal was not shown");
       await reopen();
+      // The sentence is asked at once (the reset runs before the first paint, so there is no frame that draws the last one); a BOX is asked for its settled text, because the shared date
+      // box takes its text from the parent's reset in an effect after the paint, and one frame of the last day is not what is being asked about here.
       assert.equal(await page.getByText("A stub refusal of the letter.").count(), 0, "the dialog was opened again with the server's last refusal still on it");
-      assert.equal(await dialog.getByLabel("Title", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's title");
+      await until(async () => (await dialog.getByLabel("Title", { exact: true }).inputValue()) === "", "the dialog to be opened without the last letter's title in it", 1500);
       // …and one from the boxes.
       await dialog.getByLabel("Title", { exact: true }).fill("Another letter");
       await typeAndLeave(dialog.getByLabel("Start date", { exact: true }), "01/04/2026");
@@ -3864,8 +3866,8 @@ export const scenarios = [
       await shownInTheDialog(page, ENGAGEMENT_ORDER_SENTENCE, "the order of the dates was not refused");
       await reopen();
       assert.equal(await page.getByText(ENGAGEMENT_ORDER_SENTENCE).count(), 0, "the dialog was opened again with the last order refusal still on it");
-      assert.equal(await dialog.getByLabel("Start date", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's start date");
-      assert.equal(await dialog.getByLabel("Expiry date", { exact: true }).inputValue(), "", "the dialog was opened with the last letter's expiry date");
+      await until(async () => (await dialog.getByLabel("Start date", { exact: true }).inputValue()) === "", "the dialog to be opened without the last letter's start date in it", 1500);
+      await until(async () => (await dialog.getByLabel("Expiry date", { exact: true }).inputValue()) === "", "the dialog to be opened without the last letter's expiry date in it", 1500);
     },
   },
   // The card scrolls when the window is short, and the sentence is at its top while the button that raised it is at the bottom: it must be brought into view, or pressing Create
