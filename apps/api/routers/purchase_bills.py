@@ -19,6 +19,7 @@ from domain.inventory import stock_effect as stock_effects
 from domain.gst import compensation_cess, draft_bill_from_2b, gstr2b_intake
 from domain.gst.gstr2b import parse_gstr2b
 from domain.extraction_lines import LABELS, UNIT, read_line
+from models.clearable import patch_dict
 from models.common import api_response
 from models.gst_period import PeriodMMYYYY
 from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocumentIn
@@ -1569,7 +1570,9 @@ def update_purchase_bill(
     see _reject_locked_bill_fields. CANCELLED: cannot be updated at all."""
     _assert_bill_scope(current_user, bill_id)
     try:
-        data = data.model_dump(exclude_none=True)
+        # Our reference or a note SENT AS NULL is cleared (POST-A-399); every other null still reads as "not sent": the due date and the credit days, and the bill
+        # number, the attached copy of the supplier's invoice and the Form 15CA / 15CB references, which are the evidence of the bill.
+        data = patch_dict(data)
         # The request model field is is_inter_state; the DB column is
         # is_interstate — same mapping sales_invoices.py's update_invoice
         # applies (without it, sending this field 400s: no such column).

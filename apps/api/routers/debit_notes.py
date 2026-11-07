@@ -14,10 +14,11 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, field_validator
+from models.clearable import patch_dict
 from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.inventory import note_goods
@@ -62,6 +63,16 @@ class DebitNoteIn(BaseModel):
     goods_returned: bool | None = None
     is_interstate: bool = False
     is_reverse_charge: bool = False
+    #: The note and the attached copy the new-debit-note screen takes (it uploads the copy first and sends the path). The create model had neither field, so both were dropped on the way in
+    #: and the screen said "saved as draft" without them (POST-A-399); the edit door has always had both. The path is stored as sent, as the edit door stores it: the signed-URL door re-checks
+    #: that it lies under this note's own firm and client folder every time it is opened.
+    notes: str | None = None
+    document_url: str | None = None
+
+    @field_validator("notes", "document_url")
+    @classmethod
+    def _a_blank_is_nothing(cls, v):
+        return (v.strip() or None) if isinstance(v, str) else v
 
     @field_validator("lines")
     @classmethod
@@ -72,6 +83,10 @@ class DebitNoteIn(BaseModel):
 
 
 class DebitNoteUpdateIn(BaseModel):
+    """The note can be cleared (POST-A-399): `notes` is typed by the person, is not a Rule 46 / s.34 particular and is a NULL-able column, so a
+    request that sends it as null (or blank) takes it away (`models.clearable.patch_dict`). Everything else reads null as "not sent", and the
+    attached copy of a purchase note (`document_url`) is evidence, so it is not clearable."""
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
     vendor_id: str | None = None
     debit_note_date: str | None = None
     purchase_bill_id: str | None = None
@@ -236,6 +251,7 @@ def create_debit_note(data: DebitNoteIn, current_user: dict = Depends(rbac("acco
             "firm_id": firm_id, "client_id": client_id, "vendor_id": data["vendor_id"],
             "purchase_bill_id": data.get("purchase_bill_id"),
             "debit_note_date": data["debit_note_date"], "reason": data.get("reason", ""),
+            "notes": data.get("notes"), "document_url": data.get("document_url"),
             "is_interstate": is_interstate, "is_reverse_charge": bool(data.get("is_reverse_charge")),
             "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
             "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
@@ -310,7 +326,7 @@ def update_debit_note(dn_id: str, data: DebitNoteUpdateIn, current_user: dict = 
     GST/AP figures), mirroring purchase_bills.py's draft/locked split."""
     _assert_dn_scope(current_user, dn_id)
     try:
-        data = data.model_dump(exclude_none=True)
+        data = patch_dict(data)
         lines_data = data.pop("lines", None)
         soft_fields = {"notes", "document_url"}
 

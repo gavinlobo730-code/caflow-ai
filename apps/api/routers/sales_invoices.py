@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError
+from models.clearable import patch_dict
 from models.common import api_response
 from models.invoices import SalesInvoiceIn, SalesInvoiceUpdateIn
 from domain.gst import discount as gst_discount
@@ -1793,7 +1794,8 @@ def update_invoice(
     _reject_locked_invoice_fields. CANCELLED: cannot be updated at all."""
     _assert_invoice_scope(current_user, invoice_id)
     try:
-        data = data.model_dump(exclude_none=True)
+        # A reference or a note SENT AS NULL is cleared (POST-A-399); every other null (the due date and the credit days included) still reads as "not sent".
+        data = patch_dict(data)
         # The request model field is is_inter_state; the DB column is is_interstate.
         # Map it so the flag (the form's IGST checkbox) both drives the GST recompute
         # below and persists correctly — without this the column write would 400.

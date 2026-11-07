@@ -30,10 +30,11 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
+from models.clearable import patch_dict
 from models.common import api_response
 from models.invoices import InvoiceLineIn
 from domain.accounting import opening_documents as _opening
@@ -64,6 +65,13 @@ class SalesDebitNoteIn(BaseModel):
     sales_invoice_id: str | None = None
     reason: str | None = None
     is_interstate: bool = False
+    #: The note the Notes box on the new-debit-note screen takes (the create model had no such field, so a note typed there was dropped: POST-A-399).
+    notes: str | None = None
+
+    @field_validator("notes")
+    @classmethod
+    def _a_blank_note_is_no_note(cls, v):
+        return (v.strip() or None) if isinstance(v, str) else v
 
     @field_validator("lines")
     @classmethod
@@ -74,6 +82,9 @@ class SalesDebitNoteIn(BaseModel):
 
 
 class SalesDebitNoteUpdateIn(BaseModel):
+    """The note can be cleared (POST-A-399): `notes` is typed by the person, is not a Rule 46 / s.34 particular and is a NULL-able column, so a
+    request that sends it as null (or blank) takes it away (`models.clearable.patch_dict`). Everything else reads null as "not sent"."""
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
     customer_id: str | None = None
     debit_note_date: str | None = None
     sales_invoice_id: str | None = None
@@ -226,6 +237,7 @@ def create_sales_debit_note(data: SalesDebitNoteIn, current_user: dict = Depends
             "firm_id": firm_id, "client_id": client_id, "customer_id": data["customer_id"],
             "sales_invoice_id": data.get("sales_invoice_id"),
             "debit_note_date": data["debit_note_date"], "reason": data.get("reason", ""),
+            "notes": data.get("notes"),
             "is_interstate": is_interstate,
             "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
             "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
@@ -297,7 +309,7 @@ def update_sales_debit_note(sdn_id: str, data: SalesDebitNoteUpdateIn, current_u
     Invoice baseline, which has none either)."""
     _assert_sdn_scope(current_user, sdn_id)
     try:
-        data = data.model_dump(exclude_none=True)
+        data = patch_dict(data)
         lines_data = data.pop("lines", None)
         soft_fields = {"notes"}
 

@@ -38,6 +38,7 @@ import {
   previewTotals, isValidLine,
   type Customer, type InvoiceLine,
 } from "@/lib/invoices/shared";
+import { editedText } from "@/lib/forms/editedValue";
 import { validateSalesDebitNoteEditor } from "@/lib/sales/salesDebitNoteEditor";
 
 import { todayLocalISO } from "@/lib/dateMath";
@@ -275,14 +276,14 @@ export function SalesDebitNoteEditor({
 
       if (isEdit && existing) {
         const patchPayload = isLocked
-          ? { notes: notes.trim() || undefined }
+          ? { notes: editedText(notes, existing.notes) }
           : {
               customer_id: customerId,
               debit_note_date: dnDate,
               sales_invoice_id: invoiceId || undefined,
               reason: reason.trim() || undefined,
               is_interstate: isInterstate,
-              notes: notes.trim() || undefined,
+              notes: editedText(notes, existing.notes),
               lines: linePayload,
             };
         const upd = await apiCall(`/api/sales-debit-notes/${existing.id}`, "PATCH", patchPayload, token);
@@ -298,6 +299,8 @@ export function SalesDebitNoteEditor({
             sales_invoice_id: invoiceId || undefined,
             reason: reason.trim() || undefined,
             is_interstate: isInterstate,
+            // The box says "Internal notes" and the create used to leave it out, so a note typed on a new debit note was dropped without a word (POST-A-399); the server stores it now.
+            notes: notes.trim() || undefined,
             lines: linePayload,
           },
           token,

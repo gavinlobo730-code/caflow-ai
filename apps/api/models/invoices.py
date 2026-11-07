@@ -7,7 +7,7 @@ All monetary values in integer paise.
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from domain.gst import uqc as _uqc
-from typing import Optional, Any
+from typing import ClassVar, FrozenSet, Optional, Any
 from decimal import Decimal
 from domain.money_sentence import amount_text
 from models.iso_date import a_day_that_has_happened
@@ -408,7 +408,14 @@ class SalesInvoiceUpdateIn(BaseModel):
     content (invoice_no, dates, customer, line qty/rate/HSN/GST,
     is_inter_state) is locked post-issue; a correction to those must go
     through a Credit Note (CGST Act §34), not a silent edit.
+
+    THE TWO FREE-TEXT PARTICULARS CAN BE CLEARED (POST-A-399): a reference and a note are typed by the person, are not Rule 46 content, and are
+    NULL-able columns, so a request that sends one as null (or blank) takes it away (`models.clearable.patch_dict`). The due date and the credit
+    days are NOT clearable: every invoice made here carries a due date (a create that names none resolves one from the customer's terms or 30 days,
+    and the collections and ageing readers say so), so a null for either still reads "not sent" and the screen refuses to empty a due date that is
+    on file. Every other field reads null as "not sent" too.
     """
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"reference_no", "notes"})
     customer_id: Optional[str] = None
     # Editable only while the invoice is a draft (enforced by the router,
     # which already blocks any update once issued) — same manual, CA-owned
@@ -652,7 +659,14 @@ class PurchaseBillUpdateIn(BaseModel):
     line_units — bill_no, bill_date, lines and is_inter_state are locked
     post-receipt, matching the same rule applied to sales invoices
     (routers/sales_invoices.py).
+
+    THE TWO FREE-TEXT PARTICULARS CAN BE CLEARED (POST-A-399): our reference and the note. NOT the due date or the credit days (every bill made here
+    carries a due date, so the screen refuses to empty one that is on file and a null for either still reads "not sent"), and NOT the bill number,
+    the attached copy of the supplier's invoice or the Form 15CA / 15CB references: those are the evidence of the bill, and a request that sends one
+    as null still reads it as "not sent". (The screen refuses to empty the Form 15CA DATE, POST-A-388; it does not yet refuse to empty the other
+    evidence texts, which is still POST-A-399's.)
     """
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"our_reference", "notes"})
     bill_date: Optional[str] = None
     due_date: Optional[str] = None
     credit_days: Optional[int] = None

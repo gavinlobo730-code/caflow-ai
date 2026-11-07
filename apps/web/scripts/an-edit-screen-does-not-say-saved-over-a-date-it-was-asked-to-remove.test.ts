@@ -17,8 +17,11 @@
 //  4. the box's own sentence for text that is not a day comes first (an unreadable box hands up "" too): the derived value reads `<dates>.problems.<key>` and that key is one the screen
 //     really watches, so the exclusion is not silently dead.
 //
-// WHAT THIS CANNOT SEE. A fifth edit screen with the same shape (a date box sent as `date || undefined` on a PATCH) is not found by it: the population is POST-A-388's four, named. What
-// each does in a browser is held by the date drive (`a-date-on-file-is-replaced-and-not-emptied-*`, three locale and zone pairs each), and the sentence's words by
+// POST-A-399 ADDED TWO MORE, FOR A DIFFERENT REASON: the due date of an invoice and of a bill. They are not evidence, but every document of the two kinds carries one (a create that names none
+// resolves one) and the routes read a null as "not sent", so the screens refuse to save over one that was emptied instead of offering to clear it.
+//
+// WHAT THIS CANNOT SEE. Another edit screen with the same shape (a date box sent as `date || undefined` on a PATCH) is not found by it: the population is POST-A-388's four and POST-A-399's
+// two, named. What each does in a browser is held by the date drive (`a-date-on-file-is-replaced-and-not-emptied-*`, three locale and zone pairs each), and the sentence's words by
 // `lib/dates/removedDate.test.ts`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -100,6 +103,16 @@ const FORMS: Form[] = [
     onFile: "account?.opening_balance_date", box: "openingDate", derived: "openingCleared", latch: "openingRefusal", dates: "dates", key: "openingDate",
     latched: "openingCleared", drawn: /openingRefusal\.shown\s*&&/, asks: /if \(openingCleared\) \{[^}]*openingRefusal\.refuse\(\);\s*return;\s*\}/,
   },
+  {
+    name: "the invoice editor's due date", file: "components/invoices/InvoiceEditor.tsx", what: "The due date",
+    onFile: "initialSnapshot.current.dueDate", box: "dueDate", derived: "dueDateCleared", latch: "dueDateRefusal", dates: "dates", key: "dueDate",
+    latched: "dueDateCleared", drawn: /dueDateRefusal\.shown\s*&&/, asks: /if \(dueDateCleared\) \{[^}]*dueDateRefusal\.refuse\(\);\s*return;\s*\}/,
+  },
+  {
+    name: "the bill editor's due date", file: "components/purchases/PurchaseBillEditor.tsx", what: "The due date",
+    onFile: "initialSnapshot.current.dueDate", box: "dueDate", derived: "dueDateCleared", latch: "dueDateRefusal", dates: "dates", key: "dueDate",
+    latched: "dueDateCleared", drawn: /dueDateRefusal\.shown\s*&&/, asks: /if \(dueDateCleared\) \{[^}]*dueDateRefusal\.refuse\(\);\s*return;\s*\}/,
+  },
 ];
 
 for (const f of FORMS) {
@@ -110,7 +123,7 @@ for (const f of FORMS) {
     assert.match(src, /import \{ removedDateProblem \} from "@\/lib\/dates\/removedDate";/, `${f.file} does not import removedDateProblem`);
     const call = new RegExp(`removedDateProblem\\(\\s*"${esc(f.what)}",\\s*${esc(f.onFile)},\\s*${esc(f.box)}[,)]`);
     assert.match(src, call, `${f.file} does not ask removedDateProblem("${f.what}", ${f.onFile}, ${f.box}): the date on file is the record the form opened with and the box is what it holds now`);
-    assert.equal((src.match(/removedDateProblem\(/g) ?? []).length, 1, `${f.file} asks removedDateProblem more than once`);
+    assert.equal((src.match(new RegExp(`removedDateProblem\\(\\s*"${esc(f.what)}"`, "g")) ?? []).length, 1, `${f.file} asks removedDateProblem for "${f.what}" more than once`);
   });
 
   test(`${f.name}: the sentence is derived and latched, and never copied into the form's error`, () => {

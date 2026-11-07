@@ -36,9 +36,9 @@
  * --zone <which>   which of those zones the date scenarios run under: `all` (the default), `rotate` (ONE zone, the matrix's zones in turn,
  *                  a new one each INDIAN day, with the part below) or the id of one zone (`Asia/Kolkata`). A scenario with no context in the
  *                  chosen zone runs all of its own.
- * --shard <which>  which half of the date group to drive: `all` (the default for a zone that is not `rotate`), `rotate` (the default for
- *                  `--zone rotate`: one half, a new one every third Indian day) or 0 or 1. The other groups run in full whatever the part.
- *                  What the nightly asks for is `--zone rotate`: a zone and a half a night, so a night fits its allowance and over six
+ * --shard <which>  which third of the date group to drive: `all` (the default for a zone that is not `rotate`), `rotate` (the default for
+ *                  `--zone rotate`: one third, a new one every third Indian day) or 0, 1 or 2. The other groups run in full whatever the part.
+ *                  What the nightly asks for is `--zone rotate`: a zone and a third a night, so a night fits its allowance and over nine
  *                  nights every zone sees every date scenario once (`drive/kit.mjs` holds the rule, `the-nightly-drive-...test.ts` the proof).
  * --stop-after <minutes>  a deadline for the drive: after it the runner STARTS NO MORE scenarios, writes its report (`complete: false`, the runs it did not drive named in
  *                  `not_driven`) and exits 1. The workflow's job has an allowance, and a job that runs past it is cancelled WITHOUT running its later steps, the one that uploads
