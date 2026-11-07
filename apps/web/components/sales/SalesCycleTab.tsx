@@ -30,10 +30,11 @@ import {
 } from "@/lib/api";
 import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { Itc04Panel } from "@/components/gst/Itc04Panel";
+import { StateLookup } from "@/components/lookups/StateLookup";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
-import { todayIstISO } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 
 type Tab = "quotations" | "orders" | "challans";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -79,6 +80,8 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   const backSaid = (c: DeliveryChallan): string | null =>
     (backAnswer && backAnswer.id === c.id ? `${c.document_no}: ${backAnswer.text}` : null) || (backTried === c.id ? backRefusal.shown : null);
   const [detail, setDetail] = useState<ChallanParticulars | null>(null);
+  // What the server answered the last press of "Issue challan" with, for WHICH challan: said beside the button that raised it, in the open detail (POST-A-398).
+  const [issueAnswer, setIssueAnswer] = useState<{ id: string; text: string } | null>(null);
   const [position, setPosition] = useState<OrderPosition | null>(null);
 
   const [form, setForm] = useState({
@@ -97,6 +100,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     transporter_name: "",
     vehicle_no: "",
     is_inter_state: false,
+    place_of_supply: "",
     notes: "",
   });
   const [lines, setLines] = useState([{ ...BLANK_LINE }]);
@@ -211,6 +215,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           transporter_name: form.transporter_name || null,
           vehicle_no: form.vehicle_no || null,
           is_inter_state: form.is_inter_state,
+          place_of_supply: form.is_inter_state && form.place_of_supply ? form.place_of_supply : null,
           notes: form.notes || null, lines: body,
         });
       }
@@ -260,6 +265,30 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     setBackTried(null);
     backRefusal.clear();
     await load();
+  }
+
+  /** Issue a draft challan: the goods leave on it (POST-A-398). The server asks what a challan must hold when it leaves (goods on it, a date that has come, Rule 55(1)'s particulars, what a job-work
+   *  challan sends) and answers a refusal in a sentence, which is said beside the button. This screen decides none of it. */
+  async function issue(challan: DeliveryChallan) {
+    setIssueAnswer(null);
+    try {
+      const res = await api.salesCycle.issueChallan(challan.id, clientId);
+      if (!res.success) {
+        setIssueAnswer({ id: challan.id, text: res.error || "That was refused." });
+        return;
+      }
+    } catch (e) {
+      setIssueAnswer({ id: challan.id, text: e instanceof Error ? e.message : "That was refused." });
+      return;
+    }
+    setMsg({ type: "ok", text: `Challan ${challan.document_no} issued.` });
+    await load();
+    // The open detail is the draft's; read it again so it shows the challan as issued. If that read fails the list already shows the new status, so the stale detail is closed. Only the detail of THIS
+    // challan is replaced: the person may have opened another while the press was answered, and that one is not written over (nor one they closed opened again).
+    const fresh = await api.salesCycle.challan(challan.id, clientId).then(
+      (r) => (r.success && r.data ? objectWithLists<ChallanParticulars>(r.data, "copies", "missing", "particulars") : null),
+      () => null);
+    setDetail((open) => (open && open.challan?.id === challan.id ? fresh : open));
   }
 
   if (loading) {
@@ -330,7 +359,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
-            onClick={() => { setTab(id); setShowForm(false); setDetail(null); setBackTried(null); setBackAnswer(null); backRefusal.clear(); }}
+            onClick={() => { setTab(id); setShowForm(false); setDetail(null); setIssueAnswer(null); setBackTried(null); setBackAnswer(null); backRefusal.clear(); }}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
               tab === id ? "bg-brand text-white" : "bg-ps-muted text-ps-body"
             }`}
@@ -347,7 +376,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       </div>
 
       {msg && (
-        <div className={`rounded p-2 text-sm ${
+        <div role={msg.type === "ok" ? "status" : "alert"} className={`rounded p-2 text-sm ${
           msg.type === "ok" ? "bg-state-ready-surface text-state-ready" : "bg-state-problem-surface text-state-problem"
         }`}>{msg.text}</div>
       )}
@@ -547,6 +576,14 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
               />
               Inter-state movement
             </label>
+
+            {tab === "challans" && form.is_inter_state && (
+              <div className="text-sm">
+                <span className="mb-1 block text-ps-label">Place of supply (CGST Rule 55(1)(viii))</span>
+                <StateLookup placeOfSupply value={form.place_of_supply} onChange={(code) => setForm({ ...form, place_of_supply: code })}
+                  placeholder="— Select —" ariaLabel="Place of supply" clearable />
+              </div>
+            )}
           </div>
 
           <div className="mt-4">
@@ -620,6 +657,13 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
               ?.is_a_supply === false && (
             <p className="mt-3 text-xs text-ps-label">
               {vocab.no_tax_on_a_non_supply}
+            </p>
+          )}
+
+          {tab === "challans" && (
+            <p className="mt-3 text-xs text-ps-label">
+              CGST Rule 55(1) asks for the HSN code of every line, the consignee and, for an inter-State movement, the place of supply. A job-work challan also says what it sends, because the period under
+              s.143 depends on it. A challan is saved as a draft and issued when its goods leave; a draft is not edited on this screen, so a challan saved without one of these is made again, with a new number.
             </p>
           )}
 
@@ -710,12 +754,20 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             ])}
             empty="No delivery challans yet."
             onRow={(i) => {
+              setIssueAnswer(null);       // an answer to an earlier press is not the answer to a challan opened now
               void api.salesCycle.challan(challans[i].id, clientId)
                 .then((r) => { if (r.success && r.data) setDetail(objectWithLists<ChallanParticulars>(r.data, "copies", "missing", "particulars")); });
             }}
           />
 
-          {challans.some((c) => c.clock?.applies && !c.received_back_on) && (
+          {challans.some((c) => c.status === "draft") && (
+            <p className="text-xs text-ps-label">
+              {challans.filter((c) => c.status === "draft").length} in draft. A draft is not recorded as issued: no period runs on it here and it is not on FORM GST ITC-04. If the goods on a
+              draft have left, open it and issue it.
+            </p>
+          )}
+
+          {challans.some((c) => (c.status === "issued" || c.status === "received_back") && c.clock?.applies && !c.received_back_on) && (
             <div className="rounded border border-ps-border bg-white p-4">
               <h4 className="mb-1 text-sm font-semibold">
                 Mark a whole challan back at once
@@ -726,7 +778,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                 keeps what is still outstanding.
               </p>
               <div className="space-y-2">
-                {challans.filter((c) => c.clock?.applies && !c.received_back_on)
+                {challans.filter((c) => (c.status === "issued" || c.status === "received_back") && c.clock?.applies && !c.received_back_on)
                   .map((c) => (
                     <div key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
                       <span className="font-mono">{c.document_no}</span>
@@ -754,16 +806,39 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             </div>
           )}
 
-          <Itc04Panel clientId={clientId} onChanged={() => void load()} refreshToken={itc04Refresh} />
-
           {detail && (
             <div className="rounded border border-ps-border bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold">
                   {detail.rule} — {detail.reason_label}
                 </h4>
-                <button onClick={() => setDetail(null)}><X size={14} /></button>
+                <button aria-label="Close the challan" onClick={() => { setDetail(null); setIssueAnswer(null); }}><X size={14} /></button>
               </div>
+              {detail.challan && detail.challan.status === "draft" && (
+                <div className="mb-3 rounded border border-ps-border bg-ps-muted p-3 text-sm">
+                  <div className="font-medium text-ps-ink">Challan {detail.challan.document_no} is a draft</div>
+                  <p className="mt-1 text-xs text-ps-body">
+                    A draft is not recorded as issued. Issuing records that the goods left on {formatDate(detail.challan.document_date)}, the challan&apos;s date: any period under the Act is run from that day, a job-work
+                    challan is listed on FORM GST ITC-04, and goods can be recorded as back on it only once it is issued. Nothing is sent to any portal.
+                  </p>
+                  {detail.clock.consequence && <p className="mt-1 text-xs text-ps-body">{detail.clock.consequence}</p>}
+                  {detail.missing.length > 0 && (
+                    <p className="mt-1 text-xs text-state-attention">
+                      Rule 55(1) asks for what is listed under &ldquo;Still to be recorded&rdquo; below, and the server will not issue the challan without it. A draft is not edited on this screen: a challan that
+                      lacks it is made again, with a new number.
+                    </p>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button variant="plain" size="none" onClick={() => issue(detail.challan as DeliveryChallan)}
+                      className="rounded bg-brand px-3 py-1 text-xs text-white disabled:opacity-50">
+                      Issue challan
+                    </Button>
+                  </div>
+                  {issueAnswer && issueAnswer.id === detail.challan.id && (
+                    <p role="alert" className="mt-2 text-xs text-state-problem">{issueAnswer.text}</p>
+                  )}
+                </div>
+              )}
               <Table
                 head={["Clause", "Particular", "On the document"]}
                 rows={detail.particulars.map((p) => [
@@ -802,6 +877,9 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
               )}
             </div>
           )}
+
+          {/* The challan that was opened is above this panel, so the card a row opens (and the Issue challan in it) is next to the list and not under a form that can be a screen long. */}
+          <Itc04Panel clientId={clientId} onChanged={() => void load()} refreshToken={itc04Refresh} />
         </div>
       )}
     </div>
@@ -831,7 +909,12 @@ function Table({ head, rows, empty, onRow }: {
               className={`border-t border-ps-border ${onRow ? "cursor-pointer hover:bg-ps-hover" : ""}`}
             >
               {r.map((cell, j) => (
-                <td key={j} className="px-3 py-2 tabular-nums">{cell}</td>
+                <td key={j} className="px-3 py-2 tabular-nums">
+                  {onRow && j === 0 ? (
+                    // A click anywhere in the row opens it; its first cell is also a button, so the keyboard reaches what is inside the row (the draft's Issue challan is only there).
+                    <button type="button" className="text-left underline-offset-2 hover:underline focus-visible:underline" onClick={(e) => { e.stopPropagation(); onRow(i); }}>{cell}</button>
+                  ) : cell}
+                </td>
               ))}
             </tr>
           ))}
