@@ -92,6 +92,7 @@ def _calls():
         ("challan particulars", lambda: sc.challan_particulars(DC, client_id=A, current_user=USER), "That delivery challan was not found."),
         ("challan PATCH", lambda: sc.update_challan(DC, sc.DeliveryChallanUpdateIn(received_back_on="2026-06-30"), client_id=A,
                                                     current_user=USER), "That delivery challan was not found."),
+        ("challan issue", lambda: sc.issue_challan(DC, client_id=A, current_user=USER), "That delivery challan was not found."),
         ("purchase order lines", lambda: pc.order_lines(PO, client_id=A, current_user=USER), "That purchase order was not found."),
         ("purchase order position", lambda: pc.order_position(PO, client_id=A, current_user=USER), "That purchase order was not found."),
         ("purchase order PATCH", lambda: pc.update_order(PO, pc.PurchaseOrderUpdateIn(notes="forged"), client_id=A, current_user=USER),
@@ -213,7 +214,7 @@ def test_every_handler_with_a_document_id_in_its_path_ties_the_document_to_the_c
 
 def test_the_exemptions_are_still_needed_and_the_rule_is_not_vacuous():
     covered = {r: [n for n, s in _id_handlers(r) if _calls_a_helper(s)] for r in ("sales_cycle.py", "purchase_cycle.py")}
-    assert len(covered["sales_cycle.py"]) == 6 and len(covered["purchase_cycle.py"]) == 6, covered
+    assert len(covered["sales_cycle.py"]) == 7 and len(covered["purchase_cycle.py"]) == 6, covered      # 7: the challan issue door (POST-A-398) ties the challan to the client too
     for (router, name) in EXEMPT:
         handlers = dict(_id_handlers(router))
         assert name in handlers and not _calls_a_helper(handlers[name]), (router, name)
@@ -253,6 +254,7 @@ WIRING = {
     (sc, "update_order"): ("row_of_client", ("sales_orders", SO, A, "sales order")),
     (sc, "challan_particulars"): ("row_of_client", ("delivery_challans", DC, A, "delivery challan")),
     (sc, "update_challan"): ("row_of_client", ("delivery_challans", DC, A, "delivery challan")),
+    (sc, "issue_challan"): ("row_of_client", ("delivery_challans", DC, A, "delivery challan")),
     (pc, "order_lines"): ("order_of_client", (PO, A)),
     (pc, "order_position"): ("order_of_client", (PO, A)),
     (pc, "update_order"): ("order_of_client", (PO, A)),
@@ -265,7 +267,7 @@ WIRING = {
 def _drive(mod, name):
     fn = getattr(mod, name)
     ids = {"quotation_lines": QT, "update_quotation": QT, "order_position": SO if mod is sc else PO, "update_order": SO if mod is sc else PO,
-           "challan_particulars": DC, "update_challan": DC, "order_lines": PO, "receipt_lines": GR, "update_receipt": GR, "match_bill": PB}
+           "challan_particulars": DC, "update_challan": DC, "issue_challan": DC, "order_lines": PO, "receipt_lines": GR, "update_receipt": GR, "match_bill": PB}
     args = [ids[name]]
     models = {(sc, "update_quotation"): sc.QuotationUpdateIn(), (sc, "update_order"): sc.SalesOrderUpdateIn(),
               (sc, "update_challan"): sc.DeliveryChallanUpdateIn(), (pc, "update_order"): pc.PurchaseOrderUpdateIn(),

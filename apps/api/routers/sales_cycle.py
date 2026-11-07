@@ -234,28 +234,8 @@ def challan_particulars(
                                    "ca_review_required": True})
     db = _db()
     svc.row_of_client(db, "delivery_challans", current_user.get("firm_id"), challan_id, client_id, "delivery challan")
-    # Rule 55(1)(ii)'s consigner is the CLIENT whose goods are moving — not the
-    # CA firm. SALES-01 was exactly this mistake on the tax invoice: the PDF
-    # named the practice as the supplier, with the practice's own GSTIN, on the
-    # client's outward document.
-    res = (db.table("clients")
-           .select("id, client_name, legal_name, trade_name, gstin, "
-                   "address_line1, address_line2, city, state, pincode")
-           .eq("firm_id", current_user.get("firm_id")).eq("id", client_id)
-           .limit(1).execute())
-    consigner = None
-    if res.data:
-        row = res.data[0]
-        consigner = {
-            "legal_name": row.get("legal_name") or row.get("trade_name")
-            or row.get("client_name"),
-            "gstin": row.get("gstin"),
-            "address": ", ".join(
-                str(b).strip() for b in (row.get("address_line1"),
-                                         row.get("address_line2"),
-                                         row.get("city"), row.get("state"),
-                                         row.get("pincode")) if (b or "").strip()),
-        }
+    # Rule 55(1)(ii)'s consigner is the CLIENT whose goods are moving — not the CA firm (`svc.consigner_of`, which the issue door reads too).
+    consigner = svc.consigner_of(db, current_user.get("firm_id"), client_id)
     return api_response(True, svc.challan_particulars(
         db, current_user.get("firm_id"), challan_id, consigner=consigner))
 
@@ -350,6 +330,35 @@ def record_challan_return(
     return api_response(True, row)
 
 
+@router.post("/challans/{challan_id}/issue")
+def issue_challan(
+    challan_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("invoice", "write")),
+):
+    """Issue a draft challan: the goods leave on it (POST-A-398).
+
+    The one door that makes a challan `issued`. Issuing records that the goods left on the challan's own date: any period under the Act (s.143 for job work, s.31(7) for goods on approval) is
+    run from that date, a job-work challan becomes a row of FORM GST ITC-04, the goods count as delivered against the order it names, and goods can come back on it. It asks that the challan
+    is a draft with goods on it, dated no later than today, that Rule 55(1) has every particular it requires of this challan, for job work what is sent, and that its goods are not more than
+    its order has undelivered; each refusal is a sentence, and nothing is written before them. Prepare-only: nothing is transmitted to a portal.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    from services.audit_service import log_event
+    assert_client_access(current_user, client_id)
+    if _mock():
+        return api_response(True, {"id": challan_id, "status": "issued"})
+    db = _db()
+    firm_id = current_user.get("firm_id")
+    svc.row_of_client(db, "delivery_challans", firm_id, challan_id, client_id, "delivery challan")
+    row = svc.issue_challan(db, firm_id, challan_id, client_id=client_id, consigner=svc.consigner_of(db, firm_id, client_id))
+    log_event(firm_id or "", "delivery_challan_issue", str(row.get("id") or ""),
+              "update", actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"), new_data={"id": row.get("id"), "document_no": row.get("document_no"), "status": row.get("status")})
+    return api_response(True, row)
+
+
 @router.patch("/challans/{challan_id}")
 def update_challan(
     challan_id: str,
@@ -367,12 +376,31 @@ def update_challan(
     is a correction to what the document SAYS — the consignee, the
     transporter, the vehicle — which Rule 55(1) requires and which a CA fills
     in when the lorry is booked.
+
+    THE STATUS IT MAY GIVE IS A TABLE (POST-A-398, `delivery_challan.AMENDMENT_MAY_MAKE`): a draft
+    may be cancelled; an issued challan may be received back (with the day) or cancelled, and a
+    cancel is refused once a lot is recorded against it on FORM GST ITC-04; a challan whose goods
+    are back, or that is cancelled, is at its end. `issued` is never given here: a draft is made
+    issued by `POST /challans/{id}/issue`, the one door that records that the goods left. An
+    issued (or received-back) challan is not amended into what issuing would have refused.
     """
+    from services.audit_service import log_event
     assert_client_access(current_user, client_id)
     if _mock():
         return api_response(True, {"id": challan_id,
                                    "received_back_on": payload.received_back_on,
                                    "status": payload.status or "draft"})
-    svc.row_of_client(_db(), "delivery_challans", current_user.get("firm_id"), challan_id, client_id, "delivery challan")
-    return api_response(True, svc.update_challan(
-        _db(), current_user.get("firm_id"), challan_id, payload.model_dump()))
+    firm_id = current_user.get("firm_id")
+    before = svc.row_of_client(_db(), "delivery_challans", firm_id, challan_id, client_id, "delivery challan")
+    sent = payload.model_dump()
+    row = svc.update_challan(_db(), firm_id, challan_id, sent)
+    # What was amended is recorded (POST-A-398): a cancel, a back day, a moved date or a changed kind of goods changes what is owed on a return, and until now left no trace. The fields that
+    # decide a period are recorded as they were and as they are; of every other field only its NAME is, never the value of a consignee.
+    deciding = ("status", "document_date", "received_back_on", "goods_kind", "extended_to")
+    log_event(firm_id or "", "delivery_challan_update", str(row.get("id") or challan_id),
+              "update", actor_id=current_user.get("auth_user_id"),
+              actor_email=current_user.get("email"),
+              old_data={k: before.get(k) for k in deciding},
+              new_data={"id": row.get("id") or challan_id, "document_no": row.get("document_no"), **{k: row.get(k) for k in deciding},
+                        "fields": sorted(k for k, v in sent.items() if v is not None and k != "lines")})
+    return api_response(True, row)

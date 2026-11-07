@@ -221,9 +221,13 @@ def order_status_for(lines: Iterable[OpenLine], current: str) -> str:
     live: a cancelled or closed order is a decision somebody took and is not
     re-opened by arithmetic. `closed` likewise — a CA closes an order that
     will never be fully delivered (the customer took less than they ordered),
-    and recomputing would re-open it on every read.
+    and recomputing would re-open it on every read. `delivered` is NOT a
+    decision: it is what the lines say, so it follows them — a challan
+    cancelled after the order was delivered puts the order back (POST-A-398).
+    (A person who sets `delivered` by hand through the API sees it re-derived
+    at the next challan event on the order, issuing or cancelling one.)
     """
-    if current not in ORDER_OPEN_STATUSES:
+    if current not in ORDER_OPEN_STATUSES and current != "delivered":
         return current
     rows = list(lines)
     if not rows:

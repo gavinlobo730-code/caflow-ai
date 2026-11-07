@@ -98,6 +98,7 @@ def _job_work_challan(db, document_date="2026-06-01"):
     svc.create_challan(db, "F1", {
         "client_id": "C1", "document_no": "DC/17", "document_date": document_date, "reason": dc.REASON_JOB_WORK, "goods_kind": dc.GOODS_KIND_INPUTS,
         "lines": [{"description": "Casting", "quantity": 1, "rate_paise": 100}]})
+    db.store["delivery_challans"][-1]["status"] = "issued"     # goods come back on a challan they left on (POST-A-398); the issue door has its own tests
     return db.store["delivery_challans"][-1]["id"]
 
 

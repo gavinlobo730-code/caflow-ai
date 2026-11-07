@@ -244,6 +244,7 @@ def list_challans(db, firm_id: str, client_id: str) -> list:
             goods_kind=r.get("goods_kind"),
             received_back_on=r.get("received_back_on"),
             extended_to=r.get("extended_to"),
+            status=r.get("status"),
         ).as_dict()
     return rows
 
@@ -264,7 +265,7 @@ def challan_lines(db, firm_id: str, challan_id: str) -> list:
 
 # ── What an order still has open ─────────────────────────────────────────────
 
-def order_open_position(db, firm_id: str, order_id: str) -> dict:
+def order_open_position(db, firm_id: str, order_id: str, *, with_drafts: bool = False) -> dict:
     """Per order line: ordered, delivered, invoiced, and what is left of each.
 
     DERIVED, never stored — migration 278's reasoning applied to a quantity: a
@@ -278,9 +279,15 @@ def order_open_position(db, firm_id: str, order_id: str) -> dict:
     reporting rule forbids. An order has tens of lines; a client has thousands
     of challan lines.
 
-    THE PARENT'S STATUS IS READ, not just the line. A cancelled challan has
-    delivered nothing, and a query that forgot that would show a fully
+    THE PARENT'S STATUS IS READ, not just the line. Goods count as delivered
+    once they have LEFT: on an issued challan, or one whose goods have since
+    come back (`delivery_challan.GOODS_HAVE_LEFT`). A cancelled challan has
+    delivered nothing, and a DRAFT is not recorded as issued (POST-A-398), so
+    neither counts; a query that forgot the parent would show a fully
     delivered order for goods that never left.
+
+    `with_drafts` asks the other question, "what challans hang from these lines?": a draft is a challan whose goods are not out, and it still points at an order line, so the order's lines
+    are not re-priced or deleted from under it (`update_order`). The default answers what has been delivered.
     """
     order = _one(db, "sales_orders", firm_id, order_id,
                  "sales order")
@@ -303,7 +310,7 @@ def order_open_position(db, firm_id: str, order_id: str) -> dict:
                     .select("id, status").eq("firm_id", firm_id)
                     .in_("id", challan_ids),
                     key="id", label="sales_cycle.delivered_parents"):
-                if str(c.get("status")) != "cancelled":
+                if str(c.get("status")) in (dc.GOODS_HAVE_LEFT + ((dc.STATUS_DRAFT,) if with_drafts else ())):
                     live.add(str(c.get("id")))
         for r in rows:
             if str(r.get("challan_id")) not in live:
@@ -590,9 +597,31 @@ def create_order(db, firm_id: str, payload: dict,
     return row
 
 
+def _consignee_of_party(db, firm_id: str, client_id: str, customer_id, vendor_id) -> dict:
+    """The name, GSTIN and address of the party a challan names as its consignee (a customer, or a vendor who is the job worker), or `{}`. Read for a challan that types no consignee of its own."""
+    cols = {"name": None, "gstin": None, "address": None}
+    if customer_id:
+        rows = (db.table("customers").select("id, name, gstin, address, city, state, pincode")
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", str(customer_id)).limit(1).execute().data) or []
+    elif vendor_id:
+        rows = (db.table("vendors").select("id, name, gstin, address, city, state, pincode")
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", str(vendor_id)).limit(1).execute().data) or []
+    else:
+        rows = []
+    if not rows:
+        return cols
+    r = rows[0]
+    return {"name": r.get("name"), "gstin": r.get("gstin"),
+            "address": ", ".join(str(b).strip() for b in (r.get("address"), r.get("city"), r.get("state"), r.get("pincode")) if (b or "").strip()) or None}
+
+
 def create_challan(db, firm_id: str, payload: dict,
                    actor_id: Optional[str] = None) -> dict:
-    """Issue a Rule 55 delivery challan.
+    """Make a Rule 55 delivery challan, as a DRAFT (POST-A-398): `issue_challan` is what records that the goods left on it.
+
+    THE CONSIGNEE THE CHALLAN NAMES FILLS ITS CONSIGNEE PARTICULARS WHEN NONE WERE TYPED. The screen offers "Consignee (customer)" and the Rule 55(1)(iii) clause reads the typed name, address
+    and GSTIN, so a challan made by picking the customer alone held none of them and could not be issued. If the payload types none of the three, the named customer's (or the job worker's) are
+    copied; if it types any, the typed ones stand and nothing is mixed in (a typed branch name with the head office's GSTIN is a wrong document).
 
     THE MOVEMENT'S REASON DECIDES WHETHER THE LINES CARRY TAX. Rule 55(1)(vii)
     requires the rate and amount only "where the transportation is for supply
@@ -624,6 +653,11 @@ def create_challan(db, firm_id: str, payload: dict,
     if over:
         raise HTTPException(status_code=422, detail=" ".join(over))
 
+    typed = [(payload.get(k) or "").strip() for k in ("consignee_name", "consignee_gstin", "consignee_address")]
+    party = {} if any(typed) else _consignee_of_party(db, firm_id, client_id, payload.get("customer_id"), payload.get("vendor_id"))
+    # The STRIPPED typed values decide (a space typed in a box is a blank, and is not stored beside the customer's GSTIN and address).
+    consignee_name, consignee_gstin, consignee_address = (typed[0] or party.get("name") or None, typed[1] or party.get("gstin") or None, typed[2] or party.get("address") or None)
+
     now = ist_now().isoformat()
     # The payload is written INLINE rather than built above and inserted by
     # name: the column guard resolves no variable, and an insert it cannot
@@ -641,9 +675,9 @@ def create_challan(db, firm_id: str, payload: dict,
         "extended_to": payload.get("extended_to"),
         "sales_invoice_id": payload.get("sales_invoice_id"),
         "order_id": payload.get("order_id"),
-        "consignee_name": payload.get("consignee_name"),
-        "consignee_gstin": payload.get("consignee_gstin"),
-        "consignee_address": payload.get("consignee_address"),
+        "consignee_name": consignee_name,
+        "consignee_gstin": consignee_gstin,
+        "consignee_address": consignee_address,
         "transporter_name": payload.get("transporter_name"),
         "transporter_id": payload.get("transporter_id"),
         "vehicle_no": payload.get("vehicle_no"),
@@ -683,7 +717,8 @@ def create_challan(db, firm_id: str, payload: dict,
             "line_cess_paise": ln["line_cess_paise"],
             "created_at": now,
         }).execute()
-    _resettle_order_status(db, firm_id, payload.get("order_id"))
+    # No re-settle of the order here: a challan is made as a DRAFT, and goods are delivered against an order only once they have left (issued or received back), so making one moves
+    # neither the order's position nor its status. `issue_challan` and the amendment door re-settle it when that changes.
     return row
 
 
@@ -812,11 +847,11 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
               if v is not None and k != "lines"}
     lines = patch.get("lines")
     if lines is not None:
-        position = order_open_position(db, firm_id, order_id)
+        position = order_open_position(db, firm_id, order_id, with_drafts=True)
         if any(ln["delivered_qty"] != "0.000" for ln in position["lines"]):
             raise HTTPException(
                 status_code=409,
-                detail=("This order already has a delivery against it, so its "
+                detail=("This order already has a delivery challan against it, so its "
                         "lines cannot be re-priced — a challan was checked for "
                         "over-delivery against the quantity they carry. Amend "
                         "the header, or cancel and re-raise."))
@@ -895,6 +930,16 @@ def _latest_returned_on(db, firm_id: str, client_id: str, challan_id: str) -> Op
     return None
 
 
+def _latest_lot_recorded_on(db, firm_id: str, client_id: str, challan_id: str) -> Optional[date]:
+    """The latest day ANY lot was recorded against this challan on FORM GST ITC-04 (goods returned, or lost or wasted), or None (POST-A-398). The cancel guard asks this and not
+    `_latest_returned_on`: a lot of waste alone leaves the challan's balance larger (waste is never subtracted from it), and a cancelled challan's balance is not listed, so cancelling one with
+    such a lot would drop a deemed supply out of the statement."""
+    rows = (db.table("delivery_challan_returns").select("returned_on")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
+            .order("returned_on", desc=True).limit(1).execute().data) or []
+    return date.fromisoformat(str(rows[0]["returned_on"])[:10]) if rows else None
+
+
 def _refuse_a_status_or_day_that_cannot_stand(row: dict, fields: dict) -> None:
     """The refusals about a challan's status and its back day, in the order that says the unfixable one first (POST-A-383). Nothing is written before any of them."""
     stops_the_clock = bool(fields.get("received_back_on")) or fields.get("status") == "received_back"
@@ -903,6 +948,9 @@ def _refuse_a_status_or_day_that_cannot_stand(row: dict, fields: dict) -> None:
     # The unfixable one first: goods cannot come back on a cancelled challan, whether it is cancelled already or this very patch cancels it.
     if stops_the_clock and "cancelled" in (str(row.get("status")), str(after_status)):
         raise HTTPException(status_code=409, detail=dc.not_issued_sentence(row.get("document_no"), "cancelled"))
+    # Goods come back on a challan they left on (POST-A-398): a DRAFT has had nothing leave, and the door that makes it issued is Issue challan, not this patch.
+    if stops_the_clock and str(row.get("status")) == dc.STATUS_DRAFT:
+        raise HTTPException(status_code=409, detail=dc.not_issued_sentence(row.get("document_no"), dc.STATUS_DRAFT))
     if fields.get("status") == "received_back" and not (fields.get("received_back_on") or row.get("received_back_on")):
         raise HTTPException(status_code=422, detail=dc.whole_challan_back_needs_a_day(row.get("reason")))
     # A challan with a back day IS received back: this patch cannot leave the day beside a status that says the goods have not come back.
@@ -910,6 +958,11 @@ def _refuse_a_status_or_day_that_cannot_stand(row: dict, fields: dict) -> None:
     if ("status" in fields or "received_back_on" in fields) and after_day and str(after_status) != "received_back":
         raise HTTPException(status_code=422, detail=dc.a_back_day_needs_a_status_that_says_so_problem(
             row.get("document_no"), str(after_day)[:10], after_status))
+    # What is left of the life of a challan (draft, issued, received back or cancelled): a status this patch may not give is refused in a sentence, before anything is written.
+    if fields.get("status"):
+        problem = dc.status_change_problem(row.get("document_no"), row.get("status"), fields["status"])
+        if problem:
+            raise HTTPException(status_code=409, detail=problem)
 
 
 def _refuse_a_day_that_is_out_of_order(db, firm_id: str, row: dict, challan_id: str, fields: dict) -> None:
@@ -955,8 +1008,9 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     the patch LEAVES and not only on the one stored (`{"status": "cancelled", "received_back_on": D}` is one request); the sentence for the cancelled challan comes before the one for the
     missing day, because the missing day cannot be fixed on it. A challan given a back day IS received back, so a patch that gives one beside another status is refused. The whole
     challan's day is not earlier than a lot of goods returned on ITC-04, and an amended day they went out is compared with the days already recorded as back whether or not the patch
-    gives a back day too. A DRAFT is not refused here, on a premise that is a test (`tests/test_a_challan_amendment_cannot_stop_the_clock_without_a_day_or_before_a_lot.py`): no SCREEN
-    issues a challan, so a draft is the state every challan made in the product is in, and the whole-challan "Record goods back" is the one door that can end its clock (POST-A-398).
+    gives a back day too. A DRAFT IS REFUSED A BACK DAY since POST-A-398: the product has a door that issues a challan (`issue_challan`), so a draft is a challan nothing has left on, and goods
+    can only come back on an issued one (the same sentence as the FORM GST ITC-04 lot door). The status is not set to `issued` here either: that is the issue door's, which asks what a
+    challan must hold when the goods leave (`delivery_challan.status_change_problem`).
     """
     row = _one(db, "delivery_challans", firm_id, challan_id,
                "delivery challan")
@@ -980,12 +1034,31 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     # THE INVOICE A CHALLAN IS RE-POINTED AT IS THIS CLIENT'S (POST-A-338): the one named row the update door still accepts.
     named_row_ownership.sales_invoice_is_the_clients(db, firm_id, str(row["client_id"]), fields.get("sales_invoice_id"))
     _refuse_a_status_or_day_that_cannot_stand(row, fields)
+    if fields.get("status") == dc.STATUS_CANCELLED and str(row.get("status")) != dc.STATUS_CANCELLED:
+        # a lot already recorded against this challan hangs from it (POST-A-398): it is finished by recording the rest, not cancelled
+        recorded = _latest_lot_recorded_on(db, firm_id, str(row["client_id"]), challan_id)
+        if recorded is not None:
+            raise HTTPException(status_code=409, detail=dc.cancel_after_goods_came_back_sentence(row.get("document_no"), recorded.isoformat()))
     _refuse_a_day_that_is_out_of_order(db, firm_id, row, challan_id, fields)
     if fields.get("received_back_on") and not fields.get("status"):
         fields["status"] = "received_back"
+    # AN ISSUED CHALLAN KEEPS WHAT ISSUING ASKED OF IT (POST-A-398): an empty string blanks a field and a date can be moved, so the fields this patch touches are asked again of the row it would
+    # leave. Only what it touches: a row stored before this rule is not made unsaveable by an edit of something else.
+    if str(fields.get("status") or row.get("status")) in dc.GOODS_HAVE_LEFT:
+        problem = dc.issued_challan_problem(row.get("document_no"), row={**row, **fields}, today=ist_today(), touched=set(fields))
+        if problem:
+            raise HTTPException(status_code=422, detail=problem)
     fields["updated_at"] = ist_now().isoformat()
-    (db.table("delivery_challans").update(fields)
-     .eq("firm_id", firm_id).eq("id", challan_id).execute())
+    # A STATUS IS WRITTEN OVER THE ONE THIS PATCH JUDGED (POST-A-398): an issue, a cancel, an amendment or a lot's stamp that got in between has changed what the rules above were asked about, so
+    # this write matches nothing and says so, and a challan at its end (cancelled, received back) is not written over by a request that read it before it got there. A patch that gives no
+    # status is held to no status (a note or a transporter is a correction to what the document says). One statement, so the writers of this table stay countable.
+    expected = [row.get("status")] if "status" in fields else list(oc.CHALLAN_STATUSES)
+    done = (db.table("delivery_challans").update(fields)
+            .eq("firm_id", firm_id).eq("id", challan_id).in_("status", expected).execute())
+    if not (done.data or []):
+        raise HTTPException(status_code=409, detail=f"Challan {row.get('document_no')} was changed while it was being amended. Reload it and look at its status.")
+    if "status" in fields:
+        _resettle_order_status(db, firm_id, row.get("order_id"))      # a cancelled (or received-back) challan changes what is delivered against its order
     return {**row, **fields}
 
 
@@ -995,16 +1068,102 @@ def record_goods_back(db, firm_id: str, challan_id: str,
 
     It writes the day it is given. Its only caller, `itc_04_service.record_return`, has judged every lot's day (`delivery_challan.goods_back_problem`) before this stamps the largest,
     and `update_challan` judges the day it is given before it writes its own; a new caller must judge a day with that rule first (a test pins that there is only the one).
+
+    The stamp is written over an ISSUED challan only (a compare-and-set): the lot is inserted first and this second, in two statements, so a cancel that got in between is not written over, and the
+    sentence says that what was recorded stands. One transaction for both is POST-A-419.
     """
     row = _one(db, "delivery_challans", firm_id, challan_id,
                "delivery challan")
-    (db.table("delivery_challans")
-     .update({"received_back_on": str(received_back_on),
-              "status": "received_back",
-              "updated_at": ist_now().isoformat()})
-     .eq("firm_id", firm_id).eq("id", challan_id).execute())
+    # Written over an ISSUED challan only (POST-A-398): the lot door asked for that before it recorded the lot, and a cancel that got in since is not written over with "received back".
+    done = (db.table("delivery_challans")
+            .update({"received_back_on": str(received_back_on),
+                     "status": "received_back",
+                     "updated_at": ist_now().isoformat()})
+            .eq("firm_id", firm_id).eq("id", challan_id).eq("status", dc.STATUS_ISSUED).execute())
+    if not (done.data or []):
+        raise HTTPException(status_code=409, detail=(
+            f"Challan {row.get('document_no')} was changed by another request while its goods were being recorded back, so this request did not mark it received back. "
+            "What was recorded stands. Reload the challan and look at its status."))
     return {**row, "received_back_on": str(received_back_on),
             "status": "received_back"}
+
+
+def consigner_of(db, firm_id: str, client_id: str) -> Optional[dict]:
+    """Rule 55(1)(ii)'s consigner: the CLIENT whose goods are moving, not the CA firm. SALES-01 was exactly this mistake on the tax invoice: the PDF named the practice as the supplier,
+    with the practice's own GSTIN, on the client's outward document. Read for the challan's Rule 55 face and for the issue door, which asks the same particulars."""
+    res = (db.table("clients")
+           .select("id, client_name, legal_name, trade_name, gstin, "
+                   "address_line1, address_line2, city, state, pincode")
+           .eq("firm_id", firm_id).eq("id", client_id)
+           .limit(1).execute())
+    if not res.data:
+        return None
+    row = res.data[0]
+    return {
+        "legal_name": row.get("legal_name") or row.get("trade_name") or row.get("client_name"),
+        "gstin": row.get("gstin"),
+        "address": ", ".join(
+            str(b).strip() for b in (row.get("address_line1"), row.get("address_line2"),
+                                     row.get("city"), row.get("state"), row.get("pincode")) if (b or "").strip()),
+    }
+
+
+def issue_challan(db, firm_id: str, challan_id: str, *, client_id: str, consigner: Optional[dict] = None) -> dict:
+    """Issue a draft challan: the goods leave on it (POST-A-398). The ONE door that makes a challan `issued`.
+
+    Issuing RECORDS THAT THE GOODS LEFT on the challan's own date. That is what a period is run from (s.143 for job work, s.31(7) for goods on approval: `deemed_supply_clock` runs for an issued
+    challan only, and counts from the challan's date, so issuing does not move the day it counts from), what makes a job-work challan a row of FORM GST ITC-04 (`itc_04.SENT_STATUSES`), what counts
+    its goods as delivered against an order (`GOODS_HAVE_LEFT`), and what lets goods come back on it (the lot door and the whole-challan day both refuse a draft). Nothing was ever issued before
+    this door: `create_challan` writes a draft, and a draft was the state every challan made in the product stayed in.
+
+    WHAT IT ASKS, in the order a person can fix them, before anything is written: that the challan is a draft (an issued, received-back or cancelled one is not issued again), that it has goods on it,
+    that its date has come (the goods cannot have left on a day that has not), that Rule 55(1) has every particular it requires of THIS challan (`delivery_challan.missing_particulars`: the consigner
+    is the client, read here as the detail screen reads it), for job work what is sent (the period differs by a factor of three and is none for tools, so a challan issued without the answer would be
+    listed on FORM GST ITC-04 while running no clock), and that its goods are not more than the order it names still has undelivered. The write is a compare-and-set on the status, so two requests
+    (or an issue and a cancel) cannot both win.
+
+    THE CHALLAN IS THE NAMED CLIENT'S, ASKED HERE AND CARRIED BY THE WRITE: `client_id` has no default, a challan of another client of the firm is the 404 a missing one gives, and the update
+    names the client as well as the firm and the id, so a door that is ever called with the wrong pair writes nothing
+    (`tests/test_a_route_that_asserts_a_client_does_not_write_a_row_by_the_firm_alone.py` holds the second half).
+
+    # CA REVIEW REQUIRED — this prepares a document and records that it was issued. Nothing is transmitted.
+    """
+    row = row_of_client(db, "delivery_challans", firm_id, challan_id, client_id, "delivery challan")
+    no = row.get("document_no")
+    if str(row.get("status")) != dc.STATUS_DRAFT:
+        raise HTTPException(status_code=409, detail=dc.only_a_draft_is_issued_sentence(no, row.get("status")))
+    lines = challan_lines(db, firm_id, challan_id)
+    if not lines:
+        raise HTTPException(status_code=422, detail=dc.an_empty_challan_is_not_issued_sentence(no))
+    sent = dc.sent_on(row.get("document_date"))
+    if sent is not None and sent > ist_today():
+        raise HTTPException(status_code=422, detail=(
+            f"Challan {no} is dated {sent.isoformat()}, which has not come, so the goods cannot have left on it. A challan is issued on or after its date."))
+    src = consigner or {}
+    parts = dc.particulars(
+        challan_no=str(no or ""), challan_date=str(row.get("document_date") or ""),
+        consigner_name=src.get("legal_name"), consigner_gstin=src.get("gstin"), consigner_address=src.get("address"),
+        consignee_name=row.get("consignee_name"), consignee_gstin=row.get("consignee_gstin"), consignee_address=row.get("consignee_address"),
+        reason=str(row.get("reason") or ""), is_inter_state=bool(row.get("is_inter_state")),
+        place_of_supply=row.get("place_of_supply"), lines=lines)
+    missing = dc.missing_particulars(parts)
+    if missing:
+        raise HTTPException(status_code=422, detail=dc.issue_needs_the_particulars_sentence(no, missing))
+    if str(row.get("reason")) == dc.REASON_JOB_WORK and not row.get("goods_kind"):
+        raise HTTPException(status_code=422, detail=dc.issue_needs_the_kind_of_goods_sentence(no))
+    # Goods count as DELIVERED against an order when they have left (this challan is not counted yet: it is a draft), so the check that a delivery is not more than the order still has
+    # undelivered is made here, where they leave, and not when the draft is made: two drafts of the whole order are drafts, and only the first to be issued is a delivery.
+    over = _refuse_over_delivery(db, firm_id, row.get("order_id"), lines)
+    if over:
+        raise HTTPException(status_code=422, detail=" ".join(over))
+    now = ist_now().isoformat()
+    done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "updated_at": now})
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", challan_id).eq("status", dc.STATUS_DRAFT).execute())
+    if not (done.data or []):
+        # another request changed the challan between the read and the write (an issue, a cancel): say so, and write nothing more
+        raise HTTPException(status_code=409, detail=f"Challan {no} was changed while it was being issued. Reload it and look at its status.")
+    _resettle_order_status(db, firm_id, row.get("order_id"))      # the goods on it are delivered against its order from now
+    return {**row, "status": dc.STATUS_ISSUED, "updated_at": now}
 
 
 # ── The Rule 55 face of one challan ──────────────────────────────────────────
@@ -1038,7 +1197,8 @@ def challan_particulars(db, firm_id: str, challan_id: str,
         as_at=ist_today().isoformat(),
         goods_kind=row.get("goods_kind"),
         received_back_on=row.get("received_back_on"),
-        extended_to=row.get("extended_to"))
+        extended_to=row.get("extended_to"),
+        status=row.get("status"))
     return {
         "challan": row,
         "lines": lines,

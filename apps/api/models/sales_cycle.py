@@ -416,8 +416,8 @@ class DeliveryChallanUpdateIn(BaseModel):
     status: Optional[str] = None
     goods_kind: Optional[str] = None
     #: When the goods came back. This is the field the whole s.143 clock turns
-    #: off, so it is on the update door and never on create: a challan is
-    #: raised when the goods LEAVE.
+    #: off, so it is on the update door and never on create: a challan is made
+    #: as a draft and issued when the goods LEAVE.
     received_back_on: Optional[str] = None
     extended_to: Optional[str] = None
     sales_invoice_id: Optional[str] = None

@@ -72,6 +72,11 @@ def _iso(value) -> Optional[date]:
         return None
 
 
+def sent_on(value) -> Optional[date]:
+    """The day the goods went out, as the challan's date reads, or None where it reads as no date (PostgREST hands a DATE back as a string). Public because the issue door asks it (POST-A-398)."""
+    return _iso(value)
+
+
 # ── Why a challan was issued ─────────────────────────────────────────────────
 #
 # The vocabulary IS Rule 55(1)'s four limbs plus the two later sub-rules that
@@ -331,13 +336,139 @@ def whole_challan_back_before_a_lot_problem(document_no: str, back_on: date, lat
 
 def a_back_day_needs_a_status_that_says_so_problem(document_no: object, day: object, status: object) -> str:
     """The sentence for a challan that would carry the day its goods came back and a status that says they have not (POST-A-383): a challan with a back day IS received back."""
-    return f"Challan {document_no} has its goods back on {day}, so it is received back and cannot be marked {status}."
+    return f"Challan {document_no} has its goods back on {day}, so it is received back and cannot be marked {status_word(status)}."
 
 
 def not_issued_sentence(document_no: object, status: object) -> str:
-    """What both doors that record goods coming back say of a challan that is not in the state goods can come back on (`issued`): the FORM GST ITC-04 lot door for a draft or a cancelled
-    challan, and the whole-challan amendment door for a cancelled one. One sentence, so the two cannot drift (POST-A-383)."""
-    return (f"Challan {document_no} is {status}: goods can only come back on a challan that has been issued.")
+    """What the doors that record goods coming back say of a challan that is not in the state goods can come back on (`issued`): the FORM GST ITC-04 lot door for a draft or a cancelled
+    challan, and the whole-challan amendment door for a draft or a cancelled one. One sentence, so the doors cannot drift (POST-A-383, POST-A-398). The status is said in English
+    ("a draft", "cancelled"), never as the stored word."""
+    return (f"Challan {document_no} is {status_is(status)}: goods can only come back on a challan that has been issued.")
+
+
+# ── The life of a challan: draft → issued → received back, or cancelled (POST-A-398) ────────────────────────────────────────────────────────
+#
+# A challan is made as a DRAFT. It is ISSUED, by one door, when the goods leave on it: that records that they left on the challan's date, so any period under the Act (s.143 for job work,
+# s.31(7) for goods on approval) is run from that date, a job-work challan becomes a row of FORM GST ITC-04, and goods can come back on it (only on an issued challan). Issuing does NOT
+# move the day a period counts from: the clock runs from the challan's date, which is why a draft dated in the past is shown what issuing it would mean before it is issued.
+# It becomes RECEIVED BACK when the goods have come back (the whole challan's day, or the last lot), and it is CANCELLED if the goods never left or were never going to. Received back
+# and cancelled are the ends.
+
+STATUS_DRAFT = "draft"
+STATUS_ISSUED = "issued"
+STATUS_RECEIVED_BACK = "received_back"
+STATUS_CANCELLED = "cancelled"
+
+#: How a status is SAID to a person. The stored word `received_back` carries an underscore a sentence must not print, and a sentence reads "Challan X is a draft", not "is draft".
+_STATUS_WORD = {
+    STATUS_DRAFT: "draft",
+    STATUS_ISSUED: "issued",
+    STATUS_RECEIVED_BACK: "received back",
+    STATUS_CANCELLED: "cancelled",
+}
+
+
+def status_word(status: object) -> str:
+    """The word a person reads for a stored status ("received back" for `received_back`). A status this module does not hold is said as it is stored. Pure."""
+    return _STATUS_WORD.get(str(status), str(status))
+
+
+def status_is(status: object) -> str:
+    """What follows "is" when a sentence says what state a challan is in: "a draft", "issued", "received back" or "cancelled". Pure."""
+    word = status_word(status)
+    return f"a {word}" if str(status) == STATUS_DRAFT else word
+
+
+#: What a patch may turn a challan into, by the status it has, and the ONLY thing that decides it (`status_change_problem` explains a refusal). `issued` is not here for any: there is ONE door
+#: that issues (`sales_cycle_service.issue_challan`), so what issuing demands is asked in one place, and `received_back` is reached only from `issued`.
+AMENDMENT_MAY_MAKE = {
+    STATUS_DRAFT: (STATUS_CANCELLED,),
+    STATUS_ISSUED: (STATUS_RECEIVED_BACK, STATUS_CANCELLED),
+    STATUS_RECEIVED_BACK: (),
+    STATUS_CANCELLED: (),
+}
+
+#: The statuses a challan is in once the goods have left on it, and so the only ones in which a period is run, goods are counted as delivered against an order, and goods can come back. A draft
+#: is not recorded as issued; a cancelled challan is not a movement.
+GOODS_HAVE_LEFT = (STATUS_ISSUED, STATUS_RECEIVED_BACK)
+
+#: The statuses a challan's period runs in.
+STATUSES_WITH_A_CLOCK = GOODS_HAVE_LEFT
+
+
+def status_change_problem(document_no: object, current: object, wanted: object) -> Optional[str]:
+    """The sentence for a status an amendment cannot give this challan, or None (POST-A-398). The same status again is not a change. Pure.
+
+    `AMENDMENT_MAY_MAKE` is what decides. `issued` has its own door and is never given by an amendment (so a hand-made request cannot record the goods as left or list a challan on FORM GST
+    ITC-04 without what issuing asks); a challan is not sent back to a draft; goods come back only on an issued challan (`not_issued_sentence`); and a challan whose goods are back, or that is
+    cancelled, is at its end. The sentences below say WHY a status is not allowed; they are reached only for a status the table does not allow."""
+    cur, want = str(current), str(wanted)
+    if want == cur or want in AMENDMENT_MAY_MAKE.get(cur, ()):
+        return None
+    # the ends first: nothing is made of a challan whose goods are back or that is cancelled
+    if cur == STATUS_RECEIVED_BACK:
+        return f"Challan {document_no} is received back: its goods are back, so it cannot become {status_is(want)}."
+    if cur == STATUS_CANCELLED:
+        return f"Challan {document_no} is cancelled: it cannot become {status_is(want)}."
+    if want == STATUS_ISSUED:                               # from a draft: the issue door is the one that issues
+        return f"Challan {document_no} is not made issued by an amendment: Issue challan is the one step that records that the goods left, and it asks what a challan must hold when they do."
+    if want == STATUS_DRAFT:
+        return f"Challan {document_no} is {status_is(cur)}: a challan is not made a draft again."
+    if want == STATUS_RECEIVED_BACK and cur != STATUS_ISSUED:
+        return not_issued_sentence(document_no, cur)
+    return f"Challan {document_no} is {status_is(cur)}: it cannot become {status_is(want)}."
+
+
+def cancel_after_goods_came_back_sentence(document_no: object, recorded_on: object) -> str:
+    """A challan with a lot already recorded against it on FORM GST ITC-04 is not cancelled (POST-A-398): the lots hang from it, and a cancelled challan has no goods out to come back. A lot is
+    goods returned OR goods lost or wasted: a lot of waste alone is a lot too (the balance of a cancelled challan is not listed, and the waste is never subtracted from it)."""
+    return (f"Challan {document_no} has a lot recorded against it on {recorded_on} on FORM GST ITC-04 (goods returned, or lost or wasted), so it cannot be cancelled. "
+            "Cancel a challan whose goods did not leave; one whose goods are coming back is finished by recording the rest.")
+
+
+def issued_challan_problem(document_no: object, *, row: dict, today, touched) -> Optional[str]:
+    """The sentence for an amendment that would leave a challan the goods have left on (issued, or received back) without something issuing asked for, or None (POST-A-398). Pure. `row` is the
+    challan AS THE PATCH WOULD LEAVE IT and `touched` the names of the fields the patch gives.
+
+    Issuing asked that the challan's date had come, that Rule 55(1) had a consignee (and, for an inter-State movement, a place of supply), and that a job-work challan said what it sends. An
+    amendment can blank a field with an empty string or move a date, so each question is asked again of the row the patch would leave, and ONLY for the fields it touches: a row stored before
+    this rule is not made unsaveable by an edit of something else. (What was amended is the audit event's.) The sentences say "has been issued", which is true of a received-back challan too."""
+    if "document_date" in touched:
+        sent = _iso(row.get("document_date"))
+        if sent is not None and today is not None and sent > today:
+            return f"Challan {document_no} has been issued, so its date cannot be moved to {sent.isoformat()}, which has not come: the goods cannot have left on it."
+    if set(touched) & {"consignee_name", "consignee_gstin", "consignee_address"}:
+        if not any(str(row.get(k) or "").strip() for k in ("consignee_name", "consignee_gstin", "consignee_address")):
+            return f"Challan {document_no} has been issued, so it keeps a consignee: Rule 55(1)(iii) asks for one."
+    if set(touched) & {"place_of_supply", "is_inter_state"}:
+        if row.get("is_inter_state") and not str(row.get("place_of_supply") or "").strip():
+            return f"Challan {document_no} has been issued as an inter-State movement, so it keeps a place of supply: Rule 55(1)(viii) asks for one."
+    if "goods_kind" in touched:
+        if str(row.get("reason")) == REASON_JOB_WORK and not str(row.get("goods_kind") or "").strip():
+            return f"Challan {document_no} is for job work and has been issued, so it keeps what is sent: the period under s.143 depends on it."
+    return None
+
+
+def only_a_draft_is_issued_sentence(document_no: object, status: object) -> str:
+    """What the issue door says of a challan that is not a draft (POST-A-398): it was issued already, it is at its end, or it was cancelled."""
+    return f"Challan {document_no} is {status_is(status)}: only a draft is issued."
+
+
+def an_empty_challan_is_not_issued_sentence(document_no: object) -> str:
+    """A challan with no goods on it is not a document that goods can leave on (POST-A-398)."""
+    return f"Challan {document_no} has no lines, so there are no goods to send on it."
+
+
+def issue_needs_the_particulars_sentence(document_no: object, missing: list) -> str:
+    """What the issue door says when Rule 55(1) asks for a particular the challan does not hold (POST-A-398): the clauses, in clause order, as `missing_particulars` names them."""
+    return f"Challan {document_no} cannot be issued yet: Rule 55(1) asks for " + "; ".join(str(m) for m in missing) + "."
+
+
+def issue_needs_the_kind_of_goods_sentence(document_no: object) -> str:
+    """A job-work challan is not issued without saying what is sent (POST-A-398): the period differs by a factor of three between inputs and capital goods, and is none for moulds, dies, jigs,
+    fixtures and tools, so a challan issued without the answer would run no clock (`deemed_supply_clock` names the gap) while FORM GST ITC-04 lists it."""
+    return (f"Challan {document_no} is for job work and does not say what is sent (inputs, capital goods, or moulds, dies, jigs, fixtures or tools). "
+            "The period under s.143 depends on the answer, so it cannot be issued without it.")
 
 
 def _add_months(d: date, months: int) -> date:
@@ -355,6 +486,14 @@ def _add_months(d: date, months: int) -> date:
             return date(y, m, day)
         except ValueError:
             day -= 1
+
+
+#: What a draft's clock says before it says what issuing would mean (POST-A-398). A statement about the PRODUCT's record, never about the goods: whether they have left is not known here.
+DRAFT_RUNS_NO_PERIOD = "This challan is a draft: it is not recorded as issued, so no period is running on it here."
+
+#: The gap a challan carries when its status says the goods are back and no day is recorded for it (a row written before POST-A-383 refused that). Named, not guessed.
+RECEIVED_BACK_WITHOUT_A_DAY = ("This challan is recorded as received back with no day, so whether the goods came back within the period cannot be said. "
+                               "Record the day they came back.")
 
 
 @dataclass
@@ -380,10 +519,29 @@ class Clock:
                 "consequence": self.consequence, "gaps": list(self.gaps)}
 
 
+def _clock_of_a_challan_the_goods_are_not_recorded_as_leaving_on(*, reason: str, challan_date: Optional[str], as_at: str, goods_kind: Optional[str],
+                                                                  extended_to: Optional[str], status: Optional[str]) -> Optional[Clock]:
+    """The clock of a job-work or on-approval challan that is a draft or cancelled, or None for any other (POST-A-398). A draft says what issuing it would mean (the period it would run is worked out
+    as for an issued challan, and shown as a sentence, never as a running period); a cancelled challan is not a movement and says nothing of the goods."""
+    if status is None or str(status) in STATUSES_WITH_A_CLOCK or reason not in (REASON_JOB_WORK, REASON_ON_APPROVAL):
+        return None
+    out = Clock()
+    if str(status) == STATUS_DRAFT:
+        would = deemed_supply_clock(reason=reason, challan_date=challan_date, as_at=as_at, goods_kind=goods_kind, extended_to=extended_to)
+        out.consequence = DRAFT_RUNS_NO_PERIOD
+        if would.applies and would.sent_on and would.due_back_by:
+            out.consequence += (f" If the goods left on the challan's date, {would.sent_on}, the period under {would.statute} would end on {would.due_back_by}"
+                                + (", which is already past." if would.overdue else "."))
+    else:
+        out.consequence = "This challan is cancelled, so no period is run on it here."
+    return out
+
+
 def deemed_supply_clock(*, reason: str, challan_date: Optional[str],
                         as_at: str, goods_kind: Optional[str] = None,
                         received_back_on: Optional[str] = None,
-                        extended_to: Optional[str] = None) -> Clock:
+                        extended_to: Optional[str] = None,
+                        status: Optional[str] = None) -> Clock:
     """When this movement becomes a supply if the goods do not come back.
 
     THE CLOCK RUNS FROM THE DATE THE GOODS WERE SENT OUT, which is the challan
@@ -391,8 +549,18 @@ def deemed_supply_clock(*, reason: str, challan_date: Optional[str],
     not on the day the period expired. So the tax falls due in a return that
     has been filed, with s.50(1) interest from its own due date, and the
     difference between the two readings is a year of interest.
+
+    A PERIOD IS RUN ON A CHALLAN THAT IS RECORDED AS HAVING LEFT, AND ON NO OTHER (POST-A-398). `status` is the challan's. A DRAFT is not recorded as issued, and the product cannot know that
+    the goods have not left: it runs no period on a draft, and SAYS WHAT ISSUING IT WOULD MEAN instead (that, if the goods left on the challan's own date, the period would end on a day it names, and
+    whether that day is already past), because issuing does not move the day a period counts from and a draft dated long ago is one click from a period already over. A CANCELLED challan is not a
+    movement, so none is run and nothing is said of the goods. A challan whose status says the goods are BACK and which records no day cannot be judged either way: it is neither overdue nor
+    clear, and the gap says what to record. A caller that does not know the status passes none and gets the answer it always got.
     """
     out = Clock()
+    stood_down = _clock_of_a_challan_the_goods_are_not_recorded_as_leaving_on(
+        reason=reason, challan_date=challan_date, as_at=as_at, goods_kind=goods_kind, extended_to=extended_to, status=status)
+    if stood_down is not None:
+        return stood_down
     if reason == REASON_JOB_WORK:
         out.applies = True
         out.statute = "CGST Act s.143 with Rule 45"
@@ -456,6 +624,11 @@ def deemed_supply_clock(*, reason: str, challan_date: Optional[str],
             out.overdue = back > due
             out.days_remaining = 0
             return out
+
+    if status is not None and str(status) == STATUS_RECEIVED_BACK:
+        # The status says the goods are back and no day is recorded (a row from before POST-A-383 asked for one): when they came back is unknown, so whether it was within the period is too.
+        out.gaps.append(RECEIVED_BACK_WITHOUT_A_DAY)
+        return out
 
     today = _iso(as_at)
     if today is None:

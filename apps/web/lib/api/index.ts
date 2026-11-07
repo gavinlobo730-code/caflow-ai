@@ -7848,6 +7848,12 @@ export const api = {
       request<ApiResp<DeliveryChallan>>(
         `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+    /** POST-A-398 — issue a draft challan: the goods leave on it. The one door that makes a challan issued; the server asks what a challan must hold and answers a refusal in a sentence.
+     *  A write: it is not sent again after a dropped connection. */
+    issueChallan: (id: string, clientId: string) =>
+      request<ApiResp<DeliveryChallan>>(
+        `/api/sales-cycle/challans/${id}/issue?client_id=${encodeURIComponent(clientId)}`,
+        { method: "POST" }),
     /** GST-30 — FORM GST ITC-04 derived from the job-work challans entered.
      *  With no `window`, every reading's windows are listed and none is chosen. */
     itc04: (clientId: string, financialYear: string, window?: string | null) =>

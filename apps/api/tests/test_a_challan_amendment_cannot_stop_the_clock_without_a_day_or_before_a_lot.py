@@ -180,10 +180,35 @@ def test_an_edit_of_something_else_on_a_cancelled_challan_or_a_received_back_one
 
 
 def test_the_sentence_is_one_function_in_the_domain():
-    assert dc.not_issued_sentence("JW/9", "draft") == "Challan JW/9 is draft: goods can only come back on a challan that has been issued."
+    assert dc.not_issued_sentence("JW/9", "draft") == "Challan JW/9 is a draft: goods can only come back on a challan that has been issued."
     source = (API / "services" / "itc_04_service.py").read_text(encoding="utf-8")
     assert "dc.not_issued_sentence(" in source and "can only come back on a challan that has been issued" not in source, "the lot door spells the sentence itself again"
     assert "can only come back on a challan that has been issued" not in (API / "services" / "sales_cycle_service.py").read_text(encoding="utf-8")
+
+
+def test_a_sentence_says_a_status_in_english_and_never_as_the_stored_word():
+    """A person reads "Challan X is a draft", "is received back" and "cannot become a draft": the stored words (`received_back`, a bare `draft` after "is") are not printed."""
+    assert dc.status_word("received_back") == "received back" and dc.status_word("draft") == "draft"
+    assert dc.status_is("draft") == "a draft" and dc.status_is("received_back") == "received back" and dc.status_is("issued") == "issued"
+    assert dc.status_word("something_new") == "something_new", "a status this module does not hold is said as stored, not hidden"
+    sentences = []
+    for cur in dc.AMENDMENT_MAY_MAKE:
+        sentences.append(dc.only_a_draft_is_issued_sentence("X/1", cur))
+        sentences.append(dc.not_issued_sentence("X/1", cur))
+        sentences.append(dc.a_back_day_needs_a_status_that_says_so_problem("X/1", "2026-06-20", cur))
+        for want in dc.AMENDMENT_MAY_MAKE:
+            problem = dc.status_change_problem("X/1", cur, want)
+            if problem:
+                sentences.append(problem)
+    assert len(sentences) >= 16, "the grid of statuses was not walked"
+    for text in sentences:
+        assert "received_back" not in text, f"a stored status word is printed: {text}"
+        assert " is draft" not in text and "become draft" not in text and "marked a draft" not in text, f"a status is said in the wrong English: {text}"
+    assert dc.status_change_problem("X/1", "received_back", "draft") == "Challan X/1 is received back: its goods are back, so it cannot become a draft."
+    assert dc.status_change_problem("X/1", "issued", "draft") == "Challan X/1 is issued: a challan is not made a draft again."
+    assert dc.only_a_draft_is_issued_sentence("X/1", "received_back") == "Challan X/1 is received back: only a draft is issued."
+    assert dc.a_back_day_needs_a_status_that_says_so_problem("X/1", "2026-06-20", "draft") == (
+        "Challan X/1 has its goods back on 2026-06-20, so it is received back and cannot be marked draft.")
 
 
 # ── the whole challan's day is not before goods returned ───────────────────────────────────────────────────
@@ -269,16 +294,16 @@ def test_amending_the_day_they_went_out_is_compared_with_the_lots_whether_or_not
     assert _amend(db, c, {"document_date": "2026-06-10", "received_back_on": "2026-06-25"})["document_date"] == "2026-06-10"
 
 
-# ── the premise on which a DRAFT is not refused ─────────────────────────────────────────────────────────────
+# ── the one door that issues a challan (POST-A-398) ───────────────────────────────────────────────────────
 #
-# "No SCREEN issues a challan" is what lets a draft be left alone: the product makes a challan as a draft and has no button that issues it. It is NOT "nothing can": the request model accepts
-# any of the four statuses, so a hand-made request can set `issued` (the first test says so). The tests below read the WHOLE API tree (recursively, in any quote style, through a handle
-# variable too), the migrations and the whole front end, and fail when a door that issues a challan appears.
+# Until POST-A-398 "no SCREEN issues a challan" is what let a draft be left alone: the product made a challan as a draft and had no button that issued it, so a draft was the state every
+# challan made in the product stayed in. There is now ONE door that issues (`sales_cycle_service.issue_challan`), a draft is refused a back day, and the tests below read the WHOLE API tree
+# (recursively, in any quote style, through a handle variable too), the migrations and the whole front end, and fail when a SECOND door that writes a challan's status appears.
 
 _API_SKIP = {"tests", "scripts", "migrations", "__pycache__", ".venv", "venv", "node_modules"}
 #: The only functions that write the table, and the verb each is allowed.
 _WRITERS = {("services/sales_cycle_service.py", "create_challan"): {"insert"}, ("services/sales_cycle_service.py", "update_challan"): {"update"},
-            ("services/sales_cycle_service.py", "record_goods_back"): {"update"}}
+            ("services/sales_cycle_service.py", "record_goods_back"): {"update"}, ("services/sales_cycle_service.py", "issue_challan"): {"update"}}
 #: Helpers that take the table's name to READ it.
 _READ_HELPERS = {"_one", "_refuse_duplicate", "row_of_client"}
 #: Modules that list the table's name as data (the tables a delete counts), never as a client.
@@ -302,7 +327,7 @@ def _enclosing_function(node, parents):
 
 
 def uses_of_the_challans_table(rel: str, source: str) -> list[str]:
-    """Every use of the name "delivery_challans" in `source` that is not a read or one of the three named writers, and every database function with 'challan' in its name, as a sentence."""
+    """Every use of the name "delivery_challans" in `source` that is not a read or one of the four named writers, and every database function with 'challan' in its name, as a sentence."""
     tree = ast.parse(source)
     parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
     problems = []
@@ -335,22 +360,26 @@ def uses_of_the_challans_table(rel: str, source: str) -> list[str]:
     return problems
 
 
-def test_the_amendment_door_accepts_issued_from_a_hand_made_request_and_no_screen_sends_it():
-    """The honest form of the premise: the model lets a request say `issued`, so what keeps a challan a draft is that nothing in the product asks for it."""
+def test_the_model_lets_a_request_say_issued_and_the_service_refuses_it(db):
+    """The honest form of the rule: the request model accepts any of the four statuses, so what keeps an amendment from issuing a challan is the service, in a sentence, before anything is
+    written. Issuing has its own door (`issue_challan`), which asks what a challan must hold when the goods leave."""
     from models.sales_cycle import DeliveryChallanUpdateIn
     assert DeliveryChallanUpdateIn(status="issued").status == "issued"
+    challan = itc._challan(db, "JW/9", "2026-06-01", status="draft")
+    detail = _refused(db, challan, {"status": "issued"}, 409)
+    assert "Issue challan" in detail and _stored(db, challan)["status"] == "draft", f"an amendment issued the challan or did not say where to: {detail}"
 
 
-def test_no_door_in_the_api_issues_a_challan_so_a_draft_is_the_state_the_product_makes():
-    """`update_challan` does not refuse a back day on a draft because no screen can make a challan anything else. If a door that issues one is added, this fails, and the draft case is
-    decided again (the whole-challan "Record goods back" would then be offered on an issued challan only, as the lot door already is) instead of staying as it was by silence."""
+def test_the_issue_door_is_the_only_writer_of_a_challan_that_is_issued():
+    """`create_challan` makes a draft, `issue_challan` makes it issued, `update_challan` and `record_goods_back` never write `issued`. Read from the service's own code, the whole API tree and the
+    migrations: a second door that issues a challan would list it on FORM GST ITC-04 and record the goods as left without asking what the first asks."""
     problems = []
     for rel, text in _api_python():
         if "challan" not in text.lower():
             continue
         problems += uses_of_the_challans_table(rel, text)
     assert not problems, "the rule does not recognise a use of the challans table:\n  " + "\n  ".join(problems)
-    # The three writers exist, so the rule cannot go vacuous.
+    # The four writers exist, so the rule cannot go vacuous.
     source = (API / "services" / "sales_cycle_service.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
@@ -362,11 +391,46 @@ def test_no_door_in_the_api_issues_a_challan_so_a_draft_is_the_state_the_product
             if isinstance(verb, ast.Attribute) and verb.attr in {"insert", "update", "upsert", "delete"}:
                 census[verb.attr] = census.get(verb.attr, 0) + 1
                 assert verb.attr in _WRITERS[("services/sales_cycle_service.py", fn)]
-    assert census == {"insert": 1, "update": 2}, f"the writers of delivery_challans in the sales cycle service changed: {census}"
+    # insert 1 (create_challan); update 3: issue_challan, update_challan (one statement: a status is written over the one the patch judged), record_goods_back
+    assert census == {"insert": 1, "update": 3}, f"the writers of delivery_challans in the sales cycle service changed: {census}"
     insert = source[source.index('db.table("delivery_challans").insert('):]
     assert '"status": "draft"' in insert[:600], "a challan is no longer made as a draft"
     stamp = source[source.index("def record_goods_back("):]
-    assert '"status": "received_back"' in stamp[:900], "the goods-back stamp no longer writes received_back"
+    assert '"status": "received_back"' in stamp[:1800], "the goods-back stamp no longer writes received_back"
+    # the status `issued` is WRITTEN in ONE function (a filter on it, such as the stamp's `.eq("status", STATUS_ISSUED)`, writes nothing)
+    issuing = [fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef) and _writes_issued(fn)]
+    assert issuing == ["issue_challan"], f"the status issued is written by {issuing}"
+
+
+def _says_issued(value) -> bool:
+    return (isinstance(value, ast.Attribute) and value.attr == "STATUS_ISSUED") or (isinstance(value, ast.Constant) and value.value == "issued")
+
+
+def _writes_issued(fn) -> bool:
+    """True if the function puts the status issued INTO a row: a dict with a "status" key that says it, or an assignment to a "status" key. A comparison or a filter that names it is not a write."""
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Dict):
+            for key, value in zip(n.keys, n.values, strict=True):
+                if isinstance(key, ast.Constant) and key.value == "status" and _says_issued(value):
+                    return True
+        if isinstance(n, ast.Assign):
+            for target in n.targets:
+                if (isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant) and target.slice.value == "status"
+                        and _says_issued(n.value)):
+                    return True
+    return False
+
+
+def test_the_writer_detector_sees_a_write_of_issued_and_not_a_filter_on_it():
+    def writes(src: str) -> bool:
+        return _writes_issued(ast.parse(src).body[0])
+
+    assert writes('def f(db, dc):\n    db.table("t").update({"status": dc.STATUS_ISSUED}).execute()\n'), "a dict value named by the constant"
+    assert writes('def f(db):\n    db.table("t").update({"status": "issued", "x": 1}).execute()\n'), "a dict value spelled out"
+    assert writes('def f(fields):\n    fields["status"] = "issued"\n'), "an assignment to the key"
+    assert writes('def f(fields, dc):\n    fields["status"] = dc.STATUS_ISSUED\n'), "an assignment of the constant"
+    assert not writes('def f(db, dc):\n    db.table("t").update({"status": dc.STATUS_RECEIVED_BACK}).eq("status", dc.STATUS_ISSUED).execute()\n'), "a filter on issued writes nothing"
+    assert not writes('def f(row, dc):\n    return str(row.get("status")) == dc.STATUS_ISSUED\n'), "a comparison writes nothing"
 
 
 def test_the_detector_sees_what_the_first_regex_did_not():

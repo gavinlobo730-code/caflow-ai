@@ -295,6 +295,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Any change to the 20% floor for text that is not a PAN, and any refusal of such text at the typed door.
 - **Ledger:** POST-A-408
 
+### S29. Rule 55(1)(iii): does a delivery challan need the consignee's name AND address in every case, with only the GSTIN or UIN "if registered"?
+
+- **Question:** The Rule 55 view treats clause 55(1)(iii) ("name, address and GSTIN or UIN of the consignee, if registered") as met when ANY ONE of the consignee's name, address and GSTIN is recorded, and the issue door added by POST-A-398 asks the same test, so a challan with only a name, only an address or only a GSTIN reads as complete and can be issued. Does the clause require the name and the address in every case, with "if registered" qualifying only the GSTIN or UIN? And for a consignee who is not registered, what must the challan show in place of a GSTIN or UIN?
+- **Needed:** Rule 55 of the Central Goods and Services Tax Rules 2017 as amended (the particulars of a delivery challan) and any circular on them.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Refusing a challan that records only some of the three at the issue door, and any change to the "Still to be recorded" list, which keep the looser test they have.
+- **Ledger:** POST-A-420
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.

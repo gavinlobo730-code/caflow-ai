@@ -392,6 +392,11 @@ def test_an_order_status_is_derived_but_a_closed_one_is_not_reopened():
     assert oc.order_status_for(done, "confirmed") == "delivered"
     assert oc.order_status_for(none, "confirmed") == "confirmed"
     assert oc.order_status_for(done, "closed") == "closed"
+    # `delivered` is what the lines say and not a decision, so it follows them: a challan cancelled after the order was delivered puts the order back (POST-A-398)
+    assert oc.order_status_for(done, "delivered") == "delivered"
+    assert oc.order_status_for(part, "delivered") == "partially_delivered"
+    assert oc.order_status_for(none, "delivered") == "confirmed"
+    assert oc.order_status_for(part, "cancelled") == "cancelled" and oc.order_status_for(part, "draft") == "draft"
     assert oc.order_status_for(done, "cancelled") == "cancelled"
     assert oc.order_status_for(done, "draft") == "draft"
 
@@ -599,29 +604,35 @@ def test_delivering_more_than_was_ordered_is_refused():
         "the refusal must happen before the header is written")
 
 
-def test_a_delivery_moves_the_order_to_partially_delivered_then_delivered():
+def _complete_challan(no, day, order_line, quantity, description):
+    """A challan that holds everything Rule 55(1) asks of a supply, so that it can be ISSUED (POST-A-398): a consignee, an HSN code, a rate."""
+    return {"client_id": "C1", "document_no": no, "document_date": day, "order_id": "O1", "reason": dc.REASON_INVOICE_TO_FOLLOW,
+            "consignee_name": "Buyer Ltd",
+            "lines": [{"description": description, "hsn_sac": "7214", "quantity": quantity, "rate_paise": 100, "gst_rate_percent": 18, "order_line_id": order_line}]}
+
+
+_CONSIGNER = {"legal_name": "Mfg Co Pvt Ltd", "gstin": None, "address": "1 Mill Road, Pune"}
+
+
+def test_a_delivery_moves_the_order_to_partially_delivered_then_delivered_when_the_challan_is_issued():
+    """Goods are delivered when they have LEFT, which is when the challan is issued (POST-A-398): a draft has not left, so it moves nothing."""
     from services import sales_cycle_service as svc
     db = _order_db()
-    svc.create_challan(db, "F1", {
-        "client_id": "C1", "document_no": "DC/4", "document_date": "2026-04-05",
-        "order_id": "O1", "reason": dc.REASON_INVOICE_TO_FOLLOW,
-        "lines": [{"description": "Widget", "quantity": 10, "rate_paise": 100,
-                   "order_line_id": "L1"}],
-    })
+    first = svc.create_challan(db, "F1", _complete_challan("DC/4", "2026-04-05", "L1", 10, "Widget"))
+    assert db.store["sales_orders"][0]["status"] == "confirmed", "a draft challan moved the order"
+    svc.issue_challan(db, "F1", first["id"], client_id="C1", consigner=_CONSIGNER)
     assert db.store["sales_orders"][0]["status"] == "partially_delivered"
-    svc.create_challan(db, "F1", {
-        "client_id": "C1", "document_no": "DC/5", "document_date": "2026-04-06",
-        "order_id": "O1", "reason": dc.REASON_INVOICE_TO_FOLLOW,
-        "lines": [{"description": "Gadget", "quantity": 5, "rate_paise": 100,
-                   "order_line_id": "L2"}],
-    })
+    second = svc.create_challan(db, "F1", _complete_challan("DC/5", "2026-04-06", "L2", 5, "Gadget"))
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered", "a draft challan moved the order"
+    svc.issue_challan(db, "F1", second["id"], client_id="C1", consigner=_CONSIGNER)
     assert db.store["sales_orders"][0]["status"] == "delivered"
 
 
 def test_a_CANCELLED_challan_has_delivered_nothing():
     """The PARENT's status is read, not just the line. A query that forgot it
     would show a fully delivered order for goods that never left — and then
-    refuse the real delivery as an over-delivery."""
+    refuse the real delivery as an over-delivery. The same goes for a DRAFT, which is not
+    recorded as issued (POST-A-398), and the goods count again once they have left."""
     from services import sales_cycle_service as svc
     db = _order_db()
     svc.create_challan(db, "F1", {
@@ -630,11 +641,76 @@ def test_a_CANCELLED_challan_has_delivered_nothing():
         "lines": [{"description": "Widget", "quantity": 10, "rate_paise": 100,
                    "order_line_id": "L1"}],
     })
+
+    def widget():
+        position = svc.order_open_position(db, "F1", "O1")
+        return next(ln for ln in position["lines"] if ln["order_line_id"] == "L1")
+
+    for status, delivered in (("draft", "0.000"), ("cancelled", "0.000"), ("issued", "10.000"), ("received_back", "10.000")):
+        db.store["delivery_challans"][0]["status"] = status
+        assert widget()["delivered_qty"] == delivered, status
+        assert widget()["undelivered_qty"] == ("0.000" if delivered == "10.000" else "10.000"), status
+    # what hangs from the order's lines is asked apart from what has been delivered: a draft hangs from them
+    db.store["delivery_challans"][0]["status"] = "draft"
+    drafted = svc.order_open_position(db, "F1", "O1", with_drafts=True)
+    assert next(ln for ln in drafted["lines"] if ln["order_line_id"] == "L1")["delivered_qty"] == "10.000"
     db.store["delivery_challans"][0]["status"] = "cancelled"
-    position = svc.order_open_position(db, "F1", "O1")
-    line = next(ln for ln in position["lines"] if ln["order_line_id"] == "L1")
-    assert line["delivered_qty"] == "0.000"
-    assert line["undelivered_qty"] == "10.000"
+    cancelled = svc.order_open_position(db, "F1", "O1", with_drafts=True)
+    assert next(ln for ln in cancelled["lines"] if ln["order_line_id"] == "L1")["delivered_qty"] == "0.000"
+
+
+def test_two_drafts_of_a_whole_order_are_drafts_and_only_the_first_issued_is_a_delivery():
+    """Delivering more than was ordered is refused where the goods LEAVE (POST-A-398): a draft is not a delivery, so a second draft of the whole order can be made, and the second to be issued is
+    the one refused, in the sentence the create door has always used."""
+    from fastapi import HTTPException
+    from services import sales_cycle_service as svc
+    db = _order_db()
+    first = svc.create_challan(db, "F1", _complete_challan("DC/20", "2026-04-05", "L1", 10, "Widget"))
+    second = svc.create_challan(db, "F1", _complete_challan("DC/21", "2026-04-06", "L1", 10, "Widget"))
+    svc.issue_challan(db, "F1", first["id"], client_id="C1", consigner=_CONSIGNER)
+    with pytest.raises(HTTPException) as caught:
+        svc.issue_challan(db, "F1", second["id"], client_id="C1", consigner=_CONSIGNER)
+    assert caught.value.status_code == 422 and "more than the 0.000 still undelivered" in str(caught.value.detail) and "10.000 already delivered" in str(caught.value.detail)
+    assert next(c for c in db.store["delivery_challans"] if c["id"] == second["id"])["status"] == "draft", "the refused issue wrote"
+
+
+def test_a_cancelled_issued_challan_puts_its_goods_back_on_the_order():
+    """The stored order status is the position's answer, so a cancel that changes the position re-settles it (it did not before POST-A-398: a cancel through the amendment door left the order delivered)."""
+    from services import sales_cycle_service as svc
+    db = _order_db()
+    made = svc.create_challan(db, "F1", _complete_challan("DC/22", "2026-04-05", "L1", 10, "Widget"))
+    svc.issue_challan(db, "F1", made["id"], client_id="C1", consigner=_CONSIGNER)
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered"
+    svc.update_challan(db, "F1", made["id"], {"status": "cancelled"})
+    assert db.store["sales_orders"][0]["status"] == "confirmed", "the order still counts the goods of a challan that was cancelled"
+
+
+def test_an_order_that_was_delivered_is_put_back_by_a_challan_that_is_cancelled():
+    """`delivered` followed the lines only on the way up: an order delivered by two challans stayed delivered when one was cancelled, while its position said part of it was undelivered."""
+    from services import sales_cycle_service as svc
+    db = _order_db()
+    first = svc.create_challan(db, "F1", _complete_challan("DC/23", "2026-04-05", "L1", 10, "Widget"))
+    second = svc.create_challan(db, "F1", _complete_challan("DC/24", "2026-04-06", "L2", 5, "Gadget"))
+    for made in (first, second):
+        svc.issue_challan(db, "F1", made["id"], client_id="C1", consigner=_CONSIGNER)
+    assert db.store["sales_orders"][0]["status"] == "delivered"
+    svc.update_challan(db, "F1", second["id"], {"status": "cancelled"})
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered", "a delivered order stayed delivered after one of its challans was cancelled"
+    svc.update_challan(db, "F1", first["id"], {"status": "cancelled"})
+    assert db.store["sales_orders"][0]["status"] == "confirmed"
+
+
+def test_making_a_draft_challan_does_not_re_derive_the_orders_status():
+    """A draft has delivered nothing, so making one is not an event of the order's delivery: an order a person marked `delivered` through the API is re-derived at the next ISSUE or CANCEL of a
+    challan on it (the two events that change what is delivered), and not by a draft being made."""
+    from services import sales_cycle_service as svc
+    db = _order_db()
+    db.store["sales_orders"][0]["status"] = "delivered"
+    svc.create_challan(db, "F1", _complete_challan("DC/25", "2026-04-05", "L1", 10, "Widget"))
+    assert db.store["sales_orders"][0]["status"] == "delivered", "making a draft re-derived the order"
+    made = svc.create_challan(db, "F1", _complete_challan("DC/26", "2026-04-06", "L2", 5, "Gadget"))
+    svc.issue_challan(db, "F1", made["id"], client_id="C1", consigner=_CONSIGNER)
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered", "issuing is an event of the order's delivery and re-derives it from the lines"
 
 
 def test_another_firms_challan_never_reaches_this_orders_position():
@@ -838,6 +914,7 @@ def test_recording_the_goods_back_stops_the_clock():
         "lines": [{"description": "Casting", "quantity": 1, "rate_paise": 100}],
     })
     cid = db.store["delivery_challans"][0]["id"]
+    db.store["delivery_challans"][0]["status"] = "issued"       # the goods have left on it (the issue door has its own tests); a draft draws no clock (POST-A-398)
     before = svc.list_challans(db, "F1", "C1")[0]["clock"]
     assert before["overdue"] is True
     svc.record_goods_back(db, "F1", cid, "2026-03-01")
@@ -982,6 +1059,7 @@ def test_the_challan_PATCH_records_the_goods_back_and_stamps_the_status():
         "goods_kind": dc.GOODS_KIND_INPUTS,
         "lines": [{"description": "Casting", "quantity": 1, "rate_paise": 100}]})
     cid = db.store["delivery_challans"][0]["id"]
+    db.store["delivery_challans"][0]["status"] = "issued"       # goods come back on a challan they left on (POST-A-398); the issue door has its own tests
     out = svc.update_challan(db, "F1", cid, {"received_back_on": "2026-01-05"})
     assert out["status"] == "received_back"
     assert svc.list_challans(db, "F1", "C1")[0]["clock"]["overdue"] is False
