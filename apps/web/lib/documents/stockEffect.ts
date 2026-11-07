@@ -32,6 +32,29 @@ export function stockEffectSummary(responses: readonly unknown[]): { count: numb
   return { count: problems.length, first: problems[0] ?? null };
 }
 
+/**
+ * The server's sentence when it left stock alone ON PURPOSE, because the note said no goods came back (`stock_not_moved`, POST-A-371). It is not a problem and is not part of `stock_effect`:
+ * a CA who chose "No goods returned" is told, in the server's words, that nothing moved and how to record it if goods did. Absent means the question did not arise (no goods line, or the
+ * answer was yes). Nothing here words it.
+ */
+export function stockNotMovedSentence(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const said = (data as { stock_not_moved?: unknown }).stock_not_moved;
+  return typeof said === "string" && said.trim() !== "" ? said.trim() : null;
+}
+
+/**
+ * The sentence for a bulk run: how many notes were issued with stock left alone on purpose, and the first of the server's sentences as the example. Null for none. A credit note's goods
+ * "came back"; a purchase debit note's "went back to the supplier" (the server's own words for each, `domain/inventory/note_goods`), so the kind says which.
+ */
+export function bulkStockNotMovedSentence(responses: readonly unknown[], kind: "credit_note" | "debit_note"): string | null {
+  const said = responses.map(stockNotMovedSentence).filter((p): p is string => p !== null);
+  if (said.length === 0) return null;
+  const which = said.length === 1 ? "One of them said" : `${said.length} of them said`;
+  const what = kind === "credit_note" ? "no goods came back" : "no goods went back to the supplier";
+  return `${which} ${what}, so stock was left alone. For example: ${said[0]}`;
+}
+
 /** Sentences joined into one message: each but the last loses its full stop so the join never reads "issued.. Credit note". */
 export function joinSentences(parts: readonly (string | null | undefined)[]): string {
   const said = parts.filter((p): p is string => Boolean(p && p.trim() !== ""));

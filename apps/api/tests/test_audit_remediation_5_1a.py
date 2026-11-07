@@ -2,7 +2,7 @@
 Phase 5.1A — Audit remediation verification (C1 + H1–H4).
 
 Proves each release-blocking finding is closed and behaviour is preserved:
-  H1 — workload cross-firm user lookup → 404 (no PII disclosure)
+  H1 — workload cross-firm user lookup → 404 (no PII disclosure); the route was DELETED on 7-11-2026 (POST-A-374), so its two tests went with it
   H2 — compliance_records list/get respect client-assignment scope
   H3 — receipt re-allocation recomputes paid_paise from scratch (no AR drift,
        idempotent, stable, reverts to issued on full de-allocation)
@@ -81,27 +81,6 @@ class FakeDB:
     def __init__(self): self.data = {}
     def table(self, n): return _Q(self, n)
     def seed(self, t, row): self.data.setdefault(t, []).append(dict(row)); return row
-
-
-# ── H1 — workload cross-firm user PII ─────────────────────────────────────────
-
-def test_h1_cross_firm_user_lookup_404(monkeypatch):
-    import routers.workload as wl
-    db = FakeDB()
-    monkeypatch.setattr(wl, "_get_db", lambda: db)
-    db.seed("users", {"id": "U-B", "firm_id": "FIRM-B", "full_name": "Bob", "email": "b@x.test", "role": "Executive"})
-    with pytest.raises(HTTPException) as ei:
-        wl.get_user_workload("U-B", {"firm_id": "FIRM-A"})
-    assert ei.value.status_code == 404          # existence hidden, no PII leaked
-
-
-def test_h1_same_firm_user_ok(monkeypatch):
-    import routers.workload as wl
-    db = FakeDB()
-    monkeypatch.setattr(wl, "_get_db", lambda: db)
-    db.seed("users", {"id": "U-A", "firm_id": "FIRM-A", "full_name": "Alice", "email": "a@x.test", "role": "Executive"})
-    resp = wl.get_user_workload("U-A", {"firm_id": "FIRM-A"})
-    assert resp["success"] is True and resp["data"]["user"]["id"] == "U-A"
 
 
 # ── H2 — compliance assignment isolation ──────────────────────────────────────

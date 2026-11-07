@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import type { GoodsReturned } from "@/lib/inventory/goodsReturned";
+import { goodsReturnedQuestion, type GoodsReturned } from "@/lib/inventory/goodsReturned";
 
 /**
  * Did the goods on this credit or debit note physically come back? (POST-A-371)
@@ -29,7 +29,7 @@ export function GoodsReturnedChoice({
   return (
     <fieldset className="text-xs text-ps-label" disabled={disabled}>
       <legend className="block text-xs font-medium text-ps-label mb-1">
-        Did the goods come back?
+        {goodsReturnedQuestion(kind)}
         {value === null && <span className="ml-2 font-normal text-ps-hint">Required before you issue this note. The tax is adjusted either way.</span>}
       </legend>
       <div className="flex flex-col gap-1">

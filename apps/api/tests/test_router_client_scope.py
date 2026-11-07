@@ -819,10 +819,8 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # tasks.client_id is NOT NULL (migration 002). get_team_workload computed
     # every named colleague's active/overdue/due-this-week/utilisation figures
     # over EVERY client in the firm; client_id is now selected purely so the
-    # rows can be narrowed first. get_user_workload was worse: it selects "*"
-    # and returns FULL task rows (title, description, due_date, client_id) in
-    # overdue_tasks/due_today, so an Executive could read the substance of a
-    # colleague's work on clients outside their own book, not just counts.
+    # rows can be narrowed first. (get_user_workload, which selected "*" and
+    # returned FULL task rows, was deleted on 7-11-2026: POST-A-374.)
     # The two /capacity routes are EXEMPT below.
     "/api/workload": ("filter_by_client",),
     # team.py — the roster with per-member workload counts. No mount-level

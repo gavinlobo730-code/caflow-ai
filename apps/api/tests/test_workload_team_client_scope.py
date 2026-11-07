@@ -6,10 +6,12 @@ Neither router carries main.py's mount-level client guard, and neither takes a
 client_id in any request, so nothing was ever going to check one for them.
 tasks.client_id is NOT NULL (migration 002).
 
-  * workload.get_user_workload is the sharpest: it selects "*" and returns
-    FULL task rows (title, description, due_date, client_id) under
-    overdue_tasks/due_today — the substance of a colleague's work on clients
-    outside the caller's own book, not just counts.
+  * workload.get_user_workload (DELETED on 7-11-2026, POST-A-374: no screen
+    opened it) was the sharpest: it selected "*" and returned FULL task rows
+    under overdue_tasks/due_today — the substance of a colleague's work on
+    clients outside the caller's own book, not just counts. With the route gone
+    the leak it was can only come back by a route that does it again, which the
+    router-scope rules and the way-in guard are there to catch.
   * workload.get_team_workload computed every named colleague's active/
     overdue/due-this-week/utilisation figures over every client in the firm.
   * team.list_team fed task_repo.find_all(firm_id=...) straight into
@@ -32,7 +34,7 @@ def _only_mine(user, rows, key="client_id"):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# workload.get_user_workload — raw task rows
+# the in-memory database the workload and team tests share
 # ══════════════════════════════════════════════════════════════════════════════
 
 class _Result:
@@ -76,31 +78,6 @@ class _Db:
         if name == "tasks":
             return _TasksQuery(self._tasks)
         return _TasksQuery([])
-
-
-def test_a_colleagues_task_rows_outside_your_book_are_not_returned(monkeypatch):
-    tasks = [
-        {"id": "T1", "status": "open", "due_date": "2000-01-01", "client_id": MINE,
-         "title": "mine"},
-        {"id": "T2", "status": "open", "due_date": "2000-01-01", "client_id": THEIRS,
-         "title": "SECRET client work"},
-    ]
-    monkeypatch.setattr(wl, "_get_db", lambda: _Db({"id": "u2", "full_name": "Colleague"}, tasks))
-    monkeypatch.setattr(wl, "filter_by_client", _only_mine)
-
-    out = wl.get_user_workload("u2", current_user=USER)
-    assert out["data"]["summary"]["total_open"] == 1
-    assert [t["id"] for t in out["data"]["overdue_tasks"]] == ["T1"]
-    assert "SECRET client work" not in str(out)
-
-
-def test_your_own_clients_task_rows_still_come_back(monkeypatch):
-    tasks = [{"id": "T1", "status": "open", "due_date": "2000-01-01",
-              "client_id": MINE, "title": "mine"}]
-    monkeypatch.setattr(wl, "_get_db", lambda: _Db({"id": "u2"}, tasks))
-    monkeypatch.setattr(wl, "filter_by_client", _only_mine)
-    out = wl.get_user_workload("u2", current_user=USER)
-    assert out["data"]["overdue_tasks"][0]["title"] == "mine"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

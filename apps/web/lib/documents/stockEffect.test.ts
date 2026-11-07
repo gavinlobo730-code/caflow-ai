@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  UNREADABLE_STOCK_EFFECT, bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary,
-  withMoreStockSentences,
+  UNREADABLE_STOCK_EFFECT, bulkStockNotMovedSentence, bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary,
+  stockNotMovedSentence, withMoreStockSentences,
 } from "./stockEffect.ts";
 
 // POST-A-092. The decision the browser makes about `stock_effect` on an issue response, as a decision: absent and recorded say
@@ -70,4 +70,36 @@ test("a second document's sentence is added beside the first and a repeat is not
   assert.deepEqual(withMoreStockSentences([], [null, "A."]), ["A."]);
   assert.deepEqual(withMoreStockSentences(["A."], ["B.", "A.", null]), ["A.", "B."]);
   assert.deepEqual(withMoreStockSentences(["A."], []), ["A."]);
+});
+
+// POST-A-378. The server says in `stock_not_moved` that it left stock alone on purpose, because the note said no goods came back; the screens that issue a note print it.
+
+const left = "Stock was not moved for credit note CN-0007: it says no goods came back (a price, rate or discount correction). If goods did move, record that with a stock adjustment.";
+
+test("the server's sentence for stock left alone on purpose is read as it is sent, trimmed, and its absence says nothing", () => {
+  assert.equal(stockNotMovedSentence({ id: "x", stock_not_moved: `  ${left}  ` }), left);
+  assert.equal(stockNotMovedSentence({ id: "x" }), null);
+  assert.equal(stockNotMovedSentence({ stock_not_moved: "   " }), null);
+  assert.equal(stockNotMovedSentence({ stock_not_moved: 3 }), null);
+  assert.equal(stockNotMovedSentence(null), null);
+  assert.equal(stockNotMovedSentence("text"), null);
+});
+
+test("it is a different thing from a stock effect that was not recorded: it is no problem and does not turn a toast into a warning", () => {
+  const data = { stock_not_moved: left };
+  assert.equal(stockEffectProblem(data), null);
+  assert.deepEqual(issuedMessage("Credit note issued", data), { text: "Credit note issued", type: "success" });
+});
+
+test("a bulk run says how many notes left stock alone, once, with the first as the example, and says nothing for none", () => {
+  assert.equal(bulkStockNotMovedSentence([{ id: "a" }, null, { stock_effect: { recorded: true } }], "credit_note"), null);
+  assert.equal(bulkStockNotMovedSentence([{ stock_not_moved: left }, { id: "b" }], "credit_note"), `One of them said no goods came back, so stock was left alone. For example: ${left}`);
+  assert.equal(bulkStockNotMovedSentence([{ stock_not_moved: left }, { stock_not_moved: "Other." }, { id: "c" }], "credit_note"), `2 of them said no goods came back, so stock was left alone. For example: ${left}`);
+  assert.equal(bulkStockNotMovedSentence([], "credit_note"), null);
+});
+
+test("a debit note's goods go back to the supplier: the bulk sentence says it in the server's verb and not the credit note's", () => {
+  const sentence = bulkStockNotMovedSentence([{ stock_not_moved: "Stock was not moved for debit note DN-1: it says no goods went back to the supplier (a price, rate or discount correction). If goods did move, record that with a stock adjustment." }], "debit_note");
+  assert.match(sentence ?? "", /^One of them said no goods went back to the supplier, so stock was left alone\. For example: /);
+  assert.doesNotMatch(sentence ?? "", /^One of them said no goods came back/);
 });

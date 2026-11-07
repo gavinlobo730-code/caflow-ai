@@ -17,7 +17,7 @@ import { api } from "@/lib/api";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
-import { bulkStockSentence, stockEffectProblem, stockEffectSummary, withMoreStockSentences } from "@/lib/documents/stockEffect";
+import { bulkStockNotMovedSentence, bulkStockSentence, joinSentences, stockEffectProblem, stockEffectSummary, stockNotMovedSentence, withMoreStockSentences } from "@/lib/documents/stockEffect";
 import { StockEffectNotice } from "@/components/documents/StockEffectNotice";
 import { DebitNoteViewDrawer } from "@/components/purchases/DebitNoteViewDrawer";
 import type { DebitNoteDetail } from "@/components/purchases/DebitNoteEditor";
@@ -3327,7 +3327,9 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       const token = await getAuthToken();
       const result = await apiCall(`/api/debit-notes/${id}/issue`, "POST", undefined, token);
       if (!result.success) throw new Error(result.error ?? "Failed to issue debit note");
-      setMsg({ type: "ok", text: "Debit note issued." });
+      // POST-A-378: the server's own sentence when the CA said no goods went back to the supplier, so stock was left alone on purpose.
+      const left = stockNotMovedSentence(result.data);
+      setMsg({ type: "ok", text: left ? joinSentences(["Debit note issued", left]) : "Debit note issued." });
       // PUR-23 ≡ TDS-32 — the note is issued and posted; what the server sends
       // back is what the 26Q deductee row now disagrees with. Its own panel,
       // not the toast, because a statutory warning a CA dismisses in passing
@@ -3435,7 +3437,10 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
       const reasons = Array.from(new Set(failures.map((f) => f.reason)));
       parts.push(`${failed} failed (${reasons.join("; ")})`);
     }
-    const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft debit notes selected.";
+    const base = parts.length > 0 ? `${parts.join(", ")}.` : "No draft debit notes selected.";
+    // POST-A-378: how many were issued with stock left alone on purpose (the CA said no goods went back to the supplier).
+    const left = bulkStockNotMovedSentence(results.flatMap((r) => (r.ok ? [r.data] : [])), "debit_note");
+    const text = left ? `${base} ${left}` : base;
     // POST-A-092: as for bills, the panel names how many debit notes did not take all their goods out of stock.
     const stockHead = bulkStockSentence(stockEffectSummary(results.flatMap((r) => (r.ok ? [r.data] : []))));
     if (stockHead) setStockNotes((shown) => withMoreStockSentences(shown, [stockHead]));

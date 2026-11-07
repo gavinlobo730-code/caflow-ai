@@ -31,12 +31,15 @@ interface InvoiceTemplate {
   statutory_notes?: string[];
 }
 
-const TEMPLATE_DESCRIPTIONS: Record<InvoiceTemplate["template_type"], { label: string; desc: string; accent: string }> = {
-  classic: { label: "Classic", desc: "Traditional layout with header, itemized table, and signature block", accent: "bg-slate-100 text-slate-700" },
-  modern: { label: "Modern", desc: "Clean lines, bold typography, contemporary look for modern firms", accent: "bg-blue-50 text-blue-700" },
-  professional_ca: { label: "Professional CA", desc: "CA-specific with ICAI branding guidelines and compliance fields", accent: "bg-indigo-50 text-indigo-700" },
-  corporate: { label: "Corporate", desc: "Formal layout suited for corporate clients and large engagements", accent: "bg-gray-100 text-gray-700" },
-  minimal: { label: "Minimal", desc: "Stripped-back design focusing on the numbers and key details only", accent: "bg-green-50 text-green-700" },
+// The five style names are LABELS. `domain/branding/invoice_layout.py` carries `template_type` and nothing that draws an invoice reads it: what changes the PDF is where the logo
+// and the signature sit (and, on a card, the header and footer style). The descriptions that used to sit here ("bold typography", "ICAI branding guidelines and compliance fields",
+// "numbers and key details only") promised looks the invoice never had (POST-A-375), so a style has a name and no description.
+const TEMPLATE_DESCRIPTIONS: Record<InvoiceTemplate["template_type"], { label: string; accent: string }> = {
+  classic: { label: "Classic", accent: "bg-slate-100 text-slate-700" },
+  modern: { label: "Modern", accent: "bg-blue-50 text-blue-700" },
+  professional_ca: { label: "Professional CA", accent: "bg-indigo-50 text-indigo-700" },
+  corporate: { label: "Corporate", accent: "bg-gray-100 text-gray-700" },
+  minimal: { label: "Minimal", accent: "bg-green-50 text-green-700" },
 };
 
 const LOGO_POSITIONS = ["left", "center", "right"] as const;
@@ -112,7 +115,8 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-ps-label block mb-2">Layout Style</label>
+            <label className="text-xs font-medium text-ps-label block mb-1">Style name</label>
+            <p className="text-xs text-ps-hint mb-2">The style is a name for the template and does not change how the invoice is drawn. Where the logo and the signature sit does.</p>
             <div className="grid grid-cols-1 gap-2">
               {(Object.entries(TEMPLATE_DESCRIPTIONS) as [InvoiceTemplate["template_type"], (typeof TEMPLATE_DESCRIPTIONS)[keyof typeof TEMPLATE_DESCRIPTIONS]][]).map(([key, info]) => (
                 <button
@@ -123,7 +127,6 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
                   }`}
                 >
                   <div className={`mt-0.5 px-2 py-0.5 rounded text-xs font-medium ${info.accent}`}>{info.label}</div>
-                  <p className="text-xs text-ps-label mt-0.5">{info.desc}</p>
                   {type === key && <Check size={14} className="ml-auto shrink-0 text-blue-600 mt-0.5" />}
                 </button>
               ))}
@@ -179,7 +182,6 @@ function TemplateCard({
           <div className={`mt-0.5 px-2 py-0.5 rounded text-xs font-medium ${info.accent}`}>{info.label}</div>
           <div>
             <p className="text-sm font-semibold text-ps-ink">{template.name}</p>
-            <p className="text-xs text-ps-hint mt-0.5">{info.desc}</p>
           </div>
         </div>
         {template.is_default && (
@@ -322,7 +324,7 @@ export default function InvoiceTemplatesPage() {
           </Link>
           <PageHeader
             title="Invoice Templates"
-            subtitle="Choose a layout style for your invoices and engagement documents."
+            subtitle="Choose where the logo and the signature sit on the invoices your practice issues to its own clients. Engagement letters and your clients' own invoices do not use it."
             actions={
               <button
                 onClick={() => setShowCreate(true)}
@@ -350,7 +352,7 @@ export default function InvoiceTemplatesPage() {
           <EmptyState
             className="py-12"
             title="No invoice templates yet"
-            description="A template sets the layout of the invoices you send: where the logo and signature sit and what the footer says. It never removes a particular the law requires."
+            description="A template sets where the logo and the signature sit on the invoices your practice issues to its own clients. It never removes a particular the law requires."
             action={
               <EmptyStateActions>
                 <EmptyStateAction requires={["branding", "write"]} icon={<Plus size={14} />} label="Create your first template"

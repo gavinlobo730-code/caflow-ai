@@ -149,7 +149,7 @@ def test_another_firms_party_cannot_be_linked():
     with pytest.raises(HTTPException) as ei:
         bank_payee_service.set_payee(db, FIRM, "t1", payee_name="R",
                                      payee_type="vendor", payee_id="vend-1")
-    assert ei.value.status_code == 422
+    assert (ei.value.status_code, ei.value.detail) == (404, "That vendor was not found.")
 
 
 def test_another_clients_party_cannot_be_linked():
@@ -158,7 +158,44 @@ def test_another_clients_party_cannot_be_linked():
     with pytest.raises(HTTPException) as ei:
         bank_payee_service.set_payee(db, FIRM, "t1", payee_name="R",
                                      payee_type="vendor", payee_id="vend-1")
-    assert ei.value.status_code == 422
+    assert (ei.value.status_code, ei.value.detail) == (404, "That vendor was not found.")
+
+
+def test_an_absent_party_a_sibling_clients_and_another_firms_say_the_same_words():
+    """POST-A-373. The refusal for a party of the firm's OTHER client used to read differently from the one for a party that is not there, so a
+    caller could tell a real sibling party from an invented id. All three are one status and one sentence now, for a customer as for a vendor."""
+    answers = set()
+    for ptype, table in (("vendor", "vendors"), ("customer", "customers")):
+        for how in ("absent", "sibling", "other firm"):
+            db = _db(); _txn(db)
+            pid = "no-such-party" if how == "absent" else ("vend-1" if ptype == "vendor" else "cust-1")
+            if how == "sibling":
+                db.store[table][0]["client_id"] = "client-2"
+            if how == "other firm":
+                db.store[table][0]["firm_id"] = "other-firm"
+            with pytest.raises(HTTPException) as ei:
+                bank_payee_service.set_payee(db, FIRM, "t1", payee_name="R", payee_type=ptype, payee_id=pid)
+            answers.add((ptype, ei.value.status_code, ei.value.detail))
+    assert answers == {("vendor", 404, "That vendor was not found."), ("customer", 404, "That customer was not found.")}
+
+
+def test_an_id_that_is_not_an_id_at_all_is_a_missing_party_and_not_a_500():
+    """POST-A-373. PostgREST answers a string that is not a UUID with a type error (22P02), which `set_payee` used to let through as a 500: a
+    caller could tell an invented id from a real party of the firm's other client by the status alone. It reads as the missing party it is."""
+    class Malformed(_Q):
+        def execute(self):
+            if self.t in ("vendors", "customers"):
+                raise Exception({"code": "22P02", "message": 'invalid input syntax for type uuid: "abc"'})
+            return super().execute()
+
+    class MalformedDB(FakeDB):
+        def table(self, n): return Malformed(self.store, n, self.queries)
+
+    db = MalformedDB(); db.store = _db().store; _txn(db)
+    for ptype in ("vendor", "customer"):
+        with pytest.raises(HTTPException) as ei:
+            bank_payee_service.set_payee(db, FIRM, "t1", payee_name="R", payee_type=ptype, payee_id="abc")
+        assert (ei.value.status_code, ei.value.detail) == (404, f"That {ptype} was not found.")
 
 
 def test_an_unknown_payee_type_is_refused():

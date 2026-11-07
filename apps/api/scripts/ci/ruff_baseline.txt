@@ -254,7 +254,6 @@ routers/gst_workspace.py :: B904 :: upload_gstr2b :: 1
 routers/gst_workspace.py :: C901 :: update_gstr3b_status :: 16
 routers/gst_workspace.py :: F401 :: <module> :: 3
 routers/gst_workspace.py :: F841 :: filing_history :: 1
-routers/gst_workspace.py :: F841 :: get_gstr1 :: 1
 routers/gst_workspace.py :: F841 :: get_gstr2b :: 1
 routers/gst_workspace.py :: F841 :: get_gstr3b :: 1
 routers/gst_workspace.py :: F841 :: gst_dashboard :: 1

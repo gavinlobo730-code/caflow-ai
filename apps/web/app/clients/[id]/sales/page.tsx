@@ -23,7 +23,7 @@ import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/m
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
-import { bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary } from "@/lib/documents/stockEffect";
+import { bulkStockNotMovedSentence, bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary, stockNotMovedSentence } from "@/lib/documents/stockEffect";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import CsvImportModal from "@/components/LazyCsvImportModal";
@@ -4516,7 +4516,9 @@ function CreditNotes({
       const lateNote = (result.data as { section_34_2_warning?: string | null } | null)?.section_34_2_warning;
       // POST-A-092: and the stock the returned goods should have gone back into, when that was not all recorded.
       const stock = stockEffectProblem(result.data);
-      showToast(joinSentences(["Credit note issued", lateNote, stock]), lateNote || stock ? "warning" : "success");
+      // POST-A-378: and the server's own sentence when the CA said no goods came back, so stock was left alone on purpose (it is no problem, so the toast stays a success).
+      const left = stockNotMovedSentence(result.data);
+      showToast(joinSentences(["Credit note issued", lateNote, stock, left]), lateNote || stock ? "warning" : "success");
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Error issuing credit note", "error");
@@ -4614,8 +4616,11 @@ function CreditNotes({
     }
     // POST-A-092: as for invoices, a credit note whose returned goods did not all go back into stock is counted.
     const stock = bulkStockSentence(stockEffectSummary(results.flatMap((r) => (r.ok ? [r.data] : []))));
+    // POST-A-378: how many were issued with stock left alone on purpose (the CA said no goods came back).
+    const left = bulkStockNotMovedSentence(results.flatMap((r) => (r.ok ? [r.data] : [])), "credit_note");
     const text = parts.length > 0 ? `${parts.join(", ")}.` : "No draft credit notes selected.";
-    showToast(stock ? `${text} ${stock}` : text, (skipped > 0 || failed > 0) ? "error" : stock ? "warning" : "success");
+    const said = [stock, left].filter((p): p is string => Boolean(p)).join(" ");
+    showToast(said ? `${text} ${said}` : text, (skipped > 0 || failed > 0) ? "error" : stock ? "warning" : "success");
     return skipped === 0 && failed === 0;
   }
 
