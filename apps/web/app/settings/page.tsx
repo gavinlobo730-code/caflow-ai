@@ -672,7 +672,7 @@ export default function SettingsPage() {
                 <Palette size={15} className="text-violet-500 mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-ps-ink">Firm Branding</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Logo, colors, fonts and social links applied to all client documents.</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Logo, tagline and primary colour for your practice&apos;s own invoices; the other settings are kept on file.</p>
                 </div>
               </div>
               <Link
@@ -704,7 +704,7 @@ export default function SettingsPage() {
                 <FileText size={15} className="text-indigo-500 mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-ps-ink">Invoice Templates</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Layout styles: Classic, Modern, Professional CA, Corporate, Minimal.</p>
+                  <p className="text-xs text-ps-hint mt-0.5">Where the logo and the signature sit on your practice&apos;s own invoices.</p>
                 </div>
               </div>
               <Link

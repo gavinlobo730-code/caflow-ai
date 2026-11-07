@@ -330,7 +330,7 @@ export default function InvoiceSettingsPage() {
             <h2 className="text-sm font-semibold text-ps-ink">Payment Details</h2>
           </div>
           <div className="px-5 py-4 space-y-4">
-            <p className="text-xs text-ps-hint">These details appear on every invoice so clients can pay you directly.</p>
+            <p className="text-xs text-ps-hint">These details are printed under Payment Details on the invoices your practice issues to its own clients, so they can pay you directly, when a bank name, an account number or a UPI ID is filled in. The account holder and the IFSC code are printed with the bank details, and the QR picture with either. A client&apos;s own invoices do not carry them.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-medium text-ps-label block mb-1">Bank Name</label>
@@ -392,6 +392,7 @@ export default function InvoiceSettingsPage() {
                   placeholder="https://example.com/qr.png"
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
                 />
+                <p className="text-xs text-ps-hint mt-1">Printed only if it is a PNG, JPEG or WebP of up to 2,000,000 bytes (about 2 MB) that the server can fetch within three seconds. An SVG, a larger file or one that does not answer in time is left off the invoice.</p>
               </div>
             </div>
 

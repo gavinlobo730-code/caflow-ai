@@ -692,6 +692,30 @@ function toYesNoOptional(v: string | undefined): boolean | undefined {
   return ["yes", "y", "true", "1", "t"].includes(s);
 }
 
+/**
+ * The answer to "did the goods come back?" in an import cell (POST-A-378): yes / y / true / 1 is yes, no / n / false / 0 is no, blank is NOT STATED, and anything else is refused.
+ * `toYesNoOptional` reads every unrecognised word as no, which is right for a flag that defaults to off and wrong here: "no goods returned" tells the server to leave stock alone, so a
+ * cell that could not be read must not become one. The server decides what each answer does (`domain/inventory/note_goods`); this only carries it.
+ */
+function toGoodsAnswer(v: string | undefined): { value: boolean | undefined; problem: string | null } {
+  const s = str(v).toLowerCase();
+  if (!s) return { value: undefined, problem: null };
+  if (["yes", "y", "true", "1"].includes(s)) return { value: true, problem: null };
+  if (["no", "n", "false", "0"].includes(s)) return { value: false, problem: null };
+  return { value: undefined, problem: `goods_returned must be yes or no, or blank if it is not known yet (not "${str(v)}")` };
+}
+
+/** The column the two imports whose notes can move stock carry, worded for each: a sales credit note's goods come back into stock, a purchase debit note's go back to the supplier. */
+function goodsReturnedColumn(kind: "credit_note" | "debit_note"): ImportColumn {
+  const question = kind === "credit_note" ? "did the goods on this note physically come back?" : "did the goods on this note physically go back to the supplier?";
+  return {
+    key: "goods_returned",
+    label: "Goods Returned",
+    required: false,
+    hint: `yes/no — ${question} A note that names goods cannot be issued until it says; leave blank if you do not know yet. All rows of one note must agree (two notes against one document need a Note Reference each).`,
+  };
+}
+
 /** An existing Sales Invoice or Purchase Bill this note may link to. */
 export interface OriginalDocRef {
   id: string;
@@ -730,6 +754,8 @@ interface NoteGroup {
   reason?: string;
   isInterstate: boolean;
   isReverseCharge: boolean;
+  /** The answer to "did the goods come back?", when the file stated it (POST-A-378); undefined is not stated. */
+  goodsReturned?: boolean;
   lines: BuiltNoteLine[];
 }
 
@@ -743,6 +769,7 @@ function parseSalesNoteRows(
   customers: NameRef[],
   invoices: OriginalDocRef[],
   services: SalesServiceRef[],
+  readsGoodsAnswer: boolean,
 ): { groups: Map<string, NoteGroup>; errors: string[] } {
   const customersByName = new Map(customers.map((c) => [c.name.trim().toLowerCase(), c.id]));
   const invoicesByNo = new Map(invoices.map((d) => [d.no.trim().toLowerCase(), d]));
@@ -757,6 +784,8 @@ function parseSalesNoteRows(
     const noteRef = str(r.note_ref);
     const noteDate = str(r[dateColumnKey]);
     const explicitInterstate = toYesNoOptional(r.is_interstate);
+    // Read, and refused when unreadable, only by the two imports that OFFER the column (a file for another note kind that happens to carry a column of that name is not judged by it).
+    const goods = readsGoodsAnswer ? toGoodsAnswer(r.goods_returned) : { value: undefined, problem: null };
     const productName = str(r.product_service);
     const service = productName ? servicesByName.get(productName.toLowerCase()) : undefined;
 
@@ -776,6 +805,7 @@ function parseSalesNoteRows(
     }
 
     if (!customerId) { errors.push(`Row ${rowNo}: unknown customer "${customerName}" — create the customer first, or link a valid invoice_no`); return; }
+    if (goods.problem) { errors.push(`Row ${rowNo}: ${goods.problem}`); return; }
     if (!DATE_RE.test(noteDate)) { errors.push(`Row ${rowNo}: ${dateColumnKey} must be YYYY-MM-DD`); return; }
     if (!productName) { errors.push(`Row ${rowNo}: product_service is required on every line (Product/Service is mandatory on every credit/debit note line)`); return; }
     if (!service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
@@ -811,9 +841,13 @@ function parseSalesNoteRows(
     if (existing) {
       if (existing.partyId !== customerId) { errors.push(`Row ${rowNo}: rows grouped under "${key}" reference different customers`); return; }
       if (existing.noteDate !== noteDate) { errors.push(`Row ${rowNo}: rows grouped under "${key}" have different ${dateColumnKey} values`); return; }
+      if (goods.value !== undefined) {
+        if (existing.goodsReturned !== undefined && existing.goodsReturned !== goods.value) { errors.push(`Row ${rowNo}: rows grouped under "${key}" disagree on goods_returned (if they are two separate notes, give each its own Note Reference)`); return; }
+        existing.goodsReturned = goods.value;
+      }
       existing.lines.push(line);
     } else {
-      groups.set(key, { partyId: customerId, docId, noteDate, reason: str(r.reason) || undefined, isInterstate, isReverseCharge: false, lines: [line] });
+      groups.set(key, { partyId: customerId, docId, noteDate, reason: str(r.reason) || undefined, isInterstate, isReverseCharge: false, goodsReturned: goods.value, lines: [line] });
     }
   });
 
@@ -838,6 +872,8 @@ export interface BuiltSalesCreditNote {
   sales_invoice_id?: string;
   reason?: string;
   is_interstate: boolean;
+  /** Did the goods come back (POST-A-378)? Present only when the file said; the server refuses to issue a note that names goods and has not. */
+  goods_returned?: boolean;
   lines: BuiltNoteLine[];
 }
 
@@ -847,6 +883,7 @@ export const SALES_CREDIT_NOTE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "credit_note_date", label: "Credit Note Date", required: true, hint: "YYYY-MM-DD" },
   { key: "reason", label: "Reason", required: false, hint: "Free text, e.g. Sales return (optional)" },
   { key: "is_interstate", label: "Interstate", required: false, hint: "yes/no — only used when Invoice No is blank; a note linked to an invoice always inherits that invoice's own treatment" },
+  goodsReturnedColumn("credit_note"),
   { key: "note_ref", label: "Note Reference", required: false, hint: "Your own reference to group multiple lines into one note when Invoice No isn't enough (e.g. two separate notes against the same invoice) — not stored, grouping only" },
   ...NOTE_LINE_COLUMNS,
 ];
@@ -858,7 +895,7 @@ export function buildSalesCreditNotes(
   invoices: OriginalDocRef[],
   services: SalesServiceRef[] = [],
 ): { notes: BuiltSalesCreditNote[]; errors: string[] } {
-  const { groups, errors } = parseSalesNoteRows(rows, "credit_note_date", customers, invoices, services);
+  const { groups, errors } = parseSalesNoteRows(rows, "credit_note_date", customers, invoices, services, true);
   const notes = Array.from(groups.values()).map((g) => ({
     client_id: clientId,
     customer_id: g.partyId,
@@ -866,6 +903,7 @@ export function buildSalesCreditNotes(
     sales_invoice_id: g.docId,
     reason: g.reason,
     is_interstate: g.isInterstate,
+    ...(g.goodsReturned === undefined ? {} : { goods_returned: g.goodsReturned }),
     lines: g.lines,
   }));
   return { notes, errors };
@@ -900,7 +938,7 @@ export function buildSalesDebitNotes(
   invoices: OriginalDocRef[],
   services: SalesServiceRef[] = [],
 ): { notes: BuiltSalesDebitNote[]; errors: string[] } {
-  const { groups, errors } = parseSalesNoteRows(rows, "debit_note_date", customers, invoices, services);
+  const { groups, errors } = parseSalesNoteRows(rows, "debit_note_date", customers, invoices, services, false);
   const notes = Array.from(groups.values()).map((g) => ({
     client_id: clientId,
     customer_id: g.partyId,
@@ -923,6 +961,7 @@ function parsePurchaseNoteRows(
   vendors: NameRef[],
   bills: OriginalDocRef[],
   services: PurchaseServiceRef[],
+  readsGoodsAnswer: boolean,
 ): { groups: Map<string, NoteGroup>; errors: string[] } {
   const vendorsByName = new Map(vendors.map((v) => [v.name.trim().toLowerCase(), v.id]));
   const billsByNo = new Map(bills.map((d) => [d.no.trim().toLowerCase(), d]));
@@ -938,6 +977,8 @@ function parsePurchaseNoteRows(
     const noteDate = str(r[dateColumnKey]);
     const explicitInterstate = toYesNoOptional(r.is_interstate);
     const isReverseCharge = toBool(r.is_reverse_charge, false);
+    // Read, and refused when unreadable, only by the two imports that OFFER the column (a file for another note kind that happens to carry a column of that name is not judged by it).
+    const goods = readsGoodsAnswer ? toGoodsAnswer(r.goods_returned) : { value: undefined, problem: null };
     const productName = str(r.product_service);
     const service = productName ? servicesByName.get(productName.toLowerCase()) : undefined;
 
@@ -957,6 +998,7 @@ function parsePurchaseNoteRows(
     }
 
     if (!vendorId) { errors.push(`Row ${rowNo}: unknown vendor "${vendorName}" — create the vendor first, or link a valid bill_no`); return; }
+    if (goods.problem) { errors.push(`Row ${rowNo}: ${goods.problem}`); return; }
     if (!DATE_RE.test(noteDate)) { errors.push(`Row ${rowNo}: ${dateColumnKey} must be YYYY-MM-DD`); return; }
     if (!productName) { errors.push(`Row ${rowNo}: product_service is required on every line (Product/Service is mandatory on every credit/debit note line)`); return; }
     if (!service) { errors.push(`Row ${rowNo}: unknown product/service "${productName}" — create it first`); return; }
@@ -992,9 +1034,13 @@ function parsePurchaseNoteRows(
     if (existing) {
       if (existing.partyId !== vendorId) { errors.push(`Row ${rowNo}: rows grouped under "${key}" reference different vendors`); return; }
       if (existing.noteDate !== noteDate) { errors.push(`Row ${rowNo}: rows grouped under "${key}" have different ${dateColumnKey} values`); return; }
+      if (goods.value !== undefined) {
+        if (existing.goodsReturned !== undefined && existing.goodsReturned !== goods.value) { errors.push(`Row ${rowNo}: rows grouped under "${key}" disagree on goods_returned (if they are two separate notes, give each its own Note Reference)`); return; }
+        existing.goodsReturned = goods.value;
+      }
       existing.lines.push(line);
     } else {
-      groups.set(key, { partyId: vendorId, docId, noteDate, reason: str(r.reason) || undefined, isInterstate, isReverseCharge, lines: [line] });
+      groups.set(key, { partyId: vendorId, docId, noteDate, reason: str(r.reason) || undefined, isInterstate, isReverseCharge, goodsReturned: goods.value, lines: [line] });
     }
   });
 
@@ -1013,6 +1059,8 @@ export interface BuiltPurchaseDebitNote {
   reason?: string;
   is_interstate: boolean;
   is_reverse_charge: boolean;
+  /** Did the goods go back to the supplier (POST-A-378)? Present only when the file said; the server refuses to issue a note that names goods and has not. */
+  goods_returned?: boolean;
   lines: BuiltNoteLine[];
 }
 
@@ -1023,6 +1071,7 @@ export const PURCHASE_DEBIT_NOTE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "reason", label: "Reason", required: false, hint: "Free text, e.g. Purchase return (optional)" },
   { key: "is_interstate", label: "Interstate", required: false, hint: "yes/no — only used when Bill No is blank; a note linked to a bill always inherits that bill's own treatment" },
   REVERSE_CHARGE_COLUMN,
+  goodsReturnedColumn("debit_note"),
   { key: "note_ref", label: "Note Reference", required: false, hint: "Your own reference to group multiple lines into one note when Bill No isn't enough — not stored, grouping only" },
   ...NOTE_LINE_COLUMNS,
 ];
@@ -1034,7 +1083,7 @@ export function buildPurchaseDebitNotes(
   bills: OriginalDocRef[],
   services: PurchaseServiceRef[] = [],
 ): { notes: BuiltPurchaseDebitNote[]; errors: string[] } {
-  const { groups, errors } = parsePurchaseNoteRows(rows, "debit_note_date", vendors, bills, services);
+  const { groups, errors } = parsePurchaseNoteRows(rows, "debit_note_date", vendors, bills, services, true);
   const notes = Array.from(groups.values()).map((g) => ({
     client_id: clientId,
     vendor_id: g.partyId,
@@ -1043,6 +1092,7 @@ export function buildPurchaseDebitNotes(
     reason: g.reason,
     is_interstate: g.isInterstate,
     is_reverse_charge: g.isReverseCharge,
+    ...(g.goodsReturned === undefined ? {} : { goods_returned: g.goodsReturned }),
     lines: g.lines,
   }));
   return { notes, errors };
@@ -1079,7 +1129,7 @@ export function buildPurchaseCreditNotes(
   bills: OriginalDocRef[],
   services: PurchaseServiceRef[] = [],
 ): { notes: BuiltPurchaseCreditNote[]; errors: string[] } {
-  const { groups, errors } = parsePurchaseNoteRows(rows, "credit_note_date", vendors, bills, services);
+  const { groups, errors } = parsePurchaseNoteRows(rows, "credit_note_date", vendors, bills, services, false);
   const notes = Array.from(groups.values()).map((g) => ({
     client_id: clientId,
     vendor_id: g.partyId,

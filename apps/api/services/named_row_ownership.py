@@ -60,6 +60,12 @@ def _find(query) -> list:
         raise
 
 
+def rows_of(query) -> list:
+    """The rows of a read that names a row by id, or `[]` when the id is not an id at all (see `_find`). For a caller that needs the ROW and not only the answer
+    (`bank_payee_service` wants the party's name), so a malformed id is a missing row there too and not a 500."""
+    return _find(query)
+
+
 def _is_a_malformed_id(exc: Exception) -> bool:
     code = getattr(exc, "code", None) or (exc.args[0].get("code") if exc.args and isinstance(exc.args[0], dict) else None)
     return str(code) == "22P02" or "invalid input syntax for type uuid" in str(exc)

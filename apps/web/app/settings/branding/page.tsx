@@ -87,71 +87,66 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
 }
 
 // ── Live Preview ───────────────────────────────────────────────────────────
+//
+// WHAT THE INVOICE PDF READS OF THESE SETTINGS (`services/invoice_pdf_service.py`, on the practice's OWN fee invoice and on no other document): the logo above the title (a PNG, JPEG or
+// WebP of up to 2,000,000 bytes that the server fetches within three seconds: an SVG, a larger file or one that does not answer is left off), the title "TAX INVOICE" in the PRIMARY colour, and the tagline under it unless the invoice template's header is Compact. Nothing
+// reads the secondary colour, the accent colour, the font or the social links, so the preview draws none of them as if the invoice had them (POST-A-140 stopped it drawing the accent;
+// POST-A-375 the secondary colour, the font, and the full-width band in the primary colour and the primary-coloured invoice number that the PDF does not have either). The top of the
+// sketch is the top of the PDF: the logo, the title, the tagline, the firm. Each setting that is kept on file is shown as what it is, with the plain fact beside it. The invoice PDF is
+// set in Helvetica whatever is chosen here.
 function BrandingPreview({ branding, firmName }: { branding: Branding; firmName: string }) {
   return (
-    <div className="rounded-xl border border-ps-border overflow-hidden shadow-sm">
-      {/* Header bar */}
-      <div className="px-5 py-3 flex items-center justify-between" style={{ backgroundColor: branding.primary_color }}>
-        {branding.logo_url ? (
-          <img src={branding.logo_url} alt="Logo" className="h-8 object-contain" />
-        ) : (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-              <span className="text-white font-bold text-sm">{firmName?.[0] ?? "F"}</span>
-            </div>
-            <span className="text-white font-semibold text-sm" style={{ fontFamily: branding.font_family }}>
-              {firmName || "Your Firm Name"}
-            </span>
-          </div>
-        )}
-        <span className="text-white text-xs" style={{ fontFamily: branding.font_family }}>
-          {branding.tagline || "Chartered Accountants"}
-        </span>
+    <div className="rounded-xl border border-ps-border overflow-hidden shadow-sm bg-white px-5 py-4 space-y-3">
+      {/* The top of the invoice PDF */}
+      <div>
+        {branding.logo_url && <img src={branding.logo_url} alt="Logo" className="h-8 object-contain mb-2" />}
+        <p className="text-base font-bold" style={{ color: branding.primary_color }}>TAX INVOICE</p>
+        {branding.tagline && <p className="text-xs text-ps-label">{branding.tagline}</p>}
+        <p className="mt-2 text-sm font-medium text-ps-ink">{firmName || "Your Firm Name"}</p>
       </div>
 
-      {/* Sample invoice body */}
-      <div className="bg-white px-5 py-4 space-y-3">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-ps-hint uppercase tracking-wide mb-0.5">Invoice To</p>
-            <p className="text-sm font-medium text-ps-ink" style={{ fontFamily: branding.font_family }}>Sample Client Pvt. Ltd.</p>
-            <p className="text-xs text-ps-label">123 Business Park, Mumbai</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-ps-hint mb-0.5">Invoice #</p>
-            <p className="text-sm font-bold" style={{ color: branding.primary_color, fontFamily: branding.font_family }}>INV-2025-001</p>
-          </div>
+      <div className="border-t border-ps-border pt-3 flex items-start justify-between">
+        <div>
+          <p className="text-xs text-ps-hint uppercase tracking-wide mb-0.5">Bill To</p>
+          <p className="text-sm font-medium text-ps-ink">Sample Client Pvt. Ltd.</p>
+          <p className="text-xs text-ps-label">123 Business Park, Mumbai</p>
         </div>
-
-        <div className="border-t border-ps-border pt-3">
-          <div className="flex justify-between text-xs text-ps-label mb-2">
-            <span>Professional Services — FY 2025-26</span>
-            <span className="font-medium text-ps-ink">₹50,000.00</span>
-          </div>
-          <div className="flex justify-between text-xs text-ps-label">
-            <span>GST @ 18%</span>
-            <span className="font-medium text-ps-ink">₹9,000.00</span>
-          </div>
+        <div className="text-right">
+          <p className="text-xs text-ps-hint mb-0.5">Invoice No</p>
+          <p className="text-sm font-bold text-ps-ink">INV-2025-001</p>
         </div>
+      </div>
 
-        <div className="flex justify-between items-center border-t border-ps-border pt-3">
-          <span className="text-sm font-semibold text-ps-ink">Total Due</span>
-          <span className="text-base font-bold text-ps-ink" style={{ fontFamily: branding.font_family }}>₹59,000.00</span>
+      <div className="border-t border-ps-border pt-3">
+        <div className="flex justify-between text-xs text-ps-label mb-2">
+          <span>Professional Services — FY 2025-26</span>
+          <span className="font-medium text-ps-ink">Rs. 50,000.00</span>
         </div>
+        <div className="flex justify-between text-xs text-ps-label">
+          <span>GST @ 18%</span>
+          <span className="font-medium text-ps-ink">Rs. 9,000.00</span>
+        </div>
+      </div>
 
-        {/* The accent colour is a saved setting that no printed document reads: the invoice PDF draws its title in the PRIMARY colour. The
-            preview used to draw the total in it, so it showed a colour the real invoice never has (and the default accent is 3.67:1 on
-            white, which the accessibility scan flagged: POST-A-140). It is shown as a swatch with that fact beside it. */}
-        <p className="flex items-center gap-2 text-xs text-ps-label">
-          <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border border-ps-border" style={{ backgroundColor: branding.accent_color }} />
+      <div className="flex justify-between items-center border-t border-ps-border pt-3">
+        <span className="text-sm font-semibold text-ps-ink">Total Due</span>
+        <span className="text-base font-bold text-ps-ink">Rs. 59,000.00</span>
+      </div>
+
+      {/* The three settings no printed document reads. Each is a swatch (or a word) with the plain fact beside it; none is drawn as part of the invoice. */}
+      <ul className="space-y-1 border-t border-ps-border pt-3 text-xs text-ps-label">
+        <li className="flex items-center gap-2">
+          <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 rounded-full border border-ps-border" style={{ backgroundColor: branding.secondary_color }} />
+          Secondary colour: kept on file. The invoice PDF does not print it.
+        </li>
+        <li className="flex items-center gap-2">
+          <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 rounded-full border border-ps-border" style={{ backgroundColor: branding.accent_color }} />
           Accent colour: kept on file. The invoice PDF does not print it.
-        </p>
-
-        {/* Accent bar */}
-        <div className="rounded-lg px-3 py-2 text-xs text-white" style={{ backgroundColor: branding.secondary_color, fontFamily: branding.font_family }}>
-          Thank you for your business. Payment due within 15 days.
-        </div>
-      </div>
+        </li>
+        <li>
+          Font ({branding.font_family}): kept on file. The invoice PDF is always set in Helvetica.
+        </li>
+      </ul>
     </div>
   );
 }
@@ -241,7 +236,7 @@ export default function BrandingPage() {
         <PageHeader
           back={{ href: "/settings", label: "Settings" }}
           title="Firm Branding"
-          subtitle="Customize your firm&apos;s visual identity across all documents and client communications."
+          subtitle="Set the logo, tagline and primary colour that your practice&apos;s own invoices print. The other settings here are kept on file; no document prints them."
         />
 
         {loadError && !loading && (
@@ -288,6 +283,9 @@ export default function BrandingPage() {
                   </button>
                   <input aria-label="Logo image to upload" ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                 </div>
+                <p className="text-xs text-ps-label">
+                  The invoice PDF prints a PNG, JPEG or WebP logo of up to 2,000,000 bytes (about 2 MB) that the server can fetch within three seconds. An SVG, a larger file or one that does not answer in time is kept and shown here but is left off the invoice.
+                </p>
                 <div>
                   <label className="text-xs font-medium text-ps-label block mb-1">Or paste a URL</label>
                   <input aria-label="Or paste a URL"
@@ -317,6 +315,9 @@ export default function BrandingPage() {
                 <Palette size={15} className="text-ps-label" />
                 <h2 className="text-sm font-semibold text-ps-ink">Brand Colors</h2>
               </div>
+              <p className="px-5 pt-4 text-xs text-ps-label">
+                Only the primary colour is printed (as the colour of the invoice title). The secondary and accent colours and the font are kept on file.
+              </p>
               <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <ColorInput label="Primary Color" value={branding.primary_color} onChange={(v) => update("primary_color", v)} />
                 <ColorInput label="Secondary Color" value={branding.secondary_color} onChange={(v) => update("secondary_color", v)} />
@@ -342,6 +343,7 @@ export default function BrandingPage() {
                 <Globe size={15} className="text-ps-label" />
                 <h2 className="text-sm font-semibold text-ps-ink">Social Links</h2>
               </div>
+              <p className="px-5 pt-4 text-xs text-ps-label">Kept on file. No document prints these links.</p>
               <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(["linkedin", "twitter", "facebook", "instagram"] as const).map((platform) => (
                   <div key={platform}>
@@ -379,7 +381,9 @@ export default function BrandingPage() {
               Live Preview
             </div>
             <BrandingPreview branding={branding} firmName={firmName || "Your Firm"} />
-            <p className="text-xs text-ps-hint text-center">Preview of how your branding appears on invoices and client documents.</p>
+            <p className="text-xs text-ps-hint text-center">
+              A sketch of your practice&apos;s own invoice PDF. It prints the logo, the title in the primary colour and the tagline (not on a Compact header). It is not a copy of the page.
+            </p>
           </div>
         </div>
       </div>

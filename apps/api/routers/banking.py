@@ -21,7 +21,7 @@ from typing import Annotated, Optional
 from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
-from services.named_row_ownership import bank_account_is_the_clients
+from services.named_row_ownership import bank_account_is_the_clients, customer_is_the_clients, vendor_is_the_clients
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.observability import capture_soft_failure, capture_posting_failure
 from core.list_window import MAX_LIST_LIMIT, split
@@ -2755,6 +2755,8 @@ def create_rule(
     db = _db()
     if not db:
         return api_response(True, {"id": "mock-id", **data.model_dump()})
+    # POST-A-373 — the party is asked when the rule is SAVED, not once for every line it is later applied to.
+    _refuse_a_party_that_is_not_the_clients(db, current_user["firm_id"], data.model_dump())
     row = privileged_for(db).table("bank_matching_rules").insert(
         {"firm_id": current_user["firm_id"], **_rule_fields(data)}
     ).execute()
@@ -2821,6 +2823,10 @@ def update_rule(
             detail=("A GST rate needs a ledger to code the amount to — "
                     "the split books the ex-tax amount there."))
     _refuse_an_unresolvable_party(merged)
+    # POST-A-373 — only when this edit names a party: a rule whose stored party has since been deleted must still be editable (its name, its
+    # ledger, its switch), and the day it is applied the line simply carries no tag, as before.
+    if "payee_type" in fields or "payee_id" in fields:
+        _refuse_a_party_that_is_not_the_clients(db, current_user["firm_id"], merged)
     row = (privileged_for(db).table("bank_matching_rules").update(fields)
            .eq("id", rule_id).eq("firm_id", current_user["firm_id"]).execute())
     # What the rule proposes may have changed; what it is trusted to do has not
@@ -2866,6 +2872,26 @@ def _refuse_an_unresolvable_party(rule: dict) -> None:
         raise HTTPException(
             status_code=422,
             detail=f"Choose the {ptype} this rule tags, or tag the party as 'other'.")
+
+
+def _refuse_a_party_that_is_not_the_clients(db, firm_id: str, rule: dict) -> None:
+    """POST-A-373 — a rule that tags a customer or a supplier names one of ITS OWN client's, asked when the rule is saved.
+
+    The rule's create and update models check the pair's shape and nothing more, so a rule could be saved naming a party of another client
+    (or of nobody) and failed later, once for every line it was applied to, with the failure swallowed as a soft one. The question is the one
+    every other named row is asked (`services/named_row_ownership`): a party that is not this client's, one of another firm's and an invented
+    id are all "That customer was not found." (404), so the answer does not say which it was. Nothing is asked of a rule that names no party
+    or tags one as 'other' (a name and no link), and `_refuse_an_unresolvable_party` has already refused a type without an id and an id
+    without a type.
+    """
+    ptype = (rule.get("payee_type") or "").strip().lower()
+    pid = rule.get("payee_id") or None
+    if not pid:
+        return
+    if ptype == "customer":
+        customer_is_the_clients(db, firm_id, rule["client_id"], pid)
+    elif ptype == "vendor":
+        vendor_is_the_clients(db, firm_id, rule["client_id"], pid)
 
 
 def _now_iso() -> str:

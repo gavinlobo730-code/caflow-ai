@@ -204,11 +204,12 @@ BUDGET: dict[str, int] = {
     "/api/purchase-bills": 1,
     "/api/rcm-documents": 1,
     "/api/tds-workspace": 1,
-    # /api/gst-workspace 0 -> 1 and /api/workload 0 -> 1 on 2-11-2026 (POST-A-374): not new routes. `GET /gstr1/{return_id}` (read one
-    # return) and `GET /api/workload/{user_id}` (read one member's workload) have no screen that calls them; their static siblings
-    # (`/gstr1/advances`, `/gstr1/exceptions`, `/gstr1/amendments`; `/capacity`, `/capacity-risk`) had been counting as their callers
-    # until the scan learnt that a URL naming a static sibling reaches the sibling (`_literal_siblings`).
-    "/api/gst-workspace": 1, "/api/workload": 1,
+    # /api/gst-workspace and /api/workload 1 -> 0 on 7-11-2026 (POST-A-374): the two routes that had raised them from 0 to 1 on 2-11-2026 were
+    # DELETED, not wired. `GET /gstr1/{return_id}` (read one return) and `GET /api/workload/{user_id}` (read one member's workload) had no
+    # screen that called them (their static siblings `/gstr1/advances`, `/gstr1/exceptions`, `/gstr1/amendments`; `/capacity`,
+    # `/capacity-risk` had been counting as their callers until the scan learnt that a URL naming a static sibling reaches the sibling,
+    # `_literal_siblings`). The GST workspace lists returns whole and acts on one by `PATCH /gstr1/{id}/status`; the team screens read
+    # `GET /api/workload` whole. The member's task rows the second returned (full rows under overdue_tasks and due_today) are no longer served.
     "/api/time-entries": 1,
     # GONE on 24-09-2026, four prefixes at once — the first sweep through this
     # list's own tail rather than through a module:
@@ -302,7 +303,12 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # 221 -> 218 on 01-10-2026 (ai-10): three unreached AI routes DELETED as fake —
 # `POST /api/copilot/actions`, `GET /api/copilot/summaries` and
 # `GET /api/ai-insights/cross-client`.
-TOTAL_BUDGET = 218
+# 218 -> 216 on 07-11-2026 (POST-A-374): `GET /api/gst-workspace/gstr1/{return_id}` and `GET /api/workload/{user_id}` DELETED.
+# 216 -> 195 on 07-11-2026: the total was 21 ABOVE what the tree owes (the sum of the per-prefix budgets, which `test_no_budget_entry_is_stale` keeps equal to the routes
+# that reach no screen), so it was slack the ratchet could not see: 21 more routes that reach no screen could have been added, in any prefixes, before this number said anything.
+# It is that sum now, and `test_the_total_is_what_the_per_prefix_budgets_add_up_to` keeps it so: lowering a prefix lowers it in the same commit, and net growth (a new prefix, or a prefix
+# allowed one more) is a visible edit of two numbers and not of one. A shuffle (one prefix allowed one more, another one fewer) still passes: that is the per-prefix budgets' job to refuse.
+TOTAL_BUDGET = 195
 
 
 # ---------------------------------------------------------------------------
@@ -696,6 +702,12 @@ def test_no_module_exceeds_its_unreachable_budget(unreached):
         "it is tested. Wire it up, or raise the budget in the same commit and "
         "say why."
     )
+
+
+def test_the_total_is_what_the_per_prefix_budgets_add_up_to():
+    """A total above the sum is slack the ratchet cannot see (it stood 21 above from 24-09-2026 until 07-11-2026), and one below it is a budget no prefix can meet."""
+    assert TOTAL_BUDGET == sum(BUDGET.values()), (
+        f"TOTAL_BUDGET is {TOTAL_BUDGET} and the per-prefix budgets add up to {sum(BUDGET.values())}: lower (or raise, with a reason) one in the same commit as the other")
 
 
 def test_the_total_only_goes_down(unreached):

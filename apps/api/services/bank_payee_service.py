@@ -30,6 +30,7 @@ from domain.banking.history import (
 from domain.banking.narration import parse_narration, party_matches
 from core.observability import capture_soft_failure
 from core.db_provider import privileged_for
+from services.named_row_ownership import rows_of
 
 _logger = logging.getLogger("caflow.bank_payee")
 
@@ -155,14 +156,13 @@ class BankPayeeService:
         `*` so tests/test_backend_columns_exist_pg.py can check it.
         """
         table = "customers" if ptype == "customer" else "vendors"
-        rows = (db.table(table).select("id, client_id, name")
-                .eq("id", party_id).eq("firm_id", firm_id).limit(1).execute().data) or []
-        if not rows:
-            raise HTTPException(status_code=422,
-                                detail=f"That {ptype} does not belong to this firm.")
-        if rows[0].get("client_id") not in (None, client_id):
-            raise HTTPException(status_code=422,
-                                detail=f"That {ptype} belongs to a different client.")
+        rows = rows_of(db.table(table).select("id, client_id, name").eq("id", party_id).eq("firm_id", firm_id).limit(1))
+        # ONE SENTENCE FOR EVERY REFUSAL (POST-A-373). A party that is not there, one of another firm and one of a SIBLING client used to
+        # be told apart ("does not belong to this firm" and "belongs to a different client"), which let a caller learn that an id was a
+        # real party of the firm's other client. They now say what every other named row says (`services/named_row_ownership`), in the
+        # same status.
+        if not rows or rows[0].get("client_id") not in (None, client_id):
+            raise HTTPException(status_code=404, detail=f"That {ptype} was not found.")
         return rows[0]
 
     # ── 1.3 auto-fill ───────────────────────────────────────────────────────

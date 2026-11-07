@@ -33,6 +33,9 @@ import { ActivityNote } from "@/components/documents/ActivityNote";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { GoodsReturnedChoice } from "@/components/inventory/GoodsReturnedChoice";
+import type { GoodsReturned } from "@/lib/inventory/goodsReturned";
+import { useNamesGoods } from "@/lib/inventory/useNamesGoods";
 // Vendor-payment modes — must match the purchase_payments.payment_mode CHECK
 // constraint (migration 050, widened by 161: bank/cash/cheque/upi/neft/rtgs/
 // online). Identical to the sales-side receipt modes.
@@ -571,6 +574,9 @@ function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  // Did the goods go back to the supplier? (POST-A-378) Asked only when a line's item is a good, and not required to save a DRAFT: the server refuses to issue a note that names goods and has not said.
+  const [goodsReturned, setGoodsReturned] = useState<GoodsReturned>(null);
+  const namesGoods = useNamesGoods(clientId, bill.lines.map((l) => l.service_catalogue_id));
   // A date typed as text that is not a date reads as blank; the save has to
   // know which it was (frontend_ux-19).
   const dates = useDateProblems();
@@ -597,6 +603,7 @@ function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
         is_interstate: !!bill.is_interstate,
         is_reverse_charge: !!bill.is_reverse_charge,
         reason: reason.trim() || undefined,
+        goods_returned: namesGoods && goodsReturned !== null ? goodsReturned : undefined,
       }, token);
       if (!r.success) throw new Error(r.error ?? "Failed to create debit note");
       const data = r.data as { debit_note_no?: string; dn_no?: string } | null;
@@ -613,6 +620,7 @@ function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
       <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> debit note copying this bill&apos;s lines. Adjust or issue it from the Debit Notes tab (CGST Act §34).</p>
       <Field label="Debit note date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Debit note date")} aria-label="Debit note date" className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the debit note (return, rate correction…)" className={inputCls} /></Field>
+      {namesGoods && <GoodsReturnedChoice kind="debit_note" value={goodsReturned} onChange={setGoodsReturned} />}
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Debit Note" />
     </ModalShell>
   );

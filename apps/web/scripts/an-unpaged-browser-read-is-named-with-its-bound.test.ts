@@ -62,6 +62,7 @@ const BOUNDED: Record<string, { reads: number; why: string }> = {
   "lib/data/income-tax.ts::it_notices": { reads: 1, why: "one client's income-tax notices, a few a year" },
   "lib/data/tasks.ts::users": { reads: 1, why: "the firm's own team, bounded by its headcount" },
   "lib/data/tds.ts::tds_returns": { reads: 1, why: "one client's TDS statements, four a year per form" },
+  "lib/inventory/useNamesGoods.ts::service_catalogue": { reads: 1, why: BY_IDS },
 };
 
 const found = findUnboundedReads(WEB);

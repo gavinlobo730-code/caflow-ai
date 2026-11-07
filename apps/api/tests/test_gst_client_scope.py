@@ -160,7 +160,9 @@ def rows(monkeypatch):
                              "status": "draft", "period": "012026"})
 
 
-READS = [("get_gstr1", "G1"), ("get_gstr3b", "G3"), ("get_gstr2b", "B2")]
+# `get_gstr1` (read one GSTR-1 return) was deleted on 7-11-2026 (POST-A-374): no screen opened it, the GST workspace lists returns whole and acts on one
+# by `PATCH /gstr1/{id}/status`, whose scope is held below.
+READS = [("get_gstr3b", "G3"), ("get_gstr2b", "B2")]
 
 
 @pytest.mark.parametrize("fn,pfx", READS, ids=[r[0] for r in READS])

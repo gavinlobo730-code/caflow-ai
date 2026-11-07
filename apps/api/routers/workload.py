@@ -38,7 +38,7 @@ def _by_urgency(tasks: list[dict]) -> list[dict]:
 
 
 # sweep-team-hub-04: this router reads `public.users` to build the firm's
-# roster (get_team_workload, get_user_workload). Under USE_USER_JWT,
+# roster (get_team_workload). Under USE_USER_JWT,
 # get_supabase() returns the CALLER's own JWT client, and `users`' RLS
 # SELECT policy (`users_own_row_select`) shows a caller exactly one row —
 # itself — the same defect `repositories/user_repository.py`'s header
@@ -272,53 +272,4 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
             "tasks": [_open_task_row(t) for t in
                       _by_urgency(unassigned_tasks)[:UNASSIGNED_TASKS_SHOWN]],
         },
-    })
-
-
-@router.get("/{user_id}")
-def get_user_workload(user_id: str, current_user: dict = Depends(rbac("workload", "read"))):
-    firm_id = current_user.get("firm_id")
-    db = _get_db()
-    today = ist_today().isoformat()
-    week_end = (ist_today() + timedelta(days=7)).isoformat()
-
-    # H1 fix: scope the user lookup to the caller's firm so a cross-firm user_id
-    # cannot disclose another firm's user PII. 404 (not 403) — existence hidden.
-    user_result = db.table("users").select("id, full_name, email, role").eq("id", user_id).eq("firm_id", firm_id).maybe_single().execute()
-    user = user_result.data
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # M2: this returns FULL task rows (title, description, due_date, client_id)
-    # in overdue_tasks/due_today, not just counts — so without narrowing, any
-    # Executive could read the substance of a colleague's work on clients
-    # outside their own assigned book.
-    tasks_result = db.table("tasks").select("*").eq("firm_id", firm_id).or_(f"assigned_to.eq.{user_id},assignee_id.eq.{user_id}").execute()
-    tasks = filter_by_client(current_user, tasks_result.data or [])
-
-    open_tasks = [t for t in tasks if t["status"] != "completed"]
-    overdue = [t for t in open_tasks if t.get("due_date") and t["due_date"] < today]
-    due_today = [t for t in open_tasks if t.get("due_date") == today]
-    due_week = [t for t in open_tasks if t.get("due_date") and today < t["due_date"] <= week_end]
-    completed = [t for t in tasks if t["status"] == "completed"]
-
-    by_status: dict[str, list] = {}
-    for t in open_tasks:
-        s = t.get("status", "unknown")
-        if s not in by_status:
-            by_status[s] = []
-        by_status[s].append(t)
-
-    return api_response(True, {
-        "user": user,
-        "summary": {
-            "total_open": len(open_tasks),
-            "overdue": len(overdue),
-            "due_today": len(due_today),
-            "due_this_week": len(due_week),
-            "completed_total": len(completed),
-        },
-        "by_status": by_status,
-        "overdue_tasks": overdue,
-        "due_today": due_today,
     })

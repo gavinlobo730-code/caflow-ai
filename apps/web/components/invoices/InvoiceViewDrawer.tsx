@@ -40,6 +40,9 @@ import { INVOICE_RECORDS_WINDOW, recordsReadNote, recordsUrl } from "@/lib/einvo
 import { readWindow } from "@/lib/lists/readWindow";
 import { todayLocalISO } from "@/lib/dateMath";
 import { Button } from "@/components/ui/button";
+import { GoodsReturnedChoice } from "@/components/inventory/GoodsReturnedChoice";
+import type { GoodsReturned } from "@/lib/inventory/goodsReturned";
+import { useNamesGoods } from "@/lib/inventory/useNamesGoods";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import {
@@ -553,6 +556,9 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  // Did the goods come back? (POST-A-378) Asked only when a line's item is a good, and not required to save a DRAFT: the server refuses to issue a note that names goods and has not said.
+  const [goodsReturned, setGoodsReturned] = useState<GoodsReturned>(null);
+  const namesGoods = useNamesGoods(clientId, invoice.lines.map((l) => l.service_catalogue_id));
   // A date typed as text that is not a date reads as blank; the save has to
   // know which it was (frontend_ux-19).
   const dates = useDateProblems();
@@ -594,6 +600,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
         // DB column and every sibling note type) — a stray `notes` key here would
         // be silently dropped by pydantic parsing and the reason would never save.
         reason: reason.trim() || undefined,
+        goods_returned: namesGoods && goodsReturned !== null ? goodsReturned : undefined,
       }, token);
       if (!r.success) throw new Error(r.error ?? "Failed to create credit note");
       const data = r.data as { credit_note_no?: string; cn_no?: string } | null;
@@ -610,6 +617,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
       <p className="text-2xs text-ps-label">Creates a full-value <strong>draft</strong> credit note copying this invoice&apos;s lines. Adjust or issue it from the Credit Notes tab.</p>
       <Field label="Credit note date"><DateInput value={date} onChange={setDate} onStateChange={dates.watch("date", "Credit note date")} aria-label="Credit note date" className={inputCls} /></Field>
       <Field label="Reason / notes"><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Reason for the credit note" className={inputCls} /></Field>
+      {namesGoods && <GoodsReturnedChoice kind="credit_note" value={goodsReturned} onChange={setGoodsReturned} />}
       <ModalActions onClose={onClose} onSubmit={submit} saving={saving} label="Create Credit Note" />
     </ModalShell>
   );
