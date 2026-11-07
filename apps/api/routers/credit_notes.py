@@ -7,10 +7,11 @@ import uuid
 import logging
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
+from models.clearable import patch_dict
 from models.common import api_response
 from models.invoices import InvoiceLineIn
 from core import db_provider
@@ -46,6 +47,14 @@ class CreditNoteIn(BaseModel):
     #: Did the goods on this note physically come back? Required to ISSUE a note that names goods (domain/inventory/note_goods).
     goods_returned: bool | None = None
     is_interstate: bool = False
+    #: The note the Notes box on the new-credit-note screen takes. The create model had no such field, so a note typed there was dropped on the way
+    #: in and the note was saved without it (POST-A-399): the edit door has always had it.
+    notes: str | None = None
+
+    @field_validator("notes")
+    @classmethod
+    def _a_blank_note_is_no_note(cls, v):
+        return (v.strip() or None) if isinstance(v, str) else v
 
     @field_validator("lines")
     @classmethod
@@ -56,6 +65,9 @@ class CreditNoteIn(BaseModel):
 
 
 class CreditNoteUpdateIn(BaseModel):
+    """The note can be cleared (POST-A-399): `notes` is typed by the person, is not a Rule 46 / s.34 particular and is a NULL-able column, so a
+    request that sends it as null (or blank) takes it away (`models.clearable.patch_dict`). Everything else reads null as "not sent"."""
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
     customer_id: str | None = None
     credit_note_date: str | None = None
     sales_invoice_id: str | None = None
@@ -415,6 +427,7 @@ def create_credit_note(
                 "credit_note_no":       cn_no,
                 "credit_note_date":     data["credit_note_date"],
                 "reason":               data.get("reason", ""),
+                "notes":                data.get("notes"),
                 "goods_returned":       data.get("goods_returned"),
                 "is_interstate":        is_interstate,
                 "taxable_amount_paise": total_taxable,
@@ -444,6 +457,7 @@ def create_credit_note(
             "sales_invoice_id":     data.get("sales_invoice_id"),
             "credit_note_date":     data["credit_note_date"],
             "reason":               data.get("reason", ""),
+            "notes":                data.get("notes"),
             "is_interstate":        is_interstate,
             "taxable_amount_paise": total_taxable,
             "cgst_paise":           total_cgst,
@@ -543,7 +557,7 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
     baseline, which has none either)."""
     _assert_cn_scope(current_user, cn_id)
     try:
-        data = data.model_dump(exclude_none=True)
+        data = patch_dict(data)
         lines_data = data.pop("lines", None)
         soft_fields = {"notes"}
 

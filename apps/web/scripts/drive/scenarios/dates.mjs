@@ -178,6 +178,27 @@ async function openBankAccountWithDateOnFile(env) {
   await page.locator("#bank-opening-date").waitFor({ timeout: 10000 });
 }
 
+/** An ISSUED sales invoice opened to edit with its due date on file (31/10/2026): the due date is one of the soft particulars left editable once an invoice is issued (POST-A-399). */
+async function openIssuedInvoiceWithDueDate(env) {
+  const { page, stub } = env;
+  const detail = { ...invoiceDetail("issued", "inv-9"), credit_days: 30 };
+  stub.route({ method: "GET", re: /sales-invoices\/inv-9$/, reply: () => ok(detail) });
+  stub.route({ method: "PATCH", re: /sales-invoices\/inv-9$/, reply: () => ok({ id: "inv-9" }) });
+  await page.goto(env.at("/sales/invoices/inv-9/edit/"), { waitUntil: "networkidle" });
+  await page.locator("#inv-due-date").waitFor({ timeout: 10000 });
+}
+
+/** A RECEIVED purchase bill opened to edit with its due date on file (01/11/2026), likewise (POST-A-399). */
+async function openReceivedBillWithDueDate(env) {
+  const { page, stub } = env;
+  stub.setTable("vendors", [VENDOR]);
+  const bill = billRow("received", "b9");
+  stub.route({ method: "GET", re: /purchase-bills\/b9$/, reply: () => ok(bill) });
+  stub.route({ method: "PATCH", re: /purchase-bills\/b9$/, reply: () => ok({ id: "b9" }) });
+  await page.goto(env.at("/purchases/bills/b9/edit/"), { waitUntil: "networkidle" });
+  await page.locator("#bill-due-date").waitFor({ timeout: 10000 });
+}
+
 /** The advance-tax register with an estimate typed, so the four instalments (and their paid-on dates) are drawn. */
 async function openAdvanceTaxRegister(env) {
   const { page, stub } = env;
@@ -5005,6 +5026,14 @@ export const scenarios = [
       sentence: "The no-PE declaration date on file can be corrected but not removed: enter the corrected date, or untick the declaration if there is none." },
     { id: "bank-opening-date", name: "Bank > Accounts > Edit an account with no balance: the date the opening balance is as at", open: openBankAccountWithDateOnFile, box: (p) => p.locator("#bank-opening-date"),
       save: "Save Changes", writes: /api\/banking\/accounts\/ba-1$/, key: "opening_balance_date", onFile: "01/04/2026", sentence: "The opening balance date on file can be corrected but not removed: enter the corrected date." },
+    // POST-A-399: the due date of an invoice and of a bill. Not evidence, but every document of the two kinds carries one, so the screen refuses to save over one that was emptied. The corrected day
+    // is after the document's own date, which is the earliest the box accepts.
+    { id: "invoice-due-date", name: "Sales > an issued invoice > Edit: the due date", open: openIssuedInvoiceWithDueDate, box: (p) => p.locator("#inv-due-date"),
+      save: "Save Changes", writes: /sales-invoices\/inv-9$/, key: "due_date", onFile: "31/10/2026", corrected: "15/11/2026", correctedIso: "2026-11-15",
+      sentence: "The due date on file can be corrected but not removed: enter the corrected date." },
+    { id: "bill-due-date", name: "Purchases > a received bill > Edit: the due date", open: openReceivedBillWithDueDate, box: (p) => p.locator("#bill-due-date"),
+      save: "Save Changes", writes: /purchase-bills\/b9$/, key: "due_date", onFile: "01/11/2026", corrected: "16/11/2026", correctedIso: "2026-11-16",
+      sentence: "The due date on file can be corrected but not removed: enter the corrected date." },
   ].map((row) => ({
     id: `a-date-on-file-is-replaced-and-not-emptied-${row.id}`,
     title: `${row.name}: emptying the box and pressing Save is refused beside the button and sends nothing, text that is not a day keeps the box's own sentence, the sentence goes once a corrected date is typed, and the corrected day reaches the server as ISO`,
@@ -5038,7 +5067,7 @@ export const scenarios = [
       await stub.quiet();
       assert.equal(stub.writesTo(row.writes).length, 0, "a Save over text that is not a day SENT A WRITE");
       // A corrected date: the sentence goes, and the day typed is what is sent.
-      await typeAndLeave(box, "16/07/2026");
+      await typeAndLeave(box, row.corrected ?? "16/07/2026");
       await until(async () => (await page.getByText(row.sentence).count()) === 0, "the sentence to go once a corrected date was typed", 5000);
       await save.click();
       await until(() => stub.writesTo(row.writes).length >= 1, "the corrected date to be sent", 6000);
@@ -5046,7 +5075,7 @@ export const scenarios = [
       const sent = stub.writesTo(row.writes);
       assert.equal(sent.length, 1, `expected one request for the corrected date, saw ${sent.length}`);
       const body = JSON.parse(sent[0].body);
-      assert.equal(body[row.key], "2026-07-16", `${row.key} reached the server as ${JSON.stringify(body[row.key])}`);
+      assert.equal(body[row.key], row.correctedIso ?? "2026-07-16", `${row.key} reached the server as ${JSON.stringify(body[row.key])}`);
     },
   })),
   // The date left alone is sent as it was: the rule does not stand in the way of an edit that keeps the date. All four screens, because the date on file is read from a different place on each (the
@@ -5056,6 +5085,8 @@ export const scenarios = [
     { id: "form-15ca", name: "Purchases > a draft bill from a payee under section 195 > Edit", open: openBillWith15caOnFile, box: (p) => p.locator("#bill-15ca-date"), save: "Save Changes", writes: /purchase-bills\/b9$/, key: "form_15ca_filed_on", onFileIso: "2026-07-15" },
     { id: "no-pe-declaration", name: "Purchases > Vendors > Edit a non-resident supplier", open: openVendorWithDeclarationOnFile, box: (p) => p.locator("#no-pe-on"), save: "Save Changes", writes: /api\/vendors\/v1$/, key: "no_pe_declaration_on", onFileIso: "2026-07-15" },
     { id: "bank-opening-date", name: "Bank > Accounts > Edit", open: openBankAccountWithDateOnFile, box: (p) => p.locator("#bank-opening-date"), save: "Save Changes", writes: /api\/banking\/accounts\/ba-1$/, key: "opening_balance_date", onFileIso: "2026-04-01" },
+    { id: "invoice-due-date", name: "Sales > an issued invoice > Edit", open: openIssuedInvoiceWithDueDate, box: (p) => p.locator("#inv-due-date"), save: "Save Changes", writes: /sales-invoices\/inv-9$/, key: "due_date", onFileIso: "2026-10-31" },
+    { id: "bill-due-date", name: "Purchases > a received bill > Edit", open: openReceivedBillWithDueDate, box: (p) => p.locator("#bill-due-date"), save: "Save Changes", writes: /purchase-bills\/b9$/, key: "due_date", onFileIso: "2026-11-01" },
   ].map((row) => ({
     id: `a-date-on-file-left-alone-is-sent-as-it-was-${row.id}`,
     title: `${row.name}: a Save that leaves the date on file alone sends that date, and the removal sentence is not said`,

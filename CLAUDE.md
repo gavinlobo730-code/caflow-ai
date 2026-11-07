@@ -242,7 +242,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A STRAIGHT-LINE ASSET'S YEAR IS CAPPED AT WHAT WAS LEFT WHEN THE YEAR OPENED, SO ITS LAST YEAR POSTS WHAT IS LEFT
 - AN INTANGIBLE ASSET'S AMORTISATION HAS A LEDGER OF ITS OWN, ONE FUNCTION SAYS WHICH, AND A PARTNER MOVES WHAT THE SHARED LEDGER HOLDS
 
-### `docs/design-record/frontend.md` (9 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (10 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -253,6 +253,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SHARED FORM COMPONENT IS NAMED WHERE IT IS USED, BECAUSE THE RULE THAT JUDGES A NATIVE CONTROL CANNOT SEE INTO A COMPONENT
 - A LINE IS COPIED BY CTRL+D, COMMAND+D ON A MAC, IN A LINE'S CELL, AND THE TWO GRIDS DO NOT SHARE A HOOK
 - TWELVE HAND-BUILT DIALOGS ARE THE SHARED MODAL, AND THE BANK'S NESTED ONES WAIT FOR A STACK AND A FOOTER
+- A CLEARED BOX IS SENT AS NULL ONLY FOR A SOFT FIELD THE SCREEN SHOWED
 
 ### `docs/design-record/identifiers.md` (4 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 

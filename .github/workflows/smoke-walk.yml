@@ -31,17 +31,19 @@
 #     guard had been green on all of them. It runs even when the walk failed, and is held in place by
 #     `apps/web/scripts/the-money-editors-are-driven-in-a-browser.test.ts`.
 #
-#     HOW LONG THE DRIVE TAKES, AND WHY A NIGHT DRIVES ONE ZONE AND ONE HALF OF THE DATE GROUP (POST-A-397,
+#     HOW LONG THE DRIVE TAKES, AND WHY A NIGHT DRIVES ONE ZONE AND ONE THIRD OF THE DATE GROUP (POST-A-397,
 #     6-11-2026). It added about five minutes when it had sixty-six scenarios. The run of 6 November 2026 was
 #     cancelled at its 45-minute limit with the drive 28 minutes in (the browser install alone took 8 min 46 s
 #     that night, against 19 s on the night before). The tree it built had 840 runs (683 of the date group, which
 #     runs under three zones, and 157 of the others); the tree this was written on has 1,048 (891 and 157). On this
 #     runner a date run costs about 4.9 s and any other run about 1.7 s (read off the step times of the nights of
 #     4 and 5 November: 216 runs took 9 min 18 s and 342 took 19 min 38 s), so the whole drive is about 77 minutes.
-#     THE ALLOWANCE IS THE OWNER'S MONEY AND IS NOT RAISED. A NIGHT drives ONE zone of the three and ONE half of
-#     the date group, taken in turn by the INDIAN day (`--zone rotate`), so over six nights every zone sees every
-#     date scenario once and none is left out; the other groups run in full. That is 315 or 320 runs and about 18
-#     minutes of drive. The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
+#     THE ALLOWANCE IS THE OWNER'S MONEY AND IS NOT RAISED. A NIGHT drives ONE zone of the three and ONE third of
+#     the date group, taken in turn by the INDIAN day (`--zone rotate`), so over nine nights every zone sees every
+#     date scenario once and none is left out; the other groups run in full. That was 315 or 320 runs and about 18
+#     minutes of drive when the group was cut in two. On 7 November 2026 (POST-A-399) the drive held 583 scenarios and the
+#     worst night was estimated at 21.1 minutes against the 21 that its deadline leaves, so the group is cut in three and the
+#     worst night is about 16.5 (the allowance is still not raised). The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
 #     IST schedule (its drive step began between 05:10 and 08:08 IST in the eight nights before this was written),
 #     which straddles UTC midnight (05:30 IST): keyed on the UTC day those eight nights drove one zone twice
 #     running and left another undriven for five.
@@ -54,8 +56,8 @@
 #     uploads the report and ends inside its allowance. For a night that is 24 minutes: the part before the drive
 #     took 8 min 8 s on the 5th and 16 min 26 s on the 6th (17 is used), a scenario in flight may take up to 90
 #     seconds more, and the steps after the drive took 4 seconds (1 minute is kept): 17 + 24 + 1.5 + 1 = 43.5 of 45.
-#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 77 minutes of drive, a deadline of
-#     98 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
+#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 85 minutes of drive (77 when this was
+#     written; 85 on 7 November 2026, by the guard's own constants), a deadline of 98 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
 #     night's. `the-nightly-drive-fits-its-allowance-and-visits-each-zone-in-turn.test.ts` holds the rotation (over
 #     three years, and over the real start instants of those eight nights), the runner's own use of it (through
 #     `--list`), the deadline arithmetic above, and the estimate of a night as a budget that FAILS ONE RUN when the
@@ -63,10 +65,10 @@
 #     longer allowance).
 #
 # WHEN IT RUNS, AND WHY NOT ON EVERY PULL REQUEST
-#     * every night, at 02:00 IST (20:30 UTC), against main, the drive's date scenarios under one zone and one half
+#     * every night, at 02:00 IST (20:30 UTC), against main, the drive's date scenarios under one zone and one third
 #       of the group (see above);
 #     * on demand (Actions > Smoke walk > Run workflow), against any branch, the drive under the night's zone and
-#       half (the default) or under all three zones and the whole group;
+#       third (the default) or under all three zones and the whole group;
 #     * on a pull request that carries the label `smoke-walk`, for a change that touches many screens (a
 #       redesign, a shared component) and wants the walk before merge. Adding any other label skips the job.
 #     It needs a build of the static export (several minutes) and a ~40 MB browser, which is the cost the
@@ -120,7 +122,7 @@ on:
   workflow_dispatch:
     inputs:
       zones:
-        description: "Which part of the drive's date scenarios to run: the night's zone and half of the group (about 18 minutes of drive), or every zone and the whole group (about 77 minutes of drive, a cap of 120 minutes)"
+        description: "Which part of the drive's date scenarios to run: the night's zone and third of the group (about 17 minutes of drive), or every zone and the whole group (about 85 minutes of drive, a cap of 120 minutes)"
         type: choice
         options: ["rotate", "all"]
         default: "rotate"
@@ -151,8 +153,8 @@ jobs:
   walk:
     name: walk every screen in Chromium
     runs-on: ubuntu-latest
-    # The allowance is 45 minutes and stays: about 8 minutes before the drive starts (checkout, install, build and the walk; 16 min 26 s on 6 November), then 18 of drive, which stops itself at its
-    # deadline (`--stop-after` below) so that the steps after it run. Only the whole matrix, which a person must ask for by name, is given more, because it is about 77 minutes of drive and
+    # The allowance is 45 minutes and stays: about 8 minutes before the drive starts (checkout, install, build and the walk; 16 min 26 s on 6 November), then 17 of drive, which stops itself at its
+    # deadline (`--stop-after` below) so that the steps after it run. Only the whole matrix, which a person must ask for by name, is given more, because it is about 85 minutes of drive and
     # could not fit any cap near the night's.
     timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' && inputs.zones == 'all') && 120 || 45 }}
     # A pull request runs it only for the one label; every other trigger always runs.
@@ -227,7 +229,7 @@ jobs:
       # operable from the keyboard, an unsent draft survives a reload and is offered rather than applied, a typed
       # date reaches the server as the ISO date typed in any locale and zone, a delete and a prompt are in-app
       # dialogs whose Cancel sends nothing. It is the SAME build and the same Playwright install, a stub that
-      # answers rows and keeps a log of every write (apps/web/scripts/drive/), and for a night about eighteen more minutes.
+      # answers rows and keeps a log of every write (apps/web/scripts/drive/), and for a night about seventeen more minutes.
       #
       # `if: always() && steps.build.outcome == 'success'`: a walk that found a broken screen must not hide the
       # drive (they answer different questions), and a build that failed must, because there is no export to
@@ -235,7 +237,7 @@ jobs:
       # it is not in the required checks. `--shots` keeps a picture of a scenario that failed, in the .smoke/
       # folder the failed-run artifact below uploads.
       #
-      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones and ONE half of the date group, by the Indian day, with a
+      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones and ONE third of the date group, by the Indian day, with a
       # deadline of 24 minutes. An on-demand run takes what it is asked for: `rotate`, or `all` (every zone, the whole group, a deadline of 98 minutes under the job's 120). The runner STOPS
       # ITSELF at the deadline and exits 1 (its report says what it did not drive), because a job that times out is cancelled and the steps after this one never run.
       - name: Drive the money editors

@@ -46,6 +46,7 @@ import {
   previewTotals, isValidLine,
   type Customer, type InvoiceLine,
 } from "@/lib/invoices/shared";
+import { editedText } from "@/lib/forms/editedValue";
 import { validateSalesCreditNoteEditor } from "@/lib/sales/salesCreditNoteEditor";
 
 import { todayLocalISO } from "@/lib/dateMath";
@@ -301,7 +302,7 @@ export function SalesCreditNoteEditor({
 
       if (isEdit && existing) {
         const patchPayload = isLocked
-          ? { notes: notes.trim() || undefined }
+          ? { notes: editedText(notes, existing.notes) }
           : {
               customer_id: customerId,
               credit_note_date: cnDate,
@@ -309,7 +310,7 @@ export function SalesCreditNoteEditor({
               reason: reason.trim() || undefined,
               goods_returned: goodsAnswer,
               is_interstate: isInterstate,
-              notes: notes.trim() || undefined,
+              notes: editedText(notes, existing.notes),
               lines: linePayload,
             };
         const upd = await apiCall(`/api/credit-notes/${existing.id}`, "PATCH", patchPayload, token);
@@ -326,6 +327,8 @@ export function SalesCreditNoteEditor({
             reason: reason.trim() || undefined,
             goods_returned: goodsAnswer,
             is_interstate: isInterstate,
+            // The box says "Internal notes" and the create used to leave it out, so a note typed on a new credit note was dropped without a word (POST-A-399); the server stores it now.
+            notes: notes.trim() || undefined,
             lines: linePayload,
           },
           token,

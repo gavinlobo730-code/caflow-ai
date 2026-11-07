@@ -7,9 +7,9 @@
 // that uploads the report still `pending` when the job ended, 55 minutes after it began, against an allowance of 45. A job that times out is cancelled, and its later steps never run.
 //
 // THE FIX, AND WHAT IT DOES NOT DO. The allowance is the OWNER'S MONEY and is not raised; the drive was cut to fit it, and it now stops ITSELF before the allowance. A night drives ONE zone of the matrix's
-// three and ONE half of the date group (`--zone rotate`), taken in turn by the INDIAN day, so that over any six consecutive nights every zone sees every date scenario once. The other groups run in full
+// three and ONE third of the date group (`--zone rotate`; it was one half until POST-A-399, 7-11-2026, when ten browser scenarios that every night runs took the worst night over its budget), taken in turn by the INDIAN day, so that over any nine consecutive nights every zone sees every date scenario once. The other groups run in full
 // every night. The runner is given a DEADLINE (`--stop-after`): after it, it starts no more scenarios, writes its report with the runs it did not drive named, and exits 1, so the job goes red, uploads the
-// report and ends inside its allowance. A person can still ask for everything (about 77 minutes of drive, a cap of 120, only on request).
+// report and ends inside its allowance. A person can still ask for everything (about 85 minutes of drive on 7 November 2026, 77 when this was written; a cap of 120, only on request).
 //
 // WHY THE INDIAN DAY. The nightly is scheduled for 02:00 IST (20:30 UTC), but GitHub starts it hours late: the drive step began at 05:43, 05:34, 05:10, 05:23, 08:08, 06:23, 06:37 and 06:48 IST
 // in the eight nights before this was written, which straddles UTC midnight (05:30 IST). Keyed on the UTC day, those eight nights drove America/Los_Angeles on two nights running (31 October
@@ -45,6 +45,8 @@ const RUNNER = readFileSync(RUNNER_PATH, "utf8");
 const DAY = 86_400_000;
 const IST = 19_800_000;
 const ZONES = TZ_MATRIX.map((c) => c.timezoneId);
+/** The nights it takes for every (zone, shard) pair to come round once: three zones times the parts of the date group (nine, since POST-A-399). */
+const CYCLE = ZONES.length * SHARDS;
 
 // What the runner's own step times gave (smoke-walk runs 41749300419 and 41945303205, 4 and 5 November 2026): 216 runs (59 of them date runs) took 9 min 18 s and 342 (185 date runs) took
 // 19 min 38 s, which is 4.92 s a date run and 1.71 s any other run. A date run is slower because most of them type, leave, wait for the network to go quiet and assert twice.
@@ -71,7 +73,7 @@ const realStarts = REAL_STARTS_IST.map(([y, m, d, h, min]) => Date.UTC(y, m - 1,
 type Part = { zone: string; shard: number };
 type Rotation = (epochMs: number) => Part;
 
-/** What is wrong with a rotation over the given consecutive nights (one instant each): a zone repeated on the next night, a window of three nights that misses a zone, a window of six that
+/** What is wrong with a rotation over the given consecutive nights (one instant each): a zone repeated on the next night, a window of three nights that misses a zone, a window of one full cycle (three zones times the parts) that
  *  misses a (zone, shard) pair, or a pair visited more often than the others. Empty when it is sound. */
 function problemsWith(rotation: Rotation, nights: number[]): string[] {
   const parts = nights.map(rotation);
@@ -82,8 +84,8 @@ function problemsWith(rotation: Rotation, nights: number[]): string[] {
   for (let i = 0; i + 3 <= parts.length; i++) {
     if (new Set(parts.slice(i, i + 3).map((p) => p.zone)).size !== ZONES.length) { out.push(`nights ${i}-${i + 2} miss a zone`); break; }
   }
-  for (let i = 0; i + 6 <= parts.length; i++) {
-    if (new Set(parts.slice(i, i + 6).map((p) => `${p.zone}#${p.shard}`)).size !== ZONES.length * SHARDS) { out.push(`nights ${i}-${i + 5} miss a (zone, shard) pair`); break; }
+  for (let i = 0; i + CYCLE <= parts.length; i++) {
+    if (new Set(parts.slice(i, i + CYCLE).map((p) => `${p.zone}#${p.shard}`)).size !== ZONES.length * SHARDS) { out.push(`nights ${i}-${i + CYCLE - 1} miss a (zone, shard) pair`); break; }
   }
   const seen: Record<string, number> = {};
   for (const p of parts) seen[`${p.zone}#${p.shard}`] = (seen[`${p.zone}#${p.shard}`] ?? 0) + 1;
@@ -157,7 +159,7 @@ test("the real start instants of the last eight nights drive eight consecutive I
 test("every instant from 02:00 to 12:00 IST of a night is the same part of the drive: a late start does not change what is driven", () => {
   const first = Date.UTC(2026, 10, 7) - IST;
   for (let h = 2; h <= 12; h += 0.25) {
-    for (let d = 0; d < 6; d++) {
+    for (let d = 0; d < CYCLE; d++) {
       const at = partOfTheNight(first + d * DAY + h * 3_600_000);
       const base = partOfTheNight(first + d * DAY + 2 * 3_600_000);
       assert.deepEqual(at, base, `a start at ${h} h IST drives another part from one at 02:00 on day ${d}`);
@@ -186,7 +188,7 @@ test("a shard is `all`, `rotate` or a number below the count, a rotating zone ro
   assert.equal(resolveShard(undefined, "Asia/Kolkata", NIGHT), "all", "a named zone drives the whole date group");
   assert.equal(resolveShard(undefined, "all", NIGHT), "all");
   for (let k = 0; k < SHARDS; k++) assert.equal(resolveShard(String(k), "all", NIGHT), k);
-  for (const bad of ["", "2", "-1", "1.5", "x", "ALL"]) assert.throws(() => resolveShard(bad, "all", NIGHT), /not a part of the date group/, `${JSON.stringify(bad)} was accepted as a shard`);
+  for (const bad of ["", String(SHARDS), "-1", "1.5", "x", "ALL"]) assert.throws(() => resolveShard(bad, "all", NIGHT), /not a part of the date group/, `${JSON.stringify(bad)} was accepted as a shard`);
 });
 
 type Flags = Record<string, string | true>;
@@ -286,8 +288,8 @@ test("the runner lists, without a build, the runs the rule asks for: the whole d
     const part = list("--zone", "all", "--shard", String(k));
     assert.deepEqual(part.ids, expectedIds(scenarios, "all", k), `--shard ${k} does not list that part`);
   }
-  // a night, at fixed instants: the six nights from 7 November 2026
-  for (let i = 0; i < 6; i++) {
+  // a night, at fixed instants: the nine nights from 7 November 2026
+  for (let i = 0; i < CYCLE; i++) {
     const at = new Date(NIGHT + i * DAY).toISOString().replace(".000Z", "Z");
     const part = partOfTheNight(NIGHT + i * DAY);
     const night = list("--zone", "rotate", "--now", at);
@@ -312,18 +314,19 @@ test("the list reaches a reader that is slow to take it: the exit waits for the 
   assert.equal(lines.length - 2, Number(/^(\d+)/.exec(last)![1]), "the list has not as many runs as it says it has");
 });
 
-test("over six nights the runner lists every run of the drive: each date run once, each unzoned date run on the nights of its part, and the other groups every night", async () => {
+test("over a cycle of nights the runner lists every run of the drive: each date run once, each unzoned date run on the nights of its part, and the other groups every night", async () => {
   const scenarios = await everyScenario();
   const whole = expectedIds(scenarios, "all", "all");
-  const nights = Array.from({ length: 6 }, (_, i) => list("--zone", "rotate", "--now", new Date(NIGHT + i * DAY).toISOString().replace(".000Z", "Z")).ids);
+  const nights = Array.from({ length: CYCLE }, (_, i) => list("--zone", "rotate", "--now", new Date(NIGHT + i * DAY).toISOString().replace(".000Z", "Z")).ids);
   const tally = new Map<string, number>();
   for (const ids of nights) for (const id of ids) tally.set(id, (tally.get(id) ?? 0) + 1);
-  assert.deepEqual([...tally.keys()].sort(), [...whole].sort(), "six nights do not list exactly the runs of the whole drive");
+  assert.deepEqual([...tally.keys()].sort(), [...whole].sort(), `${CYCLE} nights do not list exactly the runs of the whole drive`);
   for (const s of scenarios) {
     const ids = s.contexts ? s.contexts.map((c) => `${s.group}/${s.id} [${c.locale} ${c.timezoneId}]`) : [`${s.group}/${s.id}`];
     for (const id of ids) {
-      const want = s.group !== "dates" ? 6 : s.contexts ? 1 : 3;
-      assert.equal(tally.get(id), want, `${id} is listed ${tally.get(id)} times in six nights, not ${want}`);
+      // The other groups run every night; a date run with a context of its own runs in the one zone and the one part that ask for it; one without runs on the nights of its part, one in each zone.
+      const want = s.group !== "dates" ? CYCLE : s.contexts ? 1 : ZONES.length;
+      assert.equal(tally.get(id), want, `${id} is listed ${tally.get(id)} times in ${CYCLE} nights, not ${want}`);
     }
   }
 });
@@ -379,8 +382,8 @@ test("choosing a zone or a part never removes a scenario from the drive: across 
 
 test("a scenario's part is a stable function of its id, so adding or removing a scenario moves no other", () => {
   // FNV-1a over the id, modulo the count, pinned on ids so a change of the hash is a change of every part, on purpose.
-  assert.equal(SHARDS, 2, "the count of parts changed: the pins below are for two");
-  assert.deepEqual(["shipping-bill", "vendor-no-pe-declaration", "bank-account-opening-date", "a", "scenario-1"].map(shardOf), [1, 0, 1, 0, 1]);
+  assert.equal(SHARDS, 3, "the count of parts changed: the pins below are for three");
+  assert.deepEqual(["shipping-bill", "vendor-no-pe-declaration", "bank-account-opening-date", "a", "scenario-1"].map(shardOf), [1, 1, 0, 1, 1]);
   const ids = Array.from({ length: 200 }, (_, i) => `scenario-${i}`);
   const counts = Array(SHARDS).fill(0);
   for (const id of ids) counts[shardOf(id)] += 1;

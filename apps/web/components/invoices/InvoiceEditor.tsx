@@ -60,6 +60,7 @@ import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
 import { todayIstISO } from "@/lib/dates/format";
+import { editedText } from "@/lib/forms/editedValue";
 
 type SaveAction = "draft" | "issue" | "send";
 
@@ -721,6 +722,19 @@ export function InvoiceEditor({
     if (shippingBillRefusal.shown) shippingBillRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [shippingBillRefusal.shown]);
 
+  // A due date on file is corrected and not emptied either (POST-A-399), for a different reason than the shipping bill's. Every invoice carries a due date (a create that names none resolves one
+  // from the customer's terms, or thirty days), the collections queue and the ageing read it, and the PATCH route reads an omitted or null date as "not sent": a box the person emptied would leave
+  // the stored date exactly as it was and the screen would say the invoice was updated. So the screen says so beside the button, the same way, and a date the invoice never had (nothing on file) is
+  // not this rule's. Derived from the date on file and the box, latched, and never copied into `error`.
+  const dueDateCleared = !dates.problems.dueDate
+    ? removedDateProblem("The due date", initialSnapshot.current.dueDate, dueDate)
+    : null;
+  const dueDateRefusal = useDateRefusal(dueDateCleared);
+  const dueDateRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (dueDateRefusal.shown) dueDateRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [dueDateRefusal.shown]);
+
   // What the server holds after a save that went through is what was SENT. The shipping bill fields go only while their block is drawn (`shippingBillSent`), so values typed into a block
   // that was not drawn at that save are still unsaved: they stay out of the snapshot, which is also what "on file" above reads, and they still count as an unsaved change.
   function snapshotOfWhatWasSaved() {
@@ -738,6 +752,7 @@ export function InvoiceEditor({
     if (dates.first) { setError(dates.first); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (shippingBillCleared) { setError(null); shippingBillRefusal.refuse(); return; }
+    if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }
     const shippingBillSent = showsShippingBill ? {
       shipping_bill_no: shippingBillNo.trim() || undefined,
       shipping_bill_date: shippingBillDate || undefined,
@@ -794,9 +809,12 @@ export function InvoiceEditor({
           const lineUnits = Object.fromEntries(
             lines.filter((l) => l.id).map((l) => [l.id as string, l.unit || "NOS"]),
           );
+          // A reference or a note the person EMPTIED is sent as null so the server clears it (POST-A-399): `x.trim() || undefined` sent nothing, the stored value stayed and the screen said
+          // the invoice was updated. What was on file is the snapshot the form opened with, or last saved; a box that was empty then and is empty now sends nothing. The due date is not
+          // cleared this way: an emptied one is refused above, so what is sent here is a date or nothing.
           const upd = await apiCall(`/api/sales-invoices/${patchId}`, "PATCH", {
-            reference_no: referenceNo.trim() || undefined,
-            notes: notes.trim() || undefined,
+            reference_no: editedText(referenceNo, initialSnapshot.current.referenceNo),
+            notes: editedText(notes, initialSnapshot.current.notes),
             due_date: dueDate || undefined,
             credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
             // Sent even on an ISSUED invoice — see the state declaration above.
@@ -812,11 +830,12 @@ export function InvoiceEditor({
           customer_id: customerId,
           invoice_no: trimmedInvoiceNo,
           invoice_date: invoiceDate,
+          // The reference and the note are cleared when the person emptied them (POST-A-399), as on the issued invoice above; an emptied due date was refused before this point.
           due_date: dueDate || undefined,
-          reference_no: referenceNo.trim() || undefined,
+          reference_no: editedText(referenceNo, initialSnapshot.current.referenceNo),
           credit_days: creditDays !== "" ? parseInt(creditDays, 10) : undefined,
           supply_state_code: supplyStateCode || undefined,
-          notes: notes.trim() || undefined,
+          notes: editedText(notes, initialSnapshot.current.notes),
           is_inter_state: isInterstate,
           round_off_enabled: roundOffEnabled,
           // Draft only. The issued-invoice PATCH above deliberately omits these:
@@ -1628,6 +1647,7 @@ export function InvoiceEditor({
 
         {error && <Callout tone="problem">{error}</Callout>}
         {shippingBillRefusal.shown && <div ref={shippingBillRefusalRef}><Callout tone="problem">{shippingBillRefusal.shown}</Callout></div>}
+        {dueDateRefusal.shown && <div ref={dueDateRefusalRef}><Callout tone="problem">{dueDateRefusal.shown}</Callout></div>}
       </div>
     </InvoiceWorkspaceLayout>
   );

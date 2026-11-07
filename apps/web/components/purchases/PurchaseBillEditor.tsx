@@ -56,6 +56,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
 import { todayIstISO } from "@/lib/dates/format";
+import { editedText } from "@/lib/forms/editedValue";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -685,6 +686,19 @@ export function PurchaseBillEditor({
     if (form15caRefusal.shown) form15caRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [form15caRefusal.shown]);
 
+  // A due date on file is corrected and not emptied either (POST-A-399), for a different reason than Form 15CA's. Every bill carries a due date (a create that names none resolves one from the
+  // supplier's terms, or thirty days), the payables ageing and the payment run read it, and the PATCH route reads an omitted or null date as "not sent": a box the person emptied would leave the
+  // stored date exactly as it was and the screen would say the bill was updated. So the screen says so beside the button, the same way, and a date the bill never had (nothing on file) is not this
+  // rule's. Derived from the date on file and the box, latched, and never copied into `error`.
+  const dueDateCleared = !dates.problems.dueDate
+    ? removedDateProblem("The due date", initialSnapshot.current.dueDate, dueDate)
+    : null;
+  const dueDateRefusal = useDateRefusal(dueDateCleared);
+  const dueDateRefusalRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (dueDateRefusal.shown) dueDateRefusalRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [dueDateRefusal.shown]);
+
   const accountNameById = new Map(accounts.map((a) => [a.id ?? "", a.account_name ?? a.name ?? ""]));
   const blockedCreditHits = findBlockedCreditHits(lines, accountNameById);
   // PUR-05. `itc_eligible` and `blocked_credit_reason` have been on the API,
@@ -920,6 +934,7 @@ export function PurchaseBillEditor({
     if (dates.first) { setError(dates.first); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (form15caCleared) { setError(null); form15caRefusal.refuse(); return; }
+    if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }
     if (!validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.unread ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
       return;
@@ -937,11 +952,16 @@ export function PurchaseBillEditor({
         // PATCH rejected with 422, since the check is "was the key present",
         // not "did the value change". isLocked mirrors that exactly so a
         // received-bill edit never fails on fields the CA never touched.
+        // Our reference and the note are SOFT particulars the person may take away: an emptied box is sent as null so the server clears it (POST-A-399); `x.trim() || undefined` sent
+        // nothing, the stored value stayed and the screen said the bill was updated. What was on file is the snapshot the form opened with (the editor closes after an edit). The due date
+        // is not cleared this way: an emptied one was refused above, so what is sent is a date or nothing. The bill number, the attached copy of the supplier's invoice and the Form
+        // 15CA / 15CB references are the EVIDENCE of the bill and are neither cleared nor refused here yet (POST-A-399 remainder; the dates are POST-A-388's).
+        const softOnFile = initialSnapshot.current;
         const patchPayload = isLocked
           ? {
               due_date: dueDate || undefined,
-              our_reference: ourReference.trim() || undefined,
-              notes: notes.trim() || undefined,
+              our_reference: editedText(ourReference, softOnFile.ourReference),
+              notes: editedText(notes, softOnFile.notes),
               document_url: documentUrl || undefined,
               // Rule 37BB, and EDITABLE ON A RECEIVED BILL on purpose:
               // Form 15CA is filed at the time of remittance, which is after
@@ -955,8 +975,8 @@ export function PurchaseBillEditor({
               bill_date: billDate,
               due_date: dueDate || undefined,
               bill_no: billNo.trim() || undefined,
-              our_reference: ourReference.trim() || undefined,
-              notes: notes.trim() || undefined,
+              our_reference: editedText(ourReference, softOnFile.ourReference),
+              notes: editedText(notes, softOnFile.notes),
               document_url: documentUrl || undefined,
               lines: linePayload,
               // Rule 37BB, and EDITABLE ON A RECEIVED BILL on purpose:
@@ -1780,6 +1800,7 @@ export function PurchaseBillEditor({
         )}
         {error && <Callout tone="problem">{error}</Callout>}
         {form15caRefusal.shown && <div ref={form15caRefusalRef}><Callout tone="problem">{form15caRefusal.shown}</Callout></div>}
+        {dueDateRefusal.shown && <div ref={dueDateRefusalRef}><Callout tone="problem">{dueDateRefusal.shown}</Callout></div>}
       </div>
     </InvoiceWorkspaceLayout>
   );

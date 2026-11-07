@@ -25,6 +25,7 @@ import { UQC_CODES } from "@/lib/constants/uqc";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, getAuthToken, fmt, gstRateOptions, gstRateToPercent } from "@/lib/invoices/shared";
+import { editedText } from "@/lib/forms/editedValue";
 import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -310,7 +311,7 @@ export function PurchaseCreditNoteEditor({
 
       if (isEdit && existing) {
         const patchPayload = isLocked
-          ? { notes: notes.trim() || undefined, document_url: documentUrl || undefined }
+          ? { notes: editedText(notes, existing.notes), document_url: documentUrl || undefined }
           : {
               vendor_id: vendorId,
               credit_note_date: cnDate,
@@ -318,7 +319,7 @@ export function PurchaseCreditNoteEditor({
               reason: reason.trim() || undefined,
               is_interstate: isInterstate,
               is_reverse_charge: isReverseCharge,
-              notes: notes.trim() || undefined,
+              notes: editedText(notes, existing.notes),
               document_url: documentUrl || undefined,
               lines: linePayload,
             };

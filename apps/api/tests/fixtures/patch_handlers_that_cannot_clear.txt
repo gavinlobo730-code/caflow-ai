@@ -1,0 +1,38 @@
+# PATCH handlers that drop every null in their body, so an edit CANNOT clear a field through them (POST-A-399). A person who empties a box on one of these edit screens sends nothing
+# for it, the stored value stays, and the screen says the record was saved. Two spellings of the read are seen: `body.model_dump(exclude_none=True)` and
+# `{k: v for k, v in body.model_dump().items() if v is not None}`.
+#
+# The list ONLY SHRINKS: a handler that moves to `models.clearable.patch_dict` (naming the fields a person may clear in its model's CLEARABLE) is DELETED from it in the same commit, and
+# a new PATCH handler that drops nulls fails the test unless it is added here with its reason in the pull request. The first slice converted the sales invoice, the purchase bill and the
+# four notes; the rest are the next slices, and each needs the per-field decision (a GSTIN or a PAN typed on a party is identity, and a date is corrected and not emptied).
+#
+# Two handlers already clear a few named columns by their own means: routers/service_catalogue.py update_service (two columns, through `model_fields_set`; listed all the same, because
+# every other field of its drops its null) and routers/tasks.py update_task, which is not listed because it hands its body to a helper the scan does not see (it keeps the explicit
+# null of `due_date` and `assigned_to`). A `@router.put` is not in this scan.
+routers/accounting.py::update_account
+routers/accounting.py::update_journal_entry
+routers/banking.py::update_bank_account
+routers/banking.py::update_reconciliation
+routers/banking.py::update_rule
+routers/bills_of_entry.py::update_bill_of_entry
+routers/clients.py::update_client
+routers/compliance_records.py::update_compliance_record
+routers/cost_centres.py::update_cost_centre
+routers/customers.py::update_customer
+routers/engagement_letters.py::update_engagement
+routers/engagement_letters.py::update_template
+routers/engagements.py::update_engagement
+routers/firm_hsn_library.py::update_code
+routers/knowledge.py::update_instruction
+routers/lifecycle.py::update_lead
+routers/mca_workspace.py::update_director
+routers/payroll.py::update_employee
+routers/relationships.py::update_entity
+routers/service_catalogue.py::update_service
+routers/task_recurring.py::update_assignment_rule
+routers/tds_workspace.py::update_deduction
+routers/time_tracking.py::update_entry
+routers/vendors.py::update_vendor
+routers/workflow_builder.py::update_template
+routers/year_end_adjustments.py::update_adjustment
+routers/year_end_notes.py::update_note
