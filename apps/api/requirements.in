@@ -41,7 +41,7 @@ pydantic[email]>=2.14.2
 email-validator>=2.1.0
 supabase==2.10.0
 groq==1.7.0
-google-genai>=1.0.0,<2.0.0
+google-genai>=3.0.0,<4.0.0
 PyJWT[crypto]==2.15.1
 cryptography>=41.0.0
 python-dateutil>=2.8.2
