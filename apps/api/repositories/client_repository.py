@@ -3,6 +3,7 @@ from typing import Optional
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from core import db_provider
+from core.db_paging import fetch_all
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -85,6 +86,26 @@ class ClientRepository(BaseRepository[dict]):
             query = query.eq("status", status)
         result = query.order("client_name").execute()
         return result.data or []
+
+    def names_by_id(self, firm_id: str, *, include_archived: bool = False) -> dict:
+        """{client id: client name} for the firm's clients, with `find_all`'s population (live, not the firm's own practice, archived ones only on request), read in keyset pages (POST-A-428).
+
+        `find_all` ends in one request, and PostgREST answers at most its row cap, so a firm with more clients than that had the later ones named "Unknown" on a screen that took their names from it.
+        A screen that needs NAMES, and nothing else of a client, reads this: two columns, every row, no order promised. A name that is null on a row is returned as it is stored, as `find_all` returned it.
+        """
+        if _USE_MOCK:
+            return {c["id"]: c.get("client_name", "Unknown")
+                    for c in self.find_all(firm_id=firm_id, include_archived=include_archived)}
+        if include_archived:
+            rows = fetch_all(lambda: _get_db().table("clients").select("id, client_name")
+                             .is_("deleted_at", None).eq("firm_id", firm_id).eq("is_internal", False),
+                             key="id", label="clients: names")
+        else:
+            rows = fetch_all(lambda: _get_db().table("clients").select("id, client_name")
+                             .is_("deleted_at", None).eq("firm_id", firm_id).eq("is_internal", False)
+                             .neq("status", "archived"),
+                             key="id", label="clients: live names")
+        return {r["id"]: r.get("client_name", "Unknown") for r in rows}
 
     def find_by_pan(self, pan: str) -> Optional[dict]:
         if _USE_MOCK:

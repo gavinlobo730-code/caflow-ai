@@ -139,6 +139,19 @@ def statement(db, firm_id: str, client_id: str, financial_year: str,
             .eq("firm_id", firm_id).eq("client_id", client_id),
             "challan_id", owed, key="id", label="itc_04.outstanding_returns"))
 
+    # A challan whose status says the goods are back and which records no day is judged on EVERY lot recorded against it (POST-A-422): the year's read above would miss the lots dated in another
+    # year and name a challan that is fully itemised. Nothing is read unless there is one.
+    no_day = {str(c["id"]) for c in challans if itc.is_received_back_without_a_day(c)}
+    no_day_returns = returns
+    if no_day:
+        no_day_returns = _dedupe(returns + fetch_all_in(
+            lambda: db.table("delivery_challan_returns").select(
+                "id, challan_id, challan_line_id, returned_on, quantity_returned, "
+                "quantity_lost_or_wasted, job_worker_challan_no, "
+                "job_worker_challan_date, nature_of_job_work")
+            .eq("firm_id", firm_id).eq("client_id", client_id),
+            "challan_id", no_day, key="id", label="itc_04.no_day_returns"))
+
     lines = fetch_all_in(
         lambda: db.table("delivery_challan_lines").select(
             "id, challan_id, line_order, description, hsn_sac, quantity, unit, "
@@ -167,7 +180,8 @@ def statement(db, firm_id: str, client_id: str, financial_year: str,
         "table_5c": {"derived": False, "reason": itc.TABLE_5C_NOT_DERIVED},
         # Still with the job worker TODAY, with the s.143 date for the balance.
         "outstanding": itc.balances(challans, lines, returns, as_at.isoformat()),
-        "gaps": itc.statement_gaps(),
+        "gaps": itc.statement_gaps([g for g in [itc.received_back_without_a_day_gap(
+            itc.received_back_without_a_day(challans, lines, no_day_returns))] if g]),
         "nothing_is_filed": True,
         "verified": itc.VERIFIED,
         "ca_review_required": True,   # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT

@@ -122,19 +122,15 @@ def profitability_analytics(
 
     # Get all clients for lookup. ARCHIVED ONES TOO: a client archived during the period still has its fees and its hours in
     # it, and without its name the row would read "Unknown" beside real money.
-    all_clients = client_repo.find_all(firm_id=firm_id, include_archived=True)
-    client_map = {c["id"]: c.get("client_name", "Unknown") for c in all_clients}
+    client_map = client_repo.names_by_id(firm_id, include_archived=True)
 
     # Get all users for lookup
     all_users = user_repo.find_all(firm_id=firm_id)
     user_map = {u["id"]: u.get("full_name") or u.get("name") or u.get("email", "Unknown") for u in all_users}
 
     # Get all engagements for lookup
-    all_engagements = engagement_repo.find_all(firm_id=firm_id)
-    engagement_map = {e["id"]: {
-        "service_type": e.get("service_type", "Unknown"),
-        "client_id": e.get("client_id"),
-    } for e in all_engagements}
+    # Read only for the engagement view: the map is used nowhere else, and it is one request per page of the firm's engagements.
+    engagement_map = engagement_repo.services_by_id(firm_id) if include_by_engagement else {}
 
     # The two reads the answer is built from, each read in full: the issued fee invoices and the ended time entries.
     invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
@@ -307,8 +303,7 @@ def fee_concentration(
     firm_id = current_user.get("firm_id")
     date_from, date_to, label = _period_range(period, financial_year)
 
-    all_clients = client_repo.find_all(firm_id=firm_id, include_archived=True)
-    client_map = {c["id"]: c.get("client_name", "Unknown") for c in all_clients}
+    client_map = client_repo.names_by_id(firm_id, include_archived=True)
     invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
     entries = time_tracking_analytics_repo.get_cost_entries(firm_id, date_from, date_to)
     rates = billing_service.cost_rates_by_user(firm_id)
@@ -416,10 +411,10 @@ def revenue_vs_effort(
     fees_outside = rule_real.revenue_outside_engagements(invoices)
     minutes_outside = rule_real.minutes_outside_engagements(entries)
 
-    engagement_map = {e["id"]: e for e in engagement_repo.find_all(firm_id=firm_id)}
+    engagement_map = engagement_repo.services_by_id(firm_id)
     # ARCHIVED CLIENTS TOO, as `/profitability` reads them: a client archived during the period still has its fees and
     # hours in it, and without its name the row would read "Unknown" beside real money.
-    client_map = {c["id"]: c for c in client_repo.find_all(firm_id=firm_id, include_archived=True)}
+    client_map = client_repo.names_by_id(firm_id, include_archived=True)
 
     # Build by_engagement list
     by_engagement_list = []
@@ -454,7 +449,7 @@ def revenue_vs_effort(
     for row in client_rows:
         by_client_list.append({
             "client_id": row.key,
-            "client_name": client_map.get(row.key, {}).get("client_name", "Unknown"),
+            "client_name": client_map.get(row.key, "Unknown"),
             "revenue_paise": row.revenue_paise,
             "revenue_without_time_paise": row.revenue_without_time_paise,
             "revenue_without_engagement_paise": fees_outside.get(row.key, 0),
@@ -571,8 +566,9 @@ def _benchmark_rows(firm_id: str, fy: str, allowed) -> list:
     """The stored rows for one firm-year, narrowed to the caller's own book."""
     from domain.practice import client_metrics as rule
 
-    all_clients = client_repo.find_all(firm_id=firm_id)
-    names = {str(c["id"]): c.get("client_name", "Unknown") for c in all_clients}
+    # ARCHIVED CLIENTS TOO: the nightly sweep stores a row for every client of the firm, so the benchmark's list of clients with no figure names an archived one, and
+    # without its name that line would read "Unknown" beside a stored row (the other three practice screens name them for the same reason).
+    names = {str(k): v for k, v in client_repo.names_by_id(firm_id, include_archived=True).items()}
 
     stored = _client_period_metrics(firm_id, fy)
     out = []

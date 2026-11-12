@@ -504,11 +504,66 @@ def window_counts(challans: list[dict], lines: list[dict], returns: list[dict],
     return out
 
 
-def statement_gaps() -> list[str]:
-    """What the statement cannot say, on every answer."""
+def is_received_back_without_a_day(ch: dict) -> bool:
+    """A job-work challan whose STATUS says the goods are back and which records no day for it (a row written before POST-A-383 refused that)."""
+    return is_job_work_sent(ch) and str(ch.get("status")) == "received_back" and not ch.get("received_back_on")
+
+
+def received_back_without_a_day(challans: list[dict], lines: list[dict],
+                                returns: list[dict]) -> list[dict]:
+    """Job-work challans whose STATUS says the goods are back, which record no day, and which leave a quantity no return line accounts for (POST-A-422).
+
+    Such a row (it takes a status-only amendment from before POST-A-383, which now refuses one) has its unaccounted goods on none of the statement's lists: `balances` skips a challan whose
+    status says it is back, Table 5A needs the day, and nothing else listed it. It is the challan's own record that says the goods are back, so the quantity is not guessed here; it is NAMED.
+    A challan whose every line is itemised by return lines is not one: Table 5A carries those lots with their own days. Lots count by `quantity_returned` alone, as `balances` and the whole-challan
+    branch of Table 5A do (waste is never subtracted), so a challan whose only lot is waste is named, and that lot is still a Table 5A row. A challan with no lines is not one (nothing was sent
+    that could be missing). `returns` must hold EVERY lot recorded against these challans, whatever year it is dated in: the statement's own read is the year's, and judging by it would name a
+    challan whose lots fall in another year (`itc_04_service.statement` reads these challans' lots whole). Pure, and ordered by the day the goods left and the number.
+    """
+    by_challan = _lines_by_challan(lines)
+    returns_by_line = _returns_by_line(returns)
+    out: list[dict] = []
+    for ch in sorted(challans, key=lambda c: (str(c.get("document_date")), str(c.get("document_no")))):
+        if not is_received_back_without_a_day(ch):
+            continue
+        unaccounted = Decimal(0)
+        for ln in by_challan.get(str(ch.get("id")), []):
+            itemised = sum((_d(x.get("quantity_returned")) for x in returns_by_line.get(str(ln.get("id")), [])), Decimal(0))
+            unaccounted += max(_d(ln.get("quantity")) - itemised, Decimal(0))
+        if unaccounted > 0:
+            out.append({"challan_id": ch.get("id"), "challan_no": ch.get("document_no"),
+                        "challan_date": str(ch.get("document_date"))[:10], "goods_kind": ch.get("goods_kind")})
+    return out
+
+
+def received_back_without_a_day_gap(rows: list[dict], *, named: int = 5) -> Optional[str]:
+    """The one sentence for `received_back_without_a_day`, or None when there is no such challan.
+
+    The remedy is the Delivery Challans tab's box that gives a wholly-back challan its day, which `record_return` does not replace (it refuses a challan whose status says it is back) and which that
+    tab offers only for goods with a period running. Tools, moulds, dies, jigs and fixtures run none (`delivery_challan.JOB_WORK_EXCLUSION`), so the tab offers them no box, and the sentence says
+    so for the challans it names rather than promising a remedy the screen cannot give.
+    """
+    if not rows:
+        return None
+    def numbers(rs: list[dict]) -> str:
+        nos = [str(r.get("challan_no") or "no number") for r in rs]
+        return ", ".join(nos[:named]) + (f" and {len(nos) - named} more" if len(nos) > named else "")
+    many = len(rows) > 1
+    text = (f"{len(rows)} job-work challan{'s are' if many else ' is'} recorded as received back with no day ({numbers(rows)}), so the goods "
+            f"on {'them' if many else 'it'} that no lot accounts for are on neither the Table 5A rows nor the outstanding list. "
+            "Record the day the goods came back on the Delivery Challans tab.")
+    tools = [r for r in rows if r.get("goods_kind") == dc.GOODS_KIND_EXCLUDED]
+    if tools:
+        text += (f" That tab offers no box for tools, moulds, dies, jigs and fixtures ({numbers(tools)}), which run no period under section 143, "
+                 f"so for {'those' if len(tools) > 1 else 'that one'} the day cannot be recorded from a screen yet.")
+    return text
+
+
+def statement_gaps(extra: Iterable[str] = ()) -> list[str]:
+    """What the statement cannot say, on every answer, with the sentences about the books in hand (`extra`) before the closing line that nothing is filed."""
     return [FORM_NUMBERING, TABLE_5B_NOT_DERIVED, TABLE_5C_NOT_DERIVED,
             WASTE_IS_NOT_SUBTRACTED, TAX_ON_DEEMED_SUPPLY_NOT_COMPUTED,
-            NOTHING_IS_FILED]
+            *extra, NOTHING_IS_FILED]
 
 
 def job_worker_challan_problem(challan_on: Optional[date], back_on: date) -> Optional[str]:

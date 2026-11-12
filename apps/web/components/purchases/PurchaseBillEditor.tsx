@@ -935,7 +935,8 @@ export function PurchaseBillEditor({
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (form15caCleared) { setError(null); form15caRefusal.refuse(); return; }
     if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }
-    if (!validation.ok) {
+    // A received bill's save sends the due date, the reference, the note, the attached copy and the Form 15CA references and nothing the check reads (the vendor, the date, the lines and the exchange rate are frozen), so the create-time check is not asked of it, as the invoice editor does not ask it of an issued invoice.
+    if (!isLocked && !validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.unread ?? validation.errors.lines ?? validation.errors.exchangeRate ?? "Fix the highlighted fields.");
       return;
     }
@@ -1045,7 +1046,7 @@ export function PurchaseBillEditor({
   }
 
   const busy = saving;
-  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-state-problem">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-3xs text-state-problem">{msg}</p> : null);
 
   const toolbar = (
     <>
@@ -1151,7 +1152,7 @@ export function PurchaseBillEditor({
         GST above is a preview and is confirmed by the server on save. The TDS figure
         is computed by the server now, by the same code that will withhold it.
       </p>
-      {attempted && !validation.ok && (
+      {!isLocked && attempted && !validation.ok && (
         <div className="flex items-start gap-1.5 text-3xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.billDate ?? validation.errors.unread ?? validation.errors.lines ?? validation.errors.exchangeRate}</span>
@@ -1546,7 +1547,7 @@ export function PurchaseBillEditor({
               <tbody ref={gridRef} onKeyDown={onLineGridKeyDown} className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   const g = previewBillTotals([line], isInterstate);
-                  const invalid = attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
+                  const invalid = !isLocked && attempted && !isValidBillLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
                     <tr key={line._k} className={invalid ? "bg-state-problem-surface/40" : undefined}>
                       <td className="py-1.5 pr-2">

@@ -3,6 +3,7 @@ from typing import Optional
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from core import db_provider
+from core.db_paging import fetch_all
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -53,6 +54,20 @@ class EngagementRepository(BaseRepository[dict]):
             query = query.eq("status", status)
         result = query.order("created_at", desc=True).execute()
         return result.data or []
+
+    def services_by_id(self, firm_id: str) -> dict:
+        """{engagement id: {"service_type", "client_id"}} for the firm's engagements, read in keyset pages (POST-A-428).
+
+        `find_all` ends in one request, and PostgREST answers at most its row cap, so a firm with more engagements than that had the later ones named "Unknown" on a screen that took their services from
+        it. It runs as the CALLER, as `find_all` does (what the caller's row security lets them see is what they get); a screen that needs the service and the client of an engagement and none of its fees
+        reads this: three columns, every row, no order promised.
+        """
+        if _USE_MOCK:
+            return {e["id"]: {"service_type": e.get("service_type", "Unknown"), "client_id": e.get("client_id")}
+                    for e in self.find_all(firm_id=firm_id)}
+        rows = fetch_all(lambda: _get_db().table("fee_engagements").select("id, client_id, service_type").eq("firm_id", firm_id),
+                         key="id", label="fee_engagements: services")
+        return {r["id"]: {"service_type": r.get("service_type", "Unknown"), "client_id": r.get("client_id")} for r in rows}
 
     def find_scope(self, firm_id: str, client_id: Optional[str] = None) -> list[dict]:
         """The engagements' SCOPE (client, service, status), read WITHOUT their fees and without the caller's row security.
