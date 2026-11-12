@@ -8,8 +8,8 @@
  *   1. an issued sales invoice, its note and reference taken out: the PATCH carries `notes: null` and `reference_no: null`, the due date and the credit days it was opened with, and nothing locked;
  *   2. an issued sales invoice with NO note and NO reference on file: a note typed and taken out again, nothing else touched, sends neither key;
  *   3. a DRAFT sales invoice, its note and reference taken out: the PATCH (the other request body) carries both as null too;
- *   4. a purchase bill that has been received, its reference and note taken out: both are null in the PATCH, the due date and the attached copy of the supplier's invoice are sent as they were;
- *   5. each of the four notes once issued, its note taken out: the PATCH carries `notes: null`, and on the two purchase notes the attached copy as it was, and nothing else;
+ *   4. a purchase bill that has been received, its reference and note taken out, its only line naming no catalogue item and blocked with no clause: both are null in the PATCH, the due date and the attached copy of the supplier's invoice are sent as they were;
+ *   5. each of the four notes once issued, its note taken out, its only line naming no catalogue item: the PATCH carries `notes: null`, and on the two purchase notes the attached copy as it was, and nothing else (POST-A-425: the two purchase editors used to refuse the save on the line);
  *   6. a note typed on a NEW sales credit note and a NEW sales debit note reaches the server (the box was always there and the create used to leave it out).
  *
  * A due date taken out is not here: it is refused beside the button and sends nothing (the `a-date-on-file-is-replaced-and-not-emptied-*due-date` rows of the dates group).
@@ -19,7 +19,7 @@
 import assert from "node:assert/strict";
 import { pick, until } from "../kit.mjs";
 import { ok } from "../stub.mjs";
-import { ITEM, VENDOR, billRow, invoiceDetail } from "../fixtures.mjs";
+import { VENDOR, billRow, invoiceDetail } from "../fixtures.mjs";
 import { NOTE_KINDS } from "../flows.mjs";
 
 export const group = "cleared-boxes";
@@ -117,6 +117,8 @@ export const scenarios = [
     async run(env) {
       const { page, stub } = env;
       const bill = { ...billRow("received", "b9"), our_reference: "OUR-1", notes: "Came with the goods", document_url: "bills/scan-0042.pdf" };
+      // Its only line names no catalogue item and is marked blocked with no §17(5) clause, as a line saved before either was required is. A received bill's save sends no line, so the check of a NEW bill's lines is not asked of it (POST-A-425).
+      bill.lines = [{ ...bill.lines[0], service_catalogue_id: null, itc_eligible: false, blocked_credit_reason: null }];
       stub.setTable("vendors", [VENDOR]);
       stub.route({ method: "GET", re: /purchase-bills\/b9$/, reply: () => ok(bill) });
       stub.route({ method: "PATCH", re: /purchase-bills\/b9$/, reply: () => ok({ id: "b9" }) });
@@ -140,9 +142,9 @@ export const scenarios = [
       const { page, stub } = env;
       const issued = { ...kind.row, status: "issued", notes: "Wrong size delivered", ...(attached ? { document_url: "notes/scan-7.pdf" } : {}) };
       stub.setTable(kind.table, [issued]);
-      // One valid line: the two purchase editors ask the line check of an issued note as well (POST-A-425), so a note with none could not be saved on them whatever it said.
+      // The note's only line names no catalogue item, as a line saved before the item became mandatory (migration 206) does. An issued note's save sends the note and the attached copy and not its lines, so the create-time check of the lines is not asked of it on any of the four editors (POST-A-425: the two purchase editors used to ask it and refused the save).
       const line = { id: "nl1", description: "Paper", hsn_sac: "4802", quantity: 1, unit: "NOS", rate_paise: 100000, gst_rate_bps: 1800, taxable_amount_paise: 100000,
-        cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, line_total_paise: 118000, service_catalogue_id: ITEM.id };
+        cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, line_total_paise: 118000, service_catalogue_id: null };
       stub.route({ method: "GET", re: new RegExp(`/api/${kind.api}/n9$`), reply: () => ok({ ...issued, lines: [line], is_interstate: false, journal_entry_id: "j3" }) });
       stub.route({ method: "PATCH", re: new RegExp(`/api/${kind.api}/n9$`), reply: () => ok({ id: "n9" }) });
       await page.goto(env.at(path), { waitUntil: "networkidle" });

@@ -206,7 +206,7 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   engagement are `revenue_without_engagement_paise`, and billable time that names none is `minutes_without_engagement`: named
   beside the figure on the screen, in no row and no ratio. Which client an engagement is comes from the invoice and the entry
   rows themselves and the engagement and client lists carry labels only, so a list cut short by the database's row cap costs
-  a name ("Unknown") and never a fee or an hour (the lists are still read unpaged: POST-A-428). Revenue per hour is `null` with
+  a name ("Unknown") and never a fee or an hour (and the lists are read in pages since POST-A-428, `reporting.md`). Revenue per hour is `null` with
   no billable time. **The firm's tile never showed
   a figure for another reason**: the server answers `realization_rate` and the screen read `overall_realization_rate`; the
   type now says what the server sends and `tests/test_realization_prices_each_hour_from_its_own_rate.py` holds the payload's keys

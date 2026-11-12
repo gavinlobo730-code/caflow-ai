@@ -287,7 +287,8 @@ export function PurchaseCreditNoteEditor({
   async function save() {
     setAttempted(true);
     if (dates.first) { setError(dates.first); return; }
-    if (!validation.ok) {
+    // An issued note's save sends the note and the attached copy only (the lines are frozen), so the create-time check of its lines (a catalogue item on each) is not asked of it, as the sales note editors do not.
+    if (!isLocked && !validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.creditNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
       return;
     }
@@ -358,7 +359,7 @@ export function PurchaseCreditNoteEditor({
   }
 
   const busy = saving;
-  const fieldErr = (msg?: string) => (attempted && msg ? <p className="mt-1 text-3xs text-state-problem">{msg}</p> : null);
+  const fieldErr = (msg?: string) => (!isLocked && attempted && msg ? <p className="mt-1 text-3xs text-state-problem">{msg}</p> : null);
 
   const toolbar = (
     <>
@@ -403,7 +404,7 @@ export function PurchaseCreditNoteEditor({
       <p className="text-3xs text-ps-hint pt-1">
         Preview — GST is confirmed by the server on save.
       </p>
-      {attempted && !validation.ok && (
+      {!isLocked && attempted && !validation.ok && (
         <div className="flex items-start gap-1.5 text-3xs text-state-problem bg-state-problem-surface rounded px-2 py-1.5">
           <AlertCircle size={12} className="mt-px flex-shrink-0" />
           <span>{validation.errors.vendor ?? validation.errors.creditNoteDate ?? validation.errors.lines}</span>
@@ -521,7 +522,7 @@ export function PurchaseCreditNoteEditor({
               <tbody className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   const g = previewPurchaseCreditNoteTotals([line], isInterstate);
-                  const invalid = attempted && !isValidPurchaseCreditNoteLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
+                  const invalid = !isLocked && attempted && !isValidPurchaseCreditNoteLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
                     <tr key={line._k} className={invalid ? "bg-state-problem-surface/40" : undefined}>
                       <td className="py-1.5 pr-2">

@@ -461,7 +461,7 @@ export function SalesDebitNoteEditor({
               <tbody className="divide-y divide-ps-border">
                 {lines.map((line, idx) => {
                   const g = previewTotals([line], isInterstate, false);
-                  const invalid = attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
+                  const invalid = !isLocked && attempted && !isValidLine(line) && (line.description.trim() || line.rate || line.hsn_sac);
                   return (
                     <tr key={line._k} className={invalid ? "bg-state-problem-surface/40" : undefined}>
                       <td className="py-1.5 pr-2">
