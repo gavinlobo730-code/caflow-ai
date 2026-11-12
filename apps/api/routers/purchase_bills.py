@@ -29,7 +29,7 @@ from core.observability import capture_soft_failure
 from core.exceptions import document_failure_detail
 from core.permissions import rbac
 from core.storage_door import StoragePathRefused, storage_folder
-from services.audit_service import log_event
+from services.audit_service import log_document_edit, log_event
 from services.document_header_writer import update_header
 from domain.accounting import draft_integrity
 from services import draft_integrity_service
@@ -1692,12 +1692,9 @@ def update_purchase_bill(
 
         # Per-line unit correction — safe on any non-cancelled status since
         # unit never affects rate/quantity/amount/GST.
-        if line_units:
-            for line_id, unit in line_units.items():
-                # `bill_id` was read under the firm above, and a line is confined to it.
-                privileged_for(db).table("purchase_bill_lines").update(
-                    {"unit": unit or "NOS"}
-                ).eq("id", line_id).eq("bill_id", bill_id).execute()
+        # (`bill_id` was read under the firm above, and a line is confined to it.) Each unit that changed is recorded with the one it
+        # replaced (POST-A-424): a unit-only save used to leave nothing at all.
+        draft_document_lines.set_line_units(db, "purchase_bill", bill_id, current_user.get("firm_id") or "", line_units, edited_by=current_user)
 
         if "lines" in data:
             # Draft-only (guarded above via _reject_locked_bill_fields — "lines"
@@ -1750,7 +1747,7 @@ def update_purchase_bill(
                 for ln in computed["computed_lines"]
             ]
             # One transaction, header locked first, refused if the bill was issued meanwhile (POST-A-332).
-            draft_document_lines.replace_draft_lines(db, "purchase_bill", bill_id, firm_id, line_payloads)
+            draft_document_lines.replace_draft_lines(db, "purchase_bill", bill_id, firm_id, line_payloads, edited_by=current_user)
             data.update({
                 "taxable_amount_paise": computed["taxable_amount_paise"],
                 "cgst_paise":            computed["cgst_paise"],
@@ -1783,10 +1780,11 @@ def update_purchase_bill(
         upd = (privileged_for(db).table("purchase_bills").update(data)
                .eq("id", bill_id).eq("firm_id", current_user.get("firm_id")).eq("client_id", _client_id).execute())
         updated = upd.data[0] if upd.data else data
-        log_event(
-            current_user.get("firm_id", ""), "purchase_bill", bill_id,
-            "update", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"), new_data=updated,
+        # WHAT THE EDIT REPLACED IS RECORDED (POST-A-424), as the invoice's is: by the application whatever the database captures, and
+        # not for an UPDATE that matched no row.
+        log_document_edit(
+            current_user.get("firm_id", ""), "purchase_bill", bill_id, bill_row, data,
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"), updated=updated, matched=bool(upd.data),
         )
         return api_response(True, updated)
     except HTTPException:

@@ -22,7 +22,7 @@ from services import named_row_ownership
 from services import draft_document_lines
 from core.permissions import rbac
 from core.db_provider import privileged_for
-from services.audit_service import log_event
+from services.audit_service import log_document_edit, log_event
 from services.document_header_writer import update_header
 from domain.accounting import draft_integrity
 from services import draft_integrity_service
@@ -626,11 +626,18 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
                 "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
-            draft_document_lines.replace_draft_lines(db, "credit_note", cn_id, firm_id or "", computed)
+            draft_document_lines.replace_draft_lines(db, "credit_note", cn_id, firm_id or "", computed, edited_by=current_user)
 
         if data:
             upd = privileged_for(db).table("credit_notes").update(data).eq("id", cn_id).eq("firm_id", firm_id).eq("client_id", c.get("client_id")).execute()
             updated = upd.data[0] if upd.data else {**c, **data}
+            # WHAT THE EDIT REPLACED IS RECORDED (POST-A-424), by the application whatever the database captures. This route logged
+            # nothing, and a note that was changed or cleared left no record of what it had been on a deployment without the capture.
+            log_document_edit(
+                firm_id or "", "credit_note", cn_id, c, data,
+                actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"), updated=updated,
+                matched=bool(upd.data),
+            )
         else:
             updated = c
         lines = (db.table("credit_note_lines").select("*").eq("credit_note_id", cn_id).execute().data or [])
