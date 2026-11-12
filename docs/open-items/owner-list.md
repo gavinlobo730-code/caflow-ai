@@ -303,6 +303,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Refusing a challan that records only some of the three at the issue door, and any change to the "Still to be recorded" list, which keep the looser test they have.
 - **Ledger:** POST-A-420
 
+### S30. GSTR-1 Table 13: which natures of document must a client declare, and under which row does each kind of delivery challan go?
+
+- **Question:** Table 13 of GSTR-1 lists twelve natures of document. The product declares invoices for outward supply, debit notes and credit notes, and now says on the return that it did not look for the other nine. (1) For which of the other nine natures does a client owe a row: a receipt voucher for an advance, a payment voucher and a self-invoice for a reverse-charge purchase from an unregistered supplier, a refund voucher, a revised invoice? (2) The product issues a delivery challan for six reasons: liquid gas (Rule 55(1)(a)), job work (55(1)(b)), other than by way of supply (55(1)(c)), sale on approval, a supply whose invoice follows delivery (Rule 55(4)) and SKD/CKD or supply in lots (Rule 55(5)). The form has four challan natures: job work, supply on approval, liquid gas, and other than by way of supply (excluding the first three). Under which nature does a Rule 55(4) challan go, and a Rule 55(5) challan? (3) Is a cancelled delivery challan counted in the cancelled column, as a cancelled invoice is?
+- **Needed:** The instructions to Table 13 in the GSTR-1 form as notified under Rule 59 and the portal's current help page on it.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Table 13 rows for the receipt, payment and refund vouchers, the self-invoices of inward supplies from unregistered persons, revised invoices and the four challan natures. The return counts the challans issued in the window by their own reason and names the nine natures it did not look for, and claims nothing about which rows they belong in.
+- **Ledger:** POST-A-415
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.

@@ -25,6 +25,7 @@ from core.ist_clock import ist_fy_label, ist_date_of
 
 import services.gst_2b_reconciliation_service as gst_2b_reconciliation_service
 import services.gst_advance_service as gst_advance_service
+import services.table_13_coverage_service as table_13_coverage_service
 import services.gst_read_memo as gst_read_memo
 import services.itc_register_service as itc_register_service
 import services.bill_of_entry_service as bill_of_entry_service
@@ -2657,10 +2658,15 @@ def iff_from_books(db, firm_id: str, client_id: str, period: str,
 def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
                      aggregate_turnover_paise: Optional[int] = None,
                      frequency: Optional[str] = None,
-                     reconcile_to_ledger: bool = True) -> dict:
+                     reconcile_to_ledger: bool = True,
+                     with_table_13_coverage: bool = True) -> dict:
     """Build GSTR-1 from posted sales invoices + issued credit/debit notes, and
     reconcile the total output tax to the General Ledger GST-output control
     accounts.
+
+    `with_table_13_coverage=False` (POST-A-415) leaves out the one read that says what Table 13 did not look at (the delivery challans
+    issued in the window) and returns `"table_13_coverage": None`: it is a sentence for the CA looking at this return, and the rebuild
+    that compares a filed return with the books asks nothing of it.
 
     `reconcile_to_ledger=False` (POST-A-265) leaves that reconciliation out and returns `"reconciliation": None`. It is the only thing in
     this build that reads the LEDGER (every entry dated in the window and then every line of each of them, in chunks of two hundred), which
@@ -2863,6 +2869,13 @@ def gstr1_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
         # STAMPED with `withheld`, because two of the kinds in this list are
         # about a row the payload DOES carry — see `stamp_withheld`.
         "payload_gaps": gstr1_builder.stamp_withheld(payload.gaps),
+        # WHAT TABLE 13 LOOKED AT AND WHAT IT DID NOT (POST-A-415). Its own field and not a gap: a sentence true of every return would
+        # make every return a draft and would be listed by the GSTR-3B tie-out as a document held out of the GSTR-1. None means the
+        # caller did not ask (the rebuild that compares a filed return with the books), which is not the same as "nothing to say".
+        "table_13_coverage": (
+            gstr1_builder.table_13_coverage(
+                table_13_coverage_service.issued_challans_by_reason(db, firm_id, client_id, start, end))
+            if with_table_13_coverage else None),
         # Compensation cess a s.34 note in this period could not carry, because
         # the note tables have no cess column. Empty on every return whose
         # notes adjust cess-free invoices, which is almost all of them.

@@ -23,7 +23,7 @@ import { withRegistration } from "@/lib/gst/registrationChoice";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import { Callout } from "@/components/ui/callout";
 import type { GLReconciliation, GSTR1AmendmentsBlock, Gstr1TieOutBlock, LateFilingBlock, ReturnPeriodWindow, UndeclarableRow } from "@/lib/data/gst";
-import type { ValidationError, PayloadGap } from "@/lib/data/gst";
+import type { ValidationError, PayloadGap, Table13Coverage } from "@/lib/data/gst";
 import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
@@ -836,6 +836,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   errors={(computeResult.validation_errors ?? []) as ValidationError[]}
                   warnings={(computeResult.validation_warnings ?? []) as ValidationError[]}
                   gaps={(computeResult.payload_gaps ?? []) as PayloadGap[]}
+                  coverage={computeResult.table_13_coverage as Table13Coverage | null | undefined}
                   compact
                 />
                 {/* WHAT THE BUILD DID ABOUT THE AMENDMENT TABLES (gst-33). The

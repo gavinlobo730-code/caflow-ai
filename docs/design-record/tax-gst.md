@@ -984,6 +984,50 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   particular the payload still carries (the HSN digits, the UQC, this
   cancelled count), and the module that owns the vocabulary is the only place
   that can stay right when a kind is added.
+  **AND WHAT TABLE 13 DID NOT LOOK AT IS SAID ON THE RETURN, AS ITS OWN FIELD AND NOT AS A GAP** (POST-A-415, slice 1,
+  13-11-2026; no migration). The form lists twelve natures of document (`gstr1_builder._DOC_NATURES`) and the builder reads
+  three (`_NATURE_OF`: invoices for outward supply, debit notes, credit notes), so a client that issued a receipt voucher, a
+  delivery challan or a self-invoice for a supply from an unregistered person filed a return whose Table 13 left it out
+  and said nothing; the cancelled count had a sentence and these nine had none. `domain/gst/table_13_coverage.py` is the
+  rule and `gstr1_from_books` returns `table_13_coverage`: the natures the build reads, the nine it does not look for (in
+  the form's own words and order, READ OFF the two constants, so a nature given a home leaves the sentence with nothing
+  else to edit), one sentence ("This build reads 3 natures of document for Table 13: ...", which says what the BUILD reads
+  and not that the return holds a row for each, since a month with no debit note has no Debit Note row), and for the
+  delivery challans a COUNT of those issued in the window (issued or received back) by the reason each was issued for, in
+  the reason's own words. **A cancelled challan keeps its number and the status cannot tell issued-then-cancelled from
+  cancelled-as-a-draft, so cancelled ones are not counted, and both challan sentences say "Drafts and cancelled challans
+  are not counted"** (a settled "none issued" that hid that would be untrue). The key is `challans` and not the table's
+  name, and the read is `services/table_13_coverage_service.py`, a module of its own: `test_no_return_builder_reads_any_of_the_six_tables`
+  keeps the return builders off the documents that do not declare a supply and a rule over the API tree reads the string
+  "delivery_challans" anywhere as a use of the table; this module counts the challans for a sentence, feeds no payload, and
+  the guard's list is to be revisited deliberately, not stepped round, when the challans are declared. **It says what the build did not look
+  at and never what the client must declare**: which natures a given client owes is a reading of the form's instructions
+  nobody here has confirmed, so every sentence says "the form lists" and "is for the CA to settle against the form", a test
+  fences "must", "required", "liable" and their kin, and **the challan count names no Table 13 row**, because a Rule 55(4)
+  or 55(5) challan is issued for a supply and whether the form files it under "other than by way of supply" is exactly the
+  unconfirmed reading (owner list S30). **IT IS NOT A GAP, AND THAT IS THE DECISION**: `payload_gaps` is read by three
+  things that mean something specific by it, the screen's "validated" status (any gap saves the return as a draft, so a
+  sentence true of EVERY return would have made every return a draft for ever), the GSTR-3B tie-out (which lists each
+  withheld gap as a document held out of the GSTR-1 that explains a difference in taxable value, and a challan has none)
+  and the red "n not declared" count. A test holds that six challans in the books leave the gap kinds exactly as none do.
+  **An unknown is never a count**: a failed read is `read` False, `count` None and a sentence saying the challans could not
+  be read (reported through `capture_soft_failure`, the return still builds), and a genuine zero is "the books record no
+  delivery challan issued in this period". The window is the QRMP quarter for a quarterly registration, both ends
+  inclusive, and the read is the client's own and the firm's own (another client's and another firm's challans are seeded
+  in the test). The rebuild that compares a filed return with the books (`drift_since_filing`) passes
+  `with_table_13_coverage=False` and gets `None`, so an amendment build does not pay one more request per earlier period.
+  **The screens** show the server's sentences as served (`Gstr1Findings`, both GSTR-1 screens): a standing note in the slate
+  tone ("what this build looked at"), and the challan sentence in the attention tone when the books hold challans or the
+  register could not be read; the panel holds no nature name (a source guard) and renders on the coverage alone. The same
+  change fixes a small falseness beside it: the firm-level screen's red "n not declared" counted EVERY gap, including the
+  rows whose own sentence says they ARE filed (a quarterly filer's two caveats read "2 not declared"); it counts what the
+  server says is held out now, by the one definition the panel uses (`heldOutGaps`). **Two honest limits**: the coverage is
+  shown at BUILD time only (the saved return stores named keys and not this one, so a reopened saved return shows no note),
+  and the screen's `readyToFile` still counts EVERY gap, reported rows included, so a quarterly filer's return is saved as a
+  draft while the red count shows none; the two now disagree and which is right is left as it was, for the CA's call. **Not built, and why**: the four
+  challan natures (and the receipt, payment and refund vouchers and the self-invoices of inward supplies) as serial
+  ranges through `document_series`, which wait on the readings in owner list S30; the raw `POST /gst/gstr1/build`, whose
+  invoices are the caller's and not the books', carries no coverage.
 
 - **A UNIT QUANTITY CODE IS A CODE, NOT A WORD, and the one module that knew
   which codes exist had ZERO IMPORTERS.** `models/uqc.py` held CBIC's fixed

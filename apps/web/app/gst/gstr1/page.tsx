@@ -26,7 +26,7 @@ import {
   ReceiptText,
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { Gstr1Findings } from "@/components/gst/Gstr1Findings";
+import { Gstr1Findings, heldOutGaps } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
@@ -366,10 +366,10 @@ export default function GSTR1Page() {
                   {result.validation_errors.length} error{result.validation_errors.length !== 1 ? "s" : ""}
                 </span>
               )}
-              {result.payload_gaps.length > 0 && (
+              {heldOutGaps(result.payload_gaps).length > 0 && (
                 <span className="flex items-center gap-1 text-xs text-red-600 font-medium">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  {result.payload_gaps.length} not declared
+                  {heldOutGaps(result.payload_gaps).length} not declared
                 </span>
               )}
               {result.validation_warnings.length > 0 && (
@@ -507,6 +507,7 @@ export default function GSTR1Page() {
                     errors={result.validation_errors}
                     warnings={result.validation_warnings}
                     gaps={result.payload_gaps}
+                    coverage={result.table_13_coverage}
                   />
                   {/* THE INVOICE FURNISHING FACILITY (GST-11), the same panel
                       the client workspace renders. It shows nothing for a
