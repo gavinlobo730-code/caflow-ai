@@ -387,6 +387,11 @@ export interface GSTR1BuildResult {
    *  wrong; a gap is a document that is not in the return at all. Filing short
    *  is the failure a CA hears about from the recipient. */
   payload_gaps: PayloadGap[];
+  /** What Table 13 looked at and what it did not (POST-A-415) — its own field
+   *  and not a gap, so it cannot turn a clean return into a draft. Absent from
+   *  an older server and `null` from a build that was not asked for it:
+   *  unknown, not "nothing to say". */
+  table_13_coverage?: Table13Coverage | null;
   /** What the build did about the amendment tables, so the screen can show the
    *  count of what was added (gst-33). Absent from an older server — unknown,
    *  not "none". */
@@ -425,6 +430,24 @@ export interface PayloadGap {
   reference_no: string;
   reason: string;
   withheld?: boolean;
+}
+
+/** What GSTR-1's Table 13 (documents issued) looked at and what it did not
+ *  (POST-A-415). Every sentence is the SERVER's and the screen shows them as
+ *  served: the natures, the reasons and the wording belong to `apps/api`
+ *  (`domain/gst/table_13_coverage`), and a list of them here would be a second
+ *  authority on what the form has. `challans.count` is `null` where
+ *  the read failed — an unknown, never a zero. */
+export interface Table13Coverage {
+  declared_natures: string[];
+  not_read_natures: string[];
+  note: string;
+  challans: {
+    read: boolean;
+    count: number | null;
+    by_reason: { reason: string; label: string; count: number }[];
+    note: string;
+  };
 }
 
 /** What the GSTR-1 build did about the amendment tables (gst-33).
@@ -474,6 +497,8 @@ interface FromBooksGSTR1 {
   validation_errors: ValidationError[];
   validation_warnings: ValidationError[];
   payload_gaps: PayloadGap[];
+  /** See `Table13Coverage`. Absent from an older server. */
+  table_13_coverage?: Table13Coverage | null;
   /** See `GSTR1AmendmentsBlock`. Absent from an older server. */
   amendments?: GSTR1AmendmentsBlock;
   /** The resolved window — a QUARTER for a QRMP registration, keyed on its
@@ -1200,6 +1225,9 @@ export async function buildGSTR1(
     validation_errors: result.validation_errors ?? [],
     validation_warnings: result.validation_warnings ?? [],
     payload_gaps: result.payload_gaps ?? [],
+    // CARRIED (POST-A-415): a key dropped here is a sentence the screen cannot
+    // show, and an absent block must stay absent rather than become "nothing".
+    table_13_coverage: result.table_13_coverage,
     // CARRIED (gst-33): a key dropped here is a count the screen cannot show,
     // and an absent block must stay absent rather than become "0 added".
     amendments: result.amendments,

@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-from . import document_series, hsn_digits, uqc
+from . import document_series, hsn_digits, table_13_coverage as _table_13_coverage, uqc
 from .classifier import B2B_SECTION_CATEGORIES, GSTInvoiceCategory
 
 
@@ -1170,6 +1170,19 @@ _NATURE_OF = {
     "credit_note": "Credit Note",
     "debit_note": "Debit Note",
 }
+
+
+def table_13_coverage(issued_challans: Optional[dict[str, int]]) -> dict:
+    """What Table 13 of THIS builder looked at and what it did not (POST-A-415).
+
+    Read off `_DOC_NATURES` and `_NATURE_OF` themselves, so a nature given a
+    home in the map leaves the "not looked at" list with nothing else to edit.
+    `issued_challans` is the count of delivery challans issued in the window by
+    reason, or None where the read failed; see `domain/gst/table_13_coverage`
+    for why this is its own field and not a gap.
+    """
+    return _table_13_coverage.coverage(
+        _DOC_NATURES, set(_NATURE_OF.values()), issued_challans)
 
 
 def _build_doc_summary(

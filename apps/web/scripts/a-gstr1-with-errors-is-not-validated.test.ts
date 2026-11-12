@@ -137,7 +137,8 @@ test("the findings component keeps the three lists apart, in that order", () => 
   assert.ok(gaps > 0 && errors > gaps, "a gap must be shown before an error");
   assert.ok(warnings > errors, "a rejection must be shown before a judgement call");
   // And nothing claims the return is clean: an "all checks passed" banner would
-  // be a claim about checks this component does not run.
-  assert.match(src, /if \(!errors\.length && !warnings\.length && !gaps\.length\) return null/,
+  // be a claim about checks this component does not run. The ONE other thing that keeps the panel open is Table 13's coverage (POST-A-415): the
+  // server's own sentence about what the build did NOT look at, which is the opposite of a reassurance.
+  assert.match(src, /if \(!errors\.length && !warnings\.length && !gaps\.length && !coverage\) return null/,
     "with nothing to report it must render nothing rather than a reassurance");
 });

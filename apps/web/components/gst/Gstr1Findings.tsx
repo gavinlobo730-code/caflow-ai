@@ -50,26 +50,47 @@
 "use client";
 
 import { Callout, GapList } from "@/components/ui/callout";
-import type { ValidationError, PayloadGap } from "@/lib/data/gst";
+import type { ValidationError, PayloadGap, Table13Coverage } from "@/lib/data/gst";
 
 export interface Gstr1FindingsProps {
   errors: ValidationError[];
   warnings: ValidationError[];
   gaps: PayloadGap[];
+  /** What Table 13 looked at and what it did not (POST-A-415). The server's
+   *  sentences, shown as served. Absent or `null` renders nothing: a server
+   *  that did not send it has said nothing, and this component does not make
+   *  the sentence up. */
+  coverage?: Table13Coverage | null;
   /** Tightens the spacing where the panel sits inside a drawer rather than a page. */
   compact?: boolean;
 }
 
-export function Gstr1Findings({ errors, warnings, gaps, compact = false }: Gstr1FindingsProps) {
-  if (!errors.length && !warnings.length && !gaps.length) return null;
+/** The gaps the SERVER says are held OUT of the payload. An absent `withheld`
+ *  reads as held out, so a backend that has not redeployed yet renders exactly
+ *  as before. ONE definition: the panel below and the "n not declared" count on
+ *  the firm-level screen both ask it, because that count counted every gap —
+ *  including the ones whose own sentence says the row IS filed — and headed them
+ *  "not declared". */
+export function heldOutGaps(gaps: PayloadGap[]): PayloadGap[] {
+  return gaps.filter((g) => g.withheld !== false);
+}
+
+export function Gstr1Findings({ errors, warnings, gaps, coverage, compact = false }: Gstr1FindingsProps) {
+  if (!errors.length && !warnings.length && !gaps.length && !coverage) return null;
   const block = compact ? "mt-3" : "mt-4";
+  // The challans are a thing the books HOLD that the table does not carry (or
+  // could not be read), so they are asked about; the standing note about the
+  // natures the build does not look for is a statement about the product. Both
+  // sentences come from the server — nothing here knows a nature.
+  const challans = coverage?.challans;
+  const challansNeedAnswer = !!challans && (!challans.read || (challans.count ?? 0) > 0);
   // TWO KINDS OF GAP, AND THE SERVER SAYS WHICH. A gap is either a document
   // the payload does not carry or a report about a row it does — the second
   // kind's own reasons say "Table 12 files the code exactly as recorded",
   // which the heading "Not declared in this return" contradicted. An absent
   // `withheld` reads as withheld, so a backend that has not redeployed yet
   // renders exactly as before.
-  const withheld = gaps.filter((g) => g.withheld !== false);
+  const withheld = heldOutGaps(gaps);
   const reported = gaps.filter((g) => g.withheld === false);
   return (
     <>
@@ -111,6 +132,17 @@ export function Gstr1Findings({ errors, warnings, gaps, compact = false }: Gstr1
               </li>
             ))}
           </ul>
+        </Callout>
+      )}
+      {challans && challansNeedAnswer && (
+        <Callout className={block} tone="attention" title="Delivery challans and Table 13">
+          {challans.note}
+        </Callout>
+      )}
+      {coverage && coverage.note && (
+        <Callout className={block} tone="withheld" title="Table 13 — what this build looked at">
+          <p>{coverage.note}</p>
+          {challans && !challansNeedAnswer && <p className="mt-1.5">{challans.note}</p>}
         </Callout>
       )}
     </>

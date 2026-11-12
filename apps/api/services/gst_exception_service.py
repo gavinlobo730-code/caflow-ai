@@ -118,9 +118,11 @@ def drift_since_filing(db, firm_id: str, client_id: str, period: str,
     from services.gst_return_service import gstr1_from_books
     # The rebuild is for the RETURN (its payload and its gaps), never for the ledger reconciliation that `gstr1_from_books` also makes:
     # no caller of this reads it, and it is the heaviest read of the build (every entry in the window, then every line of each),
-    # paid once per earlier filed period by an amendment build (POST-A-265).
+    # paid once per earlier filed period by an amendment build (POST-A-265). Nor does it read Table 13's coverage, a sentence for the CA
+    # looking at one return (POST-A-415), so that request is not paid once per earlier period either.
     books_return = gstr1_from_books(
-        db, firm_id, client_id, period, gstin, frequency=frequency, reconcile_to_ledger=False) or {}
+        db, firm_id, client_id, period, gstin, frequency=frequency, reconcile_to_ledger=False,
+        with_table_13_coverage=False) or {}
     return books_return, compare_payloads(filed_payload,
                                           books_return.get("payload") or {})
 
