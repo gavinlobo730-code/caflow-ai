@@ -74,7 +74,7 @@ class Child:
 class Section:
     """One parent table, read with the firm and the client on every request. `reads` is more than one only where a file is the union of two scopes."""
     file: str
-    reads: tuple[Callable[..., Any], ...]   # (db, firm_id, client_id, columns, **select_kwargs) -> builder
+    reads: tuple[Callable[..., Any], ...]   # (db, firm_id, client_id, **select_kwargs) -> a builder over the table with every column; the kwargs carry the count request
     children: tuple[Child, ...] = ()
     #: Columns read but not written: a column that holds another kind of data than the file is named for. Named in the manifest.
     drop: frozenset = frozenset()
@@ -83,48 +83,48 @@ class Section:
 # One literal chain per table, written out, so the firm-scope reader can see each one carries the firm and the client.
 _SECTIONS: tuple[Section, ...] = (
     Section("chart_of_accounts.csv", (
-        lambda db, f, c, cols, **kw: db.table("chart_of_accounts").select(cols, **kw).eq("firm_id", f).eq("client_id", c),
+        lambda db, f, c, **kw: db.table("chart_of_accounts").select("*", **kw).eq("firm_id", f).eq("client_id", c),
         # An account with no client is the firm's own and may sit on any of the firm's entries, so the books are not readable without it.
-        lambda db, f, c, cols, **kw: db.table("chart_of_accounts").select(cols, **kw).eq("firm_id", f).is_("client_id", "null"),
+        lambda db, f, c, **kw: db.table("chart_of_accounts").select("*", **kw).eq("firm_id", f).is_("client_id", "null"),
     )),
     Section("customers.csv", (
-        lambda db, f, c, cols, **kw: db.table("customers").select(cols, **kw).eq("firm_id", f).eq("client_id", c),)),
+        lambda db, f, c, **kw: db.table("customers").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
     Section("vendors.csv", (
-        lambda db, f, c, cols, **kw: db.table("vendors").select(cols, **kw).eq("firm_id", f).eq("client_id", c),)),
+        lambda db, f, c, **kw: db.table("vendors").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
     Section("journal_entries.csv", (
-        lambda db, f, c, cols, **kw: db.table("journal_entries").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("journal_entries").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("journal_lines.csv", "journal_entry_id", lambda db: db.table("journal_lines").select("*")),)),
     Section("sales_invoices.csv", (
-        lambda db, f, c, cols, **kw: db.table("client_sales_invoices").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("client_sales_invoices").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("sales_invoice_lines.csv", "sales_invoice_id", lambda db: db.table("client_sales_invoice_lines").select("*")),)),
     Section("purchase_bills.csv", (
-        lambda db, f, c, cols, **kw: db.table("purchase_bills").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("purchase_bills").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("purchase_bill_lines.csv", "bill_id", lambda db: db.table("purchase_bill_lines").select("*")),)),
     Section("credit_notes.csv", (
-        lambda db, f, c, cols, **kw: db.table("credit_notes").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("credit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("credit_note_lines.csv", "credit_note_id", lambda db: db.table("credit_note_lines").select("*")),)),
     Section("debit_notes.csv", (
-        lambda db, f, c, cols, **kw: db.table("debit_notes").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("debit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("debit_note_lines.csv", "debit_note_id", lambda db: db.table("debit_note_lines").select("*")),)),
     Section("sales_debit_notes.csv", (
-        lambda db, f, c, cols, **kw: db.table("sales_debit_notes").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("sales_debit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("sales_debit_note_lines.csv", "debit_note_id", lambda db: db.table("sales_debit_note_lines").select("*")),)),
     Section("purchase_credit_notes.csv", (
-        lambda db, f, c, cols, **kw: db.table("purchase_credit_notes").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("purchase_credit_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("purchase_credit_note_lines.csv", "credit_note_id", lambda db: db.table("purchase_credit_note_lines").select("*")),)),
     Section("receipts.csv", (
-        lambda db, f, c, cols, **kw: db.table("receipts").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("receipts").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("receipt_allocations.csv", "receipt_id", lambda db: db.table("receipt_allocations").select("*")),)),
     Section("purchase_payments.csv", (
-        lambda db, f, c, cols, **kw: db.table("purchase_payments").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("purchase_payments").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         (Child("purchase_payment_allocations.csv", "purchase_payment_id", lambda db: db.table("purchase_payment_allocations").select("*")),)),
     Section("tds_deductions.csv", (
-        lambda db, f, c, cols, **kw: db.table("tds_deductions").select(cols, **kw).eq("firm_id", f).eq("client_id", c),)),
+        lambda db, f, c, **kw: db.table("tds_deductions").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
     Section("tds_challans.csv", (
-        lambda db, f, c, cols, **kw: db.table("tds_challans").select(cols, **kw).eq("firm_id", f).eq("client_id", c),)),
+        lambda db, f, c, **kw: db.table("tds_challans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
     # `fvu_json` is the statement's body, and on a 24Q it names every employee with their PAN and gross pay: payroll data, which this export does not carry.
     Section("tds_returns.csv", (
-        lambda db, f, c, cols, **kw: db.table("tds_returns").select(cols, **kw).eq("firm_id", f).eq("client_id", c),),
+        lambda db, f, c, **kw: db.table("tds_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),),
         drop=frozenset({"fvu_json"})),
 )
 
@@ -258,7 +258,8 @@ def _count(db, section: Section, firm_id: str, client_id: str) -> Optional[int]:
     """How many rows the section will read, asked of the database before it is read, or None when the database does not say."""
     total = 0
     for read in section.reads:
-        res = read(db, firm_id, client_id, "id", count="exact").limit(1).execute()
+        # One row and the count: the projection stays the literal `*` in every chain, so the column checks can read each chain, and a limit of one keeps the row cheap.
+        res = read(db, firm_id, client_id, count="exact").limit(1).execute()
         n = getattr(res, "count", None)
         if n is None:
             return None
@@ -325,7 +326,7 @@ class _Run:
             self.dropped[section.file] = sorted(section.drop)
         parent_ids: list[str] = []
         for read in section.reads:
-            for page in iter_pages(lambda read=read: read(self.db, self.firm_id, self.client_id, "*"), "id", label=section.file):
+            for page in iter_pages(lambda read=read: read(self.db, self.firm_id, self.client_id), "id", label=section.file):
                 self.clock.check(section.file)
                 parent_ids.extend(str(r["id"]) for r in page)
                 self._remember(section.file, page)
