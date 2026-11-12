@@ -113,3 +113,84 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
 - **THE STATEMENTS' FILTER CHOOSES ROWS AND NOTHING ELSE, THE BRANDING PREVIEW NO LONGER DRAWS THE ACCENT AS IF THE INVOICE PRINTED IT, AND A DATE BOX IS TOLD THE YEAR ITS SCREEN IS ABOUT, AND THE FILING TRACKERS SAY WHICH LIST THEY SHOW** (POST-A-136, POST-A-140, POST-A-126, 2-11-2026). Three small decisions that finish three ledger lines. (1) **The Profit and Loss and the Balance Sheet take the Trial Balance's search and type filter, and the design question the ledger left is settled**: both statements are laid out by Schedule III caption, so hiding a caption with no match would stop the figures adding up on the page. The filter therefore chooses which ACCOUNT ROWS are drawn under each caption and nothing else: a caption keeps its heading and its figure, which is the sum of ALL its accounts, every total is the server's, and a sentence says so whenever a filter is on ("Showing 2 of 31 accounts. Each caption's figure and every total are for all 31, not only the ones shown."; it prints, the controls do not, and a statement with one account type shows no type choice). One `StatementFilterBar` serves both; the computed surplus row is not an account and is not counted, **the two cash-basis advance accounts ARE accounts** (their ids start `__` because they are not rows of the chart, but they have a name, a type and a balance inside the totals, so a search finds "Advance from Customers", the type choices include theirs and the counts include them; `SYNTHETIC_ACCOUNT_IDS`, held to the projector's two by a Python test, because before the second review the trial balance answered "No account matches" over a table with that row in it), and a computed line that is part of a caption's figure (the computed retained earnings on the Balance Sheet) is drawn under EVERY filter and is still not counted, because a caption whose drawn rows do not reconcile to its figure, with no filter that could show the missing line, is the opposite of the point (found by a review of 2-11-2026; `filterStatementRows`). A source guard holds that no figure is taken from the rows drawn and that every call site passes the filter, a render test holds the sentence, and three mutations (a section ignoring the filter, a caption figure summed over the rows drawn, a call site without the filter) are each caught. The CSV download is unchanged and is the whole statement; these two tabs have no server-built PDF (POST-B-171), and Print prints the filtered rows together with the "Showing X of N" sentence. (2) **The branding preview no longer draws the invoice total in the accent colour.** The accent is a saved setting that no printed document reads (the invoice PDF draws its title in the PRIMARY colour and nothing else reads `firm_branding.accent_color`), so the preview showed a colour the real invoice never has, and the default accent is 3.67:1 on white, which was the last baselined accessibility finding. The total is in ink, the accent is a swatch with the plain fact beside it ("kept on file. The invoice PDF does not print it."), and the baseline is empty. The preview STILL draws two other settings that no printed document reads, the secondary colour band and the chosen font (POST-A-375). Wiring the accent into a document or dropping the setting stays an open product choice and is on no list because nothing depends on it. (3) **The three screens that were not told their financial year are told it**: the year-end adjustment's date (the workspace provides the engagement's year to its stages through one context), ITC-04's two dates (the year chosen above them; the challan date beside a return date that is set takes the RETURN's year, which can differ, because the explicit year overrode its anchor in the first version) and the lifecycle renewal date (the renewal form's own year field, which is free text: the typed-date rule now reads every spelling the server's `normalise_fy_label` reads, `2025-2026` and `2025/26` as well as `2025-26`, where it used to drop the unreadable ones and read the date against the year of today). A short date such as 15/3 is resolved inside the year the field is given and not inside the year of today; how a short date resolves inside a year is unchanged and is held for a year that is not today's. (4) **The two firm-level filing trackers say which list they show** (POST-A-208, decided): the product keeps obligations in two stores, `compliance_records` (Deadlines, the hub, the dashboard, the health score, the risk engine and the assistant) and `compliance_calendar` (the /gst and /income-tax trackers and the risk register), and the trackers showed none of the obligations the rest of the product shows with nothing to say why. They keep the calendar for now, because their Mark Filed writes the `filings` row that locks the period and the obligation store has no such door; each carries one sentence on the page, not in a tooltip, that says so and links to Deadlines. The dead `GET /api/compliance-records/firm/summary` and its browser method were deleted (nothing opened it; the service function behind it is read by the assistant and keeps its scope tests). Moving the trackers onto the obligation store is a change to how a period is locked and is left as the ledger line says.
 
 - **A DATE BOX WHOSE BOUND MOVES JUDGES THE DAY IT HOLDS AGAIN, AND A REMOUNT WITH A KEY IS NOT HOW A BOUND IS APPLIED** (POST-A-393, 6-11-2026.) `min`/`max` on a `DateInput` are an input hint, and the box judged a day only when it was TYPED. A bound that FOLLOWS another field moves after the day was typed (a filing date that cannot be after today once the status says filed; a job worker's challan date that cannot be after the day the goods came back), and nothing told the parent, so a parent that refuses a day past its bound (`afterMax`) kept a verdict made against the old one. The first fix remounted the box with a `key`; the independent read showed that a remount drops text that cannot be read TOGETHER with the problem reported for it, so the form then saves a blank (the very reset the component's header warns about for a clear button). So the box tells its parent itself: a ref (`toldAgainst`) holds the bounds the parent was last told it against, the value effect, a keystroke and a commit record theirs, and an effect on `[min, max]`, placed after the verdict is computed, reports the held day against the new bound (text that cannot be read is judged against no bound and keeps its problem; a day changed in the same render as the bound was already read against it and is not read twice). Reach, by an independent read of all 73 bound-carrying callers: only a box that says `afterMax` AND has a bound that moves changes behaviour (the Tax Audit tracker and the ITC-04 challan); about 30 `notAfter={todayIstISO()}` boxes re-judge at the first render after IST midnight, which correctly clears a 'tomorrow'; about 40 `notBefore={another field}` boxes now send a `valid` state to a `watch` without `afterMax`, which returns the same map. Held by: the guard `scripts/a-date-that-feeds-a-read-a-draft-or-a-record-is-judged-on-indias-day-and-held-before-it-is-used.test.ts` (the effect, its order, the absence of a `key` on the three boxes) with a mutation for each, and the drive scenarios that type unreadable text, change the status or the came-back day, and press Save.
+
+- **THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH, NEVER A ZERO** (POST-B-321, closed 12-11-2026; no migration).
+  `/practice/profitability` put four wrong figures in front of a Partner. **(1) Revenue counted every fee invoice in the
+  window**, a Draft nobody had issued and a Cancelled invoice included (`invoice_repo.get_revenue_by_client` added every
+  non-deleted `fee_invoices` row, no status filter). **(2) The two endpoints disagreed about what revenue is.**
+  `/profitability` summed `amount_paise`, the fee before GST; `/revenue-vs-effort` summed `total_paise`, which is the fee
+  PLUS the 18% GST the practice collects for the government (`invoice_generation_service`: `total = amount + gst`), and only
+  the statuses `Issued` and `Paid`, so an issued invoice that fell overdue dropped out of it and every other one was
+  overstated by the tax: realization and revenue per hour were 18% high. **(3) A client with effort and no invoice never
+  appeared**: the list was built from the clients that HAD revenue, so the client the practice spent ten hours on and
+  never billed, the one a Partner most needs to see, was absent and the firm's cost left out its time. **(4) Cost was
+  `minutes x time_entries.hourly_rate_paise`**, which is the rate the hour BILLS at (the denominator of realization, not a
+  cost) and is NULL on every entry the timer started, so those hours cost nothing and profit equalled revenue, printed as a
+  margin under a footnote that called that "an absence of data, not a margin". `users.cost_rate_paise` was captured and
+  read by nothing, and had no screen. Every time-entry and invoice read was also ONE unpaged request, so past about a
+  thousand rows the answer was silently short, and the member view summed every entry of the firm for a caller assigned to
+  one client.
+
+  **The rule is `domain/practice/profitability.py` and nothing else decides.** Revenue is `amount_paise` (before GST) of
+  invoices in `Issued`, `Sent`, `Paid` or `Overdue` (`Sent` is the database's original word for `Issued`, migration 123);
+  `Draft` and `Cancelled` count for nothing, and a test holds that the two lists together are every status the table's CHECK
+  allows, so a status added later is a decision here and not a silent omission. **An invoice counts in the period of its OWN
+  DATE**, not of the day it was issued, because nothing records that day (`fee_invoices` has no `issued_at`): a draft dated in
+  October and issued in November is October's revenue from the day it is issued, and the payload says so. Cost is, for each ended entry, the member's
+  cost rate times the minutes, floored once per ENTRY by `time_rate.value_paise` (the same rule that values unbilled work, so
+  every grouping of the same entries adds to the same total, held by a property test). **A member with no cost rate is
+  unknown, not zero**: the hours are counted and named (`unrated_minutes`, `cost_rates_missing`), the cost of the hours that
+  do have a rate is still shown, and the client's profit and margin are `null`. A rate of 0 is a rate somebody stated and
+  is honoured (`if rate:` is how the old code confused the two). **A client billed with no time recorded has no known cost
+  either**, so its profit is `null` and its status says `no_time`; a client with time and no invoice is listed with its
+  loss, its margin `null` because a margin on no revenue is undefined and 0% would rank it above a client billed at a loss
+  (`not_billed`). The firm's profit is `null` while any client's cost is unknown, with `profit_on_known_paise` and the two
+  counts beside it so the screen can still say something true with its scope named. The statuses are `healthy`, `fair`,
+  `at_risk` (the product's own bands of 25% and 15%, not a statutory or ICAI figure), `not_billed`, `no_time`, `unpriced`.
+  `/concentration` takes the same two reads and the same rule (`ClientFees.cost_paise` is `Optional`, default `None`: a
+  default of 0 was the 100% margin), and `/revenue-vs-effort` takes the same revenue.
+
+  **The reads.** `InvoiceRepository.fee_revenue_rows` reads six columns of the live invoices of the window with the status
+  filter in the database, and `TimeTrackingAnalyticsRepository._ended_entries` is the one query every time analytic now
+  shares, both in keyset pages (`core.db_paging.fetch_all`); the three cost reads and `get_revenue_by_period` are deleted
+  (nothing else called them). The cost rates are read with the privileged client naming the firm
+  (`billing_service.cost_rates_by_user`), because `users` shows a signed-in caller only their own row. Time entries are
+  narrowed to the caller's clients before any total is made, which the member view never was, and time recorded against no
+  client is in no client's cost (`minutes_without_client` says how much). The mock `staff-cost-rates` list now answers the
+  keys the database does (`id`, where it answered `user_id`).
+
+  **A sum of nothing is not a cost of 0.** Where no hour behind a cost has a rate the cost itself is `null` (a client row and
+  the firm tile), a client with nothing billed and no time is not a row, and the people named as having unpriced hours are the
+  ones whose missing rate leaves a client's cost short, one population with the headline hours (time with no client is in no
+  client's cost whatever the rate, and is said apart: `minutes_without_client`, `null` for a caller assigned to some clients
+  only). Archived clients keep their names beside their money. **The cost-rate list asks `billing:write`**, the permission
+  that sets a rate, and the panel is mounted for that permission alone: a rate is derived from a person's pay, so a member
+  granted the fee figures to read sees the figures and who has unpriced hours, not every colleague's rate.
+
+  **The screen** draws a dash for a `null`, says in the server's words what is not known (which people have hours with no
+  cost rate, how many billed clients have no time recorded, the profit of the clients whose cost is known) and renders the
+  server's `not_measured` sentences as its footnotes; it computes nothing. A Partner sets each person's cost per hour in
+  `components/practice/CostRatesPanel`, below the figures and outside every `loading` branch so a typed rate survives the
+  reload it asks for; the box is read by `readRateInput` (blank is "none", 0 is a rate), and the invalid-rate sentence is a
+  cost's, not the billing one. **The cost rate is one number per person as it stands today**: it prices the hours recorded
+  before it was set as well, and the screen and the payload say so (`NOT_MEASURED`).
+
+  **Held by** `tests/test_the_practices_profitability_is_true.py` (the rule, the status partition, a property over the three
+  groupings, the three endpoints driven over the real repositories against `tests/_capped_postgrest.CappedDB`, which now has
+  `gte`, `lte`, `in_` and `not_`: 1,500 time entries and 1,500 invoices all counted, a Draft and a Cancelled invoice adding
+  nothing, a client with ten hours and no invoice listed with a loss, an unrated member named; and the browser's status
+  vocabulary and payload keys from this side), `scripts/the-profitability-screen-draws-an-unknown-as-a-dash.test.ts` (no
+  nullable figure formatted as a number, nothing computed in the browser, the panel's reader and held Save and its place
+  outside the loading branches) and the updated scope, Indian-day and real-builder guards. The screen is also driven in
+  Chromium (`scripts/drive/scenarios/costRates.mjs`, five scenarios: the dash and who has no rate, exact paise with focus
+  back in the box after a save, a comma refused on its own row with nothing sent, an emptied box sent as null and a typed 0
+  as a rate, and one write for a double click). Thirty-seven one-line mutations of the
+  rule, the reads and the endpoints were each applied alone to a copy of the tree and each was caught by at least one test (an
+  independent read of the first version found twelve that were not, and they are the tests added after it).
+  The endpoint-reachability budget for `/api/billing` fell from 6 to 4 (the two cost-rate routes now have a screen: the total
+  from 195 to 193) and the lint baseline shrank by two lines.
+  **Not done, and in the ledger:** realization still prices the hours at the average of the entries' `hourly_rate_paise` and
+  never reads `billable_rate_paise` (POST-A-426); the screen offers only this week, month and quarter to date, so the seeded
+  FY 2025-26 firm shows nothing on it and the seeder sets no cost rate (POST-A-427); revenue is still read from
+  `fee_invoices`, so the day the surviving fee-billing engine is chosen (POST-B-193) the revenue read is re-pointed, and
+  the cost and the rule do not move.

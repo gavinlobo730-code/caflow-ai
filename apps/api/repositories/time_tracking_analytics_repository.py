@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from repositories.base import BaseRepository
 from core import db_provider
+from core.db_paging import fetch_all
 from core.ist_clock import in_ist_window, ist_day_window
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -26,6 +27,28 @@ def _ends(date_to: str) -> str:
 
 class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
 
+    def _ended_entries(self, firm_id: str, date_from: str, date_to: str, columns: str) -> list[dict]:
+        """Every ENDED time entry of the firm that started in the window, `columns` of each, read in keyset pages.
+
+        ONE READ FOR EVERY TIME ANALYTIC (POST-B-321). Each method below used to carry its own copy of this query with one
+        unpaged `.execute()`, so past PostgREST's cap (about a thousand rows) every hours, cost and effort figure was
+        silently short of the entries it left out, with no error. `columns` must include `id`, the paging key.
+        """
+        if _USE_MOCK:
+            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
+            return [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
+        return fetch_all(
+            lambda: (
+                _get_db().table("time_entries")
+                .select(columns)
+                .eq("firm_id", firm_id)
+                .gte("started_at", _starts(date_from))
+                .lt("started_at", _ends(date_to))
+                .not_.is_("ended_at", "null")
+            ),
+            key="id", label="time entries for analytics",
+        )
+
     def get_hours_by_employee(
         self,
         firm_id: str,
@@ -43,20 +66,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         Returns:
             dict with user_id as key and {total_minutes, billable_minutes} as value
         """
-        if _USE_MOCK:
-            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
-        else:
-            query = (
-                _get_db().table("time_entries")
-                .select("user_id, duration_minutes, is_billable")
-                .eq("firm_id", firm_id)
-                .gte("started_at", _starts(date_from))
-                .lt("started_at", _ends(date_to))
-                .not_.is_("ended_at", "null")
-            )
-            result = query.execute()
-            entries = result.data or []
+        entries = self._ended_entries(firm_id, date_from, date_to, "id, user_id, duration_minutes, is_billable")
 
         by_user: dict[str, dict] = {}
         for entry in entries:
@@ -97,20 +107,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         Returns:
             dict with client_id as key and {total_minutes, billable_minutes} as value
         """
-        if _USE_MOCK:
-            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
-        else:
-            query = (
-                _get_db().table("time_entries")
-                .select("client_id, duration_minutes, is_billable")
-                .eq("firm_id", firm_id)
-                .gte("started_at", _starts(date_from))
-                .lt("started_at", _ends(date_to))
-                .not_.is_("ended_at", "null")
-            )
-            result = query.execute()
-            entries = result.data or []
+        entries = self._ended_entries(firm_id, date_from, date_to, "id, client_id, duration_minutes, is_billable")
 
         by_client: dict[str, dict] = {}
         for entry in entries:
@@ -147,20 +144,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         Returns:
             dict with {total_minutes, billable_minutes}
         """
-        if _USE_MOCK:
-            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
-        else:
-            query = (
-                _get_db().table("time_entries")
-                .select("duration_minutes, is_billable")
-                .eq("firm_id", firm_id)
-                .gte("started_at", _starts(date_from))
-                .lt("started_at", _ends(date_to))
-                .not_.is_("ended_at", "null")
-            )
-            result = query.execute()
-            entries = result.data or []
+        entries = self._ended_entries(firm_id, date_from, date_to, "id, duration_minutes, is_billable")
 
         total_minutes = 0
         billable_minutes = 0
@@ -195,20 +179,7 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
         Returns:
             dict with engagement_id as key and {billable_minutes, total_minutes, avg_hourly_rate_paise} as value
         """
-        if _USE_MOCK:
-            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
-        else:
-            query = (
-                _get_db().table("time_entries")
-                .select("engagement_id, duration_minutes, is_billable, hourly_rate_paise")
-                .eq("firm_id", firm_id)
-                .gte("started_at", _starts(date_from))
-                .lt("started_at", _ends(date_to))
-                .not_.is_("ended_at", "null")
-            )
-            result = query.execute()
-            entries = result.data or []
+        entries = self._ended_entries(firm_id, date_from, date_to, "id, engagement_id, duration_minutes, is_billable, hourly_rate_paise")
 
         by_engagement: dict[str, dict] = {}
         for entry in entries:
@@ -245,166 +216,17 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
 
         return by_engagement
 
-    def get_cost_by_client(
-        self,
-        firm_id: str,
-        date_from: str,
-        date_to: str,
-    ) -> dict[str, int]:
+    #: What the cost of a client's, an engagement's or a member's time needs of an entry, and no more.
+    COST_COLUMNS = "id, user_id, client_id, engagement_id, duration_minutes, is_billable"
+
+    def get_cost_entries(self, firm_id: str, date_from: str, date_to: str) -> list[dict]:
+        """The ended time entries of the window, who recorded each, for which client and engagement and for how long.
+
+        THE COST IS NOT COMPUTED HERE (POST-B-321). It used to be, as `minutes x time_entries.hourly_rate_paise`: the rate
+        the hour BILLS at, which is NULL on every entry the timer started, so those hours cost nothing. What an hour costs
+        the practice is the member's `users.cost_rate_paise`, an unset one is unknown and not zero, and
+        `domain/practice/profitability` decides all of that; this returns the rows it folds.
         """
-        Get total cost (duration_minutes * hourly_rate_paise / 60) grouped by client_id.
-        All arithmetic in paise (integer).
-
-        Args:
-            firm_id: The firm ID to filter by
-            date_from: ISO date string (YYYY-MM-DD)
-            date_to: ISO date string (YYYY-MM-DD)
-
-        Returns:
-            dict with client_id as key and total_cost_paise as value
-        """
-        if _USE_MOCK:
-            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
-        else:
-            query = (
-                _get_db().table("time_entries")
-                .select("client_id, duration_minutes, hourly_rate_paise")
-                .eq("firm_id", firm_id)
-                .gte("started_at", _starts(date_from))
-                .lt("started_at", _ends(date_to))
-                .not_.is_("ended_at", "null")
-            )
-            result = query.execute()
-            entries = result.data or []
-
-        cost_by_client: dict[str, int] = {}
-        for entry in entries:
-            client_id = entry.get("client_id")
-            if not client_id:
-                continue
-
-            # `.get(key, 0)` only defaults an ABSENT key, not a stored NULL --
-            # hourly_rate_paise is NULL on every timer-started entry (start_timer
-            # never writes it) and on a manual entry with no rate typed on the
-            # form, so `duration_minutes * hourly_rate_paise` below would raise
-            # on None * int.
-            duration_minutes = entry.get("duration_minutes") or 0
-            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
-
-            # Cost = (duration_minutes / 60) * hourly_rate_paise (integer arithmetic)
-            cost_paise = (duration_minutes * hourly_rate_paise) // 60
-
-            if client_id not in cost_by_client:
-                cost_by_client[client_id] = 0
-
-            cost_by_client[client_id] += cost_paise
-
-        return cost_by_client
-
-    def get_cost_by_engagement(
-        self,
-        firm_id: str,
-        date_from: str,
-        date_to: str,
-    ) -> dict[str, int]:
-        """
-        Get total cost (duration_minutes * hourly_rate_paise / 60) grouped by engagement_id.
-        All arithmetic in paise (integer).
-
-        Args:
-            firm_id: The firm ID to filter by
-            date_from: ISO date string (YYYY-MM-DD)
-            date_to: ISO date string (YYYY-MM-DD)
-
-        Returns:
-            dict with engagement_id as key and total_cost_paise as value
-        """
-        if _USE_MOCK:
-            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
-        else:
-            query = (
-                _get_db().table("time_entries")
-                .select("engagement_id, duration_minutes, hourly_rate_paise")
-                .eq("firm_id", firm_id)
-                .gte("started_at", _starts(date_from))
-                .lt("started_at", _ends(date_to))
-                .not_.is_("ended_at", "null")
-            )
-            result = query.execute()
-            entries = result.data or []
-
-        cost_by_engagement: dict[str, int] = {}
-        for entry in entries:
-            engagement_id = entry.get("engagement_id")
-            if not engagement_id:
-                continue
-
-            duration_minutes = entry.get("duration_minutes") or 0
-            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
-
-            # Cost = (duration_minutes / 60) * hourly_rate_paise (integer arithmetic)
-            cost_paise = (duration_minutes * hourly_rate_paise) // 60
-
-            if engagement_id not in cost_by_engagement:
-                cost_by_engagement[engagement_id] = 0
-
-            cost_by_engagement[engagement_id] += cost_paise
-
-        return cost_by_engagement
-
-    def get_metrics_by_team_member(
-        self,
-        firm_id: str,
-        date_from: str,
-        date_to: str,
-    ) -> dict[str, dict]:
-        """
-        Get profitability metrics by team member including effort and utilisation.
-        Returns: {user_id: {effort_minutes, cost_paise, revenue_paise, profit_paise, profit_margin_pct, utilisation_pct}}
-        """
-        if _USE_MOCK:
-            entries = [e for e in MOCK_TIME_ENTRIES if e.get("firm_id") == firm_id and e.get("ended_at")]
-            entries = [e for e in entries if in_ist_window(e.get("started_at"), date_from, date_to)]
-        else:
-            query = (
-                _get_db().table("time_entries")
-                .select("user_id, duration_minutes, hourly_rate_paise, is_billable")
-                .eq("firm_id", firm_id)
-                .gte("started_at", _starts(date_from))
-                .lt("started_at", _ends(date_to))
-                .not_.is_("ended_at", "null")
-            )
-            result = query.execute()
-            entries = result.data or []
-
-        metrics_by_user: dict[str, dict] = {}
-        for entry in entries:
-            user_id = entry.get("user_id")
-            if not user_id:
-                continue
-
-            if user_id not in metrics_by_user:
-                metrics_by_user[user_id] = {
-                    "effort_minutes": 0,
-                    "billable_minutes": 0,
-                    "cost_paise": 0,
-                }
-
-            duration_minutes = entry.get("duration_minutes") or 0
-            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
-            is_billable = entry.get("is_billable", False)
-
-            cost_paise = (duration_minutes * hourly_rate_paise) // 60
-
-            metrics_by_user[user_id]["effort_minutes"] += duration_minutes
-            metrics_by_user[user_id]["cost_paise"] += cost_paise
-
-            if is_billable:
-                metrics_by_user[user_id]["billable_minutes"] += duration_minutes
-
-        return metrics_by_user
-
+        return self._ended_entries(firm_id, date_from, date_to, self.COST_COLUMNS)
 
 time_tracking_analytics_repo = TimeTrackingAnalyticsRepository()

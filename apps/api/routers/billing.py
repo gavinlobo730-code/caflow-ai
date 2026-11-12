@@ -361,8 +361,11 @@ def unbilled_work(client_id: Optional[str] = Query(None),
 
 
 @router.get("/staff-cost-rates")
-def list_staff_cost_rates(current_user: dict = Depends(rbac("billing", "read"))):
-    """Staff cost rates (Partner-only, capture/display only)."""
+def list_staff_cost_rates(current_user: dict = Depends(rbac("billing", "write"))):
+    """Staff cost rates (Partner-only): what an hour of each person costs the practice, the rate `/api/analytics/profitability` prices their hours at (POST-B-321).
+
+    It asks `billing:write`, the permission that SETS a rate, and not `billing:read`: a rate is derived from a person's pay and overheads, so a
+    member who has been granted the fee figures to read does not get every colleague's rate with them. The figures name who has hours with no rate."""
     return api_response(True, billing_service.list_staff_cost_rates(current_user["firm_id"]))
 
 
@@ -399,7 +402,7 @@ def list_staff_billable_rates(current_user: dict = Depends(rbac("billing", "read
 def set_staff_billable_rate(user_id: str, body: StaffBillableRateIn,
                             current_user: dict = Depends(rbac("billing", "write"))):
     """Set or clear a person's default billing rate. NOT `cost_rate_paise`, which
-    is what the hour costs the firm and is never used in a computation."""
+    is what the hour costs the firm: profitability's cost, and never a price."""
     from services import time_rates_service
     return api_response(True, time_rates_service.set_staff_rate(
         current_user["firm_id"], user_id, body.default_billable_rate_paise))

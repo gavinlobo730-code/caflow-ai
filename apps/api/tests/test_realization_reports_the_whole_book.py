@@ -59,9 +59,9 @@ def three_clients(monkeypatch):
                       for e, c in ENG.items()],
     )
     monkeypatch.setattr(
-        ir.invoice_repo, "get_revenue_by_period",
-        lambda **kw: {e: {"revenue_paise": 100_00, "client_id": c}
-                      for e, c in ENG.items()},
+        ir.invoice_repo, "get_revenue_by_engagement",
+        lambda *a, **kw: {e: {"revenue_paise": 100_00, "client_id": c}
+                          for e, c in ENG.items()},
     )
     monkeypatch.setattr(
         an.time_tracking_analytics_repo, "get_effort_by_engagement",

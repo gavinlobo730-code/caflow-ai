@@ -56,7 +56,7 @@ def test_group_unbilled_filters_and_groups():
 
 def test_cost_rate_capture_mock():
     billing.set_staff_cost_rate("F1", "u1", 80000)
-    rates = {r["user_id"]: r["cost_rate_paise"] for r in billing.list_staff_cost_rates("F1")}
+    rates = {r["id"]: r["cost_rate_paise"] for r in billing.list_staff_cost_rates("F1")}
     assert rates["u1"] == 80000
 
 

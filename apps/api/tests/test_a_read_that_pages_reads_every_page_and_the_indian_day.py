@@ -91,7 +91,9 @@ def test_paging_keeps_the_firm_the_deleted_and_the_completed_filters(repo):
             + [_task(4000 + i, deleted="2026-10-02T00:00:00+00:00") for i in range(50)])
     repo.install(rows)
     got = repo.find_overdue(firm_id=FIRM)
-    assert len(got) == 1200 and all(t["firm_id"] == FIRM and t["status"] != "completed" and not t["deleted_at"]
+    # `.get`: the double now returns only the columns the query selected (tests/_capped_postgrest.py), and the read does not
+    # fetch `deleted_at`, so the 1,200 is what proves the 50 deleted rows were left out by the filter.
+    assert len(got) == 1200 and all(t["firm_id"] == FIRM and t["status"] != "completed" and not t.get("deleted_at")
                                     for t in got)
 
 

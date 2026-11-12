@@ -22,16 +22,32 @@ class CappedQuery:
         self._gt = None
         self._order = None
         self._limit = None
+        self._cols = "*"
 
     # builder surface
     def select(self, cols="*", *_a, **_k):
         if self._selects is not None:
             self._selects.append(cols)
+        self._cols = cols
         return self
     def eq(self, col, v): self._ops.append(("eq", col, v)); return self
     def neq(self, col, v): self._ops.append(("neq", col, v)); return self
     def lt(self, col, v): self._ops.append(("lt", col, v)); return self
+    def gte(self, col, v): self._ops.append(("gte", col, v)); return self
+    def lte(self, col, v): self._ops.append(("lte", col, v)); return self
+    def in_(self, col, vs): self._ops.append(("in", col, list(vs))); return self
     def is_(self, col, v): self._ops.append(("is", col, None if v in (None, "null") else v)); return self
+
+    @property
+    def not_(self):
+        """`.not_.is_(col, "null")`: the one negation the paged reads use (a property of the builder, never called)."""
+        outer = self
+
+        class _Not:
+            def is_(self, col, v):
+                outer._ops.append(("not_is", col, None if v in (None, "null") else v))
+                return outer
+        return _Not()
     def gt(self, col, v): self._gt = (col, v); return self
     def order(self, col, desc=False): self._order = col; return self
     def limit(self, n): self._limit = n; return self
@@ -48,12 +64,29 @@ class CappedQuery:
                 rows = [r for r in rows if r.get(col) is not None and str(r.get(col)) < str(v)]
             elif op == "is":
                 rows = [r for r in rows if r.get(col) == v]
+            elif op == "not_is":
+                rows = [r for r in rows if r.get(col) != v]
+            elif op == "gte":
+                rows = [r for r in rows if r.get(col) is not None and str(r.get(col)) >= str(v)]
+            elif op == "lte":
+                rows = [r for r in rows if r.get(col) is not None and str(r.get(col)) <= str(v)]
+            elif op == "in":
+                rows = [r for r in rows if r.get(col) in v]
         if self._gt:
             col, v = self._gt
             rows = [r for r in rows if str(r.get(col)) > str(v)]
         if self._order:
             rows.sort(key=lambda r: str(r.get(self._order) or ""))
-        return _Resp(rows[:min(self._limit or DB_MAX_ROWS, DB_MAX_ROWS)])
+        return _Resp([self._project(r) for r in rows[:min(self._limit or DB_MAX_ROWS, DB_MAX_ROWS)]])
+
+    def _project(self, row):
+        """Only the columns the query selected, as the hosted service answers. A plain list of columns is projected; a
+        select with an embed, an alias or `*` is left whole (nothing here reads one). Without this a read that forgot a
+        column passed every test, because the double handed back the whole fixture row."""
+        cols = [c.strip() for c in str(self._cols).split(",")]
+        if any(c == "*" or "(" in c or ":" in c or not c for c in cols):
+            return row
+        return {c: row[c] for c in cols if c in row}
 
 
 class CappedDB:

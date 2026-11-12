@@ -282,16 +282,20 @@ posting kernel dedupes.
 - **Dashboard.** `GET /api/billing/collections/dashboard` and `GET /api/billing/ar-aging`:
   receivable, five buckets, overdue, TDS receivable, cash collected. Operational figures
   only. What was added later (a paise-weighted collection-days figure, the profitability
-  and benchmark pages) sits outside this record; POST-B-321 holds what is wrong with the
-  profitability page.
+  and benchmark pages) sits outside this record. The profitability page's rule (revenue
+  before GST on issued fee invoices, less each member's cost rate times their hours, and an
+  unknown shown as a dash) is the design-record entry in `docs/design-record/screens-and-site.md`
+  (POST-B-321, closed 12 November 2026).
 
 ## 6. Time capture
 
 Capture and visibility, not analytics. `time_entries` carries `is_billable`,
 `billable_rate_paise` (migration 073) and `billed_invoice_id` (migration 078), and `is_billed` is a
 **generated column** derived from the link, so it cannot be written and cannot disagree.
-`users.cost_rate_paise` is Partner-only (`GET /api/billing/staff-cost-rates`) and is
-**never an input to a figure**: what an hour costs the firm is not what it bills.
+`users.cost_rate_paise` is Partner-only (`GET /api/billing/staff-cost-rates`, set on the
+Profitability screen) and is the input to ONE figure, the cost in `/api/analytics/profitability`
+(POST-B-321): what an hour costs the firm is not what it bills, so it is never a price, never
+an input to a rate and never read by anything that values work for a client.
 
 A rate is read in a fixed order (`domain/billing/time_rate.py`, migration 451): the
 entry's own, the engagement's override, the person's default, and then **nothing, which is
@@ -375,7 +379,7 @@ None of these is decided here.
 | Rupee-to-paise conversion in the schedule form | goes through `lib/money/rupeeInput.ts` | closed |
 | `billing_schedules.service_id` has no foreign key | mandatory and keyed (migration 206) | closed |
 | Practice Billing and AR link to the invoices | they do not yet | PRE-A-018 |
-| Fee billing: one engine | two live: `fee_*` and the sales engine | POST-B-193, POST-B-321 |
+| Fee billing: one engine | two live: `fee_*` and the sales engine | POST-B-193 |
 | Time is billed | nothing bills it | POST-B-194 |
 | Bridge residue: two rate columns, two provisioners | both remain | POST-A-169 |
 

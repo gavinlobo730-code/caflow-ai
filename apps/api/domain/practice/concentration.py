@@ -50,7 +50,8 @@ ICAI_FEE_DEPENDENCE = (
 
 #: What the shares are and are not. Rendered beside them.
 NOT_MEASURED: tuple[str, ...] = (
-    "Fees INVOICED in the window, not fees earned or collected. A client "
+    "Fees invoiced (on invoices that are issued, in the period of the "
+    "invoice's own date, before GST), not fees earned or collected. A client "
     "billed annually in April and one billed monthly look very different "
     "over a quarter and identical over a year.",
     "Nothing about the engagement's nature. A statutory audit and a "
@@ -59,6 +60,9 @@ NOT_MEASURED: tuple[str, ...] = (
     "Only clients with an invoice in the window. A client on the books who "
     "was not billed in it is absent rather than nil, because a nil share "
     "would dilute every other client's.",
+    "A margin, and so the median margin, is only for a client whose cost is "
+    "known: time recorded, every hour of it with a cost rate. The others are "
+    "left out of the median, not counted as nil.",
 )
 
 
@@ -67,7 +71,9 @@ class ClientFees:
     client_id: str
     client_name: str
     revenue_paise: int
-    cost_paise: int = 0
+    #: What serving the client cost, or None where that is not known (no time recorded, or time with no cost rate). None
+    #: is not 0 (POST-B-321): a default of 0 made a client with no recorded time a 100% margin.
+    cost_paise: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -80,7 +86,8 @@ class Share:
     #: applies to a proportion of money too: `40.0` hides which way it went.
     share_bps: int
     rank: int
-    profit_paise: int
+    #: None where the client's cost is not known, and then so is the margin.
+    profit_paise: Optional[int]
     #: None where no fee was billed, because a margin on nil revenue is not 0%,
     #: it is undefined — and reporting 0 would rank a client nobody billed
     #: below one billed at a loss.
@@ -138,7 +145,7 @@ def concentration(clients: Iterable[ClientFees]) -> Concentration:
 
     shares: list[Share] = []
     for i, c in enumerate(billed):
-        profit = c.revenue_paise - c.cost_paise
+        profit = c.revenue_paise - c.cost_paise if c.cost_paise is not None else None
         shares.append(Share(
             client_id=c.client_id,
             client_name=c.client_name,
@@ -146,7 +153,7 @@ def concentration(clients: Iterable[ClientFees]) -> Concentration:
             share_bps=_bps(c.revenue_paise, total),
             rank=i + 1,
             profit_paise=profit,
-            margin_bps=_bps(profit, c.revenue_paise) if c.revenue_paise > 0 else None,
+            margin_bps=_bps(profit, c.revenue_paise) if profit is not None and c.revenue_paise > 0 else None,
         ))
 
     def top(n: int) -> int:

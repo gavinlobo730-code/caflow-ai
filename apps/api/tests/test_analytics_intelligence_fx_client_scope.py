@@ -181,10 +181,16 @@ def _patch_profitability(monkeypatch):
     monkeypatch.setattr(cr.client_repo, "find_all", lambda **kw: CLIENTS)
     monkeypatch.setattr(ur.user_repo, "find_all", lambda **kw: [])
     monkeypatch.setattr(er.engagement_repo, "find_all", lambda **kw: [])
-    monkeypatch.setattr(ir.invoice_repo, "get_revenue_by_client",
-                        lambda *a, **k: {MINE: 100_00, THEIRS: 900_00})
-    monkeypatch.setattr(an.time_tracking_analytics_repo, "get_cost_by_client",
-                        lambda *a, **k: {MINE: 40_00, THEIRS: 300_00})
+    monkeypatch.setattr(ir.invoice_repo, "fee_revenue_rows", lambda *a, **k: [
+        {"client_id": MINE, "status": "Issued", "amount_paise": 100_00},
+        {"client_id": THEIRS, "status": "Issued", "amount_paise": 900_00},
+    ])
+    # One member at ₹40 an hour: an hour on MINE costs ₹40, three hours on THEIRS cost ₹120.
+    monkeypatch.setattr(an.time_tracking_analytics_repo, "get_cost_entries", lambda *a, **k: [
+        {"id": "t1", "user_id": "u1", "client_id": MINE, "duration_minutes": 60, "is_billable": True},
+        {"id": "t2", "user_id": "u1", "client_id": THEIRS, "duration_minutes": 180, "is_billable": True},
+    ])
+    monkeypatch.setattr(an.billing_service, "cost_rates_by_user", lambda firm_id: {"u1": 40_00})
     monkeypatch.setattr(an, "_get_db", lambda: None)
 
 
@@ -207,6 +213,17 @@ def test_profitability_totals_narrow_with_the_book(monkeypatch, only_mine):
     _patch_profitability(monkeypatch)
     resp = an.profitability_analytics(period="month", current_user=USER)
     assert resp["data"]["firm_metrics"]["total_revenue_paise"] == 100_00
+    # the cost narrows with it: one hour of the member's ₹40, not the four they recorded across both clients
+    assert resp["data"]["firm_metrics"]["total_cost_paise"] == 40_00
+
+
+def test_the_member_view_narrows_with_the_book_too(monkeypatch, only_mine):
+    """`include_by_team` summed every time entry of the firm for whoever asked, so a caller assigned to one client read
+    each colleague's hours and cost on clients they are not assigned to (POST-B-321). It reads the caller's entries."""
+    _patch_profitability(monkeypatch)
+    resp = an.profitability_analytics(period="month", include_by_team=True, current_user=USER)
+    team = resp["data"]["by_team_member"]
+    assert [(m["user_id"], m["effort_minutes"], m["cost_paise"]) for m in team] == [("u1", 60, 40_00)]
 
 
 def test_profitability_is_unfiltered_for_a_firmwide_role(monkeypatch):
