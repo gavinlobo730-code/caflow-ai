@@ -54,7 +54,7 @@ WHY THE STOP CONDITION IS A SHORT PAGE
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional
 
 _logger = logging.getLogger("caflow.db.paging")
 
@@ -66,6 +66,69 @@ PAGE = 1000
 # ignores the cursor loops forever on page one — a hang instead of a wrong
 # answer, which is not an improvement.
 MAX_PAGES = 1000
+
+
+def iter_pages(
+    make_query: Callable[[], Any],
+    key: str = "id",
+    *,
+    label: str = "",
+    stats: Optional[dict] = None,
+) -> Iterator[list[dict]]:
+    """The pages of the rows `make_query` matches, one list per request, in keyset order over `key`.
+
+    THE SAME READ AS `fetch_all`, handed back a page at a time. `fetch_all` is this function with every page appended to one list, which is
+    right for an answer and wrong for a FILE: an export of a ledger that wrote each page as it came would hold one page in memory, and one
+    that called `fetch_all` held the whole table. Everything `fetch_all` says about `make_query`, the key, the short-page stop and the
+    test-double tolerance holds here (it is one implementation). An empty page is not yielded. `stats` is filled when the generator has
+    been read to its end, not before.
+    """
+    cursor: Any = None
+    pages = 0
+    rows = 0
+
+    while True:
+        q = make_query()
+        if pages == 0 and not (hasattr(q, "gt") and hasattr(q, "order") and hasattr(q, "limit")):
+            page = list(q.execute().data or [])
+            pages = 1
+            rows += len(page)
+            if page:
+                yield page
+            break
+        if cursor is not None:
+            q = q.gt(key, cursor)
+        page = q.order(key).limit(PAGE).execute().data or []
+        pages += 1
+        rows += len(page)
+        if page:
+            yield page
+
+        if len(page) < PAGE:
+            break
+
+        if pages >= MAX_PAGES:
+            # Loud, because silence is the failure mode this module exists to
+            # remove. Returning what we have beats hanging, but it must be said.
+            _logger.error(
+                "fetch_all(%s) hit the %d-page cap at %d rows — the cursor is "
+                "probably not advancing (is `%s` in the projection, and unique?)",
+                label or "unlabelled", MAX_PAGES, rows, key,
+            )
+            break
+
+        cursor = page[-1].get(key)
+        if cursor is None:
+            _logger.error(
+                "fetch_all(%s): last row has no `%s`, so paging cannot continue "
+                "— returning %d rows, which may be incomplete.",
+                label or "unlabelled", key, rows,
+            )
+            break
+
+    if stats is not None:
+        stats["pages"] = pages
+        stats["rows"] = rows
 
 
 def fetch_all(
@@ -99,46 +162,8 @@ def fetch_all(
     page's builder only, so a real query cannot slip into it halfway.
     """
     out: list[dict] = []
-    cursor: Any = None
-    pages = 0
-
-    while True:
-        q = make_query()
-        if pages == 0 and not (hasattr(q, "gt") and hasattr(q, "order") and hasattr(q, "limit")):
-            out = list(q.execute().data or [])
-            pages = 1
-            break
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        page = q.order(key).limit(PAGE).execute().data or []
-        pages += 1
+    for page in iter_pages(make_query, key, label=label, stats=stats):
         out.extend(page)
-
-        if len(page) < PAGE:
-            break
-
-        if pages >= MAX_PAGES:
-            # Loud, because silence is the failure mode this module exists to
-            # remove. Returning what we have beats hanging, but it must be said.
-            _logger.error(
-                "fetch_all(%s) hit the %d-page cap at %d rows — the cursor is "
-                "probably not advancing (is `%s` in the projection, and unique?)",
-                label or "unlabelled", MAX_PAGES, len(out), key,
-            )
-            break
-
-        cursor = page[-1].get(key)
-        if cursor is None:
-            _logger.error(
-                "fetch_all(%s): last row has no `%s`, so paging cannot continue "
-                "— returning %d rows, which may be incomplete.",
-                label or "unlabelled", key, len(out),
-            )
-            break
-
-    if stats is not None:
-        stats["pages"] = pages
-        stats["rows"] = len(out)
     return out
 
 

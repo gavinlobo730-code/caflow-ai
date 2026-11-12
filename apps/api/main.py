@@ -271,7 +271,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-Payslip-Problems", REQUEST_ID_HEADER],
+    expose_headers=["Content-Disposition", "X-Payslip-Problems", "X-Export-Problems", REQUEST_ID_HEADER],
 )
 
 # security_privacy-05: nosniff on every response, `Cache-Control: no-store` on JSON, and HSTS where the
@@ -586,6 +586,9 @@ app.include_router(shared_reports_router)
 # returns, and it calls the same report functions that router's screens do.
 from routers.report_exports import router as report_exports_router
 app.include_router(report_exports_router, dependencies=_CLIENT_GUARD)
+# POST-A-205: one client's books as a ZIP of CSV files. firm:admin (the Partner's alone), the client scope and the same two-factor guard as payroll.
+from routers.data_export import router as data_export_router
+app.include_router(data_export_router, dependencies=_CLIENT_GUARD + _MFA_GUARD)
 
 # accounting-22 — interest on an overdue customer balance: a figure and a PREPARED
 # draft, never posted or invoiced on its own. `client_id` is required on every

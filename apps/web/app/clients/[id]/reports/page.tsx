@@ -6,6 +6,7 @@ import {
   Landmark, Users, Boxes, ArrowRight,
 } from "lucide-react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
+import BooksExportCard from "@/components/reports/BooksExportCard";
 
 /**
  * The client's reporting hub.
@@ -231,6 +232,8 @@ export default function ClientReportsPage() {
         </div>
       </div>
       )}
+
+      <BooksExportCard clientId={clientId} />
 
       <div className="flex items-start gap-2.5 bg-ps-bg border border-ps-border rounded-xl px-4 py-3">
         <Users size={14} className="text-ps-hint flex-shrink-0 mt-0.5" />

@@ -7408,6 +7408,16 @@ export const api = {
                    `${report}.${format}`),
   },
 
+  /**
+   * POST-A-205 slice 1 — one client's books as a ZIP of CSV files with a manifest (a Partner's, behind two-factor). The file is built on the server, one page of
+   * each table at a time; it resolves to the response headers so the screen can say when the build found a problem in itself (`X-Export-Problems`: the list is in
+   * `manifest.json` inside the file). A refusal (too large to read in one request, ran out of time, the audit log could not be written) is a thrown sentence.
+   */
+  dataExport: {
+    clientBooks: (clientId: string) =>
+      downloadFile(`/api/data-export/client-books?${new URLSearchParams({ client_id: clientId })}`, "books-export.zip"),
+  },
+
   /** accounting-22 — interest on an overdue customer balance. The preview reads and
    *  writes nothing; `prepareDrafts` makes an ordinary DRAFT sales invoice
    *  (posts no journal, issues nothing, emails nothing). Every figure is the
