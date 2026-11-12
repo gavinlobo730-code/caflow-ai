@@ -169,6 +169,11 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
             res.writeHead(status, { "content-type": "text/html", "content-length": Buffer.byteLength(route.raw) });
             return res.end(route.raw);
           }
+          // A FILE: `{ body: Buffer, type, headers }`, for a download. The headers (Content-Disposition, X-Export-Problems) are the ones the real door sends.
+          if (route?.file !== undefined) {
+            res.writeHead(status, { "content-type": route.file.type, "content-length": route.file.body.length, ...(route.file.headers ?? {}) });
+            return res.end(route.file.body);
+          }
           sendJson(res, out, status);
         }, wait);
       });
