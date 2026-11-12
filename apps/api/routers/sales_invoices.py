@@ -25,7 +25,7 @@ from domain.gst import compensation_cess
 from core.authz import assert_client_access, filter_by_client
 from core.db_provider import privileged_for
 from core.permissions import rbac
-from services.audit_service import log_event
+from services.audit_service import log_document_edit, log_event
 from services import draft_document_lines
 from services.document_header_writer import update_header
 from services import issue_readiness_service
@@ -1832,7 +1832,9 @@ def update_invoice(
         firm_id = current_user.get("firm_id") or ""
 
         # Check current status
-        resp = db.table("client_sales_invoices").select("status, invoice_date, client_id").eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute()
+        # The whole row, once: the guards below read three columns off it and the edit record (POST-A-424) keeps what each column held
+        # before the write replaced it.
+        resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", firm_id).limit(1).execute()
         if not resp.data:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         status = resp.data[0]["status"]
@@ -1979,7 +1981,7 @@ def update_invoice(
             # Replace the lines in ONE transaction that locks the header first and refuses if the invoice was issued meanwhile
             # (POST-A-332): a delete and then an insert, two requests, left an issued invoice with no lines.
             draft_document_lines.replace_draft_lines(
-                db, "sales_invoice", invoice_id, current_user.get("firm_id") or "", computed_lines)
+                db, "sales_invoice", invoice_id, current_user.get("firm_id") or "", computed_lines, edited_by=current_user)
 
             # Learn HSN/SAC choices (incl. overrides) for smart suggestions.
             _record_hsn_preferences(
@@ -2076,12 +2078,10 @@ def update_invoice(
         # Per-line unit correction — independent of the full lines-replace
         # block above (draft-only), safe on any non-cancelled status since
         # unit never affects rate/quantity/amount/GST.
-        if line_units:
-            for line_id, unit in line_units.items():
-                # `invoice_id` was read under the firm and the client above, and a line is confined to it.
-                privileged_for(db).table("client_sales_invoice_lines").update(
-                    {"unit": unit or "NOS"}
-                ).eq("id", line_id).eq("sales_invoice_id", invoice_id).execute()
+        # (`invoice_id` was read under the firm and the client above, and a line is confined to it.) Each unit that changed is recorded
+        # with the one it replaced (POST-A-424): a unit-only save used to leave nothing at all.
+        draft_document_lines.set_line_units(
+            db, "sales_invoice", invoice_id, current_user.get("firm_id") or "", line_units, edited_by=current_user)
 
         data["updated_at"] = datetime.now(timezone.utc).isoformat()
         # THE SAME CHECK AS CREATE, ON WHAT THE INVOICE WILL HOLD (SALES-16).
@@ -2110,10 +2110,11 @@ def update_invoice(
         upd_resp = (privileged_for(db).table("client_sales_invoices").update(data)
                     .eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).eq("client_id", _client_id).execute())
         updated = upd_resp.data[0] if upd_resp.data else data
-        log_event(
-            current_user.get("firm_id", ""), "sales_invoice", invoice_id,
-            "update", actor_id=current_user.get("auth_user_id"),
-            actor_email=current_user.get("email"), new_data=updated,
+        # WHAT THE EDIT REPLACED IS RECORDED (POST-A-424), by the application whatever the database captures: this route used to log
+        # only the row AFTER the change, with no old value. An UPDATE that matched no row records nothing.
+        log_document_edit(
+            current_user.get("firm_id", ""), "sales_invoice", invoice_id, resp.data[0], data,
+            actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"), updated=updated, matched=bool(upd_resp.data),
         )
         return api_response(True, updated)
     except HTTPException:

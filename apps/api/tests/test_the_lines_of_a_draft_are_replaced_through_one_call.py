@@ -31,6 +31,8 @@ from tests._table_uses import API_ROOT, sources, uses
 from tests.e2e_harness import FakeDB
 
 FIRM, OTHER_FIRM = "F1", "F2"
+#: Whose edit it is: the door records what it replaced under this member (POST-A-424), and has no default for it.
+EDITOR = {"auth_user_id": "auth-1", "email": "ca@firm.test"}
 HEADERS = {"sales_invoice": "client_sales_invoices", "purchase_bill": "purchase_bills", "credit_note": "credit_notes",
            "debit_note": "debit_notes", "sales_debit_note": "sales_debit_notes", "purchase_credit_note": "purchase_credit_notes"}
 MIGRATION = API_ROOT / "migrations" / "560_a_draft_documents_lines_are_replaced_in_one_transaction_that_locks_the_header_first.sql"
@@ -50,7 +52,7 @@ def _db(kind: str, status: str = "draft") -> tuple[FakeDB, str]:
 def test_the_old_lines_go_and_the_new_ones_carry_the_documents_own_id(kind):
     db, doc = _db(kind)
     table, fk, _ = DOCUMENTS[kind]
-    n = replace_draft_lines(db, kind, doc, FIRM, [{"description": "new", fk: "someone-elses"}, {"description": "newer"}])
+    n = replace_draft_lines(db, kind, doc, FIRM, [{"description": "new", fk: "someone-elses"}, {"description": "newer"}], edited_by=EDITOR)
     assert n == 2
     rows = db.rows(table)
     assert [r["description"] for r in rows] == ["new", "newer"]
@@ -62,7 +64,7 @@ def test_a_document_issued_meanwhile_is_a_409_in_words_and_keeps_its_lines(kind)
     db, doc = _db(kind, status="issued")
     table = DOCUMENTS[kind][0]
     with pytest.raises(HTTPException) as caught:
-        replace_draft_lines(db, kind, doc, FIRM, [{"description": "new"}])
+        replace_draft_lines(db, kind, doc, FIRM, [{"description": "new"}], edited_by=EDITOR)
     assert caught.value.status_code == 409
     assert "was issued while you were editing it" in caught.value.detail and "were not changed" in caught.value.detail
     assert [r["description"] for r in db.rows(table)] == ["old"]
@@ -72,7 +74,7 @@ def test_a_document_issued_meanwhile_is_a_409_in_words_and_keeps_its_lines(kind)
 def test_another_firms_document_is_a_404(kind):
     db, doc = _db(kind)
     with pytest.raises(HTTPException) as caught:
-        replace_draft_lines(db, kind, doc, OTHER_FIRM, [{"description": "new"}])
+        replace_draft_lines(db, kind, doc, OTHER_FIRM, [{"description": "new"}], edited_by=EDITOR)
     assert caught.value.status_code == 404
     assert [r["description"] for r in db.rows(DOCUMENTS[kind][0])] == ["old"]
 
@@ -96,7 +98,7 @@ def test_a_missing_function_is_the_callers_error_and_there_is_no_second_way_to_w
     table, fk, _ = DOCUMENTS[kind]
     db.seed(table, {fk: doc["id"], "description": "old"})
     with pytest.raises(Exception, match="PGRST202"):
-        replace_draft_lines(db, kind, doc["id"], FIRM, [{"description": "new", fk: doc["id"]}])
+        replace_draft_lines(db, kind, doc["id"], FIRM, [{"description": "new", fk: doc["id"]}], edited_by=EDITOR)
     assert [r["description"] for r in db.rows(table)] == ["old"]
 
 
@@ -115,7 +117,7 @@ def test_any_other_error_is_the_callers_and_nothing_is_replaced():
     doc = db.seed("client_sales_invoices", {"firm_id": FIRM, "status": "draft"})
     db.seed("client_sales_invoice_lines", {"sales_invoice_id": doc["id"], "description": "old"})
     with pytest.raises(Exception, match="connection reset"):
-        replace_draft_lines(db, "sales_invoice", doc["id"], FIRM, [{"description": "new"}])
+        replace_draft_lines(db, "sales_invoice", doc["id"], FIRM, [{"description": "new"}], edited_by=EDITOR)
     assert [r["description"] for r in db.rows("client_sales_invoice_lines")] == ["old"]
 
 

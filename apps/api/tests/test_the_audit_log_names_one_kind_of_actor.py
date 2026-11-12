@@ -102,15 +102,24 @@ def _modules():
             yield f, f.relative_to(API).as_posix(), f.read_text()
 
 
+#: The two ways in to `audit_log`: `log_event`, and `log_document_edit` (POST-A-424), which goes through it. A guard that read only the first
+#: could not see the invoice, the bill and the four notes once their edits moved onto the second, and a `current_user.get("id")` there passed.
+AUDIT_ENTRY_POINTS = ("log_event", "log_document_edit")
+
+
+def _has_audit_call(src: str) -> bool:
+    return any(f"{name}(" in src for name in AUDIT_ENTRY_POINTS)
+
+
 def _audit_log_event_calls(tree: ast.AST):
-    """Calls to services.audit_service.log_event — the BARE name.
+    """Calls to services.audit_service.log_event and log_document_edit — the BARE names.
 
     `task_extras_repo.log_event(...)` is an Attribute and writes
     task_timeline; see the rename trap in this module's docstring.
     """
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-                and node.func.id == "log_event":
+                and node.func.id in AUDIT_ENTRY_POINTS:
             yield node
 
 
@@ -142,7 +151,7 @@ def _is_internal_id_read(node: ast.AST) -> bool:
 def test_the_scan_still_finds_the_audit_calls():
     """A scan that matches nothing passes every rule below for ever."""
     found = sum(len(list(_audit_log_event_calls(ast.parse(src))))
-                for _, _, src in _modules() if "log_event(" in src)
+                for _, _, src in _modules() if _has_audit_call(src))
     assert found > 120, (
         f"only {found} audit log_event calls found — the scan is reading a "
         f"different tree, or the call shape moved")
@@ -157,7 +166,7 @@ def test_no_audit_event_is_attributed_with_the_internal_user_id():
     """
     bad = []
     for _, rel, src in _modules():
-        if "log_event(" not in src:
+        if not _has_audit_call(src):
             continue
         for call in _audit_log_event_calls(ast.parse(src)):
             v = _kw(call, "actor_id")
@@ -178,7 +187,7 @@ def test_a_router_names_the_principal_it_has_in_hand():
     """
     problems = []
     for _, rel, src in _modules():
-        if not rel.startswith("routers/") or "log_event(" not in src:
+        if not rel.startswith("routers/") or not _has_audit_call(src):
             continue
         tree = ast.parse(src)
         # Names this module binds from a `.get("auth_user_id")`, anywhere.
