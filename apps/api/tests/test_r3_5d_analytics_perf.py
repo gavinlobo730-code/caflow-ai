@@ -92,8 +92,8 @@ def test_revenue_vs_effort_no_longer_raises_nameerror(monkeypatch):
     monkeypatch.setattr(mod, "_get_db", lambda: db)
     monkeypatch.setattr(mod.engagement_repo, "find_all", lambda **k: [])
     monkeypatch.setattr(mod.client_repo, "find_all", lambda **k: [])
-    monkeypatch.setattr(mod.invoice_repo, "get_revenue_by_engagement", lambda *a, **k: {})
-    monkeypatch.setattr(mod.time_tracking_analytics_repo, "get_effort_by_engagement", lambda **k: {})
+    monkeypatch.setattr(mod.invoice_repo, "fee_revenue_rows", lambda *a, **k: [])
+    monkeypatch.setattr(mod.time_tracking_analytics_repo, "get_worth_entries", lambda *a, **k: [])
 
     result = mod.revenue_vs_effort(period="month", current_user={"firm_id": FIRM, "id": "u1", "role": "Partner"})
     assert result["success"] is True

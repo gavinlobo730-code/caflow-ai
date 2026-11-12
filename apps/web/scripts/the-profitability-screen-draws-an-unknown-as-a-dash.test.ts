@@ -138,3 +138,71 @@ test("the panel is not inside any loading branch, so a rate typed in it survives
   assert.ok(underRatePermission, "the panel sits under `canEditRates &&`");
   assert.match(code(PAGE), /<CostRatesPanel onSaved=\{reload\} \/>/, "a saved rate reloads the figures");
 });
+
+// ── POST-A-426 and POST-A-427: realization, and the windows the screen can be asked for ─────────────────────────────
+
+const WINDOW = "lib/practice/analyticsWindow.ts";
+
+test("realization is drawn as a dash when the server could not give it, and 0.00× is a figure only the server gives", () => {
+  const src = code(PAGE);
+  // `x ? a : b` reads a stored 0.0 (billed none of priced time: a figure) as a dash, and null (unknown) as a dash too
+  assert.doesNotMatch(src, /realization\??\.realization_rate\s*\?\s*`/, "the firm's tile tests the rate for truthiness");
+  assert.doesNotMatch(src, /\br\??\.realization_rate\s*\?\s*`/, "a row tests the rate for truthiness");
+  assert.match(src, /realization\?\.realization_rate != null/, "the firm's tile asks whether there is a rate");
+  assert.match(src, /r\?\.realization_rate != null/, "a row asks whether there is a rate");
+  assert.match(src, /unpriced_minutes > 0/, "the hours with no billing rate are named where the figure is missing");
+});
+
+test("the firm's realization is read from the key the server sends, and the payload type says null where the server does", () => {
+  const src = code(PAGE);
+  assert.doesNotMatch(src, /overall_realization_rate/, "the tile read a key the server never sends, so it was a dash whatever the books held");
+  const block = /export interface RealizationPayload \{[\s\S]*?\n\}\n/.exec(read(API))?.[0] ?? "";
+  assert.ok(block, "RealizationPayload is declared");
+  assert.doesNotMatch(block, /overall_realization_rate/);
+  assert.match(block, /realization_rate: number \| null;/);
+  assert.match(block, /avg_revenue_per_hour_paise: number \| null;/);
+  assert.match(block, /unpriced_minutes: number;/);
+  assert.match(block, /not_measured: string\[\];/, "the realization footnotes are the server's sentences");
+  assert.match(code(PAGE), /realization\?\.not_measured/, "and the screen renders them");
+});
+
+test("a window is chosen from the clock, sent to all three reads, and a financial year is only ever sent with period=fy", () => {
+  const win = code(WINDOW);
+  assert.doesNotMatch(win, /["'`]\d{4}-\d{2}["'`]/, "a financial year is typed into the module");
+  assert.doesNotMatch(win, /^import .*from "@\/lib\/(?!api")/m, "the module imports more than the type, so a test can no longer run it as it is");
+  const page = code(PAGE);
+  for (const read of ["profitability", "revenueVsEffort", "concentration"]) {
+    assert.match(page, new RegExp(`api\\.analytics\\.${read}\\(analyticsWindowOf\\(period\\)\\)`),
+      `${read} is not asked for the picked window`);
+  }
+  assert.match(page, /analyticsWindowChoices\(financialYearChoices\(/, "the picker's years are derived from the clock, not listed");
+  const api = read(API);
+  assert.match(api, /window\.period === "fy" && window\.financialYear\) q\.set\("financial_year"/,
+    "a financial year is only sent with the window 'fy'");
+  assert.doesNotMatch(api, /analytics\/(?:profitability|revenue-vs-effort|concentration)\?period=\$\{encodeURIComponent/,
+    "an analytics read still builds its own query from a bare period string");
+});
+
+test("what the ratio leaves out is worded from the server's amounts, and a stale label is not shown after a failed read", () => {
+  const src = code(PAGE);
+  for (const key of ["revenue_without_time_paise", "revenue_without_engagement_paise", "minutes_without_engagement"]) {
+    assert.match(src, new RegExp(`x\\.${key}`), `${key} is not worded anywhere on the screen`);
+  }
+  assert.match(src, /\.\.\.leftOut\(realization\)/, "the firm's tile does not say what it leaves out");
+  assert.match(src, /\.\.\.leftOut\(r\)/, "a client's row does not say what it leaves out");
+  assert.match(src, /billable_time_value_paise === 0/, "a realization with no figure because every hour is at 0 is unexplained");
+  assert.match(src, /!loading && !error \? \(profit\?\.period \?\? realization\?\.period\) : null/,
+    "the subtitle names a period the select no longer shows after a failed read");
+  assert.match(src, /with no billing rate/, "a row's unpriced hours are not named");
+});
+
+test("the year choices are taken at India's day, which is the day the server decides the running year by", () => {
+  const src = code(PAGE);
+  assert.match(src, /financialYearChoices\(ANALYTICS_FY_COUNT, new Date\(`\$\{todayIstISO\(\)\}T12:00:00`\)\)/,
+    "the picker is built from the browser's own clock again, so it can offer a year the server answers 422 to");
+  const api = read(API);
+  const block = /export interface RealizationPayload \{[\s\S]*?\n\}\n/.exec(api)?.[0] ?? "";
+  assert.equal((block.match(/realization_rate: number \| null;/g) ?? []).length, 3, "the firm, a client and an engagement can each have no realization");
+  assert.equal((block.match(/billable_time_value_paise: number \| null;/g) ?? []).length, 3, "an unknown worth is null on all three");
+  assert.match(block, /revenue_without_time_paise: number;[\s\S]*revenue_without_engagement_paise: number;[\s\S]*minutes_without_engagement: number;/);
+});

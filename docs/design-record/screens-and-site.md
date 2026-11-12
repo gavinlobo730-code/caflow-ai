@@ -182,15 +182,44 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   vocabulary and payload keys from this side), `scripts/the-profitability-screen-draws-an-unknown-as-a-dash.test.ts` (no
   nullable figure formatted as a number, nothing computed in the browser, the panel's reader and held Save and its place
   outside the loading branches) and the updated scope, Indian-day and real-builder guards. The screen is also driven in
-  Chromium (`scripts/drive/scenarios/costRates.mjs`, five scenarios: the dash and who has no rate, exact paise with focus
+  Chromium (`scripts/drive/scenarios/costRates.mjs`, five scenarios at first and eight since POST-A-426: the dash and who has no rate, exact paise with focus
   back in the box after a save, a comma refused on its own row with nothing sent, an emptied box sent as null and a typed 0
   as a rate, and one write for a double click). Thirty-seven one-line mutations of the
   rule, the reads and the endpoints were each applied alone to a copy of the tree and each was caught by at least one test (an
   independent read of the first version found twelve that were not, and they are the tests added after it).
   The endpoint-reachability budget for `/api/billing` fell from 6 to 4 (the two cost-rate routes now have a screen: the total
   from 195 to 193) and the lint baseline shrank by two lines.
-  **Not done, and in the ledger:** realization still prices the hours at the average of the entries' `hourly_rate_paise` and
-  never reads `billable_rate_paise` (POST-A-426); the screen offers only this week, month and quarter to date, so the seeded
-  FY 2025-26 firm shows nothing on it and the seeder sets no cost rate (POST-A-427); revenue is still read from
-  `fee_invoices`, so the day the surviving fee-billing engine is chosen (POST-B-193) the revenue read is re-pointed, and
-  the cost and the rule do not move.
+  **REALIZATION IS THE SAME RULE, AND THE WINDOW IS A FINANCIAL YEAR TOO** (POST-A-426 closed and POST-A-427 closed in part,
+  12-11-2026; no migration). `/revenue-vs-effort` priced the hours from the legacy `time_entries.hourly_rate_paise`, averaged over the entries
+  that carried one and multiplied by ALL the engagement's billable minutes, while an hour is priced when it is recorded and
+  stored in `billable_rate_paise` since migration 451: a firm that times its work that way saw a dash against every engagement,
+  and a firm with one legacy entry among ten had nine hours priced at that one's rate. `domain/practice/realization.py` is the
+  rule and `time_rate.entry_rate` the one reading of an entry's rate (`billable_rate_paise` first, `hourly_rate_paise` second,
+  a stated 0 a rate), the same order `public.unbilled_time_summary` reads in SQL (its Python twin serves mock mode and this
+  report). Each entry is floored once, so the engagement, client and firm
+  views add to the same worth (a property test). An entry nobody priced is `unpriced_minutes`, never worth 0, and **a row with
+  one has no realization**: a ratio against part of the worth is too high. A row with billable time, every minute priced and no
+  invoice has a realization of 0.0 (a figure, and listed). **A client's and the firm's ratio is taken on the engagements that have
+  billable time**: an independent read found the firm tile reading 10.00× and ₹10,000 an hour above rows of 1.00× and a dash
+  for a firm with a timed audit and a fixed-fee return nobody timed, because fees with no worth were put over the other
+  engagements' worth. Those fees are `revenue_without_time_paise` (on every row and the firm), fees on an invoice that names no
+  engagement are `revenue_without_engagement_paise`, and billable time that names none is `minutes_without_engagement`: named
+  beside the figure on the screen, in no row and no ratio. Which client an engagement is comes from the invoice and the entry
+  rows themselves and the engagement and client lists carry labels only, so a list cut short by the database's row cap costs
+  a name ("Unknown") and never a fee or an hour (the lists are still read unpaged: POST-A-428). Revenue per hour is `null` with
+  no billable time. **The firm's tile never showed
+  a figure for another reason**: the server answers `realization_rate` and the screen read `overall_realization_rate`; the
+  type now says what the server sends and `tests/test_realization_prices_each_hour_from_its_own_rate.py` holds the payload's keys
+  from the side that owns it. A window is `week`, `month`, `quarter` (to date) or `fy` with a `financial_year` (`FYLabel`): one
+  resolver, `analytics._period_range`, for `/profitability`, `/revenue-vs-effort` and `/concentration`; the year that is running
+  ends today and its label says "to date"; an unknown word is a 422 at the door (it used to be read as the month), so is a year
+  that has not started, and so is a `financial_year` with any other window (it would be ignored). The screen offers the running
+  year and the two before it, derived from the clock as it is in India (`financialYearChoices` called with India's day; the
+  browser's own zone offered a year the server refused, or missed the running one, for hours around 1 April), and the pure
+  `lib/practice/analyticsWindow` is run by its own unit test. The demo seeder sets the member whose hours it records to the
+  fixture's own seed cost rate (`DEMO_COST_RATE_PAISE`), read off the first time entry's answer, and only where that member
+  has no rate: a re-run never writes over one a Partner typed.
+  **Not done, and in the ledger:** a custom range of days (POST-A-427's remainder: it needs the date boxes' bounds and their
+  drive rows); revenue is still read from `fee_invoices`, so the day the surviving fee-billing engine is chosen (POST-B-193) the
+  revenue read is re-pointed, and the cost, the worth and the rules do not move. The seeded demo firm's hours are all
+  `is_billable: false` (the practice bills a fixed fee), so its realization is a dash and says "no billable time recorded".

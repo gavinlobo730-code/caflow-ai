@@ -153,6 +153,18 @@ def default_engagement(engagements: Iterable[Mapping]) -> EngagementChoice:
 NO_RATE_LIST_LIMIT = 200
 
 
+def entry_rate(entry: Mapping) -> object:
+    """What an hour of THIS entry bills at, as it was stored, or None when nobody said.
+
+    The rate priced on the entry when it was recorded (`billable_rate_paise`, migration 451) comes first and the legacy
+    `hourly_rate_paise` second, the order `public.unbilled_time_summary` reads (`COALESCE(billable_rate_paise,
+    hourly_rate_paise)`). A stated 0 is a rate, so it is not passed over for the second column. Returned unchecked: it is
+    `value_paise` that refuses a rate that is not a whole non-negative number. The unbilled-work screen and realization
+    both price an hour through this one function, so they cannot disagree about what the same hour is worth."""
+    billable = entry.get("billable_rate_paise")
+    return billable if billable is not None else entry.get("hourly_rate_paise")
+
+
 def entry_group(entry: Mapping) -> Optional[dict]:
     """One raw time entry as a single-entry GROUPED row, or None when it is not
     unbilled billable time at all (the rule `unbilled_time_summary` applies in
@@ -162,9 +174,7 @@ def entry_group(entry: Mapping) -> Optional[dict]:
     minutes = int(entry.get("duration_minutes") or 0)
     if minutes <= 0:
         return None
-    billable, hourly = entry.get("billable_rate_paise"), entry.get("hourly_rate_paise")
-    rate = billable if billable is not None else hourly
-    value = value_paise(minutes, rate)
+    value = value_paise(minutes, entry_rate(entry))
     return {
         "client_id": entry.get("client_id"),
         "task_id": entry.get("task_id"),

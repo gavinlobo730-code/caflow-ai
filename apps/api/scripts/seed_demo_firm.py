@@ -588,13 +588,36 @@ def _tasks(api: Api, c, client_id: str, fy: str, written: dict) -> None:
 def _time(api: Api, c, client_id: str, fy: str, engagement_ids: dict[str, str], written: dict) -> None:
     """Sittings of work against the client's own engagements (a record of effort: the fee is fixed). Each has an END as well as
     a start and a duration: an entry with no end is how a RUNNING timer is stored, and a person may run only one."""
+    member = None
     for e in fixture.time_entries_for(c, fy):
-        api.post("/api/time-entries", {
+        made = api.post("/api/time-entries", {
             "client_id": client_id, "engagement_id": engagement_ids.get(e.service_type), "description": e.description,
             "started_at": e.started_at, "ended_at": e.ended_at, "duration_minutes": e.duration_minutes,
             "is_billable": e.is_billable,
         })
         written["time_entries"] += 1
+        member = member or ((made.get("data") or {}).get("entry") or {}).get("user_id")
+    _price_the_members_hour(api, member, written)
+
+
+def _price_the_members_hour(api: Api, user_id: Optional[str], written: dict) -> None:
+    """Say what an hour of the member who recorded this time costs the practice, once for the run (POST-A-427).
+
+    Profitability prices every recorded hour at the member's cost rate (`users.cost_rate_paise`), and a member with none is
+    UNKNOWN: without this the seeded firm's every client would read "hours with no cost rate" until a Partner typed one. The
+    member is the one the entries were recorded for, read off the first answer, because nothing else tells the seeder who it
+    is signed in as. The figure is the fixture's own, named a seed's (`fixture.DEMO_COST_RATE_PAISE`), and is written through
+    the door the Profitability screen uses, and only for a member who has no rate: it never replaces one a Partner typed."""
+    if not user_id or written["cost_rates"]:
+        return
+    # A rate somebody has already set is theirs: a re-run (`--add-to-existing`) must not put the seed's figure over a
+    # Partner's own. Only a member with none is given one, and a member the list does not show is left alone.
+    staff = (api.get("/api/billing/staff-cost-rates").get("data") or [])
+    member = next((m for m in staff if str(m.get("id")) == str(user_id)), None)
+    if member is None or member.get("cost_rate_paise") is not None:
+        return
+    api.put(f"/api/billing/staff-cost-rates/{user_id}", {"cost_rate_paise": fixture.DEMO_COST_RATE_PAISE})
+    written["cost_rates"] += 1
 
 
 def _fee_billing(api: Api, fee_plan: list, written: dict) -> None:
@@ -1574,7 +1597,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "payroll_disbursed": 0,
                "bank_lines": 0, "bank_drafts": 0, "tans": 0,
                "engagements": 0, "obligations": 0,
-               "tasks": 0, "tasks_moved": 0, "time_entries": 0, "fee_invoices": 0, "fee_invoices_issued": 0,
+               "tasks": 0, "tasks_moved": 0, "time_entries": 0, "cost_rates": 0, "fee_invoices": 0, "fee_invoices_issued": 0,
                "fee_receipts": 0, "fee_invoices_not_yet_due": 0, "fee_receipts_not_yet_due": 0, "leads": 0,
                "bank_rules": 0, "bank_rules_skipped": 0,
                "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0,
