@@ -50,13 +50,6 @@ _READ = {
 }
 
 
-#: kind -> the statement that writes one line's unit, for the two documents whose issued state still takes a unit correction.
-_WRITE_UNIT = {
-    "sales_invoice": lambda db, line_id, doc, unit: db.table("client_sales_invoice_lines").update({"unit": unit}).eq("id", line_id).eq("sales_invoice_id", doc),
-    "purchase_bill": lambda db, line_id, doc, unit: db.table("purchase_bill_lines").update({"unit": unit}).eq("id", line_id).eq("bill_id", doc),
-}
-
-
 def _read_lines(db, document: str, document_id: str) -> list[dict]:
     """Every line the document holds now, in the order the document shows them, read in keyset pages: a document with more lines than
     PostgREST's row cap (a bill built from an import) would otherwise be recorded short, and the audit log can never be corrected."""
@@ -89,7 +82,14 @@ def set_line_units(db, document: str, document_id: str, firm_id: str, units: Opt
     new: dict[str, object] = {}
     for line_id, unit in units.items():
         value = unit or "NOS"
-        _WRITE_UNIT[document](db, line_id, document_id, value).execute()
+        # One literal chain per table, written here and not through a table of statements: `db` is the privileged client assigned above, which is what
+        # `tests/test_a_write_of_a_table_the_signed_in_role_cannot_write_is_made_on_a_client_that_can.py` reads from a write it can see in this function.
+        if document == "sales_invoice":
+            db.table("client_sales_invoice_lines").update({"unit": value}).eq("id", line_id).eq("sales_invoice_id", document_id).execute()
+        elif document == "purchase_bill":
+            db.table("purchase_bill_lines").update({"unit": value}).eq("id", line_id).eq("bill_id", document_id).execute()
+        else:
+            raise ValueError(f"{document!r} takes no unit correction")
         if line_id in held and held[line_id] != value:
             old[line_id], new[line_id] = held[line_id], value
     if new:
