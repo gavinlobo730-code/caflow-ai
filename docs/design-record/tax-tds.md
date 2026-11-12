@@ -207,6 +207,8 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   three answers are DIFFERENT, on the answers rather than on the data, so
   moving a reason in or out cannot make it vacuous.
 
+- **AN AIS FIGURE IS WHAT OTHERS REPORTED, SO IT IS OFFERED LINE BY LINE AND APPLIED ONLY TO AN EMPTY BOX** (TDS-INCOME-TAX-10, migration 455). The AIS import computed nothing and the computation read only the 26AS claim. `services/ais_computation_service.py` offers salary, interest and dividend with every payer behind each; accept fills a box only when it is empty, a typed figure that differs is flagged with the difference and kept, and a decision is stored on the figure it was made on so a changed statement shows it as stale and does not apply it (the `ais_service._carry_forward` choice, for the same reason). A sale of securities, a property sale, rent and a foreign remittance are refused a prefill with four different reasons (a consideration is not a gain; rent needs the house-property worksheet). The three working-paper panels hold no rate and no arithmetic and their fallback vocabularies are pinned from Python. Deliberately NOT done: the AIS key names were not checked against a real portal download; nothing is applied or filed by the server.
+
 ## From CLAUDE.md section: GSTR-2B reconciliation — the books are read in `apps/api`, and the answer is kept
 
 - **The 26AS reconciliation is the same rule and had the same defect

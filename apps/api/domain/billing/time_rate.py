@@ -5,8 +5,8 @@ WHAT WAS WRONG
 
     Hours were logged and could never become a bill. The timer carried no
     engagement and no rate; nothing gave a staff member a billing rate at all
-    (`users.cost_rate_paise` is capture-only and "NEVER used in any
-    computation"); and the one place that totalled unbilled work read a missing
+    (`users.cost_rate_paise` was capture-only and "NEVER used in any
+    computation" then; since POST-B-321 it is profitability's cost and still never a price); and the one place that totalled unbilled work read a missing
     rate as ZERO — which prints "this work is worth ₹0" for what is really
     "nobody has said what it is worth". Those are different statements and a CA
     acts differently on each: the first is a write-off, the second is a task.

@@ -114,7 +114,7 @@ def _calls(mock: MagicMock, verb: str) -> list[tuple]:
 
 
 ANALYTICS_READS = ["get_hours_by_employee", "get_hours_by_client", "get_firm_hours", "get_effort_by_engagement",
-                   "get_cost_by_client", "get_cost_by_engagement", "get_metrics_by_team_member"]
+                   "get_cost_entries"]
 
 
 @pytest.mark.parametrize("method", ANALYTICS_READS)

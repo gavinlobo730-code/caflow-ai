@@ -4,6 +4,8 @@ from datetime import datetime
 from repositories.base import BaseRepository
 from core.exceptions import NotFoundError
 from core.ist_clock import ist_today
+from core.db_paging import fetch_all
+from domain.practice import profitability
 from core import db_provider
 from core.observability import capture_soft_failure
 
@@ -261,92 +263,41 @@ class InvoiceRepository(BaseRepository[dict]):
         }).eq("id", id).eq("firm_id", firm_id).execute()
         return bool(result.data)
 
-    def get_revenue_by_period(
-        self,
-        firm_id: str,
-        date_from: str,
-        date_to: str,
-        statuses: list[str] = None,
-    ) -> dict[str, dict]:
+    #: What a revenue figure needs of a fee invoice and no more: whose it is, what for, how far along, when, and the fee.
+    REVENUE_COLUMNS = ("id", "client_id", "engagement_id", "status", "invoice_date", "amount_paise")
+
+    def fee_revenue_rows(self, firm_id: str, date_from: str, date_to: str) -> list[dict]:
+        """Every live fee invoice of the firm dated in the window that is revenue (issued, not a draft, not cancelled).
+
+        ONE READ FOR EVERY REVENUE FIGURE (POST-B-321). The three `get_revenue_*` answers below and the screens behind
+        them used to read `find_all`'s whole rows, unpaged, and add every status; they read these six columns instead,
+        in keyset pages, so a firm with more than a thousand invoices in a window is not silently short, and what counts
+        as revenue is `domain/practice/profitability` and nothing here.
         """
-        Get revenue aggregated by engagement for a given period.
-
-        Args:
-            firm_id: The firm ID to filter by
-            date_from: ISO date string (YYYY-MM-DD)
-            date_to: ISO date string (YYYY-MM-DD)
-            statuses: List of invoice statuses to include (default: ['Issued', 'Paid'])
-
-        Returns:
-            dict with engagement_id as key and {revenue_paise, invoice_count} as value
-        """
-        if statuses is None:
-            statuses = ['Issued', 'Paid']
-
-        invoices = self.find_all(
-            firm_id=firm_id,
-            date_from=date_from,
-            date_to=date_to,
+        if _USE_MOCK:
+            return [
+                {k: i.get(k) for k in self.REVENUE_COLUMNS}
+                for i in MOCK_INVOICES
+                if not i.get("is_deleted") and i.get("firm_id") == firm_id
+                and date_from <= (i.get("invoice_date") or "") <= date_to
+                and profitability.counts_as_revenue(i)
+            ]
+        return fetch_all(
+            # A LITERAL, for `tests/test_paginated_selects_carry_their_key.py`, which reads the projection off the source to
+            # check it holds the paging key; `tests/test_the_practices_profitability_is_true.py` holds it equal to REVENUE_COLUMNS.
+            lambda: (_get_db().table("fee_invoices").select("id, client_id, engagement_id, status, invoice_date, amount_paise")
+                     .eq("is_deleted", False).eq("firm_id", firm_id)
+                     .gte("invoice_date", date_from).lte("invoice_date", date_to)
+                     .in_("status", list(profitability.COUNTED_STATUSES))),
+            key="id", label="fee invoices for revenue",
         )
 
-        by_engagement: dict[str, dict] = {}
-        for invoice in invoices:
-            if invoice.get("status") not in statuses:
-                continue
-
-            engagement_id = invoice.get("engagement_id")
-            if not engagement_id:
-                continue
-
-            revenue_paise = invoice.get("total_paise", 0)
-
-            if engagement_id not in by_engagement:
-                by_engagement[engagement_id] = {
-                    "revenue_paise": 0,
-                    "invoice_count": 0,
-                }
-
-            by_engagement[engagement_id]["revenue_paise"] += revenue_paise
-            by_engagement[engagement_id]["invoice_count"] += 1
-
-        return by_engagement
-
     def get_revenue_by_client(self, firm_id: str, date_from: str, date_to: str) -> dict[str, int]:
-        """
-        Get total revenue (amount_paise) grouped by client_id.
-        Returns: {client_id: total_amount_paise}
-        All values in paise (integer arithmetic).
-        """
-        invoices = self.find_all(firm_id=firm_id, date_from=date_from, date_to=date_to)
-        revenue_by_client: dict[str, int] = {}
-        for inv in invoices:
-            client_id = inv.get("client_id")
-            if client_id:
-                amount_paise = inv.get("amount_paise", 0)
-                revenue_by_client[client_id] = revenue_by_client.get(client_id, 0) + amount_paise
-        return revenue_by_client
+        """Fee revenue (before GST, issued invoices only) per client: `{client_id: paise}`."""
+        return profitability.revenue_by_client(self.fee_revenue_rows(firm_id, date_from, date_to))
 
     def get_revenue_by_engagement(self, firm_id: str, date_from: str, date_to: str) -> dict[str, dict]:
-        """
-        Get revenue grouped by engagement_id with engagement and client details.
-        Returns: {engagement_id: {engagement_id, client_id, client_name, service_type, revenue_paise}}
-        All values in paise (integer arithmetic).
-        """
-        invoices = self.find_all(firm_id=firm_id, date_from=date_from, date_to=date_to)
-        revenue_by_engagement: dict[str, dict] = {}
-        for inv in invoices:
-            eng_id = inv.get("engagement_id")
-            if eng_id:
-                if eng_id not in revenue_by_engagement:
-                    revenue_by_engagement[eng_id] = {
-                        "engagement_id": eng_id,
-                        "client_id": inv.get("client_id"),
-                        "client_name": None,
-                        "service_type": None,
-                        "revenue_paise": 0,
-                    }
-                revenue_by_engagement[eng_id]["revenue_paise"] += inv.get("amount_paise", 0)
-        return revenue_by_engagement
-
+        """Fee revenue per engagement: `{engagement_id: {engagement_id, client_id, revenue_paise, invoice_count}}`."""
+        return profitability.revenue_by_engagement(self.fee_revenue_rows(firm_id, date_from, date_to))
 
 invoice_repo = InvoiceRepository()

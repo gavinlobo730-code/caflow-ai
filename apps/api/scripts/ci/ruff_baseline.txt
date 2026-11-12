@@ -156,8 +156,6 @@ routers/ais.py :: B904 :: save_working :: 1
 routers/ais.py :: B904 :: upload_statement :: 2
 routers/analytics.py :: C901 :: revenue_vs_effort :: 16
 routers/analytics.py :: F401 :: _client_period_metrics :: 1
-routers/analytics.py :: F841 :: profitability_analytics :: 1
-routers/analytics.py :: F841 :: revenue_vs_effort :: 1
 routers/assignments.py :: F401 :: <module> :: 1
 routers/audit.py :: B904 :: get_audit_log :: 1
 routers/audit.py :: B904 :: get_entity_history :: 1
@@ -816,7 +814,6 @@ tests/test_production_readiness_audit.py :: F401 :: <module> :: 2
 tests/test_production_readiness_audit.py :: F401 :: TestDepreciationEngine.test_fully_depreciated_asset_zero_depreciation :: 1
 tests/test_production_readiness_audit.py :: F401 :: TestMultiTenancyScoping.test_purchase_bills_list_includes_firm_id :: 1
 tests/test_production_readiness_audit.py :: F841 :: TestMultiTenancyScoping.test_firm_id_is_always_set_from_jwt :: 1
-tests/test_profitability_analytics.py :: F401 :: <module> :: 2
 tests/test_public_urls_have_one_source.py :: F401 :: <module> :: 1
 tests/test_purchase_bill_attachment.py :: F841 :: test_document_url_endpoint_mints_fresh_signed_url :: 1
 tests/test_purchase_bill_cancellation.py :: F841 :: test_cannot_cancel_draft_bill :: 1

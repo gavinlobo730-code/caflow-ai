@@ -477,9 +477,10 @@ def preview_due(firm_id: str, as_of: Optional[str] = None) -> list[dict]:
 
 
 # ── Batch 5: billable / cost-rate capture + unbilled-work visibility ─────────
-# Data-capture only. NO realization / margin / profitability / forecasting /
-# utilization. cost_rate_paise is captured + partner-visible but is NEVER used in
-# any computation here.
+# This module captures and shows rates; it computes no margin. `users.cost_rate_paise` — what an hour of a member's
+# time costs the practice — IS read by one computation, `/api/analytics/profitability` (POST-B-321), through
+# `cost_rates_by_user` below: cost is that rate times the hours the member recorded, and a member with no rate is
+# unknown there, never zero. It is not what an hour BILLS at, which is `default_billable_rate_paise`.
 
 MOCK_COST_RATES: dict = {}   # mock-mode staff cost rates {user_id: paise}
 
@@ -563,14 +564,34 @@ def _staff_names(firm_id: str, user_ids: set) -> dict:
     return {str(r["id"]): r.get("full_name") or r.get("email") for r in rows}
 
 
-def list_staff_cost_rates(firm_id: str) -> list[dict]:
-    """Staff cost rates (partner-visible). Capture/display only."""
+def cost_rates_by_user(firm_id: str) -> dict[str, Optional[int]]:
+    """`{user_id: cost rate in whole paise, or None}` for every member of the firm: what profitability prices an hour at.
+
+    None is "nobody has said what an hour of this person costs" and is not 0. The privileged client, naming the firm,
+    for `list_staff_cost_rates`'s reason: `users` shows a signed-in caller their own row only. Read in keyset pages,
+    because a figure is built from it."""
+    from core.db_paging import fetch_all
+    from domain.practice import profitability
     if _USE_MOCK:
-        return [{"user_id": uid, "cost_rate_paise": rate} for uid, rate in MOCK_COST_RATES.items()]
+        return profitability.clean_cost_rates(MOCK_COST_RATES)
+    rows = fetch_all(
+        lambda: db_provider.service_db().table("users").select("id, cost_rate_paise").eq("firm_id", firm_id),
+        key="id", label="staff cost rates",
+    )
+    return profitability.clean_cost_rates({r["id"]: r.get("cost_rate_paise") for r in rows})
+
+
+def list_staff_cost_rates(firm_id: str) -> list[dict]:
+    """Staff cost rates (partner-visible), one row per member: `id`, `full_name`, `role`, `is_active`, `cost_rate_paise`
+    (None when nobody has said). The same keys in mock and live mode: the mock used to answer `user_id` where the
+    database answers `id`, so a screen written against one would have shown nothing against the other."""
+    if _USE_MOCK:
+        return [{"id": uid, "full_name": None, "role": None, "is_active": True, "cost_rate_paise": rate}
+                for uid, rate in MOCK_COST_RATES.items()]
     # The privileged client, naming the firm: `users` shows a signed-in caller their own row only (migrations 153 and 506),
     # so read as the caller this listed one person, the Partner asking, as though that were the firm's staff. The route has
     # asked billing:read and the statement is pinned to the caller's firm.
-    rows = (db_provider.service_db().table("users").select("id, full_name, role, cost_rate_paise")
+    rows = (db_provider.service_db().table("users").select("id, full_name, role, is_active, cost_rate_paise")
             .eq("firm_id", firm_id).execute().data or [])
     return rows
 

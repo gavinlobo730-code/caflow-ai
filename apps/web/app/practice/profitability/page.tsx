@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IndianRupee, RefreshCw, TrendingDown, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
   ProfitabilityPayload,
+  ProfitabilityStatus,
   RealizationPayload,
   ConcentrationPayload,
 } from "@/lib/api";
@@ -12,6 +13,9 @@ import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { CostRatesPanel } from "@/components/practice/CostRatesPanel";
+import { formatHours } from "@/lib/data/analytics";
 
 /**
  * Which clients make the practice money — Phase 3a-2.
@@ -43,6 +47,15 @@ import { PageHeader } from "@/components/ui/page-header";
  * time was WORTH at the recorded rate — so an engagement can be profitable and
  * still be recovering 60 paise in the rupee, which is the one a practice acts
  * on when it re-prices.
+ *
+ * AN UNKNOWN IS A DASH, NEVER A NUMBER (POST-B-321). Revenue is the fee before
+ * GST on invoices that were issued; cost is each person's COST rate times the
+ * hours they recorded. Where a client's cost cannot be known — a person with no
+ * cost rate recorded some of its hours, or no time was recorded against it at
+ * all — the server answers `null` for its profit and margin and this screen
+ * draws a dash and says why, because revenue less nothing is not a profit. A
+ * client with time and no invoice is listed with its loss. The Partner sets the
+ * rates in the panel at the foot of the page; every figure here is served.
  */
 
 const PERIODS: { id: string; label: string }[] = [
@@ -50,6 +63,28 @@ const PERIODS: { id: string; label: string }[] = [
   { id: "quarter", label: "This quarter" },
   { id: "week", label: "This week" },
 ];
+
+/** What sits under the Cost tile: which cost it is. A `null` is a dash and says why. */
+function costHint(m: ProfitabilityPayload["firm_metrics"]): string {
+  if (m.total_cost_paise === null) {
+    return m.unrated_minutes > 0 ? "no hours have a cost rate yet" : "no time recorded against clients";
+  }
+  return m.cost_is_complete
+    ? "time recorded against clients, at each person's cost rate"
+    : "only the hours that have a cost rate";
+}
+
+/** A figure the server could not give is a dash. Never a zero: nothing here is computed. */
+const DASH = "—";
+const paiseOrDash = (paise: number | null | undefined) =>
+  paise === null || paise === undefined ? DASH : formatPaise(paise);
+
+/** What a row with no margin says instead, in words a Partner acts on. */
+const STATUS_NOTE: Partial<Record<ProfitabilityStatus, string>> = {
+  not_billed: "Time recorded, nothing billed",
+  no_time: "No time recorded",
+  unpriced: "Hours with no cost rate",
+};
 
 function Figure({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -62,6 +97,9 @@ function Figure({ label, value, hint }: { label: string; value: string; hint?: s
 }
 
 export default function ProfitabilityPage() {
+  const { can } = usePermissions();
+  // The Partner sets the rates; the server (`billing:write`) is what refuses anybody else, this is courtesy.
+  const canEditRates = can("billing", "write");
   const [period, setPeriod] = useState("month");
   const [profit, setProfit] = useState<ProfitabilityPayload | null>(null);
   const [realization, setRealization] = useState<RealizationPayload | null>(null);
@@ -76,7 +114,11 @@ export default function ProfitabilityPage() {
    *  must not make the page say it could not load profitability. */
   const [concentration, setConcentration] = useState<ConcentrationPayload | null>(null);
 
+  /** Which request is the newest. A slow answer to an older one must not overwrite a newer one (the period changed, or a
+   *  rate was saved while the first load was still out): the select and the figures would then disagree. */
+  const requestId = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++requestId.current;
     setLoading(true);
     setError(null);
     setUnread([]);
@@ -94,8 +136,9 @@ export default function ProfitabilityPage() {
         // above intact.
         api.analytics.concentration(period),
       ]);
+      if (mine !== requestId.current) return;
       const prof = p?.success
-        ? objectWithLists<ProfitabilityPayload>(p.data, "by_client")
+        ? objectWithLists<ProfitabilityPayload>(p.data, "by_client", "cost_rates_missing", "not_measured")
         : null;
       const real = r?.success
         ? objectWithLists<RealizationPayload>(r.data, "by_client")
@@ -121,9 +164,10 @@ export default function ProfitabilityPage() {
         setError(p?.error || r?.error || "Could not load profitability.");
       }
     } catch (e) {
+      if (mine !== requestId.current) return;
       setError(e instanceof Error ? e.message : "Could not load profitability.");
     } finally {
-      setLoading(false);
+      if (mine === requestId.current) setLoading(false);
     }
   }, [period]);
 
@@ -131,8 +175,15 @@ export default function ProfitabilityPage() {
     load();
   }, [load]);
 
+  // What the cost-rate panel calls after a save: the CURRENT load, not the one from the render in which Save was pressed.
+  const loadRef = useRef(load);
+  useEffect(() => { loadRef.current = load; }, [load]);
+  const reload = useCallback(() => { void loadRef.current(); }, []);
+
   const m = profit?.firm_metrics;
   const clients = profit?.by_client ?? [];
+  const missingRates = profit?.cost_rates_missing ?? [];
+  const notMeasured = profit?.not_measured ?? [];
   // `realization_rate` is keyed on the client, so the two tables join without
   // a second request. A client the realization read does not carry simply has
   // no rate — it is not zero, and a dash says so.
@@ -190,17 +241,22 @@ export default function ProfitabilityPage() {
       {!loading && !error && m && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Figure label="Revenue" value={formatPaise(m.total_revenue_paise)} />
-          <Figure label="Cost of delivery" value={formatPaise(m.total_cost_paise)}
-                  hint="time recorded, at its rate" />
-          <Figure label="Profit" value={formatPaise(m.profit_paise)}
-                  hint={`${m.profit_margin_pct}% margin`} />
+          <Figure label="Cost of delivery" value={paiseOrDash(m.total_cost_paise)} hint={costHint(m)} />
+          <Figure label="Profit" value={paiseOrDash(m.profit_paise)}
+                  hint={m.profit_paise === null
+                    ? (m.clients_without_cost === 1
+                      ? "1 client has no cost yet"
+                      : `${m.clients_without_cost} clients have no cost yet`)
+                    : m.profit_margin_pct === null ? "no revenue" : `${m.profit_margin_pct}% margin`} />
           <Figure
             label="Realization"
             value={realization?.overall_realization_rate
               ? `${realization.overall_realization_rate.toFixed(2)}×`
               : "—"}
             hint={realization
-              ? `${formatPaise(realization.avg_revenue_per_hour_paise)} / hour`
+              ? (realization.total_billable_minutes > 0
+                ? `${formatPaise(realization.avg_revenue_per_hour_paise)} / hour`
+                : "no billable time recorded")
               : "not recorded"}
           />
         </div>
@@ -211,6 +267,33 @@ export default function ProfitabilityPage() {
           {unread.join(" and ")} could not be read for this period, so the
           figures below are short of {unread.length === 1 ? "that one" : "those"}.
         </p>
+      )}
+
+      {!loading && !error && m && !m.cost_is_complete && (
+        <div className="bg-state-problem-surface border border-state-problem-border rounded-xl p-4 space-y-1.5">
+          <p className="text-xs font-semibold text-state-problem">The profit is not shown, because some of the cost is not known.</p>
+          {missingRates.length > 0 && (
+            <p className="text-xs text-ps-body leading-relaxed">
+              {formatHours(m.unrated_minutes)} recorded by{" "}
+              {missingRates.slice(0, 3).map((c) => (missingRates.length === 1 ? c.user_name : `${c.user_name} (${formatHours(c.minutes)})`)).join(", ")}
+              {missingRates.length > 3 ? ` and ${missingRates.length - 3} more` : ""}{" "}
+              has no cost rate, so it is in no client&apos;s cost.{canEditRates ? " Set the rates at the foot of this page." : " A Partner sets the rates."}
+            </p>
+          )}
+          {clients.some((c) => c.status === "no_time") && (
+            <p className="text-xs text-ps-body leading-relaxed">
+              {clients.filter((c) => c.status === "no_time").length} billed{" "}
+              {clients.filter((c) => c.status === "no_time").length === 1 ? "client has" : "clients have"} no time
+              recorded against {clients.filter((c) => c.status === "no_time").length === 1 ? "it" : "them"}, so what they cost to serve is not known.
+            </p>
+          )}
+          {m.clients_with_cost > 0 && (
+            <p className="text-xs text-ps-body leading-relaxed">
+              On the {m.clients_with_cost} {m.clients_with_cost === 1 ? "client" : "clients"} whose cost is known, the profit is{" "}
+              <span className="tabular-nums font-medium">{formatPaise(m.profit_on_known_paise)}</span>.
+            </p>
+          )}
+        </div>
       )}
 
       {/* 3c-3 — the question the table below cannot answer: if the largest
@@ -300,11 +383,19 @@ export default function ProfitabilityPage() {
 
       {!loading && !error && m && clients.length === 0 && (
         <div className="bg-white rounded-xl border border-ps-border p-8 text-center space-y-2">
-          <p className="text-sm font-semibold text-ps-ink">Nothing billed in this period</p>
+          <p className="text-sm font-semibold text-ps-ink">
+            {(m?.minutes_without_client ?? 0) > 0
+              ? "Nothing billed and no time recorded against a client in this period"
+              : "Nothing billed and no time recorded in this period"}
+          </p>
           <p className="text-xs text-ps-hint max-w-md mx-auto">
-            Profitability is measured on invoices issued or paid within the
-            period, against the time recorded against them. Neither exists for{" "}
-            {profit?.period ?? "this period"} yet.
+            Profitability is measured on invoices that are issued, by the
+            invoice&apos;s own date (a draft or a cancelled invoice does not
+            count), against the time recorded against each client. Neither
+            exists for {profit?.period ?? "this period"} yet.
+            {(m?.minutes_without_client ?? 0) > 0 && (
+              <> {formatHours(m?.minutes_without_client ?? 0)} recorded against no client is in no client&apos;s cost.</>
+            )}
           </p>
         </div>
       )}
@@ -328,12 +419,22 @@ export default function ProfitabilityPage() {
                   const r = rateFor.get(c.client_id);
                   return (
                     <tr key={c.client_id} className="border-b border-ps-border last:border-0 hover:bg-ps-bg">
-                      <td className="px-4 py-2.5 font-medium text-ps-ink">{c.client_name}</td>
+                      <td className="px-4 py-2.5 font-medium text-ps-ink">
+                        {c.client_name}
+                        {STATUS_NOTE[c.status] && (
+                          <span className="block text-3xs font-normal text-ps-hint">{STATUS_NOTE[c.status]}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">
                         {formatPaise(c.revenue_paise)}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">
-                        {formatPaise(c.cost_paise)}
+                        {paiseOrDash(c.cost_paise)}
+                        {c.unrated_minutes > 0 && (
+                          <span className="block text-3xs text-ps-hint">
+                            and {formatHours(c.unrated_minutes)} with no cost rate
+                          </span>
+                        )}
                       </td>
                       {/* A LOSS is a `problem` and a profit is not a `ready` —
                           a profitable client is the ordinary case and painting
@@ -342,12 +443,12 @@ export default function ProfitabilityPage() {
                           coloured. */}
                       <td className={cn(
                         "px-4 py-2.5 text-right tabular-nums font-semibold",
-                        c.profit_paise < 0 ? "text-state-problem" : "text-ps-ink",
+                        c.profit_paise !== null && c.profit_paise < 0 ? "text-state-problem" : "text-ps-ink",
                       )}>
-                        {formatPaise(c.profit_paise)}
+                        {paiseOrDash(c.profit_paise)}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">
-                        {c.profit_margin_pct}%
+                        {c.profit_margin_pct === null ? DASH : `${c.profit_margin_pct}%`}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">
                         {r?.realization_rate ? `${r.realization_rate.toFixed(2)}×` : "—"}
@@ -359,29 +460,40 @@ export default function ProfitabilityPage() {
             </table>
           </div>
           <div className="px-4 py-2 border-t border-ps-border bg-ps-bg space-y-1">
-            <p className="text-3xs text-ps-hint flex items-center gap-1.5">
-              <IndianRupee size={10} className="shrink-0" />
-              Cost is the time recorded against the client at its own hourly
-              rate. A client with no time recorded shows its whole revenue as
-              profit — that is an absence of data, not a margin.
-            </p>
+            {notMeasured.map((sentence) => (
+              <p key={sentence} className="text-3xs text-ps-hint flex items-start gap-1.5">
+                <IndianRupee size={10} className="shrink-0 mt-0.5" />
+                {sentence}
+              </p>
+            ))}
             <p className="text-3xs text-ps-hint flex items-center gap-1.5">
               <Clock size={10} className="shrink-0" />
               Realization is revenue against what that time was worth at the
               recorded rate. 1.00× recovers it exactly; below that the
               engagement is under-priced or over-served.
             </p>
-            {clients.some((c) => c.profit_paise < 0) && (
+            {clients.some((c) => c.profit_paise !== null && c.profit_paise < 0) && (
               <p className="text-3xs text-state-problem flex items-center gap-1.5">
                 <TrendingDown size={10} className="shrink-0" />
-                {clients.filter((c) => c.profit_paise < 0).length} client
-                {clients.filter((c) => c.profit_paise < 0).length === 1 ? "" : "s"} cost
+                {clients.filter((c) => c.profit_paise !== null && c.profit_paise < 0).length} client
+                {clients.filter((c) => c.profit_paise !== null && c.profit_paise < 0).length === 1 ? "" : "s"} cost
                 more to serve than they billed in this period.
+              </p>
+            )}
+            {m && (m.minutes_without_client ?? 0) > 0 && (
+              <p className="text-3xs text-ps-hint flex items-center gap-1.5">
+                <Clock size={10} className="shrink-0" />
+                {formatHours(m.minutes_without_client ?? 0)} recorded against no client {m.minutes_without_client === 1 ? "is" : "are"} in no
+                client&apos;s cost.
               </p>
             )}
           </div>
         </div>
       )}
+
+      {/* Only for somebody who may SET a rate (billing:write): the server's list asks the same, because a rate is derived from a
+          person's pay. Outside every `loading` branch, so a rate typed here is not lost when the figures above reload. */}
+      {canEditRates && <CostRatesPanel onSaved={reload} />}
     </div>
   );
 }

@@ -309,7 +309,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE ASSIGNMENT SCOPE READS THE CALLER'S CLIENTS ONCE PER QUERY, AND THE DRIFT GUARD FOLDS THE REWRITE BACK TO THE CALL IT REPLACED
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 
-### `docs/design-record/screens-and-site.md` (27 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (28 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -338,6 +338,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DATE A TABLE PRINTS GOES THROUGH THE ONE MODULE, AND THE RULE READS WHAT A JSX CHILD RENDERS
 - THE STATEMENTS' FILTER CHOOSES ROWS AND NOTHING ELSE, THE BRANDING PREVIEW NO LONGER DRAWS THE ACCENT AS IF
 - A DATE BOX WHOSE BOUND MOVES JUDGES THE DAY IT HOLDS AGAIN
+- THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH
+
 ### `docs/design-record/tax-gst.md` (39 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
 - A CLIENT IS ONE LEGAL PERSON AND MAY HOLD SEVERAL GSTINs, and until migration 390 the return tables forbade it
@@ -402,7 +404,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ITR-6'S GROSS BLOCK IS FILLED ONLY WHERE EACH LEDGER LINE TIES
 - A BROUGHT-FORWARD LOSS IS OFFERED FROM ITS RECORD, USED PER FILING AND PER YEAR, AND AN UPDATED RETURN WRITES NOTHING
 
-### `docs/design-record/tax-tds.md` (23 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (24 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -427,6 +429,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TDS SCREEN READS ITS FOUR LISTS THROUGH THE API AS WINDOWS THE SERVER ORDERS AND COUNTS, TWO DEDUCTIONS OF ONE DAY ARE PUT IN ONE
 - A RECORDED TDS CHALLAN POINTS AT THE LEDGER ENTRY THAT PAID IT, AND POSTS NOTHING
 - ONE LEDGER ENTRY PAYS ONE CHALLAN IN THE DATABASE, A STORED LINK TO AN ENTRY IS ALWAYS THE ROW'S OWN CLIENT'S, AND THE
+- AN AIS FIGURE IS WHAT OTHERS REPORTED, SO IT IS OFFERED LINE BY LINE AND APPLIED ONLY TO AN EMPTY BOX
 
 ### `docs/design-record/tenancy-and-security.md` (85 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
@@ -1065,8 +1068,6 @@ and that module disagree, the module wins and the prose gets fixed.
 - **s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE** (TDS-INCOME-TAX-30, migration 454). One Rs 10,000 limit was held, with the Finance Act 2025 limits for a bank deposit (Rs 50,000) and a senior citizen's deposit (Rs 1,00,000) marked "not modelled". The finding's own reading (bank / senior / other as payee classes) would have UNDER-deducted on the commonest s.194A payment: the senior limit exists only INSIDE the bank-deposit limb, so a company paying a pensioner interest on a loan withholds at Rs 10,000 whoever is paid. `vendors.interest_threshold_class` is therefore a three-answer class (ordinary, bank_deposit, bank_deposit_senior), nullable with no backfill, and `ordinary` is a word for taking a class back because PATCH drops a null. `resolve_tds(threshold_class=)` refuses a class on a section with one limit and ignores it before FY 2025-26. NULL reads as Rs 10,000 (the lower, which cannot under-deduct), so no existing supplier's withholding changes. Deliberately NOT done: interest paid TO a bank (s.194A(3)(iii)) is named, not modelled; `THRESHOLD_CLASSES_194A_VERIFIED` is False.
 
 - **A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT** (TDS-INCOME-TAX-31). `payment_code_for` existed and nothing put it on a statement line. `domain/tds/deductee_payment_code.py` puts it on each deductee row of the 24Q/26Q/27Q builders (keys always present, null for a 1961-Act period). s.194C's code is read off the PAN's fourth character (P/H -> 1023; C,F,A,T,B,L,J,G -> 1024), never off the stored rate; s.192 -> 1002 with a stated non-government assumption; 194A, 194J(b) and the bare 194I/194J are named gaps, each with its own reason, and the keying sheet names rows with no code. Deliberately NOT done: the table is still a confirmed subset, and no RPU/FVU file is produced (TDS-16).
-
-- **AN AIS FIGURE IS WHAT OTHERS REPORTED, SO IT IS OFFERED LINE BY LINE AND APPLIED ONLY TO AN EMPTY BOX** (TDS-INCOME-TAX-10, migration 455). The AIS import computed nothing and the computation read only the 26AS claim. `services/ais_computation_service.py` offers salary, interest and dividend with every payer behind each; accept fills a box only when it is empty, a typed figure that differs is flagged with the difference and kept, and a decision is stored on the figure it was made on so a changed statement shows it as stale and does not apply it (the `ais_service._carry_forward` choice, for the same reason). A sale of securities, a property sale, rent and a foreign remittance are refused a prefill with four different reasons (a consideration is not a gain; rent needs the house-property worksheet). The three working-paper panels hold no rate and no arithmetic and their fallback vocabularies are pinned from Python. Deliberately NOT done: the AIS key names were not checked against a real portal download; nothing is applied or filed by the server.
 
 _Longer design records for this area were moved to `docs/design-record/tax-tds.md`, `docs/design-record/tax-income-tax.md`, `docs/design-record/payroll.md`, `docs/design-record/fixed-assets-and-inventory.md`, `docs/design-record/documents-sales-purchase.md`, `docs/design-record/tax-gst.md`, `docs/design-record/filing-and-compliance.md`; see the Design record index._
 

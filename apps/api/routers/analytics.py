@@ -6,6 +6,8 @@ from models.fy import OptionalFYLabel
 from core.permissions import rbac
 from datetime import timedelta
 from repositories.time_tracking_analytics_repository import time_tracking_analytics_repo
+from domain.practice import profitability as rule_profit
+from services import billing_service
 from repositories.invoice_repository import invoice_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
@@ -57,6 +59,17 @@ def _period_range(period: str) -> tuple[str, str, str]:
     return start.isoformat(), today.isoformat(), label
 
 
+def _unrated_people(entries: list[dict], rates: dict, user_map: dict) -> list[dict]:
+    """The members whose recorded hours have no cost rate, the most hours first, named for the screen that asks the
+    Partner to set one."""
+    return [
+        {"user_id": uid,
+         "user_name": user_map.get(uid, "A member no longer on the team") if uid else "A member no longer on the team",
+         "minutes": minutes}
+        for uid, minutes in rule_profit.unrated_people(entries, rates)
+    ]
+
+
 @router.get("/profitability")
 def profitability_analytics(
     period: str = "month",
@@ -67,17 +80,20 @@ def profitability_analytics(
     _fees: dict = Depends(rbac("billing", "read")),  # revenue is the practice's fee economics (POST-B-024)
 ):
     """
-    Get profitability analytics for the firm.
-    Profitability = Revenue - Cost
-    Cost = effort_minutes * hourly_rate_paise / 60
-    All calculations in integer paise arithmetic.
+    Profitability for the firm: fee revenue less what the time spent on it cost.
+
+    Revenue is the fee BEFORE GST on invoices that are issued, in the period of the invoice's own date (Draft and Cancelled count for nothing). Cost is each
+    member's cost rate (`users.cost_rate_paise`) times the hours they recorded; a member with no rate is UNKNOWN, and a
+    client with any such hours, or with no hours at all, has no profit and no margin shown (POST-B-321). A client the
+    practice recorded time on and never billed is on the list with revenue 0. `domain/practice/profitability` is the
+    rule; all arithmetic is integer paise.
     """
     firm_id = current_user.get("firm_id")
     date_from, date_to, label = _period_range(period)
-    db = _get_db()
 
-    # Get all clients for lookup
-    all_clients = client_repo.find_all(firm_id=firm_id)
+    # Get all clients for lookup. ARCHIVED ONES TOO: a client archived during the period still has its fees and its hours in
+    # it, and without its name the row would read "Unknown" beside real money.
+    all_clients = client_repo.find_all(firm_id=firm_id, include_archived=True)
     client_map = {c["id"]: c.get("client_name", "Unknown") for c in all_clients}
 
     # Get all users for lookup
@@ -91,9 +107,10 @@ def profitability_analytics(
         "client_id": e.get("client_id"),
     } for e in all_engagements}
 
-    # Get revenue and cost data
-    revenue_by_client = invoice_repo.get_revenue_by_client(firm_id, date_from, date_to)
-    cost_by_client = time_tracking_analytics_repo.get_cost_by_client(firm_id, date_from, date_to)
+    # The two reads the answer is built from, each read in full: the issued fee invoices and the ended time entries.
+    invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
+    entries = time_tracking_analytics_repo.get_cost_entries(firm_id, date_from, date_to)
+    rates = billing_service.cost_rates_by_user(firm_id)
 
     # M2: by_client / by_engagement below NAME every client (client_name plus
     # revenue, cost, margin and a health status), so an unassigned Executive
@@ -106,6 +123,10 @@ def profitability_analytics(
     # would mean deriving them from rows the caller is not allowed to see, and
     # would let an Executive read the firm's aggregate commercial position by
     # subtracting their own book. A firm-wide role (_eff is None) is unchanged.
+    #
+    # THE TIME ENTRIES ARE NARROWED TOO, which the member view never was: `include_by_team` summed every entry of the
+    # firm for whoever asked, so an Executive with fee access read each colleague's hours and cost on clients they are
+    # not assigned to. Time recorded against no client belongs to no client of the caller and is left out for them.
     from core.authz import effective_client_ids
     _eff = effective_client_ids(current_user)
     if _eff is not None:
@@ -114,112 +135,96 @@ def profitability_analytics(
             k: v for k, v in engagement_map.items()
             if str(v.get("client_id")) in _eff
         }
-        revenue_by_client = {k: v for k, v in revenue_by_client.items() if str(k) in _eff}
-        cost_by_client = {k: v for k, v in cost_by_client.items() if str(k) in _eff}
+        invoices = [i for i in invoices if str(i.get("client_id")) in _eff]
+        entries = [e for e in entries if str(e.get("client_id")) in _eff]
 
-    # Firm-level metrics
-    total_revenue_paise = sum(revenue_by_client.values())
-    total_cost_paise = sum(cost_by_client.values())
-    total_profit_paise = total_revenue_paise - total_cost_paise
-    total_profit_margin_pct = (total_profit_paise / total_revenue_paise * 100) if total_revenue_paise > 0 else 0.0
-    num_clients_billed = len(revenue_by_client)
-    avg_profit_per_client = (total_profit_paise // num_clients_billed) if num_clients_billed > 0 else 0
+    revenue_by_client = rule_profit.revenue_by_client(invoices)
+    effort_by_client = rule_profit.fold_effort(entries, rates, "client_id")
+    rows = rule_profit.positions(revenue_by_client, effort_by_client)
+    tot = rule_profit.totals(rows)
+    without_client = effort_by_client.get(None)
 
     firm_metrics = {
-        "total_revenue_paise": total_revenue_paise,
-        "total_cost_paise": total_cost_paise,
-        "profit_paise": total_profit_paise,
-        "profit_margin_pct": round(total_profit_margin_pct, 2),
-        "num_clients_billed": num_clients_billed,
-        "avg_profit_per_client_paise": avg_profit_per_client,
+        "total_revenue_paise": tot.revenue_paise,
+        # What the hours that HAVE a cost rate cost: short of the whole cost while `unrated_minutes` or
+        # `clients_without_cost` is above 0 (`cost_is_complete` says which), and None when no hour has a rate at all:
+        # a sum of nothing is not a cost of 0.
+        "total_cost_paise": tot.priced_cost_paise,
+        "cost_is_complete": tot.cost_is_complete,
+        "unrated_minutes": tot.unrated_minutes,
+        # None while any client's cost is unknown. `profit_on_known_paise` is the profit of the `clients_with_cost`
+        # clients alone, so the screen can still say something true with its scope named.
+        "profit_paise": tot.profit_paise,
+        "profit_margin_pct": tot.margin_pct,
+        "profit_on_known_paise": tot.profit_on_known_paise,
+        "clients_with_cost": tot.clients_with_cost,
+        "clients_without_cost": tot.clients_without_cost,
+        "num_clients_billed": tot.clients_billed,
+        "num_clients_not_billed": tot.clients_not_billed,
+        "avg_profit_per_client_paise": tot.avg_profit_per_billed_client_paise,
+        # None for a caller assigned to some clients only: time with no client is not theirs to see, and 0 would say "none".
+        "minutes_without_client": (without_client.minutes if without_client else 0) if _eff is None else None,
     }
 
     result = {
         "period": label,
         "firm_metrics": firm_metrics,
+        "cost_rates_missing": _unrated_people(entries, rates, user_map),
+        "not_measured": list(rule_profit.NOT_MEASURED),
     }
 
     # Client-level profitability
     if include_by_client:
-        by_client = []
-        for client_id in revenue_by_client:
-            revenue_paise = revenue_by_client.get(client_id, 0)
-            cost_paise = cost_by_client.get(client_id, 0)
-            profit_paise = revenue_paise - cost_paise
-            profit_margin_pct = (profit_paise / revenue_paise * 100) if revenue_paise > 0 else 0.0
-
-            # Health status based on margin
-            if profit_margin_pct >= 25:
-                status = "healthy"
-            elif profit_margin_pct >= 15:
-                status = "fair"
-            else:
-                status = "at_risk"
-
-            by_client.append({
-                "client_id": client_id,
-                "client_name": client_map.get(client_id, "Unknown"),
-                "revenue_paise": revenue_paise,
-                "cost_paise": cost_paise,
-                "profit_paise": profit_paise,
-                "profit_margin_pct": round(profit_margin_pct, 2),
-                "status": status,
-            })
-
-        by_client.sort(key=lambda x: x["profit_paise"], reverse=True)
-        result["by_client"] = by_client
+        result["by_client"] = [
+            {
+                "client_id": p.key,
+                "client_name": client_map.get(p.key, "Unknown"),
+                "revenue_paise": p.revenue_paise,
+                "cost_paise": p.priced_cost_paise,
+                "cost_is_complete": p.cost_is_known,
+                "unrated_minutes": p.unrated_minutes,
+                "effort_minutes": p.effort.minutes,
+                "profit_paise": p.profit_paise,
+                "profit_margin_pct": p.margin_pct,
+                "status": p.status,
+            }
+            for p in rows
+        ]
 
     # Engagement-level profitability
     if include_by_engagement:
-        revenue_by_engagement = invoice_repo.get_revenue_by_engagement(firm_id, date_from, date_to)
-        cost_by_engagement = time_tracking_analytics_repo.get_cost_by_engagement(firm_id, date_from, date_to)
-        # An engagement row also names its client — narrow by the engagement's
-        # own client_id, falling back to the revenue row's when the engagement
-        # is missing from engagement_map (already narrowed above).
-        if _eff is not None:
-            revenue_by_engagement = {
-                eid: row for eid, row in revenue_by_engagement.items()
-                if str((engagement_map.get(eid) or {}).get("client_id")
-                       or row.get("client_id")) in _eff
-            }
-
+        revenue_by_engagement = rule_profit.revenue_by_engagement(invoices)
+        effort_by_engagement = rule_profit.fold_effort(entries, rates, "engagement_id")
         by_engagement = []
-        for engagement_id in revenue_by_engagement:
-            revenue_paise = revenue_by_engagement[engagement_id].get("revenue_paise", 0)
-            cost_paise = cost_by_engagement.get(engagement_id, 0)
-            profit_paise = revenue_paise - cost_paise
-            profit_margin_pct = (profit_paise / revenue_paise * 100) if revenue_paise > 0 else 0.0
-
-            engagement_details = engagement_map.get(engagement_id, {})
-            client_id = engagement_details.get("client_id") or revenue_by_engagement[engagement_id].get("client_id")
-
+        for p in rule_profit.positions(
+            {eid: row["revenue_paise"] for eid, row in revenue_by_engagement.items()}, effort_by_engagement,
+        ):
+            details = engagement_map.get(p.key, {})
+            client_id = details.get("client_id") or (revenue_by_engagement.get(p.key) or {}).get("client_id")
             by_engagement.append({
-                "engagement_id": engagement_id,
-                "service_type": engagement_details.get("service_type", "Unknown"),
+                "engagement_id": p.key,
+                "service_type": details.get("service_type", "Unknown"),
                 "client_id": client_id,
                 "client_name": client_map.get(client_id, "Unknown"),
-                "revenue_paise": revenue_paise,
-                "cost_paise": cost_paise,
-                "profit_paise": profit_paise,
-                "profit_margin_pct": round(profit_margin_pct, 2),
+                "revenue_paise": p.revenue_paise,
+                "cost_paise": p.priced_cost_paise,
+                "cost_is_complete": p.cost_is_known,
+                "unrated_minutes": p.unrated_minutes,
+                "effort_minutes": p.effort.minutes,
+                "profit_paise": p.profit_paise,
+                "profit_margin_pct": p.margin_pct,
             })
-
-        by_engagement.sort(key=lambda x: x["profit_paise"], reverse=True)
         result["by_engagement"] = by_engagement
 
     # Team member profitability and utilisation
     if include_by_team:
-        team_metrics = time_tracking_analytics_repo.get_metrics_by_team_member(firm_id, date_from, date_to)
-
         by_team_member = []
-        for user_id in team_metrics:
-            metrics = team_metrics[user_id]
-            effort_minutes = metrics.get("effort_minutes", 0)
-            billable_minutes = metrics.get("billable_minutes", 0)
-            cost_paise = metrics.get("cost_paise", 0)
-
-            # Calculate utilisation as billable minutes / total effort minutes
-            utilisation_pct = (billable_minutes / effort_minutes * 100) if effort_minutes > 0 else 0.0
+        for user_id, effort in rule_profit.fold_effort(entries, rates, "user_id").items():
+            if user_id is None:
+                continue
+            # A member either has a cost rate or has not, so their cost is known or it is not: never a 0 for the second.
+            cost_paise = effort.cost_paise if effort.cost_is_known else None
+            utilisation_pct = (effort.billable_minutes / effort.minutes * 100) if effort.minutes > 0 else 0.0
 
             # Team members don't have direct revenue, so profit = -cost (opportunity cost)
             # This shows how much they "cost" the firm
@@ -227,14 +232,14 @@ def profitability_analytics(
                 "user_id": user_id,
                 "user_name": user_map.get(user_id, "Unknown"),
                 "revenue_paise": 0,  # Team members don't directly generate revenue
-                "effort_minutes": effort_minutes,
+                "effort_minutes": effort.minutes,
                 "cost_paise": cost_paise,
-                "profit_paise": -cost_paise,  # Negative because it's a cost
-                "profit_margin_pct": 0.0,  # Not applicable for team members
+                "profit_paise": -cost_paise if cost_paise is not None else None,
+                "profit_margin_pct": None,  # Not applicable for team members
                 "utilisation_pct": round(utilisation_pct, 2),
             })
 
-        by_team_member.sort(key=lambda x: x["cost_paise"], reverse=True)
+        by_team_member.sort(key=lambda x: (x["cost_paise"] is None, -(x["cost_paise"] or 0), x["user_id"]))
         result["by_team_member"] = by_team_member
 
     return api_response(True, result)
@@ -272,10 +277,11 @@ def fee_concentration(
     firm_id = current_user.get("firm_id")
     date_from, date_to, label = _period_range(period)
 
-    all_clients = client_repo.find_all(firm_id=firm_id)
+    all_clients = client_repo.find_all(firm_id=firm_id, include_archived=True)
     client_map = {c["id"]: c.get("client_name", "Unknown") for c in all_clients}
-    revenue_by_client = invoice_repo.get_revenue_by_client(firm_id, date_from, date_to)
-    cost_by_client = time_tracking_analytics_repo.get_cost_by_client(firm_id, date_from, date_to)
+    invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
+    entries = time_tracking_analytics_repo.get_cost_entries(firm_id, date_from, date_to)
+    rates = billing_service.cost_rates_by_user(firm_id)
 
     # Narrowed BEFORE the shares are computed, for `/profitability`'s recorded
     # reason: leaving the total firm-wide would let an unassigned Executive
@@ -283,15 +289,22 @@ def fee_concentration(
     # firm-wide role (_eff is None) is unchanged.
     _eff = effective_client_ids(current_user)
     if _eff is not None:
-        revenue_by_client = {k: v for k, v in revenue_by_client.items() if str(k) in _eff}
-        cost_by_client = {k: v for k, v in cost_by_client.items() if str(k) in _eff}
+        invoices = [i for i in invoices if str(i.get("client_id")) in _eff]
+        entries = [e for e in entries if str(e.get("client_id")) in _eff]
+
+    revenue_by_client = rule_profit.revenue_by_client(invoices)
+    position_of = {
+        p.key: p for p in rule_profit.positions(
+            revenue_by_client, rule_profit.fold_effort(entries, rates, "client_id"))
+    }
 
     answer = rule.concentration([
         rule.ClientFees(
             client_id=str(cid),
             client_name=client_map.get(cid, "Unknown"),
             revenue_paise=int(rev or 0),
-            cost_paise=int(cost_by_client.get(cid, 0) or 0),
+            # None, not 0, where the cost is not known (no time recorded, or time with no cost rate).
+            cost_paise=position_of[cid].cost_paise if position_of[cid].cost_is_known else None,
         )
         for cid, rev in revenue_by_client.items()
     ])
@@ -332,16 +345,13 @@ def revenue_vs_effort(
     Returns revenue metrics, billable minutes, and calculated efficiency ratios.
     """
     firm_id = current_user.get("firm_id")
-    db = _get_db()
     date_from, date_to, label = _period_range(period)
 
     # Get revenue by engagement
-    revenue_by_engagement = invoice_repo.get_revenue_by_period(
-        firm_id=firm_id,
-        date_from=date_from,
-        date_to=date_to,
-        statuses=['Issued', 'Paid'],
-    )
+    # The same revenue `/profitability` and `/concentration` use (POST-B-321): the fee BEFORE GST on invoices that were
+    # issued. This read `total_paise`, which includes the 18% GST, and only 'Issued' and 'Paid', so an issued invoice
+    # that fell overdue dropped out and every other one was overstated by the tax.
+    revenue_by_engagement = invoice_repo.get_revenue_by_engagement(firm_id, date_from, date_to)
 
     # Get effort by engagement
     effort_by_engagement = time_tracking_analytics_repo.get_effort_by_engagement(

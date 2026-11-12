@@ -556,31 +556,75 @@ export interface HubWorklistRow {
  *  forty clients is "nothing outstanding", zero rows over zero clients is
  *  "you are assigned to no clients". Same three-state discipline the hub's own
  *  tiles take. */
-/** `GET /api/analytics/profitability`. Revenue less cost, in integer paise —
- *  cost being `effort_minutes * hourly_rate_paise / 60` off the time-tracking
- *  register. `firm_metrics` narrows with the caller's book on this endpoint
- *  (deliberately: the totals are summed from the very per-client rows being
- *  filtered, so leaving them firm-wide would let an Executive recover the
- *  practice's position by subtracting their own clients). */
+/** Where a client stands on its margin, or why it has none. `not_billed`: time was recorded and nothing was issued in the
+ *  period. `no_time`: billed and no time recorded at all, so the cost is unknown. `unpriced`: billed, and some of the time
+ *  is a member's with no cost rate. The other three are bands of a margin that is known (the product's own, not a
+ *  statutory figure). */
+export type ProfitabilityStatus = "healthy" | "fair" | "at_risk" | "not_billed" | "no_time" | "unpriced";
+
+/** `GET /api/analytics/profitability`. Fee revenue (before GST, on invoices that are issued, by the invoice's own date) less what the time cost,
+ *  in integer paise: each member's COST rate times the hours they recorded. A member with no cost rate is unknown and not
+ *  zero: those hours are counted in `unrated_minutes`, the cost of the others is still shown, and a client's profit and
+ *  margin are `null`, never revenue less nothing (POST-B-321). `firm_metrics` narrows with the caller's book on this
+ *  endpoint (deliberately: the totals are summed from the very per-client rows being filtered, so leaving them
+ *  firm-wide would let an Executive recover the practice's position by subtracting their own clients). */
 export interface ProfitabilityPayload {
   period: string;
   firm_metrics: {
     total_revenue_paise: number;
-    total_cost_paise: number;
-    profit_paise: number;
-    profit_margin_pct: number;
+    /** What the hours that HAVE a cost rate cost: short of the whole cost while `cost_is_complete` is false, and `null`
+     *  when no hour has a rate at all (a sum of nothing is not a cost of 0). */
+    total_cost_paise: number | null;
+    cost_is_complete: boolean;
+    unrated_minutes: number;
+    /** `null` while any client's cost is unknown. */
+    profit_paise: number | null;
+    profit_margin_pct: number | null;
+    /** The profit of the `clients_with_cost` clients alone: a figure with its scope named. */
+    profit_on_known_paise: number;
+    clients_with_cost: number;
+    clients_without_cost: number;
     num_clients_billed: number;
-    avg_profit_per_client_paise: number;
+    num_clients_not_billed: number;
+    avg_profit_per_client_paise: number | null;
+    /** Hours recorded against no client: in no client's cost. `null` for a caller assigned to some clients only, who
+     *  cannot see them. */
+    minutes_without_client: number | null;
   };
+  /** Who has hours with no cost rate that leave a client's cost short, the most first. `user_id` is null for a member
+   *  who is no longer on the team. */
+  cost_rates_missing: {
+    user_id: string | null;
+    user_name: string;
+    minutes: number;
+  }[];
+  /** What the figures are and are not, in the server's words. Rendered beside them. */
+  not_measured: string[];
   by_client?: {
     client_id: string;
     client_name: string;
     revenue_paise: number;
-    cost_paise: number;
-    profit_paise: number;
-    profit_margin_pct: number;
-    status: string;
+    /** What the hours that have a cost rate cost, or `null` when none of them has one. */
+    cost_paise: number | null;
+    /** True only where some time was recorded and every minute of it has a cost rate. */
+    cost_is_complete: boolean;
+    unrated_minutes: number;
+    effort_minutes: number;
+    profit_paise: number | null;
+    profit_margin_pct: number | null;
+    status: ProfitabilityStatus;
   }[];
+}
+
+/** One member's cost rate, as `GET /api/billing/staff-cost-rates` serves it: what an hour of their time costs the
+ *  practice. `cost_rate_paise: null` means nobody has said, which is NOT that an hour costs nothing. It is not what an
+ *  hour bills at (`StaffBillableRate`). */
+export interface StaffCostRate {
+  id: string;
+  full_name: string | null;
+  role?: string | null;
+  is_active?: boolean;
+  cost_rate_paise: number | null;
 }
 
 /** `GET /api/analytics/revenue-vs-effort`. What was billed against what it
@@ -6926,11 +6970,14 @@ export const api = {
           method: "PUT",
           body: JSON.stringify({ default_billable_rate_paise: defaultBillableRatePaise }),
         }),
-    listCostRates: () => request("/api/billing/staff-cost-rates"),
+    // What an hour of each PERSON costs the practice (POST-B-321): the cost `/api/analytics/profitability` is built from.
+    // Not `listBillableRates`, which is what an hour bills at. null clears it, and an unset rate is unknown, not zero.
+    listCostRates: () => request<ApiResp<StaffCostRate[]>>("/api/billing/staff-cost-rates"),
     setCostRate: (userId: string, costRatePaise: number | null) =>
-      request(`/api/billing/staff-cost-rates/${userId}`, {
-        method: "PUT", body: JSON.stringify({ cost_rate_paise: costRatePaise }),
-      }),
+      request<ApiResp<{ user_id: string; cost_rate_paise: number | null }>>(
+        `/api/billing/staff-cost-rates/${userId}`, {
+          method: "PUT", body: JSON.stringify({ cost_rate_paise: costRatePaise }),
+        }),
     // Fee Billing (apps/web/app/billing/page.tsx) receipts — only marks the
     // invoice Paid once cumulative receipts cover its total.
     recordFeeReceipt: (invoiceId: string, data: unknown) =>
@@ -8541,9 +8588,11 @@ export type ClientFeeShare = {
   revenue_paise: number;
   share_bps: number;
   rank: number;
-  profit_paise: number;
+  /** Null where the client's cost is not known (no time recorded, or time with no cost rate). */
+  profit_paise: number | null;
   /** Null, never 0, where there was no fee: a margin on nil revenue is
-   *  undefined, and 0 would rank an unbilled client below a loss-making one. */
+   *  undefined, and 0 would rank an unbilled client below a loss-making one.
+   *  Null too where the profit is. */
   margin_bps: number | null;
 };
 

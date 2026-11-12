@@ -9,7 +9,8 @@ caller. The rate is resolved for the person whose time it is, which is often not
 the person asking.
 
 NOTHING HERE READS `cost_rate_paise`. What an hour costs the firm is not what it
-bills, and the column's own comment says it is "NEVER used in any computation".
+bills: the column is profitability's cost (POST-B-321, read in `services/billing_service`)
+and is never a price.
 """
 from __future__ import annotations
 

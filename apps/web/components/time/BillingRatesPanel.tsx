@@ -14,7 +14,7 @@
  * blank as 0 — right for an amount column, wrong here, where a stored 0 would
  * say "these hours bill at nothing" and take them off the "no rate" list — so the
  * box goes through `readRateInput`. This is NOT the cost rate, which is what an
- * hour costs the firm and is never used in a computation.
+ * hour costs the firm: it is set on the Profitability screen and is never a price.
  */
 import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";

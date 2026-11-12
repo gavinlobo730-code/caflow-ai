@@ -451,8 +451,8 @@ def test_another_firms_engagement_cannot_be_priced(world, monkeypatch):
 
 
 def test_no_computation_reads_the_cost_rate():
-    """What an hour costs the firm is not what it bills — `cost_rate_paise` is
-    capture-only and must stay that way."""
+    """What an hour costs the firm is not what it bills. `cost_rate_paise` is profitability's cost (POST-B-321) and is
+    never an input to a PRICE: neither module that resolves what an hour bills at reads it."""
     import inspect
     for mod in (rule, rates):
         assert "cost_rate" not in inspect.getsource(mod).replace("cost_rate_paise` is", "")\

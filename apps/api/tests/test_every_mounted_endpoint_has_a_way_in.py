@@ -122,7 +122,11 @@ BUDGET: dict[str, int] = {
     # screen's "Unbilled work" tab is its first caller, and its two new siblings
     # (`staff-billable-rates`, GET and PUT) are wired by the "Billing rates" tab in
     # the same commit rather than added to the budget.
-    "/api/billing": 6, "/api/engagements": 4, "/api/income-tax": 5,
+    # /api/billing 6 -> 4 on 12-11-2026 (POST-B-321): the two staff cost-rate routes
+    # (`staff-cost-rates`, GET and PUT) had a `lib/api` method and no screen for
+    # as long as they existed; the Profitability screen's cost-rate panel is their
+    # first caller, because profitability now prices an hour at that rate.
+    "/api/billing": 4, "/api/engagements": 4, "/api/income-tax": 5,
     # /api/ai-insights 6 -> 4 on 25-09-2026 (Phase 3a-6): the client AI
     # Insights screen read `ai_insights` over PostgREST and nothing could
     # write it — `generate_insights_for_client` is written and tested and
@@ -308,7 +312,8 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # that reach no screen), so it was slack the ratchet could not see: 21 more routes that reach no screen could have been added, in any prefixes, before this number said anything.
 # It is that sum now, and `test_the_total_is_what_the_per_prefix_budgets_add_up_to` keeps it so: lowering a prefix lowers it in the same commit, and net growth (a new prefix, or a prefix
 # allowed one more) is a visible edit of two numbers and not of one. A shuffle (one prefix allowed one more, another one fewer) still passes: that is the per-prefix budgets' job to refuse.
-TOTAL_BUDGET = 195
+# 195 -> 193 on 12-11-2026 (POST-B-321): the two staff cost-rate routes got a screen (the Profitability screen's cost-rate panel), and `/api/billing` fell 6 -> 4.
+TOTAL_BUDGET = 193
 
 
 # ---------------------------------------------------------------------------
