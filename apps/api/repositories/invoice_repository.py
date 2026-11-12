@@ -296,8 +296,4 @@ class InvoiceRepository(BaseRepository[dict]):
         """Fee revenue (before GST, issued invoices only) per client: `{client_id: paise}`."""
         return profitability.revenue_by_client(self.fee_revenue_rows(firm_id, date_from, date_to))
 
-    def get_revenue_by_engagement(self, firm_id: str, date_from: str, date_to: str) -> dict[str, dict]:
-        """Fee revenue per engagement: `{engagement_id: {engagement_id, client_id, revenue_paise, invoice_count}}`."""
-        return profitability.revenue_by_engagement(self.fee_revenue_rows(firm_id, date_from, date_to))
-
 invoice_repo = InvoiceRepository()

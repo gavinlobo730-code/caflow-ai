@@ -27,6 +27,7 @@ figure into a whole-quarter one.
 from datetime import date
 
 import pytest
+from fastapi import HTTPException
 
 from core.ist_clock import fy_quarters, ist_fy_label
 from routers.analytics import _period_range
@@ -79,5 +80,7 @@ def test_the_other_periods_are_untouched(monkeypatch):
     monkeypatch.setattr("routers.analytics.ist_today", lambda: d)
     assert _period_range("month")[2] == "January 2026"
     assert _period_range("week")[2].startswith("Week of ")
-    # An unrecognised period still falls through to the month, as before.
-    assert _period_range("decade")[2] == "January 2026"
+    # An unrecognised window is refused, and no longer read as the month (POST-A-427).
+    with pytest.raises(HTTPException) as refused:
+        _period_range("decade")
+    assert refused.value.status_code == 422

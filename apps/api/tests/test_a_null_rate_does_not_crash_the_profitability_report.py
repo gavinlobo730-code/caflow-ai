@@ -92,13 +92,15 @@ def test_a_member_with_no_cost_rate_is_unknown_in_every_view(db_with_null_rate_r
         assert (effort.minutes, effort.unrated_minutes, effort.cost_is_known) == (90, 90, False)
 
 
-def test_get_effort_by_engagement_does_not_raise_on_a_null_rate(db_with_null_rate_row):
-    """The `hourly_rate_paise > 0` comparison is the one that raised
-    `TypeError: '>' not supported between instances of 'NoneType' and 'int'`."""
-    result = time_tracking_analytics_repo.get_effort_by_engagement("firm-1", "2026-04-01", "2026-09-30")
-    assert result == {
-        "e-1": {"billable_minutes": 90, "total_minutes": 90, "avg_hourly_rate_paise": 0}
-    }
+def test_the_worth_entries_come_back_whatever_the_billing_rate_is(db_with_null_rate_row):
+    """The `hourly_rate_paise > 0` comparison raised `TypeError: '>' not supported between instances of 'NoneType' and
+    'int'` while the read priced anything. It prices nothing now (POST-A-426): the row comes back with its rates as stored
+    and `domain/practice/realization` names an entry with neither as unpriced, never as worth 0."""
+    from domain.practice import realization as real
+    rows = time_tracking_analytics_repo.get_worth_entries("firm-1", "2026-04-01", "2026-09-30")
+    assert [(r["engagement_id"], r["duration_minutes"], r["hourly_rate_paise"]) for r in rows] == [("e-1", 90, None)]
+    worth = real.fold_worth(rows, "engagement_id")["e-1"]
+    assert (worth.billable_minutes, worth.unpriced_minutes, worth.priced_value_paise, worth.value_is_known) == (90, 90, None, False)
 
 
 @pytest.fixture

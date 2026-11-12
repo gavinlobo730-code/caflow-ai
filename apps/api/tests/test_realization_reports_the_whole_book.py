@@ -59,15 +59,16 @@ def three_clients(monkeypatch):
                       for e, c in ENG.items()],
     )
     monkeypatch.setattr(
-        ir.invoice_repo, "get_revenue_by_engagement",
-        lambda *a, **kw: {e: {"revenue_paise": 100_00, "client_id": c}
-                          for e, c in ENG.items()},
+        ir.invoice_repo, "fee_revenue_rows",
+        lambda *a, **kw: [{"id": f"inv-{e}", "client_id": c, "engagement_id": e, "status": "Issued",
+                           "invoice_date": "2026-11-01", "amount_paise": 100_00}
+                          for e, c in ENG.items()],
     )
     monkeypatch.setattr(
-        an.time_tracking_analytics_repo, "get_effort_by_engagement",
-        lambda **kw: {e: {"billable_minutes": 600, "total_minutes": 600,
-                          "avg_hourly_rate_paise": 1000_00}
-                      for e in ENG},
+        an.time_tracking_analytics_repo, "get_worth_entries",
+        lambda *a, **kw: [{"id": f"t-{e}", "client_id": c, "engagement_id": e, "duration_minutes": 600,
+                           "is_billable": True, "billable_rate_paise": 1000_00, "hourly_rate_paise": None}
+                          for e, c in ENG.items()],
     )
 
 

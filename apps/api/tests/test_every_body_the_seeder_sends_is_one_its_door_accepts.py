@@ -95,6 +95,8 @@ class _Recorder:
         self.unmatched: list[tuple[str, str]] = []
         self.invalid: list[str] = []
         self._n = 0
+        #: The cost rate the seeded member already has when the seeder asks, None for a member nobody has priced.
+        self.existing_cost_rate = None
 
     def _door_for(self, method: str, path: str):
         """(matched, model). `matched` False means no route serves this path
@@ -118,6 +120,11 @@ class _Recorder:
             return {"success": True, "error": None,
                     "data": [{"id": f"ledger-{i}", "account_name": n}
                              for i, n in enumerate(names)]}
+        if path.startswith("/api/billing/staff-cost-rates"):
+            # The firm's staff with the rate each has: the seeded member has none yet (POST-A-427), unless a test says otherwise.
+            return {"success": True, "error": None, "data": [
+                {"id": "seeded-member", "full_name": "Seeded Partner", "role": "Partner", "is_active": True,
+                 "cost_rate_paise": self.existing_cost_rate}]}
         if path.startswith("/api/income-tax/assessee-kind"):
             return {"success": True, "error": None, "data": {"kind": "individual", "refusal": None}}
         if path.startswith("/api/tds-workspace/deposit-due"):
@@ -173,6 +180,11 @@ class _Recorder:
                 "deductee_count": 2, "deductees": [{"deductee_pan": "ABCDE1234F"}] * 2,
                 "total_tds_deducted_paise": 1000_00, "total_tds_deposited_paise": 1000_00, "validation_errors": [],
                 "challan_gaps": [], "reconciliation": {"matched": True}}}
+        if method == "POST" and path == "/api/time-entries":
+            # A time entry is answered under `entry`, with the member it was recorded for (`routers/time_tracking`): the seeder reads
+            # who it is signed in as off it, to say what an hour of that member costs (POST-A-427).
+            return {"success": True, "error": None, "data": {"entry": {"id": f"entry-{self._n:05d}", "user_id": "seeded-member"},
+                                                             "rate": {"source": None, "notes": []}}}
         if path.startswith("/api/invoices/from-engagement/"):
             # A fee invoice is answered under `invoice`, with the id the issue and the receipt are made against and the total the
             # receipt is a fraction of (the engagement's fee and 18% GST).
@@ -301,13 +313,42 @@ def test_the_income_tax_stage_reaches_the_door(_run, prefix):
 #: The practice stage's doors that carry an id in the path (a task's moves, a fee invoice's issue and receipt), by method and prefix.
 _PRACTICE_DOORS = [
     ("PATCH", "/api/tasks/"), ("POST", "/api/invoices/from-engagement/"), ("PATCH", "/api/invoices/"),
-    ("POST", "/api/billing/fee-invoices/"),
+    ("POST", "/api/billing/fee-invoices/"), ("PUT", "/api/billing/staff-cost-rates/"),
 ]
 
 
 @pytest.mark.parametrize("method,prefix", _PRACTICE_DOORS)
 def test_the_practice_stage_reaches_the_door(_run, method, prefix):
     assert any(m == method and p.startswith(prefix) for m, p in _run.calls), f"{method} {prefix} was never called"
+
+
+def test_the_member_whose_hours_these_are_is_given_a_cost_rate_once_at_the_fixtures_seed_figure(_run):
+    """Profitability prices an hour at the member's cost rate and reads a member with none as UNKNOWN, so a seeded firm with no
+    rate would show every client as "hours with no cost rate" (POST-A-427). One PUT for the run, to the member the first time
+    entry came back for, with the figure the fixture names as a seed's; the body is checked against its door like every other."""
+    puts = [(p, b) for m, p, b in _run.requests if m == "PUT" and p.startswith("/api/billing/staff-cost-rates/")]
+    assert puts == [("/api/billing/staff-cost-rates/seeded-member", {"cost_rate_paise": fixture.DEMO_COST_RATE_PAISE})]
+    first_entry = next(i for i, (m, p, b) in enumerate(_run.requests) if m == "POST" and p == "/api/time-entries")
+    rate_at = next(i for i, (m, p, b) in enumerate(_run.requests) if m == "PUT" and p.startswith("/api/billing/staff-cost-rates/"))
+    assert rate_at > first_entry, "the member is only known once an entry has come back for them"
+
+
+def test_a_rate_somebody_already_set_is_left_alone(_run):
+    """A re-run with `--add-to-existing` must not put the seed's figure over the cost rate a Partner typed on the screen."""
+    import scripts.seed_demo_firm as seeder
+    rec = _Recorder(_run.models)
+    rec.existing_cost_rate = 45_000_00
+    seeder._price_the_members_hour(rec, "seeded-member", {"cost_rates": 0})
+    assert [c for c in rec.calls if c[0] == "PUT"] == [], "a rate that was already there was written over"
+    rec = _Recorder(_run.models)
+    written = {"cost_rates": 0}
+    seeder._price_the_members_hour(rec, "seeded-member", written)
+    assert [c for c in rec.calls if c[0] == "PUT"] == [("PUT", "/api/billing/staff-cost-rates/seeded-member")] and written["cost_rates"] == 1
+    seeder._price_the_members_hour(rec, "seeded-member", written)
+    assert len([c for c in rec.calls if c[0] == "PUT"]) == 1, "the member was priced twice in one run"
+    rec = _Recorder(_run.models)
+    seeder._price_the_members_hour(rec, "somebody-else", {"cost_rates": 0})
+    assert [c for c in rec.calls if c[0] == "PUT"] == [], "a member the staff list does not show was written to"
 
 
 def test_a_fee_invoice_is_issued_before_it_is_receipted(_run):

@@ -627,24 +627,64 @@ export interface StaffCostRate {
   cost_rate_paise: number | null;
 }
 
-/** `GET /api/analytics/revenue-vs-effort`. What was billed against what it
- *  cost to deliver — `realization_rate` is revenue ÷ (billable minutes at the
- *  recorded hourly rate), so 1.0 means the engagement recovered exactly what
- *  the time on it was worth. */
+/** The window an analytics screen asks for: a running week, month or quarter, or one whole financial year
+ *  (`financialYear` is the label, e.g. `2025-26`, and only with `period: "fy"`). The server resolves it (POST-A-427). */
+export interface AnalyticsWindow {
+  period: "week" | "month" | "quarter" | "fy";
+  financialYear?: string;
+}
+
+function analyticsWindowQuery(window: AnalyticsWindow): URLSearchParams {
+  const q = new URLSearchParams({ period: window.period });
+  if (window.period === "fy" && window.financialYear) q.set("financial_year", window.financialYear);
+  return q;
+}
+
+/** `GET /api/analytics/revenue-vs-effort`. What was billed against what the billable time was worth.
+ *
+ *  `realization_rate` is the fee before GST invoiced on the engagements THAT HAVE BILLABLE TIME RECORDED, over the worth of
+ *  that time, each entry priced from the rate it was recorded with, so 1.0 means they recovered exactly what the time was
+ *  worth. THE WORTH IS NOT SHOWN WHERE IT IS NOT KNOWN: `realization_rate` is `null` while any billable minute has no rate
+ *  (`unpriced_minutes` says how many), and `avg_revenue_per_hour_paise` is `null` with no billable time. A `null` is drawn
+ *  as a dash and never as 0 (POST-A-426). What the ratio leaves out is named, never dropped: `revenue_without_time_paise`
+ *  (fees on an engagement with no billable time, a fixed-fee return nobody timed), `revenue_without_engagement_paise`
+ *  (fees on an invoice that names no engagement) and `minutes_without_engagement` (billable time that names none). */
 export interface RealizationPayload {
   period: string;
   total_revenue_paise: number;
+  revenue_without_time_paise: number;
+  revenue_without_engagement_paise: number;
   total_billable_minutes: number;
-  avg_revenue_per_hour_paise: number;
-  overall_realization_rate: number;
+  unpriced_minutes: number;
+  billable_time_value_paise: number | null;
+  minutes_without_engagement: number;
+  avg_revenue_per_hour_paise: number | null;
+  realization_rate: number | null;
   by_client: {
     client_id: string;
     client_name: string;
     revenue_paise: number;
+    revenue_without_time_paise: number;
+    revenue_without_engagement_paise: number;
+    minutes_without_engagement: number;
     effort_minutes: number;
-    revenue_per_hour_paise: number;
-    realization_rate: number;
+    unpriced_minutes: number;
+    billable_time_value_paise: number | null;
+    revenue_per_hour_paise: number | null;
+    realization_rate: number | null;
   }[];
+  by_engagement: {
+    engagement_id: string;
+    service_type: string;
+    revenue_paise: number;
+    revenue_without_time_paise: number;
+    effort_minutes: number;
+    unpriced_minutes: number;
+    billable_time_value_paise: number | null;
+    revenue_per_hour_paise: number | null;
+    realization_rate: number | null;
+  }[];
+  not_measured: string[];
 }
 
 /** `GET /api/intelligence/compliance-risk`. Per-client risk of missing a
@@ -4405,21 +4445,21 @@ export const api = {
    *  safe to render for any role that holds the permission, and a screen that
    *  gated them on Partner would throw that narrowing away. */
   analytics: {
-    profitability: (period: string, opts?: { byClient?: boolean }) => {
-      const q = new URLSearchParams({ period });
+    profitability: (window: AnalyticsWindow, opts?: { byClient?: boolean }) => {
+      const q = analyticsWindowQuery(window);
       if (opts?.byClient === false) q.set("include_by_client", "false");
       return request<ApiResp<ProfitabilityPayload>>(
         `/api/analytics/profitability?${q}`);
     },
-    revenueVsEffort: (period: string) =>
+    revenueVsEffort: (window: AnalyticsWindow) =>
       request<ApiResp<RealizationPayload>>(
-        `/api/analytics/revenue-vs-effort?period=${encodeURIComponent(period)}`),
+        `/api/analytics/revenue-vs-effort?${analyticsWindowQuery(window)}`),
     /* 3c-3. The question `/profitability`'s own list cannot answer: if the
        largest client leaves, what happens. Same two reads, narrowed the same
        way — the other half of one fetch, so the two cannot disagree. */
-    concentration: (period: string) =>
+    concentration: (window: AnalyticsWindow) =>
       request<ApiResp<ConcentrationPayload>>(
-        `/api/analytics/concentration?period=${encodeURIComponent(period)}`),
+        `/api/analytics/concentration?${analyticsWindowQuery(window)}`),
     /* 3c-1/2/4/5, the TAX half of the same question — where a client sits in
        the firm's own distribution of effective tax rate, ITC-to-purchases and
        the rest. It reads `client_period_metrics` (migration 417), which the

@@ -1,18 +1,19 @@
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.fy import OptionalFYLabel
 from core.permissions import rbac
 from datetime import timedelta
 from repositories.time_tracking_analytics_repository import time_tracking_analytics_repo
 from domain.practice import profitability as rule_profit
+from domain.practice import realization as rule_real
 from services import billing_service
 from repositories.invoice_repository import invoice_repo
 from repositories.engagement_repository import engagement_repo
 from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
-from core.ist_clock import fy_quarters, ist_fy_label, ist_today
+from core.ist_clock import fy_bounds, fy_quarters, ist_fy_label, ist_today
 from core import db_provider
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -21,8 +22,31 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 _get_db = db_provider.request_db
 
 
-def _period_range(period: str) -> tuple[str, str, str]:
+#: The windows the three analytics endpoints answer for. `fy` is one whole financial year (`financial_year`, to today for the
+#: one that is running). An unknown word is a 422 at the door and never read as `month`, which is what it used to be.
+PeriodWord = Literal["week", "month", "quarter", "fy"]
+
+
+def _period_range(period: str, financial_year: Optional[str] = None) -> tuple[str, str, str]:
+    """`(first day, last day, label)` of the window an analytics endpoint answers for: the one resolver for all three.
+
+    POST-A-427. The screen offered this week, this month and this quarter to date, each ending today, and any other word
+    was read as `month`, so last financial year could not be opened at all and the seeded FY 2025-26 firm showed an empty
+    screen from 1 April 2026. `fy` is a whole financial year (`models.fy.FYLabel`, from `fy_bounds`, the one authority for
+    its first and last day); for the year that is running it ends today, because nothing has happened after today, and the
+    label says "to date". A year that has not started is refused in words, and so is a `financial_year` with any other
+    window, which would be ignored and read as the month."""
     today = ist_today()
+    if period != "fy" and financial_year:
+        raise HTTPException(status_code=422, detail="A financial year can be asked for only with the window 'fy'.")
+    if period == "fy":
+        fy = financial_year or ist_fy_label(today)
+        first, last = fy_bounds(fy)
+        if first > today.isoformat():
+            raise HTTPException(status_code=422, detail=f"Financial year {fy} has not started yet.")
+        if last > today.isoformat():
+            return first, today.isoformat(), f"FY {fy} (to date)"
+        return first, last, f"FY {fy}"
     if period == "week":
         start = today - timedelta(days=today.weekday())
         label = f"Week of {start.strftime('%d %b %Y')}"
@@ -53,9 +77,13 @@ def _period_range(period: str) -> tuple[str, str, str]:
              if q_start <= iso <= q_end),
             f"{fy}",
         )
-    else:  # month
+    elif period == "month":
         start = today.replace(day=1)
         label = today.strftime("%B %Y")
+    else:
+        # Reached only by a caller that skips the route's `PeriodWord` (a test, another module): the door answers 422 for
+        # an unknown word, and this does too rather than reading it as the month, which is what it used to do.
+        raise HTTPException(status_code=422, detail=f"Unknown window {period!r}: use week, month, quarter or fy.")
     return start.isoformat(), today.isoformat(), label
 
 
@@ -72,7 +100,8 @@ def _unrated_people(entries: list[dict], rates: dict, user_map: dict) -> list[di
 
 @router.get("/profitability")
 def profitability_analytics(
-    period: str = "month",
+    period: PeriodWord = "month",
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
     include_by_client: bool = True,
     include_by_engagement: bool = False,
     include_by_team: bool = False,
@@ -89,7 +118,7 @@ def profitability_analytics(
     rule; all arithmetic is integer paise.
     """
     firm_id = current_user.get("firm_id")
-    date_from, date_to, label = _period_range(period)
+    date_from, date_to, label = _period_range(period, financial_year)
 
     # Get all clients for lookup. ARCHIVED ONES TOO: a client archived during the period still has its fees and its hours in
     # it, and without its name the row would read "Unknown" beside real money.
@@ -247,7 +276,8 @@ def profitability_analytics(
 
 @router.get("/concentration")
 def fee_concentration(
-    period: str = "month",
+    period: PeriodWord = "month",
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
     current_user: dict = Depends(rbac("analytics", "read")),
     _fees: dict = Depends(rbac("billing", "read")),  # revenue is the practice's fee economics (POST-B-024)
 ):
@@ -275,7 +305,7 @@ def fee_concentration(
     from domain.practice import concentration as rule
 
     firm_id = current_user.get("firm_id")
-    date_from, date_to, label = _period_range(period)
+    date_from, date_to, label = _period_range(period, financial_year)
 
     all_clients = client_repo.find_all(firm_id=firm_id, include_archived=True)
     client_map = {c["id"]: c.get("client_name", "Unknown") for c in all_clients}
@@ -334,221 +364,138 @@ def fee_concentration(
 
 @router.get("/revenue-vs-effort")
 def revenue_vs_effort(
-    period: str = "month",
+    period: PeriodWord = "month",
+    financial_year: Annotated[OptionalFYLabel, Query()] = None,
     client_id: str = None,
     engagement_id: str = None,
     current_user: dict = Depends(rbac("analytics", "read")),
     _fees: dict = Depends(rbac("billing", "read")),  # revenue is the practice's fee economics (POST-B-024)
 ):
     """
-    Analyze revenue vs effort (billable hours) to calculate realization rates.
-    Returns revenue metrics, billable minutes, and calculated efficiency ratios.
+    Revenue against the worth of the billable time (realization), per engagement, per client and for the firm.
+
+    Revenue is the fee BEFORE GST on invoices that are issued, the one definition `/profitability` and `/concentration`
+    use (POST-B-321). The worth is each billable entry priced from its own rate, `billable_rate_paise` first and the
+    legacy `hourly_rate_paise` second, floored per entry; an entry nobody priced is named and never worth 0, and a row
+    with one has no realization (POST-A-426). An engagement with time and no invoice is a row with a realization of 0.0.
+    A client's and the firm's ratio is taken on the engagements that have billable time: fees on one with none, fees on an
+    invoice naming no engagement and time naming no engagement are named beside it and left out of it.
+    `domain/practice/realization` is the rule; all arithmetic is integer paise.
     """
     firm_id = current_user.get("firm_id")
-    date_from, date_to, label = _period_range(period)
+    date_from, date_to, label = _period_range(period, financial_year)
 
-    # Get revenue by engagement
-    # The same revenue `/profitability` and `/concentration` use (POST-B-321): the fee BEFORE GST on invoices that were
-    # issued. This read `total_paise`, which includes the 18% GST, and only 'Issued' and 'Paid', so an issued invoice
-    # that fell overdue dropped out and every other one was overstated by the tax.
-    revenue_by_engagement = invoice_repo.get_revenue_by_engagement(firm_id, date_from, date_to)
+    invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
+    entries = time_tracking_analytics_repo.get_worth_entries(firm_id, date_from, date_to)
 
-    # Get effort by engagement
-    effort_by_engagement = time_tracking_analytics_repo.get_effort_by_engagement(
-        firm_id=firm_id,
-        date_from=date_from,
-        date_to=date_to,
-    )
-
-    # Fetch all engagements for metadata
-    all_engagements = engagement_repo.find_all(firm_id=firm_id)
-    engagement_map = {e["id"]: e for e in all_engagements}
-
-    # Fetch all clients for metadata. Was previously `client_repo =
-    # ClientRepository()` — ClientRepository is never imported (only the
-    # client_repo singleton, imported at module scope), which raised
-    # NameError on every call and 500'd this endpoint unconditionally.
-    all_clients = client_repo.find_all(firm_id=firm_id)
-    client_map = {c["id"]: c for c in all_clients}
-
-    # M2: by_client / by_engagement below name every client (client_name plus
-    # revenue, effort and realization rate). Narrow at the engagement map, which
-    # is what both lists are keyed off. NOTE the `client_id` PARAMETER on this
-    # endpoint is dead — it is shadowed by a loop variable of the same name in
-    # the by_client build below and never filters anything — so the mount-level
-    # guard firing on it would not have scoped this read either.
+    # M2: by_client / by_engagement below name every client (client_name plus revenue, effort and realization rate).
+    # Narrow BEFORE any total is made, on the CLIENT each invoice and each entry itself names, so an assigned caller's
+    # figures (the firm's included, and the minutes with no engagement) are of their own book and nothing else. The
+    # lists below carry NAMES and nothing a figure depends on: a list cut short by the database's row cap costs a label
+    # ("Unknown"), never a fee or an hour. A firm-wide role (_eff is None) is unchanged.
     from core.authz import effective_client_ids
     _eff = effective_client_ids(current_user)
     if _eff is not None:
-        client_map = {k: v for k, v in client_map.items() if str(k) in _eff}
-        engagement_map = {
-            k: v for k, v in engagement_map.items()
-            if str(v.get("client_id")) in _eff
-        }
-        revenue_by_engagement = {
-            k: v for k, v in revenue_by_engagement.items() if k in engagement_map
-        }
-        effort_by_engagement = {
-            k: v for k, v in effort_by_engagement.items() if k in engagement_map
-        }
+        invoices = [i for i in invoices if str(i.get("client_id")) in _eff]
+        entries = [e for e in entries if str(e.get("client_id")) in _eff]
 
-    # Helper function to calculate realization rate
-    def calc_realization_rate(revenue_paise: int, effort_minutes: int, hourly_rate_paise: int) -> float:
-        """
-        Realization rate = revenue_paise / (effort_minutes * hourly_rate_paise / 60)
-        If denominator is 0, return 0.0
-        """
-        if effort_minutes <= 0 or hourly_rate_paise <= 0:
-            return 0.0
-        billed_amount = (effort_minutes * hourly_rate_paise) // 60
-        if billed_amount <= 0:
-            return 0.0
-        return round(revenue_paise / billed_amount, 2)
+    revenue_by_engagement = rule_profit.revenue_by_engagement(invoices)
+    revenue_paise_by_engagement = {k: v["revenue_paise"] for k, v in revenue_by_engagement.items()}
+    worth_by_engagement = rule_real.fold_worth(entries, "engagement_id")
+    # Which client an engagement is, from the rows themselves (an invoice and an entry each carry their client).
+    client_of_engagement: dict[str, str] = {}
+    for eng_id, v in revenue_by_engagement.items():
+        if v.get("client_id"):
+            client_of_engagement[eng_id] = v["client_id"]
+    for e in entries:
+        if e.get("engagement_id") and e.get("client_id"):
+            client_of_engagement.setdefault(e["engagement_id"], e["client_id"])
 
-    # Helper function to calculate revenue per hour
-    def calc_revenue_per_hour(revenue_paise: int, effort_minutes: int) -> int:
-        """
-        Revenue per hour (in paise) = revenue_paise / (effort_minutes / 60)
-        Returns integer paise
-        """
-        if effort_minutes <= 0:
-            return 0
-        return (revenue_paise * 60) // effort_minutes
+    engagement_rows = rule_real.rows(revenue_paise_by_engagement, worth_by_engagement)
+    firm = rule_real.combine("firm", engagement_rows)
+    fees_outside = rule_real.revenue_outside_engagements(invoices)
+    minutes_outside = rule_real.minutes_outside_engagements(entries)
 
-    # Aggregate data
-    total_revenue_paise = sum(r["revenue_paise"] for r in revenue_by_engagement.values())
-    total_billable_minutes = sum(e["billable_minutes"] for e in effort_by_engagement.values())
-    total_billed_revenue_paise = sum(
-        (e["billable_minutes"] * e["avg_hourly_rate_paise"]) // 60
-        for e in effort_by_engagement.values()
-        if e["avg_hourly_rate_paise"] > 0
-    )
-
-    avg_revenue_per_hour_paise = calc_revenue_per_hour(total_revenue_paise, total_billable_minutes)
-
-    # Overall realization rate
-    overall_realization_rate = 0.0
-    if total_billable_minutes > 0 and total_billed_revenue_paise > 0:
-        overall_realization_rate = round(total_revenue_paise / total_billed_revenue_paise, 2)
+    engagement_map = {e["id"]: e for e in engagement_repo.find_all(firm_id=firm_id)}
+    # ARCHIVED CLIENTS TOO, as `/profitability` reads them: a client archived during the period still has its fees and
+    # hours in it, and without its name the row would read "Unknown" beside real money.
+    client_map = {c["id"]: c for c in client_repo.find_all(firm_id=firm_id, include_archived=True)}
 
     # Build by_engagement list
     by_engagement_list = []
-    for eng_id, revenue_data in revenue_by_engagement.items():
-        effort_data = effort_by_engagement.get(eng_id, {
-            "billable_minutes": 0,
-            "total_minutes": 0,
-            "avg_hourly_rate_paise": 0,
-        })
-
-        engagement = engagement_map.get(eng_id, {})
-        service_type = engagement.get("service_type", "Unknown")
-
-        billable_minutes = effort_data["billable_minutes"]
-        revenue_paise = revenue_data["revenue_paise"]
-        hourly_rate_paise = effort_data["avg_hourly_rate_paise"]
-
-        revenue_per_hour = calc_revenue_per_hour(revenue_paise, billable_minutes)
-        realization_rate = calc_realization_rate(revenue_paise, billable_minutes, hourly_rate_paise)
-
+    for row in engagement_rows:
         by_engagement_list.append({
-            "engagement_id": eng_id,
-            "service_type": service_type,
-            "revenue_paise": revenue_paise,
-            "effort_minutes": billable_minutes,
-            "revenue_per_hour_paise": revenue_per_hour,
-            "realization_rate": realization_rate,
+            "engagement_id": row.key,
+            "service_type": engagement_map.get(row.key, {}).get("service_type", "Unknown"),
+            "revenue_paise": row.revenue_paise,
+            "revenue_without_time_paise": row.revenue_without_time_paise,
+            "effort_minutes": row.worth.billable_minutes,
+            "unpriced_minutes": row.worth.unpriced_minutes,
+            "billable_time_value_paise": row.worth.priced_value_paise,
+            "revenue_per_hour_paise": row.revenue_per_hour_paise,
+            "realization_rate": row.realization_rate,
         })
 
-    # Build by_client list
+    # Build by_client list: the engagements' rows added up per client.
     #
-    # ⚠️ `row_client_id`, NOT `client_id`. This block and the one below used to
-    # bind the loop variable to the PARAMETER's name, and the filter at the
-    # foot of this function reads `if client_id:` — so by the time it ran, the
-    # name held the LAST client iterated rather than what the caller asked for.
-    # See that filter's own note; the two rebindings are the whole defect.
-    by_client_dict: dict[str, dict] = {}
-    for eng_id, revenue_data in revenue_by_engagement.items():
-        engagement = engagement_map.get(eng_id, {})
-        row_client_id = engagement.get("client_id")
-        if not row_client_id:
-            continue
+    # ⚠️ `row_client_id`, NOT `client_id`. This block used to bind the loop variable to the PARAMETER's name, and the
+    # filter at the foot of this function reads `if client_id:` — so by the time it ran, the name held the LAST client
+    # iterated rather than what the caller asked for. See that filter's own note; the rebinding is the whole defect.
+    rows_by_client: dict[str, list[rule_real.Row]] = {}
+    for row in engagement_rows:
+        row_client_id = client_of_engagement.get(row.key)
+        if row_client_id:
+            rows_by_client.setdefault(row_client_id, []).append(row)
+    client_rows = sorted(
+        (rule_real.combine(cid, parts) for cid, parts in rows_by_client.items()),
+        key=lambda r: (-r.revenue_paise, r.key))
 
-        if row_client_id not in by_client_dict:
-            by_client_dict[row_client_id] = {
-                "client_id": row_client_id,
-                "client_name": client_map.get(row_client_id, {}).get("client_name", "Unknown"),
-                "revenue_paise": 0,
-                "effort_minutes": 0,
-                "hourly_rate_paise": 0,
-                "effort_count": 0,
-            }
-
-        effort_data = effort_by_engagement.get(eng_id, {})
-        by_client_dict[row_client_id]["revenue_paise"] += revenue_data["revenue_paise"]
-        by_client_dict[row_client_id]["effort_minutes"] += effort_data.get("billable_minutes", 0)
-        by_client_dict[row_client_id]["hourly_rate_paise"] += effort_data.get("avg_hourly_rate_paise", 0)
-        by_client_dict[row_client_id]["effort_count"] += 1
-
-    # Calculate per-client metrics
     by_client_list = []
-    for row_client_id, client_data in by_client_dict.items():
-        revenue_paise = client_data["revenue_paise"]
-        effort_minutes = client_data["effort_minutes"]
-        avg_hourly_rate = client_data["hourly_rate_paise"] // client_data["effort_count"] if client_data["effort_count"] > 0 else 0
-
-        revenue_per_hour = calc_revenue_per_hour(revenue_paise, effort_minutes)
-        realization_rate = calc_realization_rate(revenue_paise, effort_minutes, avg_hourly_rate)
-
+    for row in client_rows:
         by_client_list.append({
-            "client_id": row_client_id,
-            "client_name": client_data["client_name"],
-            "revenue_paise": revenue_paise,
-            "effort_minutes": effort_minutes,
-            "revenue_per_hour_paise": revenue_per_hour,
-            "realization_rate": realization_rate,
+            "client_id": row.key,
+            "client_name": client_map.get(row.key, {}).get("client_name", "Unknown"),
+            "revenue_paise": row.revenue_paise,
+            "revenue_without_time_paise": row.revenue_without_time_paise,
+            "revenue_without_engagement_paise": fees_outside.get(row.key, 0),
+            "minutes_without_engagement": minutes_outside.get(row.key, 0),
+            "effort_minutes": row.worth.billable_minutes,
+            "unpriced_minutes": row.worth.unpriced_minutes,
+            "billable_time_value_paise": row.worth.priced_value_paise,
+            "revenue_per_hour_paise": row.revenue_per_hour_paise,
+            "realization_rate": row.realization_rate,
         })
 
     # Filter by client_id or engagement_id if requested.
     #
-    # ⚠️ THIS FILTER FIRED FOR EVERY CALLER AND KEPT ONE ARBITRARY CLIENT.
-    # Both loops above bound their row's client to `client_id`, the PARAMETER's
-    # own name, so on reaching this line the name held the last key of
-    # `by_client_dict` — truthy whenever any client had revenue. So
-    # `by_client_list` came back with exactly ONE row, chosen by dict iteration
-    # order, and `by_engagement_list` with that client's engagements, whether
-    # or not anybody asked for a client. The endpoint has never once returned
-    # the firm's realization.
-    #
-    # The comment that used to sit here said the parameter "is dead ... and
-    # never filters anything", which is the opposite of what it did and is why
-    # this survived: a reader checking the claim would have found the
-    # parameter unused in the filter's own line and stopped. The loops are
-    # renamed rather than the parameter, so `client_id` means the caller's
-    # value everywhere in this function.
+    # ⚠️ THIS FILTER FIRED FOR EVERY CALLER AND KEPT ONE ARBITRARY CLIENT, once, because the loops above bound their
+    # row's client to `client_id`, the PARAMETER's own name (see `test_realization_reports_the_whole_book`). The loops are
+    # renamed rather than the parameter, so `client_id` means the caller's value everywhere in this function. The TOTALS
+    # are the firm's (or the caller's book's) whatever the filter says, as they always were.
     if client_id:
         by_client_list = [c for c in by_client_list if c["client_id"] == client_id]
-        by_engagement_list = [e for e in by_engagement_list if engagement_map.get(e["engagement_id"], {}).get("client_id") == client_id]
+        by_engagement_list = [e for e in by_engagement_list if client_of_engagement.get(e["engagement_id"]) == client_id]
 
     if engagement_id:
         by_engagement_list = [e for e in by_engagement_list if e["engagement_id"] == engagement_id]
-        eng = engagement_map.get(engagement_id, {})
-        eng_client_id = eng.get("client_id")
+        eng_client_id = client_of_engagement.get(engagement_id)
         if eng_client_id:
             by_client_list = [c for c in by_client_list if c["client_id"] == eng_client_id]
 
-    # Sort by revenue descending
-    by_engagement_list.sort(key=lambda x: x["revenue_paise"], reverse=True)
-    by_client_list.sort(key=lambda x: x["revenue_paise"], reverse=True)
-
     return api_response(True, {
         "period": label,
-        "total_revenue_paise": total_revenue_paise,
-        "total_billable_minutes": total_billable_minutes,
-        "total_billed_revenue_paise": total_billed_revenue_paise,
-        "avg_revenue_per_hour_paise": avg_revenue_per_hour_paise,
-        "realization_rate": overall_realization_rate,
+        "total_revenue_paise": firm.revenue_paise,
+        "revenue_without_time_paise": firm.revenue_without_time_paise,
+        "revenue_without_engagement_paise": sum(fees_outside.values()),
+        "total_billable_minutes": firm.worth.billable_minutes,
+        "unpriced_minutes": firm.worth.unpriced_minutes,
+        "billable_time_value_paise": firm.worth.priced_value_paise,
+        "minutes_without_engagement": sum(minutes_outside.values()),
+        "avg_revenue_per_hour_paise": firm.revenue_per_hour_paise,
+        "realization_rate": firm.realization_rate,
         "by_client": by_client_list,
         "by_engagement": by_engagement_list,
+        "not_measured": list(rule_real.NOT_MEASURED),
     })
 
 

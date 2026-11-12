@@ -162,59 +162,19 @@ class TimeTrackingAnalyticsRepository(BaseRepository[dict]):
             "billable_minutes": billable_minutes,
         }
 
-    def get_effort_by_engagement(
-        self,
-        firm_id: str,
-        date_from: str,
-        date_to: str,
-    ) -> dict[str, dict]:
-        """
-        Get effort metrics aggregated by engagement for a given period.
+    #: What the worth of billable time needs of an entry, and no more: the two rates an hour can have been priced with.
+    WORTH_COLUMNS = "id, client_id, engagement_id, duration_minutes, is_billable, billable_rate_paise, hourly_rate_paise"
 
-        Args:
-            firm_id: The firm ID to filter by
-            date_from: ISO date string (YYYY-MM-DD)
-            date_to: ISO date string (YYYY-MM-DD)
+    def get_worth_entries(self, firm_id: str, date_from: str, date_to: str) -> list[dict]:
+        """The ended time entries of the window with the two rates each was recorded with, for the realization report.
 
-        Returns:
-            dict with engagement_id as key and {billable_minutes, total_minutes, avg_hourly_rate_paise} as value
-        """
-        entries = self._ended_entries(firm_id, date_from, date_to, "id, engagement_id, duration_minutes, is_billable, hourly_rate_paise")
-
-        by_engagement: dict[str, dict] = {}
-        for entry in entries:
-            engagement_id = entry.get("engagement_id")
-            if not engagement_id:
-                continue
-
-            # `.get(key, 0)` only defaults an ABSENT key, not a stored NULL --
-            # hourly_rate_paise is NULL on every timer-started entry (start_timer
-            # never writes it) and on any manual entry with no rate typed on the
-            # form, so `hourly_rate_paise > 0` below would raise on None.
-            duration = entry.get("duration_minutes") or 0
-            is_billable = entry.get("is_billable", False)
-            hourly_rate_paise = entry.get("hourly_rate_paise") or 0
-
-            if engagement_id not in by_engagement:
-                by_engagement[engagement_id] = {
-                    "billable_minutes": 0,
-                    "total_minutes": 0,
-                    "hourly_rates": [],  # Track all rates for averaging
-                }
-
-            by_engagement[engagement_id]["total_minutes"] += duration
-            if is_billable:
-                by_engagement[engagement_id]["billable_minutes"] += duration
-            if hourly_rate_paise > 0:
-                by_engagement[engagement_id]["hourly_rates"].append(hourly_rate_paise)
-
-        # Convert hourly_rates list to average and remove the list
-        for engagement_id in by_engagement:
-            rates = by_engagement[engagement_id].pop("hourly_rates")
-            avg_rate = sum(rates) // len(rates) if rates else 0
-            by_engagement[engagement_id]["avg_hourly_rate_paise"] = avg_rate
-
-        return by_engagement
+        THE WORTH IS NOT COMPUTED HERE (POST-A-426). It used to be: this read averaged the legacy `hourly_rate_paise` of
+        the entries that carried one and the report multiplied that average by ALL the engagement's billable minutes, so
+        an hour priced with the stored `billable_rate_paise` (every timer entry and every entry priced from an engagement
+        or a person since migration 451) was worth nothing and the screen drew a dash. The rows are returned whole and
+        `domain/practice/realization` prices each from its own rate (`time_rate.entry_rate`), the one reading the
+        unbilled-work total uses. Read in keyset pages like every time read here (`_ended_entries`)."""
+        return self._ended_entries(firm_id, date_from, date_to, self.WORTH_COLUMNS)
 
     #: What the cost of a client's, an engagement's or a member's time needs of an entry, and no more.
     COST_COLUMNS = "id, user_id, client_id, engagement_id, duration_minutes, is_billable"

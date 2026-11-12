@@ -1177,6 +1177,12 @@ class DemoTask:
     estimated_minutes: int
 
 
+#: What an hour of the seeded member's time costs the practice, in paise (₹1,200): a SEED'S figure and nothing more. The demo
+#: firm's hours are priced at it so the Profitability screen has a cost to show; it is not a market rate and says nothing about
+#: what a partner's time costs. `users.cost_rate_paise`, set through `PUT /api/billing/staff-cost-rates/{user}` (POST-A-427).
+DEMO_COST_RATE_PAISE = 120_000
+
+
 @dataclass(frozen=True)
 class DemoTimeEntry:
     """Time a person spent on a client. `service_type` names the engagement it was spent under (the engagement the seeder

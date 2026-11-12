@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IndianRupee, RefreshCw, TrendingDown, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import type {
@@ -16,6 +16,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { CostRatesPanel } from "@/components/practice/CostRatesPanel";
 import { formatHours } from "@/lib/data/analytics";
+import { ANALYTICS_FY_COUNT, analyticsWindowChoices, analyticsWindowOf } from "@/lib/practice/analyticsWindow";
+import { financialYearChoices } from "@/lib/dates/periods";
+import { todayIstISO } from "@/lib/dates/format";
 
 /**
  * Which clients make the practice money — Phase 3a-2.
@@ -48,6 +51,11 @@ import { formatHours } from "@/lib/data/analytics";
  * still be recovering 60 paise in the rupee, which is the one a practice acts
  * on when it re-prices.
  *
+ * REALIZATION IS THE SAME RULE (POST-A-426): revenue against what the billable time is worth at the rate each entry was
+ * recorded with. Where any billable hour has no rate the server answers `null` and this draws a dash with the hours
+ * that have none, and the firm's tile reads `realization_rate` (it read a key the server never sent, so it was a dash
+ * whatever the books held). A window is the week, month or quarter to date or one whole financial year (POST-A-427).
+ *
  * AN UNKNOWN IS A DASH, NEVER A NUMBER (POST-B-321). Revenue is the fee before
  * GST on invoices that were issued; cost is each person's COST rate times the
  * hours they recorded. Where a client's cost cannot be known — a person with no
@@ -57,12 +65,6 @@ import { formatHours } from "@/lib/data/analytics";
  * client with time and no invoice is listed with its loss. The Partner sets the
  * rates in the panel at the foot of the page; every figure here is served.
  */
-
-const PERIODS: { id: string; label: string }[] = [
-  { id: "month", label: "This month" },
-  { id: "quarter", label: "This quarter" },
-  { id: "week", label: "This week" },
-];
 
 /** What sits under the Cost tile: which cost it is. A `null` is a dash and says why. */
 function costHint(m: ProfitabilityPayload["firm_metrics"]): string {
@@ -78,6 +80,20 @@ function costHint(m: ProfitabilityPayload["firm_metrics"]): string {
 const DASH = "—";
 const paiseOrDash = (paise: number | null | undefined) =>
   paise === null || paise === undefined ? DASH : formatPaise(paise);
+
+/** What a realization figure leaves out, in words: fees on work nobody timed, fees on an invoice that names no
+ *  engagement, and billable time that names none. The server sends the amounts; this only words them. */
+function leftOut(x: {
+  revenue_without_time_paise?: number;
+  revenue_without_engagement_paise?: number;
+  minutes_without_engagement?: number;
+}): string[] {
+  const notes: string[] = [];
+  if ((x.revenue_without_time_paise ?? 0) > 0) notes.push(`${formatPaise(x.revenue_without_time_paise ?? 0)} on work with no billable time is left out`);
+  if ((x.revenue_without_engagement_paise ?? 0) > 0) notes.push(`${formatPaise(x.revenue_without_engagement_paise ?? 0)} invoiced to no engagement is left out`);
+  if ((x.minutes_without_engagement ?? 0) > 0) notes.push(`${formatHours(x.minutes_without_engagement ?? 0)} billable on no engagement is left out`);
+  return notes;
+}
 
 /** What a row with no margin says instead, in words a Partner acts on. */
 const STATUS_NOTE: Partial<Record<ProfitabilityStatus, string>> = {
@@ -101,6 +117,13 @@ export default function ProfitabilityPage() {
   // The Partner sets the rates; the server (`billing:write`) is what refuses anybody else, this is courtesy.
   const canEditRates = can("billing", "write");
   const [period, setPeriod] = useState("month");
+  /** This week, month and quarter to date, and the running financial year and the two before it: derived from the clock. */
+  const windowChoices = useMemo(
+    // India's day, because the server decides which year is running by India's day: read off the browser's own zone the
+    // picker offered a year that has not started (a 422 on all three reads) or missed the one that has, around 1 April.
+    () => analyticsWindowChoices(financialYearChoices(ANALYTICS_FY_COUNT, new Date(`${todayIstISO()}T12:00:00`))),
+    [],
+  );
   const [profit, setProfit] = useState<ProfitabilityPayload | null>(null);
   const [realization, setRealization] = useState<RealizationPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -127,14 +150,14 @@ export default function ProfitabilityPage() {
       // firm-level aggregates whose answer is a row per client, not per
       // document, so neither is proportional to the ledger.
       const [p, r, c] = await Promise.all([
-        api.analytics.profitability(period),
-        api.analytics.revenueVsEffort(period),
+        api.analytics.profitability(analyticsWindowOf(period)),
+        api.analytics.revenueVsEffort(analyticsWindowOf(period)),
         // 3c-3. A third bounded read for the question the list below cannot
         // answer: if the largest client leaves, what happens. Its own request
         // rather than a field on the first, because it is its own endpoint —
         // and it fails independently, so a refusal here leaves the two answers
         // above intact.
-        api.analytics.concentration(period),
+        api.analytics.concentration(analyticsWindowOf(period)),
       ]);
       if (mine !== requestId.current) return;
       const prof = p?.success
@@ -195,7 +218,7 @@ export default function ProfitabilityPage() {
     <div className="p-6 max-w-ps-data space-y-5">
       <PageHeader
         title="Profitability"
-        subtitle={<>Revenue less what the time cost, per client · {profit?.period ?? realization?.period ?? "—"}</>}
+        subtitle={<>Revenue less what the time cost, per client · {(!loading && !error ? (profit?.period ?? realization?.period) : null) ?? "—"}</>}
         actions={
           <div className="flex items-center gap-2 shrink-0">
             <select
@@ -204,7 +227,7 @@ export default function ProfitabilityPage() {
               onChange={(e) => setPeriod(e.target.value)}
               className="text-xs border border-ps-border rounded-lg px-2.5 py-1.5 bg-white text-ps-body outline-none focus:border-brand"
             >
-              {PERIODS.map((p) => (
+              {windowChoices.map((p) => (
                 <option key={p.id} value={p.id}>{p.label}</option>
               ))}
             </select>
@@ -250,13 +273,20 @@ export default function ProfitabilityPage() {
                     : m.profit_margin_pct === null ? "no revenue" : `${m.profit_margin_pct}% margin`} />
           <Figure
             label="Realization"
-            value={realization?.overall_realization_rate
-              ? `${realization.overall_realization_rate.toFixed(2)}×`
-              : "—"}
+            value={realization?.realization_rate != null
+              ? `${realization.realization_rate.toFixed(2)}×`
+              : DASH}
             hint={realization
-              ? (realization.total_billable_minutes > 0
-                ? `${formatPaise(realization.avg_revenue_per_hour_paise)} / hour`
-                : "no billable time recorded")
+              ? [
+                realization.unpriced_minutes > 0
+                  ? `${formatHours(realization.unpriced_minutes)} of billable time has no billing rate`
+                  : realization.total_billable_minutes > 0
+                    ? (realization.billable_time_value_paise === 0
+                      ? "billable time is recorded at ₹0 an hour"
+                      : `${paiseOrDash(realization.avg_revenue_per_hour_paise)} / hour`)
+                    : "no billable time recorded",
+                ...leftOut(realization),
+              ].join(" · ")
               : "not recorded"}
           />
         </div>
@@ -451,7 +481,13 @@ export default function ProfitabilityPage() {
                         {c.profit_margin_pct === null ? DASH : `${c.profit_margin_pct}%`}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-ps-body">
-                        {r?.realization_rate ? `${r.realization_rate.toFixed(2)}×` : "—"}
+                        {r?.realization_rate != null ? `${r.realization_rate.toFixed(2)}×` : DASH}
+                        {r && [
+                          ...(r.unpriced_minutes > 0 ? [`${formatHours(r.unpriced_minutes)} with no billing rate`] : []),
+                          ...leftOut(r),
+                        ].map((note) => (
+                          <span key={note} className="block text-3xs text-ps-hint">{note}</span>
+                        ))}
                       </td>
                     </tr>
                   );
@@ -466,12 +502,12 @@ export default function ProfitabilityPage() {
                 {sentence}
               </p>
             ))}
-            <p className="text-3xs text-ps-hint flex items-center gap-1.5">
-              <Clock size={10} className="shrink-0" />
-              Realization is revenue against what that time was worth at the
-              recorded rate. 1.00× recovers it exactly; below that the
-              engagement is under-priced or over-served.
-            </p>
+            {(realization?.not_measured ?? []).map((sentence) => (
+              <p key={sentence} className="text-3xs text-ps-hint flex items-start gap-1.5">
+                <Clock size={10} className="shrink-0 mt-0.5" />
+                {sentence}
+              </p>
+            ))}
             {clients.some((c) => c.profit_paise !== null && c.profit_paise < 0) && (
               <p className="text-3xs text-state-problem flex items-center gap-1.5">
                 <TrendingDown size={10} className="shrink-0" />

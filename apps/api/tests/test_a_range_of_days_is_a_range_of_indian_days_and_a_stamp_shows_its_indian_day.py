@@ -113,7 +113,7 @@ def _calls(mock: MagicMock, verb: str) -> list[tuple]:
     return [c.args for c in mock.mock_calls if c[0].split(".")[-1] == verb and c.args]
 
 
-ANALYTICS_READS = ["get_hours_by_employee", "get_hours_by_client", "get_firm_hours", "get_effort_by_engagement",
+ANALYTICS_READS = ["get_hours_by_employee", "get_hours_by_client", "get_firm_hours", "get_worth_entries",
                    "get_cost_entries"]
 
 
