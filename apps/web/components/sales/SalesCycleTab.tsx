@@ -32,6 +32,8 @@ import { paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { Itc04Panel } from "@/components/gst/Itc04Panel";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { DraftChallanEditor } from "@/components/sales/DraftChallanEditor";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -82,6 +84,9 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   const [detail, setDetail] = useState<ChallanParticulars | null>(null);
   // What the server answered the last press of "Issue challan" with, for WHICH challan: said beside the button that raised it, in the open detail (POST-A-398).
   const [issueAnswer, setIssueAnswer] = useState<{ id: string; text: string } | null>(null);
+  // The same for "Cancel draft" (POST-A-417), and whether the draft's correction form is open (it is the open detail's, and closes with it).
+  const [cancelAnswer, setCancelAnswer] = useState<{ id: string; text: string } | null>(null);
+  const [correcting, setCorrecting] = useState(false);
   const [position, setPosition] = useState<OrderPosition | null>(null);
 
   const [form, setForm] = useState({
@@ -285,10 +290,50 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     await load();
     // The open detail is the draft's; read it again so it shows the challan as issued. If that read fails the list already shows the new status, so the stale detail is closed. Only the detail of THIS
     // challan is replaced: the person may have opened another while the press was answered, and that one is not written over (nor one they closed opened again).
-    const fresh = await api.salesCycle.challan(challan.id, clientId).then(
-      (r) => (r.success && r.data ? objectWithLists<ChallanParticulars>(r.data, "copies", "missing", "particulars") : null),
+    await reopen(challan.id);
+  }
+
+  /** Read the open detail again (after a correction or an issue), replacing it only if it is still the same challan's. If that read fails the stale detail is closed rather than left standing. */
+  async function reopen(challanId: string) {
+    const fresh = await api.salesCycle.challan(challanId, clientId).then(
+      (r) => (r.success && r.data ? objectWithLists<ChallanParticulars>(r.data, "copies", "missing", "particulars", "lines") : null),
       () => null);
-    setDetail((open) => (open && open.challan?.id === challan.id ? fresh : open));
+    setDetail((open) => (open && open.challan?.id === challanId ? fresh : open));
+  }
+
+  /** A correction was taken by the server (POST-A-417): the lists and the open detail are read again, so the draft shows what it now holds and what is still to be recorded. */
+  async function corrected(challanId: string) {
+    setCorrecting(false);
+    setMsg({ type: "ok", text: "The draft was corrected." });
+    await load();
+    await reopen(challanId);
+  }
+
+  /** Cancel a draft challan (POST-A-417): a draft whose goods did not leave keeps its number and is cancelled, not deleted. Asked first, in the shared dialog, because it cannot be undone; the server's
+   *  status table decides whether it may be (a refusal is its sentence, said beside the button). This screen decides none of it. */
+  async function cancelDraft(challan: DeliveryChallan) {
+    setCancelAnswer(null);
+    const ok = await confirmDialog({
+      title: `Cancel draft ${challan.document_no}?`,
+      message: `Challan ${challan.document_no} keeps its number and is not a document the goods left on. A cancelled challan cannot be issued and its status cannot change again; this cannot be undone.`,
+      confirmLabel: "Cancel the draft",
+      cancelLabel: "Keep it",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const res = await api.salesCycle.cancelChallan(challan.id, clientId);
+      if (!res.success) {
+        setCancelAnswer({ id: challan.id, text: res.error || "That was refused." });
+        return;
+      }
+    } catch (e) {
+      setCancelAnswer({ id: challan.id, text: e instanceof Error ? e.message : "That was refused." });
+      return;
+    }
+    setMsg({ type: "ok", text: `Challan ${challan.document_no} cancelled.` });
+    setDetail((open) => (open && open.challan?.id === challan.id ? null : open));
+    await load();
   }
 
   if (loading) {
@@ -359,7 +404,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
         ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
-            onClick={() => { setTab(id); setShowForm(false); setDetail(null); setIssueAnswer(null); setBackTried(null); setBackAnswer(null); backRefusal.clear(); }}
+            onClick={() => { setTab(id); setShowForm(false); setDetail(null); setIssueAnswer(null); setCancelAnswer(null); setCorrecting(false); setBackTried(null); setBackAnswer(null); backRefusal.clear(); }}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${
               tab === id ? "bg-brand text-white" : "bg-ps-muted text-ps-body"
             }`}
@@ -663,7 +708,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           {tab === "challans" && (
             <p className="mt-3 text-xs text-ps-label">
               CGST Rule 55(1) asks for the HSN code of every line, the consignee and, for an inter-State movement, the place of supply. A job-work challan also says what it sends, because the period under
-              s.143 depends on it. A challan is saved as a draft and issued when its goods leave; a draft is not edited on this screen, so a challan saved without one of these is made again, with a new number.
+              s.143 depends on it. A challan is saved as a draft and issued when its goods leave; a draft saved without one of these is corrected from its panel (open it from the list) before it is issued.
             </p>
           )}
 
@@ -755,8 +800,10 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             empty="No delivery challans yet."
             onRow={(i) => {
               setIssueAnswer(null);       // an answer to an earlier press is not the answer to a challan opened now
+              setCancelAnswer(null);
+              setCorrecting(false);
               void api.salesCycle.challan(challans[i].id, clientId)
-                .then((r) => { if (r.success && r.data) setDetail(objectWithLists<ChallanParticulars>(r.data, "copies", "missing", "particulars")); });
+                .then((r) => { if (r.success && r.data) setDetail(objectWithLists<ChallanParticulars>(r.data, "copies", "missing", "particulars", "lines")); });
             }}
           />
 
@@ -806,13 +853,18 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             </div>
           )}
 
+          {correcting && vocab && detail?.challan && detail.challan.status === "draft" && (
+            <DraftChallanEditor detail={detail} clientId={clientId} goodsKinds={vocab.goods_kinds}
+              onSaved={corrected} onClose={() => setCorrecting(false)} />
+          )}
+
           {detail && (
             <div className="rounded border border-ps-border bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold">
                   {detail.rule} — {detail.reason_label}
                 </h4>
-                <button aria-label="Close the challan" onClick={() => { setDetail(null); setIssueAnswer(null); }}><X size={14} /></button>
+                <button aria-label="Close the challan" onClick={() => { setDetail(null); setIssueAnswer(null); setCancelAnswer(null); setCorrecting(false); }}><X size={14} /></button>
               </div>
               {detail.challan && detail.challan.status === "draft" && (
                 <div className="mb-3 rounded border border-ps-border bg-ps-muted p-3 text-sm">
@@ -824,8 +876,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                   {detail.clock.consequence && <p className="mt-1 text-xs text-ps-body">{detail.clock.consequence}</p>}
                   {detail.missing.length > 0 && (
                     <p className="mt-1 text-xs text-state-attention">
-                      Rule 55(1) asks for what is listed under &ldquo;Still to be recorded&rdquo; below, and the server will not issue the challan without it. A draft is not edited on this screen: a challan that
-                      lacks it is made again, with a new number.
+                      Rule 55(1) asks for what is listed under &ldquo;Still to be recorded&rdquo; below, and the server will not issue the challan without it. Correct draft records the consignee, what a job-work challan sends, the place of supply and the HSN code of each line; the consigner is the client&apos;s own details, read from the client&apos;s profile.
                     </p>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -833,9 +884,20 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                       className="rounded bg-brand px-3 py-1 text-xs text-white disabled:opacity-50">
                       Issue challan
                     </Button>
+                    <Button variant="plain" size="none" onClick={() => setCorrecting(true)}
+                      className="rounded border border-ps-border px-3 py-1 text-xs">
+                      Correct draft
+                    </Button>
+                    <Button variant="plain" size="none" onClick={() => cancelDraft(detail.challan as DeliveryChallan)}
+                      className="rounded border border-state-problem-border px-3 py-1 text-xs text-state-problem">
+                      Cancel draft
+                    </Button>
                   </div>
                   {issueAnswer && issueAnswer.id === detail.challan.id && (
                     <p role="alert" className="mt-2 text-xs text-state-problem">{issueAnswer.text}</p>
+                  )}
+                  {cancelAnswer && cancelAnswer.id === detail.challan.id && (
+                    <p role="alert" className="mt-2 text-xs text-state-problem">{cancelAnswer.text}</p>
                   )}
                 </div>
               )}

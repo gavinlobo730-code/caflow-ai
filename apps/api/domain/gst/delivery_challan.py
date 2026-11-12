@@ -57,6 +57,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
+from . import hsn_digits
+
 
 def _iso(value) -> Optional[date]:
     """'YYYY-MM-DD' → date, or None. PostgREST hands a DATE back as a string.
@@ -457,6 +459,70 @@ def only_a_draft_is_issued_sentence(document_no: object, status: object) -> str:
 def an_empty_challan_is_not_issued_sentence(document_no: object) -> str:
     """A challan with no goods on it is not a document that goods can leave on (POST-A-398)."""
     return f"Challan {document_no} has no lines, so there are no goods to send on it."
+
+
+#: What a correction to a DRAFT's lines may change (POST-A-417): the words and the HSN code. Quantity, unit, rate and tax are what the header's totals and an order's delivered quantity are made
+#: from, so changing one is a new challan, not a correction.
+DRAFT_LINE_FIELDS = ("description", "hsn_sac")
+
+
+#: Lines are corrected in a request of their own (POST-A-417): a status given beside them would cancel the challan and then write the lines onto it.
+LINES_ARE_CORRECTED_ALONE = "A draft's lines are corrected in a request of their own: give no status beside them. Cancel the challan, or correct its lines, not both at once."
+
+
+def draft_line_corrections_problem(document_no: object, status: object, fixes: object, line_ids: object) -> Optional[str]:
+    """The sentence for a correction to a challan's lines that cannot be made, or None (POST-A-417). Pure. `fixes` is what the amendment gave as `lines`, `line_ids` the ids of the challan's own lines IN THE ORDER THE
+    SCREEN SHOWS THEM, so a sentence can say "line 2" and not an id the person never sees.
+
+    ONLY A DRAFT'S LINES ARE CORRECTED, AND ONLY THEIR WORDS AND THEIR HSN CODE. Once the goods have left, the lines are the issued document's. Rule 55(1)(iv) asks for the HSN code of the goods, and a draft made
+    without one could not be issued and had no way to be mended, so the person made the challan again under a new number while the draft kept its own. Anything else a line carries is refused in a sentence and
+    never dropped: the amendment door used to drop `lines` whole and report a success. The words are text and the HSN code is text or nothing (a number or an object is not stored as its spelling). A blank HSN is
+    allowed (it clears the box and the challan then lists it as still to be recorded); a code that is not digits is not (`hsn_digits.is_a_code`: the module's own test, which says nothing about how long a code must
+    be, because that is a notification's question and not this door's)."""
+    if str(status) != STATUS_DRAFT:
+        return (f"Challan {document_no} is {status_is(status)}: only a draft's lines are corrected. Once the goods have left, the lines are the issued document's.")
+    if not isinstance(fixes, list) or not fixes or not all(isinstance(f, dict) for f in fixes):
+        return "Lines are corrected as a list, each naming the line it corrects by its id and giving its description, its HSN code or both."
+    order = [str(i) for i in (line_ids or ())]
+    seen: set = set()
+    for fx in fixes:
+        line_id = str(fx.get("id") or "").strip()
+        if not line_id:
+            return "A line correction must name the line it corrects by its id."
+        if line_id not in order:
+            return f"{line_id} is not a line of challan {document_no}."
+        n = order.index(line_id) + 1
+        if line_id in seen:
+            return f"Line {n} is corrected twice in one request: give each line once."
+        seen.add(line_id)
+        other = sorted(k for k in fx if k != "id" and k not in DRAFT_LINE_FIELDS)
+        if other:
+            return (f"A draft's lines are corrected in their description and HSN code only ({', '.join(other)} cannot be changed here): the quantity, unit, rate and tax are what the challan's totals are made from, "
+                    "so a challan with different ones is made again.")
+        if not any(k in fx for k in DRAFT_LINE_FIELDS):
+            return f"Line {n} gives nothing to change: give its description, its HSN code or both."
+        if "description" in fx:
+            if not isinstance(fx["description"], str):
+                return f"The description of line {n} is text."
+            if not fx["description"].strip():
+                return f"Line {n} keeps a description: a challan line says what the goods are."
+        if "hsn_sac" in fx:
+            if fx["hsn_sac"] is not None and not isinstance(fx["hsn_sac"], str):
+                return f"The HSN code of line {n} is text of digits."
+            code = str(fx["hsn_sac"] or "").strip()
+            if code and not hsn_digits.is_a_code(code):
+                return f"HSN '{code}' on line {n} is not a code: an HSN or SAC is digits only."
+    return None
+
+
+def draft_line_changes(fix: dict) -> dict:
+    """The columns one accepted line correction writes: the description trimmed, the HSN code trimmed and None where it was cleared (POST-A-417). Pure; the correction has been judged."""
+    changes: dict = {}
+    if "description" in fix:
+        changes["description"] = str(fix["description"]).strip()
+    if "hsn_sac" in fix:
+        changes["hsn_sac"] = str(fix["hsn_sac"] or "").strip() or None
+    return changes
 
 
 def issue_needs_the_particulars_sentence(document_no: object, missing: list) -> str:

@@ -402,5 +402,7 @@ def update_challan(
               actor_email=current_user.get("email"),
               old_data={k: before.get(k) for k in deciding},
               new_data={"id": row.get("id") or challan_id, "document_no": row.get("document_no"), **{k: row.get(k) for k in deciding},
-                        "fields": sorted(k for k, v in sent.items() if v is not None and k != "lines")})
+                        "fields": sorted(k for k, v in sent.items() if v is not None and k != "lines"),
+                        # the lines corrected (POST-A-417) are named by id, never by what they now say
+                        "lines_corrected": [str(f.get("id")) for f in (sent.get("lines") or []) if isinstance(f, dict)]})
     return api_response(True, row)
