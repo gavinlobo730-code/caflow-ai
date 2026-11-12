@@ -16,7 +16,7 @@
  *   8. a refusal to a press is not shown again when the challan is closed and opened again;
  *   9. a challan recorded as received back with no day is not called overdue: it is said to be unable to be timed, and the box offers to record the day;
  *  10. the form for a challan asks for the place of supply once "Inter-state movement" is ticked, sends the one that was picked, and sends none when the tick is taken off again;
- *      it says what Rule 55(1) asks and that a draft is not edited on this screen.
+ *      it says what Rule 55(1) asks and where a draft is corrected (its panel: POST-A-417).
  *
  * No scenario has a date of its own, so none has a zone.
  */
@@ -166,7 +166,8 @@ export const scenarios = [
       await open(page);
       await page.getByText("Still to be recorded", { exact: true }).waitFor();
       await page.getByText("the server will not issue the challan without it", { exact: false }).waitFor();
-      await page.getByText("A draft is not edited on this screen", { exact: false }).waitFor();                // no place to record it is promised
+      await page.getByText("Correct draft records the consignee", { exact: false }).waitFor();                      // the place to record it is the draft's own panel (POST-A-417)
+      assert.equal(await page.getByText("not edited on this screen", { exact: false }).count(), 0, "the panel still says a draft cannot be edited");
       await issueButton(page).click();
       await page.getByRole("alert").filter({ hasText: SAID }).waitFor();
     },
@@ -246,7 +247,7 @@ export const scenarios = [
       const box = page.locator('button[aria-label="Place of supply"]');
       assert.equal(await box.count(), 0, "the place of supply is asked for a movement that is not inter-State");
       await page.getByText("CGST Rule 55(1) asks for the HSN code of every line", { exact: false }).waitFor();
-      await page.getByText("a draft is not edited on this screen", { exact: false }).first().waitFor();
+      await page.getByText("a draft saved without one of these is corrected from its panel", { exact: false }).first().waitFor();
       await page.getByLabel("Inter-state movement").check();
       await pick(page, box, "Karnataka");
       await page.getByRole("button", { name: "Save", exact: true }).click();

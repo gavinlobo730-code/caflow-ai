@@ -64,14 +64,16 @@ test("the tab issues from one function, from the draft's detail only, and says a
 
 test("what the tab says about an issue is not stale: the refusal is cleared when a challan is opened, closed or the tab changed, and the refreshed detail replaces only its own challan's", () => {
   const src = read(TAB);
-  assert.match(src, /setTab\(id\); setShowForm\(false\); setDetail\(null\); setIssueAnswer\(null\)/, "a refusal to an earlier press survives a change of tab");
-  assert.match(src, /aria-label="Close the challan" onClick=\{\(\) => \{ setDetail\(null\); setIssueAnswer\(null\); \}\}/, "a refusal to an earlier press survives closing the challan");
-  assert.match(src, /onRow=\{\(i\) => \{\s*setIssueAnswer\(null\);/, "a refusal to an earlier press comes back when a challan is opened");
-  assert.match(src, /setDetail\(\(open\) => \(open && open\.challan\?\.id === challan\.id \? fresh : open\)\)/, "the detail read after an issue can overwrite a challan the person has opened since");
+  assert.match(src, /setTab\(id\); setShowForm\(false\); setDetail\(null\); setIssueAnswer\(null\); setCancelAnswer\(null\); setCorrecting\(false\)/, "a refusal to an earlier press, or an open correction form, survives a change of tab");
+  assert.match(src, /aria-label="Close the challan" onClick=\{\(\) => \{ setDetail\(null\); setIssueAnswer\(null\); setCancelAnswer\(null\); setCorrecting\(false\); \}\}/, "a refusal to an earlier press, or an open correction form, survives closing the challan");
+  assert.match(src, /onRow=\{\(i\) => \{\s*setIssueAnswer\(null\);[^}]*?setCancelAnswer\(null\);\s*setCorrecting\(false\);/, "a refusal to an earlier press, or an open correction form, comes back when a challan is opened");
+  // the re-read is ONE function (`reopen`), asked after an issue and after a correction, and it replaces only the detail of the challan it was asked for
+  assert.match(src, /async function reopen\(challanId: string\)[\s\S]*?setDetail\(\(open\) => \(open && open\.challan\?\.id === challanId \? fresh : open\)\)/, "the detail read after an issue can overwrite a challan the person has opened since");
+  assert.match(src, /await reopen\(challan\.id\)/, "an issue does not read the detail again");
   assert.match(src, /role=\{msg\.type === "ok" \? "status" : "alert"\}/, "the page's message line is not a live region: a success is not announced and the focus is lost with the button");
 });
 
-test("the challan form asks for the place of supply of an inter-State movement, sends it, and says what Rule 55(1) asks and that a draft is not edited here", () => {
+test("the challan form asks for the place of supply of an inter-State movement, sends it, and says what Rule 55(1) asks and where a draft is corrected", () => {
   const src = read(TAB);
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   // a challan made with the tick and no place of supply could never be issued (Rule 55(1)(viii)), and no screen could add one afterwards
@@ -83,7 +85,9 @@ test("the challan form asks for the place of supply of an inter-State movement, 
   assert.match(code, /CGST Rule 55\(1\) asks for the HSN code of every line, the consignee and, for an inter-State movement, the place of supply\./, "the form does not say what Rule 55(1) asks");
   assert.ok(!/Rule 55\(1\) asks for[^.]*what a job-work challan sends/.test(code.replace(/\s+/g, " ")), "the form puts what a job-work challan sends on Rule 55(1), which does not ask for it");
   assert.match(code.replace(/\s+/g, " "), /A job-work challan also says what it sends, because the period under s\.143 depends on it\./, "the form does not say that a job-work challan says what it sends, or why");
-  assert.match(code.replace(/\s+/g, " "), /a draft is not edited on this screen, so a challan saved without one of these is made again, with a new number\./, "the form does not say that a draft is not edited here");
+  assert.match(code.replace(/\s+/g, " "), /a draft saved without one of these is corrected from its panel \(open it from the list\) before it is issued\./, "the form does not say where a draft is corrected");
+  // and the sentence that said it could not be is gone from the whole tab: a draft IS edited on this screen now (POST-A-417)
+  assert.ok(!/not edited on this screen/.test(code), "the tab still says a draft is not edited on this screen");
 });
 
 test("the draft line is drawn only where a draft exists, and the card a row opens sits above the ITC-04 panel, next to the list", () => {

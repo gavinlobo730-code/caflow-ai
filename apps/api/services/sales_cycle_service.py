@@ -1016,6 +1016,16 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
                "delivery challan")
     fields = {k: v for k, v in patch.items()
               if v is not None and k != "lines"}
+    # THE LINES OF A DRAFT ARE CORRECTED HERE (POST-A-417): their description and HSN code, judged before anything is written; anything else on a line, and any line of a challan that is not a draft, is refused
+    # in a sentence (this door used to drop `lines` whole and report a success). The write that follows is held to a draft by the same compare-and-set as a status.
+    fixes = patch.get("lines")
+    if fixes is not None and fields.get("status"):
+        raise HTTPException(status_code=422, detail=dc.LINES_ARE_CORRECTED_ALONE)
+    own_lines = challan_lines(db, firm_id, challan_id) if fixes is not None else []
+    if fixes is not None:
+        problem = dc.draft_line_corrections_problem(row.get("document_no"), row.get("status"), fixes, [ln["id"] for ln in own_lines])
+        if problem:
+            raise HTTPException(status_code=422 if str(row.get("status")) == dc.STATUS_DRAFT else 409, detail=problem)
     if fields.get("goods_kind") and str(row.get("reason")) != dc.REASON_JOB_WORK:
         raise HTTPException(
             status_code=422,
@@ -1052,11 +1062,18 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     # A STATUS IS WRITTEN OVER THE ONE THIS PATCH JUDGED (POST-A-398): an issue, a cancel, an amendment or a lot's stamp that got in between has changed what the rules above were asked about, so
     # this write matches nothing and says so, and a challan at its end (cancelled, received back) is not written over by a request that read it before it got there. A patch that gives no
     # status is held to no status (a note or a transporter is a correction to what the document says). One statement, so the writers of this table stay countable.
-    expected = [row.get("status")] if "status" in fields else list(oc.CHALLAN_STATUSES)
+    expected = [row.get("status")] if "status" in fields else ([dc.STATUS_DRAFT] if fixes else list(oc.CHALLAN_STATUSES))
     done = (db.table("delivery_challans").update(fields)
             .eq("firm_id", firm_id).eq("id", challan_id).in_("status", expected).execute())
     if not (done.data or []):
         raise HTTPException(status_code=409, detail=f"Challan {row.get('document_no')} was changed while it was being amended. Reload it and look at its status.")
+    # The two columns are written as a literal pair (the column guard reads a literal write and not a variable one), each from the correction or, where it gives none, from the line as it was read.
+    was = {str(ln["id"]): ln for ln in own_lines}
+    for fix in fixes or []:
+        changes, line = dc.draft_line_changes(fix), was[str(fix["id"]).strip()]
+        (db.table("delivery_challan_lines")
+         .update({"description": changes.get("description", line.get("description")), "hsn_sac": changes["hsn_sac"] if "hsn_sac" in changes else line.get("hsn_sac")})
+         .eq("firm_id", firm_id).eq("client_id", str(row["client_id"])).eq("challan_id", challan_id).eq("id", str(fix["id"]).strip()).execute())
     if "status" in fields:
         _resettle_order_status(db, firm_id, row.get("order_id"))      # a cancelled (or received-back) challan changes what is delivered against its order
     return {**row, **fields}

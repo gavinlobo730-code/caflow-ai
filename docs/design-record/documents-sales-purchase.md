@@ -122,6 +122,25 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   pinned by a test — egress is refused here — and `compute_line_gst` MOVED to
   `domain/sales/line_tax.py` with `routers/sales_invoices` re-exporting it, so
   `shared/gst-parity-vectors.json` still pins the one implementation.
+  **A DRAFT CHALLAN IS CORRECTED AND CANCELLED FROM ITS PANEL, AND THE DOOR THAT DROPPED `lines` NOW JUDGES THEM** (POST-A-417, 13-11-2026; no migration). A challan is made as a draft whose Rule 55(1)
+  particulars are optional (the HSN code of a line, the consignee when no customer was picked, what a job-work challan sends) and `issue_challan` will not issue it without them, but
+  `PATCH /api/sales-cycle/challans/{id}` took `lines` and THREW IT AWAY, reporting a success, and no screen called it for a draft: a challan that lacked a particular was made again under a new number while the draft
+  kept its own. `update_challan` now corrects a draft's lines by id (`delivery_challan.draft_line_corrections_problem`, pure): **only the description and the HSN code**, because the quantity, unit, rate and tax
+  are what the header's totals and an order's delivered quantity are made from (so the totals cannot change, and a challan with different ones is made again, said in the sentence); anything else on a line, a line
+  that is not THIS challan's, a line named twice, a correction that changes nothing, a blank description, an HSN that is not digits (`hsn_digits.is_a_code`, the module's own test, which says nothing about how
+  long a code must be) and EVERY non-draft (409; the lines are the issued document's) are refused in a sentence with nothing written, header or lines; a cleared HSN box clears the code. The header write is
+  held to a draft by the same compare-and-set as a status, and the line write names the firm, the client, the challan and the line (a test seeds a line with the same id under another challan and another client). The
+  audit event names the lines corrected by id and never what they now say. A refusal names a line by the number the screen shows (line 2), not by an id; a description is text and an HSN code is text or nothing (a
+  number or an object is refused, not stored as its spelling); and `lines` beside a `status` are refused (`LINES_ARE_CORRECTED_ALONE`), because a cancel with lines would write them onto a cancelled challan. **The status table already let a draft be cancelled** (`AMENDMENT_MAY_MAKE`), so the cancel needed a screen and not a rule: the
+  tab's wrapper `cancelChallan` sends the cancelled status and nothing else, because the amendment wrapper is never given a status (a source guard holds that for every caller). **The screen**: the draft's panel offers
+  "Correct draft" (`DraftChallanEditor`, the shared modal: the consignee, what a job-work challan sends, the place of supply of an inter-State movement, each line's description and HSN code; it sends one inline body
+  carrying only what CHANGED and judges no value: the screen decides only which boxes it offers, as the new-challan form does, and Close, Escape and the backdrop do nothing while a save is out, so a refusal is not lost) and "Cancel draft" (asked in the shared dialog first, with a danger button; a refusal is the server's sentence beside the button); the sentences
+  that said "a draft is not edited on this screen" are gone from the panel, the form's note and the drive. **Three boxes cannot be emptied there, the consignee's GSTIN, the place of supply and the kind of
+  goods**: the model reads a blank for those as "unchanged" (POST-A-399's shape, an emptied box sent as nothing while the screen says it saved), so a box that held a value and is empty now is said on the screen
+  before anything is sent. Held by `tests/test_a_draft_delivery_challans_lines_are_corrected_in_words_and_hsn_code_only.py` (22 tests), `scripts/a-draft-challan-is-corrected-and-cancelled-from-its-panel.test.ts` and
+  the Chromium group `draft-challan` (seven scenarios). **Not done**: the lines' quantity, unit, rate and tax stay as made. The header's compare-and-set comes first and the line writes come after it, one statement per line, so a draft issued in that gap can be left an
+  issued challan whose HSN code was just changed, and a write that fails part-way leaves the header and the earlier lines written with no audit event; POST-A-419 now lists this door beside `create_challan` and the
+  lot stamp. A cancelled challan still takes a note or a consignee through this door (the cancel dialog says its status cannot change again, not that nothing can).
 
 - **AN IMPORT OF GOODS IS PAID FOR TWICE AND ONLY ONE OF THEM IS THE SUPPLIER'S**
   (PUR-18, migration 389). IGST on imported goods is not charged by the

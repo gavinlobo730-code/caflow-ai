@@ -4057,6 +4057,10 @@ export interface DeliveryChallan {
   goods_kind?: string | null;
   received_back_on?: string | null;
   consignee_name?: string | null;
+  consignee_gstin?: string | null;
+  consignee_address?: string | null;
+  place_of_supply?: string | null;
+  is_inter_state?: boolean;
   taxable_paise: number;
   total_paise: number;
   clock: DeemedSupplyClock;
@@ -7945,6 +7949,13 @@ export const api = {
       request<ApiResp<DeliveryChallan>>(
         `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`,
         { method: "PATCH", body: JSON.stringify(body) }),
+    /** POST-A-417 — cancel a challan whose goods did not leave (a draft keeps its number and is cancelled, not deleted). The server's status table
+     *  (`delivery_challan.AMENDMENT_MAY_MAKE`) decides what may be cancelled and answers a refusal in a sentence. Its own wrapper because the amendment wrapper above is never
+     *  given a status (a source guard holds that): the one status this screen asks for is this one, and it is the only body this sends. A write: not sent again after a dropped connection. */
+    cancelChallan: (id: string, clientId: string) =>
+      request<ApiResp<DeliveryChallan>>(
+        `/api/sales-cycle/challans/${id}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "PATCH", body: JSON.stringify({ status: "cancelled" }) }),
     /** POST-A-398 — issue a draft challan: the goods leave on it. The one door that makes a challan issued; the server asks what a challan must hold and answers a refusal in a sentence.
      *  A write: it is not sent again after a dropped connection. */
     issueChallan: (id: string, clientId: string) =>
