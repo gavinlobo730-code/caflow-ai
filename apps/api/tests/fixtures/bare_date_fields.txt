@@ -2,7 +2,7 @@
 # SHRINK-ONLY: see tests/test_a_date_field_on_a_request_model_is_a_real_date_or_is_on_the_frozen_list.py. Give a field IsoDate / OptionalIsoDate / PatchIsoDate
 # (models/iso_date) or a field_validator and delete its line here in the same commit. Do not add a line to make a new field pass.
 # One entry is bare ON PURPOSE: routers/purchase_bills.py::NearDuplicateProbeIn.bill_date (a read-only advisory probe that never refuses; its reason is at the field).
-# First written 13-11-2026 after the documents' slice (invoice, bill, receipt, vendor payment, the four notes, reversal, e-invoice, near-duplicate probe).
+# First written 13-11-2026 after the documents' slice; narrowed 13-11-2026 by the second slice (quotation, sales order, purchase order, goods receipt).
 models/accounting.py::DisposalIn.disposal_date
 models/accounting.py::FixedAssetIn.purchase_date
 models/accounting.py::FixedAssetIn.put_to_use_date
@@ -23,28 +23,7 @@ models/payroll.py::EmployeeIn.date_of_birth
 models/payroll.py::EmployeeIn.joining_date
 models/payroll.py::EmployeeUpdateIn.date_of_birth
 models/payroll.py::EmployeeUpdateIn.joining_date
-models/purchase_cycle.py::GoodsReceiptIn.objection_raised_on
-models/purchase_cycle.py::GoodsReceiptIn.objection_removed_on
-models/purchase_cycle.py::GoodsReceiptIn.received_on
-models/purchase_cycle.py::GoodsReceiptIn.vendor_challan_date
-models/purchase_cycle.py::GoodsReceiptUpdateIn.objection_raised_on
-models/purchase_cycle.py::GoodsReceiptUpdateIn.objection_removed_on
-models/purchase_cycle.py::GoodsReceiptUpdateIn.received_on
-models/purchase_cycle.py::GoodsReceiptUpdateIn.vendor_challan_date
-models/purchase_cycle.py::PurchaseOrderIn.document_date
-models/purchase_cycle.py::PurchaseOrderIn.expected_date
-models/purchase_cycle.py::PurchaseOrderUpdateIn.document_date
-models/purchase_cycle.py::PurchaseOrderUpdateIn.expected_date
 models/sales_cycle.py::DeliveryChallanIn.document_date
-models/sales_cycle.py::QuotationIn.valid_until
-models/sales_cycle.py::QuotationUpdateIn.document_date
-models/sales_cycle.py::QuotationUpdateIn.valid_until
-models/sales_cycle.py::SalesOrderIn.customer_po_date
-models/sales_cycle.py::SalesOrderIn.expected_delivery_date
-models/sales_cycle.py::SalesOrderUpdateIn.customer_po_date
-models/sales_cycle.py::SalesOrderUpdateIn.document_date
-models/sales_cycle.py::SalesOrderUpdateIn.expected_delivery_date
-models/sales_cycle.py::_PreInvoiceHeader.document_date
 models/service_catalogue.py::ServiceCatalogueIn.opening_balance_date
 models/service_catalogue.py::ServiceCatalogueUpdateIn.opening_balance_date
 routers/accounting.py::OpeningBalancePostIn.opening_date

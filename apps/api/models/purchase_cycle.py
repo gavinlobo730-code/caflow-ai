@@ -10,6 +10,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
+
 from domain.gst.gstin import problem_with
 from domain.gst.validator import VALID_STATE_CODES
 from domain.purchases import order_cycle as oc
@@ -186,8 +188,8 @@ class PurchaseOrderIn(BaseModel):
     client_id: str
     vendor_id: str
     document_no: str
-    document_date: str
-    expected_date: Optional[str] = None
+    document_date: IsoDate
+    expected_date: OptionalIsoDate = None
     vendor_name: Optional[str] = None
     vendor_gstin: Optional[str] = None
     place_of_supply: Optional[str] = None
@@ -225,8 +227,8 @@ class PurchaseOrderUpdateIn(BaseModel):
     in the editability guard's immutable map with their reasons.
     """
     document_no: Optional[str] = None
-    document_date: Optional[str] = None
-    expected_date: Optional[str] = None
+    document_date: PatchIsoDate = None
+    expected_date: PatchIsoDate = None
     status: Optional[str] = None
     vendor_name: Optional[str] = None
     vendor_gstin: Optional[str] = None
@@ -266,13 +268,13 @@ class GoodsReceiptIn(BaseModel):
     client_id: str
     vendor_id: str
     document_no: str
-    received_on: str
+    received_on: IsoDate
     order_id: Optional[str] = None
-    objection_raised_on: Optional[str] = None
-    objection_removed_on: Optional[str] = None
+    objection_raised_on: OptionalIsoDate = None
+    objection_removed_on: OptionalIsoDate = None
     vendor_name: Optional[str] = None
     vendor_challan_no: Optional[str] = None
-    vendor_challan_date: Optional[str] = None
+    vendor_challan_date: OptionalIsoDate = None
     transporter_name: Optional[str] = None
     vehicle_no: Optional[str] = None
     notes: Optional[str] = None
@@ -306,13 +308,13 @@ class GoodsReceiptUpdateIn(BaseModel):
     """Amend a goods receipt. `client_id`, `vendor_id` and `order_id` are
     absent on purpose — see the editability guard's immutable map."""
     document_no: Optional[str] = None
-    received_on: Optional[str] = None
+    received_on: PatchIsoDate = None
     status: Optional[str] = None
-    objection_raised_on: Optional[str] = None
-    objection_removed_on: Optional[str] = None
+    objection_raised_on: PatchIsoDate = None
+    objection_removed_on: PatchIsoDate = None
     vendor_name: Optional[str] = None
     vendor_challan_no: Optional[str] = None
-    vendor_challan_date: Optional[str] = None
+    vendor_challan_date: PatchIsoDate = None
     transporter_name: Optional[str] = None
     vehicle_no: Optional[str] = None
     notes: Optional[str] = None
