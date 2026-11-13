@@ -907,14 +907,6 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
     return {**row, **fields}
 
 
-def _earliest_recorded_return(db, firm_id: str, client_id: str, challan_id: str) -> Optional[date]:
-    """The earliest day a lot of this challan's goods was recorded as back on FORM GST ITC-04 (`delivery_challan_returns`), or None (PRE-A-015, seventeenth slice)."""
-    rows = (db.table("delivery_challan_returns").select("returned_on")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
-            .order("returned_on").limit(1).execute().data) or []
-    return date.fromisoformat(str(rows[0]["returned_on"])[:10]) if rows else None
-
-
 def _latest_returned_on(db, firm_id: str, client_id: str, challan_id: str) -> Optional[date]:
     """The latest day goods were recorded as RETURNED on FORM GST ITC-04 against this challan (`delivery_challan_returns`), or None (POST-A-383): the day the WHOLE challan came back is
     the day its last goods did, so it cannot be before this one. A row that records only quantity lost or wasted (migration 462 allows one) is not goods returned and is not counted:
@@ -967,34 +959,28 @@ def _refuse_a_status_or_day_that_cannot_stand(row: dict, fields: dict) -> None:
 
 def _refuse_a_day_that_is_out_of_order(db, firm_id: str, row: dict, challan_id: str, fields: dict) -> None:
     """The order of the days: the goods cannot have come back before they went out, or on a day that has not come (PRE-A-015, seventeenth slice), and the whole challan's day is not
-    before goods already returned under ITC-04 (POST-A-383). The request model has judged each day alone; the day they went out is the challan's own, or the one this same amendment gives it."""
-    if not (fields.get("received_back_on") or fields.get("document_date")):
+    before goods already returned under ITC-04 (POST-A-383). The request model has judged each day alone; the day they went out is the challan's own. It cannot be amended once the goods
+    have left (POST-A-416: `delivery_challan.issued_challan_is_not_rewritten_problem`), so the order is asked of a back day only, and the comparison of an amended sent-day with the days
+    already recorded as back (which POST-A-383 added) has nothing left to compare: a draft has no back day and a lot cannot be recorded on one."""
+    if not fields.get("received_back_on"):
         return
-    sent = date.fromisoformat(str(fields.get("document_date") or row["document_date"])[:10])
-    problem = None
-    if fields.get("received_back_on"):
-        back_on = date.fromisoformat(str(fields["received_back_on"])[:10])
-        problem = dc.goods_back_problem(sent, back_on, ist_today())
-        if not problem:
-            # The whole challan's day is the day its LAST goods came back, so it is not before a lot of goods already returned under ITC-04.
-            problem = dc.whole_challan_back_before_a_lot_problem(
-                row.get("document_no"), back_on, _latest_returned_on(db, firm_id, str(row["client_id"]), challan_id))
-    if not problem and fields.get("document_date"):
-        # The day they went out is amended, and that can leave the pair the wrong way round: it is compared with the days already recorded as back, the whole challan's (unless this
-        # same patch gives another) and the earliest lot's (a lot recorded under ITC-04 leaves `received_back_on` empty until every line is back). Those days were judged when they
-        # were recorded, so here they are asked only for their ORDER (a day is never after itself, so `back` stands for today), and an edit of something else never gets here, so a
-        # row stored from before this rule is not made unsaveable by it. Asked whether or not the patch also gives a back day: the pair is wrong either way.
-        recorded_days = [_earliest_recorded_return(db, firm_id, str(row["client_id"]), challan_id)]
-        if not fields.get("received_back_on"):
-            recorded_days.insert(0, row.get("received_back_on"))
-        for recorded in recorded_days:
-            if recorded:
-                back = date.fromisoformat(str(recorded)[:10])
-                problem = dc.goods_back_problem(sent, back, back)
-                if problem:
-                    break
+    sent = date.fromisoformat(str(row["document_date"])[:10])
+    back_on = date.fromisoformat(str(fields["received_back_on"])[:10])
+    problem = dc.goods_back_problem(sent, back_on, ist_today())
+    if not problem:
+        # The whole challan's day is the day its LAST goods came back, so it is not before a lot of goods already returned under ITC-04.
+        problem = dc.whole_challan_back_before_a_lot_problem(
+            row.get("document_no"), back_on, _latest_returned_on(db, firm_id, str(row["client_id"]), challan_id))
     if problem:
         raise HTTPException(status_code=422, detail=problem)
+
+
+def _refuse_a_rewrite_of_an_issued_challan(row: dict, fields: dict) -> None:
+    """AN ISSUED OR CANCELLED CHALLAN IS NOT REWRITTEN (POST-A-416): its number, date, consignee and inter-State flag (and its place of supply, unless it is a job-work challan whose goods are out, where
+    that is the job worker's State) are what it was made as; a change is a cancellation and a new challan. Judged on the row as stored, before anything is written."""
+    rewritten = dc.issued_challan_is_not_rewritten_problem(row.get("document_no"), row=row, patch=fields)
+    if rewritten:
+        raise HTTPException(status_code=409, detail=rewritten)
 
 
 def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
@@ -1007,8 +993,9 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     goods in transit to come back, so a patch that stops the clock on one, or leaves one cancelled with a back day, is refused in the ITC-04 lot door's own sentence, judged on the status
     the patch LEAVES and not only on the one stored (`{"status": "cancelled", "received_back_on": D}` is one request); the sentence for the cancelled challan comes before the one for the
     missing day, because the missing day cannot be fixed on it. A challan given a back day IS received back, so a patch that gives one beside another status is refused. The whole
-    challan's day is not earlier than a lot of goods returned on ITC-04, and an amended day they went out is compared with the days already recorded as back whether or not the patch
-    gives a back day too. A DRAFT IS REFUSED A BACK DAY since POST-A-398: the product has a door that issues a challan (`issue_challan`), so a draft is a challan nothing has left on, and goods
+    challan's day is not earlier than a lot of goods returned on ITC-04. THE DAY THEY WENT OUT IS NOT AMENDED ON A CHALLAN THAT HAS BEEN ISSUED OR CANCELLED (POST-A-416), so it is never compared with the days
+    already recorded as back: neither is its number, its consignee or its inter-State flag (`_refuse_a_rewrite_of_an_issued_challan`); the transport details, the notes, the extension and the kind
+    of goods stay open (the API's, not a screen's), and so does a job-work challan's place of supply while its goods are out (it is the job worker's State). A DRAFT IS REFUSED A BACK DAY since POST-A-398: the product has a door that issues a challan (`issue_challan`), so a draft is a challan nothing has left on, and goods
     can only come back on an issued one (the same sentence as the FORM GST ITC-04 lot door). The status is not set to `issued` here either: that is the issue door's, which asks what a
     challan must hold when the goods leave (`delivery_challan.status_change_problem`).
     """
@@ -1026,6 +1013,7 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
         problem = dc.draft_line_corrections_problem(row.get("document_no"), row.get("status"), fixes, [ln["id"] for ln in own_lines])
         if problem:
             raise HTTPException(status_code=422 if str(row.get("status")) == dc.STATUS_DRAFT else 409, detail=problem)
+    _refuse_a_rewrite_of_an_issued_challan(row, fields)
     if fields.get("goods_kind") and str(row.get("reason")) != dc.REASON_JOB_WORK:
         raise HTTPException(
             status_code=422,
@@ -1052,17 +1040,19 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     _refuse_a_day_that_is_out_of_order(db, firm_id, row, challan_id, fields)
     if fields.get("received_back_on") and not fields.get("status"):
         fields["status"] = "received_back"
-    # AN ISSUED CHALLAN KEEPS WHAT ISSUING ASKED OF IT (POST-A-398): an empty string blanks a field and a date can be moved, so the fields this patch touches are asked again of the row it would
+    # AN ISSUED CHALLAN KEEPS WHAT ISSUING ASKED OF IT (POST-A-398): an empty string blanks a field, so the fields this patch touches are asked again of the row it would
     # leave. Only what it touches: a row stored before this rule is not made unsaveable by an edit of something else.
     if str(fields.get("status") or row.get("status")) in dc.GOODS_HAVE_LEFT:
-        problem = dc.issued_challan_problem(row.get("document_no"), row={**row, **fields}, today=ist_today(), touched=set(fields))
+        problem = dc.issued_challan_problem(row.get("document_no"), row={**row, **fields}, touched=set(fields))
         if problem:
             raise HTTPException(status_code=422, detail=problem)
     fields["updated_at"] = ist_now().isoformat()
     # A STATUS IS WRITTEN OVER THE ONE THIS PATCH JUDGED (POST-A-398): an issue, a cancel, an amendment or a lot's stamp that got in between has changed what the rules above were asked about, so
     # this write matches nothing and says so, and a challan at its end (cancelled, received back) is not written over by a request that read it before it got there. A patch that gives no
     # status is held to no status (a note or a transporter is a correction to what the document says). One statement, so the writers of this table stay countable.
-    expected = [row.get("status")] if "status" in fields else ([dc.STATUS_DRAFT] if fixes else list(oc.CHALLAN_STATUSES))
+    # A patch that touches what an issued challan keeps is held to the status the rule judged too (POST-A-416): a draft that another request issued in between is not renumbered or re-addressed.
+    held = "status" in fields or dc.touches_what_an_issued_challan_keeps(fields)
+    expected = [row.get("status")] if held else ([dc.STATUS_DRAFT] if fixes else list(oc.CHALLAN_STATUSES))
     done = (db.table("delivery_challans").update(fields)
             .eq("firm_id", firm_id).eq("id", challan_id).in_("status", expected).execute())
     if not (done.data or []):

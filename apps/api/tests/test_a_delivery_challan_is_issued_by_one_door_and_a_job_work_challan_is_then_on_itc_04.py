@@ -565,33 +565,67 @@ def test_an_inter_state_challan_is_issued_with_the_place_of_supply_the_form_send
     assert caught.value.status_code == 422 and "55(1)(viii)" in str(caught.value.detail)
 
 
-# what an issued challan keeps. These patches go to the SERVICE as a dict: the request model reads "" as 'not sent' for the kind of goods, the place of supply and the GSTIN, so the last two rows
+# what an issued challan keeps. These patches go to the SERVICE as a dict: the request model reads "" as 'not sent' for the kind of goods, the place of supply and the GSTIN, so the last rows
 # are reached by a direct caller of the service and not by the route (`test_a_blank_kind_place_or_gstin_sent_to_the_amendment_route_is_no_change_…` holds that half).
-@pytest.mark.parametrize("patch,words", [
-    ({"consignee_name": "", "consignee_gstin": "", "consignee_address": ""}, "keeps a consignee"),
-    ({"document_date": "2027-01-01"}, "which has not come"),
-    ({"is_inter_state": True, "place_of_supply": ""}, "keeps a place of supply"),
-    ({"goods_kind": ""}, "keeps what is sent"),
+# Since POST-A-416 the number, the date, the consignee and the inter-State flag are the issued document's and are not amended at all (a 409); what issuing asked of a job-work challan's kind of goods
+# and place of supply is still asked of what stays open (a 422).
+@pytest.mark.parametrize("patch,code,words", [
+    ({"consignee_name": "", "consignee_gstin": "", "consignee_address": ""}, 409, "its consignee's name and consignee's GSTIN cannot be changed"),   # the fixture holds no address, so a blank over it is no change
+    ({"document_date": "2027-01-01"}, 409, "its date cannot be changed"),
+    ({"document_no": "JW/99"}, 409, "its number cannot be changed"),
+    ({"is_inter_state": True, "place_of_supply": ""}, 409, "its inter-State flag cannot be changed"),
+    ({"goods_kind": ""}, 422, "keeps what is sent"),
 ])
-def test_an_issued_challan_is_not_amended_into_what_issuing_would_have_refused(db, patch, words):
+def test_an_issued_challan_is_not_rewritten(db, patch, code, words):
     c = _draft(db, "JW/40")
     _issue(db, c)
     before = dict(_stored(db, c))
     with pytest.raises(HTTPException) as caught:
         _amend(db, c, patch)
-    assert caught.value.status_code == 422 and words in str(caught.value.detail), caught.value.detail
+    assert caught.value.status_code == code and words in str(caught.value.detail), caught.value.detail
     assert _stored(db, c) == before, "the refused amendment wrote"
 
 
-def test_a_draft_may_be_amended_into_anything_and_an_issued_challan_may_still_be_corrected_in_what_issuing_does_not_ask(db):
+def test_a_job_work_challan_keeps_a_place_of_supply_if_it_was_an_inter_state_movement(db):
+    """The place of supply is the one closed particular that stays open on a job-work challan (it is the job worker's State, recorded after the goods have gone), so the rule that an inter-State
+    movement keeps a place of supply is still asked of it."""
+    c = _draft(db, "JW/52", is_inter_state=True)
+    _issue(db, c)
+    before = dict(_stored(db, c))
+    with pytest.raises(HTTPException) as caught:
+        _amend(db, c, {"place_of_supply": ""})
+    assert caught.value.status_code == 422 and "keeps a place of supply" in str(caught.value.detail)
+    assert _stored(db, c) == before
+    assert _amend(db, c, {"place_of_supply": "27"})["place_of_supply"] == "27", "the job worker's State is recorded or corrected after the goods have gone"
+
+
+def test_the_place_of_supply_of_a_challan_that_is_not_job_work_is_the_issued_documents(db):
+    c = _draft(db, "SA/1", reason=dc.REASON_ON_APPROVAL, goods_kind=None)
+    _issue(db, c)
+    with pytest.raises(HTTPException) as caught:
+        _amend(db, c, {"place_of_supply": "27"})
+    assert caught.value.status_code == 409 and "its place of supply cannot be changed" in str(caught.value.detail)
+    assert _stored(db, c)["place_of_supply"] == "29"
+
+
+def test_a_draft_may_be_amended_into_anything_and_an_issued_challan_keeps_its_particulars_but_not_its_transport_or_notes(db):
     draft = _draft(db, "JW/41")
     assert _amend(db, draft, {"consignee_name": "", "consignee_gstin": "", "consignee_address": ""})["consignee_name"] == ""   # a draft is a draft
+    assert _amend(db, draft, {"document_date": "2026-05-20", "document_no": "JW/41A"})["document_no"] == "JW/41A"
     issued = _draft(db, "JW/42")
     _issue(db, issued)
-    assert _amend(db, issued, {"consignee_name": "Gamma Works"})["consignee_name"] == "Gamma Works"
-    assert _amend(db, issued, {"document_date": "2026-05-20"})["document_date"] == "2026-05-20", "a date moved to a day that has come is still a correction (POST-A-383 judges it against the lots)"
+    for patch in ({"consignee_name": "Gamma Works"}, {"document_date": "2026-05-20"}, {"document_no": "JW/42A"}):
+        with pytest.raises(HTTPException) as caught:
+            _amend(db, issued, patch)
+        assert caught.value.status_code == 409, patch
+    assert _stored(db, issued)["consignee_name"] == "Precision Castings" and _stored(db, issued)["document_date"] == "2026-06-01" and _stored(db, issued)["document_no"] == "JW/42"
     assert _amend(db, issued, {"goods_kind": dc.GOODS_KIND_CAPITAL_GOODS})["goods_kind"] == dc.GOODS_KIND_CAPITAL_GOODS
     assert _amend(db, issued, {"notes": "booked", "vehicle_no": "MH12AB1234", "extended_to": "2027-12-31"})["notes"] == "booked"
+    # what it already says, sent again, is no change (a client that sends the whole form back is not refused)
+    assert _amend(db, issued, {"consignee_name": "Precision Castings", "document_date": "2026-06-01", "document_no": "JW/42", "is_inter_state": False})["document_no"] == "JW/42"
+    # and a particular the challan did not hold is completed, not rewritten
+    _stored(db, issued).update({"consignee_address": None})
+    assert _amend(db, issued, {"consignee_address": "7 Foundry Lane, Pune"})["consignee_address"] == "7 Foundry Lane, Pune"
 
 
 def test_an_edit_of_something_else_does_not_make_an_issued_row_stored_before_this_rule_unsaveable(db):
@@ -602,18 +636,96 @@ def test_an_edit_of_something_else_does_not_make_an_issued_row_stored_before_thi
 
 
 def test_the_pure_rule_of_what_an_issued_challan_keeps_asks_only_what_the_patch_touches():
-    row = {"document_date": "2027-01-01", "consignee_name": "", "consignee_gstin": None, "consignee_address": " ", "is_inter_state": True, "place_of_supply": None,
-           "reason": dc.REASON_JOB_WORK, "goods_kind": None}
-    today = date(2026, 10, 9)
-    ask = lambda *touched: dc.issued_challan_problem("X/1", row=row, today=today, touched=set(touched))        # noqa: E731
+    row = {"is_inter_state": True, "place_of_supply": None, "reason": dc.REASON_JOB_WORK, "goods_kind": None}
+    ask = lambda *touched: dc.issued_challan_problem("X/1", row=row, touched=set(touched))        # noqa: E731
     assert ask("notes") is None and ask() is None, "an untouched row is not judged"
-    assert "has not come" in ask("document_date") and "keeps a consignee" in ask("consignee_address") and "keeps a consignee" in ask("consignee_name", "consignee_gstin")
-    assert "place of supply" in ask("is_inter_state") and "place of supply" in ask("place_of_supply") and "keeps what is sent" in ask("goods_kind")
-    row_ok = {**row, "document_date": "2026-10-09", "consignee_name": "A", "place_of_supply": "27", "goods_kind": "inputs"}
-    assert dc.issued_challan_problem("X/1", row=row_ok, today=today, touched={"document_date", "consignee_name", "place_of_supply", "goods_kind"}) is None
-    assert dc.issued_challan_problem("X/1", row={**row_ok, "reason": dc.REASON_NOT_A_SUPPLY, "goods_kind": None}, today=today, touched={"goods_kind"}) is None, "only job work carries a kind"
-    for field in ("document_date", "consignee_name", "place_of_supply", "goods_kind"):
+    assert "place of supply" in ask("place_of_supply") and "keeps what is sent" in ask("goods_kind")
+    assert ask("document_date") is None and ask("consignee_name") is None and ask("is_inter_state") is None, "those are closed outright, not asked again here"
+    row_ok = {**row, "place_of_supply": "27", "goods_kind": "inputs"}
+    assert dc.issued_challan_problem("X/1", row=row_ok, touched={"place_of_supply", "goods_kind"}) is None
+    assert dc.issued_challan_problem("X/1", row={**row_ok, "reason": dc.REASON_NOT_A_SUPPLY, "goods_kind": None}, touched={"goods_kind"}) is None, "only job work carries a kind"
+    for field in ("place_of_supply", "goods_kind"):
         assert "has been issued" in ask(field), f"the sentence for {field} says 'is issued' of a challan the goods have left on, which may be received back"
+
+
+def test_the_pure_rule_of_what_an_issued_challan_cannot_have_changed():
+    row = {"status": "issued", "reason": dc.REASON_ON_APPROVAL, "document_no": "X/1", "document_date": "2026-06-01", "consignee_name": "A", "consignee_gstin": None,
+           "consignee_address": " ", "is_inter_state": False, "place_of_supply": "29"}
+    ask = lambda **patch: dc.issued_challan_is_not_rewritten_problem("X/1", row=row, patch=patch)        # noqa: E731
+    assert ask() is None and ask(notes="x", vehicle_no="MH12AB1234", extended_to="2027-01-01", goods_kind="inputs", sales_invoice_id="i1") is None, "transport, notes, the extension, the kind of goods and the invoice stay open"
+    assert ask(document_no=" X/1 ", document_date="2026-06-01", consignee_name="A", is_inter_state=False, place_of_supply="29") is None, "the same value is no change"
+    assert ask(consignee_gstin="27AAAAA0000A1Z5", consignee_address="1 Lane") is None, "a particular the challan did not hold is completed"
+    sentence = ask(document_no="X/2", document_date="2026-06-02", consignee_name="B", is_inter_state=True, place_of_supply="27", consignee_gstin="27AAAAA0000A1Z5")
+    for words in ("number", "date", "consignee's name", "inter-State flag", "place of supply"):
+        assert words in sentence, words
+    assert "consignee's GSTIN" not in sentence, "filling a blank is not named"
+    assert "has been issued" in sentence and "Cancel it if its goods did not leave, and make a new challan" in sentence
+    assert "Its goods are back" in dc.issued_challan_is_not_rewritten_problem("X/1", row={**row, "status": "received_back"}, patch={"document_no": "X/2"}), "the goods have left on a received-back challan too"
+    cancelled = dc.issued_challan_is_not_rewritten_problem("X/1", row={**row, "status": "cancelled"}, patch={"document_no": "X/2"})
+    assert "is cancelled, so its number cannot be changed" in cancelled and "make a new challan" in cancelled, "a cancelled challan keeps the number it was cancelled with"
+    assert dc.issued_challan_is_not_rewritten_problem("X/1", row={**row, "status": "draft"}, patch={"document_no": "X/2"}) is None, "a draft is corrected freely"
+    assert dc.issued_challan_is_not_rewritten_problem("X/1", row={**row, "reason": dc.REASON_JOB_WORK}, patch={"place_of_supply": "27"}) is None, "a job worker's State is recorded after the goods have gone"
+    job_work_cancelled = {**row, "reason": dc.REASON_JOB_WORK, "status": "cancelled"}
+    assert "place of supply" in dc.issued_challan_is_not_rewritten_problem("X/1", row=job_work_cancelled, patch={"place_of_supply": "27"}), "no goods are out on a cancelled job-work challan, so there is no State to record"
+
+
+def test_a_day_and_a_gstin_are_compared_as_what_they_are_and_the_closed_fields_are_named_for_the_write():
+    row = {"status": "issued", "reason": dc.REASON_ON_APPROVAL, "document_date": "2026-06-01T00:00:00+00:00", "consignee_gstin": "27aaaaa0000a1z5", "document_no": "X/1"}
+    assert dc.issued_challan_is_not_rewritten_problem("X/1", row=row, patch={"document_date": "2026-06-01", "consignee_gstin": "27AAAAA0000A1Z5"}) is None, "the same day and GSTIN, spelled another way, are no change"
+    assert dc.issued_challan_is_not_rewritten_problem("X/1", row=row, patch={"document_date": "2026-06-02"}), "another day is"
+    assert dc.touches_what_an_issued_challan_keeps({"document_no": "X"}) and dc.touches_what_an_issued_challan_keeps({"place_of_supply": "27"})
+    assert not dc.touches_what_an_issued_challan_keeps({"notes": "x", "vehicle_no": "MH12", "goods_kind": "inputs", "received_back_on": "2026-06-10"})
+
+
+def test_a_held_consignee_address_of_an_issued_challan_is_not_changed(db):
+    c = _draft(db, "JW/54", consignee_address="1 Foundry Road, Pune")
+    _issue(db, c)
+    with pytest.raises(HTTPException) as caught:
+        _amend(db, c, {"consignee_address": "9 Other Road, Mumbai"})
+    assert caught.value.status_code == 409 and "its consignee's address cannot be changed" in str(caught.value.detail)
+    assert _stored(db, c)["consignee_address"] == "1 Foundry Road, Pune"
+
+
+def test_a_cancelled_challan_keeps_what_it_was_made_as_whether_or_not_its_goods_left(db):
+    """Nothing records whether the goods of a cancelled challan left (there is no issued-at), and a cancel followed by a rewrite would hide what was cancelled: so a cancelled challan keeps its
+    number, date, consignee and inter-State flag as an issued one does. A cancelled DRAFT is no different: it is the record of a number that was used."""
+    issued = _draft(db, "JW/55")
+    _issue(db, issued)
+    _amend(db, issued, {"status": "cancelled"})
+    draft = _draft(db, "JW/56")
+    _amend(db, draft, {"status": "cancelled"})
+    for c, no in ((issued, "JW/55"), (draft, "JW/56")):
+        before = dict(_stored(db, c))
+        for patch in ({"document_no": no + "X"}, {"document_date": "2026-05-01"}, {"consignee_name": "Somebody Else"}, {"is_inter_state": True}, {"place_of_supply": "27"}):
+            with pytest.raises(HTTPException) as caught:
+                _amend(db, c, patch)
+            assert caught.value.status_code == 409 and "is cancelled, so its" in str(caught.value.detail) and "make a new challan" in str(caught.value.detail), (no, patch)
+        assert _stored(db, c) == before, "a cancelled challan was rewritten"
+        assert _amend(db, c, {"notes": "voided by mistake"})["notes"] == "voided by mistake"
+
+
+def test_the_rule_is_judged_on_the_status_a_challan_is_stored_in_so_a_draft_is_corrected_and_cancelled_in_one_request(db):
+    """A draft is corrected freely, and cancelling it in the same request does not make the correction a rewrite: the rule asks what the challan IS, not what the request would make it."""
+    draft = _draft(db, "JW/59")
+    out = _amend(db, draft, {"status": "cancelled", "document_no": "JW/59A", "consignee_name": "Corrected Name"})
+    assert out["status"] == "cancelled" and out["document_no"] == "JW/59A" and out["consignee_name"] == "Corrected Name"
+
+
+def test_a_draft_issued_by_another_request_after_the_rule_was_asked_is_not_renumbered(db, monkeypatch):
+    """The rule is asked of the status read at the top; the write is held to that status when the patch touches a closed field, so a draft that another request issued in between is not rewritten
+    (the same hold a status or a lines correction already had)."""
+    c = _draft(db, "JW/57")
+    real = svc._refuse_a_status_or_day_that_cannot_stand
+    def issued_in_between(row, fields):
+        real(row, fields)
+        _stored(db, c)["status"] = "issued"                 # another request issued it after this one read it
+    monkeypatch.setattr(svc, "_refuse_a_status_or_day_that_cannot_stand", issued_in_between)
+    with pytest.raises(HTTPException) as caught:
+        _amend(db, c, {"document_no": "JW/57A", "consignee_name": "Someone Else"})
+    assert caught.value.status_code == 409 and "was changed while it was being amended" in str(caught.value.detail)
+    assert _stored(db, c)["document_no"] == "JW/57" and _stored(db, c)["consignee_name"] == "Precision Castings"
+    # a patch that touches nothing the rule closes keeps the hold it always had (any status), so a note still saves
+    assert _amend(db, c, {"notes": "saved on whatever it became"})["notes"] == "saved on whatever it became"
 
 
 def test_a_blank_kind_place_or_gstin_sent_to_the_amendment_route_is_no_change_so_it_cannot_blank_an_issued_challan(db, served):
@@ -632,8 +744,8 @@ def test_a_blank_kind_place_or_gstin_sent_to_the_amendment_route_is_no_change_so
     assert _stored(db, c)["notes"] == "kept"
 
 
-def test_a_received_back_challan_keeps_what_issuing_asked_as_an_issued_one_does(db):
-    """The goods have LEFT on a received-back challan too (`GOODS_HAVE_LEFT`), so the rules about what a challan keeps are asked of it, and the sentence is true of it ('has been issued')."""
+def test_a_received_back_challan_keeps_its_particulars_as_an_issued_one_does(db):
+    """The goods have LEFT on a received-back challan too (`GOODS_HAVE_LEFT`), so what it says of itself is not rewritten, and the sentence is true of it ('has been issued')."""
     c = _draft(db, "JW/49")
     _issue(db, c)
     svc.record_goods_back(db, itc.FIRM, c["id"], "2026-09-01")
@@ -641,16 +753,22 @@ def test_a_received_back_challan_keeps_what_issuing_asked_as_an_issued_one_does(
     before = dict(_stored(db, c))
     with pytest.raises(HTTPException) as caught:
         _amend(db, c, {"consignee_name": "", "consignee_gstin": "", "consignee_address": ""})
-    assert caught.value.status_code == 422 and "has been issued, so it keeps a consignee" in str(caught.value.detail), caught.value.detail
+    assert caught.value.status_code == 409 and "has been issued, so its consignee's name" in str(caught.value.detail) and "Its goods are back, so it stays as it was issued." in str(caught.value.detail), caught.value.detail
+    assert "Cancel it" not in str(caught.value.detail), "a received-back challan is not cancelled, so the sentence does not say to"
     assert _stored(db, c) == before, "the refused amendment wrote"
     assert _amend(db, c, {"notes": "collected"})["notes"] == "collected", "an edit of something else is not made to answer for the rule"
 
 
-def test_a_cancel_that_blanks_the_consignee_in_the_same_patch_is_allowed_because_a_cancelled_challan_has_no_goods_out(db):
+def test_a_cancel_cannot_carry_a_rewrite_of_an_issued_challan_with_it(db):
+    """A challan that is issued and is being cancelled in the same request is still an issued challan: the cancel is allowed, a change of what it says of itself beside it is not, so a cancelled challan
+    never hides the number or the consignee it was issued with."""
     c = _draft(db, "JW/50")
     _issue(db, c)
-    out = _amend(db, c, {"status": "cancelled", "consignee_name": "", "consignee_gstin": "", "consignee_address": ""})
-    assert out["status"] == "cancelled" and out["consignee_name"] == ""
+    before = dict(_stored(db, c))
+    with pytest.raises(HTTPException) as caught:
+        _amend(db, c, {"status": "cancelled", "consignee_name": "", "consignee_gstin": "", "consignee_address": ""})
+    assert caught.value.status_code == 409 and _stored(db, c) == before
+    assert _amend(db, c, {"status": "cancelled"})["status"] == "cancelled"
 
 
 def test_the_lot_lookup_that_stops_a_cancel_is_the_clients_own(db):
@@ -686,10 +804,30 @@ def test_the_amendment_audit_event_records_the_fields_that_decide_a_period_as_th
     c = _draft(db, "JW/44")
     _issue(db, c)
     served.clear()
-    route.update_challan(c["id"], DeliveryChallanUpdateIn(goods_kind=dc.GOODS_KIND_CAPITAL_GOODS, consignee_name="Gamma Works"), client_id=itc.CLIENT, current_user=USER)
+    route.update_challan(c["id"], DeliveryChallanUpdateIn(goods_kind=dc.GOODS_KIND_CAPITAL_GOODS, vehicle_no="MH12AB1234"), client_id=itc.CLIENT, current_user=USER)
     kwargs = served[0][1]
     assert kwargs["old_data"] == {"status": "issued", "document_date": "2026-06-01", "received_back_on": None, "goods_kind": "inputs", "extended_to": None, "place_of_supply": "29"}
-    assert kwargs["new_data"]["goods_kind"] == "capital_goods" and kwargs["new_data"]["fields"] == ["consignee_name", "goods_kind"] and "Gamma Works" not in str(served)
+    assert kwargs["new_data"]["goods_kind"] == "capital_goods" and kwargs["new_data"]["fields"] == ["goods_kind", "vehicle_no"] and "MH12AB1234" not in str(served)
+
+
+def test_a_drafts_amendment_event_names_the_consignee_field_and_never_its_value(db, served):
+    from models.sales_cycle import DeliveryChallanUpdateIn
+    c = _draft(db, "JW/58")
+    served.clear()
+    route.update_challan(c["id"], DeliveryChallanUpdateIn(consignee_name="Gamma Works"), client_id=itc.CLIENT, current_user=USER)
+    kwargs = served[0][1]
+    assert kwargs["new_data"]["fields"] == ["consignee_name"] and "Gamma Works" not in str(served)
+
+
+def test_the_route_answers_a_rewrite_of_an_issued_challan_with_its_sentence_and_writes_no_event(db, served):
+    from models.sales_cycle import DeliveryChallanUpdateIn
+    c = _draft(db, "JW/53")
+    _issue(db, c)
+    served.clear()
+    with pytest.raises(HTTPException) as caught:
+        route.update_challan(c["id"], DeliveryChallanUpdateIn(document_no="JW/53A", consignee_name="Gamma Works"), client_id=itc.CLIENT, current_user=USER)
+    assert caught.value.status_code == 409 and "its number and consignee's name cannot be changed" in str(caught.value.detail)
+    assert served == [] and _stored(db, c)["document_no"] == "JW/53"
 
 
 # a lot of waste alone is a lot
