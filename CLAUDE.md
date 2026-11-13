@@ -255,12 +255,13 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - TWELVE HAND-BUILT DIALOGS ARE THE SHARED MODAL, AND THE BANK'S NESTED ONES WAIT FOR A STACK AND A FOOTER
 - A CLEARED BOX IS SENT AS NULL ONLY FOR A SOFT FIELD THE SCREEN SHOWED
 
-### `docs/design-record/identifiers.md` (4 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
+### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
 - A TALLY IMPORT IS A BULK IMPORT OF AN IDENTIFIER SOMEBODY TYPED, AND IT WITHHOLDS RATHER THAN REFUSES
 - THE FIRM'S OWN GSTIN LIVES IN TWO COLUMNS AND ONLY ONE IS READ
 - THE SEVEN ITR FORMS ARE `domain/income_tax/itr_json.ITR_FORMS`, derived from the `ITRForm` Literal the field mappings and the comm
 - A REQUIRED YEAR PARAMETER IS DECLARED WITH NO DEFAULT, AND `= ...` IS NOT A WAY TO SAY REQUIRED
+- A DATE ON A REQUEST MODEL IS A TYPE, THE WAY A FINANCIAL-YEAR LABEL IS, AND THE FIELDS NOT YET CONVERTED ARE A LIST THAT ONLY SHRINKS
 
 ### `docs/design-record/ledger-and-money.md` (10 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
 

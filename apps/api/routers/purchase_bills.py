@@ -13,6 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ValidationError as PydanticValidationError, field_validator
+from models.iso_date import a_real_date_text
 from dataclasses import asdict
 from domain.purchases import near_duplicate
 from domain.inventory import stock_effect as stock_effects
@@ -26,7 +27,7 @@ from models.invoices import PurchaseBillIn, PurchaseBillUpdateIn, BillFromDocume
 from core.authz import assert_client_access
 from core.db_provider import privileged_for
 from core.observability import capture_soft_failure
-from core.exceptions import document_failure_detail
+from core.exceptions import document_failure_detail, validation_sentence
 from core.permissions import rbac
 from core.storage_door import StoragePathRefused, storage_folder
 from services.audit_service import log_document_edit, log_event
@@ -259,7 +260,7 @@ class NearDuplicateProbeIn(BaseModel):
     client_id: str
     vendor_id: str
     bill_no: Optional[str] = None
-    bill_date: Optional[str] = None
+    bill_date: Optional[str] = None          # TOLERANT ON PURPOSE: a read-only advisory probe that never refuses; near_duplicate._as_date reads an unreadable date as none
     total_paise: int = 0
 
 
@@ -1212,7 +1213,7 @@ def bulk_create_purchase_bills(
         try:
             parsed.append((i, bill_no, PurchaseBillIn(**raw)))
         except PydanticValidationError as e:
-            errors.append({"index": i, "bill_no": bill_no, "error": str(e.errors()[0].get("msg", "Invalid bill data")) if e.errors() else "Invalid bill data"})
+            errors.append({"index": i, "bill_no": bill_no, "error": validation_sentence(e, "Invalid bill data")})
 
     # ── Duplicate guard (financial-record integrity) ────────────────────────
     # A large CSV import can legitimately take long enough that the browser's
@@ -2276,6 +2277,13 @@ def create_bill_from_document(
             raise HTTPException(status_code=422, detail="client_id is required")
         if not extracted_data:
             raise HTTPException(status_code=422, detail="extracted_data is required")
+        # The date inside a free body is outside the request-model types (POST-A-380): a reading is a proposal, so a date that is not a day is a 422 with the sentence
+        # and not a bill dated "soon". A blank stays what it was, a missing bill date, which the core refuses in its own words.
+        if extracted_data.get("invoice_date"):
+            try:
+                extracted_data = {**extracted_data, "invoice_date": a_real_date_text(extracted_data.get("invoice_date"), "invoice_date")}
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         if _USE_MOCK:
             from routers.vendors import MOCK_VENDORS

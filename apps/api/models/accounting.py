@@ -9,6 +9,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from enum import Enum
 from domain.money_sentence import rupee_text
+from models.iso_date import IsoDate
 
 
 def _posting_date(v: Optional[str]) -> Optional[str]:
@@ -376,7 +377,7 @@ class JournalEntryIn(BaseModel):
 
 
 class JournalReversalIn(BaseModel):
-    reversal_date: str  # YYYY-MM-DD
+    reversal_date: IsoDate  # YYYY-MM-DD
     narration: Optional[str] = None
 
 

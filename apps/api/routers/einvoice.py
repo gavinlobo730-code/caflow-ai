@@ -19,6 +19,7 @@ import logging
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
+from models.iso_date import IsoDate
 from core.exceptions import _sqlstate
 from core.ist_clock import ist_today, portal_day
 from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, probe, split
@@ -65,7 +66,7 @@ _GST_TREATMENTS = {
 class CreateEInvoiceRequest(BaseModel):
     client_id: str
     invoice_number: str
-    invoice_date: str  # YYYY-MM-DD
+    invoice_date: IsoDate  # YYYY-MM-DD
     sales_invoice_id: Optional[str] = None
     provider: str = "manual"
     # Compliance treatment captured for the IRN (metadata only — never used in

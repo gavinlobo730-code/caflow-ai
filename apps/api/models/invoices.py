@@ -10,7 +10,7 @@ from domain.gst import uqc as _uqc
 from typing import ClassVar, FrozenSet, Optional, Any
 from decimal import Decimal
 from domain.money_sentence import amount_text
-from models.iso_date import a_day_that_has_happened
+from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate, a_day_that_has_happened
 
 # CGST Rule 46(b): a tax invoice's serial number must be a consecutive serial
 # number not exceeding sixteen characters, using only alphabets, numerals, and
@@ -283,8 +283,8 @@ class SalesInvoiceIn(BaseModel):
     # types it, Caflow only enforces the CGST Rule 46(b) shape here and
     # per-client uniqueness in the router.
     invoice_no: str
-    invoice_date: str  # YYYY-MM-DD
-    due_date: Optional[str] = None
+    invoice_date: IsoDate  # YYYY-MM-DD
+    due_date: OptionalIsoDate = None
     # Optional override of the credit period (days). When neither due_date nor
     # credit_days is given, the customer's credit_days is used as the default and
     # the resulting due_date + credit_days are snapshotted onto the invoice.
@@ -421,8 +421,8 @@ class SalesInvoiceUpdateIn(BaseModel):
     # which already blocks any update once issued) — same manual, CA-owned
     # numbering as SalesInvoiceIn.invoice_no.
     invoice_no: Optional[str] = None
-    invoice_date: Optional[str] = None
-    due_date: Optional[str] = None
+    invoice_date: PatchIsoDate = None
+    due_date: PatchIsoDate = None
     credit_days: Optional[int] = None
     # Validated below — a correction path with no check is one PATCH away from
     # having none at all (the same reasoning as the UAN/IFSC validators).
@@ -603,8 +603,8 @@ class PurchaseBillIn(BaseModel):
     """Create a purchase bill. IT Act §194C/194I/194J: TDS from vendor master."""
     client_id: str
     vendor_id: str
-    bill_date: str  # YYYY-MM-DD
-    due_date: Optional[str] = None
+    bill_date: IsoDate  # YYYY-MM-DD
+    due_date: OptionalIsoDate = None
     # Optional override of the credit period (days). When neither due_date nor
     # credit_days is given, the vendor's credit_days is used as the default and
     # the resulting due_date + credit_days are snapshotted onto the bill.
@@ -667,8 +667,8 @@ class PurchaseBillUpdateIn(BaseModel):
     evidence texts, which is still POST-A-399's.)
     """
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"our_reference", "notes"})
-    bill_date: Optional[str] = None
-    due_date: Optional[str] = None
+    bill_date: PatchIsoDate = None
+    due_date: PatchIsoDate = None
     credit_days: Optional[int] = None
     bill_no: Optional[str] = None
     our_reference: Optional[str] = None
@@ -746,7 +746,7 @@ class ReceiptIn(BaseModel):
     when tds_paise > 0) / Cr Trade Receivables. Settlement = amount_paise + tds_paise."""
     client_id: str
     customer_id: str
-    receipt_date: str  # YYYY-MM-DD
+    receipt_date: IsoDate  # YYYY-MM-DD
     amount_paise: int
     # TDS THE CUSTOMER WITHHELD from this payment — §194C, §194J or whichever
     # section their payment falls under. The comment here used to say "deducted
@@ -880,7 +880,7 @@ class PurchasePaymentIn(BaseModel):
     """Record a vendor payment. TDS already deducted at bill stage — payment is net."""
     client_id: str
     vendor_id: str
-    payment_date: str  # YYYY-MM-DD
+    payment_date: IsoDate  # YYYY-MM-DD
     amount_paise: int
     purchase_bill_id: Optional[str] = None   # link to the bill being paid (AP sub-ledger)
     # "bank_transfer" was never a valid value against the purchase_payments.

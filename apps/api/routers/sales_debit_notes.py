@@ -34,6 +34,7 @@ from typing import ClassVar, FrozenSet, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
+from models.iso_date import IsoDate, PatchIsoDate
 from models.clearable import patch_dict
 from models.common import api_response
 from models.invoices import InvoiceLineIn
@@ -60,7 +61,7 @@ from core.observability import capture_posting_failure
 class SalesDebitNoteIn(BaseModel):
     client_id: str
     customer_id: str
-    debit_note_date: str  # YYYY-MM-DD
+    debit_note_date: IsoDate  # YYYY-MM-DD
     lines: list[InvoiceLineIn]
     sales_invoice_id: str | None = None
     reason: str | None = None
@@ -86,7 +87,7 @@ class SalesDebitNoteUpdateIn(BaseModel):
     request that sends it as null (or blank) takes it away (`models.clearable.patch_dict`). Everything else reads null as "not sent"."""
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
     customer_id: str | None = None
-    debit_note_date: str | None = None
+    debit_note_date: PatchIsoDate = None
     sales_invoice_id: str | None = None
     reason: str | None = None
     is_interstate: bool | None = None
