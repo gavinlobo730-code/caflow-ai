@@ -17,8 +17,8 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { CardGridSkeleton } from "@/components/ui/skeleton";
 import type { Client } from "@/lib/types";
 
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
-import { formatDate } from "@/lib/dates/format";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
@@ -67,7 +67,7 @@ function formatBytes(bytes: number): string {
 // between 00:00 and 05:30 — on the figure that decides whether a client's
 // identity document is flagged as expiring.
 function daysUntilExpiry(expiryDate: string): number {
-  return daysBetweenLocalISO(todayLocalISO(), String(expiryDate).slice(0, 10)) ?? 0;
+  return daysBetweenLocalISO(todayIstISO(), String(expiryDate).slice(0, 10)) ?? 0;
 }
 
 interface UploadModalProps {
@@ -231,7 +231,7 @@ export default function ClientDocumentsPage() {
     }
   }
 
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const expiringDocs = documents.filter(d => {
     if (!d.expiry_date) return false;
     return daysUntilExpiry(d.expiry_date) <= 60 && d.expiry_date >= today;

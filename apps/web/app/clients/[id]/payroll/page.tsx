@@ -42,6 +42,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { doingOf, errorPageSentence, failureSentence, fetchPlain, looksLikeMarkup, notOursSentence, plainFailure, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { istToday } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -646,7 +647,7 @@ function RunsTab({ clientId, firmId, openDoc }:
   const [demoFlows, setDemoFlows] = useState<string[]>([]);
   const [demo, setDemo] = useState<{ flow: "pf" | "esi"; runId: string } | null>(null);
 
-  const now = new Date();
+  const now = istToday();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
 
@@ -1149,7 +1150,7 @@ function StatutoryTab({ clientId, initialMonth }: { clientId: string; initialMon
   // the CA had just been looking at. `initialMonth` seeds the FIRST render
   // only, the same "initial value" the prop name says — a CA changing the
   // month here afterwards is an ordinary edit to this tab's own control.
-  const now = new Date();
+  const now = istToday();
   const defaultMonth = initialMonth
     || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
@@ -2536,7 +2537,7 @@ function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth
   // run (see OutputsTab) rather than always defaulting to the calendar's
   // current month — an initial value only; the month control below is this
   // tab's own after the first render.
-  const now = new Date();
+  const now = istToday();
   const defaultMonth = initialMonth
     || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);

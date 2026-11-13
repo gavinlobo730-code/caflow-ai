@@ -29,9 +29,9 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
-import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { chooseMaturity, estimateFDMaturityPaise, isEstimate } from "@/lib/loans/fdMaturity";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
@@ -158,7 +158,7 @@ function daysToDate(isoDate: string): number {
   // consolidation) — mathematically identical result, since a fixed
   // UTC offset (no Indian DST) cancels the same way whether both sides
   // are parsed as UTC midnight (the old inline version) or local midnight.
-  return daysBetweenLocalISO(todayLocalISO(), isoDate) ?? 0;
+  return daysBetweenLocalISO(todayIstISO(), isoDate) ?? 0;
 }
 
 const inputCls =
@@ -185,7 +185,7 @@ export default function LoansAndFDPage() {
     outstanding: "",
     interest_rate: "",
     emi: "",
-    disbursement_date: todayLocalISO(),
+    disbursement_date: todayIstISO(),
     maturity_date: "",
     notes: "",
   });
@@ -203,7 +203,7 @@ export default function LoansAndFDPage() {
     fd_number: "",
     principal: "",
     interest_rate: "",
-    start_date: todayLocalISO(),
+    start_date: todayIstISO(),
     maturity_date: "",
     maturity_receipt: "",
     is_auto_renewed: false,
@@ -337,7 +337,7 @@ export default function LoansAndFDPage() {
       outstanding: "",
       interest_rate: "",
       emi: "",
-      disbursement_date: todayLocalISO(),
+      disbursement_date: todayIstISO(),
       maturity_date: "",
       notes: "",
     });
@@ -411,7 +411,7 @@ export default function LoansAndFDPage() {
       fd_number: "",
       principal: "",
       interest_rate: "",
-      start_date: todayLocalISO(),
+      start_date: todayIstISO(),
       maturity_date: "",
       maturity_receipt: "",
       is_auto_renewed: false,

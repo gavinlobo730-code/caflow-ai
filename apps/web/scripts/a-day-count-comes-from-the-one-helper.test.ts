@@ -61,8 +61,8 @@
 //   app/accounting/msme-...   whether an MSMED §15 payment is late
 //   app/accounting/schedule-iii  the FY options on the year-end statements
 //
-// Only the first of those five was `new Date()`. One was `todayLocalISO()` —
-// the CORRECT helper, called in the wrong place — which is the whole reason
+// Only the first of those five was `new Date()`. One was `todayLocalISO()` (since deleted: India's day is `todayIstISO()`, POST-A-404) —
+// a day helper, called in the wrong place — which is the whole reason
 // this is stated over "a module-scope binding initialised from a live clock
 // read" rather than over any spelling of the clock.
 //
@@ -143,7 +143,7 @@ test("nothing outside lib/dateMath turns milliseconds into a count of days", () 
 
 test("the helper it delegates to is still there and still exported", () => {
   const src = code(THE_HELPER);
-  for (const fn of ["daysBetweenLocalISO", "todayLocalISO", "toLocalISO", "dueDateUrgency"]) {
+  for (const fn of ["daysBetweenLocalISO", "toLocalISO", "dueDateUrgency"]) {
     assert.ok(new RegExp(String.raw`export function ${fn}\b`).test(src),
       `${THE_HELPER} must export ${fn} — this guard sends every caller to it, `
       + "so a rename here silently makes the rule unenforceable.");
@@ -154,7 +154,7 @@ test("the helper it delegates to is still there and still exported", () => {
  *  function or a class) initialised from a live clock read. */
 const CLOCK_AT_MODULE_SCOPE = new RegExp(
   String.raw`^(?:export\s+)?(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*(?::[^=]+)?=`
-  + String.raw`\s*[^;\n]*(?:new Date\(\s*\)|Date\.now\(\s*\)|todayLocalISO\(\s*\)`
+  + String.raw`\s*[^;\n]*(?:new Date\(\s*\)|Date\.now\(\s*\)|todayIstISO\(\s*\)`
   + String.raw`|currentFinancialYearLabel\(\s*\))`,
   "m");
 
@@ -188,9 +188,9 @@ test("both rules are stated over the operation, not over a name", () => {
 
   assert.ok(CLOCK_AT_MODULE_SCOPE.test("const TODAY = new Date();"),
     "the spelling the first sweep found");
-  assert.ok(CLOCK_AT_MODULE_SCOPE.test("const TODAY_ISO = todayLocalISO();"),
+  assert.ok(CLOCK_AT_MODULE_SCOPE.test("const TODAY_ISO = todayIstISO();"),
     "the CORRECT helper called in the wrong place — the spelling it missed");
-  assert.ok(CLOCK_AT_MODULE_SCOPE.test('const X = new Date(todayLocalISO() + "T00:00:00");'),
+  assert.ok(CLOCK_AT_MODULE_SCOPE.test('const X = new Date(todayIstISO() + "T00:00:00");'),
     "wrapped in a Date — app/gst/page.tsx");
   assert.ok(!CLOCK_AT_MODULE_SCOPE.test("  const today = new Date();"),
     "inside a function is the whole point and must stay legal");

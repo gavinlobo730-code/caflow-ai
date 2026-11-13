@@ -30,7 +30,7 @@ import Link from "next/link";
 import { setupPageLead, SETUP_CONTINUE_HREF } from "@/lib/auth/mfaEnrolment";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -403,7 +403,7 @@ function MfaCard() {
       }
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: `Authenticator ${todayLocalISO()}`,
+        friendlyName: `Authenticator ${todayIstISO()}`,
       });
       if (error) throw error;
       const d = data as { id: string; totp: { qr_code: string; secret: string } };

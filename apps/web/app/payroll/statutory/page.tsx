@@ -39,6 +39,7 @@ import { GapList } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatPaise } from "@/lib/money/format";
+import { istToday } from "@/lib/dateMath";
 
 type Client = { id: string; client_name: string };
 
@@ -49,7 +50,7 @@ const MONTHS = [
 
 
 export default function StatutoryPage() {
-  const now = new Date();
+  const now = istToday();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [selMonth, setSelMonth] = useState(now.getMonth() + 1);

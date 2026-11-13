@@ -37,7 +37,7 @@ import type {
 } from "@/lib/payroll/types";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { MonthlyReview } from "@/components/payroll/MonthlyReview";
-import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
+import { toLocalISO, dueDateUrgency, fromLocalISO, istToday } from "@/lib/dateMath";
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { api, type ApiResp, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
@@ -95,7 +95,7 @@ function fyForMonth(month: string): string {
 
 /** Current financial year */
 function currentFy(): string {
-  const now = new Date();
+  const now = istToday();
   const y = now.getFullYear();
   const m = now.getMonth() + 1; // 1-indexed
   return fyLabel(m >= 4 ? y : y - 1);
@@ -1221,7 +1221,7 @@ function YearEndSummaryTab({ fyOptions }: { fyOptions: string[] }) {
 type CategoryFilter = "ALL" | DueCategory;
 
 function StatutoryDuesCalendarTab() {
-  const today = new Date();
+  const today = istToday();
   const fyValue = currentFy();
   const start = fyStartYear(fyValue);
   const fyOptions = [fyLabel(start - 1), fyValue, fyLabel(start + 1)];

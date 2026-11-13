@@ -40,7 +40,7 @@ import { api, type AISLine, type AISStatement } from "@/lib/api";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { assessmentYearChoices, financialYearForAy } from "@/lib/income-tax/assessmentYear";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import {
   AlertCircle,
   AlertTriangle,
@@ -293,7 +293,7 @@ export default function AISPage() {
       ...exportRows.map((row) => header.map((h) => (row as Record<string, string>)[h])),
     ]);
     downloadCsv(
-      `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayLocalISO()}.csv`,
+      `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayIstISO()}.csv`,
       csv);
   }
 
@@ -324,7 +324,7 @@ export default function AISPage() {
     });
     const wb = buildWorkbook(XLSX, { rows: sheetRows, moneyColumns: MONEY,
                                      sheetName: "AIS review" });
-    XLSX.writeFile(wb, `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayLocalISO()}.xlsx`);
+    XLSX.writeFile(wb, `AIS_${client?.client_name ?? "Client"}_AY${assessmentYear}_${todayIstISO()}.xlsx`);
   }
 
   const summary = statement?.summary;

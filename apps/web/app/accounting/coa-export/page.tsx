@@ -5,7 +5,7 @@ import { Download, FileText } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
@@ -67,7 +67,7 @@ export default function CoaExportPage() {
       if (err) throw new Error(err.message);
       const rows = (data ?? []) as CoaRow[];
       setCount(rows.length);
-      const today = todayLocalISO();
+      const today = todayIstISO();
       if (format === "csv") {
         downloadCsv(`chart-of-accounts-${today}.csv`, toCSV(rows));
       }

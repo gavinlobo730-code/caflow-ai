@@ -35,7 +35,7 @@ import {
   type SelfAssessmentPosition,
 } from "@/lib/data/income-tax";
 import type { Client } from "@/lib/types";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -61,7 +61,7 @@ const INSTALLMENT_LABELS: Record<number, string> = {
 
 function rowStatus(dueDate: string, requiredPaise: number, paidPaise: number): "paid" | "overdue" | "upcoming" {
   if (paidPaise >= requiredPaise) return "paid";
-  if (todayLocalISO() > dueDate) return "overdue";
+  if (todayIstISO() > dueDate) return "overdue";
   return "upcoming";
 }
 

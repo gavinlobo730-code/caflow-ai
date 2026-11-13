@@ -60,6 +60,7 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
+import { istToday } from "@/lib/dateMath";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function r(paise: number): string {
@@ -68,7 +69,7 @@ function r(paise: number): string {
 
 function buildPeriodOptions(): { value: string; label: string }[] {
   const opts: { value: string; label: string }[] = [];
-  const now = new Date();
+  const now = istToday();
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const yyyy = d.getFullYear();

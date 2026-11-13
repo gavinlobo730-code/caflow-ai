@@ -28,6 +28,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type DeclarationRow, type DeclarationItemRow } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { istToday } from "@/lib/dateMath";
 
 type Client = { id: string; client_name: string };
 type Employee = { id: string; name: string };
@@ -54,7 +55,7 @@ function rupeesToPaise(text: string): number | null {
 
 /** Indian financial years, current first. April to March. */
 function recentFinancialYears(count = 4): string[] {
-  const now = new Date();
+  const now = istToday();
   const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   return Array.from({ length: count }, (_, i) => {
     const y = startYear - i;

@@ -23,7 +23,7 @@ import { diffDaysISO } from "@/lib/sales/dateMath";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { FormSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import {
   ACTIVITY_NOT_YET_ASKED, activityItems, activityStatusOf, documentActivityUrl, emptyActivityLine, readDocumentActivity,
@@ -493,7 +493,7 @@ function RecordVendorPaymentModal({ bill, clientId, outstanding, onClose, onDone
   bill: PurchaseBillDetail; clientId: string; outstanding: number;
   onClose: () => void; onDone: () => void; onError: (m: string) => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [amount, setAmount] = useState(String(outstanding / 100));
   const [date, setDate] = useState(today);
   const [mode, setMode] = useState("bank");
@@ -570,7 +570,7 @@ function CreateDebitNoteModal({ bill, clientId, onClose, onDone, onError }: {
   bill: PurchaseBillDetail; clientId: string;
   onClose: () => void; onDone: (dnNo: string) => void; onError: (m: string) => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -633,7 +633,7 @@ function CreatePurchaseCreditNoteModal({ bill, clientId, onClose, onDone, onErro
   bill: PurchaseBillDetail; clientId: string;
   onClose: () => void; onDone: (cnNo: string) => void; onError: (m: string) => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);

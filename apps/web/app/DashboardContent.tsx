@@ -12,8 +12,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
-import { toLocalISO, todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
-import { formatDate, formatMonthYear, formatWeekdayDate } from "@/lib/dates/format";
+import { toLocalISO, daysBetweenLocalISO, istToday } from "@/lib/dateMath";
+import { formatDate, formatMonthYear, formatWeekdayDate, todayIstISO } from "@/lib/dates/format";
 import { api } from "@/lib/api";
 import { mapComplianceKpis } from "@/lib/dashboard/complianceKpis";
 import { Hub } from "@/components/hub/Hub";
@@ -91,7 +91,7 @@ function getUpcomingDeadlines(today: Date): UpcomingDeadline[] {
   // but it was right by construction, not by rule, and nothing said so. The
   // shared helper takes calendar dates on both sides and cannot be handed a
   // live instant by mistake.
-  const todayISO = todayLocalISO();
+  const todayISO = todayIstISO();
   return deadlines
     .map((d) => ({
       name: d.name,
@@ -173,7 +173,7 @@ export default function DashboardContent() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const today = new Date();
+  const today = istToday();                                  // India's day (POST-A-404), not the browser's
   const upcomingDeadlines = getUpcomingDeadlines(today);
 
   // The onboarding completion redirect still lands here with ?welcome=1. It used to switch

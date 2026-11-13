@@ -953,7 +953,7 @@ def test_the_screen_asks_the_server_whether_a_cheque_is_due_or_stale():
     `is_stale`): a browser that compared dates itself would use the browser's
     clock, which is not the firm's (IST) day."""
     src = _code(_PANEL)
-    assert not re.search(r"new Date\(|Date\.now|todayLocalISO", src), \
+    assert not re.search(r"new Date\(|Date\.now|todayLocalISO|todayIstISO|istToday", src), \
         "the panel must not compare a cheque's date with a clock of its own"
     assert "is_due" in src or "state" in src
 

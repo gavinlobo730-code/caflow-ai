@@ -28,7 +28,7 @@ import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { filingTrackerStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
 import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
@@ -100,10 +100,10 @@ const DUE_DATE_FIELD: Record<ReturnType, keyof GstDueDates> = {
 // on counting September's filings while the GSTR-1 due on the 11th of October
 // was the live obligation.
 function currentMonthName(): string {
-  return MONTH_NAMES[Number(todayLocalISO().slice(5, 7)) - 1];
+  return MONTH_NAMES[Number(todayIstISO().slice(5, 7)) - 1];
 }
 function currentYearNumber(): number {
-  return Number(todayLocalISO().slice(0, 4));
+  return Number(todayIstISO().slice(0, 4));
 }
 
 /** CGST Act Section 37: GSTR-1 due 11th of this month (for prior month) */

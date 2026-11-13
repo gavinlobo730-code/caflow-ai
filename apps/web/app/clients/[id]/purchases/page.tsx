@@ -58,7 +58,7 @@ import { RecurringBills } from "@/components/purchases/RecurringBills";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { PossibleDuplicatesNotice, type PossibleDuplicate } from "@/components/parties/PossibleDuplicatesNotice";
 import { Callout } from "@/components/ui/callout";
 import { gstinProblem } from "@/lib/gst/gstin";
@@ -138,7 +138,7 @@ async function lookupOriginalBills(clientId: string, rows: ImportRow[]): Promise
 }
 
 function toDate(): string {
-  return todayLocalISO();
+  return todayIstISO();
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────

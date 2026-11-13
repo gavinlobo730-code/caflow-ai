@@ -26,13 +26,13 @@ import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ function statusBadge(status: NoticeStatus) {
 }
 
 function isOverdue(notice: ITNotice) {
-  return notice.status === "pending" && notice.response_due_date && notice.response_due_date < todayLocalISO();
+  return notice.status === "pending" && notice.response_due_date && notice.response_due_date < todayIstISO();
 }
 
 // ─── Add Notice Modal ─────────────────────────────────────────────────────────
@@ -86,14 +86,14 @@ interface AddFormState {
   notes: string;
 }
 
-// A FUNCTION, not a constant: the date received is today, and a module-level `todayLocalISO()` is read once when the page's code loads, so a tab left
+// A FUNCTION, not a constant: the date received is today, and a module-level `todayIstISO()` is read once when the page's code loads, so a tab left
 // open past midnight pre-filled yesterday as a valid date nobody typed.
 function blankNotice(): AddFormState {
   return {
     clientId: "",
     noticeType: "143(1)",
     assessmentYear: "2025-26",
-    dateReceived: todayLocalISO(),
+    dateReceived: todayIstISO(),
     responseDueDate: "",
     amountDemandedRs: "",
     status: "pending",

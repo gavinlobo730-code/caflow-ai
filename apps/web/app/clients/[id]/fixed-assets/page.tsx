@@ -16,8 +16,8 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
-import { todayLocalISO } from "@/lib/dateMath";
-import { formatDate, formatDateTime } from "@/lib/dates/format";
+
+import { formatDate, formatDateTime, todayIstISO } from "@/lib/dates/format";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
@@ -35,6 +35,7 @@ import { omitKeys, useDirtyFields } from "@/lib/forms/useDirtyFields";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { istToday } from "@/lib/dateMath";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -713,7 +714,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     schedule_ii_class:     0,
     asset_code:            "",
     location:              "",
-    purchase_date:         todayLocalISO(),
+    purchase_date:         todayIstISO(),
     purchase_cost_paise:   "",
     salvage_value_paise:   "0",
     depreciation_method:   "WDV" as "WDV" | "SL",
@@ -1294,7 +1295,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
    *  reads it, at the moment the choice has just been made. */
   const [notices, setNotices] = useState<Record<string, string>>({});
   const [period, setPeriod] = useState(() => {
-    const now = new Date();
+    const now = istToday();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   // The range's other end. Defaults to the same month, so the familiar
@@ -1648,7 +1649,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
   // One parse, shared by the gain/loss shown on screen and the payload sent —
   // so the figure the CA reads before confirming is the one that is posted.
   const proceedsPaise = paiseFromRupeeInput(proceeds || "0");
-  const [disposalDate, setDisposalDate] = useState(todayLocalISO());
+  const [disposalDate, setDisposalDate] = useState(todayIstISO());
   const [disposing, setDisposing] = useState(false);
   const [error, setError] = useState("");
   // Text that is not a date reads as blank to the form (frontend_ux-19).

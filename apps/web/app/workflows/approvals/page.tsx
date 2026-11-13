@@ -36,7 +36,7 @@ interface Approval {
 
 function isOverdue(due?: string) {
   if (!due) return false;
-  return new Date(due) < new Date();
+  return new Date(due).getTime() < Date.now();                // an instant against an instant: no calendar is read
 }
 
 // The window the screen asks for. The server caps this endpoint (routers/workflow_builder.py list_approvals) and answers

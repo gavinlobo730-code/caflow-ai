@@ -40,6 +40,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import type { Column } from "@/lib/table/types";
 import { PageHeader } from "@/components/ui/page-header";
+import { istToday } from "@/lib/dateMath";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,7 @@ export default function AttendancePage() {
   const [leaveLoadFailed, setLeaveLoadFailed] = useState(false);
 
   // Attendance tab state
-  const today = new Date();
+  const today = istToday();
   const [attMonth, setAttMonth] = useState(today.getMonth() + 1); // 1-12
   const [attYear, setAttYear] = useState(today.getFullYear());
   const [attendance, setAttendance] = useState<Record<string, AttendanceRow>>({});

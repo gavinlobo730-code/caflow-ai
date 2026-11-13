@@ -14,6 +14,7 @@ import { isValidPan } from "@/lib/identifiers/pan";
 import { RefusalText } from "@/components/auth/RefusalText";
 import { isMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { PageHeader } from "@/components/ui/page-header";
+import { istToday } from "@/lib/dateMath";
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -82,7 +83,7 @@ function validatePAN(pan: string): boolean {
 // ─── Financial year computation ────────────────────────────────────────────
 // Indian FY: April 1 to March 31
 function getCurrentFinancialYear(): { label: string; start: number; end: number } {
-  const now = new Date();
+  const now = istToday();
   const month = now.getMonth(); // 0-based; March = 2, April = 3
   const year = now.getFullYear();
   const fyStart = month >= 3 ? year : year - 1;

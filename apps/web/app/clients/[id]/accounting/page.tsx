@@ -40,9 +40,9 @@ import { cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut, mapWithLimit, ty
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
 
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { formatIstLabelled } from "@/lib/dates/formatIst";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import OpeningBalancesTab from "@/components/accounting/OpeningBalancesTab";
 import { VoucherImportButton } from "@/components/accounting/VoucherImport";
 import { PartyBreakdown } from "@/components/accounting/PartyBreakdown";
@@ -1307,7 +1307,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
         (e) => e.is_posted,
         (e) => api.accounting.reverseJournalEntry(
           e.id,
-          todayLocalISO(),
+          todayIstISO(),
           `Reversal of ${e.reference_no || "journal entry"}`,
         ),
         "reverse", "reversed",

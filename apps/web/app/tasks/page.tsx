@@ -15,7 +15,7 @@ import { api } from "@/lib/api";
 import { getClients } from "@/lib/data/clients";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { formatDate } from "@/lib/services/formatting";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -54,7 +54,7 @@ const PRIORITY_ORDER: Record<TaskPriority, number> = { critical: 4, high: 3, med
 
 function isOverdue(due?: string, status?: string) {
   if (!due || status === "completed") return false;
-  return due < todayLocalISO();
+  return due < todayIstISO();
 }
 
 function fmt(date?: string) {

@@ -11,6 +11,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout, GapList } from "@/components/ui/callout";
+import { istToday } from "@/lib/dateMath";
 
 /**
  * The eleven Schedule III ratios — Division I, General Instructions, Additional
@@ -56,7 +57,7 @@ function formatVariance(bps: number | null): string {
 }
 
 function currentFY(): string {
-  const now = new Date();
+  const now = istToday();
   const start = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
   return `${start}-${String(start + 1).slice(2)}`;
 }

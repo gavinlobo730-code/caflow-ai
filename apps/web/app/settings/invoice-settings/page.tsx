@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { PageHeader } from "@/components/ui/page-header";
+import { istToday } from "@/lib/dateMath";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceSettings {
@@ -60,7 +61,7 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
 
 // ── Invoice Number Preview ─────────────────────────────────────────────────
 function InvoiceNumberPreview({ settings, seq = 1 }: { settings: InvoiceSettings; seq?: number }) {
-  const now = new Date();
+  const now = istToday();
   const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   const fyPart = settings.include_financial_year ? `-${fy}` : "";
   const seqStr = String(seq).padStart(settings.sequence_length, "0");

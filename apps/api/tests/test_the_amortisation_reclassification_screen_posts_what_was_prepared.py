@@ -75,7 +75,7 @@ def test_a_button_that_writes_ignores_a_second_click():
 def test_the_date_is_never_defaulted_and_is_a_date_the_partner_typed():
     src = _source()
     assert 'useState("")' in src and re.search(r'\[asAt, setAsAt\] = useState\(""\)', src), "the as-at date starts empty"
-    assert "todayLocalISO" not in src and "new Date(" not in src and "Date.now" not in src, "nothing here invents a date"
+    assert "todayLocalISO" not in src and "todayIstISO" not in src and "istToday" not in src and "new Date(" not in src and "Date.now" not in src, "nothing here invents a date"
     assert "Say the date the reclassification is as at" in src, "an empty date is refused in words before any request"
 
 

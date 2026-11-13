@@ -38,6 +38,7 @@ import type { EmployeeDeclarationHead, EmployeeTaxDeclaration } from "@/lib/api"
 import { objectWithLists } from "@/lib/api/shape";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
+import { istToday } from "@/lib/dateMath";
 
 
 /** The declaration as the form holds it: the server's row without its id (the server owns the employee, client and firm). */
@@ -56,7 +57,7 @@ const SECTIONS: ReadonlyArray<{ code: string; label: string; hint: string }> = [
 ];
 
 function currentFy(): string {
-  const now = new Date();
+  const now = istToday();
   const start = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   return `${start}-${String((start + 1) % 100).padStart(2, "0")}`;
 }

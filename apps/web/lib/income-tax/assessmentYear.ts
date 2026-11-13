@@ -14,6 +14,8 @@
  * function, with a test, is the whole defence.
  */
 
+import { istToday } from "../dateMath.ts";
+
 /** 'YYYY-YY', both halves consistent. '2026-28' is not a year label. */
 export function isYearLabel(value: string): boolean {
   const m = /^(\d{4})-(\d{2})$/.exec(String(value ?? "").trim());
@@ -45,7 +47,7 @@ export function financialYearForAy(ay: string): string {
  * whose income is still being earned. The year in progress is still offered,
  * because an advance-tax review legitimately looks at it.
  */
-export function assessmentYearChoices(count = 5, today: Date = new Date()): string[] {
+export function assessmentYearChoices(count = 5, today: Date = istToday()): string[] {
   const year = today.getFullYear();
   // The FY that ended most recently: before 1 April, last FY started two
   // calendar years ago.

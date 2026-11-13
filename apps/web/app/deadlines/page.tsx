@@ -13,7 +13,8 @@ import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
-import { toLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { addDaysISO } from "@/lib/sales/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { formatRangeLabel } from "@/lib/dates/periods";
@@ -285,8 +286,8 @@ function DeadlinesContent() {
 
   // ONE "today" for the tile, the Overdue filter and the Due Date colour, so a
   // row cannot be late in one of them and on time in another across midnight.
-  const today = todayLocalISO();
-  const in7Days = toLocalISO(new Date(Date.now() + 7 * 86400000));
+  const today = todayIstISO();
+  const in7Days = addDaysISO(today, 7);                      // the same day as `today`: India's, so the window is always seven days wide
 
   // Apply URL type filter first (drives the stats cards AND the table dataset)
   const typeRecords = useMemo(

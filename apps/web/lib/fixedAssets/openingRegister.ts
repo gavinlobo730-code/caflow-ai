@@ -26,8 +26,7 @@
  */
 import { paiseFromRupeeInput } from "../money/rupeeInput.ts";
 import { financialYearChoices, fyRangeFor } from "../dates/periods.ts";
-import { toLocalISO } from "../dateMath.ts";
-
+import { toLocalISO, istToday } from "../dateMath.ts";
 export interface OpeningRegisterColumn {
   key: string;
   label: string;
@@ -237,7 +236,7 @@ const MONTHS_END = "31 March";
  * clock. A year that has not ended is not offered: an accumulated depreciation
  * cannot be stated as at a date that has not happened (the server refuses it too).
  */
-export function positionChoices(count: number = 4, today: Date = new Date()): PositionChoice[] {
+export function positionChoices(count: number = 4, today: Date = istToday()): PositionChoice[] {
   // The ONE local-calendar formatter, not a copy: a copy is correct on the day it is
   // written and is what a UTC read-back (toISOString) turns into at 00:20 IST.
   const todayIso = toLocalISO(today);

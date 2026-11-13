@@ -38,7 +38,7 @@ import {
 import { CompliancePanel } from "@/components/invoices/CompliancePanel";
 import { INVOICE_RECORDS_WINDOW, recordsReadNote, recordsUrl } from "@/lib/einvoice/invoiceRecords";
 import { readWindow } from "@/lib/lists/readWindow";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
 import { GoodsReturnedChoice } from "@/components/inventory/GoodsReturnedChoice";
 import type { GoodsReturned } from "@/lib/inventory/goodsReturned";
@@ -490,7 +490,7 @@ function RecordPaymentModal({ invoice, clientId, outstanding, onClose, onDone, o
   invoice: InvoiceDetail; clientId: string; outstanding: number;
   onClose: () => void; onDone: () => void; onError: (m: string) => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [amount, setAmount] = useState(String(outstanding / 100));
   const [date, setDate] = useState(today);
   const [mode, setMode] = useState("bank");
@@ -552,7 +552,7 @@ function CreateCreditNoteModal({ invoice, clientId, onClose, onDone, onError }: 
   invoice: InvoiceDetail; clientId: string;
   onClose: () => void; onDone: (cnNo: string) => void; onError: (m: string) => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -630,7 +630,7 @@ function CreateSalesDebitNoteModal({ invoice, clientId, onClose, onDone, onError
   invoice: InvoiceDetail; clientId: string;
   onClose: () => void; onDone: (dnNo: string) => void; onError: (m: string) => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [date, setDate] = useState(today);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);

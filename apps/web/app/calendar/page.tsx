@@ -57,7 +57,8 @@ import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { useToast } from "@/components/ui/use-toast";
 import type { Client } from "@/lib/types";
-import { todayLocalISO, toLocalISO, fromLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { toLocalISO, fromLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { formatDate } from "@/lib/services/formatting";
 import { PageHeader } from "@/components/ui/page-header";
@@ -92,7 +93,7 @@ function monthBounds(y: number, m: number): { from: string; to: string } {
   return { from: toLocalISO(new Date(y, m, 1)), to: toLocalISO(new Date(y, m + 1, 0)) };
 }
 function addDaysISO(iso: string, days: number): string {
-  const d = fromLocalISO(iso) ?? new Date();
+  const d = fromLocalISO(iso) ?? new Date();               // the fallback for an unreadable ISO string (a named exception in a-firms-day-is-indias-and-not-the-browsers.test.ts)
   d.setDate(d.getDate() + days);
   return toLocalISO(d);
 }
@@ -105,7 +106,7 @@ interface McaDeadline {
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
-  const todayISO = todayLocalISO();
+  const todayISO = todayIstISO();
   const todayDate = fromLocalISO(todayISO) ?? new Date();
   const { toast } = useToast();
 

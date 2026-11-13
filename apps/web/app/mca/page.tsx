@@ -26,7 +26,7 @@ import { obligationNote } from "@/lib/compliance/obligationNote";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO, daysBetweenLocalISO, toLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
+import { daysBetweenLocalISO, toLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { filingTrackerStatus, calendarWordForMcaStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
 import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
@@ -110,7 +110,7 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
 // rather than a year hardcoded once (R3.1 fix — the previous version froze
 // both "today" and every deadline's year, so it silently went stale).
 function _nextOccurrence(month: number, day: number): Date {
-  const todayISO = todayLocalISO();
+  const todayISO = todayIstISO();
   const year = Number(todayISO.slice(0, 4));
   const thisYear = new Date(year, month - 1, day);
   // Compare calendar dates, not a midnight Date against a live instant — a
@@ -120,7 +120,7 @@ function _nextOccurrence(month: number, day: number): Date {
   return toLocalISO(thisYear) >= todayISO ? thisYear : new Date(year + 1, month - 1, day);
 }
 function _daysUntil(d: Date): number {
-  return daysBetweenLocalISO(todayLocalISO(), toLocalISO(d)) ?? 0;
+  return daysBetweenLocalISO(todayIstISO(), toLocalISO(d)) ?? 0;
 }
 function _fmtShort(d: Date): string {
   // `d` is a local-midnight anchor (new Date(y, m, day)), so it is read through
@@ -178,7 +178,7 @@ function computeStatus(row: { due_date: string; filed_date: string | null; statu
 
 /** Days from today until a director's KYC due date (negative once overdue). */
 function daysUntilKyc(kycDueDate: string): number {
-  return daysBetweenLocalISO(todayLocalISO(), kycDueDate) ?? 0;
+  return daysBetweenLocalISO(todayIstISO(), kycDueDate) ?? 0;
 }
 
 // Capital is rendered by `formatCroreLakh` in lib/money/format — MOVED there
@@ -738,7 +738,7 @@ export default function MCAPage() {
   // "This month" against a module-load today rolled over a month late on a tab
   // left open. Both sides are now the YYYY-MM prefix of a local calendar date,
   // which needs no Date at all.
-  const thisMonthPrefix = todayLocalISO().slice(0, 7);
+  const thisMonthPrefix = todayIstISO().slice(0, 7);
   const dueThisMonth = filings.filter(f => String(f.due_date).slice(0, 7) === thisMonthPrefix && f.status !== "Filed" && f.status !== "Not applicable").length;
   const overdueCount = filings.filter(f => f.status === "Overdue").length;
   const kycDueSoon = directors.filter(d => {
@@ -927,7 +927,7 @@ export default function MCAPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { icon: <Building2 className="w-4 h-4 text-blue-600" />,    bg: "bg-blue-50",   label: "Total Companies",       value: String(totalCompanies), sub: "Company clients" },
-          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-state-attention-surface",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: formatMonthYear(todayLocalISO()) },
+          { icon: <Clock className="w-4 h-4 text-amber-600" />,       bg: "bg-state-attention-surface",  label: "Filings Due This Month", value: loading ? "—" : String(dueThisMonth), sub: formatMonthYear(todayIstISO()) },
           { icon: <AlertTriangle className="w-4 h-4 text-red-600" />, bg: "bg-state-problem-surface",    label: "Overdue Filings",       value: loading ? "—" : String(overdueCount), sub: "Past due date" },
           { icon: <Users className="w-4 h-4 text-purple-600" />,      bg: "bg-purple-50", label: "Directors KYC Due",     value: String(kycDueSoon), sub: "Within 30 days" },
         ].map(c => (

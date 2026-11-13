@@ -5,8 +5,10 @@
  *
  * Dates are parsed AND formatted in LOCAL time throughout — never round-tripped
  * through UTC via Date#toISOString — so the calendar date arithmetic operates
- * on is exactly the calendar date the browser's clock reads, regardless of
- * timezone offset. This matters for every India-based user: IST is UTC+5:30,
+ * on is exactly the calendar date it was given, regardless of timezone
+ * offset. WHICH day is "today" is not decided here: a firm's day is India's,
+ * `todayIstISO()` (lib/dates/format) or `istToday()` below (POST-A-404); the
+ * browser's own calendar is never asked. This matters for every India-based user: IST is UTC+5:30,
  * so local midnight is always 18:30 UTC on the PREVIOUS calendar day, and
  * toISOString().slice(0, 10) would silently shift "today" back by one day
  * from local midnight until 05:30 local time.
@@ -16,6 +18,8 @@
  * is scoped to the sales invoice form's payment-terms math, and consolidating
  * the two is a separate, deliberately out-of-scope cleanup.
  */
+
+import { todayIstISO } from "./dates/format.ts";
 
 /** Format a Date using its LOCAL calendar components as YYYY-MM-DD (never via
  * toISOString, which converts through UTC and can shift the calendar day). */
@@ -51,10 +55,11 @@ export function fromLocalISO(str: string): Date | null {
   return out;
 }
 
-/** The current LOCAL calendar date as YYYY-MM-DD — the safe replacement for
- * `new Date().toISOString().slice(0, 10)` / `.split("T")[0]`. */
-export function todayLocalISO(): string {
-  return toLocalISO(new Date());
+/** India's calendar day as a Date at LOCAL midnight (POST-A-404): `getFullYear()`, `getMonth()` and `getDate()` of it are India's year, month and day whatever zone the browser is set to, so it
+ * replaces `new Date()` wherever that was read for the calendar and not as an instant. It is NOT an instant: do not compare it with a timestamp or print a time from it. */
+export function istToday(): Date {
+  const [y, m, d] = todayIstISO().split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 /** Whole calendar days from `fromStr` to `toStr` (both YYYY-MM-DD), computed
@@ -84,7 +89,7 @@ export type DueUrgency = "overdue" | "due-soon" | "upcoming";
  * (has this been FILED, is it late) and has no "soon" band. */
 export function dueDateUrgency(
   dueISO: string,
-  todayISO: string = todayLocalISO(),
+  todayISO: string = todayIstISO(),
 ): DueUrgency {
   const days = daysBetweenLocalISO(todayISO, dueISO);
   if (days === null) return "upcoming";
@@ -97,9 +102,12 @@ export function dueDateUrgency(
  * previously independent, identical implementations in
  * lib/workspace/ClientNavContext.tsx, lib/data/income-tax.ts and
  * lib/data/tds.ts. */
-export function currentFinancialYearLabel(d: Date = new Date()): string {
-  const year = d.getFullYear();
-  const month = d.getMonth() + 1; // 1-indexed
+export function currentFinancialYearLabel(d?: Date): string {
+  // No date given means TODAY, and a firm's today is India's (POST-A-404): the browser's own calendar day is a day behind or ahead of it for part of every day
+  // when the browser is set to another zone, and on 1 April that is the other financial year. A date GIVEN is read as its local calendar day, as it always was.
+  const today = d ? null : todayIstISO();
+  const year = d ? d.getFullYear() : Number(today!.slice(0, 4));
+  const month = d ? d.getMonth() + 1 : Number(today!.slice(5, 7)); // 1-indexed
   const fyStart = month >= 4 ? year : year - 1;
   return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
 }

@@ -6,7 +6,7 @@ import { ChevronLeft, Download, ShieldCheck, RefreshCw } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
 import { RoleGuard } from "@/components/RoleGuard";
 import { formatDate } from "@/lib/services/formatting";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
@@ -292,7 +292,7 @@ function AuditLogContent() {
 
   function handleExport() {
     const csv = toCSV(filtered);
-    const now = todayLocalISO();
+    const now = todayIstISO();
     downloadCsv(`audit-log-${now}.csv`, csv);
   }
 

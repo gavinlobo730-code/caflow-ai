@@ -17,6 +17,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
+import { istToday } from "@/lib/dateMath";
 
 /**
  * The multi-year trend — Schedule III captions and the clause (Q) ratios across
@@ -50,7 +51,7 @@ import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 const YEAR_CHOICES = [3, 5, 7, 10];
 
 function currentFY(): string {
-  const now = new Date();
+  const now = istToday();
   const start = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
   return `${start}-${String(start + 1).slice(2)}`;
 }

@@ -52,7 +52,7 @@ import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput
 // authority, the same one the Journal list reads. `rupeeInputFromPaise` is the
 // form an <input> takes back, so it groups nothing (₹100000.00).
 import { formatPaise } from "@/lib/money/format";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import type { JournalEntryDetail, JournalLineIO } from "@/lib/api";
 
 export const ENTRY_TYPES = [
@@ -149,7 +149,7 @@ export function JournalEditor({
      freezes everything). */
   const attachmentsReadOnly = readOnly || isPosted;
 
-  const [entryDate, setEntryDate] = useState(existing?.entry_date ?? todayLocalISO());
+  const [entryDate, setEntryDate] = useState(existing?.entry_date ?? todayIstISO());
   const [entryType, setEntryType] = useState(existing?.entry_type ?? "Journal");
   const [referenceNo, setReferenceNo] = useState(existing?.reference_no ?? "");
   const [narration, setNarration] = useState(existing?.narration ?? "");
@@ -192,7 +192,7 @@ export function JournalEditor({
     attachments,
   };
   const [pristine] = useState<JournalDraftFields>(() => ({
-    entryDate: existing?.entry_date ?? todayLocalISO(),
+    entryDate: existing?.entry_date ?? todayIstISO(),
     entryType: existing?.entry_type ?? "Journal",
     referenceNo: existing?.reference_no ?? "",
     narration: existing?.narration ?? "",

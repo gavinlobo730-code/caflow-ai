@@ -11,9 +11,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   toLocalISO,
-  todayLocalISO,
   daysBetweenLocalISO,
   currentFinancialYearLabel,
+  dueDateUrgency,
+  istToday,
 } from "./dateMath.ts";
 import { filingTrackerStatus } from "./compliance/overdue.ts";
 
@@ -34,7 +35,7 @@ function withTZ(tz: string, fn: () => void): void {
   }
 }
 
-// ── toLocalISO / todayLocalISO ──────────────────────────────────────────────
+// ── toLocalISO ──────────────────────────────────────────────────────────────
 
 test("toLocalISO: formats local calendar components, never via toISOString", () => {
   withTZ("Asia/Kolkata", () => {
@@ -62,12 +63,36 @@ test("toLocalISO: identical result under IST and UTC for the same local wall-clo
   }
 });
 
-test("todayLocalISO: matches toLocalISO(new Date()) at call time (wiring check, not a frozen-clock test)", () => {
-  withTZ("Asia/Kolkata", () => {
-    // No fake-timers library in this project's test runner; assert the two
-    // expressions agree within the same tick rather than mocking `now`.
-    assert.equal(todayLocalISO(), toLocalISO(new Date()));
-  });
+test("currentFinancialYearLabel() with no date is the financial year of INDIA'S day, whatever zone the browser is set to (POST-A-404)", () => {
+  // 31 March 2026, 19:00 UTC is 1 April 00:30 in India: the new financial year has begun there. A browser set to Los Angeles reads 31 March, 12:00,
+  // and its own calendar would still be in 2025-26.
+  const realNow = Date.now;
+  Date.now = () => Date.UTC(2026, 2, 31, 19, 0, 0);
+  try {
+    withTZ("America/Los_Angeles", () => {
+      assert.equal(currentFinancialYearLabel(), "2026-27");
+      assert.equal(currentFinancialYearLabel(new Date(2026, 2, 31, 12, 0)), "2025-26", "a date GIVEN is read as its own local calendar day, as it always was");
+    });
+    Date.now = () => Date.UTC(2026, 2, 31, 18, 29, 0);                 // 23:59 on 31 March in India
+    withTZ("Pacific/Auckland", () => {
+      assert.equal(currentFinancialYearLabel(), "2025-26");
+    });
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("dueDateUrgency's default day is India's, not the browser's (POST-A-404)", () => {
+  const realNow = Date.now;
+  Date.now = () => Date.UTC(2026, 5, 9, 19, 30, 0);                    // 10 June 01:00 in India, 9 June 12:30 in Los Angeles
+  try {
+    withTZ("America/Los_Angeles", () => {
+      assert.equal(dueDateUrgency("2026-06-09"), "overdue", "the 9th has gone in India");
+      assert.equal(dueDateUrgency("2026-06-10"), "due-soon", "the 10th is today in India");
+    });
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 // ── daysBetweenLocalISO — the aging / days-overdue diff ─────────────────────
@@ -200,7 +225,7 @@ test("computeOverdueStatus: IST boundary — due 31 Mar, 'today' resolved via to
   });
 });
 
-test("computeOverdueStatus: default third argument uses todayLocalISO() (wiring check)", () => {
+test("computeOverdueStatus: default third argument uses todayIstISO() (wiring check)", () => {
   withTZ("Asia/Kolkata", () => {
     const farFuture = "2099-01-01";
     assert.equal(computeOverdueStatus(farFuture, null), "Pending");
@@ -256,8 +281,8 @@ test("currentFinancialYearLabel: leap day (29 Feb 2024) falls in FY 2023-24", ()
   assert.equal(currentFinancialYearLabel(new Date(2024, 1, 29)), "2023-24");
 });
 
-test("currentFinancialYearLabel: default argument uses `new Date()` (wiring check)", () => {
-  assert.equal(currentFinancialYearLabel(), currentFinancialYearLabel(new Date()));
+test("currentFinancialYearLabel: the default argument is India's day (wiring check, both sides read India's clock)", () => {
+  assert.equal(currentFinancialYearLabel(), currentFinancialYearLabel(istToday()));
 });
 
 // ── Phase 4 — page-local date-logic compositions ───────────────────────────
@@ -267,7 +292,7 @@ test("currentFinancialYearLabel: default argument uses `new Date()` (wiring chec
 
 // app/work/page.tsx::isThisWeek() previously mixed a UTC-midnight-parsed due
 // date against a live `now`/`weekEnd` instant; now composed from
-// daysBetweenLocalISO/todayLocalISO. Pin the 0- and 7-day inclusive boundary.
+// daysBetweenLocalISO/todayIstISO. Pin the 0- and 7-day inclusive boundary.
 function isThisWeekComposition(dateStr: string, todayISO: string): boolean {
   const diff = daysBetweenLocalISO(todayISO, dateStr);
   return diff !== null && diff >= 0 && diff <= 7;

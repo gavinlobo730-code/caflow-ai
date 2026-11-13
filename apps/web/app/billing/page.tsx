@@ -18,8 +18,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
-import { formatDate } from "@/lib/dates/format";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import type { Client } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 // A payload field is not a list until something has checked.
@@ -124,7 +124,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   const [serviceType, setServiceType] = useState<ServiceType>("GST Filing");
   const [feeRs, setFeeRs] = useState("");
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("Monthly");
-  const [startDate, setStartDate] = useState(todayLocalISO());
+  const [startDate, setStartDate] = useState(todayIstISO());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
@@ -242,7 +242,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   // Outstanding tile, from the one module that decides it.
   const unpaid = invoices.filter(i => isOwedFeeInvoice(i.status));
   const [invoiceId, setInvoiceId] = useState(unpaid[0]?.id ?? "");
-  const [receiptDate, setReceiptDate] = useState(todayLocalISO());
+  const [receiptDate, setReceiptDate] = useState(todayIstISO());
   const [amountRs, setAmountRs] = useState("");
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("NEFT");
   const [referenceNo, setReferenceNo] = useState("");
@@ -454,7 +454,7 @@ export default function BillingPage() {
       // so a Draft — and a Cancelled invoice — aged as a debt and got a
       // WhatsApp "Remind" link demanding fees nobody had billed, while the
       // Outstanding tile counted "Issued" alone. Both ask the one set now.
-      const today = todayLocalISO();
+      const today = todayIstISO();
       const unpaidInvs = invs.filter(i => isOwedFeeInvoice(i.status));
       const outMap = new Map<string, OutstandingRow>();
       for (const inv of unpaidInvs) {

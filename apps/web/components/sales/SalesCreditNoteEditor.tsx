@@ -49,7 +49,7 @@ import {
 import { editedText } from "@/lib/forms/editedValue";
 import { validateSalesCreditNoteEditor } from "@/lib/sales/salesCreditNoteEditor";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -59,7 +59,7 @@ const EMPTY_LINE: InvoiceLine = { description: "", hsn_sac: "", qty: "1", rate: 
 type EditorLine = InvoiceLine & { _k: number; product?: ServiceCatalogueItem | null };
 
 function todayISO(): string {
-  return todayLocalISO();
+  return todayIstISO();
 }
 
 /** Open invoices this customer has — the "Against Invoice" picker. Filtered

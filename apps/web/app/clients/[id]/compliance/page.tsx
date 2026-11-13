@@ -16,7 +16,7 @@ import { formatDate } from "@/lib/services/formatting";
 import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNavContext";
 import { writeTimelineEvent } from "@/lib/services/timeline";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
@@ -372,7 +372,7 @@ export default function CompliancePage() {
   const actionInFlight = bulkBusy || filingLoading;
   const [bulkError, setBulkError] = useState<string | null>(null);
 
-  const today = todayLocalISO();
+  const today = todayIstISO();
 
   useEffect(() => {
     if (!clientId || clientId === "_placeholder") return;

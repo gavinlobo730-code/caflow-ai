@@ -98,6 +98,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { istToday } from "@/lib/dateMath";
 
 // ─── TDS section names ───────────────────────────────────────────────────────
 //
@@ -470,7 +471,7 @@ function lastCompletedMonth(): string {
   // Derived from the clock, never listed. IST is not needed for a month
   // boundary the user can change with one click, and the server stamps the
   // as-at date it actually computed against.
-  const now = new Date();
+  const now = istToday();
   const y = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
   const m = now.getMonth() === 0 ? 12 : now.getMonth();  // getMonth() is 0-based
   return `${y}-${String(m).padStart(2, "0")}`;

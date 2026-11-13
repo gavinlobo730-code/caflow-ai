@@ -22,9 +22,8 @@
  */
 // Relative, not "@/…": this module is pure and must stay importable under
 // `node --experimental-strip-types --test`, which does not resolve the alias.
-import { todayLocalISO, toLocalISO } from "../dateMath.ts";
-import { MONTH_ABBREVIATIONS } from "../dates/format.ts";
-
+import { toLocalISO } from "../dateMath.ts";
+import { MONTH_ABBREVIATIONS, todayIstISO } from "../dates/format.ts";
 // The one month table (lib/dates/format.ts). This module kept a private copy of
 // it, which is how two screens could spell the same month two ways.
 export const MONTH_NAMES = MONTH_ABBREVIATIONS;
@@ -39,12 +38,12 @@ export interface PeriodOption {
 /**
  * The last 12 months, oldest first, ending with the month containing `today`.
  *
- * Built from LOCAL calendar components. `new Date()` plus getFullYear/getMonth
- * is local; the earlier form went through todayLocalISO() for the same reason
- * and it is kept — in IST, a UTC-derived "today" is yesterday between midnight
- * and 05:30, which would drop the current month from the list on the 1st.
+ * Built from LOCAL calendar components of INDIA'S day (`todayIstISO()`): a UTC-derived
+ * "today" is yesterday between midnight and 05:30 in IST, which would drop the
+ * current month from the list on the 1st, and the browser's own day is a day out for
+ * a browser set to another zone.
  */
-export function buildMonthOptions(today: Date = new Date(todayLocalISO() + "T00:00:00")): PeriodOption[] {
+export function buildMonthOptions(today: Date = new Date(todayIstISO() + "T00:00:00")): PeriodOption[] {
   const options: PeriodOption[] = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);

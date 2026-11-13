@@ -31,7 +31,7 @@ import { api, type WorthALook, type WorthALookRow } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { DateInput } from "@/components/ui/date-input";
 import { fmt } from "@/components/banking/shared";
-import { toLocalISO } from "@/lib/dateMath";
+import { toLocalISO, istToday } from "@/lib/dateMath";
 import { GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { formatDate } from "@/lib/dates/format";
@@ -46,7 +46,7 @@ import { formatDate } from "@/lib/dates/format";
  *  scripts/a-calendar-date-is-never-read-back-in-utc.test.ts is the guard, and
  *  it caught exactly that here. */
 function previousMonth(): { from: string; to: string } {
-  const now = new Date();
+  const now = istToday();
   const end = new Date(now.getFullYear(), now.getMonth(), 0);   // day 0 = last of previous
   const start = new Date(end.getFullYear(), end.getMonth(), 1);
   return { from: toLocalISO(start), to: toLocalISO(end) };
