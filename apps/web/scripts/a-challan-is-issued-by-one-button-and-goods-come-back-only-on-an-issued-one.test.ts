@@ -106,8 +106,9 @@ test("a list row of the tab opens from the keyboard: its first cell is a button,
 test("the box for the day the goods came back lists challans the goods have left on, and a draft is told what it is without being told its goods have not left", () => {
   const src = read(TAB);
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.equal((src.match(/\(c\.status === "issued" \|\| c\.status === "received_back"\) && c\.clock\?\.applies && !c\.received_back_on/g) ?? []).length, 2,
-    "the box (its condition and its list) is not limited to challans the goods have left on (a recorded-received-back row with no day is one: the box is its way to be given one)");
+  // ONE definition of who is offered the box (POST-A-431), in `lib/sales/challanOffers.ts`, evaluated against `shared/challan-offer-vectors.json` by the ITC-04 gaps guard
+  assert.equal((code.match(/challans\.(some|filter)\(owesItsBackDay\)/g) ?? []).length, 2, "the box's condition and its list do not both ask the one definition");
+  assert.ok(!/c\.clock\?\.applies && !c\.received_back_on/.test(code), "a second, narrower condition for the box is back");
   assert.ok(!/challans\.(some|filter)\(\(c\) => c\.clock\?\.applies && !c\.received_back_on\)/.test(src), "an unfiltered list of challans for the day the goods came back is back");
   assert.match(src, /A draft is not recorded as issued: no period runs on it here and it is not on FORM GST ITC-04\.\s+If the goods on a\s+draft have left, open it and issue it\./, "a draft is not told what it is");
   // the product cannot know that the goods on a draft have not left, and a period counts from the challan's date, not from the press

@@ -688,7 +688,7 @@ def test_the_amendment_audit_event_records_the_fields_that_decide_a_period_as_th
     served.clear()
     route.update_challan(c["id"], DeliveryChallanUpdateIn(goods_kind=dc.GOODS_KIND_CAPITAL_GOODS, consignee_name="Gamma Works"), client_id=itc.CLIENT, current_user=USER)
     kwargs = served[0][1]
-    assert kwargs["old_data"] == {"status": "issued", "document_date": "2026-06-01", "received_back_on": None, "goods_kind": "inputs", "extended_to": None}
+    assert kwargs["old_data"] == {"status": "issued", "document_date": "2026-06-01", "received_back_on": None, "goods_kind": "inputs", "extended_to": None, "place_of_supply": "29"}
     assert kwargs["new_data"]["goods_kind"] == "capital_goods" and kwargs["new_data"]["fields"] == ["consignee_name", "goods_kind"] and "Gamma Works" not in str(served)
 
 

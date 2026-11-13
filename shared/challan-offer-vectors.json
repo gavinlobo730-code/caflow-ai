@@ -1,0 +1,25 @@
+{
+  "_doc": "Who a delivery challan's two ITC-04 remedies are offered to (POST-A-431, POST-A-423). Read by apps/web/scripts/the-itc-04-gaps-... (the screen's predicates in apps/web/lib/sales/challanOffers.ts) and by apps/api/tests/test_the_itc_04_gaps_... (the statement's own tests, domain/gst/itc_04.py). A case's `box` is what the screen offers; `identified` is what the statement reads (a GSTIN or a State), `without_a_day` is the statement's own test.",
+  "back_day": [
+    {"status": "received_back", "received_back_on": null, "clock_applies": true,  "without_a_day": true,  "offered": true},
+    {"status": "received_back", "received_back_on": null, "clock_applies": false, "without_a_day": true,  "offered": true},
+    {"status": "received_back", "received_back_on": "2026-07-01", "clock_applies": false, "without_a_day": false, "offered": false},
+    {"status": "issued", "received_back_on": null, "clock_applies": true,  "without_a_day": false, "offered": true},
+    {"status": "issued", "received_back_on": null, "clock_applies": false, "without_a_day": false, "offered": false},
+    {"status": "issued", "received_back_on": null, "clock_applies": null, "without_a_day": false, "offered": false},
+    {"status": "draft", "received_back_on": null, "clock_applies": true,  "without_a_day": false, "offered": false},
+    {"status": "cancelled", "received_back_on": null, "clock_applies": true, "without_a_day": false, "offered": false}
+  ],
+  "job_worker_state": [
+    {"reason": "job_work", "status": "issued", "consignee_gstin": null, "place_of_supply": null, "identified": false, "box": true},
+    {"reason": "job_work", "status": "issued", "consignee_gstin": "", "place_of_supply": "  ", "identified": false, "box": true},
+    {"reason": "job_work", "status": "issued", "consignee_gstin": "   ", "place_of_supply": null, "identified": false, "box": true},
+    {"reason": "job_work", "status": "received_back", "consignee_gstin": null, "place_of_supply": null, "identified": false, "box": true},
+    {"reason": "job_work", "status": "draft", "consignee_gstin": null, "place_of_supply": null, "identified": false, "box": true},
+    {"reason": "job_work", "status": "issued", "consignee_gstin": null, "place_of_supply": "29", "identified": true, "box": true},
+    {"reason": "job_work", "status": "issued", "consignee_gstin": "29BBBBB1111B1ZR", "place_of_supply": null, "identified": true, "box": false},
+    {"reason": "job_work", "status": "issued", "consignee_gstin": "29BBBBB1111B1ZR", "place_of_supply": "27", "identified": true, "box": false},
+    {"reason": "job_work", "status": "cancelled", "consignee_gstin": null, "place_of_supply": null, "identified": false, "box": false},
+    {"reason": "other_than_supply", "status": "issued", "consignee_gstin": null, "place_of_supply": null, "identified": false, "box": false}
+  ]
+}

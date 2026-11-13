@@ -252,17 +252,14 @@ def test_a_challan_whose_only_lot_is_waste_is_named_and_the_lot_is_still_a_table
     assert [r["lost_or_wasted_quantity"] for r in out["table_5a"]["rows"]] == ["10.000"]
 
 
-def test_tools_and_moulds_are_named_with_the_fact_that_the_tab_offers_them_no_box(db):
+def test_tools_and_moulds_are_named_like_any_other_challan_because_the_tab_now_offers_them_the_box(db):
+    # POST-A-431: the Delivery Challans tab offers the day to every challan recorded as back with no day, tools and moulds included, so the sentence promises the same remedy for all and carves
+    # none out (it used to say the day "cannot be recorded from a screen yet" for them).
     _line(db, _challan(db, "JW/020", "2026-05-10", goods_kind="moulds_dies_jigs_fixtures_tools"))
     _line(db, _challan(db, "JW/021", "2026-05-11", goods_kind="inputs"))
 
     [gap] = _named(_statement(db))
 
-    assert "That tab offers no box for tools, moulds, dies, jigs and fixtures (JW/020)" in gap
-    assert "so for that one the day cannot be recorded from a screen yet" in gap and "JW/021" in gap.split("That tab")[0]
-
-
-def test_no_tools_clause_when_every_named_challan_has_a_period(db):
-    _line(db, _challan(db, "JW/022", "2026-05-10", goods_kind="inputs"))
-    [gap] = _named(_statement(db))
-    assert "That tab offers no box" not in gap
+    assert "JW/020" in gap and "JW/021" in gap
+    assert gap.endswith("Record the day the goods came back on the Delivery Challans tab.")
+    assert "That tab offers no box" not in gap and "cannot be recorded from a screen" not in gap

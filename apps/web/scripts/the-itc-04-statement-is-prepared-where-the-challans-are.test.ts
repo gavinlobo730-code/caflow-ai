@@ -116,7 +116,8 @@ test("the form's caveats and the prepare-only sentence are rendered", () => {
 test("the whole-challan control says what it does, and points at the lot-by-lot one", () => {
   const src = code(path.join("components", "sales", "SalesCycleTab.tsx"));
   assert.match(src, /Mark a whole challan back at once/);
-  assert.match(src, /stops the s\.143 clock for every line/);
+  assert.match(src, /it stops that period for every line/);
+  assert.match(src, /FORM GST ITC-04 statement lists the goods against that day/);
   assert.match(src, /lot by lot under ITC-04/);
 });
 

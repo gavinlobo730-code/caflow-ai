@@ -34,6 +34,8 @@ import { StateLookup } from "@/components/lookups/StateLookup";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DraftChallanEditor } from "@/components/sales/DraftChallanEditor";
+import { JobWorkerStateBox } from "@/components/sales/JobWorkerStateBox";
+import { jobWorkerHasNoGstin, owesItsBackDay } from "@/lib/sales/challanOffers";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -302,9 +304,17 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   }
 
   /** A correction was taken by the server (POST-A-417): the lists and the open detail are read again, so the draft shows what it now holds and what is still to be recorded. */
-  async function corrected(challanId: string) {
+  async function corrected(challanId: string, said = "The draft was corrected.") {
     setCorrecting(false);
-    setMsg({ type: "ok", text: "The draft was corrected." });
+    setMsg({ type: "ok", text: said });
+    await load();
+    await reopen(challanId);
+  }
+
+  /** The job worker's State was taken by the server (POST-A-423): the lists and the open detail are read again. It leaves the draft correction form alone, because the person may have opened another draft
+   *  and be typing in it by the time this save has finished. */
+  async function stateRecorded(challanId: string) {
+    setMsg({ type: "ok", text: "The job worker's State was recorded." });
     await load();
     await reopen(challanId);
   }
@@ -814,18 +824,20 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             </p>
           )}
 
-          {challans.some((c) => (c.status === "issued" || c.status === "received_back") && c.clock?.applies && !c.received_back_on) && (
+          {challans.some(owesItsBackDay) && (
             <div className="rounded border border-ps-border bg-white p-4">
               <h4 className="mb-1 text-sm font-semibold">
                 Mark a whole challan back at once
               </h4>
               <p className="mb-2 text-xs text-ps-label">
-                This stops the s.143 clock for every line on the challan. Goods that
-                come back in lots are recorded lot by lot under ITC-04 below, which
-                keeps what is still outstanding.
+                This records the day the goods on the whole challan came back. Where a
+                period is running on the challan it stops that period for every line, and
+                the FORM GST ITC-04 statement lists the goods against that day.
+                Goods that come back in lots are recorded lot by lot under ITC-04 below,
+                which keeps what is still outstanding.
               </p>
               <div className="space-y-2">
-                {challans.filter((c) => (c.status === "issued" || c.status === "received_back") && c.clock?.applies && !c.received_back_on)
+                {challans.filter(owesItsBackDay)
                   .map((c) => (
                     <div key={c.id} className="flex flex-wrap items-center gap-2 text-sm">
                       <span className="font-mono">{c.document_no}</span>
@@ -900,6 +912,9 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                     <p role="alert" className="mt-2 text-xs text-state-problem">{cancelAnswer.text}</p>
                   )}
                 </div>
+              )}
+              {detail.challan && jobWorkerHasNoGstin(detail.challan) && (
+                <JobWorkerStateBox key={detail.challan.id} challan={detail.challan} clientId={clientId} onSaved={stateRecorded} />
               )}
               <Table
                 head={["Clause", "Particular", "On the document"]}
