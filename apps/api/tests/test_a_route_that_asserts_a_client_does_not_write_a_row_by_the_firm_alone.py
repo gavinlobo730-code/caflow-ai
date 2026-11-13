@@ -58,7 +58,6 @@ REVIEWED: dict[tuple[str, str], str] = {
     ("purchase_bills.py", "delete_landed_cost"): "deletes the charge of the bill the route tied to the client (`bill_id` is part of the chain)",
     ("purchase_cycle.py", "update_receipt"): "the receipt was read by `receipt_of_client` (firm and client) before the update",
     ("sales_cycle.py", "update_quotation"): "the route calls `row_of_client` (firm and client) before the update",
-    ("sales_cycle.py", "record_challan_return"): "the challan is the one the client-scoped return line belongs to (the line is looked up under the client)",
     ("sales_cycle.py", "update_challan"): "the route calls `row_of_client` (firm and client) before the update",
     ("task_recurring.py", "update_recurring"): "`_assert_config_scope` asserts access on the config's own client before the update",
 }
@@ -221,7 +220,7 @@ def test_the_scan_is_not_vacuous(world):
                     isinstance(n, ast.Call) and (_call_name(n) or "").startswith("assert_client_access") for n in ast.walk(fn)):
                 handlers += 1
     assert handlers >= 400, f"only {handlers} handlers assert a client: the population moved"
-    assert len(REVIEWED) >= 20
+    assert len(REVIEWED) >= 19      # 20 until the lot door's stamp moved into a database function (POST-A-419) and `record_challan_return` no longer fired
 
 
 # ── negative controls: the rule fires on the old shape and on nothing it should leave alone ───────────────────────────────────

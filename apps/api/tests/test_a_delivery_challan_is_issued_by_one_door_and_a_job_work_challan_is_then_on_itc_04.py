@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import routers.sales_cycle as route
 import services.itc_04_service as itc_service
+import services.delivery_challan_writes as challan_writes
 import services.sales_cycle_service as svc
 import test_itc_04_is_derived_from_the_challans_already_entered as itc
 from domain.gst import delivery_challan as dc
@@ -85,7 +86,8 @@ def test_a_draft_is_issued_and_nothing_else_about_it_changes(db):
     after = _stored(db, c)
     assert out["status"] == after["status"] == "issued"
     changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
-    assert changed == {"status", "updated_at"}, f"issuing changed {sorted(changed)}"
+    assert changed == {"status", "updated_at", "issued_at"}, f"issuing changed {sorted(changed)}"
+    assert after["issued_at"] == after["updated_at"] and out["issued_at"] == after["issued_at"], "the moment of issue is the one the write carried (POST-A-419)"
 
 
 @pytest.mark.parametrize("status", ["issued", "received_back", "cancelled"])
@@ -532,17 +534,18 @@ def test_an_amendment_that_changes_no_status_is_not_held_to_the_status(db, monke
     assert _stored(db, c)["notes"] == "booked" and _stored(db, c)["status"] == "issued"
 
 
-def test_the_goods_back_stamp_is_not_written_over_a_challan_that_is_no_longer_issued(db, monkeypatch):
-    """The lot door asked for `issued` before it recorded the lot; a cancel got in since. The stamp matches nothing, says the lot stands, and the cancel is not written over with received back."""
+def test_a_lot_is_not_recorded_on_a_challan_that_is_no_longer_issued_and_the_cancel_is_not_written_over(db):
+    """The lot door asked for `issued` before it recorded the lot; a cancel got in since. The database function takes the challan's lock, finds it cancelled, records nothing and says so, and the cancel is not
+    written over with received back (the race the function closes: migration 585)."""
     c = _draft(db, "JW/33")
     _issue(db, c)
-    issued_row = dict(_stored(db, c))
+    line = itc._line(db, c, qty="10")
     _stored(db, c)["status"] = "cancelled"
-    monkeypatch.setattr(svc, "_one", lambda *a, **k: issued_row)       # the read that was made before the cancel landed
     with pytest.raises(HTTPException) as caught:
-        svc.record_goods_back(db, itc.FIRM, c["id"], "2026-10-01")
-    assert caught.value.status_code == 409 and "What was recorded stands" in str(caught.value.detail)
+        challan_writes.record_lot(db, itc.FIRM, itc.CLIENT, c["id"], {"challan_line_id": line["id"], "returned_on": "2026-10-01", "quantity_returned": "10", "quantity_lost_or_wasted": "0"}, document_no="JW/33")
+    assert caught.value.status_code == 409 and "nothing was recorded" in str(caught.value.detail)
     assert _stored(db, c)["status"] == "cancelled" and not _stored(db, c).get("received_back_on")
+    assert db.rows("delivery_challan_returns") == []
 
 
 # ── the second independent read ───────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -687,7 +690,7 @@ def test_a_held_consignee_address_of_an_issued_challan_is_not_changed(db):
 
 
 def test_a_cancelled_challan_keeps_what_it_was_made_as_whether_or_not_its_goods_left(db):
-    """Nothing records whether the goods of a cancelled challan left (there is no issued-at), and a cancel followed by a rewrite would hide what was cancelled: so a cancelled challan keeps its
+    """Nothing records whether the goods of a cancelled challan left (`issued_at` holds the moment only for a challan issued after migration 585, and a draft cancelled never had one), and a cancel followed by a rewrite would hide what was cancelled: so a cancelled challan keeps its
     number, date, consignee and inter-State flag as an issued one does. A cancelled DRAFT is no different: it is the record of a number that was used."""
     issued = _draft(db, "JW/55")
     _issue(db, issued)
@@ -748,7 +751,7 @@ def test_a_received_back_challan_keeps_its_particulars_as_an_issued_one_does(db)
     """The goods have LEFT on a received-back challan too (`GOODS_HAVE_LEFT`), so what it says of itself is not rewritten, and the sentence is true of it ('has been issued')."""
     c = _draft(db, "JW/49")
     _issue(db, c)
-    svc.record_goods_back(db, itc.FIRM, c["id"], "2026-09-01")
+    svc.update_challan(db, itc.FIRM, c["id"], {"received_back_on": "2026-09-01"})
     assert _stored(db, c)["status"] == "received_back"
     before = dict(_stored(db, c))
     with pytest.raises(HTTPException) as caught:
@@ -866,11 +869,13 @@ def test_a_row_of_the_table_that_is_changed_changes_the_answer(monkeypatch):
 
 
 # the goods-back stamp
-def test_the_goods_back_stamp_does_not_write_a_second_day_over_a_challan_that_is_already_received_back(db):
+def test_a_lot_does_not_write_a_second_day_over_a_challan_that_is_already_received_back(db):
     c = _draft(db, "JW/47")
     _issue(db, c)
-    svc.record_goods_back(db, itc.FIRM, c["id"], "2026-09-01")
+    line = itc._line(db, c, qty="10")
+    svc.update_challan(db, itc.FIRM, c["id"], {"received_back_on": "2026-09-01"})
     with pytest.raises(HTTPException) as caught:
-        svc.record_goods_back(db, itc.FIRM, c["id"], "2026-09-15")
-    assert caught.value.status_code == 409 and "by another request" in str(caught.value.detail)
+        challan_writes.record_lot(db, itc.FIRM, itc.CLIENT, c["id"], {"challan_line_id": line["id"], "returned_on": "2026-09-15", "quantity_returned": "10", "quantity_lost_or_wasted": "0"}, document_no="JW/47")
+    assert caught.value.status_code == 409 and "changed by another request" in str(caught.value.detail)
     assert _stored(db, c)["received_back_on"] == "2026-09-01" and _stored(db, c)["status"] == "received_back"
+    assert db.rows("delivery_challan_returns") == []

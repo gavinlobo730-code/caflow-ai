@@ -35,6 +35,7 @@ from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import fy_bounds, ist_today
 from domain.gst import delivery_challan as dc
 from domain.gst import itc_04 as itc
+from services import delivery_challan_writes as challan_writes
 
 
 def _dedupe(rows: list[dict]) -> list[dict]:
@@ -206,9 +207,11 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
       * more than was sent — returned plus lost or wasted can never exceed the
         quantity on the line.
 
-    When the returns have brought EVERY line of the challan back to nil it
-    stamps `received_back_on` through the ONE existing write, so the legacy
-    whole-challan door and this one stop the s.143 clock the same way.
+    When the returns have brought EVERY line of the challan back to nil the
+    same database call stamps `received_back_on` and the status (migration 585,
+    in the transaction that records the lot), on the latest day any lot came back:
+    the whole-challan amendment door writes the same two columns in a statement of
+    its own, so the two stop the s.143 clock the same way.
     """
     not_found = HTTPException(status_code=404,
                               detail="That challan line was not found for this client.")
@@ -222,7 +225,7 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
         raise not_found
     line = ln[0]
     ch = (db.table("delivery_challans").select(
-        "id, client_id, document_no, document_date, reason, status, received_back_on")
+        "id, client_id, document_no, document_date, reason, status, received_back_on, order_id")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .eq("id", line["challan_id"]).limit(1).execute().data) or []
     if not ch:
@@ -270,11 +273,10 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
             f"more can be recorded. A return is refused rather than trimmed — the "
             f"quantity on the line is what the job worker was sent."))
 
-    row = (db.table("delivery_challan_returns").insert({
-        "firm_id": firm_id,
-        "client_id": client_id,
-        "challan_id": challan["id"],
-        "challan_line_id": line["id"],
+    # THE LOT AND THE STAMP ARE ONE TRANSACTION (POST-A-419, migration 585). The lot was inserted and then, when every line had come back, the challan was stamped received back in a second request:
+    # a cancel between the two left a lot on a challan not marked back, and two lots that each fitted the line and not together both passed the check above. The function takes the challan's
+    # lock first, asks the same things again, inserts the lot and stamps the challan on the latest day any lot came back, all in the one call. The checks above stay: they give the sentences.
+    lot = {
         "returned_on": returned_on.isoformat(),
         "quantity_returned": str(now_back),
         "quantity_lost_or_wasted": str(now_lost),
@@ -283,28 +285,14 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
         "nature_of_job_work": payload.get("nature_of_job_work"),
         "notes": payload.get("notes"),
         "created_by": actor_id,
-    }).execute().data or [{}])[0]
-
-    # Has EVERY line of this challan now come back to nil? Then the clock stops,
-    # by the same write the challan screen uses.
-    stamped = False
-    every_line = (db.table("delivery_challan_lines").select("id, quantity")
-                  .eq("firm_id", firm_id).eq("client_id", client_id)
-                  .eq("challan_id", challan["id"]).execute().data) or []
-    all_returns = (db.table("delivery_challan_returns").select(
-        "id, challan_line_id, quantity_returned, returned_on")
-        .eq("firm_id", firm_id).eq("client_id", client_id)
-        .eq("challan_id", challan["id"]).execute().data) or []
-    got: dict[str, Decimal] = {}
-    for r in all_returns:
-        got[str(r["challan_line_id"])] = got.get(str(r["challan_line_id"]), Decimal(0)) + Decimal(
-            str(r.get("quantity_returned") or 0))
-    if every_line and all(
-            got.get(str(l["id"]), Decimal(0)) >= Decimal(str(l.get("quantity") or 0))
-            for l in every_line):
+        "challan_line_id": line["id"],
+    }
+    done = challan_writes.record_lot(db, firm_id, client_id, str(challan["id"]), lot, document_no=challan.get("document_no"))
+    row = done.get("lot") or {}
+    stamped = bool(done.get("challan_marked_received_back"))
+    if stamped:
+        # A challan marked received back delivers nothing against the order it names (POST-A-421): the order is derived again, as the amendment door does when it makes the same status.
         from services import sales_cycle_service
-        last = max(str(r["returned_on"])[:10] for r in all_returns)
-        sales_cycle_service.record_goods_back(db, firm_id, str(challan["id"]), last)
-        stamped = True
+        sales_cycle_service.order_follows_goods_back(db, firm_id, challan.get("order_id"))
 
     return {**row, "challan_marked_received_back": stamped}

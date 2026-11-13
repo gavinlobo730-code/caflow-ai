@@ -306,8 +306,8 @@ def record_challan_return(
     Recorded against the challan LINE the goods were sent on. Over-return is
     refused, never clamped, and lost or wasted quantity is recorded but is NEVER
     subtracted from what is outstanding. When the returns have brought every line
-    back to nil the challan is marked received back through the one existing
-    write, which stops the s.143 clock.
+    back to nil the challan is marked received back in the same database call
+    that records the lot, which stops the s.143 clock.
 
     The CLIENT in the body is asserted for access AND is what the line is looked
     up under, so another client's challan line cannot be reached by naming an

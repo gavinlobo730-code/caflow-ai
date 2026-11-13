@@ -601,6 +601,15 @@ class _Rpc:
             store.append(row)
         return len(self.params["p_lines"])
 
+    def _challan_function(self):
+        """The three challan functions of migration 585 (POST-A-419), through the shared double: it is the one place their rules are written for the mock suite."""
+        from tests import challan_functions_double as functions
+        return functions.call(self.db._tables, lambda _table: str(uuid.uuid4()), self.fn, self.params)
+
+    _fn_create_delivery_challan_atomic = _challan_function
+    _fn_record_challan_lot_atomic = _challan_function
+    _fn_correct_draft_challan_lines_atomic = _challan_function
+
     def _fn_tds_deposit_position(self):
         """DELEGATES to domain.tds.undeposited, the Python twin of migration 523's SQL function (the challan register's answer):
         one row of the two figures, as PostgREST returns a function that RETURNS TABLE."""
