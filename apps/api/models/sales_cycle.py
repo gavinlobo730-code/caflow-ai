@@ -12,7 +12,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from core.ist_clock import ist_today
-from models.iso_date import a_real_date
+from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate, a_real_date
 from domain.gst import delivery_challan as dc
 from domain.gst.gstin import problem_with
 from domain.gst.invoice_series import format_violation
@@ -144,7 +144,7 @@ class PreInvoiceLineIn(BaseModel):
 
 class _PreInvoiceHeader(BaseModel):
     document_no: str
-    document_date: str
+    document_date: IsoDate
     customer_name: Optional[str] = None
     customer_gstin: Optional[str] = None
     place_of_supply: Optional[str] = None
@@ -191,7 +191,7 @@ class QuotationIn(_PreInvoiceHeader):
     client_id: str
     customer_id: str
     kind: str = oc.KIND_QUOTATION
-    valid_until: Optional[str] = None
+    valid_until: OptionalIsoDate = None
     lines: list = []
 
     @field_validator("kind")
@@ -215,8 +215,8 @@ class QuotationIn(_PreInvoiceHeader):
 class QuotationUpdateIn(BaseModel):
     """Amend a quotation. Every field optional; `None` means unchanged."""
     document_no: Optional[str] = None
-    document_date: Optional[str] = None
-    valid_until: Optional[str] = None
+    document_date: PatchIsoDate = None
+    valid_until: PatchIsoDate = None
     status: Optional[str] = None
     customer_name: Optional[str] = None
     customer_gstin: Optional[str] = None
@@ -260,8 +260,8 @@ class SalesOrderIn(_PreInvoiceHeader):
     client_id: str
     customer_id: str
     customer_po_no: Optional[str] = None
-    customer_po_date: Optional[str] = None
-    expected_delivery_date: Optional[str] = None
+    customer_po_date: OptionalIsoDate = None
+    expected_delivery_date: OptionalIsoDate = None
     quotation_id: Optional[str] = None
     lines: list = []
 
@@ -274,10 +274,10 @@ class SalesOrderIn(_PreInvoiceHeader):
 
 class SalesOrderUpdateIn(BaseModel):
     document_no: Optional[str] = None
-    document_date: Optional[str] = None
+    document_date: PatchIsoDate = None
     customer_po_no: Optional[str] = None
-    customer_po_date: Optional[str] = None
-    expected_delivery_date: Optional[str] = None
+    customer_po_date: PatchIsoDate = None
+    expected_delivery_date: PatchIsoDate = None
     status: Optional[str] = None
     customer_name: Optional[str] = None
     customer_gstin: Optional[str] = None
