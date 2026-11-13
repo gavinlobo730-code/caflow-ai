@@ -3,8 +3,9 @@ from typing import Annotated, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from models.common import api_response
 from models.fy import OptionalFYLabel
+from core.query_day import query_day
 from core.permissions import rbac
-from datetime import timedelta
+from datetime import date, timedelta
 from repositories.time_tracking_analytics_repository import time_tracking_analytics_repo
 from domain.practice import profitability as rule_profit
 from domain.practice import realization as rule_real
@@ -23,11 +24,13 @@ _get_db = db_provider.request_db
 
 
 #: The windows the three analytics endpoints answer for. `fy` is one whole financial year (`financial_year`, to today for the
-#: one that is running). An unknown word is a 422 at the door and never read as `month`, which is what it used to be.
-PeriodWord = Literal["week", "month", "quarter", "fy"]
+#: one that is running) and `custom` is any two days (`date_from` to `date_to`). An unknown word is a 422 at the door and never
+#: read as `month`, which is what it used to be.
+PeriodWord = Literal["week", "month", "quarter", "fy", "custom"]
 
 
-def _period_range(period: str, financial_year: Optional[str] = None) -> tuple[str, str, str]:
+def _period_range(period: str, financial_year: Optional[str] = None, date_from: Optional[str] = None,
+                  date_to: Optional[str] = None) -> tuple[str, str, str]:
     """`(first day, last day, label)` of the window an analytics endpoint answers for: the one resolver for all three.
 
     POST-A-427. The screen offered this week, this month and this quarter to date, each ending today, and any other word
@@ -35,10 +38,21 @@ def _period_range(period: str, financial_year: Optional[str] = None) -> tuple[st
     screen from 1 April 2026. `fy` is a whole financial year (`models.fy.FYLabel`, from `fy_bounds`, the one authority for
     its first and last day); for the year that is running it ends today, because nothing has happened after today, and the
     label says "to date". A year that has not started is refused in words, and so is a `financial_year` with any other
-    window, which would be ignored and read as the month."""
+    window, which would be ignored and read as the month.
+
+    `custom` is any other window of whole days (a half year, a quarter of last year, the month before last): `date_from` and
+    `date_to`, both required, both written YYYY-MM-DD (the endpoints judge each by the query-string rule before they call this,
+    so a text that is not a day is refused in a sentence that names the parameter and a blank one is no day; this takes the
+    canonical text), the later not after India's today because nothing has happened after today, and the earlier not after the
+    later. A day asked for with any other window would be ignored, so it is refused in words (as a financial year is). The window
+    has no length of its own: it is bounded by the firm's own history, as `fy` is by a year, and the reads are paged."""
     today = ist_today()
     if period != "fy" and financial_year:
         raise HTTPException(status_code=422, detail="A financial year can be asked for only with the window 'fy'.")
+    if period != "custom" and (date_from or date_to):
+        raise HTTPException(status_code=422, detail="date_from and date_to can be asked for only with the window 'custom'.")
+    if period == "custom":
+        return _custom_range(date_from, date_to, today)
     if period == "fy":
         fy = financial_year or ist_fy_label(today)
         first, last = fy_bounds(fy)
@@ -83,8 +97,29 @@ def _period_range(period: str, financial_year: Optional[str] = None) -> tuple[st
     else:
         # Reached only by a caller that skips the route's `PeriodWord` (a test, another module): the door answers 422 for
         # an unknown word, and this does too rather than reading it as the month, which is what it used to do.
-        raise HTTPException(status_code=422, detail=f"Unknown window {period!r}: use week, month, quarter or fy.")
+        raise HTTPException(status_code=422, detail=f"Unknown window {period!r}: use week, month, quarter, fy or custom.")
     return start.isoformat(), today.isoformat(), label
+
+
+def _day_words(d: date) -> str:
+    """`01 Apr 2026`. The year is written in four digits, which strftime's `%Y` does not do before the year 1000 on every platform:
+    a mistyped 0026 would be headed "26", a year that reads as two digits of another century."""
+    return f"{d.day:02d} {d:%b} {d.year:04d}"
+
+
+def _custom_range(date_from: Optional[str], date_to: Optional[str], today) -> tuple[str, str, str]:
+    """The window `custom` asks for, or a 422 in words (POST-A-427). Both days are needed: one alone would be a window with an end nobody
+    named, and guessing it (today, the start of the year) would be a figure under a heading the person did not choose."""
+    if not date_from or not date_to:
+        raise HTTPException(status_code=422, detail="The window 'custom' needs both days: date_from and date_to.")
+    if date_to > today.isoformat():
+        raise HTTPException(
+            status_code=422,
+            detail=f"date_to is {date_to}, after today in India ({today.isoformat()}): nothing has happened after today.")
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail=f"date_from ({date_from}) is after date_to ({date_to}).")
+    first, last = date.fromisoformat(date_from), date.fromisoformat(date_to)
+    return date_from, date_to, f"{_day_words(first)} to {_day_words(last)}"
 
 
 def _unrated_people(entries: list[dict], rates: dict, user_map: dict) -> list[dict]:
@@ -102,6 +137,8 @@ def _unrated_people(entries: list[dict], rates: dict, user_map: dict) -> list[di
 def profitability_analytics(
     period: PeriodWord = "month",
     financial_year: Annotated[OptionalFYLabel, Query()] = None,
+    date_from: Annotated[Optional[str], Query()] = None,
+    date_to: Annotated[Optional[str], Query()] = None,
     include_by_client: bool = True,
     include_by_engagement: bool = False,
     include_by_team: bool = False,
@@ -118,7 +155,9 @@ def profitability_analytics(
     rule; all arithmetic is integer paise.
     """
     firm_id = current_user.get("firm_id")
-    date_from, date_to, label = _period_range(period, financial_year)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
+    date_from, date_to, label = _period_range(period, financial_year, date_from, date_to)
 
     # Get all clients for lookup. ARCHIVED ONES TOO: a client archived during the period still has its fees and its hours in
     # it, and without its name the row would read "Unknown" beside real money.
@@ -274,6 +313,8 @@ def profitability_analytics(
 def fee_concentration(
     period: PeriodWord = "month",
     financial_year: Annotated[OptionalFYLabel, Query()] = None,
+    date_from: Annotated[Optional[str], Query()] = None,
+    date_to: Annotated[Optional[str], Query()] = None,
     current_user: dict = Depends(rbac("analytics", "read")),
     _fees: dict = Depends(rbac("billing", "read")),  # revenue is the practice's fee economics (POST-B-024)
 ):
@@ -301,7 +342,9 @@ def fee_concentration(
     from domain.practice import concentration as rule
 
     firm_id = current_user.get("firm_id")
-    date_from, date_to, label = _period_range(period, financial_year)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
+    date_from, date_to, label = _period_range(period, financial_year, date_from, date_to)
 
     client_map = client_repo.names_by_id(firm_id, include_archived=True)
     invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
@@ -361,6 +404,8 @@ def fee_concentration(
 def revenue_vs_effort(
     period: PeriodWord = "month",
     financial_year: Annotated[OptionalFYLabel, Query()] = None,
+    date_from: Annotated[Optional[str], Query()] = None,
+    date_to: Annotated[Optional[str], Query()] = None,
     client_id: str = None,
     engagement_id: str = None,
     current_user: dict = Depends(rbac("analytics", "read")),
@@ -378,7 +423,9 @@ def revenue_vs_effort(
     `domain/practice/realization` is the rule; all arithmetic is integer paise.
     """
     firm_id = current_user.get("firm_id")
-    date_from, date_to, label = _period_range(period, financial_year)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
+    date_from, date_to, label = _period_range(period, financial_year, date_from, date_to)
 
     invoices = invoice_repo.fee_revenue_rows(firm_id, date_from, date_to)
     entries = time_tracking_analytics_repo.get_worth_entries(firm_id, date_from, date_to)
