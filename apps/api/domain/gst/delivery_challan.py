@@ -390,12 +390,19 @@ AMENDMENT_MAY_MAKE = {
     STATUS_CANCELLED: (),
 }
 
-#: The statuses a challan is in once the goods have left on it, and so the only ones in which a period is run, goods are counted as delivered against an order, and goods can come back. A draft
+#: The statuses a challan is in once the goods have left on it, and so the only ones in which a period is run, a job-work challan is a row of FORM GST ITC-04, and goods can come back. A draft
 #: is not recorded as issued; a cancelled challan is not a movement.
 GOODS_HAVE_LEFT = (STATUS_ISSUED, STATUS_RECEIVED_BACK)
 
 #: The statuses a challan's period runs in.
 STATUSES_WITH_A_CLOCK = GOODS_HAVE_LEFT
+
+#: The statuses in which a challan's goods are DELIVERED against the order it names (POST-A-421): they left and they are still with the consignee. A challan marked `received_back` delivered
+#: nothing, so the order shows those goods as undelivered again and a new delivery of them is not refused as more than was ordered. That is the WHOLE challan: goods returned in part on a lot of
+#: FORM GST ITC-04 leave it `issued` until the last lot brings every line back, and they count as delivered until then. It is deliberately a subset of
+#: `GOODS_HAVE_LEFT`, which is the set in which a period runs and FORM GST ITC-04 lists a job-work challan; and a challan that came back still HANGS from its order line (the order's lines are not
+#: re-priced or removed from under it), which `order_open_position(with_drafts=True)` asks.
+STATUSES_THAT_DELIVER_AGAINST_AN_ORDER = (STATUS_ISSUED,)
 
 
 def status_change_problem(document_no: object, current: object, wanted: object) -> Optional[str]:

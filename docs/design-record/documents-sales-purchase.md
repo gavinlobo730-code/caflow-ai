@@ -158,6 +158,16 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   window, which no guard would catch, so it ships in a later change once production has the migration (a fallback to the old two-step writes would be a second way to write a challan that someone has to delete). Held by
   `tests/test_585_..._pg.py` (68 tests on real Postgres, three of them real two-session races: lot against lot, cancel against lot, issue against correction), run against a build with each of 23 rules broken in turn. Still open on the
   ledger: the API's use of the functions, the issue door's tie-out of the header to its lines and the order position (POST-A-419, POST-A-421), and the retraction of a lot (POST-A-418).
+  **A CHALLAN MARKED RECEIVED BACK IS NOT DELIVERED AGAINST THE ORDER, AND IT STILL HANGS FROM ITS LINE** (POST-A-421(a), 13-11-2026; no migration). `order_open_position` counted a challan's goods as delivered once they had LEFT
+  (`GOODS_HAVE_LEFT`: issued or received back), so an order showed goods the customer had returned as delivered and a new delivery of them was refused as more than was ordered. It now counts them while the challan is
+  with the consignee (`STATUSES_THAT_DELIVER_AGAINST_AN_ORDER`, the issued status alone: a subset of `GOODS_HAVE_LEFT`, which still draws a period and lists a job-work challan on FORM GST ITC-04). The question "what hangs from these
+  lines?" (`with_drafts`, asked before an order line is re-priced or removed) still includes a challan marked received back, because it still points at the line. **Two doors mark a challan received back and both derive the order's
+  stored status again**: the amendment door (`update_challan`) and the lot door of FORM GST ITC-04 (`record_goods_back`, which the lot that brings every line back reaches; the first version of this change left that one out, so the order's
+  list said it was partly delivered while its position said nothing was with the consignee, and an independent read found it). So an order delivered by one challan that is then marked back is `confirmed` again, and `partially_delivered` where
+  another challan still delivers against it. **IT IS THE WHOLE CHALLAN THAT STOPS DELIVERING, NOT THE GOODS ON IT**: goods returned in part on a job-work lot leave the challan `issued` and still count as delivered until the last lot comes in, which a
+  test pins so this sentence cannot go stale (whether a job-work movement belongs against a sales order at all is a decision the one who widens it takes first). An order left in the old state by the earlier rule is derived again the next
+  time a challan on it is issued, cancelled or received back (the one-time re-settle of every order is data work on production and stays on the ledger). Held by `tests/test_the_sales_cycle_before_the_tax_invoice.py` (the position by status, the
+  whole story of a delivery that is refused, comes back and is delivered again, the lot door's re-settle, the part return, and the set's place inside `GOODS_HAVE_LEFT`).
 
 - **AN IMPORT OF GOODS IS PAID FOR TWICE AND ONLY ONE OF THEM IS THE SUPPLIER'S**
   (PUR-18, migration 389). IGST on imported goods is not charged by the
