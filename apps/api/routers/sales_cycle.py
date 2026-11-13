@@ -396,7 +396,7 @@ def update_challan(
     row = svc.update_challan(_db(), firm_id, challan_id, sent)
     # What was amended is recorded (POST-A-398): a cancel, a back day, a moved date or a changed kind of goods changes what is owed on a return, and until now left no trace. The fields that
     # decide a period are recorded as they were and as they are; of every other field only its NAME is, never the value of a consignee.
-    deciding = ("status", "document_date", "received_back_on", "goods_kind", "extended_to")
+    deciding = ("status", "document_date", "received_back_on", "goods_kind", "extended_to", "place_of_supply")
     log_event(firm_id or "", "delivery_challan_update", str(row.get("id") or challan_id),
               "update", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),

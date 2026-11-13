@@ -303,7 +303,8 @@ def table_4(challans: list[dict], lines: list[dict], window: Window) -> dict:
         if not worker["identified"]:
             gaps.append({"challan_no": ch.get("document_no"), "kind": "job_worker_not_identified",
                          "reason": ("Neither the job worker's GSTIN nor their State is "
-                                    "recorded, and the form asks for one of them.")})
+                                    "recorded, and the form asks for one of them. Record the State on the "
+                                    "challan's panel on the Delivery Challans tab.")})
         if kind_gap:
             gaps.append({"challan_no": ch.get("document_no"), "kind": "type_of_goods",
                          "reason": kind_gap})
@@ -539,9 +540,9 @@ def received_back_without_a_day(challans: list[dict], lines: list[dict],
 def received_back_without_a_day_gap(rows: list[dict], *, named: int = 5) -> Optional[str]:
     """The one sentence for `received_back_without_a_day`, or None when there is no such challan.
 
-    The remedy is the Delivery Challans tab's box that gives a wholly-back challan its day, which `record_return` does not replace (it refuses a challan whose status says it is back) and which that
-    tab offers only for goods with a period running. Tools, moulds, dies, jigs and fixtures run none (`delivery_challan.JOB_WORK_EXCLUSION`), so the tab offers them no box, and the sentence says
-    so for the challans it names rather than promising a remedy the screen cannot give.
+    The remedy is the Delivery Challans tab's box that gives a wholly-back challan its day, which `record_return` does not replace (it refuses a challan whose status says it is back). That tab offers
+    the box for every challan recorded as back with no day (POST-A-431): it used to offer it only for goods with a period running, and tools, moulds, dies, jigs and fixtures run none
+    (`delivery_challan.JOB_WORK_EXCLUSION`), so for those this sentence had to say the day could not be recorded from a screen. It no longer does, so one sentence serves every challan it names.
     """
     if not rows:
         return None
@@ -552,10 +553,6 @@ def received_back_without_a_day_gap(rows: list[dict], *, named: int = 5) -> Opti
     text = (f"{len(rows)} job-work challan{'s are' if many else ' is'} recorded as received back with no day ({numbers(rows)}), so the goods "
             f"on {'them' if many else 'it'} that no lot accounts for are on neither the Table 5A rows nor the outstanding list. "
             "Record the day the goods came back on the Delivery Challans tab.")
-    tools = [r for r in rows if r.get("goods_kind") == dc.GOODS_KIND_EXCLUDED]
-    if tools:
-        text += (f" That tab offers no box for tools, moulds, dies, jigs and fixtures ({numbers(tools)}), which run no period under section 143, "
-                 f"so for {'those' if len(tools) > 1 else 'that one'} the day cannot be recorded from a screen yet.")
     return text
 
 

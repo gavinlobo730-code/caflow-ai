@@ -311,6 +311,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Table 13 rows for the receipt, payment and refund vouchers, the self-invoices of inward supplies from unregistered persons, revised invoices and the four challan natures. The return counts the challans issued in the window by their own reason and names the nine natures it did not look for, and claims nothing about which rows they belong in.
 - **Ledger:** POST-A-415
 
+### S31. FORM GST ITC-04: may a job worker's State be "Other Country" or "Other Territory"?
+
+- **Question:** For a job worker with no GSTIN, the ITC-04 statement identifies them by the State the goods go to, read from the challan's place of supply. The product's place-of-supply list also holds 96 (Other Country, used on an export) and 97 (Other Territory), and the server accepts them there; the State box added with POST-A-423 offers the current States only and shows a recorded value it cannot offer in words. (1) Can a job worker's State on ITC-04 be 96 or 97, that is, can goods go for job work under section 143 to someone outside India or in another territory? (2) If so, how does the form's table take it, as a code or a name? (3) Are the retired codes 25 and 28 still acceptable for a challan dated before they were retired?
+- **Needed:** Section 143 of the CGST Act and Rule 45, the notified FORM GST ITC-04 with its instructions, and the portal's current help page on it.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Any refusal of 96, 97, 25 or 28 as a job worker's State, and any change to what the statement counts as identified: today it treats any recorded place of supply as the State. The box offers current States only and says in words when a recorded value is not one of them.
+- **Ledger:** POST-A-432
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.

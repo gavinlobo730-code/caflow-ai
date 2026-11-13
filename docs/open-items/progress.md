@@ -12,7 +12,7 @@ Two lists are counted here, and the owner asked on 7 November 2026 for them to b
 | 6 Nov | 486 | 1 | 0 | 18 | 29 | 11 |
 | 7 Nov | 482 | 4 | 0 | 26 | 16 | 8 |
 | 12 Nov | 481 | 1 | 0 | 27 | 6 | 5 |
-| 13 Nov | 481 | 0 | 0 | 26 | 0 | 1 |
+| 13 Nov | 481 | 0 | 0 | 25 | 1 | 3 |
 
 How to read it.
 - Before 6 November a finding was added to the backlog (the "added" column); from 6 November it goes to the new findings. The two columns do not overlap.
