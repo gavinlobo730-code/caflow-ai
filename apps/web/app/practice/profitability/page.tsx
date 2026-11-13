@@ -13,10 +13,11 @@ import { objectWithLists } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/services/formatting";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { DateInput } from "@/components/ui/date-input";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { CostRatesPanel } from "@/components/practice/CostRatesPanel";
 import { formatHours } from "@/lib/data/analytics";
-import { ANALYTICS_FY_COUNT, analyticsWindowChoices, analyticsWindowOf } from "@/lib/practice/analyticsWindow";
+import { ANALYTICS_FY_COUNT, CUSTOM_WINDOW_ID, analyticsWindowChoices, analyticsWindowOf, customWindowProblem } from "@/lib/practice/analyticsWindow";
 import { financialYearChoices } from "@/lib/dates/periods";
 import { todayIstISO } from "@/lib/dates/format";
 
@@ -54,7 +55,8 @@ import { todayIstISO } from "@/lib/dates/format";
  * REALIZATION IS THE SAME RULE (POST-A-426): revenue against what the billable time is worth at the rate each entry was
  * recorded with. Where any billable hour has no rate the server answers `null` and this draws a dash with the hours
  * that have none, and the firm's tile reads `realization_rate` (it read a key the server never sent, so it was a dash
- * whatever the books held). A window is the week, month or quarter to date or one whole financial year (POST-A-427).
+ * whatever the books held). A window is the week, month or quarter to date, one whole financial year, or any two days (POST-A-427: "A range of days…",
+ * which asks nothing until both days are a window that can exist).
  *
  * AN UNKNOWN IS A DASH, NEVER A NUMBER (POST-B-321). Revenue is the fee before
  * GST on invoices that were issued; cost is each person's COST rate times the
@@ -117,6 +119,13 @@ export default function ProfitabilityPage() {
   // The Partner sets the rates; the server (`billing:write`) is what refuses anybody else, this is courtesy.
   const canEditRates = can("billing", "write");
   const [period, setPeriod] = useState("month");
+  /** The two days of the "A range of days" window. They start blank on purpose: no day is guessed, and nothing is asked until both are there. */
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  /** Why a custom window is not asked for yet (a day missing, the two out of order, the last one after today in India), or null. Always null for the
+   *  other windows. When it is set the screen says it in place of the figures and no request is made, so a window that cannot exist is not
+   *  answered as though it did. The server refuses the same windows in words of its own. */
+  const customProblem = period === CUSTOM_WINDOW_ID ? customWindowProblem(customFrom, customTo, todayIstISO()) : null;
   /** This week, month and quarter to date, and the running financial year and the two before it: derived from the clock. */
   const windowChoices = useMemo(
     // India's day, because the server decides which year is running by India's day: read off the browser's own zone the
@@ -142,6 +151,17 @@ export default function ProfitabilityPage() {
   const requestId = useRef(0);
   const load = useCallback(async () => {
     const mine = ++requestId.current;
+    if (customProblem) {
+      // Nothing is asked, and the figures of the window before this one are not left under the new one's name.
+      setProfit(null);
+      setRealization(null);
+      setConcentration(null);
+      setError(null);
+      setUnread([]);
+      setLoading(false);
+      return;
+    }
+    const asked = analyticsWindowOf(period, { from: customFrom, to: customTo });
     setLoading(true);
     setError(null);
     setUnread([]);
@@ -150,14 +170,14 @@ export default function ProfitabilityPage() {
       // firm-level aggregates whose answer is a row per client, not per
       // document, so neither is proportional to the ledger.
       const [p, r, c] = await Promise.all([
-        api.analytics.profitability(analyticsWindowOf(period)),
-        api.analytics.revenueVsEffort(analyticsWindowOf(period)),
+        api.analytics.profitability(asked),
+        api.analytics.revenueVsEffort(asked),
         // 3c-3. A third bounded read for the question the list below cannot
         // answer: if the largest client leaves, what happens. Its own request
         // rather than a field on the first, because it is its own endpoint —
         // and it fails independently, so a refusal here leaves the two answers
         // above intact.
-        api.analytics.concentration(analyticsWindowOf(period)),
+        api.analytics.concentration(asked),
       ]);
       if (mine !== requestId.current) return;
       const prof = p?.success
@@ -192,7 +212,7 @@ export default function ProfitabilityPage() {
     } finally {
       if (mine === requestId.current) setLoading(false);
     }
-  }, [period]);
+  }, [period, customFrom, customTo, customProblem]);
 
   useEffect(() => {
     load();
@@ -242,6 +262,33 @@ export default function ProfitabilityPage() {
         }
       />
 
+      {period === CUSTOM_WINDOW_ID && (
+        <div className="flex items-end gap-3 flex-wrap">
+          <div>
+            <label htmlFor="profitability-from" className="block text-3xs font-medium text-ps-hint mb-1">From</label>
+            <DateInput id="profitability-from" aria-label="Profitability from" notAfter={todayIstISO()} value={customFrom} onChange={(v) => setCustomFrom(v)}
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+          </div>
+          <div>
+            <label htmlFor="profitability-to" className="block text-3xs font-medium text-ps-hint mb-1">To</label>
+            <DateInput id="profitability-to" aria-label="Profitability to" anchor={customFrom || null} notBefore={customFrom || null} notAfter={todayIstISO()}
+              value={customTo} onChange={(v) => setCustomTo(v)}
+              className="px-2.5 py-[7px] text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
+          </div>
+        </div>
+      )}
+
+      {/* The live region is mounted with the boxes and the sentence is put into it, because a reader may not announce a region that arrives with its text already inside. */}
+      {period === CUSTOM_WINDOW_ID && (
+        <div role="status">
+          {customProblem && (
+            <div className="bg-white rounded-xl border border-ps-border p-6">
+              <p className="text-xs text-ps-label leading-relaxed">{customProblem}</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading && <p className="text-xs text-ps-hint">Loading…</p>}
 
       {!loading && error && (
@@ -250,7 +297,7 @@ export default function ProfitabilityPage() {
         </div>
       )}
 
-      {!loading && !error && !m && (
+      {!loading && !error && !m && !customProblem && (
         <div className="bg-white rounded-xl border border-ps-border p-6">
           <p className="text-xs text-ps-label leading-relaxed">
             The profitability figures could not be read for this period. The

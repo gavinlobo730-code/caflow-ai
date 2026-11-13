@@ -310,6 +310,7 @@ const DRIVEN: Record<string, string[]> = {
   "components/purchases/DebitNoteEditor.tsx": ["#purchase-dn-date"],
   "components/purchases/PurchaseCreditNoteEditor.tsx": ["#purchase-cn-date"],
   "app/accounting/loans/page.tsx": ["[Disbursement date]", "[Loan maturity date]", "[Fixed deposit start date]", "[Fixed deposit maturity date]"],
+  "app/practice/profitability/page.tsx": ["#profitability-from", "#profitability-to"],
   "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date", "#stock-as-at", "[Stock ledger from]", "[Stock ledger to]"],
   // The fourth slice (4-11-2026).
   "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from"],

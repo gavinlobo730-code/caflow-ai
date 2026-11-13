@@ -220,6 +220,35 @@ const INTEREST_234AB = {
 
 const STOCK_ITEM = { id: "sc1", name: "Copier paper", description: null, hsn_sac: "4802", unit: "NOS", is_active: true, stock_qty_units: 40, avg_cost_paise: 25000, stock_value_paise: 1000000 };
 
+/** What the three practice analytics reads answer, so a scenario can read from the screen which window it was answered for: the `period` the server echoes is drawn under the title. */
+function profitabilityAnswer(period) {
+  return { period, firm_metrics: { total_revenue_paise: 0, total_cost_paise: null, cost_is_complete: true, unrated_minutes: 0, profit_paise: 0, profit_margin_pct: null, profit_on_known_paise: 0,
+    clients_with_cost: 0, clients_without_cost: 0, num_clients_billed: 0, num_clients_not_billed: 0, avg_profit_per_client_paise: null, minutes_without_client: 0 },
+  cost_rates_missing: [], not_measured: [], by_client: [] };
+}
+
+/** The window the request asked for, in the words the stub echoes it. */
+function windowEcho(url) {
+  const q = url.searchParams;
+  return q.get("period") === "custom" ? `WINDOW ${q.get("date_from")} to ${q.get("date_to")}` : `WINDOW ${q.get("period")}`;
+}
+
+/** The practice's profitability screen, its three reads answered (and recorded, by endpoint) and the cost-rate list empty. */
+async function openProfitability(env, asked) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { billing: ["read", "write"], analytics: ["read"] } }) });
+  stub.route({ method: "GET", re: /api\/billing\/staff-cost-rates$/, reply: () => ok([]) });
+  stub.route({ method: "GET", re: /api\/analytics\/profitability\?/, reply: (req, body, url) => { asked.profit.push(url.search); return ok(profitabilityAnswer(windowEcho(url))); } });
+  stub.route({ method: "GET", re: /api\/analytics\/revenue-vs-effort\?/, reply: (req, body, url) => {
+    asked.real.push(url.search);
+    return ok({ period: windowEcho(url), total_revenue_paise: 0, revenue_without_time_paise: 0, revenue_without_engagement_paise: 0, total_billable_minutes: 0, unpriced_minutes: 0,
+      billable_time_value_paise: null, minutes_without_engagement: 0, avg_revenue_per_hour_paise: null, realization_rate: null, by_client: [], by_engagement: [], not_measured: [] });
+  } });
+  stub.route({ method: "GET", re: /api\/analytics\/concentration\?/, reply: (req, body, url) => { asked.conc.push(url.search); return ok({ period: windowEcho(url), shares: [], not_measured: [] }); } });
+  await page.goto(`${env.base}/practice/profitability/`, { waitUntil: "networkidle" });
+  await page.getByRole("heading", { name: "What an hour costs the practice" }).waitFor();
+}
+
 /** The stock register with one item, its closing-stock read and its movement ledger answered from the stub: `asked.summary` and `asked.ledger` collect the query string each read was sent. */
 async function openStockRegisterReads(env, asked) {
   const { page, stub } = env;
@@ -4848,6 +4877,102 @@ export const scenarios = [
       await page.waitForTimeout(2600);   // the slow answer to the first window lands now
       assert.equal(await page.getByText("OLD-WINDOW").count(), 0, "a slow answer to an earlier window was shown over the window the boxes hold now");
       assert.ok((await page.getByText("NEW-WINDOW").count()) >= 1, "the answer to the window on the boxes went away");
+    },
+  },
+  // The practice's profitability screens can be asked for any two days (POST-A-427). The two boxes start blank on purpose: no day is guessed. Nothing is asked until both are a readable day, in order,
+  // and the last no later than today in India; until then the screen says what is missing in place of the figures, and the figures of the window before are not left under the new window's name.
+  {
+    id: "profitability-custom-window",
+    title: "Practice > Profitability > A range of days: the From and To days are read by the one rule, nothing is asked for a blank, unreadable, reversed or future window and the screen says why, and the ISO days reach all three reads",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page } = env;
+      const asked = { profit: [], real: [], conc: [] };
+      await openProfitability(env, asked);
+      const all = () => asked.profit.length + asked.real.length + asked.conc.length;
+      await until(() => asked.profit.length >= 1, "the first window (this month) to be read");
+      assert.ok(asked.profit[0].includes("period=month"), `the screen did not open on this month: ${asked.profit[0]}`);
+      await page.getByText("WINDOW month").first().waitFor({ timeout: 5000 });
+      await page.getByLabel("Period").selectOption("custom");
+      const from = page.locator("#profitability-from");
+      const to = page.locator("#profitability-to");
+      await from.waitFor();
+      assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
+      assert.equal(await page.getByLabel("Profitability from").count(), 1, "the From box is not named to a screen reader");
+      assert.equal(await page.getByLabel("Profitability to").count(), 1, "the To box is not named to a screen reader");
+      assert.equal(await from.inputValue(), "", "the From box did not start blank: a day was guessed");
+      assert.equal(await to.inputValue(), "", "the To box did not start blank: a day was guessed");
+      await page.getByText("Choose the first and the last day of the window to see its figures.").waitFor({ timeout: 5000 }).catch(() => {
+        throw new Error("a custom window with no days did not say what is missing");
+      });
+      assert.equal(await page.getByText("WINDOW month").count(), 0, "the window before was left under the new one's name");
+      const reads = all();
+      // A day that is not a day is no day: the box says so in its own sentence and the screen asks for the day, not for a window.
+      await typeAndLeave(from, "31/02/2026");
+      assert.equal(await from.getAttribute("aria-invalid"), "true", "31/02/2026 is not marked invalid");
+      assert.ok((await page.locator("[role=alert]").allInnerTexts()).join(" | ").includes(FEB_SENTENCE), "the box's own sentence is missing");
+      // Both boxes still hold no readable day, so the screen still asks for both: an unreadable text is no day, and nothing was asked.
+      await page.getByText("Choose the first and the last day of the window to see its figures.").waitFor({ timeout: 5000 }).catch(() => {
+        throw new Error("an unreadable From day was not treated as no day");
+      });
+      assert.equal(all(), reads, "a window with an unreadable day was asked for");
+      await typeAndLeave(from, "150426");
+      assert.equal(await from.inputValue(), "15/04/2026", "150426 is 15/04/2026");
+      await page.getByText("Choose the last day of the window.").waitFor({ timeout: 5000 }).catch(() => { throw new Error("a window with only its first day did not say the last is missing"); });
+      assert.equal(all(), reads, "a window with one day was asked for");
+      // The last day before the first: refused in a sentence, not asked.
+      await typeAndLeave(to, "01/04/2026");
+      await page.getByText("The To day is before the From day").first().waitFor({ timeout: 5000 }).catch(() => { throw new Error("a window whose To day is before its From day did not say so"); });
+      assert.equal(all(), reads, "a window in the wrong order was asked for");
+      // After today in India (the clock is pinned at 8 October 2026): refused in a sentence, not asked.
+      await typeAndLeave(to, "31/12/2026");
+      await page.getByText("The To day is after today in India").first().waitFor({ timeout: 5000 }).catch(() => { throw new Error("a window ending after today did not say so"); });
+      assert.equal(all(), reads, "a window ending after today was asked for");
+      // Two days in order and none after today: all three reads are made for exactly those days and the screen shows the window it was answered for.
+      await typeAndLeave(to, "30/09/2026");
+      await until(() => [asked.profit, asked.real, asked.conc].every((a) => a.some((q) => q.includes("period=custom") && q.includes("date_from=2026-04-15") && q.includes("date_to=2026-09-30"))),
+        "all three reads for the window 15 April to 30 September 2026");
+      await page.getByText("WINDOW 2026-04-15 to 2026-09-30").first().waitFor({ timeout: 5000 }).catch(() => { throw new Error("the screen did not show the window it was answered for"); });
+      assert.equal(await page.getByText("Choose the last day of the window.").count(), 0, "a sentence about a missing day stayed over a complete window");
+      // The window can be one day, today.
+      await typeAndLeave(from, "08/10/2026");
+      await typeAndLeave(to, "08/10/2026");
+      await until(() => asked.profit.some((q) => q.includes("date_from=2026-10-08") && q.includes("date_to=2026-10-08")), "the read for a window of one day, today");
+      // Back to a running window FROM A WINDOW THAT IS STOPPED (so a sentence is on the screen): the boxes and the sentence go and the month is read again.
+      await typeAndLeave(to, "01/10/2026");
+      await page.getByText("The To day is before the From day").first().waitFor({ timeout: 5000 }).catch(() => { throw new Error("a window whose To day is before its From day did not say so"); });
+      const before = asked.profit.length;
+      await page.getByLabel("Period").selectOption("month");
+      await until(() => asked.profit.length > before && asked.profit[asked.profit.length - 1].includes("period=month"), "this month to be read again");
+      assert.equal(await page.locator("#profitability-from").count(), 0, "the boxes stayed after the window was changed back");
+      assert.equal(await page.getByText("The To day is").count(), 0, "a sentence about the days stayed after the window was changed back");
+    },
+  },
+  // The window is read each time a box changes. An answer to an EARLIER window that arrives after the answer to the window the boxes hold now must not be shown over it.
+  {
+    id: "profitability-custom-window-a-late-answer-to-an-earlier-window-is-not-shown",
+    title: "Practice > Profitability: a slow answer to an earlier custom window does not land over the window the boxes hold now",
+    async run(env) {
+      const { page, stub } = env;
+      const asked = { profit: [], real: [], conc: [] };
+      await openProfitability(env, asked);
+      stub.route({ method: "GET", re: /api\/analytics\/profitability\?.*date_to=2026-09-30/, delay: 2000, reply: (req, body, url) => { asked.profit.push(url.search); return ok(profitabilityAnswer(`OLD-WINDOW ${url.searchParams.get("date_to")}`)); } });
+      await page.getByLabel("Period").selectOption("custom");
+      const from = page.locator("#profitability-from");
+      const to = page.locator("#profitability-to");
+      await from.waitFor();
+      await typeAndLeave(from, "01/04/2026");
+      // Two windows in quick succession, the first answered slowly (typeAndLeave would wait for the network to go quiet and so for the slow answer, which is the thing under test).
+      for (const day of ["30/09/2026", "30/06/2026"]) {
+        await to.fill("");
+        await to.pressSequentially(day);
+        await to.press("Tab");
+      }
+      await page.getByText("WINDOW 2026-04-01 to 2026-06-30").first().waitFor({ timeout: 5000 }).catch(() => { throw new Error("the answer to the window on the boxes was not shown"); });
+      await page.waitForTimeout(2600);   // the slow answer to the first window lands now
+      assert.equal(await page.getByText("OLD-WINDOW").count(), 0, "a slow answer to an earlier window was shown over the window the boxes hold now");
+      assert.ok(asked.profit.some((q) => q.includes("date_to=2026-09-30")), "the slow request to the earlier window was never sent, so the rule was not exercised");
+      assert.ok((await page.getByText("WINDOW 2026-04-01 to 2026-06-30").count()) >= 1, "the answer to the window on the boxes went away");
     },
   },
   // The catalogue importer asks for the ONE day an opening-stock file is as of before it asks for the file. A blank box defaults to the client's financial-year start, so text that is not a date would have
