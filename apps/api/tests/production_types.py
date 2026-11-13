@@ -80,6 +80,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("compliance_records", "closing_tds_challan_ids"): "migration 569 (POST-A-362): the challans that closed a monthly TDS deposit obligation",
     ("credit_notes", "goods_returned"): "migration 581 (POST-A-371): whether the goods on a credit or debit note physically came back; NULL = not stated",
     ("debit_notes", "goods_returned"): "migration 581 (POST-A-371): whether the goods on a credit or debit note physically came back; NULL = not stated",
+    ("delivery_challans", "issued_at"): "migration 585 (POST-A-419): the moment a challan was issued, written once with the status; NULL = not recorded",
 }
 
 

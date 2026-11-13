@@ -74,6 +74,9 @@ HELPERS = {
     # Two test modules read the model a route takes, so the spelling is here once (POST-A-171).
     "_fastapi_compat.py",
     "e2e_harness.py",
+    # The three delivery-challan database functions of migration 585 (POST-A-419) as an in-memory double, which `e2e_harness` and the sales-cycle test's own database both answer an rpc with, so the rules
+    # are written once for the mock suite; `test_the_challan_double_and_the_challan_functions_agree_pg.py` holds it to the real functions.
+    "challan_functions_double.py",
     # What the receipt-recording database function stores, read from the migrations (the last definer of its body, found by number): the rule
     # test compares it with what the service sends and `e2e_harness` stores no more than it (migration 574, POST-A-369's review).
     "_receipt_function_source.py",

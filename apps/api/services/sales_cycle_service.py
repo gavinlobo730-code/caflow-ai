@@ -29,6 +29,7 @@ from fastapi import HTTPException
 
 from core.db_paging import fetch_all
 from core.ist_clock import ist_now, ist_today
+from services import delivery_challan_writes as challan_writes
 from services import named_row_ownership
 from domain.gst import compensation_cess
 from domain.gst import delivery_challan as dc
@@ -658,10 +659,7 @@ def create_challan(db, firm_id: str, payload: dict,
     consignee_name, consignee_gstin, consignee_address = (typed[0] or party.get("name") or None, typed[1] or party.get("gstin") or None, typed[2] or party.get("address") or None)
 
     now = ist_now().isoformat()
-    # The payload is written INLINE rather than built above and inserted by
-    # name: the column guard resolves no variable, and an insert it cannot
-    # read is a column it cannot check on a table this new.
-    row = (db.table("delivery_challans").insert({
+    header = {
         "firm_id": firm_id,
         "client_id": client_id,
         "customer_id": payload.get("customer_id"),
@@ -692,30 +690,30 @@ def create_challan(db, firm_id: str, payload: dict,
         "created_by": actor_id,
         "created_at": now,
         "updated_at": now,
-    }).execute().data or [{}])[0]
-    for ln in priced:
-        db.table("delivery_challan_lines").insert({
-            "firm_id": firm_id,
-            "client_id": client_id,
-            "challan_id": str(row.get("id")),
-            "order_line_id": ln["order_line_id"],
-            "line_order": ln["line_order"],
-            "description": ln["description"],
-            "hsn_sac": ln["hsn_sac"],
-            "quantity": ln["quantity"],
-            "unit": ln["unit"],
-            "quantity_is_provisional": ln["quantity_is_provisional"],
-            "rate_paise": ln["rate_paise"],
-            "gst_rate_percent": ln["gst_rate_percent"],
-            "is_service": ln["is_service"],
-            "service_catalogue_id": ln["service_catalogue_id"],
-            "taxable_amount_paise": ln["taxable_amount_paise"],
-            "cgst_paise": ln["cgst_paise"],
-            "sgst_paise": ln["sgst_paise"],
-            "igst_paise": ln["igst_paise"],
-            "line_cess_paise": ln["line_cess_paise"],
-            "created_at": now,
-        }).execute()
+    }
+    lines_written = [{
+        "order_line_id": ln["order_line_id"],
+        "line_order": ln["line_order"],
+        "description": ln["description"],
+        "hsn_sac": ln["hsn_sac"],
+        "quantity": ln["quantity"],
+        "unit": ln["unit"],
+        "quantity_is_provisional": ln["quantity_is_provisional"],
+        "rate_paise": ln["rate_paise"],
+        "gst_rate_percent": ln["gst_rate_percent"],
+        "is_service": ln["is_service"],
+        "service_catalogue_id": ln["service_catalogue_id"],
+        "taxable_amount_paise": ln["taxable_amount_paise"],
+        "cgst_paise": ln["cgst_paise"],
+        "sgst_paise": ln["sgst_paise"],
+        "igst_paise": ln["igst_paise"],
+        "line_cess_paise": ln["line_cess_paise"],
+        "created_at": now,
+    } for ln in priced]
+    # THE HEADER AND EVERY LINE ARE ONE TRANSACTION (POST-A-419, migration 585). They were written as a header and then one request per line, so a line that failed left a draft whose header
+    # totalled more than the lines it held. `services/delivery_challan_writes` is the one door to the function: it writes as the API, names the challan's own id, firm and client on every line, and a
+    # key that is no column of the table fails loudly (it is not skipped), so a misspelt column is a refusal and not a lost value.
+    row = challan_writes.create(db, header, lines_written)
     # No re-settle of the order here: a challan is made as a DRAFT, and goods are delivered against an order only while they are with the consignee (issued), so making one moves
     # neither the order's position nor its status. `issue_challan` and the amendment door re-settle it when that changes.
     return row
@@ -982,6 +980,29 @@ def _refuse_a_rewrite_of_an_issued_challan(row: dict, fields: dict) -> None:
         raise HTTPException(status_code=409, detail=rewritten)
 
 
+def _write_an_amendment(db, firm_id: str, row: dict, challan_id: str, fields: dict, fixes) -> None:
+    """The write of an amendment `update_challan` has judged: a draft's corrections in one transaction, and any other patch as the one statement. Raises the 409 a lost race gives."""
+    if fixes:
+        # A DRAFT'S CORRECTIONS ARE ONE TRANSACTION (POST-A-419, migration 585): the header's fields and the description and HSN code of each line are written together, the challan locked first and
+        # held to a draft, so a draft issued in the gap is not left an issued challan whose HSN code has just changed, and a write that fails part-way leaves nothing written.
+        challan_writes.correct_draft(db, firm_id, str(row["client_id"]), challan_id, fields, [{"id": str(fix["id"]).strip(), **dc.draft_line_changes(fix)} for fix in fixes],
+                                     document_no=row.get("document_no"))
+    else:
+        # A STATUS IS WRITTEN OVER THE ONE THIS PATCH JUDGED (POST-A-398): an issue, a cancel, an amendment or a lot's stamp that got in between has changed what the rules above were asked about, so
+        # this write matches nothing and says so, and a challan at its end (cancelled, received back) is not written over by a request that read it before it got there. A patch that gives no
+        # status is held to no status (a note or a transporter is a correction to what the document says). One statement, so the writers of this table stay countable.
+        # A patch that touches what an issued challan keeps is held to the status the rule judged too (POST-A-416): a draft that another request issued in between is not renumbered or re-addressed.
+        held = "status" in fields or dc.touches_what_an_issued_challan_keeps(fields)
+        expected = [row.get("status")] if held else list(oc.CHALLAN_STATUSES)
+        # A CANCEL THAT A LOT GOT IN FRONT OF (migration 585's trigger): the API asked above, in words, and a lot committed between that read and this write is refused by the table itself, so it is the same sentence.
+        def lot_got_in_first():
+            recorded = _latest_lot_recorded_on(db, firm_id, str(row["client_id"]), challan_id)
+            return HTTPException(status_code=409, detail=dc.cancel_after_goods_came_back_sentence(row.get("document_no"), recorded.isoformat() if recorded else None))
+        done = challan_writes.amend(db.table("delivery_challans").update(fields).eq("firm_id", firm_id).eq("id", challan_id).in_("status", expected), when_a_lot_stops_it=lot_got_in_first, document_no=fields.get("document_no"))
+        if not (done.data or []):
+            raise HTTPException(status_code=409, detail=f"Challan {row.get('document_no')} was changed while it was being amended. Reload it and look at its status.")
+
+
 def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
     """Amend a challan, including recording the goods coming back.
 
@@ -1046,56 +1067,16 @@ def update_challan(db, firm_id: str, challan_id: str, patch: dict) -> dict:
         if problem:
             raise HTTPException(status_code=422, detail=problem)
     fields["updated_at"] = ist_now().isoformat()
-    # A STATUS IS WRITTEN OVER THE ONE THIS PATCH JUDGED (POST-A-398): an issue, a cancel, an amendment or a lot's stamp that got in between has changed what the rules above were asked about, so
-    # this write matches nothing and says so, and a challan at its end (cancelled, received back) is not written over by a request that read it before it got there. A patch that gives no
-    # status is held to no status (a note or a transporter is a correction to what the document says). One statement, so the writers of this table stay countable.
-    # A patch that touches what an issued challan keeps is held to the status the rule judged too (POST-A-416): a draft that another request issued in between is not renumbered or re-addressed.
-    held = "status" in fields or dc.touches_what_an_issued_challan_keeps(fields)
-    expected = [row.get("status")] if held else ([dc.STATUS_DRAFT] if fixes else list(oc.CHALLAN_STATUSES))
-    done = (db.table("delivery_challans").update(fields)
-            .eq("firm_id", firm_id).eq("id", challan_id).in_("status", expected).execute())
-    if not (done.data or []):
-        raise HTTPException(status_code=409, detail=f"Challan {row.get('document_no')} was changed while it was being amended. Reload it and look at its status.")
-    # The two columns are written as a literal pair (the column guard reads a literal write and not a variable one), each from the correction or, where it gives none, from the line as it was read.
-    was = {str(ln["id"]): ln for ln in own_lines}
-    for fix in fixes or []:
-        changes, line = dc.draft_line_changes(fix), was[str(fix["id"]).strip()]
-        (db.table("delivery_challan_lines")
-         .update({"description": changes.get("description", line.get("description")), "hsn_sac": changes["hsn_sac"] if "hsn_sac" in changes else line.get("hsn_sac")})
-         .eq("firm_id", firm_id).eq("client_id", str(row["client_id"])).eq("challan_id", challan_id).eq("id", str(fix["id"]).strip()).execute())
+    _write_an_amendment(db, firm_id, row, challan_id, fields, fixes)
     if "status" in fields:
         _resettle_order_status(db, firm_id, row.get("order_id"))      # a cancelled (or received-back) challan changes what is delivered against its order
     return {**row, **fields}
 
 
-def record_goods_back(db, firm_id: str, challan_id: str,
-                      received_back_on: str) -> dict:
-    """Stop the s.143 clock. The one update that changes what is owed.
-
-    It writes the day it is given. Its only caller, `itc_04_service.record_return`, has judged every lot's day (`delivery_challan.goods_back_problem`) before this stamps the largest,
-    and `update_challan` judges the day it is given before it writes its own; a new caller must judge a day with that rule first (a test pins that there is only the one).
-
-    The stamp is written over an ISSUED challan only (a compare-and-set): the lot is inserted first and this second, in two statements, so a cancel that got in between is not written over, and the
-    sentence says that what was recorded stands. One transaction for both is POST-A-419.
-
-    A challan marked received back delivers nothing against the order it names (POST-A-421), so the order's stored status is derived again here, as `update_challan` does when it makes the same
-    status: this is the second door that makes it.
-    """
-    row = _one(db, "delivery_challans", firm_id, challan_id,
-               "delivery challan")
-    # Written over an ISSUED challan only (POST-A-398): the lot door asked for that before it recorded the lot, and a cancel that got in since is not written over with "received back".
-    done = (db.table("delivery_challans")
-            .update({"received_back_on": str(received_back_on),
-                     "status": "received_back",
-                     "updated_at": ist_now().isoformat()})
-            .eq("firm_id", firm_id).eq("id", challan_id).eq("status", dc.STATUS_ISSUED).execute())
-    if not (done.data or []):
-        raise HTTPException(status_code=409, detail=(
-            f"Challan {row.get('document_no')} was changed by another request while its goods were being recorded back, so this request did not mark it received back. "
-            "What was recorded stands. Reload the challan and look at its status."))
-    _resettle_order_status(db, firm_id, row.get("order_id"))      # a challan whose goods have all come back delivers nothing against its order
-    return {**row, "received_back_on": str(received_back_on),
-            "status": "received_back"}
+def order_follows_goods_back(db, firm_id: str, order_id: Optional[str]) -> None:
+    """The order a challan names is derived again once that challan is marked received back by the lot door of FORM GST ITC-04 (the amendment door derives it itself). A challan marked received back
+    delivers nothing against its order (POST-A-421), so an order it delivered is `confirmed` again; the status the database function wrote on the challan is what the position reads."""
+    _resettle_order_status(db, firm_id, order_id)
 
 
 def consigner_of(db, firm_id: str, client_id: str) -> Optional[dict]:
@@ -1145,6 +1126,11 @@ def issue_challan(db, firm_id: str, challan_id: str, *, client_id: str, consigne
     lines = challan_lines(db, firm_id, challan_id)
     if not lines:
         raise HTTPException(status_code=422, detail=dc.an_empty_challan_is_not_issued_sentence(no))
+    # THE HEADER SAYS WHAT ITS LINES COME TO (POST-A-419), asked where the goods leave as an invoice is asked before it is issued (`draft_integrity_service`): a challan written as a header and then its lines
+    # could be left with a header that totalled more than the lines it held.
+    does_not_add_up = dc.header_does_not_add_up_sentence(no, row, lines)
+    if does_not_add_up:
+        raise HTTPException(status_code=422, detail=does_not_add_up)
     sent = dc.sent_on(row.get("document_date"))
     if sent is not None and sent > ist_today():
         raise HTTPException(status_code=422, detail=(
@@ -1167,13 +1153,15 @@ def issue_challan(db, firm_id: str, challan_id: str, *, client_id: str, consigne
     if over:
         raise HTTPException(status_code=422, detail=" ".join(over))
     now = ist_now().isoformat()
-    done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "updated_at": now})
+    # THE MOMENT IT WAS ISSUED IS STORED (POST-A-419, migration 585): `updated_at` is overwritten by any later amendment and the audit event is allowed to be lost, so `issued_at` is the one place the moment
+    # is kept, written once and with the status (a trigger refuses a moment on a draft and any change to one that is written).
+    done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now})
             .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", challan_id).eq("status", dc.STATUS_DRAFT).execute())
     if not (done.data or []):
         # another request changed the challan between the read and the write (an issue, a cancel): say so, and write nothing more
         raise HTTPException(status_code=409, detail=f"Challan {no} was changed while it was being issued. Reload it and look at its status.")
     _resettle_order_status(db, firm_id, row.get("order_id"))      # the goods on it are delivered against its order from now
-    return {**row, "status": dc.STATUS_ISSUED, "updated_at": now}
+    return {**row, "status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now}
 
 
 # ── The Rule 55 face of one challan ──────────────────────────────────────────

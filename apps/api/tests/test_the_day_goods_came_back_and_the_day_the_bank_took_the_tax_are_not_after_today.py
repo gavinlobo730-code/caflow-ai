@@ -181,13 +181,16 @@ def test_the_amendments_other_two_dates_are_stored_as_the_canonical_day():
 
 
 def test_the_stamp_has_one_caller_which_judges_every_day_it_stamps():
-    """`record_goods_back` writes the day it is given, which is safe only while its callers judge the day first: `itc_04_service.record_return` has judged every lot's day, and
-    `update_challan` judges its own. A severity argued from 'nothing else reaches this' is a test: a second caller fails here and must judge its day with the rule first."""
+    """The lot function (migration 585) stamps a challan received back on the latest day any lot came back, which is safe only while its caller judges the day of every lot first: `itc_04_service.record_return`
+    judges it (`delivery_challan.goods_back_problem`) before it records the lot, and `update_challan` judges its own. A severity argued from 'nothing else reaches this' is a test: a second caller fails
+    here and must judge its day with the rule first."""
     root = Path(__file__).resolve().parent.parent
     callers = sorted(str(p.relative_to(root)) for base in ("services", "routers", "domain", "jobs", "core")
                      if (root / base).exists() for p in (root / base).rglob("*.py")
-                     if p.name != "sales_cycle_service.py" and re.search(r"(?<![\w.])(?:\w+\.)?record_goods_back\(", p.read_text(encoding="utf-8")))
+                     if p.name != "delivery_challan_writes.py" and re.search(r"(?<![\w.])(?:\w+\.)?(?:record_lot|record_challan_lot_atomic)\(", p.read_text(encoding="utf-8")))
     assert callers == ["services/itc_04_service.py"]
+    door = (root / "services" / "itc_04_service.py").read_text(encoding="utf-8")
+    assert 0 <= door.index("dc.goods_back_problem(") < door.index("challan_writes.record_lot("), "the lot is recorded before its day is judged"
 
 
 def test_the_service_asks_for_a_day_that_has_not_come_whoever_calls_it():

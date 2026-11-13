@@ -495,6 +495,12 @@ class _FakeDB:
     def table(self, name):
         return _Q(self.store, name)
 
+    def rpc(self, fn, params=None):
+        """The three challan functions of migration 585, through the shared double (`tests/challan_functions_double`): ids are made as this double's own insert makes them."""
+        from tests import challan_functions_double as functions
+        return type("RPC", (), {"execute": lambda _self: type("R", (), {"data": functions.call(
+            self.store, lambda table: f"{table}-{len(self.store.setdefault(table, []))}", fn, params or {})})()})()
+
 
 def _order_db():
     return _FakeDB(
@@ -993,7 +999,7 @@ def test_recording_the_goods_back_stops_the_clock():
     db.store["delivery_challans"][0]["status"] = "issued"       # the goods have left on it (the issue door has its own tests); a draft draws no clock (POST-A-398)
     before = svc.list_challans(db, "F1", "C1")[0]["clock"]
     assert before["overdue"] is True
-    svc.record_goods_back(db, "F1", cid, "2026-03-01")
+    svc.update_challan(db, "F1", cid, {"received_back_on": "2026-03-01"})
     after = svc.list_challans(db, "F1", "C1")[0]["clock"]
     assert after["overdue"] is False
 

@@ -304,8 +304,11 @@ def test_the_day_they_went_out_is_not_amended_so_a_lot_is_never_left_before_it(d
 
 _API_SKIP = {"tests", "scripts", "migrations", "__pycache__", ".venv", "venv", "node_modules"}
 #: The only functions that write the table, and the verb each is allowed.
-_WRITERS = {("services/sales_cycle_service.py", "create_challan"): {"insert"}, ("services/sales_cycle_service.py", "update_challan"): {"update"},
-            ("services/sales_cycle_service.py", "record_goods_back"): {"update"}, ("services/sales_cycle_service.py", "issue_challan"): {"update"}}
+_WRITERS = {("services/sales_cycle_service.py", "_write_an_amendment"): {"update"}, ("services/sales_cycle_service.py", "issue_challan"): {"update"}}
+#: The three database functions of migration 585 (POST-A-419) and the one module that may call them (`tests/test_the_challan_writes_go_through_the_database_functions.py` holds the rest): they write a
+#: challan's header and lines, a job-work lot with its stamp, and a draft's corrections, each in one transaction, and none of them writes the status `issued` (the migration's own tests say so), so the
+#: service holds no insert of the table and no stamp of the lot door's own. Any other module naming a function with "challan" in it is a second door.
+_CHALLAN_FUNCTIONS = {"services/delivery_challan_writes.py": {"create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic"}}
 #: Helpers that take the table's name to READ it.
 _READ_HELPERS = {"_one", "_refuse_duplicate", "row_of_client"}
 #: Modules that list the table's name as data (the tables a delete counts), never as a client.
@@ -336,7 +339,8 @@ def uses_of_the_challans_table(rel: str, source: str) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "rpc" and node.args:
             first = node.args[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str) and "challan" in first.value.lower():
+            if (isinstance(first, ast.Constant) and isinstance(first.value, str) and "challan" in first.value.lower()
+                    and first.value not in _CHALLAN_FUNCTIONS.get(rel, set())):
                 problems.append(f"{rel}:{node.lineno} calls the database function {first.value!r}")
         if not (isinstance(node, ast.Constant) and node.value == "delivery_challans"):
             continue
@@ -373,7 +377,7 @@ def test_the_model_lets_a_request_say_issued_and_the_service_refuses_it(db):
 
 
 def test_the_issue_door_is_the_only_writer_of_a_challan_that_is_issued():
-    """`create_challan` makes a draft, `issue_challan` makes it issued, `update_challan` and `record_goods_back` never write `issued`. Read from the service's own code, the whole API tree and the
+    """`create_challan` makes a draft, `issue_challan` makes it issued, `update_challan` and the lot door never write `issued`. Read from the service's own code, the whole API tree and the
     migrations: a second door that issues a challan would list it on FORM GST ITC-04 and record the goods as left without asking what the first asks."""
     problems = []
     for rel, text in _api_python():
@@ -381,7 +385,7 @@ def test_the_issue_door_is_the_only_writer_of_a_challan_that_is_issued():
             continue
         problems += uses_of_the_challans_table(rel, text)
     assert not problems, "the rule does not recognise a use of the challans table:\n  " + "\n  ".join(problems)
-    # The four writers exist, so the rule cannot go vacuous.
+    # The two writers exist, so the rule cannot go vacuous.
     source = (API / "services" / "sales_cycle_service.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
@@ -393,15 +397,32 @@ def test_the_issue_door_is_the_only_writer_of_a_challan_that_is_issued():
             if isinstance(verb, ast.Attribute) and verb.attr in {"insert", "update", "upsert", "delete"}:
                 census[verb.attr] = census.get(verb.attr, 0) + 1
                 assert verb.attr in _WRITERS[("services/sales_cycle_service.py", fn)]
-    # insert 1 (create_challan); update 3: issue_challan, update_challan (one statement: a status is written over the one the patch judged), record_goods_back
-    assert census == {"insert": 1, "update": 3}, f"the writers of delivery_challans in the sales cycle service changed: {census}"
-    insert = source[source.index('db.table("delivery_challans").insert('):]
-    assert '"status": "draft"' in insert[:600], "a challan is no longer made as a draft"
-    stamp = source[source.index("def record_goods_back("):]
-    assert '"status": "received_back"' in stamp[:1800], "the goods-back stamp no longer writes received_back"
+    # no insert (create_challan writes through the function of migration 585); update 2: issue_challan and the amendment's one statement (`_write_an_amendment`, called by update_challan: a status is written over the one the patch judged)
+    assert census == {"update": 2}, f"the writers of delivery_challans in the sales cycle service changed: {census}"
+    made = source[source.index("def create_challan("):source.index("def _refuse_over_delivery(")]
+    assert '"status": "draft"' in made and 'challan_writes.create(' in made, "a challan is no longer made as a draft, or no longer through the one transaction"
+    migration = next(p for p in sorted((API / "migrations").glob("585_*.sql")) if not p.name.endswith("_rollback.sql")).read_text(encoding="utf-8")
+    assert "SET status = 'received_back', received_back_on = v_last" in migration, "the lot function no longer stamps the challan received back"
     # the status `issued` is WRITTEN in ONE function (a filter on it, such as the stamp's `.eq("status", STATUS_ISSUED)`, writes nothing)
     issuing = [fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef) and _writes_issued(fn)]
     assert issuing == ["issue_challan"], f"the status issued is written by {issuing}"
+
+
+def test_the_moment_of_issue_is_written_by_the_issue_door_alone():
+    """`issued_at` is written once, by the statement that makes the challan issued: the table's trigger allows a NULL to be given a value once, so a second writer (a backfill, an amendment field) would be
+    allowed by the database and is stopped here. Every module that names the challan tables is read; a dict key `issued_at` or an assignment to one may appear in `issue_challan` only."""
+    found = set()
+    for rel, text in _api_python():
+        if "delivery_challan" not in text:
+            continue
+        tree = ast.parse(text)
+        parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+        for node in ast.walk(tree):
+            is_a_key = isinstance(node, ast.Dict) and any(isinstance(k, ast.Constant) and k.value == "issued_at" for k in node.keys)
+            is_an_assignment = isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) and node.slice.value == "issued_at" and isinstance(node.ctx, ast.Store)
+            if is_a_key or is_an_assignment:
+                found.add((rel, _enclosing_function(node, parents)))
+    assert found == {("services/sales_cycle_service.py", "issue_challan")}, f"issued_at is written by {sorted(found)}"
 
 
 def _says_issued(value) -> bool:

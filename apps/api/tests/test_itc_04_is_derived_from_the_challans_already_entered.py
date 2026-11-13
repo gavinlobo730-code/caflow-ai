@@ -24,7 +24,7 @@ WHAT THIS ASSERTS
       subtracted from the balance;
     * a return is refused, not clamped, when it exceeds what was sent, and every
       other refusal says why in its own words;
-    * the last lot stops the s.143 clock through the ONE existing write;
+    * the last lot stops the s.143 clock in the same database call that records it (migration 585);
     * the read is tenanted by firm AND client, scoped to the caller's client,
       and what it fetches is bounded by the answer;
     * what the statement cannot say is named on every answer, and every figure
@@ -82,11 +82,17 @@ def _challan(db, no, sent_on, *, firm=FIRM, client=CLIENT, reason="job_work",
 
 def _line(db, challan, *, qty="100", unit="KGS", taxable=10_00_000, desc="Steel bar",
           rate="18", **extra):
-    return db.seed("delivery_challan_lines", {
+    line = db.seed("delivery_challan_lines", {
         "firm_id": challan["firm_id"], "client_id": challan["client_id"],
         "challan_id": challan["id"], "line_order": 0, "description": desc,
         "hsn_sac": "7214", "quantity": qty, "unit": unit,
         "taxable_amount_paise": taxable, "gst_rate_percent": rate, **extra})
+    # THE HEADER SAYS WHAT ITS LINES COME TO (POST-A-419): the issue door asks it, so a challan seeded with a line carries that line's figures, as the one `create_challan` writes does.
+    for header_key, line_key in (("taxable_paise", "taxable_amount_paise"), ("cgst_paise", "cgst_paise"), ("sgst_paise", "sgst_paise"),
+                                 ("igst_paise", "igst_paise"), ("cess_paise", "line_cess_paise")):
+        challan[header_key] = int(challan.get(header_key) or 0) + int(line.get(line_key) or 0)
+    challan["total_paise"] = sum(int(challan.get(k) or 0) for k in ("taxable_paise", "cgst_paise", "sgst_paise", "igst_paise", "cess_paise"))
+    return line
 
 
 def _came_back(db, challan, line, qty, on, *, wasted="0", jw_no="JW/22",

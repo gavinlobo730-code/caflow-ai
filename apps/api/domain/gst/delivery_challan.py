@@ -431,7 +431,8 @@ def status_change_problem(document_no: object, current: object, wanted: object) 
 def cancel_after_goods_came_back_sentence(document_no: object, recorded_on: object) -> str:
     """A challan with a lot already recorded against it on FORM GST ITC-04 is not cancelled (POST-A-398): the lots hang from it, and a cancelled challan has no goods out to come back. A lot is
     goods returned OR goods lost or wasted: a lot of waste alone is a lot too (the balance of a cancelled challan is not listed, and the waste is never subtracted from it)."""
-    return (f"Challan {document_no} has a lot recorded against it on {recorded_on} on FORM GST ITC-04 (goods returned, or lost or wasted), so it cannot be cancelled. "
+    on = f" on {recorded_on}" if recorded_on else ""
+    return (f"Challan {document_no} has a lot recorded against it{on} on FORM GST ITC-04 (goods returned, or lost or wasted), so it cannot be cancelled. "
             "Cancel a challan whose goods did not leave; one whose goods are coming back is finished by recording the rest.")
 
 
@@ -454,8 +455,8 @@ def issued_challan_problem(document_no: object, *, row: dict, touched) -> Option
 
 #: What a challan keeps once it has been issued or cancelled (POST-A-416): its number, the day it was made, who it was made out to and whether it was an inter-State movement. They are what the
 #: document IS (the number is how it is found, the date is the day the goods are counted from, the consignee is who received them), so correcting one is a cancellation and a new challan and
-#: not an edit. A cancelled challan keeps them as well: nothing records whether its goods ever left (there is no issued-at, POST-A-419(c)), and a cancel followed by a rewrite would otherwise
-#: hide what was cancelled. A job-work challan's place of supply is NOT among them while the goods are out: it is the job worker's State, which FORM GST ITC-04 reads and which is recorded after
+#: not an edit. A cancelled challan keeps them as well: nothing records whether its goods ever left (`issued_at` holds the moment only for a challan issued after migration 585, NULL means not recorded, and a draft cancelled
+#: never had one), and a cancel followed by a rewrite would otherwise hide what was cancelled. A job-work challan's place of supply is NOT among them while the goods are out: it is the job worker's State, which FORM GST ITC-04 reads and which is recorded after
 #: the goods have gone (`JobWorkerStateBox`). The rest of what the amendment door takes (the transport details, the notes, the extension under s.143(1), the kind of goods, the invoice a challan is
 #: tied to, the day the goods came back) is left open on purpose: the screens write only the back day and the job worker's State after issue, and the others are the API's.
 CLOSED_AFTER_ISSUE = ("document_no", "document_date", "consignee_name", "consignee_gstin", "consignee_address", "is_inter_state")
@@ -533,6 +534,45 @@ def only_a_draft_is_issued_sentence(document_no: object, status: object) -> str:
 def an_empty_challan_is_not_issued_sentence(document_no: object) -> str:
     """A challan with no goods on it is not a document that goods can leave on (POST-A-398)."""
     return f"Challan {document_no} has no lines, so there are no goods to send on it."
+
+
+#: The header figure and the line column it is the sum of, for the five heads a challan carries (the total is asked apart: it is the five added up).
+HEADER_FIGURES_AND_THEIR_LINE_COLUMNS = (
+    ("taxable_paise", "taxable_amount_paise", "taxable value"),
+    ("cgst_paise", "cgst_paise", "CGST"),
+    ("sgst_paise", "sgst_paise", "SGST"),
+    ("igst_paise", "igst_paise", "IGST"),
+    ("cess_paise", "line_cess_paise", "compensation cess"),
+)
+
+
+def header_does_not_add_up_sentence(document_no: object, header: dict, lines: list) -> Optional[str]:
+    """The sentence for a challan whose stored header does not say what its lines come to, or None (POST-A-419).
+
+    A challan was written as a header and then one request per line, so a line that failed left a draft whose header totalled more than the lines it held, and the issue door asked only that
+    it had lines. An invoice is asked, before it is issued, whether it adds up to its own lines (`draft_integrity_service`); this is the same question of a challan, asked where the goods leave.
+    It names each figure that differs, in rupees with the sign (`money_sentence.rupee_text`, as the invoice's check does), and the total only when it is not the five heads added up. Pure. Money is integer paise throughout.
+    """
+    from domain.money_sentence import rupee_text
+
+    def paise(value: object) -> int:
+        return int(value or 0)
+
+    differing: list[str] = []
+    heads_of_header = 0
+    for header_key, line_key, name in HEADER_FIGURES_AND_THEIR_LINE_COLUMNS:
+        stored = paise(header.get(header_key))
+        lines_come_to = sum(paise(ln.get(line_key)) for ln in lines)
+        heads_of_header += stored
+        if stored != lines_come_to:
+            differing.append(f"{name} {rupee_text(stored)} in the challan's totals against {rupee_text(lines_come_to)} on its lines")
+    total = paise(header.get("total_paise"))
+    if total != heads_of_header:
+        differing.append(f"total {rupee_text(total)} in the challan's totals against {rupee_text(heads_of_header)}, which its own figures add up to")
+    if not differing:
+        return None
+    return (f"Challan {document_no} does not add up to its own lines: {'; '.join(differing)}. It is not issued, because goods would leave on a document that says one thing and lists another. "
+            "A line may have failed to save when it was made: cancel this draft and make the challan again.")
 
 
 #: What a correction to a DRAFT's lines may change (POST-A-417): the words and the HSN code. Quantity, unit, rate and tax are what the header's totals and an order's delivered quantity are made
