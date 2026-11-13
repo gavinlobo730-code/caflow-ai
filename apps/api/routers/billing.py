@@ -18,6 +18,7 @@ from pydantic import BaseModel, field_validator
 from models.common import api_response
 from core.authz import assert_client_access, can_access_client, filter_by_client
 from core.permissions import rbac
+from core.query_day import query_day
 from services import billing_service
 from services import collections_service
 from services import fee_billing_service
@@ -238,7 +239,7 @@ def service_options(current_user: dict = Depends(rbac("billing", "read"))):
 def preview_run(as_of: Optional[str] = Query(None, description="YYYY-MM-DD; defaults to today"),
                 current_user: dict = Depends(rbac("billing", "read"))):
     """Dry run: which schedules are due and what would be generated. No writes."""
-    return api_response(True, billing_service.preview_due(current_user["firm_id"], as_of))
+    return api_response(True, billing_service.preview_due(current_user["firm_id"], query_day(as_of, "as_of")))
 
 
 @router.post("/schedules/{schedule_id}/generate")
@@ -262,7 +263,7 @@ def generate(schedule_id: str = Path(...),
 def run(as_of: Optional[str] = Query(None),
         current_user: dict = Depends(rbac("billing", "write"))):
     """Idempotently generate drafts for all due schedules."""
-    return api_response(True, billing_service.run_due(current_user["firm_id"], current_user, as_of))
+    return api_response(True, billing_service.run_due(current_user["firm_id"], current_user, query_day(as_of, "as_of")))
 
 
 # ── Collections & AR (Batch 4) — Partner-only ───────────────────────────────

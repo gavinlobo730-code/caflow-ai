@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, field_validator
 
 from models.iso_date import a_real_date
+from core.query_day import query_day
 
 from models.common import api_response
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
@@ -252,8 +253,9 @@ def run_one_recurring_bill(template_id: str, as_of: Optional[str] = Query(None),
                            current_user: dict = Depends(rbac("accounting", "write"))):
     """Generate due DRAFT bills for a single template now (CA-initiated)."""
     _assert_template_scope(current_user, template_id)
+    on_day = query_day(as_of, "as_of")           # AFTER the caller's access to the template is asked, as on the invoices' run
     return api_response(True, recurring.run_for_template(
-        current_user["firm_id"], template_id, as_of=as_of, actor=current_user))
+        current_user["firm_id"], template_id, as_of=on_day, actor=current_user))
 
 
 @router.post("/run")
@@ -276,11 +278,12 @@ def run_due_recurring_bills(client_id: Optional[str] = Query(None),
     else:
         eff = effective_client_ids(current_user)
         targets = [None] if eff is None else sorted(eff)
+    on_day = query_day(as_of, "as_of")
 
     merged: dict = {"generated": [], "skipped": [], "failed": []}
     for target in targets:
         res = recurring.generate_due_recurring_bills(
-            current_user["firm_id"], client_id=target, as_of=as_of, actor=current_user)
+            current_user["firm_id"], client_id=target, as_of=on_day, actor=current_user)
         for key in merged:
             merged[key].extend(res.get(key) or [])
     merged.update({f"{k}_count": len(v) for k, v in list(merged.items())})
