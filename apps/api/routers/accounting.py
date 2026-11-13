@@ -1446,11 +1446,14 @@ def classify_for_ageing_schedule(
     out = ageing_schedule_service.classify(
         _prod_db(), current_user["firm_id"], data.client_id,
         data.target, data.target_id, fields)
+    # The edit log records what each column held before as well as what it holds now (POST-A-430): un-disputing an invoice, taking a supplier out of the
+    # MSME classification or un-marking an account are decisions s.43B(h) and the ageing note are answered from, and the question later is what it had been.
+    was = out.pop("was", None)
     log_event(current_user["firm_id"], data.target, data.target_id,
               "ageing_classification",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
-              new_data=out["set"], metadata={"client_id": data.client_id})
+              old_data=was, new_data=out["set"], metadata={"client_id": data.client_id})
     return api_response(True, out)
 
 

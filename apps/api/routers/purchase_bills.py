@@ -2685,9 +2685,12 @@ def put_landed_cost_basis(
         basis=data.basis, bill_id=data.bill_id)
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result.get("refusal"))
+    # The edit log says what the basis was as well as what it is now (POST-A-430).
+    was = result.pop("was", None)
     log_event(firm_id, "purchase_bill_landed_cost",
               data.bill_id or data.client_id, "update",
               actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"),
+              old_data={"basis": was, "bill_id": data.bill_id},
               new_data={"basis": data.basis, "bill_id": data.bill_id})
     return api_response(True, result)

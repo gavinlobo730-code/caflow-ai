@@ -203,17 +203,27 @@ def set_basis(db, *, firm_id: str, client_id: str, basis: Optional[str],
         if refusal:
             return {"ok": False, "refusal": refusal}
         basis = basis.strip().lower()
+    # What the column held BEFORE is read first and returned as `was` (POST-A-430): the route puts it in the edit log beside the new basis. The client's basis is the
+    # accounting policy the cost of every receipt follows (AS 2), so the question later is what it had been. A row that is not this client's is refused in words and
+    # nothing is written (the update used to match nothing and report success).
     if bill_id:
+        prior = (privileged_for(db).table("purchase_bills").select("landed_cost_basis").eq(
+            "firm_id", firm_id).eq("client_id", client_id).eq("id", bill_id).limit(1).execute().data)
+        if not prior:
+            return {"ok": False, "refusal": "That bill is not on this client's books."}
         privileged_for(db).table("purchase_bills").update({"landed_cost_basis": basis}).eq(
             "firm_id", firm_id).eq("client_id", client_id).eq("id", bill_id).execute()
-        return {"ok": True, "scope": "bill", "basis": basis}
+        return {"ok": True, "scope": "bill", "basis": basis, "was": prior[0].get("landed_cost_basis")}
     if basis is None:
         return {"ok": False, "refusal": (
             "A client's basis is an accounting policy and is not cleared once "
             "recorded — change it to the other basis instead.")}
+    prior = (db.table("clients").select("landed_cost_basis").eq("firm_id", firm_id).eq("id", client_id).limit(1).execute().data)
+    if not prior:
+        return {"ok": False, "refusal": "That client is not on this firm's books."}
     db.table("clients").update({"landed_cost_basis": basis}).eq(
         "firm_id", firm_id).eq("id", client_id).execute()
-    return {"ok": True, "scope": "client", "basis": basis}
+    return {"ok": True, "scope": "client", "basis": basis, "was": prior[0].get("landed_cost_basis")}
 
 
 def carry_over_from_bill_of_entry(db, *, firm_id: str, row: dict,

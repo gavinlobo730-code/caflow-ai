@@ -39,14 +39,29 @@ class _Q:
 
     def __init__(self, store, table):
         self.store, self.table = store, table
-        self._pred, self._payload = [], None
+        self._pred, self._payload, self._reads = [], None, False
 
     def update(self, payload):
         self._payload = payload
         return self
 
+    def select(self, _columns):
+        # The read of what a row held BEFORE it was marked (POST-A-430): it must be scoped by the same predicates the write is, or a firm-level account
+        # could be read and then written through a different door.
+        self._reads = True
+        return self
+
+    def limit(self, _n):
+        return self
+
     def eq(self, k, v):
         self._pred.append(lambda r, k=k, v=v: r.get(k) == v)
+        return self
+
+    def is_(self, k, v):
+        # `client_id IS NULL`: PostgREST spells the null as the string "null".
+        assert v == "null", f"the fake models only IS NULL, got {v!r}"
+        self._pred.append(lambda r, k=k: r.get(k) is None)
         return self
 
     def or_(self, expr):
@@ -59,6 +74,8 @@ class _Q:
     def execute(self):
         rows = [r for r in self.store.setdefault(self.table, [])
                 if all(p(r) for p in self._pred)]
+        if self._reads:
+            return _Resp([dict(r) for r in rows])
         for r in rows:
             r.update(self._payload)
         return _Resp(rows)
