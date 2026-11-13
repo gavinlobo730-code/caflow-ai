@@ -797,6 +797,9 @@ def test_the_functions_that_can_write_a_header_table_are_exactly_the_ones_named_
         "post_journal_atomic__unguarded",                 # the journal tables only
         "refuse_a_signed_in_edit_of_lines_of_a_non_draft_document",   # migration 539's trigger: the line tables only
         "replace_draft_document_lines",                   # migration 560 (POST-A-332): the line tables only, SECURITY INVOKER, the header locked first
+        "create_delivery_challan_atomic",                 # migration 585 (POST-A-419): each writes the delivery-challan tables only (the dynamic INSERT or UPDATE
+        "correct_draft_challan_lines_atomic",             # names its table in the statement and takes its columns from the table's own definition), none of
+        "record_challan_lot_atomic",                      # the six header tables; SECURITY INVOKER, executable by the privileged client alone
     }
 
 
