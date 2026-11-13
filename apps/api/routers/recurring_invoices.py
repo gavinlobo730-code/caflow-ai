@@ -13,6 +13,7 @@ from pydantic import BaseModel, field_validator
 
 from models.common import api_response
 from models.iso_date import a_real_date
+from core.query_day import query_day
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.permissions import rbac
 from services import recurring_invoice_service as recurring
@@ -238,14 +239,8 @@ def preview_recurring(template_id: str, count: int = Query(5, ge=1, le=24),
 
 
 def _as_of(value: Optional[str]) -> Optional[str]:
-    """The day a manual run is for, or None for today. Text that is not a day is a 422 naming the field: it was handed to the date parser and answered 500 (PRE-A-015, eighteenth slice, found
-    by the independent read of its server half). The screen never sends one; a script does."""
-    if value is None or not str(value).strip():
-        return None
-    try:
-        return a_real_date(value, "as_of")
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from None
+    """The day a manual run is for, or None for today: the shared rule (`core/query_day`), named `as_of`."""
+    return query_day(value, "as_of")
 
 
 @router.post("/{template_id}/run")

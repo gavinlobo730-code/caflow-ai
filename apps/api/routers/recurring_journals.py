@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from core.permissions import rbac
+from core.query_day import query_day
 from models.common import api_response
 from services import recurring_journal_service as svc
 from services.audit_service import log_event
@@ -168,6 +169,7 @@ def generate_one(template_id: str = Path(...),
     the existing entry rather than a second journal.
     """
     t = _scoped(current_user, template_id)
+    occurrence = query_day(occurrence, "occurrence")          # AFTER the caller's access to the template is asked
     occ = occurrence or (svc.due_occurrences(t) or [t.get("next_run_date")])[0]
     if not occ:
         raise HTTPException(status_code=422, detail="Nothing is due for this template.")
@@ -193,10 +195,11 @@ def run_due(client_id: Optional[str] = Query(None),
     else:
         eff = effective_client_ids(current_user)
         targets = [None] if eff is None else sorted(eff)
+    on_day = query_day(as_of, "as_of")
 
     merged: dict = {"generated": [], "skipped": [], "failed": []}
     for target in targets:
-        res = svc.run_due(current_user["firm_id"], client_id=target, as_of=as_of,
+        res = svc.run_due(current_user["firm_id"], client_id=target, as_of=on_day,
                           actor_id=current_user.get("id"))
         for key in merged:
             merged[key].extend(res.get(key) or [])

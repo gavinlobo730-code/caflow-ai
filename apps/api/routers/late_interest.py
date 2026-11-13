@@ -26,6 +26,7 @@ from pydantic import BaseModel, field_validator, model_validator
 
 from core.authz import assert_client_access
 from core.permissions import rbac
+from core.query_day import query_day
 from domain.sales import late_interest as L
 from models.common import api_response
 from services import late_interest_service as service
@@ -104,7 +105,7 @@ def preview(
     assert_client_access(current_user, client_id)
     db = _db()
     return api_response(True, service.preview(
-        db, current_user["firm_id"], client_id, _as_of(as_of), customer_id))
+        db, current_user["firm_id"], client_id, _as_of(query_day(as_of, "as_of")), customer_id))
 
 
 @router.get("/terms")
