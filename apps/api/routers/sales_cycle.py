@@ -372,17 +372,22 @@ def update_challan(
     that change what is OWED: a challan carrying either is no longer running
     towards a deemed supply under s.143(3)/(4), so the service refuses the
     status without the day, either on a cancelled challan, and a day before a
-    lot of goods already returned (POST-A-383). Everything else on this door
-    is a correction to what the document SAYS — the consignee, the
-    transporter, the vehicle — which Rule 55(1) requires and which a CA fills
-    in when the lorry is booked.
+    lot of goods already returned (POST-A-383). A challan that has been issued
+    or cancelled keeps what it was made as: its number, date, consignee and
+    inter-State flag are not changed (a 409 saying to cancel it and make a
+    new one), and neither is its place of supply unless it is a job-work
+    challan whose goods are out, where that is the job worker's State
+    (POST-A-416). What the API leaves open on it is the transporter, the
+    vehicle, the notes, the extension under s.143(1) and the kind of goods;
+    the screens write only the back day and the job worker's State.
 
     THE STATUS IT MAY GIVE IS A TABLE (POST-A-398, `delivery_challan.AMENDMENT_MAY_MAKE`): a draft
     may be cancelled; an issued challan may be received back (with the day) or cancelled, and a
     cancel is refused once a lot is recorded against it on FORM GST ITC-04; a challan whose goods
     are back, or that is cancelled, is at its end. `issued` is never given here: a draft is made
     issued by `POST /challans/{id}/issue`, the one door that records that the goods left. An
-    issued (or received-back) challan is not amended into what issuing would have refused.
+    issued (or received-back) challan is not amended into what issuing would have refused
+    (a job-work challan keeps what it sends and an inter-State movement a place of supply).
     """
     from services.audit_service import log_event
     assert_client_access(current_user, client_id)

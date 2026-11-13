@@ -297,7 +297,7 @@ def goods_back_problem(sent_on: Optional[date], back_on: date, today: date) -> O
     CGST Act s.143 and Rule 45 (FORM GST ITC-04): the day goods sent to a job worker come back is the day the s.143 clock stops (`deemed_supply_clock`) and the day Table 5A reports a return.
     It has happened by the time it is recorded, so it is not after `today` (India's: the caller's), and goods cannot have come back before they went out. Those are the plain order of events:
     no period, rate or other statutory reading is added here. It is the one rule of both doors that record it: a lot on FORM GST ITC-04 (`itc_04_service.record_return`) and the
-    whole-challan "received back" (`sales_cycle_service.update_challan`, which also asks it, for its ORDER, when only the day the goods went out is amended), which differ only in whether
+    whole-challan "received back" (`sales_cycle_service.update_challan`; the day the goods went out cannot be amended once a challan is issued, POST-A-416, so the order is asked of a back day only), which differ only in whether
     the day the goods were sent is known where the date is first read (`sent_on` is None there, and the stored challan is compared later). Pure: no clock.
     """
     if sent_on is not None and back_on < sent_on:
@@ -428,27 +428,94 @@ def cancel_after_goods_came_back_sentence(document_no: object, recorded_on: obje
             "Cancel a challan whose goods did not leave; one whose goods are coming back is finished by recording the rest.")
 
 
-def issued_challan_problem(document_no: object, *, row: dict, today, touched) -> Optional[str]:
+def issued_challan_problem(document_no: object, *, row: dict, touched) -> Optional[str]:
     """The sentence for an amendment that would leave a challan the goods have left on (issued, or received back) without something issuing asked for, or None (POST-A-398). Pure. `row` is the
     challan AS THE PATCH WOULD LEAVE IT and `touched` the names of the fields the patch gives.
 
-    Issuing asked that the challan's date had come, that Rule 55(1) had a consignee (and, for an inter-State movement, a place of supply), and that a job-work challan said what it sends. An
-    amendment can blank a field with an empty string or move a date, so each question is asked again of the row the patch would leave, and ONLY for the fields it touches: a row stored before
-    this rule is not made unsaveable by an edit of something else. (What was amended is the audit event's.) The sentences say "has been issued", which is true of a received-back challan too."""
-    if "document_date" in touched:
-        sent = _iso(row.get("document_date"))
-        if sent is not None and today is not None and sent > today:
-            return f"Challan {document_no} has been issued, so its date cannot be moved to {sent.isoformat()}, which has not come: the goods cannot have left on it."
-    if set(touched) & {"consignee_name", "consignee_gstin", "consignee_address"}:
-        if not any(str(row.get(k) or "").strip() for k in ("consignee_name", "consignee_gstin", "consignee_address")):
-            return f"Challan {document_no} has been issued, so it keeps a consignee: Rule 55(1)(iii) asks for one."
-    if set(touched) & {"place_of_supply", "is_inter_state"}:
+    Issuing asked that a job-work challan said what it sends and that an inter-State movement had a place of supply. The other particulars issuing asked for (the date, the consignee) cannot be
+    changed after issue at all (`issued_challan_is_not_rewritten_problem`, POST-A-416), so they are not asked again here. Each question is asked of the row the patch would leave, and ONLY for
+    the fields it touches: a row stored before this rule is not made unsaveable by an edit of something else. (What was amended is the audit event's.) The sentences say "has been issued", which
+    is true of a received-back challan too."""
+    if "place_of_supply" in touched:
         if row.get("is_inter_state") and not str(row.get("place_of_supply") or "").strip():
             return f"Challan {document_no} has been issued as an inter-State movement, so it keeps a place of supply: Rule 55(1)(viii) asks for one."
     if "goods_kind" in touched:
         if str(row.get("reason")) == REASON_JOB_WORK and not str(row.get("goods_kind") or "").strip():
             return f"Challan {document_no} is for job work and has been issued, so it keeps what is sent: the period under s.143 depends on it."
     return None
+
+
+#: What a challan keeps once it has been issued or cancelled (POST-A-416): its number, the day it was made, who it was made out to and whether it was an inter-State movement. They are what the
+#: document IS (the number is how it is found, the date is the day the goods are counted from, the consignee is who received them), so correcting one is a cancellation and a new challan and
+#: not an edit. A cancelled challan keeps them as well: nothing records whether its goods ever left (there is no issued-at, POST-A-419(c)), and a cancel followed by a rewrite would otherwise
+#: hide what was cancelled. A job-work challan's place of supply is NOT among them while the goods are out: it is the job worker's State, which FORM GST ITC-04 reads and which is recorded after
+#: the goods have gone (`JobWorkerStateBox`). The rest of what the amendment door takes (the transport details, the notes, the extension under s.143(1), the kind of goods, the invoice a challan is
+#: tied to, the day the goods came back) is left open on purpose: the screens write only the back day and the job worker's State after issue, and the others are the API's.
+CLOSED_AFTER_ISSUE = ("document_no", "document_date", "consignee_name", "consignee_gstin", "consignee_address", "is_inter_state")
+CLOSED_AFTER_ISSUE_EXCEPT_JOB_WORK = ("place_of_supply",)
+#: The statuses of a challan that is not a draft: the goods have left on it, or it was cancelled.
+KEEPS_ITS_PARTICULARS = (STATUS_ISSUED, STATUS_RECEIVED_BACK, STATUS_CANCELLED)
+
+
+def touches_what_an_issued_challan_keeps(patch: dict) -> bool:
+    """True when an amendment gives any field the rule below closes, so the write can be held to the status that was judged (POST-A-416)."""
+    return bool(set(patch) & {*CLOSED_AFTER_ISSUE, *CLOSED_AFTER_ISSUE_EXCEPT_JOB_WORK})
+
+
+def _same(name: str, stored: object, wanted: object) -> bool:
+    """A field given the value it already holds is not a change (a client that sends the whole form back is not refused): text is compared trimmed, a day as its first ten characters, a GSTIN
+    in capitals, a flag as a flag."""
+    if isinstance(stored, bool) or isinstance(wanted, bool):
+        return bool(stored) == bool(wanted)
+    a, b = (str(v if v is not None else "").strip() for v in (stored, wanted))
+    if name == "document_date":
+        return a[:10] == b[:10]
+    if name == "consignee_gstin":
+        return a.upper() == b.upper()
+    return a == b
+
+
+def _what_to_do_instead(status: object) -> str:
+    if str(status) == STATUS_ISSUED:
+        return "Cancel it if its goods did not leave, and make a new challan; the day the goods came back can still be recorded."
+    if str(status) == STATUS_RECEIVED_BACK:
+        return "Its goods are back, so it stays as it was issued."
+    return "It is cancelled, so it stays as it was; make a new challan."
+
+
+def issued_challan_is_not_rewritten_problem(document_no: object, *, row: dict, patch: dict) -> Optional[str]:
+    """The sentence for an amendment that would CHANGE what a challan that has been issued, or cancelled, says of itself, or None (POST-A-416). Pure. `row` is the challan as stored and `patch` the
+    fields the amendment gives (a field it does not give is not in it).
+
+    It judges a challan that is issued, received back or cancelled (`KEEPS_ITS_PARTICULARS`) and only a CHANGE: a field given the value it already holds, or given where the challan holds nothing yet
+    (a consignee's GSTIN found later, a place of supply on a challan that was not an inter-State movement), completes the document and contradicts nothing that was issued. A draft is
+    corrected freely. The sentence names every field it refuses and says what to do instead for the status the challan is in."""
+    status = row.get("status")
+    if str(status) not in KEEPS_ITS_PARTICULARS:
+        return None
+    closed = list(CLOSED_AFTER_ISSUE)
+    if str(row.get("reason")) != REASON_JOB_WORK or str(status) == STATUS_CANCELLED:
+        closed += list(CLOSED_AFTER_ISSUE_EXCEPT_JOB_WORK)
+    changed = []
+    for name in closed:
+        if name not in patch or _same(name, row.get(name), patch[name]):
+            continue
+        if name not in ("document_no", "document_date", "is_inter_state") and not str(row.get(name) or "").strip():
+            continue                                        # filling in what the challan did not say completes it
+        changed.append(name)
+    if not changed:
+        return None
+    words = [FIELD_WORDS.get(n, n) for n in changed]
+    names = words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+    was = "is cancelled" if str(status) == STATUS_CANCELLED else "has been issued"
+    return f"Challan {document_no} {was}, so its {names} cannot be changed: it stays as it was made. {_what_to_do_instead(status)}"
+
+
+#: The words a person reads for a closed field.
+FIELD_WORDS = {
+    "document_no": "number", "document_date": "date", "consignee_name": "consignee's name", "consignee_gstin": "consignee's GSTIN",
+    "consignee_address": "consignee's address", "is_inter_state": "inter-State flag", "place_of_supply": "place of supply",
+}
 
 
 def only_a_draft_is_issued_sentence(document_no: object, status: object) -> str:

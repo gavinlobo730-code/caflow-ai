@@ -10,7 +10,7 @@ WHAT WAS WRONG
 
 WHAT IS HELD
     One rule says when goods can have come back (`domain/gst/delivery_challan.goods_back_problem`): not after today in India and not before they went out. Both doors that record it ask it,
-    and the amendment that moves only the day they went out asks it for its ORDER against the days already recorded as back (the whole challan's, and the earliest lot's).
+    and the whole challan's back day is also not before the latest lot of goods returned. The day they went out cannot be amended once a challan is issued (POST-A-416), so it is no longer compared with the days already recorded as back.
     The challan amendment reads its three dates as real days stored as the canonical day, refuses a blank one (the route drops what is None, so a blank would be reported as saved or reach
     the column) and leaves `extended_to`, a plan, free to run ahead. A challan's date is not after today in India, on the TDS door and on the payroll remittance door.
 
@@ -113,55 +113,65 @@ def test_the_amendment_refuses_goods_back_before_they_went_out_and_takes_the_day
     assert out["status"] == "received_back"
 
 
-def test_an_amendment_that_moves_the_day_they_went_out_is_compared_with_the_new_day():
+def _stored_challan(db, cid):
+    return next(r for r in db.store["delivery_challans"] if r["id"] == cid)
+
+
+def test_the_day_they_went_out_of_an_issued_challan_is_not_amended_whatever_back_day_comes_with_it():
+    """POST-A-416: the goods have left on an issued challan, so its date is what it is. This used to be compared with the back day it came beside; it is refused before any comparison (a change
+    of the date is a cancellation and a new challan), and nothing is written."""
     db = _order_db()
     cid = _job_work_challan(db)
+    before = dict(_stored_challan(db, cid))
     with pytest.raises(HTTPException) as caught:
         svc.update_challan(db, "F1", cid, {"document_date": "2026-07-01", "received_back_on": "2026-06-15"})
-    assert "before they were sent out on 2026-07-01" in str(caught.value.detail)
+    assert caught.value.status_code == 409 and "so its date cannot be changed" in str(caught.value.detail)
+    assert _stored_challan(db, cid) == before, "a refused amendment wrote"
 
 
-def test_moving_the_day_they_went_out_past_a_day_already_recorded_as_back_is_refused_in_the_same_sentence():
-    """The other way the pair can be left the wrong way round: the day the goods came back is already stored and the amendment moves only the day they went out."""
+def test_a_back_day_is_still_compared_with_the_day_the_goods_went_out_and_the_same_date_sent_again_is_no_change():
     db = _order_db()
     cid = _job_work_challan(db)
-    svc.update_challan(db, "F1", cid, {"received_back_on": "2026-06-15"})
     with pytest.raises(HTTPException) as caught:
-        svc.update_challan(db, "F1", cid, {"document_date": "2026-07-01"})
-    assert caught.value.status_code == 422
-    assert str(caught.value.detail) == "The goods cannot have come back on 2026-06-15, before they were sent out on 2026-07-01."
-    assert svc.update_challan(db, "F1", cid, {"document_date": "2026-06-15"})["document_date"] == "2026-06-15", "the same day is allowed"
-    assert svc.update_challan(db, "F1", cid, {"document_date": "2026-06-10"})["document_date"] == "2026-06-10", "an earlier day is allowed"
+        svc.update_challan(db, "F1", cid, {"received_back_on": "2026-05-15"})
+    assert caught.value.status_code == 422 and "before they were sent out on 2026-06-01" in str(caught.value.detail)
+    assert svc.update_challan(db, "F1", cid, {"document_date": "2026-06-01", "received_back_on": "2026-06-15"})["received_back_on"] == "2026-06-15", "the date it already holds is not a change"
+    for other in ("2026-07-01", "2026-06-15", "2026-06-10"):
+        with pytest.raises(HTTPException) as caught:
+            svc.update_challan(db, "F1", cid, {"document_date": other})
+        assert caught.value.status_code == 409 and "so its date cannot be changed" in str(caught.value.detail), other
+    assert _stored_challan(db, cid)["document_date"] == "2026-06-01"
 
 
 def test_an_edit_of_something_else_does_not_judge_a_pair_that_was_stored_before_the_rule():
-    """A row whose recorded day is before the day they went out (from before the rule) is not made unsaveable: only an amendment that gives one of the two days is compared."""
+    """A row whose recorded day is before the day they went out (from before the rule) is not made unsaveable: only an amendment that gives a back day is compared, and the date is closed."""
     db = _order_db()
     cid = _job_work_challan(db)
     db.store["delivery_challans"][-1]["received_back_on"] = "2026-05-01"
     assert svc.update_challan(db, "F1", cid, {"extended_to": "2027-01-01"})["extended_to"] == "2027-01-01"
     with pytest.raises(HTTPException) as caught:
         svc.update_challan(db, "F1", cid, {"document_date": "2026-06-02"})
-    assert "before they were sent out on 2026-06-02" in str(caught.value.detail), "an amendment that gives the day they went out is compared"
+    assert caught.value.status_code == 409 and "so its date cannot be changed" in str(caught.value.detail), "the date is not amended on an issued challan, so it is not compared"
 
 
-def test_moving_the_day_they_went_out_past_a_lot_already_recorded_is_refused_in_the_same_sentence():
-    """A lot recorded under ITC-04 leaves the challan's own `received_back_on` empty until every line is back, so an amendment of only the day they went out is compared with the
-    earliest lot as well (found by an independent read of the first version, which compared only the whole challan's day)."""
+def test_moving_the_day_they_went_out_of_a_challan_with_a_lot_recorded_is_refused_as_a_closed_date():
+    """A lot recorded under ITC-04 leaves the challan's own `received_back_on` empty until every line is back. The day the goods went out cannot be moved at all now, so the comparison with the
+    earliest lot (POST-A-383) has nothing to compare; the latest lot is still what a whole-challan back day is compared with."""
     db = _order_db()
     cid = _job_work_challan(db)
     db.store["delivery_challan_returns"] = [
-        {"id": "R1", "firm_id": "F1", "client_id": "C1", "challan_id": cid, "returned_on": "2026-06-20"},
-        {"id": "R2", "firm_id": "F1", "client_id": "C1", "challan_id": cid, "returned_on": "2026-06-15"},
-        {"id": "R3", "firm_id": "F1", "client_id": "C1", "challan_id": "another-challan", "returned_on": "2026-05-01"},
-        {"id": "R4", "firm_id": "F1", "client_id": "C2", "challan_id": cid, "returned_on": "2026-05-02"},
+        {"id": "R1", "firm_id": "F1", "client_id": "C1", "challan_id": cid, "returned_on": "2026-06-20", "quantity_returned": "1"},
+        {"id": "R2", "firm_id": "F1", "client_id": "C1", "challan_id": cid, "returned_on": "2026-06-15", "quantity_returned": "1"},
+        {"id": "R3", "firm_id": "F1", "client_id": "C1", "challan_id": "another-challan", "returned_on": "2026-05-01", "quantity_returned": "1"},
+        {"id": "R4", "firm_id": "F1", "client_id": "C2", "challan_id": cid, "returned_on": "2026-05-02", "quantity_returned": "1"},
     ]
+    for day in ("2026-07-01", "2026-06-10", "2026-06-15"):
+        with pytest.raises(HTTPException) as caught:
+            svc.update_challan(db, "F1", cid, {"document_date": day})
+        assert caught.value.status_code == 409 and "so its date cannot be changed" in str(caught.value.detail), day
     with pytest.raises(HTTPException) as caught:
-        svc.update_challan(db, "F1", cid, {"document_date": "2026-07-01"})
-    assert caught.value.status_code == 422
-    assert str(caught.value.detail) == "The goods cannot have come back on 2026-06-15, before they were sent out on 2026-07-01."
-    assert svc.update_challan(db, "F1", cid, {"document_date": "2026-06-10"})["document_date"] == "2026-06-10", "another challan's lot, and another client's, are not this challan's"
-    assert svc.update_challan(db, "F1", cid, {"document_date": "2026-06-15"})["document_date"] == "2026-06-15", "the day of the earliest lot is allowed"
+        svc.update_challan(db, "F1", cid, {"received_back_on": "2026-06-14"})
+    assert caught.value.status_code == 422 and "recorded as returned on" in str(caught.value.detail), "a whole-challan back day is still not before a lot of goods returned"
 
 
 def test_the_amendments_other_two_dates_are_stored_as_the_canonical_day():

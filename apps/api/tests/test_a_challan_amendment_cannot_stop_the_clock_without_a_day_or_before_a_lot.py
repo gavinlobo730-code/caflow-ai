@@ -20,7 +20,7 @@ WHAT IS HELD
     * a whole-challan back day earlier than the latest lot of goods RETURNED against THIS challan (not another challan's, not another client's) is refused (422); the same day is
       allowed; a row that records only quantity lost or wasted is not goods returned and is not counted (migration 462: whether scrap counts as received back is not a judgement this
       product takes);
-    * an amended day the goods went out is compared with the days already recorded as back whether or not the same patch gives a back day;
+    * the day the goods went out is not amended once a challan is issued (POST-A-416), so it is no longer compared with the days already recorded as back;
     * a DRAFT is not refused, and that is a premise, not a preference: no SCREEN issues a challan (see the last tests; the amendment door accepts `issued` from a hand-made request,
       and the tests say so), so a draft is the state every challan made in the product is in and the whole-challan "Record goods back" is the one door that can end its clock. The
       premise is a test over the whole API tree, the migrations and the front end, and it fails when a door that issues a challan appears.
@@ -280,18 +280,20 @@ def test_the_last_lot_stamps_a_day_that_this_rule_allows(db):
 
 # ── the day the goods went out, amended together with the day they came back ─────────────────────────────────
 
-def test_amending_the_day_they_went_out_is_compared_with_the_lots_whether_or_not_the_patch_gives_a_back_day(db):
+def test_the_day_they_went_out_is_not_amended_so_a_lot_is_never_left_before_it(db):
+    """POST-A-416: the day an issued challan went out is closed, so the pair (the day they went out, a lot) cannot be left the wrong way round by moving it. This was compared with the lots
+    before; it is refused before any comparison, alone or beside a back day, and nothing is written."""
     c = itc._challan(db, "JW/14", "2026-06-01")
     ln = itc._line(db, c, qty="10")
     itc._came_back(db, c, ln, "4", "2026-06-10")
-    # Alone: refused, as it always was.
-    _refused(db, c, {"document_date": "2026-06-20"}, 422)
-    # With a back day beside it: the lot of 10 June is still before the new sent day of 20 June, so this is refused too.
-    _refused(db, c, {"document_date": "2026-06-20", "received_back_on": "2026-06-25"}, 422)
-    stored = _stored(db, c)
-    assert stored["document_date"] == "2026-06-01" and not stored.get("received_back_on"), f"a refused amendment wrote: {stored}"
-    # A sent day on or before the lot is fine, with a back day beside it.
-    assert _amend(db, c, {"document_date": "2026-06-10", "received_back_on": "2026-06-25"})["document_date"] == "2026-06-10"
+    before = dict(_stored(db, c))
+    for patch in ({"document_date": "2026-06-20"},
+                  {"document_date": "2026-06-20", "received_back_on": "2026-06-25"},
+                  {"document_date": "2026-06-10", "received_back_on": "2026-06-25"}):
+        assert "so its date cannot be changed" in _refused(db, c, patch, 409), patch
+    assert _stored(db, c) == before, "a refused amendment wrote"
+    # the date it already holds, beside a back day, is no change, and the back day is judged as it always was
+    assert _amend(db, c, {"document_date": "2026-06-01", "received_back_on": "2026-06-25"})["received_back_on"] == "2026-06-25"
 
 
 # ── the one door that issues a challan (POST-A-398) ───────────────────────────────────────────────────────
