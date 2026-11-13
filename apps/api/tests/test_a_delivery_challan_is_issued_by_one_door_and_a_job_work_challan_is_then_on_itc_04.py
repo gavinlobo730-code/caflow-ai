@@ -796,7 +796,7 @@ def test_the_party_a_challan_copies_its_consignee_from_is_the_clients_own(partie
 
 def test_the_statuses_that_list_a_job_work_challan_on_itc_04_are_the_ones_the_goods_have_left_on():
     from domain.gst import itc_04
-    assert tuple(itc_04.SENT_STATUSES) == tuple(dc.GOODS_HAVE_LEFT), "FORM GST ITC-04 lists a job-work challan in a different set of statuses from the one that draws a period and counts as delivered"
+    assert tuple(itc_04.SENT_STATUSES) == tuple(dc.GOODS_HAVE_LEFT), "FORM GST ITC-04 lists a job-work challan in a different set of statuses from the one that draws a period"
 
 
 def test_the_amendment_audit_event_records_the_fields_that_decide_a_period_as_they_were_and_are(db, served):

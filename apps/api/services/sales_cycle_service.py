@@ -280,14 +280,13 @@ def order_open_position(db, firm_id: str, order_id: str, *, with_drafts: bool = 
     of challan lines.
 
     THE PARENT'S STATUS IS READ, not just the line. Goods count as delivered
-    once they have LEFT: on an issued challan, or one whose goods have since
-    come back (`delivery_challan.GOODS_HAVE_LEFT`). A cancelled challan has
-    delivered nothing, and a DRAFT is not recorded as issued (POST-A-398), so
-    neither counts; a query that forgot the parent would show a fully
-    delivered order for goods that never left.
+    while they are with the consignee: on an ISSUED challan (`delivery_challan.STATUSES_THAT_DELIVER_AGAINST_AN_ORDER`). A challan marked received back delivered nothing
+    (POST-A-421: it used to count, so an order showed goods that had been returned as delivered, and a new delivery of them was refused as more than was ordered). It is the WHOLE challan that is
+    marked back, by the amendment door or by the lot that brings every line of a job-work challan back on FORM GST ITC-04; goods returned in part on a lot leave the challan issued, and they count as
+    delivered until the last lot comes in. A cancelled challan has delivered nothing, and a DRAFT is not recorded as issued (POST-A-398), so none of them counts; a query that forgot the parent would show a fully delivered order for goods that never left.
 
-    `with_drafts` asks the other question, "what challans hang from these lines?": a draft is a challan whose goods are not out, and it still points at an order line, so the order's lines
-    are not re-priced or deleted from under it (`update_order`). The default answers what has been delivered.
+    `with_drafts` asks the other question, "what challans hang from these lines?": a draft is a challan whose goods are not out, and it still points at an order line, and so does one whose goods
+    came back, so the order's lines are not re-priced or deleted from under either (`update_order`). The default answers what has been delivered.
     """
     order = _one(db, "sales_orders", firm_id, order_id,
                  "sales order")
@@ -310,7 +309,7 @@ def order_open_position(db, firm_id: str, order_id: str, *, with_drafts: bool = 
                     .select("id, status").eq("firm_id", firm_id)
                     .in_("id", challan_ids),
                     key="id", label="sales_cycle.delivered_parents"):
-                if str(c.get("status")) in (dc.GOODS_HAVE_LEFT + ((dc.STATUS_DRAFT,) if with_drafts else ())):
+                if str(c.get("status")) in ((dc.GOODS_HAVE_LEFT + (dc.STATUS_DRAFT,)) if with_drafts else dc.STATUSES_THAT_DELIVER_AGAINST_AN_ORDER):
                     live.add(str(c.get("id")))
         for r in rows:
             if str(r.get("challan_id")) not in live:
@@ -717,7 +716,7 @@ def create_challan(db, firm_id: str, payload: dict,
             "line_cess_paise": ln["line_cess_paise"],
             "created_at": now,
         }).execute()
-    # No re-settle of the order here: a challan is made as a DRAFT, and goods are delivered against an order only once they have left (issued or received back), so making one moves
+    # No re-settle of the order here: a challan is made as a DRAFT, and goods are delivered against an order only while they are with the consignee (issued), so making one moves
     # neither the order's position nor its status. `issue_challan` and the amendment door re-settle it when that changes.
     return row
 
@@ -1078,6 +1077,9 @@ def record_goods_back(db, firm_id: str, challan_id: str,
 
     The stamp is written over an ISSUED challan only (a compare-and-set): the lot is inserted first and this second, in two statements, so a cancel that got in between is not written over, and the
     sentence says that what was recorded stands. One transaction for both is POST-A-419.
+
+    A challan marked received back delivers nothing against the order it names (POST-A-421), so the order's stored status is derived again here, as `update_challan` does when it makes the same
+    status: this is the second door that makes it.
     """
     row = _one(db, "delivery_challans", firm_id, challan_id,
                "delivery challan")
@@ -1091,6 +1093,7 @@ def record_goods_back(db, firm_id: str, challan_id: str,
         raise HTTPException(status_code=409, detail=(
             f"Challan {row.get('document_no')} was changed by another request while its goods were being recorded back, so this request did not mark it received back. "
             "What was recorded stands. Reload the challan and look at its status."))
+    _resettle_order_status(db, firm_id, row.get("order_id"))      # a challan whose goods have all come back delivers nothing against its order
     return {**row, "received_back_on": str(received_back_on),
             "status": "received_back"}
 
@@ -1119,8 +1122,8 @@ def issue_challan(db, firm_id: str, challan_id: str, *, client_id: str, consigne
     """Issue a draft challan: the goods leave on it (POST-A-398). The ONE door that makes a challan `issued`.
 
     Issuing RECORDS THAT THE GOODS LEFT on the challan's own date. That is what a period is run from (s.143 for job work, s.31(7) for goods on approval: `deemed_supply_clock` runs for an issued
-    challan only, and counts from the challan's date, so issuing does not move the day it counts from), what makes a job-work challan a row of FORM GST ITC-04 (`itc_04.SENT_STATUSES`), what counts
-    its goods as delivered against an order (`GOODS_HAVE_LEFT`), and what lets goods come back on it (the lot door and the whole-challan day both refuse a draft). Nothing was ever issued before
+    challan only, and counts from the challan's date, so issuing does not move the day it counts from), what makes a job-work challan a row of FORM GST ITC-04 (`itc_04.SENT_STATUSES`), what starts
+    counting its goods as delivered against an order (`STATUSES_THAT_DELIVER_AGAINST_AN_ORDER`; they stop when the challan is marked received back), and what lets goods come back on it (the lot door and the whole-challan day both refuse a draft). Nothing was ever issued before
     this door: `create_challan` writes a draft, and a draft was the state every challan made in the product stayed in.
 
     WHAT IT ASKS, in the order a person can fix them, before anything is written: that the challan is a draft (an issued, received-back or cancelled one is not issued again), that it has goods on it,

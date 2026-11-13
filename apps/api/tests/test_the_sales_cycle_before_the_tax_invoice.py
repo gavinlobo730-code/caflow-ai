@@ -646,7 +646,7 @@ def test_a_CANCELLED_challan_has_delivered_nothing():
         position = svc.order_open_position(db, "F1", "O1")
         return next(ln for ln in position["lines"] if ln["order_line_id"] == "L1")
 
-    for status, delivered in (("draft", "0.000"), ("cancelled", "0.000"), ("issued", "10.000"), ("received_back", "10.000")):
+    for status, delivered in (("draft", "0.000"), ("cancelled", "0.000"), ("issued", "10.000"), ("received_back", "0.000")):    # goods that came back were not delivered (POST-A-421)
         db.store["delivery_challans"][0]["status"] = status
         assert widget()["delivered_qty"] == delivered, status
         assert widget()["undelivered_qty"] == ("0.000" if delivered == "10.000" else "10.000"), status
@@ -654,6 +654,9 @@ def test_a_CANCELLED_challan_has_delivered_nothing():
     db.store["delivery_challans"][0]["status"] = "draft"
     drafted = svc.order_open_position(db, "F1", "O1", with_drafts=True)
     assert next(ln for ln in drafted["lines"] if ln["order_line_id"] == "L1")["delivered_qty"] == "10.000"
+    db.store["delivery_challans"][0]["status"] = "received_back"      # and one whose goods came back still hangs from the line, so the line is not re-priced from under it
+    came_back = svc.order_open_position(db, "F1", "O1", with_drafts=True)
+    assert next(ln for ln in came_back["lines"] if ln["order_line_id"] == "L1")["delivered_qty"] == "10.000"
     db.store["delivery_challans"][0]["status"] = "cancelled"
     cancelled = svc.order_open_position(db, "F1", "O1", with_drafts=True)
     assert next(ln for ln in cancelled["lines"] if ln["order_line_id"] == "L1")["delivered_qty"] == "0.000"
@@ -683,6 +686,79 @@ def test_a_cancelled_issued_challan_puts_its_goods_back_on_the_order():
     assert db.store["sales_orders"][0]["status"] == "partially_delivered"
     svc.update_challan(db, "F1", made["id"], {"status": "cancelled"})
     assert db.store["sales_orders"][0]["status"] == "confirmed", "the order still counts the goods of a challan that was cancelled"
+
+
+def test_goods_that_came_back_are_not_delivered_and_can_be_delivered_again():
+    """POST-A-421: a challan marked received back used to count as delivered against its order, so the order showed goods that had been returned as delivered and a new delivery of them was refused as more
+    than was ordered. The order's figure is what is with the consignee: it goes back to undelivered when the goods come back, and the same goods can then be delivered again."""
+    from fastapi import HTTPException
+    from services import sales_cycle_service as svc
+    db = _order_db()
+    first = svc.create_challan(db, "F1", _complete_challan("DC/25", "2026-04-05", "L1", 10, "Widget"))
+    second = svc.create_challan(db, "F1", _complete_challan("DC/26", "2026-04-06", "L1", 10, "Widget"))
+    svc.issue_challan(db, "F1", first["id"], client_id="C1", consigner=_CONSIGNER)
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered"
+    with pytest.raises(HTTPException) as caught:         # while the first is with the consignee, the same goods are not delivered twice
+        svc.issue_challan(db, "F1", second["id"], client_id="C1", consigner=_CONSIGNER)
+    assert caught.value.status_code == 422 and "10.000 already delivered" in str(caught.value.detail)
+    out = svc.update_challan(db, "F1", first["id"], {"received_back_on": "2026-04-20"})
+    assert out["status"] == "received_back"
+    widget = next(ln for ln in svc.order_open_position(db, "F1", "O1")["lines"] if ln["order_line_id"] == "L1")
+    assert (widget["delivered_qty"], widget["undelivered_qty"]) == ("0.000", "10.000"), "goods that came back still count as delivered"
+    assert db.store["sales_orders"][0]["status"] == "confirmed", "the order still counts the goods of a challan whose goods came back"
+    svc.issue_challan(db, "F1", second["id"], client_id="C1", consigner=_CONSIGNER)          # now it is refused no longer
+    assert next(c for c in db.store["delivery_challans"] if c["id"] == second["id"])["status"] == "issued"
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered"
+
+
+def test_only_an_issued_challan_delivers_against_an_order_and_the_set_is_inside_the_one_the_goods_have_left_on():
+    from domain.gst import delivery_challan as dc_
+    assert tuple(dc_.STATUSES_THAT_DELIVER_AGAINST_AN_ORDER) == (dc_.STATUS_ISSUED,)
+    assert set(dc_.STATUSES_THAT_DELIVER_AGAINST_AN_ORDER) < set(dc_.GOODS_HAVE_LEFT), "what is delivered is a subset of what has left (a period still runs on a challan whose goods came back)"
+
+
+def _job_work_challan_on_an_order(db, svc):
+    """A job-work challan of the whole of line L1, issued, so that FORM GST ITC-04's lot door can take goods back on it."""
+    made = svc.create_challan(db, "F1", {**_complete_challan("DC/27", "2026-04-05", "L1", 10, "Widget"), "reason": dc.REASON_JOB_WORK, "goods_kind": "inputs"})
+    svc.issue_challan(db, "F1", made["id"], client_id="C1", consigner=_CONSIGNER)
+    line = next(ln for ln in db.store["delivery_challan_lines"] if ln["challan_id"] == made["id"])
+    return made, line
+
+
+def _a_lot(line, quantity):
+    return {"client_id": "C1", "challan_line_id": line["id"], "returned_on": "2026-04-20", "quantity_returned": quantity, "quantity_lost_or_wasted": 0,
+            "job_worker_challan_no": "JW/1", "job_worker_challan_date": None, "nature_of_job_work": "Machining", "notes": None}
+
+
+def test_the_lot_that_brings_a_job_work_challan_wholly_back_puts_its_order_back_too():
+    """The lot door is the SECOND door that makes a challan `received_back` (the amendment door is the first), and it did not derive the order's status again, so the order's list said it was
+    partly delivered while its position said nothing was with the consignee: two screens, two answers, for goods that had come back on FORM GST ITC-04."""
+    from services import itc_04_service, sales_cycle_service as svc
+    db = _order_db()
+    db.store["delivery_challan_returns"] = []
+    made, line = _job_work_challan_on_an_order(db, svc)
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered"
+    out = itc_04_service.record_return(db, "F1", "C1", made["id"], _a_lot(line, 10), None)
+    assert out["challan_marked_received_back"] is True
+    position = svc.order_open_position(db, "F1", "O1")
+    widget = next(ln for ln in position["lines"] if ln["order_line_id"] == "L1")
+    assert (widget["delivered_qty"], widget["undelivered_qty"]) == ("0.000", "10.000")
+    assert db.store["sales_orders"][0]["status"] == position["status_would_be"] == "confirmed", "the order's stored status disagrees with its own position"
+
+
+def test_goods_returned_in_part_on_a_lot_stay_delivered_against_the_order_until_the_last_lot():
+    """The limit of POST-A-421(a), pinned so that the sentence saying it cannot go stale: a part return leaves the challan `issued`, and it is the challan, not the goods on it, that stops
+    delivering. A person who widens it decides first whether a job-work movement belongs against a sales order at all."""
+    from services import itc_04_service, sales_cycle_service as svc
+    db = _order_db()
+    db.store["delivery_challan_returns"] = []
+    made, line = _job_work_challan_on_an_order(db, svc)
+    out = itc_04_service.record_return(db, "F1", "C1", made["id"], _a_lot(line, 6), None)
+    assert out["challan_marked_received_back"] is False
+    assert next(c for c in db.store["delivery_challans"] if c["id"] == made["id"])["status"] == "issued"
+    widget = next(ln for ln in svc.order_open_position(db, "F1", "O1")["lines"] if ln["order_line_id"] == "L1")
+    assert (widget["delivered_qty"], widget["undelivered_qty"]) == ("10.000", "0.000")
+    assert db.store["sales_orders"][0]["status"] == "partially_delivered"
 
 
 def test_an_order_that_was_delivered_is_put_back_by_a_challan_that_is_cancelled():
