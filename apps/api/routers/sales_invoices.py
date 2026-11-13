@@ -39,6 +39,7 @@ from services.timeline_service import timeline_service
 from services.internal_client_service import is_internal_client, assert_partner_for_internal_id, is_partner
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core.ist_clock import ist_fy_label, ist_today
+from core.exceptions import validation_sentence
 from domain.gst import invoice_series
 from services import sales_numbering_service
 from services.line_item_ownership import assert_items_are_the_clients
@@ -1400,7 +1401,7 @@ def bulk_create_invoices(
         try:
             parsed.append((i, invoice_no, SalesInvoiceIn(**raw)))
         except PydanticValidationError as e:
-            errors.append({"index": i, "invoice_no": invoice_no, "error": str(e.errors()[0].get("msg", "Invalid invoice data")) if e.errors() else "Invalid invoice data"})
+            errors.append({"index": i, "invoice_no": invoice_no, "error": validation_sentence(e, "Invalid invoice data")})
 
     customers_by_id: dict = {}
     clients_by_id: dict = {}

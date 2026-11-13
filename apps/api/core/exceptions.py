@@ -446,3 +446,16 @@ def unhandled_failure(exc: Exception) -> "tuple[int, str] | None":
     message = _sayable_message(exc)
     text = _SHAPE[shape].format(message=message).strip()
     return status, text or "The database refused this request."
+
+
+def validation_sentence(exc: Exception, default: str) -> str:
+    """The first refusal a Pydantic model gave, as a sentence a person can be shown: the message the validator wrote, without Pydantic's own "Value error, " label (a
+    bulk import's row error is read by the CA, who is not told which library said it). `default` when the error carries no message."""
+    try:
+        first = exc.errors()[0]                                           # type: ignore[attr-defined]
+        message = str(first.get("msg") or "").strip()
+    except Exception:                                                     # noqa: BLE001 - not a validation error, or an empty one
+        message = ""
+    if message.startswith("Value error, "):
+        message = message[len("Value error, "):]
+    return message or default

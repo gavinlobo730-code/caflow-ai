@@ -18,6 +18,7 @@ from typing import ClassVar, FrozenSet, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from pydantic import BaseModel, field_validator
+from models.iso_date import IsoDate, PatchIsoDate
 from models.clearable import patch_dict
 from models.common import api_response
 from models.invoices import InvoiceLineIn
@@ -55,7 +56,7 @@ _BUCKET = "Documents"
 class DebitNoteIn(BaseModel):
     client_id: str
     vendor_id: str
-    debit_note_date: str  # YYYY-MM-DD
+    debit_note_date: IsoDate  # YYYY-MM-DD
     lines: list[InvoiceLineIn]
     purchase_bill_id: str | None = None
     reason: str | None = None
@@ -88,7 +89,7 @@ class DebitNoteUpdateIn(BaseModel):
     attached copy of a purchase note (`document_url`) is evidence, so it is not clearable."""
     CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"notes"})
     vendor_id: str | None = None
-    debit_note_date: str | None = None
+    debit_note_date: PatchIsoDate = None
     purchase_bill_id: str | None = None
     reason: str | None = None
     goods_returned: bool | None = None
