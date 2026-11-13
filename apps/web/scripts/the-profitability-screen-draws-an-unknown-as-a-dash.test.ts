@@ -171,9 +171,10 @@ test("a window is chosen from the clock, sent to all three reads, and a financia
   assert.doesNotMatch(win, /["'`]\d{4}-\d{2}["'`]/, "a financial year is typed into the module");
   assert.doesNotMatch(win, /^import .*from "@\/lib\/(?!api")/m, "the module imports more than the type, so a test can no longer run it as it is");
   const page = code(PAGE);
+  // One window is built, once, from the pick (and the two days of a custom range), and all three reads are handed that same object: they cannot be asked for different windows.
+  assert.match(page, /const asked = analyticsWindowOf\(period, \{ from: customFrom, to: customTo \}\);/, "the picked window is not built in one place");
   for (const read of ["profitability", "revenueVsEffort", "concentration"]) {
-    assert.match(page, new RegExp(`api\\.analytics\\.${read}\\(analyticsWindowOf\\(period\\)\\)`),
-      `${read} is not asked for the picked window`);
+    assert.match(page, new RegExp(`api\\.analytics\\.${read}\\(asked\\)`), `${read} is not asked for the picked window`);
   }
   assert.match(page, /analyticsWindowChoices\(financialYearChoices\(/, "the picker's years are derived from the clock, not listed");
   const api = read(API);

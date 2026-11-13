@@ -204,8 +204,11 @@ export const scenarios = [
       const asked = await arrange(env);
       const options = await page.getByLabel("Period").locator("option").evaluateAll((els) => els.map((e) => ({ value: e.value, label: e.textContent })));
       assert.deepEqual(options.slice(0, 3).map((o) => o.value), ["month", "quarter", "week"]);
-      const years = options.slice(3);
+      // The years are the choices that are years; the picker ends with "A range of days…" (POST-A-427), which is not one.
+      const years = options.filter((o) => o.value.startsWith("fy:"));
       assert.equal(years.length, 3, "the running year and the two before it");
+      assert.deepEqual(options.map((o) => o.value), ["month", "quarter", "week", ...years.map((o) => o.value), "custom"], "the picker is the three running windows, the years, then a range of days");
+      assert.equal(options[options.length - 1].label, "A range of days…");
       assert.match(years[0].label, /^This financial year \(\d{4}-\d{2}\), to date$/);
       assert.match(years[1].label, /^Financial year \d{4}-\d{2}$/);
       assert.ok(years.every((o) => /^fy:\d{4}-\d{2}$/.test(o.value)), "a year's value is its label");

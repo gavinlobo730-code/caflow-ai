@@ -232,7 +232,20 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   paged (a read stops loudly at the paging cap of a million rows, which no firm is near). The words are said by one resolver,
   `_period_range`, with `_custom_range` beside it, and the new date-in-a-query-string rule fails an analytics endpoint that takes
   these days and does not judge them.
-  **Not done, and in the ledger:** the screen's two date boxes (each held by the date drive's matrix, so the work is the boxes
-  and their rows, and `lib/practice/analyticsWindow` still offers only the four windows it did); revenue is still read from `fee_invoices`, so the day the surviving fee-billing engine is chosen (POST-B-193) the
+  **THE SCREEN OFFERS IT AS "A RANGE OF DAYS…", AND ASKS NOTHING UNTIL THE TWO DAYS ARE A WINDOW** (POST-A-427, the screen half,
+  13-11-2026; front end only): the Profitability screen's picker ends with the choice and two date boxes (the product's date
+  box, bounded by India's today, the last anchored on the first) that start BLANK, because no day is guessed. `lib/practice/
+  analyticsWindow.customWindowProblem` says what stops the window in a sentence (a day missing, the To day before the From day,
+  the To day after today in India) and the screen shows that sentence in place of the figures, makes no request, and clears the
+  figures it had, so the window before is not left under the new one's name; an unreadable text is no day, and a late answer to an
+  earlier window is dropped (the request queue is joined before the window is judged). All three reads are handed one window
+  object, built once by `analyticsWindowOf`, and the client sends `date_from` and `date_to` for the custom window alone. The
+  sentences are the screen's courtesy and the server's refusals are what hold. Two scenarios of the date drive (three zones and a
+  slow-answer case) execute it, a broken build fails all four runs, and
+  `scripts/the-practice-analytics-window-is-asked-for-only-when-it-can-exist.test.ts` holds the source rules. The two boxes are
+  filters and are listed as such in the date-box guard (nothing is saved; a blank is declined in words and asks nothing), and the
+  drive's coverage register names both by id. The sentence is put into a live region mounted with the boxes, because a reader may
+  not announce a region that arrives with its text already inside.
+  **Not done, and in the ledger:** revenue is still read from `fee_invoices`, so the day the surviving fee-billing engine is chosen (POST-B-193) the
   revenue read is re-pointed, and the cost, the worth and the rules do not move. The seeded demo firm's hours are all
   `is_billable: false` (the practice bills a fixed fee), so its realization is a dash and says "no billable time recorded".

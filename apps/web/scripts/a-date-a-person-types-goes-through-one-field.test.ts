@@ -535,6 +535,7 @@ const UNGATED: Record<string, { count: number; reason: string }> = {
   "app/clients/[id]/accounting/page.tsx": { count: 2, reason: "the ledger's from and to; blank is an unbounded ledger, nothing is saved" },
   "app/clients/[id]/inventory/page.tsx": { count: 3, reason: "stock as-at date and the stock ledger's range; nothing is saved" },
   "app/portal/dashboard/page.tsx": { count: 2, reason: "the client portal's statement period; nothing is saved" },
+  "app/practice/profitability/page.tsx": { count: 2, reason: "the profitability screen's custom window; the screen declines a blank, reversed or future one in words and asks nothing, nothing is saved" },
   "app/reports/page.tsx": { count: 2, reason: "a report's custom period; nothing is saved" },
   "app/settings/audit-log/page.tsx": { count: 2, reason: "the audit log's date filter; nothing is saved" },
   "app/time/page.tsx": { count: 2, reason: "the time export's range; blank exports everything" },

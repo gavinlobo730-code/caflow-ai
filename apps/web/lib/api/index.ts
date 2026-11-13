@@ -627,16 +627,23 @@ export interface StaffCostRate {
   cost_rate_paise: number | null;
 }
 
-/** The window an analytics screen asks for: a running week, month or quarter, or one whole financial year
- *  (`financialYear` is the label, e.g. `2025-26`, and only with `period: "fy"`). The server resolves it (POST-A-427). */
+/** The window an analytics screen asks for: a running week, month or quarter, one whole financial year
+ *  (`financialYear` is the label, e.g. `2025-26`, and only with `period: "fy"`), or any two days (`dateFrom` and `dateTo`,
+ *  `YYYY-MM-DD`, and only with `period: "custom"`). The server resolves it and refuses what it cannot (POST-A-427). */
 export interface AnalyticsWindow {
-  period: "week" | "month" | "quarter" | "fy";
+  period: "week" | "month" | "quarter" | "fy" | "custom";
   financialYear?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 function analyticsWindowQuery(window: AnalyticsWindow): URLSearchParams {
   const q = new URLSearchParams({ period: window.period });
   if (window.period === "fy" && window.financialYear) q.set("financial_year", window.financialYear);
+  if (window.period === "custom") {
+    if (window.dateFrom) q.set("date_from", window.dateFrom);
+    if (window.dateTo) q.set("date_to", window.dateTo);
+  }
   return q;
 }
 
