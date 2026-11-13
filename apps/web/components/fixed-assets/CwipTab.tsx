@@ -24,15 +24,14 @@ import { Modal } from "@/components/ui/modal";
 import { request } from "@/lib/api";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { formatDate } from "@/lib/dates/format";
-
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 interface Project {
   id: string;
   project_code: string | null;
@@ -138,7 +137,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
     try {
       await request(`/api/cwip/${p.id}/status`, {
         method: "PUT",
-        body: JSON.stringify({ client_id: clientId, status, on_date: todayLocalISO() }),
+        body: JSON.stringify({ client_id: clientId, status, on_date: todayIstISO() }),
       });
       await load();
     } catch (e) {
@@ -382,7 +381,7 @@ function ProjectModal({ clientId, onClose, onSaved }: {
 }) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [started, setStarted] = useState(todayLocalISO());
+  const [started, setStarted] = useState(todayIstISO());
   const [approvedDate, setApprovedDate] = useState("");
   const [approvedCost, setApprovedCost] = useState("");
   const [expected, setExpected] = useState("");
@@ -454,7 +453,7 @@ function CostModal({ clientId, project, onClose, onSaved }: {
 }) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [incurred, setIncurred] = useState(todayLocalISO());
+  const [incurred, setIncurred] = useState(todayIstISO());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // The date the ageing schedule ages the cost from: unreadable text is refused in the date's own sentence (frontend_ux-19).
@@ -508,7 +507,7 @@ function CostModal({ clientId, project, onClose, onSaved }: {
 function CapitaliseModal({ clientId, project, onClose, onSaved }: {
   clientId: string; project: Project; onClose: () => void; onSaved: () => void;
 }) {
-  const [readyOn, setReadyOn] = useState(todayLocalISO());
+  const [readyOn, setReadyOn] = useState(todayIstISO());
   const [life, setLife] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

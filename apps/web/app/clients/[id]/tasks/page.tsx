@@ -12,7 +12,7 @@ import type { Task, Client, FirmUser } from "@/lib/types";
 import { formatDate } from "@/lib/services/formatting";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { DIRECT_READ_WINDOW_MAX, windowDescription } from "@/lib/lists/window";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,7 @@ export default function TasksPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
-  const today = todayLocalISO();
+  const today = todayIstISO();
 
   const load = useCallback(() => {
     if (!clientId || clientId === "_placeholder") return;

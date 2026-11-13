@@ -29,7 +29,7 @@ import { editedText } from "@/lib/forms/editedValue";
 import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import {
   isValidPurchaseCreditNoteLine, previewPurchaseCreditNoteTotals, validatePurchaseCreditNoteEditor,
   type PurchaseCreditNoteEditorLine,
@@ -45,7 +45,7 @@ const EMPTY_LINE: PurchaseCreditNoteEditorLine = { description: "", hsn_sac: "",
 type EditorLine = PurchaseCreditNoteEditorLine & { _k: number; product?: ServiceCatalogueItem | null };
 
 function todayISO(): string {
-  return todayLocalISO();
+  return todayIstISO();
 }
 
 function purchaseServiceToLine(item: ServiceCatalogueItem): Partial<PurchaseCreditNoteEditorLine> {

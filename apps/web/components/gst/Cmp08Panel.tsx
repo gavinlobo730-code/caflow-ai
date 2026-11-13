@@ -35,9 +35,10 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectOrNull } from "@/lib/api/shape";
+import { istToday } from "@/lib/dateMath";
 
 function todayPeriod(): string {
-  const d = new Date();
+  const d = istToday();
   return `${String(d.getMonth() + 1).padStart(2, "0")}${d.getFullYear()}`;
 }
 

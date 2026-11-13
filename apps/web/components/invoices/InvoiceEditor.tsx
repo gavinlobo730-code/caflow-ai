@@ -41,7 +41,7 @@ import {
 } from "@/lib/invoices/classification";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { invoiceBreadcrumbs } from "@/lib/invoices/workspaceNav";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import {
   apiCall, apiGet, getAuthToken, fmt,
   gstRateOptions, gstRateToPercent, gstRatePercentFromSelect, INDIAN_STATES, STATUS_BADGE,
@@ -151,7 +151,7 @@ export function InvoiceEditor({
   /** Called when the user cancels (the caller navigates; guarded by dirty check). */
   onCancel: () => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const isEdit = !!existing;
   // Once an invoice is issued, the backend only accepts reference_no/notes/
   // due_date/credit_days (+ per-line units) on PATCH (routers/sales_invoices.py

@@ -25,12 +25,11 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
-import { formatDate } from "@/lib/dates/format";
-
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Client {
@@ -125,7 +124,7 @@ export default function ReceivablesAgingPage() {
     setLoading(true);
     setError(null);
     const sb = getSupabaseClient();
-    const today = todayLocalISO();
+    const today = todayIstISO();
 
     try {
       // The ageing this builds is downloaded as a CSV, so the read must return
@@ -200,7 +199,7 @@ export default function ReceivablesAgingPage() {
     // Every field used to be wrapped in quotes WITHOUT doubling the ones
     // inside it, so a customer name or narration carrying a quote ended its
     // field early and every parser disagreed about where the row ended.
-    downloadCsv(`fee-receivables-aging-${todayLocalISO()}.csv`,
+    downloadCsv(`fee-receivables-aging-${todayIstISO()}.csv`,
                 toCsvRows([headers, ...csvRows]));
   }
 

@@ -43,6 +43,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { istToday } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -2297,7 +2298,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
 // §44: due 31 December following the FY; the due-date arithmetic itself lives
 // in services/compliance_engine.py, not here).
 function completedFinancialYears(): string[] {
-  const now = new Date();
+  const now = istToday();
   const lastCompletedStart =
     now.getMonth() + 1 >= 4 ? now.getFullYear() - 1 : now.getFullYear() - 2;
   const out: string[] = [];

@@ -56,7 +56,7 @@ import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import { DataTable } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { todayLocalISO, daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
+import { daysBetweenLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
 import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 import { useToast } from "@/components/ui/use-toast";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
@@ -537,7 +537,7 @@ export default function IncomeTaxPage() {
   // Derived stats
   // ---------------------------------------------------------------------------
 
-  const today = todayLocalISO();
+  const today = todayIstISO();
   // FROM THE CLOCK, not a literal (IT-33). This was "2025-26" and it is the
   // heading over the ITR status card, so on 11 September 2026 the card counted
   // THIS year's entries under LAST year's name — a wrong label on the one

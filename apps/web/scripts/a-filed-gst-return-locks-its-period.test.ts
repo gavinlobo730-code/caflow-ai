@@ -443,7 +443,7 @@ test("the MCA screen records a filing as filed through the API, in all three pla
   assert.ok((src.match(/res\.success/g) ?? []).length >= 3,
     "the answer's envelope must be read: the route answers a refusal as HTTP 200 with { success: false }");
   assert.equal((src.match(/ca_approved:\s*true/g) ?? []).length, 3);
-  assert.doesNotMatch(src, /filed_date:\s*status\s*===\s*"Filed"\s*\?\s*todayLocalISO/,
+  assert.doesNotMatch(src, /filed_date:\s*status\s*===\s*"Filed"\s*\?\s*(?:todayLocalISO|todayIstISO)/,
     "the add modal must not stamp today's date as the date a filing was made");
 });
 

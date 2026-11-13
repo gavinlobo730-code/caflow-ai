@@ -24,8 +24,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
-import { formatDate, formatDateTime } from "@/lib/dates/format";
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate, formatDateTime, todayIstISO } from "@/lib/dates/format";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { formatPaise as formatPaiseINR } from "@/lib/services/formatting";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
@@ -1296,17 +1296,17 @@ function EngagementsPageInner() {
   // Summary stats
   const draftCount = letters.filter((l) => shownStatus(l) === "Draft" || shownStatus(l) === "Generated").length;
   const awaitingCount = letters.filter((l) => shownStatus(l) === "Sent" || shownStatus(l) === "Viewed").length;
-  const now = new Date();
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  // The first moment of INDIA's month, compared as instants (a signed_at is a timestamp with an offset of its own, so comparing text would be wrong across offsets).
+  const thisMonthStartMs = Date.parse(`${todayIstISO().slice(0, 7)}-01T00:00:00+05:30`);
   const signedThisMonth = letters.filter(
-    (l) => l.status === "Signed" && l.signed_at && l.signed_at >= thisMonthStart
+    (l) => l.status === "Signed" && l.signed_at && Date.parse(l.signed_at) >= thisMonthStartMs
   ).length;
   // "Expiring within 7 days" is a WHOLE-DAY question, so both sides are anchored
   // to local midnight. Subtracting a live instant from `new Date(expiry_date)` —
   // which is UTC midnight — made the count fractional and 5.5 hours out in IST:
   // a letter expiring today read 0.77 days (in) at 10 a.m. and −0.2 (out) at
   // 6 a.m., so the same letter came and went from the count during the day.
-  const todayISO = todayLocalISO();
+  const todayISO = todayIstISO();
   const expiringCount = letters.filter((l) => {
     if (!l.expiry_date || l.status === "Signed" || l.status === "Rejected") return false;
     const daysUntil = daysBetweenLocalISO(todayISO, String(l.expiry_date).slice(0, 10));

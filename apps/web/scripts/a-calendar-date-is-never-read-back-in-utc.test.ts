@@ -21,8 +21,9 @@
 //
 // WHY THIS IS A TEST AND NOT A COMMENT
 //     lib/dateMath.ts has existed for a long time. Its header already explains
-//     the IST shift in full and already names todayLocalISO() as "the safe
-//     replacement for new Date().toISOString().slice(0, 10) / .split("T")[0]".
+//     the IST shift in full, and it once carried a helper (todayLocalISO, deleted by
+//     POST-A-404 in favour of todayIstISO()) described as "the safe replacement for
+//     new Date().toISOString().slice(0, 10) / .split("T")[0]".
 //     lib/dates/periods.ts says it again. lib/sales/dateMath.ts says it a third
 //     time. On 2026-09-09 there were still fifty live sites doing exactly that,
 //     across thirty files.
@@ -104,7 +105,7 @@ test("no calendar date is cut out of a UTC instant", () => {
   }
   assert.deepEqual(offenders, [],
     "these read a calendar date out of a UTC instant — in IST that is " +
-    "yesterday between 00:00 and 05:30. Use todayLocalISO() for today, or " +
+    "yesterday between 00:00 and 05:30. Use todayIstISO() (lib/dates/format.ts) for today, or " +
     "toLocalISO(d) for a Date you built from local components " +
     "(lib/dateMath.ts).");
 });
@@ -141,7 +142,8 @@ test("nobody writes their own local YYYY-MM-DD formatter", () => {
 // ── 3. The helper still does what the rule assumes ──────────────────────────
 
 test("toLocalISO reads local components, not UTC", async () => {
-  const { toLocalISO, todayLocalISO } = await import("../lib/dateMath.ts");
+  const { toLocalISO } = await import("../lib/dateMath.ts");
+  const { todayIstISO } = await import("../lib/dates/format.ts");
   // 31 May 2026 at local midnight. In IST this instant is 30 May 18:30 UTC, so
   // toISOString().slice(0, 10) would say "2026-05-30" — the exact defect.
   const lastDayOfMay = new Date(2026, 4, 31);
@@ -150,5 +152,5 @@ test("toLocalISO reads local components, not UTC", async () => {
   assert.equal(toLocalISO(new Date(2026, 5, 0)), "2026-05-31");
   assert.equal(toLocalISO(new Date(2026, 2, 0)), "2026-02-28");   // non-leap
   assert.equal(toLocalISO(new Date(2024, 2, 0)), "2024-02-29");   // leap
-  assert.match(todayLocalISO(), /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(todayIstISO(), /^\d{4}-\d{2}-\d{2}$/);
 });

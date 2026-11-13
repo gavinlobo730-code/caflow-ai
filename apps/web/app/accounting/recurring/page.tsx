@@ -18,7 +18,7 @@ import { getClients } from "@/lib/data/clients";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { api, type RecurringJournalTemplate, type RecurringJournalRun } from "@/lib/api";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import type { Account, Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
@@ -27,7 +27,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 
@@ -94,7 +94,7 @@ const EMPTY_FORM: TemplateForm = {
   credit_account_id: "",
   amount_rupees: "",
   narration: "",
-  start_date: todayLocalISO(),
+  start_date: todayIstISO(),
   end_date: "",
 };
 
@@ -172,7 +172,7 @@ export default function RecurringPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, start_date: todayLocalISO() });
+    setForm({ ...EMPTY_FORM, start_date: todayIstISO() });
     setFormError(null);
     setModalOpen(true);
   }
@@ -354,7 +354,7 @@ export default function RecurringPage() {
 
   // ── Computed ───────────────────────────────────────────────────────────
 
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const active = templates.filter(t => t.status === "active");
   const dueNow = active.filter(t => t.next_run_date && t.next_run_date <= today);
   const monthlyValue = useMemo(

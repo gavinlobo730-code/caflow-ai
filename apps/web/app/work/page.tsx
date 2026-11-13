@@ -14,8 +14,8 @@ import { getTeamWorkload } from "@/lib/data/analytics";
 import { getUserProfile } from "@/lib/data/getFirmId";
 import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
 import type { TaskCounts } from "@/lib/data/tasks";
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
-import { formatDate } from "@/lib/dates/format";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
@@ -46,18 +46,18 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 function isToday(dateStr?: string) {
   if (!dateStr) return false;
-  return dateStr === todayLocalISO();
+  return dateStr === todayIstISO();
 }
 
 function isThisWeek(dateStr?: string) {
   if (!dateStr) return false;
-  const diff = daysBetweenLocalISO(todayLocalISO(), dateStr);
+  const diff = daysBetweenLocalISO(todayIstISO(), dateStr);
   return diff !== null && diff >= 0 && diff <= 7;
 }
 
 function isOverdue(dateStr?: string) {
   if (!dateStr) return false;
-  return dateStr < todayLocalISO();
+  return dateStr < todayIstISO();
 }
 
 function TaskRow({ task }: { task: Task }) {

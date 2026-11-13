@@ -9,7 +9,7 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
-import { toLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { fmtRs } from "@/components/payroll/shared";
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ export function DisburseModal({ run, onClose, onDone }: {
   const [accounts, setAccounts] = useState<DisburseBankAccount[]>([]);
   const [loadingAccts, setLoadingAccts] = useState(true);
   const [accountId, setAccountId] = useState("");
-  const [payDate, setPayDate] = useState(() => toLocalISO(new Date()).slice(0, 10));
+  const [payDate, setPayDate] = useState(() => todayIstISO());
   const [reference, setReference] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

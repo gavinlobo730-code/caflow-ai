@@ -76,7 +76,7 @@ import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits"
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { DrCr, sideOf } from "@/components/ui/drcr";
 import { formatPaiseBare } from "@/lib/money/format";
@@ -226,7 +226,7 @@ function isOverdueForUi(inv: SalesInvoice): boolean {
   if (inv.status !== "issued" && inv.status !== "partially_paid") return false;
   if (outstandingOf(inv) <= 0) return false;
   if (inv.is_overdue) return true;
-  if (inv.due_date) return inv.due_date < todayLocalISO();
+  if (inv.due_date) return inv.due_date < todayIstISO();
   return false;
 }
 
@@ -3640,7 +3640,7 @@ function Receipts({
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/receipts/${r.id}/reverse`, "POST",
-        { reversal_date: todayLocalISO() }, token);
+        { reversal_date: todayIstISO() }, token);
       if (!result.success) throw new Error(result.error ?? "Failed to reverse receipt");
       showToast(`${r.receipt_no} reversed — journal and allocations rolled back`, "success");
       load();
@@ -3828,7 +3828,7 @@ function ReceiptForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const [customerId, setCustomerId] = useState("");
   const [receiptDate, setReceiptDate] = useState(today);
   // A date typed as text that is not a date reads as blank to the form; the

@@ -95,7 +95,7 @@ test("the prompt starts empty and never sends a date the CA did not state", () =
   assert.match(code, /value=\{filedDate\}/);
   // PRE-A-015 (thirteenth slice): it used to start as TODAY, "the commonest answer". A filing is often recorded days after the portal, so a date offered from the clock was the wrong date for whoever pressed Confirm without reading it.
   assert.match(code, /const \[filedDate, setFiledDate\] = useState\(""\)/, "the date the return was filed is the CA's statement: the box starts empty");
-  assert.doesNotMatch(code, /todayLocalISO|useState\(today\)/, "the clock offers no date");
+  assert.doesNotMatch(code, /useState\(\s*(?:todayIstISO\(\)|istToday\(\)|today)\s*\)|setFiledDate\(\s*todayIstISO/, "the clock offers no date");
   // A day after today is refused in a sentence (a hint alone let one reach the server, which words it with a column name).
   assert.match(code, /notAfter=\{todayIstISO\(\)\}/, "a return cannot have been filed tomorrow");
   assert.match(code, /\{ afterMax: true \}/, "a date after today is refused, not only hinted at");

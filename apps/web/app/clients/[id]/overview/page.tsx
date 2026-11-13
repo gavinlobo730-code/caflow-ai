@@ -18,7 +18,8 @@ import { Hub } from "@/components/hub/Hub";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { Skeleton, SkeletonText, MetricCardSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
 
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 export default function OverviewPage() {
   const { clientId } = useClientNav();
@@ -103,7 +104,7 @@ export default function OverviewPage() {
     // need any of it reloaded.
   }, [clientId, reloadKey]);
 
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const overdueFiling = compliance.filter((c) => isOverdue(c, today));
   const filedCount = compliance.filter((c) => c.filing_status === "filed").length;
   // apex-overview-practice-07(a): loading/error/loadFailed/no-client used to
@@ -325,7 +326,7 @@ export default function OverviewPage() {
 // in IST the two are 5:30 apart: between 00:00 and 05:30 this read one day too
 // many, and it is a number shown on a client's own overview.
 function daysUntil(dateStr: string): number {
-  return daysBetweenLocalISO(todayLocalISO(), String(dateStr).slice(0, 10)) ?? 0;
+  return daysBetweenLocalISO(todayIstISO(), String(dateStr).slice(0, 10)) ?? 0;
 }
 
 function StatCard({

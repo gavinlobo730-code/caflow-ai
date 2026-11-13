@@ -4,15 +4,14 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { ShieldCheck, RefreshCw, Bell, PlayCircle, AlertTriangle, CalendarClock, Download } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { objectOrNull } from "@/lib/api/shape";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { PageHeader } from "@/components/ui/page-header";
-import { formatDate } from "@/lib/dates/format";
-
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
 const NEXT_STATUS: Record<string, string[]> = {
@@ -137,7 +136,7 @@ function ComplianceDashboard() {
     } finally { setBusy(false); }
   }
 
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const queue = useMemo(() => {
     const rows = dash?.queue ?? [];
     return rows.filter((o) => {

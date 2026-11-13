@@ -13,6 +13,7 @@
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
 import { doingOf, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
@@ -1064,7 +1065,7 @@ export function currentFinancialYear(): string {
 }
 
 export function currentQuarter(): TDSQuarter {
-  const mo = new Date().getMonth() + 1;
+  const mo = Number(todayIstISO().slice(5, 7));          // India's month, not the browser's (POST-A-404)
   if (mo >= 4 && mo <= 6) return "Q1";
   if (mo >= 7 && mo <= 9) return "Q2";
   if (mo >= 10 && mo <= 12) return "Q3";

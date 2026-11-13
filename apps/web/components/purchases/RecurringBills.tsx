@@ -29,12 +29,12 @@ import { formatPaise } from "@/lib/services/formatting";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
 import { EntityLookup } from "@/components/lookups/EntityLookup";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 
@@ -458,7 +458,7 @@ function RecurringBillEditor({
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState<Frequency>(existing?.frequency ?? "monthly");
-  const [startDate, setStartDate] = useState(existing?.start_date ?? todayLocalISO());
+  const [startDate, setStartDate] = useState(existing?.start_date ?? todayIstISO());
   const [endDate, setEndDate] = useState(existing?.end_date ?? "");
   // The stop date is OPTIONAL: text that is not a date reads as blank, and a bill template meant to stop would keep raising bills with
   // nothing said (frontend_ux-19).

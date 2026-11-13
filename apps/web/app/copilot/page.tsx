@@ -64,8 +64,7 @@ const CONTEXT_CHOICES: ReadonlyArray<{ value: string; label: string }> = [
 // the one shared format, so an old message reads like every other date.
 function relativeAge(s: string) {
   const d = new Date(s);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
+  const diffMs = Date.now() - d.getTime();                  // an instant against an instant: no calendar is read
   const diffMins = Math.floor(diffMs / 60000);
   if (diffMins < 1) return "just now";
   if (diffMins < 60) return `${diffMins}m ago`;

@@ -20,11 +20,11 @@ import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/money/format";
 
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
@@ -178,7 +178,7 @@ const STAGE_COLORS: Record<Stage, { bg: string; header: string; badge: string }>
 /** Map backend lead row → frontend Lead shape */
 function fromApiLead(row: Record<string, unknown>): Lead {
   const meta = (row.notes as string | null) ?? "";
-  let lastContactDate = todayLocalISO();
+  let lastContactDate = todayIstISO();
   let nextFollowUpDate = "";
   let notes = meta;
   let entityType: EntityType = "Proprietorship";
@@ -290,7 +290,7 @@ function rupeesToPaise(rupees: string): number | null {
 
 function isOverdueOrToday(dateStr: string): boolean {
   if (!dateStr) return false;
-  const today = todayLocalISO();
+  const today = todayIstISO();
   return dateStr <= today;
 }
 
@@ -320,7 +320,7 @@ const EMPTY_FORM = {
   estimatedMonthlyFeeRupees: "",
   source: "Referral" as Source, // maps to "referral" in DB
   notes: "",
-  lastContactDate: todayLocalISO(),
+  lastContactDate: todayIstISO(),
   nextFollowUpDate: "",
 };
 
@@ -352,7 +352,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
           nextFollowUpDate: initial.nextFollowUpDate,
         });
       } else {
-        setForm({ ...EMPTY_FORM, lastContactDate: todayLocalISO() });
+        setForm({ ...EMPTY_FORM, lastContactDate: todayIstISO() });
       }
     }
   }, [open, initial]);

@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Shield, Plus, X, AlertCircle, AlertTriangle, CheckCircle, RefreshCw } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { daysBetweenLocalISO, todayLocalISO } from "@/lib/dateMath";
+import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -69,9 +69,9 @@ const ISSUING_CAS = ["eMudhra", "NSDL e-Governance", "Sify Technologies", "CDAC"
  * say how long is left, that is the whole output.
  *
  * `TODAY` was also captured once at MODULE LOAD, so a tab left open overnight
- * kept counting from yesterday. todayLocalISO() is read per call. */
+ * kept counting from yesterday. todayIstISO() is read per call. */
 function getDaysRemaining(expiryDate: string): number {
-  return daysBetweenLocalISO(todayLocalISO(), String(expiryDate).slice(0, 10)) ?? 0;
+  return daysBetweenLocalISO(todayIstISO(), String(expiryDate).slice(0, 10)) ?? 0;
 }
 
 interface DSCStatus {

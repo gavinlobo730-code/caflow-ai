@@ -37,14 +37,14 @@ test("toEntry derives overdue from the due date, not only the stored status", ()
   const src = code(FILE);
   assert.match(src, /TERMINAL_FILING_STATUSES/,
     "a filed record must never be reported overdue no matter its due date");
-  assert.match(src, /isOverdue\s*=\s*!TERMINAL_FILING_STATUSES\.has\(mapped\)\s*&&\s*!!raw\.due_date\s*&&\s*raw\.due_date\s*<\s*todayLocalISO\(\)/,
+  assert.match(src, /isOverdue\s*=\s*!TERMINAL_FILING_STATUSES\.has\(mapped\)\s*&&\s*!!raw\.due_date\s*&&\s*raw\.due_date\s*<\s*todayIstISO\(\)/,
     "overdue must be computed from due_date < today, not read off the status column alone");
   assert.match(src, /filing_status:\s*isOverdue\s*\?\s*"overdue"\s*:\s*mapped/,
     "the derived flag must actually override the mapped status");
 });
 
-test("uses the same local-today the due-date colouring elsewhere on this product already uses", () => {
+test("uses India's today, the helper every screen starts from, and not a second 'today' computed here", () => {
   const src = code(FILE);
-  assert.match(src, /import \{ todayLocalISO \} from "@\/lib\/dateMath"/,
+  assert.match(src, /import \{[^}]*\btodayIstISO\b[^}]*\} from "@\/lib\/dates\/format"/,
     "the existing helper must be reused rather than a second 'today' computed here");
 });

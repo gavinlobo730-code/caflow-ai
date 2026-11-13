@@ -27,7 +27,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { formatDuration } from "@/lib/data/timeTracking";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client, UnassignedWork, WorkloadMember, WorkloadTask } from "@/lib/types";
 
@@ -134,7 +134,7 @@ export function OpenWorkPanel({ members, unassigned, clients, onChanged }: {
 }) {
   const [picked, setPicked] = useState<{ task: WorkloadTask; from: string | null } | null>(null);
   const clientName = new Map(clients.map((c) => [c.id, c.client_name]));
-  const today = todayLocalISO();
+  const today = todayIstISO();
   const shownUnassigned = arrayOrEmpty<WorkloadTask>(unassigned?.tasks);
   const withWork = members.filter((m) => m.active_tasks > 0);
 

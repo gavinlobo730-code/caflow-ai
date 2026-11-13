@@ -27,14 +27,13 @@
  * `toISOString()` slice, which reads yesterday until 05:30 IST); callers that
  * test several rows pass it once so every row is judged against one day.
  */
-import { todayLocalISO } from "../dateMath.ts";
-
+import { todayIstISO } from "../dates/format.ts";
 /** Workflow states that owe nothing, however far past the due date. */
 export const SETTLED_FILING_STATUSES: ReadonlySet<string> = new Set(["filed", "na"]);
 
 export function isOverdue(
   entry: { due_date?: string | null; filing_status: string },
-  todayISO: string = todayLocalISO(),
+  todayISO: string = todayIstISO(),
 ): boolean {
   if (SETTLED_FILING_STATUSES.has(entry.filing_status)) return false;
   if (entry.filing_status === "overdue") return true;
@@ -50,7 +49,7 @@ export function isOverdue(
  */
 export function isUpcoming(
   entry: { due_date?: string | null; filing_status: string },
-  todayISO: string = todayLocalISO(),
+  todayISO: string = todayIstISO(),
 ): boolean {
   if (SETTLED_FILING_STATUSES.has(entry.filing_status) || isOverdue(entry, todayISO)) return false;
   const due = (entry.due_date ?? "").slice(0, 10);
@@ -69,7 +68,7 @@ export type FilingTrackerStatus = "Pending" | "Filed" | "Overdue" | "Not applica
  */
 export function filingTrackerStatus(
   entry: { due_date?: string | null; filing_status?: string | null; filed_date?: string | null },
-  todayISO: string = todayLocalISO(),
+  todayISO: string = todayIstISO(),
 ): FilingTrackerStatus {
   const word = entry.filing_status ?? "";
   if (word === "filed" || (entry.filed_date ?? "") !== "") return "Filed";

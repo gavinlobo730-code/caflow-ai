@@ -45,7 +45,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { api } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
@@ -281,7 +281,7 @@ export default function RisksPage() {
   }, [rows]);
 
   function exportCsv() {
-    downloadCsv(`risk-report-${todayLocalISO()}.csv`, toCsvRows([
+    downloadCsv(`risk-report-${todayIstISO()}.csv`, toCsvRows([
       ["Client", "Risk Type", "Description", "Severity", "Recommended Action"],
       ...rows.map((r) => [r.client_name, r.risk_type, r.description, r.severity, r.action]),
     ]));

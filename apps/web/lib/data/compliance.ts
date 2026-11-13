@@ -23,7 +23,7 @@ import { api } from "@/lib/api";
 import type { ApiResp, ObligationFilingResult } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 export interface ComplianceEntry {
@@ -85,7 +85,7 @@ const TERMINAL_FILING_STATUSES = new Set(["filed"]);
 function toEntry(raw: RawObligation): ComplianceEntry {
   const mapped = STATUS_TO_FILING_STATUS[raw.status] ?? "pending";
   const isOverdue = !TERMINAL_FILING_STATUSES.has(mapped)
-    && !!raw.due_date && raw.due_date < todayLocalISO();
+    && !!raw.due_date && raw.due_date < todayIstISO();
   return {
     id: raw.id,
     client_id: raw.client_id,

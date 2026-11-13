@@ -11,13 +11,13 @@ import { getClients } from "@/lib/data/clients";
 import { api, type BillingSchedule } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { paiseFromRupeeInput, rupeeInputFromPaise, bpsFromPercentInput } from "@/lib/money/rupeeInput";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { formatDate } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 
@@ -76,7 +76,7 @@ function SetRetainerModal({
     existing ? String(existing.gst_rate) : "18");
   const [cadence, setCadence] = useState<string>(existing?.cadence ?? "monthly");
   const [serviceId, setServiceId] = useState<string>(existing?.service_id ?? "");
-  const [nextRun, setNextRun] = useState<string>(existing?.next_run_date ?? todayLocalISO());
+  const [nextRun, setNextRun] = useState<string>(existing?.next_run_date ?? todayIstISO());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Text that is not a date reads as blank, which the server takes as "today" on a new retainer and "leave it as it was" on an edit: either
@@ -288,7 +288,7 @@ export default function RetainerPage() {
 
   const active = schedules.filter(s => s.is_active);
   const totalPerPeriod = active.reduce((sum, s) => sum + s.amount_paise, 0);
-  const dueNow = active.filter(s => s.next_run_date && s.next_run_date <= todayLocalISO());
+  const dueNow = active.filter(s => s.next_run_date && s.next_run_date <= todayIstISO());
 
   async function generate(schedule: BillingSchedule) {
     setBusyId(schedule.id);

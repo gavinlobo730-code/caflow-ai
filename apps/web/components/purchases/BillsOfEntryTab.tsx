@@ -29,7 +29,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import { AccountLookup, type AccountLike } from "@/components/lookups/AccountLookup";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { todayLocalISO } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -40,7 +40,7 @@ type Msg = { type: "ok" | "err"; text: string } | null;
 
 const BLANK = {
   be_number: "",
-  be_date: todayLocalISO(),
+  be_date: todayIstISO(),
   port_code: "",
   assessable_value: "",
   basic_customs_duty: "",

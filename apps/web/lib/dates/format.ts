@@ -241,11 +241,9 @@ export function formatMonthYear(value: string | null | undefined, fallback: stri
 }
 
 /**
- * TODAY IN INDIA as `YYYY-MM-DD` — the one screen that compares a stored due
- * date with "now" and must not use the browser's own midnight for it
- * (`lib/dateMath.todayLocalISO` is the browser's calendar day, which is right
- * for a form default and wrong for "is this return overdue" when the reader is
- * abroad). A key, not a display value: print it through `formatDate`.
+ * TODAY IN INDIA as `YYYY-MM-DD` — THE day every screen starts from, compares a stored date with, and sends. A firm's day is India's whatever
+ * zone the browser is set to (POST-A-404): the browser's own calendar day is a day behind or ahead of it for part of every day, which dates a form's starting
+ * value, an "overdue" and a day count wrongly, and `lib/dateMath` no longer has a helper that reads it. A key, not a display value: print it through `formatDate`.
  */
 export function todayIstISO(now: number = Date.now()): string {
   const wall = istWallClock(now);

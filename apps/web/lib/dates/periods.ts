@@ -11,9 +11,8 @@
  * day for any browser running in an ahead-of-UTC timezone — i.e. every
  * India-based user of this product).
  */
-import { toLocalISO, todayLocalISO, currentFinancialYearLabel } from "../dateMath.ts";
-import { MONTH_ABBREVIATIONS as MONTH_ABBR, formatDate } from "./format.ts";
-
+import { toLocalISO, currentFinancialYearLabel, istToday } from "../dateMath.ts";
+import { MONTH_ABBREVIATIONS as MONTH_ABBR, formatDate, todayIstISO } from "./format.ts";
 export type PeriodMode =
   | "today"
   | "yesterday"
@@ -105,7 +104,7 @@ export const FY_CHOICE_COUNT = 5;
  */
 export function financialYearChoices(
   count: number = FY_CHOICE_COUNT,
-  today: Date = new Date(),
+  today: Date = istToday(),
 ): string[] {
   const current = currentFinancialYearLabel(today);
   return Array.from({ length: count }, (_, i) => shiftFY(current, -i));
@@ -122,7 +121,7 @@ export function financialYearChoices(
  * Returns the CURRENT financial year for anything this cannot parse, which is
  * the same answer every other picker in the product starts from.
  */
-export function financialYearOfMonth(month?: string | null, today: Date = new Date()): string {
+export function financialYearOfMonth(month?: string | null, today: Date = istToday()): string {
   const text = String(month ?? "").trim();
   const match = /^(\d{4})-(\d{2})$/.exec(text);
   if (!match) return currentFinancialYearLabel(today);
@@ -144,7 +143,7 @@ export function financialYearOfMonth(month?: string | null, today: Date = new Da
 export function financialYearChoicesAround(
   month?: string | null,
   count: number = FY_CHOICE_COUNT,
-  today: Date = new Date(),
+  today: Date = istToday(),
 ): string[] {
   const anchor = financialYearOfMonth(month, today);
   const years = Array.from({ length: count }, (_, i) => shiftFY(anchor, -i));
@@ -193,7 +192,7 @@ export function assessmentYearFor(financialYear: string): string {
 export function assessmentYearChoicesAround(
   month?: string | null,
   count: number = FY_CHOICE_COUNT,
-  today: Date = new Date(),
+  today: Date = istToday(),
 ): string[] {
   return financialYearChoicesAround(month, count, today).map(assessmentYearFor);
 }
@@ -220,7 +219,7 @@ export function decodePeriodChoice(
  */
 export function periodChoices(
   count: number = FY_CHOICE_COUNT,
-  today: Date = new Date(),
+  today: Date = istToday(),
 ): { value: string; label: string }[] {
   return [
     { value: "today", label: "Today" },
@@ -244,7 +243,7 @@ export function resolvePeriodRange(
   mode: PeriodMode,
   financialYear: string,
   custom: { from: string; to: string },
-  todayIso: string = todayLocalISO(),
+  todayIso: string = todayIstISO(),
 ): DateRange {
   const today = new Date(`${todayIso}T00:00:00`);
   switch (mode) {

@@ -13,8 +13,8 @@ import {
   Receipt, CalendarDays, ArrowRight, CalendarCheck, ShieldCheck,
 } from "lucide-react";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { toLocalISO, dueDateUrgency, fromLocalISO } from "@/lib/dateMath";
-import { formatDate, formatMonthYear } from "@/lib/dates/format";
+import { toLocalISO, dueDateUrgency, fromLocalISO, istToday } from "@/lib/dateMath";
+import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { useToast } from "@/components/ui/use-toast";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -566,7 +566,7 @@ type StatutoryRun = Pick<PayrollRun, "id" | "client_id" | "month" | "status">;
 
 
 function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
-  const today = new Date();
+  const today = istToday();
   const deadlines = getStatutoryDeadlines(today);
 
   // THE DATES THE ENGINE OWNS (PAY-19). The three monthly deposits and the four
@@ -1013,7 +1013,7 @@ export default function PayrollPage() {
   // The month the QUEUE is showing. Defaults to the current IST month — the
   // bureau opens this on the 3rd looking at the month just ended, and the
   // control is right there to move it.
-  const [queueMonth, setQueueMonth] = useState(() => toLocalISO(new Date()).slice(0, 7));
+  const [queueMonth, setQueueMonth] = useState(() => todayIstISO().slice(0, 7));
 
   const [viewSlip, setViewSlip] = useState<PayrollSlip | null>(null);
 

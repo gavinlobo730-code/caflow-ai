@@ -32,7 +32,7 @@ import {
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
 import { fetchPlain, jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { todayLocalISO } from "@/lib/dateMath";
+
 import {
   isValidBillLine, previewBillTotals, validateBillEditor, findBlockedCreditHits,
   BLOCKED_CREDIT_REASONS, ineligibleGstPaise, buildLinePayload,
@@ -90,7 +90,7 @@ function unreadOn(l: EditorLine, f: NonNullable<EditorLine["unread"]>[number]): 
 }
 
 function todayISO(): string {
-  return todayLocalISO();
+  return todayIstISO();
 }
 
 interface ExtractedInvoice {

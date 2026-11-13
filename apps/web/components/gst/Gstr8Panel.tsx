@@ -33,9 +33,10 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Button } from "@/components/ui/button";
+import { istToday } from "@/lib/dateMath";
 
 function todayPeriod(): string {
-  const d = new Date();
+  const d = istToday();
   return `${String(d.getMonth() + 1).padStart(2, "0")}${d.getFullYear()}`;
 }
 

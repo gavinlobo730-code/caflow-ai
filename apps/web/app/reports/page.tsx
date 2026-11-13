@@ -27,7 +27,8 @@ import { formatPaise, formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 
-import { todayLocalISO, daysBetweenLocalISO } from "@/lib/dateMath";
+import { daysBetweenLocalISO, istToday } from "@/lib/dateMath";
+import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -139,16 +140,16 @@ const REPORTS = [
 // whole day and floor() took the day off between 00:00 and 05:30 — on the
 // ageing figure of an unpaid invoice.
 function daysBetween(dateStr: string): number {
-  return daysBetweenLocalISO(String(dateStr).slice(0, 10), todayLocalISO()) ?? 0;
+  return daysBetweenLocalISO(String(dateStr).slice(0, 10), todayIstISO()) ?? 0;
 }
 
 function currentMonthStr(): string {
-  const now = new Date();
+  const now = istToday();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function currentFYStart(): string {
-  const now = new Date();
+  const now = istToday();
   const fyYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   return `${fyYear}-04-01`;
 }
@@ -579,7 +580,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   const [selectedClientId, setSelectedClientId] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
   const [fromDate, setFromDate] = useState(currentFYStart());
-  const [toDate, setToDate] = useState(todayLocalISO());
+  const [toDate, setToDate] = useState(todayIstISO());
 
   // Load clients once
   const ensureClients = useCallback(async () => {
@@ -666,7 +667,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
       } else if (reportId === "compliance_status") {
         const [entries, allClients] = await Promise.all([getComplianceCalendar(), getClients()]);
         const clientNameById = new Map(allClients.map((c) => [c.id, c.client_name]));
-        const today = todayLocalISO();
+        const today = todayIstISO();
 
         // Group by client
         const map = new Map<string, { name: string; entries: ComplianceEntry[] }>();

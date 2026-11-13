@@ -138,13 +138,13 @@ test("the screen and the database draw the line in the same place", () => {
 test("the stock transfer's date starts from India's day and the file does not reach for the browser's", () => {
   const code = read(TRANSFER);
   assert.match(code, /const \[when, setWhen\] = useState\(todayIstISO\(\)\);/, "the transfer's date does not start from India's day");
-  assert.doesNotMatch(code, /todayLocalISO/, "the stock panel reads the browser's day");
+  assert.doesNotMatch(code, /todayLocalISO|toLocalISO\(\s*new Date\(\s*\)\s*\)/, "the stock panel reads the browser's day");
   // ...and so does the day the page hands it as the date its position is as at: the panel takes the page's, and a page that falls back to the browser's day gives it a different one.
   const page = read(INVENTORY);
-  assert.doesNotMatch(page, /asAt \|\| todayLocalISO\(\)/, "the inventory page falls back to the browser's day for the stock panels");
+  assert.doesNotMatch(page, /asAt \|\| (?:todayLocalISO|toLocalISO\(\s*new Date\(\s*\)\s*\))/, "the inventory page falls back to the browser's day for the stock panels");
   assert.equal((page.match(/asAt \|\| todayIstISO\(\)/g) ?? []).length, 3, "one of the three stock panels is given another day than India's");
   // The stock adjustment and the NRV write-down on the same page post to the books and start from a day too.
-  assert.doesNotMatch(page, /\btodayLocalISO\b/, "the inventory page reads the browser's day somewhere (the adjustment's and the write-down's date start from it)");
+  assert.doesNotMatch(page, /\btodayLocalISO\b|toLocalISO\(\s*new Date\(\s*\)\s*\)/, "the inventory page reads the browser's day somewhere (the adjustment's and the write-down's date start from it)");
   assert.equal((page.match(/const today = todayIstISO\(\);/g) ?? []).length, 2, "the adjustment's and the write-down's date do not both start from India's day");
 });
 
@@ -155,7 +155,7 @@ test("the stock transfer's date starts from India's day and the file does not re
 test("the ageing schedule starts from India's day, reads nothing for a blank or unreadable As at, and says so", () => {
   const code = read(AGEING);
   assert.match(code, /const \[asOf, setAsOf\] = useState<string>\(todayIstISO\(\)\);/, "the schedule does not start from India's day");
-  assert.doesNotMatch(code, /todayLocalISO/, "the page reads the browser's day");
+  assert.doesNotMatch(code, /todayLocalISO|toLocalISO\(\s*new Date\(\s*\)\s*\)/, "the page reads the browser's day");
   const load = bodyOf(code, /const load = useCallback\(async \(\) => \{/);
   const firstGuard = load.indexOf("if (!asOf)");
   assert.ok(firstGuard >= 0 && firstGuard < load.indexOf("scheduleIiiAgeing("), "load() can ask the server for a schedule with no date: it answers as at today under a box that says nothing");
@@ -208,7 +208,7 @@ test("the Form 15CA and 15CB fields of a bill are sent only when their block is 
 test("the overdue-interest panel holds Prepare until the table on screen is the one for the date in the box", () => {
   const code = read(INTEREST);
   assert.match(code, /const \[asOf, setAsOf\] = useState\(todayIstISO\(\)\);/, "the panel does not start from India's day");
-  assert.doesNotMatch(code, /todayLocalISO/);
+  assert.doesNotMatch(code, /todayLocalISO|toLocalISO\(\s*new Date\(\s*\)\s*\)/);
   const load = bodyOf(code, /const load = useCallback\(async \(\) => \{/);
   assert.match(load, /setPreview\(objectWithLists<LateInterestPreview>\([^;]*\)\);\s*setPreviewFor\(asOf\);/, "the date the table was worked out for is not remembered when the table arrives");
   // The table and the date it is for are set together and nowhere else: a failed read that also said "for this date" would leave Prepare live over the OLD table.

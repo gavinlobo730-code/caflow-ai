@@ -35,7 +35,7 @@ test("the filing date is optional and is never defaulted to today", () => {
   // A default of today would put an interest figure on Table 5.1 that changes
   // every day the return is not filed.
   assert.match(code, /useState\(""\);?\s*$/m);
-  assert.doesNotMatch(code, /setFiledOn\(\s*(todayLocalISO|new Date)/,
+  assert.doesNotMatch(code, /setFiledOn\(\s*(todayLocalISO|todayIstISO|new Date)/,
     "the filing date must start empty");
   // Sent only when the CA has filled it in.
   assert.match(code, /\.\.\.\(filedOn \? \{ filed_on: filedOn \} : \{\}\)/);
