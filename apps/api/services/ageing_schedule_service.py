@@ -336,6 +336,42 @@ def _write(db, target: str, target_id: str, firm_id: str, client_id: str, update
             .execute())
 
 
+def _was(db, target: str, target_id: str, firm_id: str, client_id: str):
+    """The classification columns of the row as they stand BEFORE a write, or None when there is no such row for this client (POST-A-430).
+
+    One literal read per target, for the reason `_write` gives: the column check can only read a query whose table name and column list are constants. The
+    columns read are the ones the target can be classified by, so the audit event can say what each held, and the same scope the write uses (the account
+    read is the client's own accounts or the firm's shared ones, never another client's). A read that FAILS is not swallowed: a classification that cannot be
+    recorded with what it replaced is not made, because the record is what s.43B(h) and the ageing disclosure are answered from later."""
+    if target == "invoice":
+        rows = (db.table("client_sales_invoices").select("is_disputed, considered_doubtful")
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+    elif target == "bill":
+        rows = (db.table("purchase_bills").select("is_disputed")
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+    elif target == "account":
+        # The write is scoped to this client's own accounts OR the firm's shared ones (client_id IS NULL), by an `or_` expression. The read asks the same two
+        # questions as two literal queries instead, so the column check can read every name (a second f-string expression would be one more it cannot).
+        rows = (db.table("chart_of_accounts").select("unbilled_dues_side")
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+        if not rows:
+            rows = (db.table("chart_of_accounts").select("unbilled_dues_side")
+                    .eq("id", target_id).eq("firm_id", firm_id).is_("client_id", "null").limit(1).execute().data)
+    else:
+        rows = (db.table("vendors").select("msme_status, msme_registration_no, msmed_agreement_days")
+                .eq("id", target_id).eq("firm_id", firm_id).eq("client_id", client_id).limit(1).execute().data)
+    return rows[0] if rows else None
+
+
+def _what_each_column_held(db, target: str, target_id: str, firm_id: str, client_id: str, update: dict) -> dict:
+    """What each column about to be written held before (POST-A-430). A row that is not this client's is the same 404 the write gives, raised BEFORE anything is written."""
+    before = _was(db, target, target_id, firm_id, client_id)
+    if before is None:
+        raise HTTPException(status_code=404,
+                            detail=f"{target} {target_id} not found for this client")
+    return {k: before.get(k) for k in update}
+
+
 def classify(db, firm_id: str, client_id: str, target: str, target_id: str,
              fields: dict) -> dict:
     """Record one classification. Firm AND client scoped on every write — the
@@ -430,11 +466,14 @@ def classify(db, firm_id: str, client_id: str, target: str, target_id: str,
         raise HTTPException(status_code=503,
                             detail="No database configured — a classification cannot be recorded")
 
+    # What each column held before, read first (POST-A-430): the route puts it in the edit log beside what it now holds.
+    was = _what_each_column_held(db, target, target_id, firm_id, client_id, update)
+
     res = _write(db, target, target_id, firm_id, client_id, update)
     if not getattr(res, "data", None):
         raise HTTPException(status_code=404,
                             detail=f"{target} {target_id} not found for this client")
-    return {"target": target, "target_id": target_id, "set": update}
+    return {"target": target, "target_id": target_id, "set": update, "was": was}
 
 
 # ── The unbilled-dues review ─────────────────────────────────────────────────

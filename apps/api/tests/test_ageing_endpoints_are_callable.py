@@ -111,19 +111,31 @@ def test_a_registration_number_cannot_be_recorded_without_a_classification():
 # test that each branch sends what it claims, and only that.
 
 class _FakeQuery:
-    def __init__(self, sink): self.sink = sink
+    def __init__(self, sink, prior): self.sink, self.prior = sink, prior
     def update(self, payload): self.sink["payload"] = payload; return self
+    def select(self, columns): self.sink["select"] = columns; return self       # the read of what a row holds BEFORE it is classified (POST-A-430)
+    def limit(self, n): return self
+    def or_(self, expr): self.sink.setdefault("or", []).append(expr); return self
     def eq(self, col, val): self.sink.setdefault("eq", []).append((col, val)); return self
     def execute(self):
+        if "select" in self.sink:
+            return type("R", (), {"data": [dict(self.prior)] if self.prior is not None else []})()
         return type("R", (), {"data": [{"id": self.sink.get("id")}]})()
 
 
 class _FakeDB:
-    def __init__(self): self.calls = []
+    def __init__(self, prior=None): self.calls, self.prior = [], ({} if prior is None else prior)
     def table(self, name):
         sink = {"table": name}
         self.calls.append(sink)
-        return _FakeQuery(sink)
+        return _FakeQuery(sink, self.prior)
+
+
+def _written(db):
+    """The one call that wrote (the read before it is `calls[0]`)."""
+    writes = [c for c in db.calls if "payload" in c]
+    assert len(writes) == 1
+    return writes[0]
 
 
 @pytest.mark.parametrize("fields,table,expected", [
@@ -136,18 +148,18 @@ def test_invoice_branches_write_exactly_what_was_sent(fields, table, expected):
     from services import ageing_schedule_service as svc
     db = _FakeDB()
     svc.classify(db, "f1", CLIENT, "invoice", "i1", dict(fields))
-    assert db.calls[0]["table"] == table
-    assert db.calls[0]["payload"] == expected
-    assert ("firm_id", "f1") in db.calls[0]["eq"]
-    assert ("client_id", CLIENT) in db.calls[0]["eq"]
+    assert _written(db)["table"] == table
+    assert _written(db)["payload"] == expected
+    assert ("firm_id", "f1") in _written(db)["eq"]
+    assert ("client_id", CLIENT) in _written(db)["eq"]
 
 
 def test_a_bill_is_written_to_purchase_bills():
     from services import ageing_schedule_service as svc
     db = _FakeDB()
     svc.classify(db, "f1", CLIENT, "bill", "b1", {"is_disputed": True})
-    assert db.calls[0]["table"] == "purchase_bills"
-    assert db.calls[0]["payload"] == {"is_disputed": True}
+    assert _written(db)["table"] == "purchase_bills"
+    assert _written(db)["payload"] == {"is_disputed": True}
 
 
 def test_a_vendor_classification_does_not_touch_a_registration_it_was_not_given():
@@ -156,7 +168,7 @@ def test_a_vendor_classification_does_not_touch_a_registration_it_was_not_given(
     from services import ageing_schedule_service as svc
     db = _FakeDB()
     svc.classify(db, "f1", CLIENT, "vendor", "v1", {"msme_status": "small"})
-    assert db.calls[0]["payload"] == {"msme_status": "small"}
+    assert _written(db)["payload"] == {"msme_status": "small"}
 
 
 def test_a_vendor_classification_with_evidence_writes_both():
@@ -164,8 +176,8 @@ def test_a_vendor_classification_with_evidence_writes_both():
     db = _FakeDB()
     svc.classify(db, "f1", CLIENT, "vendor", "v1",
                  {"msme_status": "micro", "msme_registration_no": " UDYAM-MH-01-1 "})
-    assert db.calls[0]["payload"] == {"msme_status": "micro",
-                                      "msme_registration_no": "UDYAM-MH-01-1"}
+    assert _written(db)["payload"] == {"msme_status": "micro",
+                                       "msme_registration_no": "UDYAM-MH-01-1"}
 
 
 # ── The SQL function is what production runs ─────────────────────────────────
@@ -297,20 +309,28 @@ def test_an_account_can_be_unmarked():
     from services import ageing_schedule_service as svc
 
     class _DB:
-        def __init__(self): self.payload = None
+        def __init__(self): self.payload, self._reading = None, False
         def table(self, _t): return self
         def update(self, p): self.payload = p; return self
+        def select(self, _c): self._reading = True; return self                 # the read before the write (POST-A-430)
+        def limit(self, _n): return self
         def eq(self, *_a): return self
         # A firm-level account (client_id IS NULL) is markable too — see
         # test_unbilled_dues_marking_reaches_firm_level_accounts.py — so the
         # "account" branch reaches an `.or_(...)` this fake must accept.
         def or_(self, *_a): return self
-        def execute(self): return type("R", (), {"data": [{"id": "a1"}]})()
+        def is_(self, *_a): return self
+        def execute(self):
+            if self._reading:
+                self._reading = False
+                return type("R", (), {"data": [{"unbilled_dues_side": "receivable"}]})()
+            return type("R", (), {"data": [{"id": "a1"}]})()
 
     db = _DB()
     out = svc.classify(db, "f1", CLIENT, "account", "a1", {"unbilled_dues_side": None})
     assert db.payload == {"unbilled_dues_side": None}
     assert out["set"] == {"unbilled_dues_side": None}
+    assert out["was"] == {"unbilled_dues_side": "receivable"}                   # what the account held before it was un-marked
 
 
 def test_the_review_endpoint_is_callable_both_ways(monkeypatch):
