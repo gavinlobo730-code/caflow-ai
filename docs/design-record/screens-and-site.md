@@ -219,7 +219,20 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   `lib/practice/analyticsWindow` is run by its own unit test. The demo seeder sets the member whose hours it records to the
   fixture's own seed cost rate (`DEMO_COST_RATE_PAISE`), read off the first time entry's answer, and only where that member
   has no rate: a re-run never writes over one a Partner typed.
-  **Not done, and in the ledger:** a custom range of days (POST-A-427's remainder: it needs the date boxes' bounds and their
-  drive rows); revenue is still read from `fee_invoices`, so the day the surviving fee-billing engine is chosen (POST-B-193) the
+  **A CUSTOM RANGE OF DAYS IS A FIFTH WINDOW WORD, AND THE SERVER ALONE ANSWERS IT** (POST-A-427, the server half, 13-11-2026;
+  no migration): `period=custom` with `date_from` and `date_to`. Each handler judges the two days with the query-string rule
+  (`core.query_day`), not with a day type, because a day type on a query parameter has no field name to say and its sentence
+  would read "date must be a date written YYYY-MM-DD" on an endpoint with two days; the rule names the parameter, a blank is no
+  day, and a padded or compact day is read as the day. Both are required, and neither is guessed; the later is not after India's
+  today (`ist_today()`); the earlier is not after the later; a one-day window is allowed; a day given with any other window is
+  refused in words and not ignored (the same refusal a `financial_year` with a window other than `fy` gets); a `financial_year`
+  with `custom` keeps its existing refusal. The label is the two days ("01 Apr 2026 to 30 Sep 2026", the year in four digits
+  because `%Y` does not pad one before 1000) and the three endpoints read exactly them, for the invoices and for the hours each
+  reads. The window has no length of its own: it is bounded by the firm's own history, as `fy` is by a year, and the reads are
+  paged (a read stops loudly at the paging cap of a million rows, which no firm is near). The words are said by one resolver,
+  `_period_range`, with `_custom_range` beside it, and the new date-in-a-query-string rule fails an analytics endpoint that takes
+  these days and does not judge them.
+  **Not done, and in the ledger:** the screen's two date boxes (each held by the date drive's matrix, so the work is the boxes
+  and their rows, and `lib/practice/analyticsWindow` still offers only the four windows it did); revenue is still read from `fee_invoices`, so the day the surviving fee-billing engine is chosen (POST-B-193) the
   revenue read is re-pointed, and the cost, the worth and the rules do not move. The seeded demo firm's hours are all
   `is_billable: false` (the practice bills a fixed fee), so its realization is a dash and says "no billable time recorded".

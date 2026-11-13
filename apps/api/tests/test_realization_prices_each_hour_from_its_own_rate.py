@@ -492,7 +492,7 @@ def test_a_financial_year_with_any_other_window_is_refused_and_not_ignored(monke
 
 def test_an_unknown_window_is_a_422_at_the_door_and_never_the_month():
     adapter = TypeAdapter(an.PeriodWord)
-    for word in ("week", "month", "quarter", "fy"):
+    for word in ("week", "month", "quarter", "fy", "custom"):
         assert adapter.validate_python(word) == word
     for word in ("decade", "year", "", "MONTH"):
         with pytest.raises(ValidationError):
