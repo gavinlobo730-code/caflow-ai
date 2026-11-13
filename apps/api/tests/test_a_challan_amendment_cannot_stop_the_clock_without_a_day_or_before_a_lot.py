@@ -447,12 +447,27 @@ def test_the_detector_sees_what_the_first_regex_did_not():
     assert not flagged('def f(db):\n    return db.table("delivery_challans").select("id").execute()\n'), "a read is left alone"
 
 
-def test_no_migration_other_than_the_two_that_made_the_table_touches_it():
-    """A database function or trigger that issues a challan would be in a migration. Today the table is named only by 392 (it made it) and 462 (the lots) and their rollbacks."""
+def test_no_migration_other_than_the_three_that_made_or_wrote_the_table_touches_it():
+    """A database function or trigger that issues a challan would be in a migration. Today the table is named only by 392 (it made it), 462 (the lots) and 585 (the atomic writes and the moment of issue) and their
+    rollbacks; 585 issues nothing, which the next test reads."""
     named = {p.name for p in (API / "migrations").glob("*.sql") if "delivery_challans" in p.read_text(encoding="utf-8")}
     allowed = {"392_the_sales_cycle_before_the_tax_invoice.sql", "392_the_sales_cycle_before_the_tax_invoice_rollback.sql",
-               "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return.sql", "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return_rollback.sql"}
+               "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return.sql", "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return_rollback.sql",
+               "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued.sql",
+               "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_rollback.sql"}
     assert named <= allowed, f"a migration touches delivery_challans: {sorted(named - allowed)}. Read it: if it issues a challan, a draft is no longer the state the product makes."
+
+
+def test_migration_585_names_the_table_and_issues_no_challan():
+    """The one door that issues a challan is `sales_cycle_service.issue_challan`. The functions of migration 585 make a DRAFT (and refuse any other status), stamp an issued challan received back, and correct a DRAFT, and its triggers
+    only refuse; none of them sets a status of `issued`, in a SET clause or in a row it inserts."""
+    text = (API / "migrations" / "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued.sql").read_text(encoding="utf-8")
+    code = re.sub(r"--[^\n]*", "", text)
+    # a SET clause that assigns the status 'issued' (a WHERE clause may compare it, which is a read)
+    assert not re.search(r"\bSET\b(?:(?!\bWHERE\b)[^;])*?\bstatus\s*=\s*'issued'", code, flags=re.I | re.S), "a function of migration 585 sets a challan's status to issued"
+    assert "coalesce(p_header ->> 'status', 'draft') <> 'draft'" in code, "the create no longer refuses a header that names a status other than draft"
+    assert "IF v_status IS DISTINCT FROM 'draft' THEN" in code, "the correction no longer refuses a challan that is not a draft"
+    assert not re.search(r"\bINSERT\s+INTO\s+public\.delivery_challans\b[^;]*'issued'", code, flags=re.I | re.S), "a function of migration 585 inserts an issued challan"
 
 
 def _balanced_call_arguments(text: str, name: str):
