@@ -661,16 +661,22 @@ def test_the_schedule_carries_the_basis_the_screen_shows(monkeypatch):
     """The depreciation screen used to recompute the annual charge in the
     browser off its own copy of the rate. It now shows what the backend will
     actually post, so the basis has to travel with it."""
+    import datetime
     db = TypeCheckedFakeDB()
     _seed_asset(db, wdv_rate_percent=18.10, useful_life_years=15,
                 depreciation_posted_through="2026-05-31")
     monkeypatch.setattr(fa, "_db", lambda: db)
+    # On a fixed day: the monthly figure is the share the month takes of the year's figure (POST-A-436), which differs from a
+    # twelfth by a paisa in some months, so a test on the real clock passed in some months and failed in others. June is the
+    # third month of the year, one of the months whose share is a paisa above a twelfth of 18,100.00.
+    monkeypatch.setattr(fa, "ist_today", lambda: datetime.date(2026, 6, 15))
 
     row = fa.depreciation_schedule(client_id=CLIENT, current_user=USER)["data"][0]
     assert row["wdv_rate_percent"] == 18.10
     assert row["useful_life_years"] == 15
     assert row["depreciation_posted_through"] == "2026-05"
-    assert row["monthly_depreciation_paise"] == row["annual_depreciation_paise"] // 12
+    assert row["monthly_depreciation_paise"] == fa._month_share(row["annual_depreciation_paise"], "2026-06", None)
+    assert row["monthly_depreciation_paise"] == row["annual_depreciation_paise"] // 12 + 1, "June's share is a paisa over"
 
 
 def test_the_type_checked_fake_catches_the_defect_it_exists_for():

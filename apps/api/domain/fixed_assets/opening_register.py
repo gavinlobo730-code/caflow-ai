@@ -33,8 +33,8 @@ WHAT THIS MODULE DECIDES, AND WHAT IT DOES NOT
 
 THE POSITION IS A FINANCIAL-YEAR END, AND THAT IS A DECISION
     Depreciation is charged one financial year at a time: a reducing balance is
-    ONE annual figure computed from the year's OPENING written-down value and
-    divided by twelve (`_annual_depreciation_for_period`). An asset stated as at
+    ONE annual figure computed from the year's OPENING written-down value, each
+    month taking its share of it (`_annual_depreciation_for_period`). An asset stated as at
     30 September carries six months of that year's charge inside its accumulated
     figure, and nothing in the file says what the year opened at — so the next
     month's charge would be computed off the wrong base for the rest of the year.

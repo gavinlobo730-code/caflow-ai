@@ -44,7 +44,10 @@ def _wdv_asset(**kwargs) -> dict:
 
 
 def _monthly(annual: int) -> int:
-    return math.floor(annual / 12)
+    """April's charge, the first month of the year: `annual // 12`. Later months take their share of the year (POST-A-436), which
+    is the same or a paisa more, so the twelve add up to the year's figure."""
+    from routers.fixed_assets import _month_share
+    return _month_share(annual, "2026-04", None)
 
 
 # ─── SLM Tests ───────────────────────────────────────────────────────────────
@@ -151,15 +154,14 @@ class TestSLM:
         assert _monthly(annual) == 13_333_33  # ₹13,333.33 monthly
 
     def test_slm_mid_year_acquisition_monthly(self):
-        """Mid-year acquisition: annual is computed; caller divides by 12 for months active."""
-        # Asset bought October — only 6 months in year 1
-        # The engine returns annual; the router applies math.floor(annual/12)*months_active
+        """Mid-year acquisition: the engine returns the year's figure and October to March take their six shares of it, which add
+        up to the second half of the year exactly (POST-A-436)."""
+        from routers.fixed_assets import _month_share
         asset = _sl_asset(purchase_cost_paise=120_000_00, useful_life_years=5)
         annual = _compute_annual_depreciation(asset)
-        monthly = _monthly(annual)
-        # 6 months of depreciation:
-        six_months = monthly * 6
-        assert six_months == monthly * 6  # caller responsibility
+        months = [f"2026-{m:02d}" for m in range(10, 13)] + [f"2027-{m:02d}" for m in range(1, 4)]
+        six_months = sum(_month_share(annual, p, None) for p in months)
+        assert six_months == annual - annual * 6 // 12
         assert isinstance(six_months, int)  # always integer paise
 
 
@@ -308,16 +310,18 @@ class TestEdgeCases:
             annual = _compute_annual_depreciation(asset)
             assert annual >= 0, f"{method}: depreciation must be >= 0"
 
-    def test_monthly_depreciation_is_floor_of_annual_div_12(self):
-        """Monthly = floor(annual / 12) — verified for both methods."""
+    def test_a_month_takes_its_share_of_the_year_within_a_paisa_of_a_twelfth(self):
+        """Each month takes `annual x k // 12 - annual x (k - 1) // 12` (POST-A-436), for both methods."""
+        from routers.fixed_assets import _month_share
+        months = [f"2026-{m:02d}" for m in range(4, 13)] + [f"2027-{m:02d}" for m in range(1, 4)]
         for asset in [
             _sl_asset(purchase_cost_paise=100_001_00, useful_life_years=3),
             _wdv_asset(purchase_cost_paise=100_001_00, wdv_rate_percent=25.0),
         ]:
             annual = _compute_annual_depreciation(asset)
-            monthly = math.floor(annual / 12)
-            assert isinstance(monthly, int)
-            assert monthly == math.floor(annual / 12)
+            shares = [_month_share(annual, p, None) for p in months]
+            assert all(isinstance(s, int) for s in shares)
+            assert all(annual // 12 <= s <= annual // 12 + 1 for s in shares)
 
     def test_paise_arithmetic_no_float_leakage(self):
         """Verify output is always int, never float."""
@@ -334,26 +338,25 @@ class TestEdgeCases:
 # ─── Journal Output Verification ─────────────────────────────────────────────
 
 class TestDepreciationJournalIntegrity:
-    """Verify that monthly depreciation * 12 months never exceeds annual."""
+    """A year's twelve months add up to the year's figure exactly (POST-A-436): not more, and no longer less."""
 
-    def test_12_months_never_exceed_annual(self):
-        """Sum of 12 monthly floor values should be <= annual (floor division)."""
+    MONTHS = [f"2026-{m:02d}" for m in range(4, 13)] + [f"2027-{m:02d}" for m in range(1, 4)]
+
+    def test_12_months_are_the_year(self):
+        from routers.fixed_assets import _month_share
         for cost in [80_000_00, 150_000_00, 800_000_00, 100_001_00]:
             for life in [3, 5, 10]:
                 asset = _sl_asset(purchase_cost_paise=cost, useful_life_years=life)
                 annual = _compute_annual_depreciation(asset)
-                monthly = math.floor(annual / 12)
-                total_12 = monthly * 12
-                assert total_12 <= annual, (
-                    f"12×monthly ({total_12}) > annual ({annual}) for cost={cost} life={life}"
-                )
+                total_12 = sum(_month_share(annual, p, None) for p in self.MONTHS)
+                assert total_12 == annual, f"12 months ({total_12}) != annual ({annual}) for cost={cost} life={life}"
 
-    def test_wdv_12_months_never_exceed_annual(self):
+    def test_wdv_12_months_are_the_year(self):
+        from routers.fixed_assets import _month_share
         for cost in [100_000_00, 500_000_00, 800_000_00]:
             asset = _wdv_asset(purchase_cost_paise=cost)
             annual = _compute_annual_depreciation(asset)
-            monthly = math.floor(annual / 12)
-            assert monthly * 12 <= annual
+            assert sum(_month_share(annual, p, None) for p in self.MONTHS) == annual
 
     def test_schedule_ii_rates_exist_for_all_categories(self):
         """Every category in the platform taxonomy has an ANSWER — a rate, a

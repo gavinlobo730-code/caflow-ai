@@ -1531,8 +1531,8 @@ function DepreciationTab({ clientId }: { clientId: string }) {
 
   const totalAnnual = rows.reduce((s, r) => s + r.annual_depreciation_paise, 0);
   // The sum of the server's monthly figures, not the total annual divided by
-  // twelve: each asset's monthly charge is floored to whole paise on its own,
-  // so floor(Σannual/12) is not what will actually be posted.
+  // twelve: each asset's month takes its own share of its own year's figure,
+  // in whole paise, so Σannual/12 is not what will actually be posted.
   const totalMonthly = rows.reduce((s, r) => s + r.monthly_depreciation_paise, 0);
 
   return (
