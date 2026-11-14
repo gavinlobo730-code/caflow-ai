@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { Wallet, RefreshCw, Bell, Activity } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
@@ -85,6 +86,13 @@ function Collections() {
           <p className="text-lg font-semibold text-state-ready tabular-nums mt-1">{formatPaise(dash?.collected_cash_paise ?? 0)}</p>
         </div>
       </div>
+
+      {/* POST-A-099: the figures above are totals; the invoices behind them are listed, most overdue first, on AR Aging. */}
+      <p className="text-xs text-gray-500 mb-4">
+        The invoices behind the overdue and receivable figures are listed, most overdue first, on{" "}
+        <Link href="/practice/ar" className="underline hover:text-brand">AR Aging</Link>. Each opens in the practice&apos;s
+        own books, where a receipt against it is recorded.
+      </p>
 
       <div className="flex gap-3">
         <Button variant="plain" size="none" onClick={() => run("sweep")} disabled={busy}

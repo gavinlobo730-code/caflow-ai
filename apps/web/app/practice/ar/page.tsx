@@ -1,21 +1,37 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ClipboardList, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, ClipboardList, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { practiceSalesHref } from "@/lib/invoices/workspaceNav";
 import { readPracticeBooks, type PracticeBooks } from "@/lib/invoices/practiceBooks";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
+import { formatDate } from "@/lib/dates/format";
 
 type Bucket = { paise: number; count: number };
+/** One invoice in a bucket, as the server listed it (POST-A-099): the same reading the bucket's total is made of. */
+type ListedInvoice = {
+  id: string;
+  invoice_no: string | null;
+  customer_id: string | null;
+  /** null when the name could not be read (`customer_names_read` false) or the customer is not found. */
+  customer_name: string | null;
+  invoice_date: string | null;
+  /** The day the ageing runs from: the due date, or the invoice's date plus its credit days. */
+  ageing_from: string | null;
+  days_overdue: number;
+  outstanding_paise: number;
+};
 interface Aging {
   buckets: Record<string, Bucket>;
   total_outstanding_paise: number;
   overdue_paise: number;
   overdue_count: number;
+  invoices_by_bucket?: Record<string, { invoices: ListedInvoice[]; truncated: boolean }>;
+  customer_names_read?: boolean;
 }
 
 const ORDER: { key: string; label: string }[] = [
@@ -35,6 +51,8 @@ function ARDashboard() {
   // none", and "could not find out". Starts as the third, so nothing claims the
   // practice is not set up before the server has said so.
   const [books, setBooks] = useState<PracticeBooks>({ state: "unknown" });
+  // The bucket whose invoices are shown (POST-A-099). One at a time, so the totals stay readable beside it.
+  const [openBucket, setOpenBucket] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -83,13 +101,37 @@ function ARDashboard() {
             </tr>
           </thead>
           <tbody>
-            {ORDER.map(({ key, label }) => (
-              <tr key={key} className="border-b border-ps-border last:border-0">
-                <td className="px-4 py-2.5 text-brand">{label}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(buckets[key]?.paise ?? 0)}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{buckets[key]?.count ?? 0}</td>
-              </tr>
-            ))}
+            {ORDER.map(({ key, label }) => {
+              const count = buckets[key]?.count ?? 0;
+              const isOpen = openBucket === key;
+              const listed = aging?.invoices_by_bucket?.[key];
+              return (
+                <Fragment key={key}>
+                  <tr className="border-b border-ps-border last:border-0">
+                    <td className="px-4 py-2.5 text-brand">
+                      {count > 0 && listed ? (
+                        <button type="button" onClick={() => setOpenBucket(isOpen ? null : key)}
+                          aria-expanded={isOpen} aria-controls={`ar-bucket-${key}`}
+                          className="inline-flex items-center gap-1 hover:underline">
+                          {isOpen ? <ChevronDown size={13} aria-hidden="true" /> : <ChevronRight size={13} aria-hidden="true" />}
+                          {label}
+                        </button>
+                      ) : label}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{formatPaise(buckets[key]?.paise ?? 0)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-500">{count}</td>
+                  </tr>
+                  {isOpen && listed && (
+                    <tr id={`ar-bucket-${key}`} className="border-b border-ps-border bg-ps-bg">
+                      <td colSpan={3} className="px-4 py-3">
+                        <BucketInvoices bucketKey={key} invoices={listed.invoices} truncated={listed.truncated} count={count}
+                          namesRead={aging?.customer_names_read !== false} books={books} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr className="bg-ps-bg font-semibold">
@@ -121,6 +163,50 @@ function ARDashboard() {
           <p>Could not look up the practice&apos;s books, so the link to its invoices is not shown. Refresh to try again.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** The invoices behind one bucket, most overdue first (soonest due first in the not-due bucket, where none is overdue), each opening its own drawer in the practice's books where a receipt is recorded. */
+function BucketInvoices({ bucketKey, invoices, truncated, count, namesRead, books }: {
+  bucketKey: string; invoices: ListedInvoice[]; truncated: boolean; count: number; namesRead: boolean; books: PracticeBooks;
+}) {
+  return (
+    <div className="space-y-2">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-gray-500">
+            <th className="py-1 font-medium">Invoice</th>
+            <th className="py-1 font-medium">Customer</th>
+            <th className="py-1 font-medium">Ageing from</th>
+            <th className="py-1 font-medium text-right">Days overdue</th>
+            <th className="py-1 font-medium text-right">Still owed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.map((inv) => {
+            // Each invoice opens in the practice's own books, where a receipt against it is recorded. Without a known practice there is
+            // nowhere to send it, so the number is shown and not linked.
+            const invoiceHref = books.state === "known" ? practiceSalesHref(books.clientId, { invoiceId: inv.id }) : null;
+            const number = inv.invoice_no || "Unnumbered invoice";
+            return (
+              <tr key={inv.id} className="border-t border-ps-border">
+                <td className="py-1">{invoiceHref ? <Link href={invoiceHref} className="underline hover:text-brand">{number}</Link> : number}</td>
+                <td className="py-1">{inv.customer_name ?? (namesRead ? "Customer not found" : "Name not read")}</td>
+                <td className="py-1">{formatDate(inv.ageing_from)}</td>
+                <td className="py-1 text-right tabular-nums">{inv.days_overdue}</td>
+                <td className="py-1 text-right tabular-nums">{formatPaise(inv.outstanding_paise)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {truncated && (
+        <p className="text-gray-500">
+          Showing the {invoices.length} {bucketKey === "not_due" ? "soonest due" : "most overdue"} of the {count} invoices in this bucket.
+        </p>
+      )}
+      {!namesRead && <p className="text-gray-500">The customers&apos; names could not be read this time. Refresh to try again.</p>}
     </div>
   );
 }

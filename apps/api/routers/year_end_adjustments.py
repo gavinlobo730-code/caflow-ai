@@ -22,6 +22,7 @@ from models.iso_date import a_real_date
 from core.permissions import rbac
 from core.authz import can_access_client
 from services.audit_service import log_event
+from services.internal_client_service import require_client_access
 from services.period_validation_service import period_validation_service
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -277,6 +278,56 @@ def list_adjustments(
         .data
     )
     return api_response(True, rows)
+
+
+@router.get("/adjustments/{adjustment_id}/engagement",
+            # This router is mounted without the client guard, so the route asks it itself: the firm's own practice is a Partner's (G1).
+            dependencies=[Depends(require_client_access)])
+def adjustment_engagement(
+    adjustment_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("year_end", "read")),
+):
+    """Which engagement an adjustment belongs to, so a ledger row can open it (POST-A-096).
+
+    A posted adjustment's journal names it by `year_end_adjustments.id` (`source_type='year_end_adjustment'`), and its screen lives under its
+    ENGAGEMENT, which the ledger row does not carry. This answers the engagement for one adjustment of the client the caller named, after the
+    same engagement scope every route here asks. A missing adjustment, one of another client and one whose engagement the caller may not see
+    all answer the same 404, so the answer says nothing about a client the caller cannot reach."""
+    not_found = HTTPException(status_code=404, detail="Adjustment not found")
+    if not can_access_client(current_user, client_id):
+        raise not_found
+    if _USE_MOCK:
+        for eng_id, rows in _MOCK_ADJUSTMENTS.items():
+            for row in rows:
+                if row.get("id") == adjustment_id and row.get("client_id") == client_id:
+                    eng = _get_mock_engagement(eng_id)
+                    if eng.get("client_id") and not can_access_client(current_user, eng["client_id"]):
+                        raise not_found
+                    return api_response(True, {"adjustment_id": adjustment_id, "engagement_id": eng_id,
+                                               "status": row.get("status")})
+        raise not_found
+
+    from core.supabase_client import get_supabase
+    db = get_supabase()
+    rows = (
+        db.table("year_end_adjustments")
+        .select("id, engagement_id, status")
+        .eq("id", adjustment_id)
+        .eq("firm_id", current_user["firm_id"])
+        .eq("client_id", client_id)
+        .limit(1)
+        .execute()
+        .data
+    ) or []
+    if not rows:
+        raise not_found
+    try:
+        _assert_engagement_scope(db, rows[0]["engagement_id"], current_user)
+    except HTTPException:
+        raise not_found from None
+    return api_response(True, {"adjustment_id": adjustment_id, "engagement_id": rows[0]["engagement_id"],
+                               "status": rows[0].get("status")})
 
 
 @router.patch("/{engagement_id}/adjustments/{adjustment_id}")

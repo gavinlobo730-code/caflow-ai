@@ -25,15 +25,17 @@
  *     day book's own row click already relies on.
  *
  * A SOURCE WITH NOWHERE TO GO IS REFUSED AND NAMED, NEVER GUESSED.
- *     `settlement` and `year_end_adjustment` are the two, and both are refusals
- *     about the ROUTE rather than about the document:
- *       * a settlement's source_id is `payroll_settlements.id`, and the only
- *         screen that shows one is the leaver's drawer inside the employee
- *         list, which is keyed on the EMPLOYEE. The row does not carry one.
- *       * a year-end adjustment lives under `/clients/{c}/year-end/{engagement}`
- *         and the row carries the adjustment's id, not the engagement's.
- *     Sending the CA to a list that cannot show the document is worse than an
- *     unclickable row: it reads as "this is the document" and it is not.
+ *     NO_ROUTE_REASON holds the sentence for such a source, and it is EMPTY since POST-A-096: the last two
+ *     had a screen that could not open them by the id the row carries, and each now has a way in.
+ *       * a settlement (`payroll_settlements.id`) opens on the payroll screen's Inputs tab, which shows the
+ *         RECORDED settlement read from `GET /api/payroll/settlements/{id}`. The leaver's drawer computes a new
+ *         one and showed none that was recorded, so sending the CA there would have read as "this is the
+ *         document" when it was not.
+ *       * a year-end adjustment (`year_end_adjustments.id`) lives under its ENGAGEMENT, which the row does not
+ *         carry. It routes to the year-end list, which asks `GET /api/year-end/adjustments/{id}/engagement` and
+ *         goes on to that engagement's Adjustments stage with the adjustment ringed. No new dynamic route is
+ *         added under /clients/[id] (decision D10): both are query parameters on routes that exist.
+ *     A source added tomorrow with no screen goes back on the map with its own sentence.
  */
 
 /** One target: a route, and what to call the document in a sentence. */
@@ -83,18 +85,16 @@ const ROUTES: Record<string, { module: string; tab: string }> = {
   // Banking.
   bank_transaction:      { module: "bank",         tab: "entries" },
   bank_overpayment:      { module: "bank",         tab: "entries" },
+  // A leaver's settlement: the Inputs tab shows the RECORDED settlement the id names (POST-A-096).
+  settlement:            { module: "payroll",      tab: "inputs" },
+  // A year-end adjustment: the year-end list finds its engagement and opens that engagement's Adjustments stage.
+  year_end_adjustment:   { module: "year-end",     tab: "adjustments" },
 };
 
 /** Why a source that names a document still has no screen to send the CA to.
  *  Rendered as a tooltip, so the row says what it cannot do rather than being
  *  silently inert. */
 export const NO_ROUTE_REASON: Record<string, string> = {
-  settlement:
-    "A settlement is shown inside the leaver's drawer, which opens on the employee — " +
-    "and the ledger row carries the settlement's id, not theirs.",
-  year_end_adjustment:
-    "A year-end adjustment lives under its engagement, and the ledger row carries " +
-    "the adjustment's id, not the engagement's.",
 };
 
 /** The journal entry itself, read-only for a posted one. */
@@ -139,7 +139,7 @@ export function sourceLabel(value: string | null | undefined): string {
  * `noRouteReason` answers that, because a caller wanting a tooltip is a
  * different question from a caller wanting an href:
  *   * the entry carries no source at all (posted before its path stamped one);
- *   * the source names no screen (settlement, year-end adjustment);
+ *   * the source names no screen (none today: NO_ROUTE_REASON is empty);
  *   * the source names a screen but the row carries no source_id, which would
  *     be a breadcrumb leading nowhere.
  */

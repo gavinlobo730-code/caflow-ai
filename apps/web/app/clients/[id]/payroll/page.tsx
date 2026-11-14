@@ -23,6 +23,7 @@ import type { AnnexureIIResponse, ApiResp } from "@/lib/api";
 import { financialYearOfMonth } from "@/lib/dates/periods";
 import { DisburseModal } from "@/components/payroll/DisburseModal";
 import EmployeeDrawer from "@/components/payroll/EmployeeDrawer";
+import RecordedSettlementDialog from "@/components/payroll/RecordedSettlement";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -2257,6 +2258,7 @@ export default function PayrollPage() {
   const { clientId } = useClientNav();
   const [tab, setTab] = useState<Tab>("inputs");
   const [openDoc, setOpenDoc] = useState<string | null>(null);
+  const [openDocTab, setOpenDocTab] = useState<string | null>(null);
   const [firmId, setFirmId] = useState<string>("");
 
   useEffect(() => { getFirmId().then(setFirmId).catch(() => {}); }, []);
@@ -2301,6 +2303,9 @@ export default function PayrollPage() {
     const { tab: t, doc } = openedAt(tabDeepLinkParams.toString());
     if (t && TABS.some((x) => x.id === t)) setTab(t as Tab);
     setOpenDoc(doc);
+    // The tab the document arrived WITH: a run's id rings a row on Register and a settlement's opens on Inputs, so one tab's id
+    // must not be read as the other's when the reader moves between tabs.
+    setOpenDocTab(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabParam, docParam]);
 
@@ -2341,6 +2346,19 @@ export default function PayrollPage() {
             <EmployeesTab clientId={clientId} />
             <SalaryStructuresTab clientId={clientId} firmId={firmId} />
           </div>
+        )}
+        {/* POST-A-096: a ledger row's settlement arrives as ?tab=inputs&doc=<settlement id> and opens the settlement AS RECORDED. The
+            leaver's drawer computes a new one, so it is not where the document is. Closing takes the doc off the address too, so a
+            reload does not open it again. */}
+        {tab === "inputs" && openDoc && openDocTab === "inputs" && (
+          <RecordedSettlementDialog clientId={clientId} settlementId={openDoc}
+            onClose={() => {
+              setOpenDoc(null);
+              const q = new URLSearchParams(window.location.search);
+              q.delete("doc");
+              const qs = q.toString();
+              window.history.replaceState(null, "", qs ? `${window.location.pathname}?${qs}` : window.location.pathname);
+            }} />
         )}
         {/* REGISTER — compute the month and read it employee by employee. */}
         {tab === "register" && <RunsTab clientId={clientId} firmId={firmId} openDoc={openDoc} />}

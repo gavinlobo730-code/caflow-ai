@@ -155,6 +155,7 @@ const FROZEN_BARE: Record<string, Frozen> = {
   "components/knowledge/ClientInstructions.tsx": nym(1, "the add control is the form directly above"),
   "components/notifications/EmailPreferencesPanel.tsx": ntd(1, "an unavailable-settings notice, not an empty list"),
   "components/payroll/EmployeeDrawer.tsx": nym(2, "salary revisions and loans: each has its add form in the same drawer"),
+  "components/payroll/RecordedSettlement.tsx": ntd(1, "a settlement as it was recorded: a stored document, read-only, with nothing a person can add to it"),
   "components/payroll/StatutoryHandoff.tsx": ntd(1, "explains why a liability has no matched bank payment"),
   "components/sales/PriceListsPanel.tsx": nym(1, "no item priced on a list: the picker and Set price are the form directly above (its customers paragraph is an EmptyState with Add Customer)"),
 };

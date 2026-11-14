@@ -1422,6 +1422,28 @@ export type SettlementResult = {
   problems: string[];
 };
 
+/** A full-and-final settlement AS IT WAS RECORDED (POST-A-096): `GET /api/payroll/settlements/{id}`. Nothing in it is recomputed.
+ *  `employee` is null when the employee's row could not be read under this client; `recorded_by` is null when nobody is named. */
+export type RecordedSettlement = {
+  settlement_id: string;
+  employee_id: string;
+  employee: { id: string; name: string | null; employee_code: string | null; status: string | null } | null;
+  financial_year: string | null;
+  leaving_date: string | null;
+  gross_paise: number | null;
+  exempt_paise: number | null;
+  taxable_paise: number | null;
+  deductions_paise: number | null;
+  tds_paise: number | null;
+  net_paid_paise: number | null;
+  journal_entry_id: string | null;
+  posted: boolean;
+  recorded_at: string | null;
+  recorded_by: string | null;
+  components: { kind: "earning" | "deduction"; label: string; gross_paise: number; exempt_paise: number;
+                tax_head: string; exempt_section: string; statute: string }[];
+};
+
 export type SalaryRevisionInput = {
   client_id: string;
   effective_from: string;
@@ -6345,6 +6367,11 @@ export const api = {
                 error: string | null }>(
         `/api/payroll/employees/${employeeId}/settlement/record`,
         { method: "POST", body: JSON.stringify(body) }),
+
+    /** A settlement already recorded, as it was stored: what a ledger row's drill-through opens (POST-A-096). */
+    getSettlement: (settlementId: string, clientId: string) =>
+      request<{ success: boolean; data: RecordedSettlement; error: string | null }>(
+        `/api/payroll/settlements/${encodeURIComponent(settlementId)}?client_id=${encodeURIComponent(clientId)}`),
 
     listSalaryRevisions: (employeeId: string, clientId: string) =>
       request<{ success: boolean; data: { revisions: SalaryRevisionRow[] };

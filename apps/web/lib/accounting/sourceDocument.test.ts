@@ -56,15 +56,23 @@ test("a source with a screen but no id does not offer a link", () => {
   assert.match(noRouteReason(row("sales_invoice", null)), /records no document id/);
 });
 
-test("the two sources with nowhere to go say why", () => {
+test("a settlement and a year-end adjustment open their document (POST-A-096)", () => {
+  // Both were refused until their screens could open them by the id the row carries: the payroll Inputs tab
+  // shows the RECORDED settlement, and the year-end list finds an adjustment's engagement and goes on to it.
+  assert.equal(documentTarget(C, row("settlement"))!.href, "/clients/CL-1/payroll?tab=inputs&doc=D-9");
+  assert.equal(documentTarget(C, row("year_end_adjustment"))!.href, "/clients/CL-1/year-end?tab=adjustments&doc=D-9");
+  assert.equal(noRouteReason(row("settlement")), "");
+  assert.equal(noRouteReason(row("year_end_adjustment")), "");
+});
+
+test("a source with nowhere to go says why, in its own sentence", () => {
+  // Empty today. A source that comes back on the map must explain itself, not merely fail to open, and two
+  // refusals are two facts: a shared sentence would say the wrong thing about one of them.
   for (const st of Object.keys(NO_ROUTE_REASON)) {
     assert.equal(documentTarget(C, row(st)), null, st);
     assert.ok(noRouteReason(row(st)).length > 40,
       `${st} must explain itself, not merely fail to open`);
   }
-  // And the two reasons are DIFFERENT facts: one is about the employee, the
-  // other about the engagement. A shared sentence would say the wrong thing
-  // about one of them.
   const reasons = Object.values(NO_ROUTE_REASON);
   assert.equal(new Set(reasons).size, reasons.length);
 });
