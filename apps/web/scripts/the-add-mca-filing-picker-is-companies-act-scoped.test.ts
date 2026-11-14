@@ -13,7 +13,9 @@
 // its list from lib/entityObligations.isCompaniesActCompany (the one place
 // this product decides which entities are on the Companies Act 2013 MCA
 // regime — see that module's own docstring) rather than from a second,
-// inline classification, and the default period must come off the clock.
+// inline classification. The default period came off the clock after that, which POST-A-291 (15-11-2026) found was also wrong: an
+// AOC-4 or MGT-7 filed in season is for the year that has just ended, so the clock's year filed it under one the calendar does not
+// hold open. The period now comes from the server, as the years the calendar holds the form's obligation open in.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -52,7 +54,7 @@ test("AddFilingModal filters its client picker to Companies Act entities", () =>
   );
 });
 
-test("the Add MCA Filing period defaults from the clock, not a hardcoded FY", () => {
+test("the Add MCA Filing period comes from the years the calendar holds open, not from the clock or a hardcoded FY", () => {
   const src = readFileSync(PAGE, "utf8");
   const modalStart = src.indexOf("function AddFilingModal");
   const modalEnd = src.indexOf("\n// ─", modalStart + 1);
@@ -63,9 +65,12 @@ test("the Add MCA Filing period defaults from the clock, not a hardcoded FY", ()
     /useState\(\s*["']FY \d{4}-\d{2}["']\s*\)/,
     "the Period field's default is a hardcoded financial-year literal again",
   );
-  assert.match(
+  assert.doesNotMatch(
     modal,
-    /useState\(\(\)\s*=>\s*`FY \$\{currentFinancialYearLabel\(\)\}`\)/,
-    "the Period field no longer derives its default from currentFinancialYearLabel()",
+    /currentFinancialYearLabel\(/,
+    "the Period field is defaulted from the browser's clock again: a form filed in season is for the year that has just ended",
   );
+  assert.match(modal, /useFilingChoices\(clientId, formType,/, "the modal no longer asks the server for the client's open years");
+  assert.match(modal, /setYear\(preselectedYear\(choices\.choices\)\)/, "the only open year is no longer chosen for the CA");
+  assert.match(modal, /const \[period, setPeriod\] = useState\(""\)/, "the typed period no longer starts empty");
 });

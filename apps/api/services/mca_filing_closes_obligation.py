@@ -31,9 +31,9 @@ WHAT THIS DOES
         it on the first would call the client filed with a company outstanding. Only ACTIVE companies count. A filing
         names its company by `company_id` or, failing that, by the CIN it carries (`company_cin`, which the firm-level
         screen writes); one that names neither, or whose CIN is none of the client's, cannot be placed among several, so
-        it declines and says so. No screen offers a company choice on a new filing yet (the client tab's form sends none
-        and the API stores none), so with several companies a filing made there is declined until the CA marks the
-        obligation from Compliance;
+        it declines and says so. Both screens that create a filing offer the client's active companies and send the one
+        chosen (POST-A-291), and the API refuses a new filing that names no company when the client has several, so a
+        filing that cannot be placed is now only an old row or one written another way;
       * it does not touch an obligation already Filed or Completed (its date and number are the CA's);
       * it does not act for a caller without compliance access, because closing an obligation is a compliance write and
         the MCA approval that got us here is a different permission, decided per person;
@@ -51,7 +51,9 @@ from __future__ import annotations
 import re
 from typing import Any, Collection, Iterable, Optional, Sequence
 
-from core.ist_clock import fy_bounds, normalise_fy_label
+from datetime import date
+
+from core.ist_clock import fy_bounds, ist_fy_label, normalise_fy_label
 from repositories.compliance_records_repository import compliance_records_repo
 from services.obligation_closure import (
     ALREADY_FILED, FROM_COMPLIANCE, NOT_ALLOWED, NOT_CLOSED, NOT_ON_THE_CALENDAR, answer, mark_filed_and_answer,
@@ -132,6 +134,39 @@ def is_asked_about(form_type: Optional[str]) -> bool:
     """Whether the router asks this module about a filing on this form: the forms with an obligation, and the annual
     forms that are deliberately matched to none and say so. An event form is not asked about."""
     return form_type in OBLIGATION_FOR_FORM or form_type in UNMATCHED_FORMS
+
+
+def _year_of_window(start: Any, end: Any) -> Optional[str]:
+    """The financial year whose own first and last day an obligation's window is, or None (the same test the closer matches by)."""
+    first, last = str(start or "")[:10], str(end or "")[:10]
+    try:
+        year = ist_fy_label(date.fromisoformat(first))
+    except ValueError:
+        return None
+    return year if fy_bounds(year) == (first, last) else None
+
+
+def open_years_for(firm_id: str, client_id: str, form_type: Optional[str]) -> Optional[list[dict[str, Any]]]:
+    """The financial years the compliance calendar holds this client's obligation for `form_type` OPEN in, newest first (POST-A-291).
+
+    Each is `{financial_year, due_date, status}`. Open means not Filed and not Completed, the closer's own test, so a year
+    offered here is one a filing recorded as filed would close. An obligation whose window is not a financial year's own
+    first and last day is not offered, because the closer could never match a filing to it. None when the form stands for
+    no obligation on the calendar (an event form, or MGT-7A, which is matched to none on purpose): the screen then asks
+    for the year as typed text, as it always did. The calendar is read for this client and this firm only."""
+    if form_type not in OBLIGATION_FOR_FORM:
+        return None
+    wanted = OBLIGATION_FOR_FORM[form_type]
+    years: dict[str, dict[str, Any]] = {}
+    for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id, compliance_type=COMPLIANCE_TYPE,
+                                              exclude_statuses=["Filed", "Completed"]):
+        if r.get("obligation_type") != wanted:
+            continue
+        year = _year_of_window(r.get("period_start"), r.get("period_end"))
+        if year and year not in years:
+            years[year] = {"financial_year": year, "due_date": str(r.get("due_date") or "")[:10] or None,
+                           "status": r.get("status")}
+    return [years[y] for y in sorted(years, reverse=True)]
 
 
 def companies_that_filed(filings: Iterable[dict], financial_year: Optional[str],

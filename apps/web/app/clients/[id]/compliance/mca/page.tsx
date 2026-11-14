@@ -17,7 +17,9 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 
-import { todayIstISO } from "@/lib/dates/format";
+import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { useFilingChoices } from "@/lib/mca/useFilingChoices";
+import { chosenCompany, preselectedYear } from "@/lib/mca/filingChoices";
 import { panProblem } from "@/lib/identifiers/pan";
 import { dinProblem } from "@/lib/identifiers/din";
 import { Button } from "@/components/ui/button";
@@ -524,6 +526,8 @@ function DirectorsTab({ clientId }: { clientId: string }) {
 // ── Filings (Annual or Event) ──────────────────────────────────────────────
 
 const EMPTY_FILING_FORM = { form_type: "", financial_year: "", due_date: "", description: "" };
+/** The year list's last option: the CA types a year the calendar does not hold open. */
+const ANOTHER_YEAR = "__another__";
 
 function FilingsTab({ clientId, category }: { clientId: string; category: "annual" | "event" }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
@@ -539,6 +543,26 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   const newRefusal = useDateRefusal(newDates.first);
   const [newError, setNewError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // WHICH COMPANY AND WHICH YEAR (POST-A-291). The calendar's obligation is the client's and the filings are each company's, so a filing for a
+  // client with several companies must name one or it can never close the obligation; and the year is offered from the obligations the
+  // calendar holds open for this form. Asked again whenever the form changes, the newest answer only.
+  const { state: choices, retry: readChoicesAgain } = useFilingChoices(showNew ? clientId : "", form.form_type,
+    (c, f) => apiFetch(`/api/mca-workspace/filing-choices?client_id=${encodeURIComponent(c)}&form_type=${encodeURIComponent(f)}`),
+    "Try again to choose the company and the year; meanwhile the year can be typed, and a client with several companies is asked which one "
+    + "when the filing is saved.");
+  const [companyId, setCompanyId] = useState("");
+  // The CA chose "Another year" from the list, or no list was offered: the year is typed.
+  const [yearTyped, setYearTyped] = useState(false);
+  const offeredYears = choices.kind === "read" ? choices.choices.periods ?? [] : [];
+  useEffect(() => {
+    // A new answer is a new form (or a second read): a company chosen stays chosen while it is still offered, since the companies do not
+    // depend on the form, and the year is the new answer's (the only open one, or nothing to choose from or type over).
+    if (choices.kind !== "read") return;
+    const offered = choices.choices.companies;
+    setCompanyId((id) => (offered.some((c) => c.id === id) ? id : ""));
+    setYearTyped(false);
+    setForm((f) => ({ ...f, financial_year: preselectedYear(choices.choices) }));
+  }, [choices]);
   // The answer to a status change (POST-A-391), said above the table.
   const [statusError, setStatusError] = useState<string | null>(null);
   const [confirmFiling, setConfirmFiling] = useState<Record<string, unknown> | null>(null);
@@ -597,6 +621,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
     // Not while it is open (the button stays on screen above it), and a form opened for a second filing holds nothing of the first.
     if (showNew) return;
     setForm({ ...EMPTY_FILING_FORM });
+    setCompanyId("");
+    setYearTyped(false);
     setNewError(null);
     newRefusal.clear();
     setShowNew(true);
@@ -613,16 +639,27 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
     if (newDates.first) { newRefusal.refuse(); return; }
     // A blank box is not an unreadable one (the box hands up "" for both and reports which): the due date is required, and said in the date's own words.
     if (!form.due_date) { setNewError("Due date: enter the date this form is due."); return; }
+    const company = choices.kind === "read" ? chosenCompany(choices.choices, companyId) : null;
+    if (choices.kind === "read" && choices.choices.company_required && !company) {
+      setNewError("Company: choose the company this filing is for. The calendar's obligation closes only when each of this client's companies has filed.");
+      return;
+    }
+    if (offeredYears.length > 0 && !yearTyped && !form.financial_year) {
+      setNewError("Financial year: choose the year this filing is for, or Another year to type it.");
+      return;
+    }
     setCreating(true);
     try {
       // THE RESULT IS READ. It was awaited and dropped, so a refusal closed the form as though the filing was created; and a blank due date went to the
       // server as "", so a filing with no due date typed was not created at all.
       const res = await apiFetch("/api/mca-workspace/filings", {
         method: "POST",
-        body: JSON.stringify({ ...form, client_id: clientId }),
+        body: JSON.stringify({ ...form, client_id: clientId, company_id: company?.id ?? null }),
       });
       if (!res?.success) {
         setNewError(res?.error ?? "The filing was not created.");
+        // The server asked which company, and the choice could not be offered: read the client's companies again so it can be.
+        if (choices.kind === "unreadable") readChoicesAgain();
         return;
       }
       closeNew();
@@ -726,9 +763,40 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
               <option value="">Select Form</option>
               {formOptions.map((f) => <option key={f}>{f}</option>)}
             </select>
-            <input placeholder="Financial Year (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={form.financial_year}
-              onChange={(e) => setForm((f) => ({ ...f, financial_year: e.target.value }))}
-              className="border rounded px-3 py-1.5 text-sm" />
+            {choices.kind === "read" && choices.choices.companies.length > 1 && (
+              <select aria-label="Company" value={companyId} onChange={(e) => setCompanyId(e.target.value)}
+                className="border rounded px-3 py-1.5 text-sm">
+                <option value="">Choose the company</option>
+                {choices.choices.companies.map((c) => (
+                  <option key={c.id} value={c.id}>{c.company_name}{c.cin ? ` · ${c.cin}` : ""}</option>
+                ))}
+              </select>
+            )}
+            {choices.kind === "read" && choices.choices.companies.length === 1 && (
+              <p className="text-sm text-ps-label self-center" data-testid="mca-new-filing-company">
+                For {choices.choices.companies[0].company_name}{choices.choices.companies[0].cin ? ` · ${choices.choices.companies[0].cin}` : ""}
+              </p>
+            )}
+            {offeredYears.length > 0 && !yearTyped ? (
+              <select aria-label="Financial year" value={form.financial_year}
+                onChange={(e) => {
+                  if (e.target.value === ANOTHER_YEAR) { setYearTyped(true); setForm((f) => ({ ...f, financial_year: "" })); return; }
+                  setForm((f) => ({ ...f, financial_year: e.target.value }));
+                }}
+                className="border rounded px-3 py-1.5 text-sm">
+                <option value="">Choose the year</option>
+                {offeredYears.map((y) => (
+                  <option key={y.financial_year} value={y.financial_year}>
+                    FY {y.financial_year}{y.due_date ? ` · due ${formatDate(y.due_date)}` : ""}
+                  </option>
+                ))}
+                <option value={ANOTHER_YEAR}>Another year…</option>
+              </select>
+            ) : (
+              <input placeholder="Financial Year (e.g. 2025-26)" aria-label="Financial year (for example 2025-26)" value={form.financial_year}
+                onChange={(e) => setForm((f) => ({ ...f, financial_year: e.target.value }))}
+                className="border rounded px-3 py-1.5 text-sm" />
+            )}
             <label className="text-xs text-ps-label flex flex-col gap-1">
               Due date
               <DateInput id="mca-new-filing-due-date" value={form.due_date}
@@ -740,9 +808,18 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               className="border rounded px-3 py-1.5 text-sm" />
           </div>
+          {choices.kind === "unreadable" && (
+            <p className="text-xs text-ps-label">
+              {choices.sentence}{" "}
+              <button type="button" onClick={readChoicesAgain} className="underline">Try again</button>
+            </p>
+          )}
+          {choices.kind === "read" && offeredYears.length === 0 && choices.choices.periods_note && (
+            <p className="text-xs text-ps-label">{choices.choices.periods_note}</p>
+          )}
           {(newRefusal.shown ?? newError) && <p role="alert" className="text-xs text-state-problem">{newRefusal.shown ?? newError}</p>}
           <div className="flex gap-2">
-            <Button variant="plain" size="none" onClick={saveNew} disabled={!form.form_type || creating}
+            <Button variant="plain" size="none" onClick={saveNew} disabled={!form.form_type || creating || choices.kind === "loading"}
               className="px-3 py-1 bg-brand text-white rounded text-sm disabled:opacity-50">{creating ? "Saving…" : "Save"}</Button>
             <button onClick={closeNew} disabled={creating} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>

@@ -4979,6 +4979,10 @@ export const api = {
     // docstring. A company with no AGM date recorded comes back in
     // `without_agm_date` rather than being given a plausible one.
     firmCalendar: () => request("/api/mca-workspace/calendar/firm"),
+    /** The client's active companies and the years the compliance calendar holds the form's obligation open in, for a new filing
+     *  (POST-A-291). Read the answer with `lib/mca/filingChoices.readFilingChoices`. */
+    filingChoices: (clientId: string, formType: string) => request<ApiResp<unknown>>(
+      `/api/mca-workspace/filing-choices?client_id=${encodeURIComponent(clientId)}&form_type=${encodeURIComponent(formType)}`),
     /**
      * Record an MCA filing's status through the route that asks `mca:approve` (Manager and above) for "filed" and
      * the CA's explicit confirmation (POST-A-225). The screen used to write `status: "filed"` with the SRN and date
