@@ -33,6 +33,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
+import { NarrationTemplatePicker } from "@/components/journal/NarrationTemplatePicker";
 import { QuickAddLedger } from "@/components/journal/QuickAddLedger";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -468,6 +469,10 @@ export function JournalEditor({
           <input id="je-narration" value={narration} disabled={readOnly}
                  placeholder="Being goods sold to ABC Ltd…"
                  onChange={(e) => setNarration(e.target.value)} className={field} />
+          {/* POST-A-093 — the client's saved narrations: picking one fills the box, and the entry keeps the words it is saved with. */}
+          {clientId && !readOnly && (
+            <NarrationTemplatePicker clientId={clientId} narration={narration} onPick={setNarration} />
+          )}
         </div>
 
         {/* SUPPORTING DOCUMENTS (ACC-25). The receipt, the vendor invoice, the

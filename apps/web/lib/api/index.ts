@@ -4274,6 +4274,13 @@ export interface OrderInvoiceSeedLine {
   sales_order_line_id: string;
 }
 
+/** A client's saved narration for its manual journals (POST-A-093): the id, the words, and when it was saved. */
+export interface NarrationTemplate {
+  id: string;
+  narration: string;
+  created_at: string | null;
+}
+
 export interface OrderInvoiceSeed {
   order: { id: string; document_no: string | null };
   seed: {
@@ -7517,6 +7524,18 @@ export const api = {
         { method: "POST", body: JSON.stringify(body) }),
   },
 
+  // POST-A-093 — a client's saved narrations for its manual journals (routers/narration_templates.py). The words only: the journal
+  // stores the words it is saved with, never a template.
+  narrationTemplates: {
+    list: (clientId: string) =>
+      request<ApiResp<NarrationTemplate[]>>(`/api/narration-templates?client_id=${encodeURIComponent(clientId)}`),
+    save: (clientId: string, narration: string) =>
+      request<ApiResp<{ template: NarrationTemplate; created: boolean }>>("/api/narration-templates",
+        { method: "POST", body: JSON.stringify({ client_id: clientId, narration }) }),
+    archive: (id: string, clientId: string) =>
+      request<ApiResp<{ id: string; archived: boolean }>>(
+        `/api/narration-templates/${encodeURIComponent(id)}?client_id=${encodeURIComponent(clientId)}`, { method: "DELETE" }),
+  },
   /** accounting-20 — price lists. Every call keeps a list or a customer's pointer to one;
    *  none of them touches an invoice. `resolve` is asked when a catalogue item is
    *  picked and its answer lands in the rate box, where it stays editable. */
