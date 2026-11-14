@@ -16,6 +16,7 @@ from core.exceptions import document_failure_detail
 from core.db_provider import privileged_for
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client
+from core.query_day import query_day
 from services.audit_service import log_event
 from services.document_header_writer import update_header
 from services import receipt_service
@@ -119,6 +120,8 @@ def list_receipts(
 ):
     """List receipts, optionally filtered by customer and date range."""
     assert_client_access(current_user, client_id)
+    from_date = query_day(from_date, "from_date")
+    to_date = query_day(to_date, "to_date")
     try:
         if _USE_MOCK:
             result = [r for r in MOCK_RECEIPTS if r["client_id"] == client_id]

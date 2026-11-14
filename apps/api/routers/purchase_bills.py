@@ -42,6 +42,7 @@ from services import vendor_tds
 from services.line_item_ownership import ItemOwner, check as check_items_are_the_clients
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_fy_label, ist_today
+from core.query_day import query_day
 
 # _TDS_DEFAULT_BPS WAS HERE AND IS DELETED. It mapped six sections to flat
 # rates and had no readers — grep proved it dead — but it was the last place in
@@ -200,6 +201,8 @@ def list_purchase_bills(
 ):
     """List purchase bills with optional filters."""
     assert_client_access(current_user, client_id)
+    from_date = query_day(from_date, "from_date")
+    to_date = query_day(to_date, "to_date")
     try:
         if _USE_MOCK:
             result = [b for b in MOCK_PURCHASE_BILLS if b["client_id"] == client_id and not b.get("deleted_at")]

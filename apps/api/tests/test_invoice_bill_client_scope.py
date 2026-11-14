@@ -59,7 +59,8 @@ def test_listing_another_managers_client_invoices_is_refused(deny):
 
 
 def test_listing_your_own_client_is_unaffected(deny):
-    si.list_invoices(client_id=MINE, current_user=USER)
+    # The four days are passed as FastAPI would pass absent ones (a direct call that leaves them out hands the handler its Query placeholders).
+    si.list_invoices(client_id=MINE, date_from=None, date_to=None, from_date=None, to_date=None, current_user=USER)
     assert deny == [MINE]
 
 

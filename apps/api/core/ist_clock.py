@@ -251,11 +251,20 @@ def _as_ist_date(d=None) -> date:
     financial year came to be read off the clock instead of the document
     (SALES-24).
 
-    A naive datetime is taken to BE the Indian day. For a stored instant, where a naive value is UTC, use `ist_date_of`."""
+    A naive datetime is taken to BE the Indian day. For a stored instant, where a naive value is UTC, use `ist_date_of`.
+
+    A STRING WITH A TIME IS READ AS THE MOMENT IT NAMES (POST-A-094): one with a zone (`2026-03-31T20:10:00+00:00`, a trailing `Z`) is
+    converted to India before its day is taken, so that stamp is 1 April and FY 2026-27; one with no zone is the Indian day, as a naive
+    datetime is. It used to be cut to its first ten characters, the UTC day, which is a day behind India from 00:00 to 05:30 IST. Text
+    that is neither a day nor a moment is a ValueError: the first ten characters of `2026-03-31junk` are not a reading of it."""
     if d is None:
         return ist_today()
     if isinstance(d, str):
-        return date.fromisoformat(d[:10])
+        text = d.strip()
+        if len(text) > 10:
+            moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            return moment.astimezone(IST).date() if moment.tzinfo else moment.date()
+        return date.fromisoformat(text)
     if isinstance(d, datetime):
         return d.astimezone(IST).date() if d.tzinfo else d.date()
     return d

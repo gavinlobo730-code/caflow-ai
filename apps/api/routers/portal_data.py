@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from models.common import api_response
 from core.portal_auth import get_current_portal_client
 from core.storage_door import storage_folder
+from core.query_day import query_day
 from services import portal_data_service
 from services.payments import availability as online_payment
 
@@ -116,6 +117,8 @@ def portal_statement(
 ):
     """Account statement of the firm↔client fee relationship. Defaults to the
     current Indian financial year (Apr 1 – Mar 31) when no window is given."""
+    start = query_day(start, "start")
+    end = query_day(end, "end")
     if not start or not end:
         start, end = portal_data_service.current_fy_range()
     data = portal_data_service.statement(portal["firm_id"], portal["client_id"], start, end)
@@ -129,6 +132,8 @@ def portal_statement_pdf(
     portal: dict = Depends(get_current_portal_client),
 ):
     """Download the fee-relationship statement PDF (scoped to this client)."""
+    start = query_day(start, "start")
+    end = query_day(end, "end")
     if not start or not end:
         start, end = portal_data_service.current_fy_range()
     if _USE_MOCK:

@@ -24,6 +24,7 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_fy_label
 from core.observability import capture_posting_failure
+from core.query_day import query_day
 
 
 
@@ -638,6 +639,7 @@ def ap_aging(
     """Accounts-payable aging for a client — per-bill outstanding bucketed by age.
     Derived entirely from posted bills, payments and debit notes (firm-scoped)."""
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of")
     try:
         if _USE_MOCK:
             # The AR mirror has always had this branch and this one had not, so
@@ -960,6 +962,8 @@ def vendor_statement(
     # (both must match one row), so checking client_id is sufficient — no
     # separate vendor-level check is needed here.
     assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date", required=True)
+    end_date = query_day(end_date, "end_date", required=True)
     try:
         from core.supabase_client import get_supabase
         from services.vendor_statement_service import vendor_statement_service
@@ -998,6 +1002,8 @@ def vendor_statement_pdf(
     is sufficient. Read-only: it posts nothing and records no delivery.
     """
     assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date", required=True)
+    end_date = query_day(end_date, "end_date", required=True)
     try:
         from core.supabase_client import get_supabase
         from services.statement_pdf_service import get_vendor_statement_pdf

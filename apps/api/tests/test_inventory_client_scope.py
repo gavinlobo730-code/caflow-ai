@@ -62,7 +62,8 @@ def test_getting_another_clients_stock_ledger_is_refused(deny):
 
 
 def test_getting_your_own_clients_stock_ledger_still_works(deny):
-    out = inv.get_item_stock_ledger("PROD-1", client_id=MINE, current_user=USER)
+    # The days are passed as FastAPI would pass absent ones: a direct call that leaves them out hands the handler its Query placeholders.
+    out = inv.get_item_stock_ledger("PROD-1", client_id=MINE, start_date=None, end_date=None, current_user=USER)
     assert out["success"] is True
     assert deny == [MINE]
 

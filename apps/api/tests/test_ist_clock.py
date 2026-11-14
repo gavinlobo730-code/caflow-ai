@@ -106,3 +106,44 @@ def test_ist_fy_label_defaults_to_ist_today_across_the_utc_boundary(monkeypatch)
 def test_ist_fy_label_explicit_date_overrides_the_clock(monkeypatch):
     _freeze_utc(monkeypatch, "2026-04-01T12:00:00")
     assert ist_clock.ist_fy_label(date(2020, 1, 1)) == "2019-20"
+
+
+# ── POST-A-094: a timestamp STRING is the moment it names, not its first ten characters ──────────────────────────────────
+
+import pytest  # noqa: E402
+
+ist_fy_label = ist_clock.ist_fy_label
+
+def test_a_zoned_stamp_string_is_converted_to_india_before_its_day_is_taken():
+    """20:10 UTC on 31 March is 01:40 IST on 1 April: the next financial year, which the first ten characters (the UTC day) put in the old one."""
+    from core.ist_clock import _as_ist_date
+    assert _as_ist_date("2026-03-31T20:10:00+00:00") == date(2026, 4, 1)
+    assert _as_ist_date("2026-03-31T20:10:00Z") == date(2026, 4, 1)
+    assert _as_ist_date("2026-03-31 20:10:00.123456+00:00") == date(2026, 4, 1)
+    assert ist_fy_label("2026-03-31T20:10:00+00:00") == "2026-27"
+    # Before 18:30 UTC the UTC day and the Indian day agree.
+    assert _as_ist_date("2026-03-31T18:29:59+00:00") == date(2026, 3, 31)
+    assert ist_fy_label("2026-03-31T18:29:59+00:00") == "2025-26"
+
+
+def test_a_naive_stamp_string_is_the_indian_day_as_a_naive_datetime_is():
+    from core.ist_clock import _as_ist_date
+    assert _as_ist_date("2026-03-31T23:30:00") == date(2026, 3, 31)
+    assert _as_ist_date(datetime(2026, 3, 31, 23, 30)) == date(2026, 3, 31)
+
+
+def test_a_plain_day_string_is_still_that_day_and_text_that_is_not_one_is_refused():
+    from core.ist_clock import _as_ist_date
+    assert _as_ist_date("2026-03-31") == date(2026, 3, 31)
+    assert _as_ist_date(" 2026-03-31 ") == date(2026, 3, 31)
+    for not_a_day in ("2026-03-31junk", "31/03/2026", "soon", ""):
+        with pytest.raises(ValueError):
+            _as_ist_date(not_a_day)
+
+
+def test_a_window_of_indian_days_reads_a_stamp_bound_as_its_indian_day():
+    """`ist_day_window` and `in_ist_window` take their bounds through the same reader."""
+    from core.ist_clock import in_ist_window, ist_day_window
+    start, end = ist_day_window("2026-03-31T20:10:00+00:00", None)
+    assert start == "2026-04-01T00:00:00+05:30" and end is None
+    assert in_ist_window("2026-04-01T02:00:00+05:30", "2026-03-31T20:10:00+00:00", None)

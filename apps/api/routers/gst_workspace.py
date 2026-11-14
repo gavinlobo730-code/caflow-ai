@@ -24,6 +24,7 @@ from core.authz import assert_client_access, can_access_client, effective_client
 from core.permissions import can_user, rbac
 from core.ist_clock import ist_today
 from core.validators import validate_gstin
+from core.query_day import query_day
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services import gst_2b_bulk_service, gst_2b_reconciliation_service
@@ -2296,6 +2297,7 @@ def rule37_itc_reversal(
     # and files nothing.
     """
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of")
     if _USE_MOCK:
         return api_response(True, {
             "as_of": as_of or "", "rule": "CGST Act §16(2) second proviso; CGST Rule 37",
