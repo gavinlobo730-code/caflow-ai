@@ -4,7 +4,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/money/format";
 import { changedFields, formFor, type CorrectionForm } from "@/lib/fixedAssets/correction";
 import { request } from "@/lib/api";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Fragment, useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Plus, RefreshCw, ChevronDown, ChevronRight, Trash2, TrendingDown, AlertCircle } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -17,7 +17,7 @@ import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { TableSkeleton } from "@/components/ui/skeleton";
 
 
-import { formatDate, formatDateTime, todayIstISO } from "@/lib/dates/format";
+import { formatDate, formatDateTime, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
@@ -179,6 +179,31 @@ interface ScheduleRow {
    *  to depreciate". */
   statutory_gap?: string | null;
 }
+
+/** One financial year of an asset's remaining life (POST-A-115), as `GET /api/fixed-assets/{id}/remaining-life` serves it: what
+ *  the monthly postings will charge, computed with the rule a posting charges by. Shown as served; nothing here adds it up. */
+interface RemainingLifeYear {
+  financial_year: string;
+  year_figure_paise: number;
+  first_month: string;
+  last_month: string;
+  months: number;
+  opening_wdv_paise: number;
+  charge_paise: number;
+  closing_wdv_paise: number;
+}
+
+interface RemainingLife {
+  starts_at: string;
+  start_note: string | null;
+  years: RemainingLifeYear[];
+  total_paise: number;
+  ends: "fully_depreciated" | "nil_charge" | "rounds_to_nil" | "limit" | "not_depreciable" | "no_basis" | null;
+  end_note: string | null;
+}
+
+/** An opened row's projection: asked for when the row is opened, one asset at a time. */
+type LifeState = { state: "loading" } | { state: "ok"; life: RemainingLife } | { state: "failed"; message: string };
 
 interface UnfinishedReversal {
   month: string;
@@ -1288,6 +1313,60 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
 // ── Depreciation Tab ────────────────────────────────────────────────────────
 
+/** An opened row: the projection once read, the server's refusal in its words, or a note that it is being read. */
+function RemainingLifePanel({ state }: { state: LifeState | undefined }) {
+  if (state?.state === "ok") return <RemainingLifeTable life={state.life} />;
+  if (state?.state === "failed") return <p className="text-3xs text-state-problem" role="alert">{state.message}</p>;
+  return <p className="text-3xs text-ps-hint" role="status">Working out the remaining life…</p>;
+}
+
+/** One asset's remaining-life projection, as the server worked it out: what the postings will charge each financial year until the
+ *  asset is fully depreciated, where it starts and why it ends. Every figure is served; the total is the server's. */
+function RemainingLifeTable({ life }: { life: RemainingLife }) {
+  return (
+    <div className="space-y-2">
+      {life.start_note && <p className="text-3xs text-state-attention">{life.start_note}</p>}
+      {life.years.length > 0 && (
+        <table className="w-full text-3xs">
+          <caption className="text-left text-3xs text-ps-hint pb-1">
+            What the monthly postings will charge from {formatMonthYear(life.starts_at)}, by financial year
+          </caption>
+          <thead className="text-left text-ps-hint">
+            <tr>
+              <th scope="col" className="py-1 pr-3 font-semibold">Year</th>
+              <th scope="col" className="py-1 pr-3 font-semibold">Months</th>
+              <th scope="col" className="py-1 pr-3 text-right font-semibold">WDV before</th>
+              <th scope="col" className="py-1 pr-3 text-right font-semibold">Depreciation</th>
+              <th scope="col" className="py-1 text-right font-semibold">WDV after</th>
+            </tr>
+          </thead>
+          <tbody>
+            {life.years.map((y) => (
+              <tr key={y.financial_year} className="border-t border-ps-border">
+                <td className="py-1 pr-3 text-ps-ink">FY {y.financial_year}</td>
+                <td className="py-1 pr-3 text-ps-label">
+                  {y.months} ({formatMonthYear(y.first_month)} to {formatMonthYear(y.last_month)})
+                </td>
+                <td className="py-1 pr-3 text-right font-mono">{formatPaise(y.opening_wdv_paise)}</td>
+                <td className="py-1 pr-3 text-right font-mono text-state-attention">{formatPaise(y.charge_paise)}</td>
+                <td className="py-1 text-right font-mono">{formatPaise(y.closing_wdv_paise)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-ps-border font-semibold">
+              <td className="py-1 pr-3" colSpan={3}>Charged in these years</td>
+              <td className="py-1 pr-3 text-right font-mono text-state-attention">{formatPaise(life.total_paise)}</td>
+              <td />
+            </tr>
+          </tfoot>
+        </table>
+      )}
+      {life.end_note && <p className="text-3xs text-ps-label">{life.end_note}</p>}
+    </div>
+  );
+}
+
 function DepreciationTab({ clientId }: { clientId: string }) {
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1305,6 +1384,25 @@ function DepreciationTab({ clientId }: { clientId: string }) {
    *  here. The server says which months and what to do; this is where the CA
    *  reads it, at the moment the choice has just been made. */
   const [notices, setNotices] = useState<Record<string, string>>({});
+  // The asset whose remaining-life projection is open (POST-A-115), and what was read for it; one at a time keeps the table
+  // readable, and a projection is asked for only when its row is opened.
+  const [lifeOpen, setLifeOpen] = useState<string | null>(null);
+  const [lives, setLives] = useState<Record<string, LifeState>>({});
+
+  async function toggleLife(assetId: string) {
+    if (lifeOpen === assetId) { setLifeOpen(null); return; }
+    setLifeOpen(assetId);
+    setLives((m) => ({ ...m, [assetId]: { state: "loading" } }));
+    try {
+      const j = await request<ApiEnvelope<RemainingLife>>(`/api/fixed-assets/${assetId}/remaining-life`);
+      if (!j.success || !j.data) throw new Error(refusalMessage(j, "The projection could not be read."));
+      const life = j.data;
+      setLives((m) => ({ ...m, [assetId]: { state: "ok", life } }));
+    } catch (e) {
+      const message = e instanceof Error && e.message ? e.message : "The projection could not be read.";
+      setLives((m) => ({ ...m, [assetId]: { state: "failed", message } }));
+    }
+  }
   const [period, setPeriod] = useState(() => {
     const now = istToday();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -1539,7 +1637,8 @@ function DepreciationTab({ clientId }: { clientId: string }) {
             </thead>
             <tbody className="divide-y divide-ps-border">
               {rows.map((r) => (
-                <tr key={r.asset_id} className="hover:bg-ps-bg align-top">
+                <Fragment key={r.asset_id}>
+                <tr className="hover:bg-ps-bg align-top">
                   <td className="px-4 py-2.5 font-medium text-ps-ink">
                     {r.asset_name}
                     {r.depreciation_posted_through && (
@@ -1547,6 +1646,15 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                         posted through {r.depreciation_posted_through}
                       </span>
                     )}
+                    <Button variant="plain" size="none"
+                      onClick={() => toggleLife(r.asset_id)}
+                      aria-expanded={lifeOpen === r.asset_id}
+                      aria-controls={`remaining-life-${r.asset_id}`}
+                      className="mt-1 inline-flex items-center gap-1 text-3xs font-normal text-blue-600 hover:underline"
+                    >
+                      {lifeOpen === r.asset_id ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
+                      Remaining life
+                    </Button>
                   </td>
                   <td className="px-3 py-2.5 text-ps-label">
                     {r.depreciation_method === "WDV" ? `WDV ${r.wdv_rate_percent ?? "—"}%` : `SL ${r.useful_life_years ?? "—"}yr`}
@@ -1611,6 +1719,14 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                     )}
                   </td>
                 </tr>
+                {lifeOpen === r.asset_id && (
+                  <tr className="bg-ps-bg/40">
+                    <td colSpan={6} className="px-4 py-3" id={`remaining-life-${r.asset_id}`} data-testid={`remaining-life-${r.asset_id}`}>
+                      <RemainingLifePanel state={lives[r.asset_id]} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

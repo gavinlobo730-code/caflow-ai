@@ -853,6 +853,152 @@ def import_opening_register(
     return api_response(True, out)
 
 
+def _month_charge(asset: dict, period: str) -> tuple[int, int, str, int]:
+    """(the month's charge, the year's annual figure, its financial year, the year's opening accumulated depreciation) for one
+    asset and one 'YYYY-MM' period: the year's fixed figure over twelve, floored, and the purchase month pro-rated by the days
+    held (Schedule II Note 3). The one rule a posting charges by and the remaining-life projection runs (POST-A-115). Raises
+    ValueError where the asset has no statutory basis for a charge."""
+    annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
+    if annual <= 0:
+        return 0, annual, fy, fy_start_accum
+    monthly = math.floor(Decimal(annual) / Decimal(12))
+    if period == str(asset.get("purchase_date") or "")[:7]:
+        monthly = _prorate_purchase_month(monthly, asset["purchase_date"])
+    return monthly, annual, fy, fy_start_accum
+
+
+#: How many financial years a projection runs before it stops and says so: a reducing balance with no residual recorded
+#: approaches nil and never reaches it, so without a bound it would run for over a century of floored paise.
+PROJECTION_YEARS = 100
+
+
+def _next_month(period: str) -> str:
+    y, m = int(period[:4]), int(period[5:7]) + 1
+    return f"{y + 1:04d}-01" if m > 12 else f"{y:04d}-{m:02d}"
+
+
+def _month_words(period: str) -> str:
+    """'2026-11' as 'Nov 2026', the spelling the screen's own month labels use (lib/dates/format.formatMonthYear)."""
+    return datetime(int(period[:4]), int(period[5:7]), 1).strftime("%b %Y")
+
+
+def _projection_start(asset: dict, today_period: str) -> tuple[str, Optional[str]]:
+    """Where a projection starts, and the sentence that says why when it is not simply the next month due.
+
+    After a posting, the month after it: a month may not be skipped. With nothing posted, an asset that carries no accumulated
+    depreciation was acquired here and is owed every month from its purchase (the posting's own FA-04 notice calls starting later
+    wrong for such an asset), so it starts at the purchase month; one brought over part-depreciated starts in the current month
+    (or the purchase month, if later), because its first posting here is whatever month the CA takes over in, and the months
+    before it are then foreclosed. A start before the current month is months behind, which the sentence says."""
+    posted = _month_label(asset.get("depreciation_posted_through"))
+    purchase_month = str(asset.get("purchase_date") or "")[:7] or today_period
+    if posted:
+        start = _next_month(posted)
+    elif int(asset.get("accumulated_depreciation_paise") or 0) > 0:
+        start = max(purchase_month, today_period)
+        if start > purchase_month:
+            return start, (f"Nothing has been posted on this asset and it was brought over with depreciation already charged, so this "
+                           f"starts in {_month_words(start)}: a first posting may start in any month, and the months before it can "
+                           "then no longer be posted.")
+        return start, None
+    else:
+        start = purchase_month
+    if start < today_period:
+        return start, (f"{_month_words(start)} to {_month_words(_previous_month(today_period))} are not posted yet: this assumes they "
+                       "are posted, in order, as they must be before a later month can be.")
+    return start, None
+
+
+def project_remaining_life(asset: dict, today_period: str, *, through_fy: Optional[str] = None,
+                           _every_month: bool = False) -> dict:
+    """What the postings will charge on this asset, financial year by financial year, until it is fully depreciated
+    (POST-A-115).
+
+    It runs `_month_charge`, the rule a posting charges by, month by month on a COPY of the register row, carrying the copy
+    forward exactly as `_post_one_month` carries the row (accumulated depreciation, the year and the year's opening), so the
+    projection is the postings' own arithmetic and not a second implementation of it. Where it starts is `_projection_start`.
+    It ends where a posting would stop: the year's figure is nil, or a month's charge rounds to nil once something has been
+    posted (a posting of that month charges nothing and does not move the register, and the next month cannot skip it; before
+    any posting a nil month is simply passed, since a first posting may start in any month), or after PROJECTION_YEARS years.
+    `through_fy` stops it after that financial year (the schedule's row reads the current year's figure from it).
+
+    The year's figure is fixed once per financial year (`_annual_depreciation_for_period` reads the opening the copy carries), so
+    a month's charge is the same for every month of a year but the purchase month, and it is asked once per year and kind of month
+    rather than twelve times; `_every_month` asks it every month, which the tests use as the reference the two must agree with.
+
+    Answers `{"starts_at", "start_note", "years": [{financial_year, year_figure_paise, first_month, last_month, months,
+    opening_wdv_paise, charge_paise, closing_wdv_paise}], "total_paise", "ends", "end_note"}`; `ends` is `fully_depreciated`,
+    `nil_charge` (no month charges anything), `rounds_to_nil`, `limit`, `not_depreciable` or `no_basis` (with the reason, and
+    no years), or None where `through_fy` stopped it. Every ending carries a sentence naming what stays on the register.
+    """
+    start, start_note = _projection_start(asset, today_period)
+    purchase_month = str(asset.get("purchase_date") or "")[:7]
+    out = {"starts_at": start, "start_note": start_note, "years": [], "total_paise": 0, "ends": None, "end_note": None}
+    if (asset.get("asset_category") or "Other") in _NOT_DEPRECIABLE:
+        out.update(ends="not_depreciable", start_note=None,
+                   end_note="Land is not depreciated: Schedule II gives it no useful life.")
+        return out
+    sim = dict(asset)
+    posted_any = bool(_month_label(asset.get("depreciation_posted_through")))
+
+    def stands() -> str:
+        return rupee_text(sim["purchase_cost_paise"] - int(sim.get("accumulated_depreciation_paise") or 0))
+
+    period, years, asked, year_of = start, [], {}, None
+    while True:
+        if year_of is None or period.endswith("-04"):                 # a financial year begins in April
+            year_of = get_fy_for_date(f"{period}-01")
+        if through_fy is not None and year_of > through_fy:
+            break
+        key = (year_of, period == purchase_month)
+        try:
+            if _every_month or key not in asked:
+                asked[key] = _month_charge(sim, period)
+            monthly, annual, fy, fy_start_accum = asked[key]
+        except ValueError as e:
+            out.update(ends="no_basis", end_note=str(e), years=[])
+            return out
+        if annual <= 0:
+            if years:
+                out.update(ends="fully_depreciated", end_note=(
+                    f"The last charge is in {_month_words(years[-1]['last_month'])}; the asset then stands at {stands()} on the "
+                    "register and every later year's figure is nil."))
+            elif sim["purchase_cost_paise"] - int(sim.get("accumulated_depreciation_paise") or 0) <= int(sim.get("salvage_value_paise") or 0):
+                out.update(ends="fully_depreciated", end_note=(
+                    f"Nothing is left to charge: the asset stands at {stands()} on the register, its salvage value."))
+            else:
+                out.update(ends="nil_charge", end_note=(
+                    f"This asset's year's figure is nil (its rate gives no charge, or it has reached the residual its rate and "
+                    f"life leave), so nothing is charged; it stands at {stands()} on the register."))
+            break
+        if monthly <= 0 and not posted_any:
+            period = _next_month(period)                               # nothing posted yet: the next month is a first posting
+            continue
+        if monthly <= 0:
+            out.update(ends="rounds_to_nil", end_note=(
+                f"From {_month_words(period)} a month's charge rounds to nil, so no further month posts anything and the asset "
+                f"stays on the register at {stands()}."))
+            break
+        if not years or years[-1]["financial_year"] != fy:
+            if len(years) == PROJECTION_YEARS:
+                out.update(ends="limit", end_note=(
+                    f"The projection stops after {PROJECTION_YEARS} years with the asset at {stands()} on the register: with no "
+                    "residual recorded, a reducing balance approaches nil and never reaches it."))
+                break
+            opening = sim["purchase_cost_paise"] - int(sim.get("accumulated_depreciation_paise") or 0)
+            years.append({"financial_year": fy, "year_figure_paise": annual, "first_month": period, "last_month": period,
+                          "months": 0, "opening_wdv_paise": opening, "charge_paise": 0, "closing_wdv_paise": opening})
+        row = years[-1]
+        sim.update(accumulated_depreciation_paise=int(sim.get("accumulated_depreciation_paise") or 0) + monthly,
+                   depreciation_fy=fy, depreciation_fy_start_accum_paise=fy_start_accum)
+        posted_any = True
+        row.update(last_month=period, months=row["months"] + 1, charge_paise=row["charge_paise"] + monthly,
+                   closing_wdv_paise=sim["purchase_cost_paise"] - sim["accumulated_depreciation_paise"])
+        period = _next_month(period)
+    out.update(years=years, total_paise=sum(y["charge_paise"] for y in years))
+    return out
+
+
 def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Optional[str] = None) -> dict:
     """Post ONE month's depreciation for one asset, or refuse and say why.
 
@@ -953,9 +1099,11 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
 
     # Fixed annual figure for THIS financial year (see
     # _annual_depreciation_for_period's docstring for why it must be fixed
-    # per-FY, not recomputed every month) — monthly = annual / 12.
+    # per-FY, not recomputed every month) — monthly = annual / 12, the purchase
+    # month pro-rated. `_month_charge` is the one rule; the remaining-life
+    # projection runs it too (POST-A-115).
     try:
-        annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
+        monthly, annual, fy, fy_start_accum = _month_charge(asset, period)
     except ValueError as e:
         # No Schedule II basis and none recorded on the row — refuse with the
         # reason rather than charging a made-up rate to the ledger.
@@ -963,13 +1111,6 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
     if annual <= 0:
         return {"message": "Asset fully depreciated", "depreciation_paise": 0,
                 "asset_id": asset["id"], "period": period, "posted": False}
-
-    monthly = math.floor(Decimal(annual) / Decimal(12))
-
-    # Schedule II Note 3 / IT Act §32 180-day rule: pro-rate the asset's
-    # purchase month by days actually held.
-    if period == purchase_month:
-        monthly = _prorate_purchase_month(monthly, asset["purchase_date"])
 
     if monthly <= 0:
         return {"message": "No depreciation to post for this period.",
@@ -1218,6 +1359,25 @@ def run_depreciation(
         "remaining_months": remaining,
         "chunk_limit": DEPRECIATION_RUN_CHUNK,
     })
+
+
+@router.get("/{asset_id}/remaining-life")
+def remaining_life(
+    asset_id: str,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """What the monthly postings will charge on one asset, financial year by financial year, until it is fully depreciated
+    (POST-A-115): `project_remaining_life`, the postings' own arithmetic run forward. Asked for one asset when its row is opened,
+    because a whole register's lives are thousands of rows a screen shows one asset at a time. It writes nothing."""
+    db = _db()
+    if not db:
+        raise HTTPException(status_code=503, detail="The fixed-asset register cannot be read here.")
+    asset = _live_asset(db, asset_id, current_user["firm_id"])
+    # Row-addressed with no client_id in the request: one sentence for a missing asset and another client's, as the disposal
+    # preview answers, so the response is not an oracle for which ids exist.
+    if not asset or not can_access_client(current_user, asset.get("client_id")):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return api_response(True, project_remaining_life(asset, ist_today().strftime("%Y-%m")))
 
 
 @router.get("/{asset_id}/disposal-preview")
@@ -1593,10 +1753,7 @@ def _reverse_tolerating_already_reversed(db, firm_id: str, entry_id: str,
 def _next_unposted_month(asset: dict) -> Optional[str]:
     """The month a further posting would charge, or None if none is posted yet."""
     posted = _month_label(asset.get("depreciation_posted_through"))
-    if not posted:
-        return None
-    y, m = int(posted[:4]), int(posted[5:7])
-    return f"{y + 1}-01" if m == 12 else f"{y}-{m + 1:02d}"
+    return _next_month(posted) if posted else None
 
 
 def _previous_month(period: str) -> str:
@@ -2479,10 +2636,24 @@ def depreciation_schedule(
         # same shape payroll uses for an unmodelled state's professional tax.
         # A zero with a reason beside it is not the same number as a zero.
         statutory_gap = None
-        try:
-            annual, _fy, _fy_start = _annual_depreciation_for_period(a, today_period)
-        except ValueError as e:
-            annual, statutory_gap = 0, str(e)
+        # The current year's figure as the postings will reach it (POST-A-115): where months are still behind, they are posted in
+        # order first and the year opens on what they leave, so the figure is read from the projection through this year and not
+        # from the register as it stands, which would be a year's figure no posting can charge.
+        this_year = get_fy_for_date(f"{today_period}-01")
+        life = project_remaining_life(a, today_period, through_fy=this_year)
+        if life["ends"] == "no_basis":
+            annual, statutory_gap = 0, life["end_note"]
+        else:
+            row_now = next((y for y in life["years"] if y["financial_year"] == this_year), None)
+            if row_now is not None:
+                annual = row_now["year_figure_paise"]
+            elif life["ends"] is not None:
+                annual = 0                                             # it stops charging before this year
+            else:
+                try:
+                    annual, _fy, _fy_start = _annual_depreciation_for_period(a, today_period)
+                except ValueError as e:
+                    annual, statutory_gap = 0, str(e)
         wdv    = a["purchase_cost_paise"] - a.get("accumulated_depreciation_paise", 0)
         schedule.append({
             "asset_id":               a["id"],
