@@ -225,7 +225,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN MCA FILING'S DATE IS JUDGED BEFORE IT IS STORED, BY THE RULE THE ITR ACKNOWLEDGEMENT USES
 - A WRONG TDS CHALLAN IS CORRECTED BY RETRACTING IT AND RECORDING IT AGAIN, NEVER EDITED IN PLACE, AND A MONTH CLOSED
 - A TAX AUDIT RECORDED AS COMPLETED OR FILED DOES NOT CARRY A DAY THAT HAS NOT COME
-### `docs/design-record/fixed-assets-and-inventory.md` (18 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
+### `docs/design-record/fixed-assets-and-inventory.md` (19 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
 - AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX
 - AN ASSET CATEGORY IS BOOKED TO A LEDGER BY ONE TABLE, AND THE CHART A FIRM GETS MUST HOLD EVERY LEDGER IT NAMES
@@ -245,6 +245,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A STRAIGHT-LINE ASSET KEEPS THE OPENING ACCUMULATED DEPRECIATION OF ITS YEAR, SO THE NOTE SHOWS THE YEAR'S CHARGE AND NOT THE LAST MONTH'S
 - A STRAIGHT-LINE ASSET'S YEAR IS CAPPED AT WHAT WAS LEFT WHEN THE YEAR OPENED, SO ITS LAST YEAR POSTS WHAT IS LEFT
 - AN INTANGIBLE ASSET'S AMORTISATION HAS A LEDGER OF ITS OWN, ONE FUNCTION SAYS WHICH, AND A PARTNER MOVES WHAT THE SHARED LEDGER HOLDS
+- A MONTH BEING REVERSED CANNOT BE POSTED OVER: THE REVERSAL MARKS THE ASSET IN ITS CLAIM
 
 ### `docs/design-record/frontend.md` (10 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
