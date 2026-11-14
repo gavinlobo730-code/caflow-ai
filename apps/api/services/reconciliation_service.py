@@ -232,20 +232,10 @@ def check_inventory_cache_drift(db, firm_id: str, client_id: str, entries) -> li
     if not items:
         return []
 
-    ledger_rows = fetch_all(
-        lambda: (
-            db.table("inventory_stock_ledger")
-            .select("id, service_catalogue_id, running_qty_units, running_avg_cost_paise, created_at")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-        ),
-        key="id",
-    )
-    last_by_item: dict[str, dict] = {}
-    for row in ledger_rows:
-        sid = row["service_catalogue_id"]
-        prev = last_by_item.get(sid)
-        if prev is None or row["created_at"] > prev["created_at"]:
-            last_by_item[sid] = row
+    # Each item's latest row, the one the next movement chains from, asked of the database once (POST-A-435): the same function and
+    # the same tie-break (the larger id) the stock register shows, instead of every movement the client ever made compared as text.
+    from services.stock_latest_rows_service import latest_rows_for
+    last_by_item = latest_rows_for(db, firm_id, client_id, [i["id"] for i in items])
 
     drifted = []
     total_drift_paise = 0

@@ -272,6 +272,9 @@ def _last_ledger_row(db, service_catalogue_id: str) -> Optional[dict]:
         .select("running_qty_units, running_value_paise, running_avg_cost_paise")
         .eq("service_catalogue_id", service_catalogue_id)
         .order("created_at", desc=True)
+        # Two rows recorded in one instant resolve to the same one every time, and to the one the stock register shows
+        # (`public.stock_latest_rows`, migration 588, breaks the tie the same way: POST-A-435).
+        .order("id", desc=True)
         .limit(1)
         .execute()
     )
@@ -353,7 +356,7 @@ def _open_layers(db, service_catalogue_id: str, prev: Optional[dict]) -> tuple:
             .select("id, created_at, running_qty_units")
             .eq("service_catalogue_id", service_catalogue_id)
             .lte("running_qty_units", 0)
-            .order("created_at", desc=True).limit(1).execute().data
+            .order("created_at", desc=True).order("id", desc=True).limit(1).execute().data
         )
         wm_qty = (Decimal(str(wm_rows[0].get("running_qty_units") or 0))
                   if wm_rows else None)

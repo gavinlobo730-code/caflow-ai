@@ -601,6 +601,14 @@ class _Rpc:
             store.append(row)
         return len(self.params["p_lines"])
 
+    def _fn_stock_latest_rows(self):
+        """Mirror migration 588 (POST-A-435) through its mock-mode twin: ONE array of each asked item's latest row of the firm and client,
+        in item order (the function returns a single jsonb value, so nothing here is cut at a page)."""
+        from domain.inventory.latest_rows import latest_rows
+        found = latest_rows(self.db.rows("inventory_stock_ledger"), self.params["p_firm"], self.params["p_client"],
+                            self.params.get("p_items") or [])
+        return [found[k] for k in sorted(found)]
+
     def _challan_function(self):
         """The three challan functions of migration 585 (POST-A-419), through the shared double: it is the one place their rules are written for the mock suite."""
         from tests import challan_functions_double as functions

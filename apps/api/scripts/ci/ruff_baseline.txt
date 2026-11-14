@@ -939,7 +939,6 @@ tests/test_the_rule_43_working_reads_the_register.py :: B017 :: test_the_edit_pa
 tests/test_the_seeder_actually_seeds.py :: F401 :: test_a_firm_with_clients_is_refused_without_the_flag :: 1
 tests/test_the_seeder_actually_seeds.py :: F401 :: test_the_catalogue_is_written_before_any_document_needs_it :: 1
 tests/test_the_six_numbers_a_user_sees_today.py :: F401 :: <module> :: 1
-tests/test_the_stock_register_scan_is_bounded.py :: F401 :: <module> :: 1
 tests/test_the_transfer_scan_is_the_size_of_the_question.py :: F401 :: <module> :: 1
 tests/test_the_trusted_sweep_leaves_a_line_you_coded_alone.py :: F401 :: <module> :: 2
 tests/test_the_two_documents_a_reverse_charge_purchase_owes.py :: B017 :: test_a_value_outside_the_engines_vocabulary_is_refused :: 1
