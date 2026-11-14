@@ -22,6 +22,7 @@ from models.common import api_response
 from core.exceptions import unhandled_failure
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
+from core.query_day import query_day
 from repositories.invoice_repository import invoice_repo
 from services.audit_service import log_event
 
@@ -128,6 +129,8 @@ def list_invoices(
     if client_id:
         assert_client_access(current_user, client_id)
 
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     invoices = invoice_repo.find_all(
         firm_id=firm_id,
         engagement_id=engagement_id,

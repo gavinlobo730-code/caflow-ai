@@ -40,6 +40,7 @@ from services.internal_client_service import is_internal_client, assert_partner_
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core.ist_clock import ist_fy_label, ist_today
 from core.exceptions import validation_sentence
+from core.query_day import query_day
 from domain.gst import invoice_series
 from services import sales_numbering_service
 from services.line_item_ownership import assert_items_are_the_clients
@@ -454,6 +455,7 @@ def next_invoice_number(
     warning the CA may accept.
     """
     assert_client_access(current_user, client_id)
+    invoice_date = query_day(invoice_date, "invoice_date")
     firm_id = current_user.get("firm_id") or ""
     if _USE_MOCK:
         db = None
@@ -557,6 +559,10 @@ def list_invoices(
 ):
     """List sales invoices with optional filters. Soft-deleted drafts are excluded."""
     assert_client_access(current_user, client_id)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
+    from_date = query_day(from_date, "from_date")
+    to_date = query_day(to_date, "to_date")
     try:
         # Support both date_from/date_to and from_date/to_date aliases
         effective_from = date_from or from_date

@@ -179,6 +179,8 @@ def test_the_scan_sees_what_it_is_for():
     for door in DOORS:
         assert door in judged, f"{door} is not read as judged"
     assert len(bare) + len(judged) >= len(_frozen()) + len(DOORS), f"the scan found only {len(bare) + len(judged)} date-named query parameters; it has stopped reading what it reads"
+    # The list was emptied on 14-11-2026, so the line above no longer bounds anything: the judged parameters only grow (108 that day).
+    assert len(judged) >= 100, f"only {len(judged)} date-named query parameters are read as judged; the scan has stopped reading what it reads"
 
 
 def test_no_unjudged_query_day_is_new():

@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.permissions import rbac
+from core.query_day import query_day
 from models.common import api_response
 from services import audit_query_service as audit_query
 
@@ -41,6 +42,8 @@ def get_audit_log(
     exists to remove, and `has_more` is what a "Load more" control needs.
     """
     from core.supabase_client import get_supabase
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     try:
         return api_response(True, audit_query.query(
             get_supabase(), current_user["firm_id"],

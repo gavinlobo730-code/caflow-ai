@@ -22,6 +22,7 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from core.ist_clock import ist_fy_label
 from core.observability import capture_posting_failure
+from core.query_day import query_day
 
 
 
@@ -649,6 +650,7 @@ def ar_aging(
     receipts and credit notes (firm-scoped); foreign invoices carry dual-currency
     detail, INR-only clients see the base aging unchanged."""
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of")
     try:
         if _USE_MOCK:
             return api_response(True, {"as_of": None, "buckets": {}, "total_outstanding_paise": 0, "invoices": []})

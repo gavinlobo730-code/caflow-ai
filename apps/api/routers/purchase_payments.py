@@ -40,6 +40,7 @@ from core.ist_clock import fy_code, ist_fy_label, ist_today
 from domain.money_text import minor_units_text
 from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
+from core.query_day import query_day
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.purchase_payments")
@@ -334,6 +335,8 @@ def list_purchase_payments(
     assert_client_access(current_user, client_id)
     firm_id = current_user["firm_id"]
 
+    from_date = query_day(from_date, "from_date")
+    to_date = query_day(to_date, "to_date")
     if _USE_MOCK:
         results = [p for p in MOCK_PURCHASE_PAYMENTS if p.get("client_id") == client_id and p.get("firm_id") == firm_id]
         if vendor_id:

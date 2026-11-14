@@ -18,6 +18,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access
 from services.fx_reporting_service import fx_reporting_service
 from core import db_provider
+from core.query_day import query_day
 
 _logger = logging.getLogger("caflow.fx_reports")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -54,6 +55,8 @@ def realized_fx(
     # scope check is visible at the read.
     assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
+    start_date = query_day(start_date, "start_date")
+    end_date = query_day(end_date, "end_date")
     return _run(lambda db: fx_reporting_service.realized_fx(db, firm_id, client_id, start_date, end_date),
                 {"period": {"start": start_date, "end": end_date}, "lines": [],
                  "gain_paise": 0, "loss_paise": 0, "net_paise": 0, "by_currency": []})
@@ -70,6 +73,7 @@ def unrealized_fx(
     # scope check is visible at the read.
     assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
+    period_end = query_day(period_end, "period_end")
     return _run(lambda db: fx_reporting_service.unrealized_fx(db, firm_id, client_id, period_end),
                 {"period_end": period_end, "lines": [], "by_currency": [], "net_paise": 0})
 
@@ -85,6 +89,7 @@ def currency_exposure(
     # scope check is visible at the read.
     assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
+    as_of = query_day(as_of, "as_of")
     return _run(lambda db: fx_reporting_service.currency_exposure(db, firm_id, client_id, as_of),
                 {"as_of": as_of, "by_currency": []})
 
@@ -101,6 +106,8 @@ def exchange_rate_audit(
     # scope check is visible at the read.
     assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
+    start_date = query_day(start_date, "start_date")
+    end_date = query_day(end_date, "end_date")
     return _run(lambda db: fx_reporting_service.exchange_rate_audit(db, firm_id, client_id, start_date, end_date),
                 {"period": {"start": start_date, "end": end_date},
                  "documents": [], "adjustments": [], "overridden_count": 0})
@@ -117,5 +124,6 @@ def open_foreign_balances(
     # scope check is visible at the read.
     assert_client_access(current_user, client_id)
     firm_id = current_user.get("firm_id")
+    as_of = query_day(as_of, "as_of")
     return _run(lambda db: fx_reporting_service.open_foreign_balances(db, firm_id, client_id, as_of),
                 {"as_of": as_of, "receivables": [], "payables": [], "bank_accounts": []})

@@ -21,6 +21,7 @@ from services import named_row_ownership
 from services.timeline_service import timeline_service
 from models.fy import AYLabel, FYLabel, OptionalAYLabel
 from core import db_provider
+from core.query_day import query_day
 
 router = APIRouter(prefix="/api/itr", tags=["itr_workspace"])
 _logger = logging.getLogger("caflow.itr.router")
@@ -573,6 +574,7 @@ def list_return_kinds(
         })
 
     additional_tax = None
+    furnished_on = query_day(furnished_on, "furnished_on")
     if furnished_on:
         try:
             when = _date.fromisoformat(str(furnished_on)[:10])

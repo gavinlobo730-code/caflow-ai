@@ -47,6 +47,7 @@ from services.audit_service import log_event
 from services.numbering import next_sequence
 from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
+from core.query_day import query_day
 from models.iso_date import IsoDate
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
@@ -1257,6 +1258,7 @@ def preview_disposal(
             detail=("gst_rate_bps must be one of "
                     + ", ".join(str(r) for r in s186.ALLOWED_RATES_BPS)))
 
+    disposal_date = query_day(disposal_date, "disposal_date")
     when = disposal_date or ist_today().isoformat()
     result = s186.compute(
         credit_taken=s186.TaxHeads(
@@ -2549,6 +2551,7 @@ def amortisation_reclassification_preview(
     nothing. `ready` is false, with every reason in words, when it must not be posted."""
     assert_client_access(current_user, client_id)
     db = _db()
+    as_at = query_day(as_at, "as_at", required=True)
     if not db:
         return api_response(True, {"as_at": as_at, "ready": False, "refusals": ["No database is configured."], "assets": [],
                                    "excluded": [], "reclassified": [], "own_ledger": None, "shared_ledger": None,

@@ -97,7 +97,10 @@ def test_the_helpers_take_the_string_the_database_returns():
     from core.ist_clock import fy_code, ist_fy_label
 
     assert fy_code("2026-03-31") == fy_code(date(2026, 3, 31))
-    assert fy_code("2026-03-31T18:30:00+00:00") == "2526"
+    # 18:30 UTC on 31 March is midnight on 1 April in India: the stamp is read as the moment it names, not its first ten characters (POST-A-094),
+    # so it numbers in the new year. The old assertion pinned the ten-character reading, which is the defect.
+    assert fy_code("2026-03-31T18:30:00+00:00") == "2627"
+    assert fy_code("2026-03-31T18:29:59+00:00") == "2526"
     assert ist_fy_label("2026-03-31") == "2025-26"
     assert ist_fy_label(datetime(2026, 3, 31, tzinfo=timezone.utc)) == "2025-26"
 

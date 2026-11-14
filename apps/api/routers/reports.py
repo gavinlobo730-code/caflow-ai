@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from core.authz import assert_client_access, effective_client_ids
 from core.permissions import rbac
 from core.supabase_client import get_supabase
+from core.query_day import query_day
 from models.common import api_response
 from services import report_transactions_service as svc
 
@@ -49,9 +50,12 @@ def list_report_transactions(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     """Issued sales invoices and received purchase bills as one list."""
+    client_ids = _scoped_client_ids(current_user, client_id)       # the caller's access first, then the days (POST-A-380)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     rows = svc.list_transactions(
         get_supabase(), current_user["firm_id"],
-        client_ids=_scoped_client_ids(current_user, client_id),
+        client_ids=client_ids,
         date_from=date_from, date_to=date_to,
     )
     return api_response(True, {"transactions": rows})

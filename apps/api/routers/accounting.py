@@ -35,6 +35,7 @@ from services import ageing_schedule_service, ratio_analysis_service, budget_ser
 from models.fy import FYLabel, OptionalFYLabel
 from core.ist_clock import ist_fy_label
 from core import db_provider
+from core.query_day import query_day
 from models.iso_date import OptionalIsoDate
 
 
@@ -1088,6 +1089,8 @@ def get_ledger(
     inside this one router."""
     if client_id:
         assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date")
+    end_date = query_day(end_date, "end_date")
     return api_response(True, _reporting_service(current_user).ledger(
         current_user["firm_id"], client_id, account_id, start_date, end_date,
         limit=limit, offset=offset,
@@ -1171,6 +1174,8 @@ def get_cash_book(
     figure that means anything.
     """
     assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date")
+    end_date = query_day(end_date, "end_date")
     db = _prod_db()
     firm_id = current_user["firm_id"]
     if not db:
@@ -1245,6 +1250,8 @@ def get_trial_balance(
     """
     if client_id:
         assert_client_access(current_user, client_id)
+    as_of_date = query_day(as_of_date, "as_of_date")
+    start_date = query_day(start_date, "start_date")
     tb = _reporting_service(current_user).trial_balance(
         current_user["firm_id"], client_id, as_of_date, basis=basis,
         start_date=start_date,
@@ -1279,6 +1286,7 @@ def get_ledger_parties(
     """
     assert_client_access(current_user, client_id)
     from services import party_ledger_service
+    as_of = query_day(as_of, "as_of")
     return api_response(True, party_ledger_service.breakdown(
         _prod_db(), current_user["firm_id"], client_id, account_id, as_of))
 
@@ -1333,6 +1341,8 @@ def get_profit_loss(
     """
     if client_id:
         assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date")
+    end_date = query_day(end_date, "end_date")
     pl = _reporting_service(current_user).profit_loss(
         current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )
@@ -1352,6 +1362,7 @@ def get_balance_sheet(
     """
     if client_id:
         assert_client_access(current_user, client_id)
+    as_of_date = query_day(as_of_date, "as_of_date")
     bs = _reporting_service(current_user).balance_sheet(
         current_user["firm_id"], client_id, as_of_date, basis=basis
     )
@@ -1426,6 +1437,7 @@ def get_schedule_iii_ageing(
     Asking for an earlier date returns a gap saying what that excludes.
     """
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of")
     return api_response(True, ageing_schedule_service.schedule(
         _prod_db(), current_user["firm_id"], client_id, as_of))
 
@@ -1701,6 +1713,8 @@ def get_cash_flow(
     """
     if client_id:
         assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date")
+    end_date = query_day(end_date, "end_date")
     cf = _reporting_service(current_user).cash_flow_statement(
         current_user["firm_id"], client_id, start_date, end_date, basis=basis
     )

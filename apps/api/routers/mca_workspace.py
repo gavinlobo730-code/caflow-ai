@@ -880,6 +880,8 @@ def mca_calendar(
     assert_client_access(current_user, client_id)
     try:
         try:
+            # The shared rule (POST-A-380): a real day, its canonical form kept; this door answers in its own envelope and sentence.
+            agm_date = a_real_date(agm_date, "agm_date")
             agm_dt = date.fromisoformat(agm_date)
         except ValueError:
             return api_response(False, None, "Invalid agm_date format. Use YYYY-MM-DD.")

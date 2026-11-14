@@ -47,6 +47,7 @@ from domain.income_tax.presumptive import (
 from services.compliance_obligation_service import itr_due_date_for_client, fy_end_year
 from models.fy import AYLabel, FYLabel, OptionalAYLabel, OptionalFYLabel
 from core.ist_clock import normalise_fy_label
+from models.iso_date import a_real_date
 from core import db_provider
 
 router = APIRouter(prefix="/api/income-tax", tags=["income-tax"])
@@ -793,8 +794,9 @@ def regime_election(
 
     filed_on = None
     if form_10iea_filed_on:
+        # The shared rule (POST-A-380), in this router's envelope: a real day, and no longer only its first ten characters.
         try:
-            filed_on = date.fromisoformat(str(form_10iea_filed_on)[:10])
+            filed_on = date.fromisoformat(a_real_date(form_10iea_filed_on, "form_10iea_filed_on"))
         except ValueError:
             return api_response(False, None,
                                 "form_10iea_filed_on must be a date (YYYY-MM-DD).")

@@ -24,9 +24,14 @@ from fastapi import HTTPException
 from models.iso_date import a_real_date
 
 
-def query_day(value: Optional[str], name: str) -> Optional[str]:
-    """The canonical day named by a query parameter, None when none was named, a 422 (naming `name`) when the text is not a day."""
+def query_day(value: Optional[str], name: str, *, required: bool = False) -> Optional[str]:
+    """The canonical day named by a query parameter, None when none was named, a 422 (naming `name`) when the text is not a day.
+
+    `required` is for a parameter the route cannot answer without (a statement's window, a schedule's as-at day): FastAPI already refuses it ABSENT,
+    and a BLANK (`?as_of=`) is refused here in the same sentence rather than read as no day."""
     if value is None or not str(value).strip():
+        if required:
+            raise HTTPException(status_code=422, detail=f"{name} must be a date written YYYY-MM-DD.")
         return None
     try:
         return a_real_date(value, name)

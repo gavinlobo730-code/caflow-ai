@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from core.authz import assert_client_access
 from core.permissions import rbac
+from core.query_day import query_day
 from models.common import api_response
 from domain.gst import bill_of_entry as boe
 from services import bill_of_entry_service as svc
@@ -124,6 +125,8 @@ def list_bills_of_entry(
     current_user: dict = Depends(rbac("accounting", "read")),
 ):
     assert_client_access(current_user, client_id)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     if _mock_enabled():
         return api_response(True, [])
     from core.supabase_client import get_service_supabase

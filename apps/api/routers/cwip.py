@@ -29,6 +29,7 @@ from domain.fixed_assets import cwip as cwip_domain
 from models.common import api_response
 from services import cwip_service as svc
 from core import db_provider
+from core.query_day import query_day
 
 router = APIRouter(prefix="/api/cwip", tags=["cwip"])
 
@@ -205,6 +206,7 @@ def get_schedules(
     answer a different question from the one a year-end asks.
     """
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of", required=True)
     try:
         when = date.fromisoformat(as_of[:10])
     except Exception:

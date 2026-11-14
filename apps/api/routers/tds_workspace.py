@@ -29,6 +29,7 @@ from models.fy import FYLabel, OptionalFYLabel
 from models.iso_date import IsoDate, PatchIsoDate, a_real_date
 from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
+from core.query_day import query_day
 from domain.tds import deductor_26as as D26
 from services import tds_register_lists_service as lists
 from services import tds_challan_retraction_service as challan_retraction
@@ -1031,6 +1032,8 @@ def list_challans(
 ):
     """A client's TDS challans, latest payment first, as a window: `{challans, has_more, limit, max_limit}`."""
     assert_client_access(current_user, client_id)
+    from_date = query_day(from_date, "from_date")
+    to_date = query_day(to_date, "to_date")
     try:
         firm_id = current_user["firm_id"]
         if _USE_MOCK:
