@@ -1,10 +1,11 @@
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from repositories.base import BaseRepository
 from core import db_provider
 from core.db_paging import fetch_all
 from core.ist_clock import ist_day_window
 from core.list_window import probe, split
+from domain.time_summary import summarise
 
 
 _get_db = db_provider.request_db
@@ -123,31 +124,26 @@ class TimeTrackingRepository(BaseRepository[dict]):
         result = query.execute()
         return len(result.data) > 0
 
-    def get_summary(self, firm_id: str, user_id: Optional[str] = None, client_id: Optional[str] = None) -> dict:
-        entries = self.find_all(firm_id=firm_id, user_id=user_id, client_id=client_id)
-        completed = [e for e in entries if e.get("ended_at") and e.get("duration_minutes")]
-        total_minutes = sum(e["duration_minutes"] for e in completed)
-        billable_minutes = sum(e["duration_minutes"] for e in completed if e.get("is_billable"))
+    def get_summary(self, firm_id: str, user_id: str, date_from: date, date_to: date) -> dict:
+        """One member's FINISHED time over a range of Indian days, both counted (POST-A-156).
 
-        by_client: dict[str, dict] = {}
-        by_user: dict[str, dict] = {}
-        for e in completed:
-            cid = e.get("client_id") or "unknown"
-            uid = e.get("user_id") or "unknown"
-            if cid not in by_client:
-                by_client[cid] = {"client_id": cid, "client_name": None, "minutes": 0}
-            by_client[cid]["minutes"] += e["duration_minutes"]
-            if uid not in by_user:
-                by_user[uid] = {"user_id": uid, "user_name": None, "minutes": 0}
-            by_user[uid]["minutes"] += e["duration_minutes"]
-
-        return {
-            "total_minutes": total_minutes,
-            "billable_minutes": billable_minutes,
-            "entries_count": len(completed),
-            "by_client": list(by_client.values()),
-            "by_user": list(by_user.values()),
-        }
+        Summed by the database (`public.time_entry_summary`, migration 586) on the privileged client, because the answer is a few
+        numbers and every entry the member ever made is not (CLAUDE.md's reporting rule). It used to fetch every entry and add them
+        up here. With no service database configured the twin `domain.time_summary.summarise` runs over the same window's rows; in
+        practice that is the in-memory test doubles, because `find_all` itself needs a database. `tests/test_time_entry_summary_parity_pg.py`
+        holds the two identical. The sum is the member's own time on every client, including one they are no longer assigned to:
+        it is their time, and the entry list on the same screen is a different question (what the caller may see). A failed call is raised, never
+        answered from the twin: two answers to one question, one of them silent, is how the figures drift."""
+        db = db_provider.service_db_or_none()
+        if db is not None:
+            start, end = ist_day_window(date_from, date_to)
+            res = db.rpc("time_entry_summary", {"p_firm": firm_id, "p_user": user_id, "p_from": start, "p_to": end}).execute()
+            out = getattr(res, "data", None)
+            if not isinstance(out, dict) or "total_minutes" not in out:
+                raise ValueError(f"time_entry_summary returned {type(out).__name__}, not a summary")
+            return out
+        rows = self.find_all(firm_id=firm_id, user_id=user_id, date_from=date_from.isoformat(), date_to=date_to.isoformat())
+        return summarise(rows, date_from, date_to)
 
 
 time_tracking_repo = TimeTrackingRepository()

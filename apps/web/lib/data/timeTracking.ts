@@ -185,18 +185,26 @@ export async function deleteTimeEntry(id: string): Promise<void> {
   if (!resp.success) throw new Error(resp.error ?? "Failed to delete entry");
 }
 
-export async function getMyTimeSummary(params?: {
-  start_date?: string;
-  end_date?: string;
+/** The caller's own finished time over a period the SERVER turns into Indian days (POST-A-156): this week (the default), this
+ *  month, or a chosen range of two days, both counted. The answer carries the days it covers. */
+export async function getMyTimeSummary(params: {
+  period: "week" | "month" | "range";
+  date_from?: string;
+  date_to?: string;
 }): Promise<TimeSummary> {
-  const qs = new URLSearchParams();
-  if (params?.start_date) qs.set("start_date", params.start_date);
-  if (params?.end_date) qs.set("end_date", params.end_date);
-  const resp = await apiFetch<TimeSummary>(
-    `/api/time-entries/summary/me${qs.toString() ? `?${qs}` : ""}`
-  );
-  if (!resp.success) throw new Error(resp.error ?? "Failed to load summary");
-  return resp.data;
+  const qs = new URLSearchParams({ period: params.period });
+  if (params.date_from) qs.set("date_from", params.date_from);
+  if (params.date_to) qs.set("date_to", params.date_to);
+  const resp = await apiFetch<TimeSummary>(`/api/time-entries/summary/me?${qs}`);
+  if (!resp.success) throw refusal(resp, "Failed to load the time summary");
+  // The shape is checked, not trusted: an older server answers all-time sums with no window, which would read as this week's.
+  const summary = objectOrNull<TimeSummary>(resp.data);
+  const counts = ["total_minutes", "billable_minutes", "non_billable_minutes", "entries_count", "running"] as const;
+  if (!summary || counts.some((k) => typeof summary[k] !== "number")
+      || typeof summary.date_from !== "string" || typeof summary.date_to !== "string") {
+    throw new Error("The time summary could not be read.");
+  }
+  return { ...summary, by_client: arrayOrEmpty(summary.by_client) };
 }
 
 export function formatDuration(minutes: number): string {

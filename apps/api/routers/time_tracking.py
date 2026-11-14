@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Annotated, Optional
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from models.common import api_response
 from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from core.permissions import rbac
@@ -342,13 +342,33 @@ def delete_entry(entry_id: str, current_user: dict = Depends(rbac("time_entry", 
 
 @router.get("/summary/me")
 def my_summary(
-    period: str = "week",
+    period: str = Query("week"),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     current_user: dict = Depends(rbac("time_entry", "read")),
 ):
-    firm_id = current_user.get("firm_id")
-    user_id = current_user.get("id")
-    summary = time_tracking_repo.get_summary(firm_id=firm_id, user_id=user_id)
-    return api_response(True, summary)
+    """The caller's own finished time over a period of Indian days (POST-A-156): `week` (Monday to Sunday of India's this week, the
+    default), `month` (India's this month) or `range` with `date_from` and `date_to`, both counted. The window is decided here and
+    returned with the totals, so the screen shows which days it covers and decides none of them. Summed by the database
+    (`time_entry_summary`); a timer still running is counted apart in `running`, because it has no duration yet."""
+    from domain.time_summary import PeriodProblem, window_for
+    from core.ist_clock import ist_today
+    from_day = query_day(date_from, "date_from")
+    to_day = query_day(date_to, "date_to")
+    try:
+        start, end = window_for(period, ist_today(),
+                                date.fromisoformat(from_day) if from_day else None,
+                                date.fromisoformat(to_day) if to_day else None)
+    except PeriodProblem as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    summary = time_tracking_repo.get_summary(current_user["firm_id"], current_user["id"], start, end)
+    return api_response(True, {
+        **summary,
+        "period": period,
+        "date_from": start.isoformat(),
+        "date_to": end.isoformat(),
+        "non_billable_minutes": int(summary["total_minutes"]) - int(summary["billable_minutes"]),
+    })
 
 
 @router.get("/engagement-choices")

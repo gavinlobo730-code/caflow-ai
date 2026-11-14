@@ -1385,7 +1385,8 @@ EXEMPT: dict[str, str] = {
     "/api/time-entries/summary/me":
         "addressed by the caller's own user_id, not a client — my_summary "
         "aggregates only entries the caller logged "
-        "(time_tracking_repo.get_summary(user_id=current_user['id'])). The "
+        "(time_tracking_repo.get_summary(firm, current_user['id'], first, last), "
+        "summed by time_entry_summary, migration 586). The "
         "by_client breakdown in the response reflects the caller's OWN "
         "work, never another staff member's assigned book.",
     "/api/time-entries/running/me":
