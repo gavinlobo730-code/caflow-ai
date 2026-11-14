@@ -171,10 +171,21 @@ interface ScheduleRow {
   wdv_rate_percent?: number | null;
   useful_life_years?: number | null;
   depreciation_posted_through?: string | null;
+  /** A reversal that claimed this asset and did not finish (POST-A-349), in the server's own words. `can_finish_now` is false while
+   *  that reversal may still be running; the sentence says until when, in IST. */
+  unfinished_reversal?: UnfinishedReversal | null;
   /** Set where the asset has no statutory basis for a charge — shown as a
    *  reason beside the zero, because a zero with no reason reads as "nothing
    *  to depreciate". */
   statutory_gap?: string | null;
+}
+
+interface UnfinishedReversal {
+  month: string;
+  started_at: string | null;
+  free_at: string | null;
+  can_finish_now: boolean;
+  sentence: string;
 }
 
 /** What the create form says under the rate (or life) field. It repeats the
@@ -1568,7 +1579,24 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                     ) : (
                       <span className="text-3xs text-ps-hint">Fully depreciated</span>
                     )}
-                    {r.depreciation_posted_through && (
+                    {r.unfinished_reversal ? (
+                      // POST-A-349: a reversal claimed the register and did not
+                      // finish, so its month's journal may still be on the
+                      // ledger. The server says so and when it can be finished;
+                      // the ordinary Reverse would be refused until it is.
+                      <span className="block mt-1 max-w-xs" data-testid={`unfinished-reversal-${r.asset_id}`}>
+                        <span className="block text-3xs text-state-attention">{r.unfinished_reversal.sentence}</span>
+                        {r.unfinished_reversal.can_finish_now && (
+                          <Button variant="plain" size="none"
+                            onClick={() => reverseLastMonth(r.asset_id, r.unfinished_reversal!.month)}
+                            disabled={posting === r.asset_id}
+                            className="block text-3xs text-red-600 hover:underline disabled:opacity-50 mt-1"
+                          >
+                            Finish reversing {r.unfinished_reversal.month}
+                          </Button>
+                        )}
+                      </span>
+                    ) : r.depreciation_posted_through && (
                       // FA-10: a month posted on a wrong cost or a wrong rate
                       // had no way back. The refusal that names it — "reverse
                       // it a month at a time" — is only actionable because of

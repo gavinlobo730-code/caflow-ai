@@ -13,11 +13,11 @@ the only source the create form's defaults come from.
 # "today" is still 31 March, so a defaulted depreciation period or disposal
 # date lands in the PREVIOUS financial year — quite possibly one the CA has
 # just locked.
-from core.ist_clock import ist_today, month_end_date
+from core.ist_clock import IST, ist_today, month_end_date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Annotated, Optional
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import calendar
 import math
@@ -873,6 +873,8 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
     if asset["is_disposed"]:
         raise HTTPException(status_code=422, detail="Cannot depreciate a disposed asset")
 
+    _refuse_while_a_reversal_is_in_flight(asset)
+
     posted_month = _month_label(asset.get("depreciation_posted_through"))
     if posted_month and posted_month >= period:
         raise HTTPException(status_code=409, detail=f"Depreciation already posted through {posted_month}")
@@ -1003,31 +1005,34 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
         "depreciation_fy":               fy,
         "depreciation_fy_start_accum_paise": fy_start_accum,
     }
-    update = db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id)
+    # The caller's copy moves with `changed` below, so a dead marker taken off here is off the copy too, and the next month of a run
+    # does not write against a marker this one already cleared.
+    changed = _adopting_a_dead_marker(changed, asset)
+    update = _with_marker_as_read(db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id), asset)
     if "accumulated_account_id" in asset:
         # POST-A-345: the journal above credited the ledger THIS COPY of the asset names. If a reclassification has moved the asset to
         # (or back from) another ledger since the row was read, a month credited to the old one would leave the asset half in each,
         # so the register moves only if the pointer is still the one the journal used.
         pointer = accumulated_account_pointer(asset)
         update = update.eq("accumulated_account_id", pointer) if pointer else update.is_("accumulated_account_id", "null")
-    if not (update.execute().data or []) and "accumulated_account_id" in asset:
+    if not (update.execute().data or []) and ("accumulated_account_id" in asset or "depreciation_reversal_month" in asset):
+        _refuse_if_a_sibling_kept_the_month(db, asset, period, firm_id)
         try:
             _reverse_tolerating_already_reversed(
                 db, firm_id, journal_id, entry_date,
-                f"Reversal of depreciation on {asset.get('asset_code')} for {period}: the asset's accumulated-depreciation ledger changed "
-                "while it was being posted", created_by)
+                f"Reversal of depreciation on {asset.get('asset_code')} for {period}: the asset changed while it was being posted (a "
+                "reversal was claimed or its accumulated-depreciation ledger moved)", created_by)
         except Exception as exc:
             from core.observability import capture_posting_failure
             capture_posting_failure(exc, operation="fixed_assets.post_depreciation.lost_race_reversal", firm_id=firm_id,
                                     client_id=asset.get("client_id"), asset_id=asset["id"])
             raise HTTPException(status_code=502, detail=(
-                f"This asset's accumulated-depreciation ledger changed while {period} was being posted, and the month's journal "
-                f"({journal_id}) could not be reversed ({_why_a_reversal_failed(exc)}). It is still posted to the ledger the asset "
-                "used to point at and the register does not include it. Reverse that journal from the ledger before posting the "
-                "month again.")) from exc
+                f"This asset changed while {period} was being posted (a reversal was claimed, or its accumulated-depreciation ledger "
+                f"moved), and the month's journal ({journal_id}) could not be reversed ({_why_a_reversal_failed(exc)}). The register "
+                "does not include it. Reverse that journal from the ledger before posting the month again.")) from exc
         raise HTTPException(status_code=409, detail=(
-            f"This asset's accumulated-depreciation ledger changed while {period} was being posted (a reclassification committed in "
-            "between), so the month was not kept. Nothing was posted; try again."))
+            f"This asset changed while {period} was being posted (a reversal claimed it, or a reclassification moved its "
+            "accumulated-depreciation ledger, in between), so the month was not kept. Nothing was posted; try again."))
     # The caller's copy moves with the row, so a month-by-month loop reads the
     # opening accumulated depreciation each iteration without re-fetching.
     asset.update(changed)
@@ -1980,6 +1985,14 @@ def delete_asset(
             status_code=422,
             detail="This asset has been disposed. A disposal is a transaction, not a "
                    "mistake to remove — reverse the disposal journal instead.")
+    if asset.get("depreciation_reversal_month"):
+        # POST-A-349. A reversal that claimed the register and did not finish may have left its month's journal live, and the first
+        # month's leaves no posted-through mark for the test above to see; a deleted asset can never be finished (the routes read live
+        # assets only), so the charge would stay in the P&L with nothing in the register behind it.
+        month = asset["depreciation_reversal_month"]
+        raise HTTPException(status_code=422, detail=(
+            f"A reversal of {month} of this asset's depreciation did not finish, so its journal may still be on the ledger. Finish "
+            f"reversing {month} (Depreciation tab), then delete the asset."))
     # POST-A-345. An asset whose amortisation a reclassification moved into its own ledger has a live entry behind it, and a deleted
     # asset can no longer be undone (the undo works on live assets), which would strand that credit in the new ledger with nothing
     # pointed at it. Undo the reclassification first.
@@ -2033,6 +2046,112 @@ def delete_asset(
                                "acquisition_reversed": bool(asset.get("journal_entry_id"))})
 
 
+#: How long a depreciation reversal's claim holds the asset against a post (POST-A-349). A reversal clears its marker the moment its
+#: journal is reversed or its claim is put back, so this only matters when the process died between the claim and either; it is longer
+#: than any reversal takes and short enough that a month is not blocked for long. A lease, as the payroll payment claim is one, though
+#: this one is judged in Python from the stamp read and not by a filter in the database.
+_REVERSAL_MARKER_LEASE = timedelta(minutes=15)
+
+
+def _marker_claimed_at(asset: dict) -> Optional[datetime]:
+    """The instant the reversal marker was written, or None when there is no marker or its stamp cannot be read."""
+    if not asset.get("depreciation_reversal_month"):
+        return None
+    try:
+        claimed = datetime.fromisoformat(str(asset.get("depreciation_reversal_claimed_at")).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return claimed if claimed.tzinfo else claimed.replace(tzinfo=timezone.utc)
+
+
+def _reversal_in_flight(asset: dict) -> Optional[str]:
+    """The month a reversal has claimed on this asset and is still within its lease, or None.
+
+    None also for a marker older than the lease: that reversal died, and a post adopts the asset as it always has (the register is
+    behind and the journal live, which is a half-done post's state too), while Finish reversing completes it. A marker whose stamp
+    cannot be read is treated as live, the direction that refuses a post rather than writing over a reversal (Finish reversing still
+    completes it: the person asked for exactly that)."""
+    month = asset.get("depreciation_reversal_month")
+    if not month:
+        return None
+    claimed = _marker_claimed_at(asset)
+    return month if claimed is None or datetime.now(timezone.utc) - claimed < _REVERSAL_MARKER_LEASE else None
+
+
+def _ist_clock(instant: datetime) -> str:
+    return instant.astimezone(IST).strftime("%H:%M IST on %d %b %Y")
+
+
+def unfinished_reversal(asset: dict) -> Optional[dict]:
+    """What the screen is told about a reversal that has claimed this asset and not finished (POST-A-349), or None.
+
+    `can_finish_now` is False only while a readable stamp is within the lease (the reversal may still be running). `sentence` is the
+    server's own words, so the screen shows them and computes nothing."""
+    month = asset.get("depreciation_reversal_month")
+    if not month:
+        return None
+    claimed = _marker_claimed_at(asset)
+    if claimed is None:
+        return {"month": month, "started_at": None, "free_at": None, "can_finish_now": True,
+                "sentence": (f"A reversal of {month} did not finish (its start time could not be read). Finish reversing {month} to "
+                             "take its journal off the ledger.")}
+    free_at = claimed + _REVERSAL_MARKER_LEASE
+    if datetime.now(timezone.utc) < free_at:
+        return {"month": month, "started_at": claimed.isoformat(), "free_at": free_at.isoformat(), "can_finish_now": False,
+                "sentence": (f"A reversal of {month} started at {_ist_clock(claimed)} and has not finished. If it is still running it "
+                             f"ends in moments; if it stopped, Finish reversing {month} is offered from {_ist_clock(free_at)}.")}
+    return {"month": month, "started_at": claimed.isoformat(), "free_at": free_at.isoformat(), "can_finish_now": True,
+            "sentence": (f"A reversal of {month} started at {_ist_clock(claimed)} and did not finish: the register no longer counts "
+                         f"{month} and its journal may still be on the ledger. Finish reversing {month} to take it off, or post "
+                         f"{month} again to keep it.")}
+
+
+def _refuse_while_a_reversal_is_in_flight(asset: dict) -> None:
+    """POST-A-349. A reversal writes the register back first and reverses the journal second; a post that read the row in between
+    would find the journal still live, be handed it by the kernel's duplicate check, write the register up and then be reversed under
+    it. The reversal's marker says it is in flight, and a post of any month of the asset waits for it."""
+    if _reversal_in_flight(asset):
+        raise HTTPException(status_code=409, detail="Nothing was posted. " + unfinished_reversal(asset)["sentence"])
+
+
+def _refuse_if_a_sibling_kept_the_month(db, asset: dict, period: str, firm_id: str) -> None:
+    """Before a post that lost its compare-and-set reverses the journal it was handed, ask whether the register now holds the month.
+
+    Two posts of one month are handed ONE journal by the kernel's duplicate check. When the first has written the register (and, past a
+    dead reversal's lease, taken the marker off), the second's compare-and-set misses on the marker it read; reversing then would take
+    off the journal the register now counts (POST-A-349, found by the independent read). So a miss reverses only when the register is
+    still behind this month: a reversal claimed it, or a reclassification moved its ledger before anybody wrote the month. A row that
+    cannot be read is treated as behind, which is what the lost-race path did before it asked."""
+    try:
+        now = _live_asset(db, asset["id"], firm_id)
+    except Exception:                                                          # noqa: BLE001 — the old behaviour: reverse
+        return
+    held = _month_label((now or {}).get("depreciation_posted_through"))
+    if held and held >= period:
+        raise HTTPException(status_code=409, detail=(
+            f"{period} was posted on this asset by another request at the same moment. Its journal is the one the register counts, so "
+            "nothing more was posted and nothing was taken off."))
+
+
+def _adopting_a_dead_marker(changed: dict, asset: dict) -> dict:
+    """A marker past its lease is a reversal that died with the register behind and the journal live, which is a half-done post's
+    state too: the post adopts the asset as it always has, and takes the dead marker off in the same write (POST-A-349)."""
+    if asset.get("depreciation_reversal_month"):
+        return {**changed, "depreciation_reversal_month": None, "depreciation_reversal_claimed_at": None}
+    return changed
+
+
+def _with_marker_as_read(query, asset: dict):
+    """Condition a register write on the reversal marker still being what this request read, so a reversal that claims the row in
+    between makes the write a miss. A row read before migration 587 has no marker column and is written as before."""
+    if "depreciation_reversal_month" not in asset:
+        return query
+    if not asset.get("depreciation_reversal_month"):
+        return query.is_("depreciation_reversal_month", "null")
+    return (query.eq("depreciation_reversal_month", asset.get("depreciation_reversal_month"))
+            .eq("depreciation_reversal_claimed_at", asset.get("depreciation_reversal_claimed_at")))
+
+
 def _reverse_month_claiming_the_register(db, asset: dict, update: dict, new_accum: int, entry: dict, entry_date: str, period: str,
                                          actor_id) -> None:
     """Write the register's new figures by compare-and-set on the figure and the pointer the request read, THEN reverse the month's
@@ -2042,11 +2161,18 @@ def _reverse_month_claiming_the_register(db, asset: dict, update: dict, new_accu
     month included, into the new ledger and leave the register lower than it by the month: the new ledger above the register and the
     shared ledger in debit, with no 409. A miss here is a 409 before anything was posted."""
     firm_id, asset_id = asset["firm_id"], asset["id"]
-    claim = (db.table("fixed_assets").update(update).eq("id", asset_id).eq("firm_id", firm_id)
+    # POST-A-349: the claim carries a marker (the month and this instant), so a post of the asset that reads the row before the journal
+    # is reversed refuses instead of adopting the journal this request is about to reverse; and it is a compare-and-set on the marker
+    # the request read, like the figure and the pointer.
+    marking = "depreciation_reversal_month" in asset
+    stamp = datetime.now(timezone.utc).isoformat()
+    claim_update = {**update, "depreciation_reversal_month": period, "depreciation_reversal_claimed_at": stamp} if marking else update
+    claim = (db.table("fixed_assets").update(claim_update).eq("id", asset_id).eq("firm_id", firm_id)
              .eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0)))
     if "accumulated_account_id" in asset:
         _p = accumulated_account_pointer(asset)
         claim = claim.eq("accumulated_account_id", _p) if _p else claim.is_("accumulated_account_id", "null")
+    claim = _with_marker_as_read(claim, asset)
     if not (claim.execute().data or []):
         raise HTTPException(status_code=409, detail=(
             f"This asset changed while {period} was being reversed (a month was posted or reversed, or its depreciation was moved to "
@@ -2057,20 +2183,108 @@ def _reverse_month_claiming_the_register(db, asset: dict, update: dict, new_accu
             f"Reversal of depreciation on {asset.get('asset_code')} for {period}", actor_id)
     except Exception:
         try:
-            # The five columns a month's depreciation or reversal can move, named so that the column check reads them. The row was read
-            # whole (`select("*")`), so a column this request did not change is put back as itself.
-            (db.table("fixed_assets").update({
-                "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
-                "current_wdv_paise": asset.get("current_wdv_paise"),
-                "depreciation_posted_through": asset.get("depreciation_posted_through"),
-                "depreciation_fy": asset.get("depreciation_fy"),
-                "depreciation_fy_start_accum_paise": asset.get("depreciation_fy_start_accum_paise"),
-            }).eq("id", asset_id).eq("firm_id", firm_id).eq("accumulated_depreciation_paise", new_accum).execute())
+            # The five columns a month's depreciation or reversal can move, named so that the column check reads them, and the
+            # reversal marker this claim wrote (POST-A-349). The row was read whole (`select("*")`), so a column this request did not
+            # change is put back as itself.
+            if marking:
+                # The marker this claim wrote goes too, and only this claim's own: a later Finish reversing that re-stamped the marker
+                # has reversed the journal and cleared it, and putting the register back over that would count a month the ledger no
+                # longer has (the independent read). Both payloads are literal so the column check reads every name.
+                put_back = (db.table("fixed_assets").update({
+                    "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
+                    "current_wdv_paise": asset.get("current_wdv_paise"),
+                    "depreciation_posted_through": asset.get("depreciation_posted_through"),
+                    "depreciation_fy": asset.get("depreciation_fy"),
+                    "depreciation_fy_start_accum_paise": asset.get("depreciation_fy_start_accum_paise"),
+                    "depreciation_reversal_month": None,
+                    "depreciation_reversal_claimed_at": None,
+                }).eq("depreciation_reversal_claimed_at", stamp))
+            else:
+                put_back = db.table("fixed_assets").update({
+                    "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
+                    "current_wdv_paise": asset.get("current_wdv_paise"),
+                    "depreciation_posted_through": asset.get("depreciation_posted_through"),
+                    "depreciation_fy": asset.get("depreciation_fy"),
+                    "depreciation_fy_start_accum_paise": asset.get("depreciation_fy_start_accum_paise"),
+                })
+            put_back = put_back.eq("id", asset_id).eq("firm_id", firm_id).eq("accumulated_depreciation_paise", new_accum)
+            put_back.execute()
         except Exception as restore_exc:                                   # noqa: BLE001 — reported; the original failure is re-raised
             from core.observability import capture_posting_failure
             capture_posting_failure(restore_exc, operation="fixed_assets.reverse_depreciation.restore", firm_id=firm_id,
                                     client_id=asset.get("client_id"), asset_id=asset_id)
         raise
+    if marking:
+        _clear_the_marker(db, asset, stamp)
+
+
+def _clear_the_marker(db, asset: dict, stamp) -> None:
+    """Take this reversal's marker off the asset once its journal is reversed (POST-A-349), by compare-and-set on the claim's own stamp,
+    so a later claim is never cleared by an earlier request. A failure is reported and does not undo the reversal: the marker then
+    lapses with its lease, and a repeated reversal of the month clears it."""
+    try:
+        (db.table("fixed_assets").update({"depreciation_reversal_month": None, "depreciation_reversal_claimed_at": None})
+         .eq("id", asset["id"]).eq("firm_id", asset["firm_id"]).eq("depreciation_reversal_claimed_at", stamp).execute())
+    except Exception as exc:                                                   # noqa: BLE001 — reported; the reversal stands
+        from core.observability import capture_posting_failure
+        capture_posting_failure(exc, operation="fixed_assets.reverse_depreciation.clear_marker", firm_id=asset["firm_id"],
+                                client_id=asset.get("client_id"), asset_id=asset["id"])
+
+
+def _complete_a_dead_reversal(db, asset: dict, period: str, current_user: dict):
+    """Finish a reversal of `period` that claimed the register and died before its journal was reversed or its marker taken off
+    (POST-A-349). The register already stands where the reversal left it; what remains is the month's journal, if it is still live,
+    and the marker. Reversing a journal that is already reversed is tolerated, so a reversal that died after the journal and before
+    the marker is completed by clearing the marker alone. A marker within its lease is another reversal still running, and a dead one
+    for another month must be completed first: reversing on top of it would leave a live journal behind the register."""
+    marker = asset.get("depreciation_reversal_month")
+    state = unfinished_reversal(asset)
+    if not state["can_finish_now"]:
+        raise HTTPException(status_code=409, detail="Nothing was reversed. " + state["sentence"])
+    if marker != period:
+        raise HTTPException(status_code=409, detail=(
+            f"A reversal of {marker} on this asset did not finish. Finish reversing {marker} first (Depreciation tab), then reverse "
+            f"{period}."))
+    firm_id, client_id = asset["firm_id"], asset["client_id"]
+    entry_date = _period_end_date(period)
+    period_lock_service.assert_open(db, firm_id, client_id, entry_date)
+    # Claim the dead marker before acting on it, by compare-and-set on the stamp read: a post that adopted the asset in between has
+    # taken the marker off and moved the register, and reversing the month's journal under it would leave the register above the
+    # ledger. A fresh stamp also holds every post off for the lease while this completes.
+    stamp = datetime.now(timezone.utc).isoformat()
+    renewed = (db.table("fixed_assets").update({"depreciation_reversal_claimed_at": stamp})
+               .eq("id", asset["id"]).eq("firm_id", firm_id).eq("depreciation_reversal_month", marker)
+               .eq("depreciation_reversal_claimed_at", asset.get("depreciation_reversal_claimed_at")).execute().data or [])
+    if not renewed:
+        raise HTTPException(status_code=409, detail=(
+            f"This asset changed while the reversal of {marker} was being finished (a month was posted over it, or another request "
+            "finished it first). Nothing was reversed; reload the asset."))
+    reference = f"FA-DEPN-{asset.get('asset_code') or asset['id'][:8]}-{period}"
+    entry = ((db.table("journal_entries").select("id, entry_date")
+              .eq("firm_id", firm_id).eq("client_id", client_id)
+              .eq("reference_no", reference).eq("is_reversed", False)
+              .limit(1).execute().data) or [None])[0]
+    if entry:
+        _reverse_tolerating_already_reversed(
+            db, firm_id, entry["id"], entry.get("entry_date") or entry_date,
+            f"Reversal of depreciation on {asset.get('asset_code')} for {period} (completing a reversal that did not finish)",
+            current_user.get("id"))
+    _clear_the_marker(db, asset, stamp)
+    log_event(
+        firm_id, "fixed_asset", asset["id"], "update",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={"period": period, "reference_no": reference, "depreciation_reversal_month": period},
+        new_data={"depreciation_reversal_month": None},
+        metadata={"action": "depreciation_reversal_completed", "journal_reversed_now": bool(entry)},
+    )
+    return api_response(True, {
+        "asset_id": asset["id"],
+        "period": period,
+        "completed": True,
+        "journal_reversed_now": bool(entry),
+        "accumulated_depreciation_paise": asset.get("accumulated_depreciation_paise"),
+        "depreciation_posted_through": asset.get("depreciation_posted_through"),
+    })
 
 
 @router.post("/{asset_id}/depreciation/{period}/reverse")
@@ -2106,6 +2320,13 @@ def reverse_depreciation(
     if not asset or not can_access_client(current_user, asset.get("client_id")):
         raise HTTPException(status_code=404, detail="Asset not found")
     firm_id, client_id = current_user["firm_id"], asset["client_id"]
+
+    # POST-A-349. A marker on the asset is a reversal that claimed it. Within its lease another is running: refuse. Past it, that
+    # reversal died after writing the register back: a repeated reversal of the SAME month completes it (reverses the journal if it is
+    # still live and takes the marker off); any other month is refused until it does, because reversing on top of a half-done one would
+    # leave a live journal behind the register.
+    if asset.get("depreciation_reversal_month"):
+        return _complete_a_dead_reversal(db, asset, period, current_user)
 
     posted_month = _month_label(asset.get("depreciation_posted_through"))
     if not posted_month:
@@ -2282,6 +2503,9 @@ def depreciation_schedule(
             "useful_life_years":      a.get("useful_life_years"),
             "depreciation_posted_through": _month_label(a.get("depreciation_posted_through")),
             "statutory_gap":          statutory_gap,
+            # POST-A-349: a reversal that claimed this asset and has not finished, in the server's words, so the screen can offer
+            # Finish reversing (None where there is none, or where the row was read before migration 587).
+            "unfinished_reversal":    unfinished_reversal(a),
         })
     return api_response(True, schedule)
 
