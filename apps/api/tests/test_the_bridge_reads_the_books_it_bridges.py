@@ -20,7 +20,7 @@ THE ONE THAT MATTERS MOST
 
 NEGATIVE CONTROLS
   * Make a caller's value lose to the derived one and
-    `test_a_supplied_figure_wins` fails — which would make the screen useless
+    `test_a_supplied_figure_wins_and_says_it_was_supplied` fails — which would make the screen useless
     for a client whose accounts were prepared elsewhere.
   * Derive the brought-forward set-off from the single bridge figure and
     `test_the_brought_forward_set_off_is_never_derived` fails: §72/§73(4)/§74/

@@ -41,9 +41,9 @@ NEGATIVE CONTROL (each of these fails against the previous code)
     * test_a_private_limited_client_is_an_october_case
     * test_the_frontends_underscored_key_is_the_bug_and_both_spellings_now_work
     * test_the_generated_itr_obligation_uses_the_clients_own_date
-    * test_the_seeder_stops_giving_every_company_31_july
     * test_an_llp_is_no_longer_asserted_to_be_an_audit_case
     * test_an_undecided_client_is_told_so
+    (A sixth entry named a seeder test that is not in this file; it was removed on 14-11-2026 rather than guessed at.)
 """
 from __future__ import annotations
 

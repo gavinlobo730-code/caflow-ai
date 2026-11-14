@@ -11,7 +11,7 @@ are decisions somebody could undo with one line:
   * this service NEVER blocks or reverses a posting, and
   * the read is bounded by the PERIOD rather than by the ledger.
 
-The rules themselves are already tested in test_bank_exceptions.py; nothing
+The rules themselves are already tested in test_bank_exception_rules.py; nothing
 here re-tests a threshold, which would be a second place they live.
 """
 from __future__ import annotations

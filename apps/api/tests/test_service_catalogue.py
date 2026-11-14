@@ -1,7 +1,7 @@
 """Product & Service master — CRUD, archive/restore, duplicate prevention,
 search, ranking, validation, CLIENT isolation. Runs in mock mode (no
 SUPABASE_URL): the router keeps an in-memory store so the full lifecycle is
-exercised without a live DB, mirroring test_customers-style coverage. Pure
+exercised without a live DB, mirroring the coverage of the customer tests (test_customer_lifecycle.py and its neighbours). Pure
 ranking is asserted directly.
 
 Batch 6 guardrail, still enforced after the HSN/SAC redesign broadened this
