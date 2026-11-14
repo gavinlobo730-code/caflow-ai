@@ -10,7 +10,17 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { PageHeader } from "@/components/ui/page-header";
 
-interface Article { id: string; title: string; current_version: number; tags?: string[]; updated_at?: string }
+interface Article {
+  id: string; title: string; current_version: number; tags?: string[]; updated_at?: string;
+  /** Where the searched words were found, when the list answers a search: the server reads the title and the current text. */
+  matched_in?: string[];
+}
+
+/** The server found the searched words in this article's current text and not in its title, so the title alone does not
+ *  show why it is listed. */
+function foundInTextOnly(a: Article): boolean {
+  return Array.isArray(a.matched_in) && a.matched_in.includes("text") && !a.matched_in.includes("title");
+}
 
 export default function ClientKnowledgePage() {
   const { clientId } = useClientNav();
@@ -22,6 +32,9 @@ export default function ClientKnowledgePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // The words the list on screen answers (empty for the plain list), set with the list itself so the empty sentence below
+  // describes the answer shown, not the box, which runs ahead of it while a search is waiting or in flight.
+  const [answered, setAnswered] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", content: "", tags: "" });
   const [saving, setSaving] = useState(false);
@@ -48,9 +61,10 @@ export default function ClientKnowledgePage() {
   // already enforced at the DB layer by the knowledge_articles RLS policies
   // (own-firm + assignment + *_internal_partner_only, migrations 073/074/079),
   // which this RLS-bound anon-key client is subject to — no need to
-  // re-implement that check here. Once the CA types a real search query, that
-  // becomes relevance-ranked search and stays backend-routed (same reasoning
-  // as ServiceCataloguePicker).
+  // re-implement that check here. Once the CA types a search, it goes to the
+  // server, which reads each article's title and its CURRENT text (the text
+  // lives in the version rows, which this screen does not read) and lists the
+  // matches newest first, with no ranking.
   const load = useCallback(async (q: string) => {
     if (!clientId) return;
     setLoading(true); setError(null);
@@ -69,7 +83,7 @@ export default function ClientKnowledgePage() {
             .order("updated_at", { ascending: false }));
         result = (data as Article[]) ?? [];
       }
-      if (latestQuery.current === q) setArticles(result);
+      if (latestQuery.current === q) { setArticles(result); setAnswered(q.trim()); }
     } catch (e) {
       if (latestQuery.current === q) setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -140,7 +154,7 @@ export default function ClientKnowledgePage() {
         {/* No Enter-key handler: the debounced effect above already covers
             every keystroke, Enter included, ~300ms after typing stops. */}
         <input aria-label="Search client articles" value={query} onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search client articles…" className="flex-1 text-sm outline-none" />
+          placeholder="Search this client's titles and text…" className="flex-1 text-sm outline-none" />
       </div>
       {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
       {showForm && canAuthor && (
@@ -153,11 +167,21 @@ export default function ClientKnowledgePage() {
       )}
       {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
-          {articles.length === 0 && <p className="text-xs text-gray-400">No client-scoped articles.</p>}
+          {articles.length === 0 && !answered && <p className="text-xs text-gray-400">No client-scoped articles.</p>}
+          {articles.length === 0 && answered && (
+            <p className="text-xs text-gray-400">
+              No article of this client has every word of &ldquo;{answered}&rdquo; in its title or its current text.
+            </p>
+          )}
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
               <p className="text-sm font-medium text-brand">{a.title}</p>
               <p className="text-2xs text-gray-400 mt-0.5">v{a.current_version}{a.tags && a.tags.length ? ` · ${a.tags.join(", ")}` : ""}</p>
+              {foundInTextOnly(a) && (
+                <p className="text-2xs text-ps-label mt-0.5" data-testid={`article-${a.id}-found-in-text`}>
+                  The words are in the article&rsquo;s text, not its title.
+                </p>
+              )}
             </div>
           ))}
         </div>

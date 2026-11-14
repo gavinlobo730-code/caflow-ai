@@ -1,7 +1,7 @@
 """
 Knowledge Base + Client Instructions (Amendment v1.1 FR-KB, Batch 6).
 
-Operational, lightweight (NOT a wiki). Reuses Postgres storage + FTS (no vectors),
+Operational, lightweight (NOT a wiki). Reuses Postgres storage and a substring search (no full-text index, no vectors),
 RLS, the role/assignment model, internal_client_service (G1), timeline_service,
 and audit_service. Tables (knowledge_articles / knowledge_article_versions /
 client_instructions) were created in migration 073; assignment-gated RLS in 079.
@@ -26,6 +26,7 @@ from fastapi import HTTPException
 from services.internal_client_service import is_internal_client
 from services.numbering import is_unique_violation
 from core import db_provider
+from core.db_paging import fetch_all, fetch_all_in
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.knowledge")
@@ -237,29 +238,127 @@ def list_versions(current_user: dict, article_id: str) -> list[dict]:
             .eq("article_id", article_id).order("version", desc=True).execute().data or [])
 
 
+def _like_pattern(words: str) -> str:
+    """`words` as an ILIKE pattern that finds them anywhere, with a typed `\\`, `%` or `_` matched as itself.
+
+    Without the escapes a search for "50%" matched every article with "50" in it and one for "TDS_" matched "TDSA". PostgREST
+    also reads a `*` in a like pattern as `%` and offers no escape for it, so a typed `*` still matches anything: that widens a
+    search and never hides an article.
+    """
+    safe = words.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{safe}%"
+
+
+#: How many words one search may carry. Each word is two reads (the titles, the versions' text), so the cap bounds a search's cost;
+#: a search past it is refused in words rather than cut short, because dropping the ninth word would widen the answer silently.
+MAX_SEARCH_WORDS = 8
+
+
+def search_words(query: Optional[str]) -> list[str]:
+    """The distinct words of a search, in the order typed: split on any whitespace, a word repeated in another case kept once.
+
+    More than `MAX_SEARCH_WORDS` is a 422 in words. No words (None, empty, spaces) is the plain list.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for word in (query or "").split():
+        if word.casefold() not in seen:
+            seen.add(word.casefold())
+            out.append(word)
+    if len(out) > MAX_SEARCH_WORDS:
+        raise HTTPException(status_code=422,
+                            detail=f"A search takes at most {MAX_SEARCH_WORDS} words; this one has {len(out)}.")
+    return out
+
+
+def _newest_first(rows: list[dict]) -> list[dict]:
+    """Last updated first, and articles updated at the same instant in id order, so the list is the same on every request."""
+    def updated(r: dict) -> datetime:
+        try:
+            when = datetime.fromisoformat(str(r.get("updated_at") or ""))
+        except ValueError:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+    by_id = sorted(rows, key=lambda r: str(r.get("id") or ""))
+    return sorted(by_id, key=updated, reverse=True)          # a stable sort keeps the id order among equal instants
+
+
 def search_articles(current_user: dict, query: Optional[str] = None, scope: Optional[str] = None,
                     client_id: Optional[str] = None, include_archived: bool = False) -> list[dict]:
-    """Firm/department article search (Postgres FTS). Excludes client-scoped +
-    internal-client content unless a specific assigned client_id is requested."""
+    """The articles the caller may read, last updated first; with `query`, those whose title or CURRENT text holds the words.
+
+    Firm and department articles by default; a scope or one client's articles when asked (a named client is refused outright
+    when the caller may not read it). Client-scoped and internal-client content is then filtered per row below.
+
+    WHAT A SEARCH READS (POST-A-216). It searched the title only, with `ilike`, although an article's words are its TEXT,
+    which lives in `knowledge_article_versions.content`, one row per version. Now an article is found when EVERY word of the
+    search is in its title or in its current text (one word may be in the title and another in the text: "TDS rent" finds
+    an article titled "Rent" whose text says "TDS"). For each word it reads, paged so no match is lost to PostgREST's first
+    thousand rows, the articles whose title holds the word and the versions whose text holds it. A version counts only when
+    it is its article's `current_version`, so words that were in an old version and were edited out do not find the
+    article; the articles found by their text are read under the same firm, scope, client and archived filters as the title
+    match, and the per-row visibility below applies to all of them. A word is a substring, any case, with no stemming and
+    no ranking (the list stays in last-updated order), so a search finds what a person sees on the page. Each row says
+    where the words were found, in `matched_in` ("title", "text" or both), because an article found by its text alone has
+    nothing in its title to show why it is in the list.
+    """
     if _USE_MOCK:
         return []
     db = _db()
-    q = db.table("knowledge_articles").select("*").eq("firm_id", current_user.get("firm_id"))
-    if not include_archived:
-        q = q.eq("is_archived", False)
+    firm_id = current_user.get("firm_id")
     if client_id:
         _assert_client_access(current_user, client_id, write=False)
-        q = q.eq("client_id", client_id)
-    elif scope:
-        q = q.eq("scope", scope)
+
+    def articles():
+        q = db.table("knowledge_articles").select("*").eq("firm_id", firm_id)
+        if not include_archived:
+            q = q.eq("is_archived", False)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        elif scope:
+            q = q.eq("scope", scope)
+        else:
+            q = q.in_("scope", ["firm", "department"])   # firm KB list excludes client-scoped
+        return q
+
+    words = search_words(query)
+    if not words:
+        rows = fetch_all(articles, label="knowledge.articles", strict=True)
     else:
-        q = q.in_("scope", ["firm", "department"])   # firm KB list excludes client-scoped
-    if query:
-        q = q.ilike("title", f"%{query}%")           # title search; FTS handled by GIN at scale
-    rows = q.order("updated_at", desc=True).execute().data or []
-    firm_id = current_user.get("firm_id")
+        found_rows: dict[str, dict] = {}
+        in_title: list[set[str]] = []                      # per word: the articles whose title holds it
+        in_text: list[dict[str, set[int]]] = []            # per word: article -> the versions whose text holds it
+        for word in words:
+            pattern = _like_pattern(word)
+            titled = fetch_all(lambda pattern=pattern: articles().ilike("title", pattern),
+                               label="knowledge.articles.title", strict=True)
+            found_rows.update({str(r.get("id")): r for r in titled})
+            in_title.append({str(r.get("id")) for r in titled})
+            versions: dict[str, set[int]] = {}
+            for v in fetch_all(lambda pattern=pattern: (db.table("knowledge_article_versions").select("id, article_id, version")
+                                                        .eq("firm_id", firm_id).ilike("content", pattern)),
+                               label="knowledge.versions.text", strict=True):
+                versions.setdefault(str(v.get("article_id")), set()).add(int(v.get("version") or 0))
+            in_text.append(versions)
+        # An article can match only if every word is in its title or in SOME version of its text; whether that version is the
+        # current one is asked below, on the article's own row.
+        candidates = set.intersection(*[titled | set(versions) for titled, versions in zip(in_title, in_text, strict=True)])
+        found_rows.update({str(r.get("id")): r for r in fetch_all_in(
+            articles, "id", [a for a in candidates if a not in found_rows], label="knowledge.articles.text")})
+        rows = []
+        for aid in candidates:
+            r = found_rows.get(aid)
+            if r is None:
+                continue                                   # outside this list: another scope, archived, or not the firm's
+            current = int(r.get("current_version") or 1)
+            title_hits = [aid in titled for titled in in_title]
+            text_hits = [current in versions.get(aid, set()) for versions in in_text]
+            if not all(t or x for t, x in zip(title_hits, text_hits, strict=True)):
+                continue                                   # a word is only in a version that is no longer current
+            rows.append({**r, "matched_in": [where for where, hit in (("title", any(title_hits)), ("text", any(text_hits)))
+                                             if hit]})
     out = []
-    for r in rows:
+    for r in _newest_first(rows):
         row_client = r.get("client_id")
         internal = is_internal_client(row_client, firm_id)
         # G1 (internal practice client is Partner-only) is NOT a separate filter

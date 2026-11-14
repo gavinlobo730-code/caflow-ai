@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Library, Search, Plus, History, RotateCcw, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
@@ -12,8 +12,16 @@ import { formatDate } from "@/lib/dates/format";
 interface Article {
   id: string; scope: string; department?: string | null; client_id?: string | null;
   title: string; current_version: number; tags?: string[]; is_archived?: boolean; updated_at?: string;
+  /** Where the searched words were found, when the list answers a search: the server reads the title and the current text. */
+  matched_in?: string[];
 }
 interface Version { version: number; changed_by?: string | null; changed_at?: string }
+
+/** The server found the searched words in this article's current text and not in its title, so the title alone does not
+ *  show why it is listed. */
+function foundInTextOnly(a: Article): boolean {
+  return Array.isArray(a.matched_in) && a.matched_in.includes("text") && !a.matched_in.includes("title");
+}
 
 function KnowledgeInner() {
   const params = useSearchParams();
@@ -39,18 +47,43 @@ function KnowledgeInner() {
 
   const scope = params.get("scope") ?? undefined;
 
-  const load = useCallback(async () => {
+  // The words the list on screen answers; empty when it is the plain list.
+  const [answered, setAnswered] = useState("");
+
+  // A search runs about 300ms after typing stops, and only the newest request's answer is shown. `load` used to re-run on
+  // every keystroke and again on Enter, so an earlier, slower answer could land after a later one and list articles for
+  // words the box no longer held (the client's knowledge screen had the same race and the same cure). The search now reads
+  // each article's current text as well as its title, so a request costs more than a title match did.
+  const latestRun = useRef(0);
+  const load = useCallback(async (words: string) => {
+    const run = ++latestRun.current;
+    const wanted = words.trim();
     setLoading(true); setError(null);
     try {
       const p: Record<string, string> = {};
       if (scope) p.scope = scope;
-      if (query) p.query = query;
+      if (wanted) p.query = wanted;
       const r = await api.knowledge.listArticles(p) as ApiResp<Article[]>;
+      if (run !== latestRun.current) return;
       setArticles(r.data ?? []);
-    } catch (e) { setError(e instanceof Error ? e.message : "Failed to load articles"); }
-    finally { setLoading(false); }
-  }, [scope, query]);
-  useEffect(() => { load(); }, [load]);
+      setAnswered(wanted);
+    } catch (e) {
+      if (run === latestRun.current) setError(e instanceof Error ? e.message : "Failed to load articles");
+    } finally {
+      if (run === latestRun.current) setLoading(false);
+    }
+  }, [scope]);
+  // A new scope (or the first render) loads at once; typing waits for a pause.
+  const loadedWith = useRef<typeof load | null>(null);
+  useEffect(() => {
+    if (loadedWith.current !== load) {
+      loadedWith.current = load;
+      void load(query);
+      return;
+    }
+    const timer = setTimeout(() => { void load(query); }, 300);
+    return () => clearTimeout(timer);
+  }, [load, query]);
 
   async function open(id: string) {
     setRowBusy(true);
@@ -74,14 +107,18 @@ function KnowledgeInner() {
         department: form.department || null,
         tags: form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
       });
-      setShowForm(false); setForm({ scope: "firm", title: "", content: "", department: "", tags: "" }); await load();
+      setShowForm(false); setForm({ scope: "firm", title: "", content: "", department: "", tags: "" }); await load(query);
     } catch (e) { setError(e instanceof Error ? e.message : "Create failed"); }
   }
 
   async function restore(id: string, version: number) {
     setRowBusy(true);
     try {
-    try { await api.knowledge.restoreVersion(id, version); await open(id); await open(id); } catch { /* backend enforces */ }
+    try {
+      await api.knowledge.restoreVersion(id, version); await open(id); await open(id);
+      // A restore writes a new current version, so the row's version and what a search finds in its text have moved.
+      void load(query);
+    } catch { /* backend enforces */ }
   } finally { setRowBusy(false); }
   }
 
@@ -94,7 +131,7 @@ function KnowledgeInner() {
         actions={
           <>
             {canAuthor && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-brand text-white"><Plus size={13} /> New article</button>}
-            <button aria-label="Refresh" onClick={load} className="text-ps-hint hover:text-brand"><RefreshCw size={14} /></button>
+            <button aria-label="Refresh" onClick={() => { void load(query); }} className="text-ps-hint hover:text-brand"><RefreshCw size={14} /></button>
           </>
         }
         className="mb-4"
@@ -103,8 +140,9 @@ function KnowledgeInner() {
       <div className="flex items-center gap-2 mb-4">
         <div className="flex items-center gap-2 flex-1 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus-within:ring-2 focus-within:ring-brand">
           <Search size={14} className="text-ps-hint" />
-          <input aria-label="Search articles" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && load()}
-            placeholder="Search articles…" className="flex-1 text-sm outline-none" />
+          {/* No Enter-key handler: the debounced effect above already covers every keystroke, Enter included. */}
+          <input aria-label="Search articles" value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search titles and text…" className="flex-1 text-sm outline-none" />
         </div>
       </div>
 
@@ -125,9 +163,14 @@ function KnowledgeInner() {
         </form>
       )}
 
-      {loading ? <PageLoader onRetry={() => { void load(); }} /> : (
+      {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
-          {articles.length === 0 && <p className="text-xs text-ps-hint">No articles found.</p>}
+          {articles.length === 0 && !answered && <p className="text-xs text-ps-hint">No articles found.</p>}
+          {articles.length === 0 && answered && (
+            <p className="text-xs text-ps-hint">
+              No article in this list has every word of &ldquo;{answered}&rdquo; in its title or its current text.
+            </p>
+          )}
           {articles.map((a) => (
             <div key={a.id} className="bg-white border border-gray-200 rounded-xl">
               <button disabled={rowBusy} onClick={() => open(a.id)} className="w-full flex items-center justify-between px-4 py-3 text-left">
@@ -137,6 +180,11 @@ function KnowledgeInner() {
                     {a.scope}{a.department ? ` · ${a.department}` : ""} · v{a.current_version}
                     {a.tags && a.tags.length > 0 ? ` · ${a.tags.join(", ")}` : ""}
                   </p>
+                  {foundInTextOnly(a) && (
+                    <p className="text-2xs text-ps-label mt-0.5" data-testid={`article-${a.id}-found-in-text`}>
+                      The words are in the article&rsquo;s text, not its title.
+                    </p>
+                  )}
                 </div>
                 <History size={14} className="text-ps-hint" />
               </button>

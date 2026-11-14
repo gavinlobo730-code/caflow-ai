@@ -21,8 +21,8 @@ WHAT THIS HOLDS, AS RULES AND NOT AS A LIST OF TODAY'S NAMES
     * Every `rbac("resource", "action")` it names is a pair `core.permissions.PERMISSIONS` holds, and the decisions of
       14 June 2026 it records about who may do what are the ones the table holds.
     * Each guardrail section cites a test that holds it.
-    * **Statements about what is NOT built or NOT decided expire.** The record says knowledge-base search is
-      title-only, that the Manager is firm-wide in the knowledge base alone, and lists the two defects still open of
+    * **Statements about what is NOT built or NOT decided expire.** The record says knowledge-base search has no
+      ranking (it reads the title and the current text, POST-A-216), that the Manager is firm-wide in the knowledge base alone, and lists the two defects still open of
       the six observed while writing it. Each is asserted here against the code, so the day one is built or fixed this file fails and says
       to change the record the same day. That is the point of them: a design record that is wrong in the
       reassuring direction is worse than none.
@@ -321,21 +321,29 @@ _KB_FILES = ("services/knowledge_service.py", "routers/knowledge.py")
 _FULL_TEXT = re.compile(r"text_search|textSearch|tsquery|ts_rank|websearch", re.I)
 
 
-def _calls_ilike_on_title(fn: ast.AST) -> bool:
+def _calls_ilike_on(fn: ast.AST, column: str) -> bool:
     return any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "ilike"
-               and n.args and isinstance(n.args[0], ast.Constant) and n.args[0].value == "title"
+               and n.args and isinstance(n.args[0], ast.Constant) and n.args[0].value == column
                for n in ast.walk(fn))
 
 
-def test_knowledge_base_search_is_title_only_and_the_record_says_so():
-    """EXPIRES. The day article content is searched, the record's "Search is by title only" is false.
+def test_knowledge_base_search_reads_the_title_and_the_current_text_with_no_ranking_and_the_record_says_so():
+    """Half holds what was built (POST-A-216) and half EXPIRES.
 
-    When this fails: someone built (or began) full-text search. Rewrite §7 and the first row of the §9 table to
-    say what it searches and how it ranks, then change this test to hold that instead.
+    Built: the search reads the title and the text of the article's CURRENT version, both with `ilike`. The day it
+    reads something else, §7's "Search reads the title and the current text" is false.
+    Expires: "There is no ranking". The day full-text search or a rank is built, rewrite §7 and the first row of the
+    §9 table to say what it searches and how it ranks, then change this test to hold that instead.
     """
-    assert "Search is by title only" in _doc(), "the record's claim moved; move this test with it"
+    doc = _doc()
+    assert "Search reads the title and the current text" in doc, "the record's claim moved; move this test with it"
+    assert "There is no ranking" in doc, "the record's claim moved; move this test with it"
     search = next(fn for fn in _function_nodes("services/knowledge_service.py") if fn.name == "search_articles")
-    assert _calls_ilike_on_title(search), "search_articles no longer filters on the title with ilike"
+    assert _calls_ilike_on(search, "title"), "search_articles no longer filters on the title with ilike"
+    assert _calls_ilike_on(search, "content"), "search_articles no longer reads the versions' text with ilike"
+    body = ast.unparse(search)
+    assert "knowledge_article_versions" in body and "current_version" in body, \
+        "search_articles no longer keeps a version only when it is the article's current one"
     for rel in _KB_FILES:
         assert not _FULL_TEXT.search(_production()[rel]), f"{rel} now uses a text-search construct"
     kb_sql = [name for name, text in _migrations().items() if "knowledge_article" in text and _FULL_TEXT.search(text)]

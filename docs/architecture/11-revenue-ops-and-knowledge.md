@@ -8,7 +8,7 @@
 > file and the code disagree, fix one of them the same day.
 > `apps/api/tests/test_the_revenue_ops_design_record_names_what_exists.py` holds every
 > route, table, migration, function, resource and path named below, and two sentences in
-> it (the knowledge-base search is title-only; the Manager is firm-wide in the knowledge
+> it (the knowledge-base search has no ranking; the Manager is firm-wide in the knowledge
 > base alone) are tested to **expire**: when either stops being true that test fails, and
 > this file is what to edit.
 
@@ -319,10 +319,29 @@ Three tables from migration 073: `knowledge_articles`, `knowledge_article_versio
 - **Scope.** `firm` and `department` articles are visible to all staff (`department` is a
   free-text tag, not a boundary, POST-B-331); `client` articles carry a `client_id` and
   are gated by the visibility function below.
-- **Search is by title only.** `knowledge_service.search_articles()` filters with
-  `ilike` on the title; there is no full-text query and no ranking, although the design
-  promised both and migration 073 built the GIN indexes for them (they serve nothing).
-  This sentence is tested to expire.
+- **Search reads the title and the current text** (POST-A-216, 15 November 2026). An
+  article is found when every word of the search is in its title or in its current text;
+  one word may be in each ("TDS rent" finds an article titled "Rent" whose text says
+  "TDS"). For each word, `knowledge_service.search_articles()` reads the articles whose
+  title holds it and the version rows whose `content` holds it, both with `ilike` (any
+  case, anywhere, a typed `%`, `_` or backslash matched as itself; a typed `*` still
+  matches anything, because PostgREST reads it as `%` and has no escape for it), and keeps
+  a version only when it is its article's `current_version`: words edited out of an article
+  do not find it, and a restore, which writes the old text as a new version, makes it
+  findable again. The articles found by their text are read under the same firm, archived,
+  scope and client filters as the title match, and the per-row visibility below applies to
+  all of them. Each row says where the words were (`matched_in`: title, text or both), and
+  both screens say so when it was the text alone. Every read is paged, so no match is lost
+  to the server's first thousand rows, and a search of more than eight words is refused in
+  words rather than cut short. **There is no ranking**: the list stays last-updated first,
+  and there is no full-text query or stemming, although the June design promised both and
+  migration 073 built the GIN indexes for them (they still serve nothing; `ilike` does not
+  use them). **A known limit, not a defect today:** the version read is sized by how many
+  versions in the firm hold a word (old versions and other scopes included), not by the
+  answer; production held no article on 17 October 2026, and if a firm's knowledge base
+  grows into the thousands, an SQL function that joins each article's current version is
+  the next step. The first sentence is held to the code and the ranking sentence is tested
+  to expire.
 - **Visibility, as implemented** (`knowledge_service.can_view_client_content()`;
   `can_write_instruction()` for instructions):
 
@@ -350,8 +369,10 @@ Three tables from migration 073: `knowledge_articles`, `knowledge_article_versio
 - **Database.** Migration 079: `get_my_user_id()`, a RESTRICTIVE assignment policy on
   `knowledge_articles` and `client_instructions` (Partner and Manager through, others by
   `user_client_assignments`), and Partner-only for the internal client on articles.
-  `knowledge_article_versions`, where the content lives, has only the firm policy of 073
-  (POST-A-009). `test_knowledge_client_scope.py` and `test_batch6_knowledge.py` hold the
+  `knowledge_article_versions`, where the content lives, follows its article since
+  migration 501: a version is visible only to someone who can see its article, appended
+  only by the `knowledge:write` tier and never updated or deleted by a signed-in session
+  (POST-A-009, closed). `test_knowledge_client_scope.py` and `test_batch6_knowledge.py` hold the
   service; `test_batch6_migration.py` holds the policies.
 
 ## 8. Client instructions
@@ -368,11 +389,11 @@ None of these is decided here.
 
 | The June text said | The code does | Open as |
 |---|---|---|
-| Search is Postgres full text with ranking | title `ilike` only (§7) | **no ledger line** |
+| Search is Postgres full text with ranking | every word in the title or the current text, by `ilike`, no ranking (§7) | **no ledger line** for ranking |
 | Manager is firm-wide | firm-wide in the knowledge base alone (§7) | POST-B-029 |
 | Department is an organisational tag | the same, by decision, still free text | POST-B-331 |
 | Global search may include articles | it does not | POST-B-287 |
-| Versions inherit the article's visibility, immutable | only the firm policy, no database-level immutability | POST-A-009 |
+| Versions inherit the article's visibility, immutable | the same, by migration 501 | closed |
 | `POST /collections/send-reminders` | gone; `flag-followups` sends nothing (§5) | POST-B-196 |
 | Practice context-switches into the internal client's shell | Practice is its own shell | closed |
 | Frontend roles Partner, Manager, Article, Staff | the five canonical roles (Module 9.0) | closed |

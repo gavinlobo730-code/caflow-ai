@@ -64,3 +64,32 @@ test("every caller of load() after the fix passes the current query, never a bar
   assert.doesNotMatch(code, /\bload\(\)/, "a bare load() call with no query argument was found");
   assert.doesNotMatch(code, /onClick=\{load\}/, "load is still passed directly as an event handler (would receive the click event as its query argument)");
 });
+
+// POST-A-216: the FIRM Knowledge Base had the same race and kept it after the client screen was fixed: `load` closed over
+// `query`, an effect keyed on `load` re-ran it on every key, an Enter handler ran it again, and whichever answer came back
+// last was shown. The search now reads each article's current text as well as its title, so each request costs more and the
+// race is likelier. Same rules, with the firm page's own spelling: a run counter rather than a query comparison, because
+// the firm page's answer also depends on the scope in the URL.
+const FIRM_PAGE = path.resolve(import.meta.dirname, "..", "app", "knowledge", "page.tsx");
+
+function firm(): string {
+  return stripComments(fs.readFileSync(FIRM_PAGE, "utf8"));
+}
+
+test("the firm Knowledge Base searches about 300ms after typing pauses and clears the timer", () => {
+  const code = firm();
+  assert.match(code, /setTimeout\(\(\) => \{ void load\(query\); \}, 300\)/, "no 300ms debounce around load(query)");
+  assert.match(code, /return \(\) => clearTimeout\(timer\)/, "the debounce timer is not cleared on the next run or unmount");
+  assert.doesNotMatch(code, /useEffect\(\(\)\s*=>\s*\{\s*(void )?load\(\);?\s*\}\s*,\s*\[load\]\)/, "the undebounced effect is back");
+  assert.doesNotMatch(code, /onKeyDown=\{.*Enter.*load\(/s, "an Enter handler runs load() on top of the debounce");
+});
+
+test("the firm Knowledge Base applies only the newest request's answer, error and loading state", () => {
+  const code = firm();
+  assert.match(code, /const load = useCallback\(async \(words: string\)/, "load() no longer takes the words it searches for");
+  assert.match(code, /const run = \+\+latestRun\.current/, "a request no longer takes a number to be compared against");
+  const guards = (code.match(/run (?:!==|===) latestRun\.current/g) ?? []).length;
+  assert.ok(guards >= 3, `found ${guards} stale-answer guard(s); the list, the error and the loading flag should each be gated`);
+  assert.doesNotMatch(code, /\bload\(\)/, "a bare load() call with no words was found");
+  assert.doesNotMatch(code, /onClick=\{load\}/, "load is passed as an event handler and would take the click event as its words");
+});
