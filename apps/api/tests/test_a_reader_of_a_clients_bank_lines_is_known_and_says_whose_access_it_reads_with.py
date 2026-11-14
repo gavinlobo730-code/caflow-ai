@@ -66,6 +66,8 @@ SERVICE_CLIENT = {
 CHOSEN_READER = {
     "routers/health.py",                     # `_bank_db`
     "services/gst_return_service.py",        # `_service_db() or db` in `_bank_lines_declaring_gst`
+    "services/late_interest_service.py",     # `privileged_for(db)` for the bank lines that settled an invoice, behind the routes'
+                                             # accounting tier and `assert_client_access` (POST-A-101; proved in its own test file)
 }
 
 

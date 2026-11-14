@@ -270,7 +270,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A REQUIRED YEAR PARAMETER IS DECLARED WITH NO DEFAULT, AND `= ...` IS NOT A WAY TO SAY REQUIRED
 - A DATE ON A REQUEST MODEL IS A TYPE, THE WAY A FINANCIAL-YEAR LABEL IS, AND THE FIELDS NOT YET CONVERTED ARE A LIST THAT ONLY SHRINKS
 
-### `docs/design-record/ledger-and-money.md` (10 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
+### `docs/design-record/ledger-and-money.md` (11 entries): The general ledger, posting kernel, period locks, money columns, reports and interest/cheque/price-list features
 
 - A VOUCHER'S LINES HAVE AN ORDER AND TWO FUNCTIONS RECORD IT
 - THE LIVE REPORTS LEAVE AS A SERVER-MADE PDF OR EXCEL THAT IS THE SCREEN, AND A REPORT THAT DOES NOT FOOT IS NOT PRINTED
@@ -282,6 +282,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RANGE OF DAYS IS A RANGE OF INDIAN DAYS, A STORED STAMP IS SHOWN AS THE INDIAN DAY IT FELL ON, AND THE AGEING NOTE'S "TODAY" IS THE
 - A YEAR-END IS FINALISED BY CLOSING THE CLIENT'S YEAR FIRST AND MARKING THE ENGAGEMENT LOCKED SECOND, AND THE REOPEN TAKES THE OPPOSITE
 - A SENTENCE WRITTEN FOR A PERSON NAMES RUPEES, AND A COUNT OF PAISE IS A DEFECT
+- LATE INTEREST IS CHARGED ON THE BALANCE OWED ON EACH LATE DAY
 
 ### `docs/design-record/opening-balances-and-imports.md` (3 entries): Opening balances as documents and the bulk imports of a migrated client's books
 

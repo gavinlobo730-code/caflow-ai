@@ -76,6 +76,7 @@ from fastapi import HTTPException
 from core.db_paging import fetch_all, fetch_all_in
 from core.db_provider import privileged_for
 from core.ist_clock import ist_today
+from domain.money_sentence import rupee_text
 from domain.sales import late_interest as L
 from core.observability import capture_soft_failure
 
@@ -235,13 +236,136 @@ def _open_invoices(db, firm_id: str, client_id: str, customer_id: Optional[str])
     def one():
         q = (db.table("client_sales_invoices")
              .select("id, customer_id, invoice_no, invoice_date, due_date, "
-                     "outstanding_paise, status")
+                     "outstanding_paise, total_paise, debit_note_paise, status")
              .eq("firm_id", firm_id).eq("client_id", client_id)
              .is_("deleted_at", "null")
              .not_.in_("status", _dead_invoice_states())
              .gt("outstanding_paise", 0))
         return q.eq("customer_id", customer_id) if customer_id else q
     return fetch_all(one, label="late_interest.open_invoices")
+
+
+#: Said on a document whose history could not be read at all (a failed read), so it is on today's balance.
+HISTORY_UNREAD = ("The receipts, bank lines, credits and notes against this invoice could not be read, so its interest is on today's balance over the whole "
+                  "late period. " + L.TODAYS_BALANCE_ERRS)
+
+
+def _histories(db, firm_id: str, client_id: str, invoices: list[dict]) -> dict[str, tuple]:
+    """{invoice id: (history or None, why not, reason)} for the open invoices: what moved each balance and on which date
+    (POST-A-101).
+
+    Money the customer paid reduces the balance from the date it arrived: a receipt allocated to the invoice from the receipt's
+    date (an allocation of a reversed receipt is voided and does not count), and a posted bank line matched to it from the line's
+    date, as two events (its amount, and any overpayment the posting turned into the customer's credit taken back). An amount credited by an
+    issued credit note, or applied from the customer's credit, is dated FROM_THE_START (treated as never owed: the records do not
+    say whether a note corrected the price or recorded a later return, nor when the credited money arrived, and this reading cannot
+    overstate). The amount an issued debit note adds is dated OUTSIDE_THE_WINDOW (it bears no interest here; it is a separate demand).
+    The history is used only when it accounts for exactly what the invoice shows as settled (total less what is open today, which
+    carries the s.34 note terms: migration 278), because one that missed a payment would understate; otherwise the invoice is on
+    today's balance and the row says why. An invoice with nothing settled needs no history and never falls back.
+    """
+    ids = [inv["id"] for inv in invoices]
+    if not ids:
+        return {}
+    try:
+        rows = _read_history(db, firm_id, client_id, ids)
+    except Exception as exc:  # noqa: BLE001 — reported; the invoices with anything settled fall back to today's balance and say so
+        capture_soft_failure(exc, operation="late_interest.histories", firm_id=firm_id, client_id=client_id)
+        return {inv["id"]: (((), None, None) if _nothing_settled(inv) else (None, HISTORY_UNREAD, "unread")) for inv in invoices}
+    changes = _balance_changes(ids, **rows)
+
+    out: dict[str, tuple] = {}
+    for inv in invoices:
+        found = tuple(changes.get(inv["id"], ()))
+        total, open_now = int(inv.get("total_paise") or 0), int(inv.get("outstanding_paise") or 0)
+        if L.history_ties(total_paise=total, outstanding_paise=open_now, changes=found):
+            out[inv["id"]] = (found, None, None)
+        else:
+            accounted = sum(c.amount_paise for c in found)
+            out[inv["id"]] = (None, (
+                f"The receipts, bank lines, credits and notes recorded against this invoice account for {rupee_text(accounted)} "
+                f"of the {rupee_text(total - open_now)} it shows as settled, so its interest is on today's balance over the "
+                "whole late period. " + L.TODAYS_BALANCE_ERRS), "untied")
+    return out
+
+
+def _read_history(db, firm_id: str, client_id: str, ids: list[str]) -> dict:
+    """Every row that moved the open invoices' balances, read in full (each read pages and raises on a failure)."""
+    from domain.banking import posting_map as pmap
+    pdb = privileged_for(db)
+    allocations = fetch_all_in(lambda: (db.table("receipt_allocations")
+                                        .select("id, receipt_id, sales_invoice_id, allocated_paise, is_voided")),
+                               "sales_invoice_id", ids, label="late_interest.receipt_allocations")
+    receipts = {r["id"]: r for r in fetch_all_in(
+        lambda: (db.table("receipts").select("id, receipt_date, is_reversed")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)),
+        "id", {a["receipt_id"] for a in allocations if a.get("receipt_id")}, label="late_interest.receipts")}
+    lines = fetch_all_in(lambda: (pdb.table("bank_transactions")
+                                  .select("id, matched_entity_id, transaction_date, credit_paise, debit_paise, category")
+                                  .eq("firm_id", firm_id).eq("client_id", client_id)
+                                  .eq("matched_entity_type", "sales_invoice").eq("match_status", "posted")),
+                         "matched_entity_id", ids, label="late_interest.bank_lines")
+    lines = [ln for ln in lines if ln.get("category") in pmap.SETTLES_SALES_INVOICE]
+    overpaid: dict[str, int] = {}
+    for g in fetch_all_in(lambda: (pdb.table("party_credit_ledger").select("id, source_id, amount_paise")
+                                   .eq("firm_id", firm_id).eq("client_id", client_id).eq("source_type", "bank_overpayment")),
+                          "source_id", [ln["id"] for ln in lines], label="late_interest.bank_overpayments"):
+        overpaid[g["source_id"]] = overpaid.get(g["source_id"], 0) + int(g.get("amount_paise") or 0)
+    applied = fetch_all_in(lambda: (pdb.table("party_credit_ledger").select("id, applied_to_id, amount_paise")
+                                    .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "application")
+                                    .eq("applied_to_type", "sales_invoice")),
+                           "applied_to_id", ids, label="late_interest.credit_applications")
+    credits = fetch_all_in(lambda: (db.table("credit_note_allocations")
+                                    .select("id, credit_note_id, sales_invoice_id, allocated_paise").eq("firm_id", firm_id)),
+                           "sales_invoice_id", ids, label="late_interest.credit_allocations")
+    notes = {n["id"]: n for n in fetch_all_in(
+        lambda: (db.table("credit_notes").select("id, credit_note_date, status, deleted_at")
+                 .eq("firm_id", firm_id).eq("client_id", client_id)),
+        "id", {c["credit_note_id"] for c in credits if c.get("credit_note_id")}, label="late_interest.credit_notes")}
+    debits = fetch_all_in(lambda: (db.table("sales_debit_notes")
+                                   .select("id, sales_invoice_id, debit_note_date, applied_paise, status, deleted_at")
+                                   .eq("firm_id", firm_id).eq("client_id", client_id)),
+                          "sales_invoice_id", ids, label="late_interest.debit_notes")
+    return {"allocations": allocations, "receipts": receipts, "lines": lines, "overpaid": overpaid, "applied": applied,
+            "credits": credits, "notes": notes, "debits": debits}
+
+
+def _balance_changes(ids, *, allocations, receipts, lines, overpaid, applied, credits, notes, debits) -> dict[str, list]:
+    """{invoice id: [BalanceChange]} from the rows `_read_history` read, dated as `_histories` says."""
+    changes: dict[str, list[L.BalanceChange]] = {i: [] for i in ids}
+    for a in allocations:
+        receipt = receipts.get(a.get("receipt_id"))
+        on = L.as_date((receipt or {}).get("receipt_date"))
+        if a.get("is_voided") or receipt is None or receipt.get("is_reversed") or on is None:
+            continue
+        changes.setdefault(a["sales_invoice_id"], []).append(L.BalanceChange(on, int(a.get("allocated_paise") or 0)))
+    for ln in lines:
+        # Two events on the line's date, as the bank posting recorded them: the line's whole amount put against the invoice, and
+        # whatever of it the posting turned into the customer's credit (net of any undo) taken back off it.
+        on = L.as_date(ln.get("transaction_date"))
+        if on is None:
+            continue
+        into = changes.setdefault(ln["matched_entity_id"], [])
+        into.append(L.BalanceChange(on, max(int(ln.get("credit_paise") or 0), int(ln.get("debit_paise") or 0))))
+        if overpaid.get(ln["id"]):
+            into.append(L.BalanceChange(on, -overpaid[ln["id"]]))
+    for a in applied:
+        changes.setdefault(a["applied_to_id"], []).append(L.BalanceChange(L.FROM_THE_START, -int(a.get("amount_paise") or 0)))
+    for c in credits:
+        note = notes.get(c.get("credit_note_id"))
+        if note is None or note.get("status") != "issued" or note.get("deleted_at"):
+            continue
+        changes.setdefault(c["sales_invoice_id"], []).append(L.BalanceChange(L.FROM_THE_START, int(c.get("allocated_paise") or 0)))
+    for d in debits:
+        if d.get("status") != "issued" or d.get("deleted_at"):
+            continue
+        changes.setdefault(d["sales_invoice_id"], []).append(L.BalanceChange(L.OUTSIDE_THE_WINDOW, -int(d.get("applied_paise") or 0)))
+    return changes
+
+
+def _nothing_settled(inv: dict) -> bool:
+    """Nothing paid, credited or added: today's balance is the balance on every day, so no history is needed."""
+    return int(inv.get("total_paise") or 0) == int(inv.get("outstanding_paise") or 0) and not int(inv.get("debit_note_paise") or 0)
 
 
 def _party_inputs(db, firm_id: str, client_id: str,
@@ -255,6 +379,7 @@ def _party_inputs(db, firm_id: str, client_id: str,
     people = {c["id"]: c for c in fetch_all(customers, label="late_interest.customers")}
     invoices = _open_invoices(db, firm_id, client_id, customer_id)
     through, interest_invoices = _standing_charges(db, firm_id, client_id)
+    histories = _histories(db, firm_id, client_id, invoices)
 
     by_customer: dict[str, list[L.DocInput]] = {}
     for inv in invoices:
@@ -266,7 +391,10 @@ def _party_inputs(db, firm_id: str, client_id: str,
             invoice_date=inv.get("invoice_date"), due_date=inv.get("due_date"),
             outstanding_paise=int(inv.get("outstanding_paise") or 0),
             charged_through=through.get(inv["id"]),
-            is_interest_invoice=inv["id"] in interest_invoices))
+            is_interest_invoice=inv["id"] in interest_invoices,
+            history=histories.get(inv["id"], (None, None, None))[0],
+            history_note=histories.get(inv["id"], (None, None, None))[1],
+            history_reason=histories.get(inv["id"], (None, None, None))[2]))
     out = []
     for cid, docs in by_customer.items():
         c = people[cid]
@@ -412,6 +540,7 @@ def prepare_drafts(db, firm_id: str, client_id: str, customer_id: str, as_of: Op
         interest_paise=int(d["interest_paise"]), period_from=d["period_from"],
         period_to=d["period_to"], days=int(d["days_charged"]),
         outstanding_paise=int(d["outstanding_paise"]), interest_rate_bps=rate_bps,
+        balance_basis=d.get("balance_basis") or "today",
         **facts[d["invoice_id"]]) for d in due]
     groups, blocked = L.plan_drafts(chargeable)
     if not groups:
