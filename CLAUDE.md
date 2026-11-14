@@ -310,7 +310,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE ASSIGNMENT SCOPE READS THE CALLER'S CLIENTS ONCE PER QUERY, AND THE DRIFT GUARD FOLDS THE REWRITE BACK TO THE CALL IT REPLACED
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 
-### `docs/design-record/screens-and-site.md` (28 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (29 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -339,6 +339,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DATE A TABLE PRINTS GOES THROUGH THE ONE MODULE, AND THE RULE READS WHAT A JSX CHILD RENDERS
 - THE STATEMENTS' FILTER CHOOSES ROWS AND NOTHING ELSE, THE BRANDING PREVIEW NO LONGER DRAWS THE ACCENT AS IF
 - A DATE BOX WHOSE BOUND MOVES JUDGES THE DAY IT HOLDS AGAIN
+- A DATE BOX THAT A FORM REFUSES A LATER DAY IN SAYS SO ON THE BOX, RED AND `aria-invalid`, AND A HINT STAYS A HINT
 - THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH
 
 ### `docs/design-record/tax-gst.md` (39 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations

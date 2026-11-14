@@ -3461,6 +3461,8 @@ export const scenarios = [
         // After today (the clock is pinned at 8 October 2026).
         await typeAndLeave(f.box(page), "15/10/2026");
         await page.getByText(AFTER_TODAY_SENTENCE).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${f.name}: the box did not say "${AFTER_TODAY_SENTENCE}"`); });
+        // POST-A-384: the box the refusal is about is marked invalid (red, `aria-invalid`), so a screen reader can tell WHICH box the sentence was about.
+        assert.equal(await f.box(page).getAttribute("aria-invalid"), "true", `${f.name}: a date after today is refused but its box is not marked invalid`);
         if (f.after === "held") {
           assert.equal(await f.save(page).isDisabled(), true, `${f.name}: the control was live over a date after today`);
         } else {
