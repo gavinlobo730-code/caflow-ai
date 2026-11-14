@@ -464,7 +464,7 @@ const ENDS: Record<string, string[]> = {
   "app/portal/dashboard/page.tsx": ["{stmtEnd}"],
   "app/reports/page.tsx": ["Report to"],
   "app/settings/audit-log/page.tsx": ["Audit log to date"],
-  "app/time/page.tsx": ["Export to"],
+  "app/time/page.tsx": ["Export to", "Hours to"],
   "components/PeriodPicker.tsx": ["To date"],
   "components/purchases/VendorStatementsTab.tsx": ["vs-end"],
   "components/ui/data-table.tsx": ["{`${def.label} to`}"],

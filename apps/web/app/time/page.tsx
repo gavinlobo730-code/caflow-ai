@@ -19,9 +19,10 @@ import {
   deleteTimeEntry,
   formatDuration,
   formatElapsed,
+  getMyTimeSummary,
 } from "@/lib/data/timeTracking";
 import { getClients } from "@/lib/data/clients";
-import type { TimeEntry, Client } from "@/lib/types";
+import type { TimeEntry, Client, TimeSummary } from "@/lib/types";
 import { formatDate, formatTime } from "@/lib/dates/format";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { formatPaise } from "@/lib/money/format";
@@ -34,6 +35,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 
 type Tab = "mine" | "unbilled" | "rates";
 
@@ -87,7 +89,36 @@ export default function TimeTrackingPage() {
   const [exportDateTo, setExportDateTo] = useState("");
   const [exporting, setExporting] = useState<"csv" | "xlsx" | null>(null);
 
+  // POST-A-156: the tiles are the SERVER's sums for a period of Indian days it decides (this week, this month or a chosen range),
+  // not a sum of the entries listed below, which are at most the latest 500 and no period at all.
+  const [summaryPeriod, setSummaryPeriod] = useState<"week" | "month" | "range">("week");
+  const [rangeFrom, setRangeFrom] = useState("");
+  const [rangeTo, setRangeTo] = useState("");
+  const [summary, setSummary] = useState<TimeSummary | null>(null);
+  const [summaryProblem, setSummaryProblem] = useState<string | null>(null);
+  // A range's two boxes report what they hold, so "Show hours" refuses a day that is not one in its own sentence.
+  const rangeDates = useDateProblems();
+  const summaryAsk = useRef<{ period: "week" | "month" | "range"; date_from?: string; date_to?: string }>({ period: "week" });
+  // Which request is the latest: a slow answer to an earlier period must not land over a later one's (POST-A-156 review).
+  const summarySeq = useRef(0);
+
   const clientMap = new Map(clients.map(c => [c.id, c.client_name]));
+
+  /** Ask for a period (or the one last asked for, after an entry changed). A refusal is said and the old figures are not kept. */
+  const loadSummary = useCallback(async (ask?: { period: "week" | "month" | "range"; date_from?: string; date_to?: string }) => {
+    if (ask) summaryAsk.current = ask;
+    const mine = ++summarySeq.current;
+    try {
+      const got = await getMyTimeSummary(summaryAsk.current);
+      if (mine !== summarySeq.current) return;
+      setSummary(got);
+      setSummaryProblem(null);
+    } catch (e: unknown) {
+      if (mine !== summarySeq.current) return;
+      setSummary(null);
+      setSummaryProblem(e instanceof Error ? e.message : "The time summary could not be read.");
+    }
+  }, []);
 
   const loadTimer = useCallback(async () => {
     try {
@@ -128,7 +159,7 @@ export default function TimeTrackingPage() {
     (async () => {
       setLoading(true);
       try {
-        await Promise.all([loadTimer(), loadEntries(), loadClients()]);
+        await Promise.all([loadTimer(), loadEntries(), loadClients(), loadSummary()]);
       } finally {
         // Each loader already catches its own failure, so this is a backstop —
         // but it is the only thing standing between an unexpected rejection and
@@ -136,7 +167,7 @@ export default function TimeTrackingPage() {
         setLoading(false);
       }
     })();
-  }, [loadTimer, loadEntries, loadClients]);
+  }, [loadTimer, loadEntries, loadClients, loadSummary]);
 
   // Tick interval when timer running
   useEffect(() => {
@@ -161,6 +192,8 @@ export default function TimeTrackingPage() {
       });
       setRunningEntry(entry);
       setIsRunning(true);
+      // A started timer is in no total; the summary says so, so it is asked again.
+      void loadSummary();
       setElapsed(0);
       setShowStart(false);
       setStartDescription("");
@@ -184,7 +217,7 @@ export default function TimeTrackingPage() {
       setIsRunning(false);
       setRunningEntry(null);
       setElapsed(0);
-      await loadEntries();
+      await Promise.all([loadEntries(), loadSummary()]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to stop timer");
     }
@@ -221,7 +254,7 @@ export default function TimeTrackingPage() {
       setManualStarted("");
       setManualEnded("");
       setManualHourlyRate("");
-      await loadEntries();
+      await Promise.all([loadEntries(), loadSummary()]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save entry");
     } finally {
@@ -233,7 +266,7 @@ export default function TimeTrackingPage() {
     if (!(await confirmDialog({ message: "Delete this time entry?", danger: true, confirmLabel: "Delete" }))) return;
     try {
       await deleteTimeEntry(id);
-      await loadEntries();
+      await Promise.all([loadEntries(), loadSummary()]);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to delete");
     }
@@ -255,8 +288,6 @@ export default function TimeTrackingPage() {
     }
   };
 
-  const totalMinutes = entries.reduce((s, e) => s + (e.duration_minutes ?? 0), 0);
-  const billableMinutes = entries.filter(e => e.is_billable).reduce((s, e) => s + (e.duration_minutes ?? 0), 0);
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
@@ -342,32 +373,97 @@ export default function TimeTrackingPage() {
         </Card>
       )}
 
-      {/* Stats */}
+      {/* Stats: the server's sums for the period chosen here (POST-A-156). */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="time-summary-period" className="block text-xs font-medium text-ps-body mb-1">Your hours for</label>
+            <select id="time-summary-period" value={summaryPeriod}
+              onChange={e => {
+                const next = e.target.value as "week" | "month" | "range";
+                setSummaryPeriod(next);
+                if (next !== "range") { void loadSummary({ period: next }); return; }
+                // A range shows nothing until its days are given: the previous period's figures under "A range of days" would be misread.
+                summarySeq.current += 1;
+                setSummary(null);
+                setSummaryProblem(null);
+              }}
+              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30">
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+              <option value="range">A range of days</option>
+            </select>
+          </div>
+          {summaryPeriod === "range" && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-ps-body mb-1">First day</label>
+                <DateInput aria-label="Hours from" value={rangeFrom} onChange={v => setRangeFrom(v)}
+                  onStateChange={rangeDates.watch("hours-from", "First day")}
+                  className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-ps-body mb-1">Last day</label>
+                <DateInput aria-label="Hours to" anchor={rangeFrom || null} notBefore={rangeFrom || null}
+                  value={rangeTo} onChange={v => setRangeTo(v)}
+                  onStateChange={rangeDates.watch("hours-to", "Last day")}
+                  className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+              </div>
+              <Button variant="outline" size="sm" disabled={!rangeFrom || !rangeTo}
+                onClick={() => {
+                  if (rangeDates.first) {
+                    summarySeq.current += 1;
+                    summaryAsk.current = { period: "range" };
+                    setSummary(null);
+                    setSummaryProblem(rangeDates.first);
+                    return;
+                  }
+                  void loadSummary({ period: "range", date_from: rangeFrom, date_to: rangeTo });
+                }}>
+                Show hours
+              </Button>
+            </>
+          )}
+        </div>
+        {summaryProblem && <p role="alert" className="text-xs text-state-problem">{summaryProblem}</p>}
+        {!summary && !summaryProblem && summaryPeriod === "range" && (
+          <p className="text-xs text-ps-hint">Choose the first and the last day, then Show hours.</p>
+        )}
+        {summary && (
+          <p className="text-xs text-ps-hint" data-testid="time-summary-window">
+            Your own finished time from {formatDate(summary.date_from)} to {formatDate(summary.date_to)}, by the day each entry started,
+            in India (the entries listed below may include other members&apos;)
+            {summary.running > 0
+              ? `. ${summary.running} timer${summary.running === 1 ? " is" : "s are"} still running and not counted.`
+              : "."}
+          </p>
+        )}
+      </div>
       <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardContent className="py-4">
             <p className="text-xs text-ps-label">Total Hours</p>
-            <p className="text-2xl font-bold text-ps-ink mt-1">{formatDuration(totalMinutes)}</p>
+            <p className="text-2xl font-bold text-ps-ink mt-1" data-testid="time-total">{summary ? formatDuration(summary.total_minutes) : "—"}</p>
             <p className="text-xs text-ps-hint">
-              {entryWindow.hasMore ? `latest ${entries.length} entries only` : `${entries.length} entries`}
+              {summary ? `${summary.entries_count} finished entr${summary.entries_count === 1 ? "y" : "ies"}` : "Not read"}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
             <p className="text-xs text-ps-label">Billable Hours</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{formatDuration(billableMinutes)}</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1" data-testid="time-billable">{summary ? formatDuration(summary.billable_minutes) : "—"}</p>
             <p className="text-xs text-ps-hint">
-              {totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0}% of total
+              {summary && summary.total_minutes > 0 ? `${Math.round((summary.billable_minutes / summary.total_minutes) * 100)}% of total` : "—"}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4">
             <p className="text-xs text-ps-label">Non-Billable</p>
-            <p className="text-2xl font-bold text-ps-label mt-1">{formatDuration(totalMinutes - billableMinutes)}</p>
+            <p className="text-2xl font-bold text-ps-label mt-1" data-testid="time-non-billable">{summary ? formatDuration(summary.non_billable_minutes) : "—"}</p>
             <p className="text-xs text-ps-hint">
-              {totalMinutes > 0 ? Math.round(((totalMinutes - billableMinutes) / totalMinutes) * 100) : 0}% of total
+              {summary && summary.total_minutes > 0 ? `${Math.round((summary.non_billable_minutes / summary.total_minutes) * 100)}% of total` : "—"}
             </p>
           </CardContent>
         </Card>

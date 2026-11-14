@@ -721,19 +721,19 @@ export interface TimerState {
   elapsed_seconds: number;
 }
 
-export interface TimeSummaryEntry {
-  dimension: string;
-  total_minutes: number;
-  billable_minutes: number;
-  entry_count: number;
-}
-
+/** One member's FINISHED time over a period of Indian days, as the server decided and summed it (POST-A-156:
+ *  `GET /api/time-entries/summary/me`, summed by the database). `running` counts the timers still running, which have no
+ *  duration yet and are in no total. */
 export interface TimeSummary {
-  by_client: TimeSummaryEntry[];
-  by_task: TimeSummaryEntry[];
+  period: "week" | "month" | "range";
+  date_from: string;
+  date_to: string;
   total_minutes: number;
   billable_minutes: number;
-  entry_count: number;
+  non_billable_minutes: number;
+  entries_count: number;
+  running: number;
+  by_client: { client_id: string | null; minutes: number; billable_minutes: number }[];
 }
 
 // ─── PHASE 1.2 — WORKLOAD TYPES ──────────────────────────────────────────

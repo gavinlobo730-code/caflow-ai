@@ -214,7 +214,7 @@ BUDGET: dict[str, int] = {
     # `/capacity-risk` had been counting as their callers until the scan learnt that a URL naming a static sibling reaches the sibling,
     # `_literal_siblings`). The GST workspace lists returns whole and acts on one by `PATCH /gstr1/{id}/status`; the team screens read
     # `GET /api/workload` whole. The member's task rows the second returned (full rows under overdue_tasks and due_today) are no longer served.
-    "/api/time-entries": 1,
+    # /api/time-entries 1 -> 0 on 14-11-2026 (POST-A-156): `GET /summary/me` got its screen (the time screen's hour tiles), so the prefix owes nothing.
     # GONE on 24-09-2026, four prefixes at once — the first sweep through this
     # list's own tail rather than through a module:
     #   /api/eway-bill        POST /records/{id}/extend now has the button the
@@ -313,7 +313,8 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # It is that sum now, and `test_the_total_is_what_the_per_prefix_budgets_add_up_to` keeps it so: lowering a prefix lowers it in the same commit, and net growth (a new prefix, or a prefix
 # allowed one more) is a visible edit of two numbers and not of one. A shuffle (one prefix allowed one more, another one fewer) still passes: that is the per-prefix budgets' job to refuse.
 # 195 -> 193 on 12-11-2026 (POST-B-321): the two staff cost-rate routes got a screen (the Profitability screen's cost-rate panel), and `/api/billing` fell 6 -> 4.
-TOTAL_BUDGET = 193
+# 193 -> 192 on 14-11-2026 (POST-A-156): `GET /api/time-entries/summary/me` got a screen, and `/api/time-entries` fell 1 -> 0.
+TOTAL_BUDGET = 192
 
 
 # ---------------------------------------------------------------------------

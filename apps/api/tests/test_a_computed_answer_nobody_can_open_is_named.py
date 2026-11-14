@@ -65,10 +65,6 @@ UNREACHED_COMPUTED_ANSWERS: dict[str, str] = {
         "The same stored recollection, for one client and one year. Unreached "
         "for the same reason as the list above it: the year-end pack is the "
         "document a CA works from and it is live.",
-    "/api/time-entries/summary/me":
-        "'My time this week'. `/time` lists the entries and totals them on the "
-        "screen, so the figure is visible; the endpoint is the server's version "
-        "of it and nothing calls it.",
 }
 
 

@@ -197,7 +197,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SETTLEMENT AND A YEAR-END ADJUSTMENT OPEN FROM THE LEDGER ROW THAT NAMES THEM
 - AN AGEING BUCKET ON THE PRACTICE'S RECEIVABLES LISTS ITS INVOICES
 
-### `docs/design-record/engineering-and-ci.md` (13 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (14 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -212,6 +212,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WINDOW IS READ IN REQUESTS THE DATABASE WILL HONOUR, AND AN ID IT CANNOT READ IS A 422 WITH A SENTENCE, SAID BY THE ONE SPEAKER
 - A TEST STUBS A JOURNAL METHOD THROUGH MONKEYPATCH, NEVER BY ASSIGNING IT
 - A TEST THAT NAMES ANOTHER TEST NAMES ONE THAT EXISTS
+- THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE
 
 ### `docs/design-record/filing-and-compliance.md` (9 entries): Filing to government portals, trackers and the period lock
 - A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT
@@ -299,7 +300,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A MONTHLY FIGURE ON A SCREEN IS THE SERVER'S, SERVED ON THE ROW, AND A COLUMN IS NAMED FOR WHAT IT ADDS UP
 - A TAX DECLARATION IS FILED IN ONE DATABASE TRANSACTION, BY THE SERVER ALONE, AND THE LOCK THAT PROTECTS IT IS THE ROW'S
 
-### `docs/design-record/reporting.md` (11 entries): Reporting: Schedule III captions, report performance, paging, exports
+### `docs/design-record/reporting.md` (12 entries): Reporting: Schedule III captions, report performance, paging, exports
 
 - The fixed-assets note is a MOVEMENT, and there is one of it
 - PAGING IS NOT THE SAME AS BOUNDING, AND A RECONCILIATION NEEDED BOTH
@@ -312,6 +313,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A ROW-SECURITY POLICY ASKS WHO IS CALLING ONCE PER QUERY AND NOT ONCE PER ROW, AND THE RULE IS A TEST OVER pg_policy
 - THE ASSIGNMENT SCOPE READS THE CALLER'S CLIENTS ONCE PER QUERY, AND THE DRIFT GUARD FOLDS THE REWRITE BACK TO THE CALL IT REPLACED
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
+- A MEMBER'S HOURS FOR A PERIOD ARE SUMMED BY THE DATABASE
 
 ### `docs/design-record/screens-and-site.md` (29 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
@@ -1766,7 +1768,7 @@ A path-filtered workflow does not run when the filter misses, the check never re
 and GitHub treats that as pending forever — which makes unrelated PRs unmergeable with
 no failing check to point at. Filter inside, in the `scope` job, as these workflows do.
 
-- **THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE** (engineering-04, ops-27). `requirements.txt` held fifteen floating `>=` lines among its pins and there was no lock, so a build next month could resolve to versions the suite never ran on; pytest sat in the production file; and `COPY . .` carried all of `tests/`, with every production-schema snapshot, into the image Render serves. `requirements.in` is what a person edits; `requirements.txt` is pip-compile's output (every package, transitive included, pinned with the sha256 of each file); `requirements-dev.in`/`.txt` add pytest and the tools only the test and lint job uses (ruff, hypothesis, pytest-cov, pytest-xdist: see the lint-ratchet bullet under Tests) and are constrained to the first (`-c requirements.txt`) so CI cannot test a different version of a shared library from the one the image installs. The Dockerfile and all three installs in `backend-ci.yml` use `--require-hashes`; `.dockerignore` leaves `tests/` and the dev files out (**`migrations/` stays: the schema guard reads it at boot**); the `docker image` workflow (not required, scoped inside the job, weekly too) builds the image and asserts no `/app/tests`, `import pytest` fails, `pip freeze` equals the lock (`scripts/ci/compare_freeze_to_lock.py`) and `import main` works. **To change a dependency, edit the `.in` and recompile; never edit the `.txt`.** No runtime major was bumped and the pip-audit ratchet was unchanged when the lock was introduced (30 advisories, 30 in the baseline). **On 02-10-2026 six of Dependabot's eight grouped bumps were taken and two were HELD BACK, on a measurement and not a guess** (each bump installed alone into a copy of the baseline environment, then the six together): python-dotenv 1.2.3, python-multipart 0.0.32, uvicorn 0.54.0, groq 1.7.0, PyJWT 2.15.1 and sentry-sdk 2.71.0 are in the lock (route count, OpenAPI paths and the status code of every operation unchanged against the baseline), and the baseline fell to 9 advisories: 21 lines were deleted, 13 of them PyJWT's (the auth path's own library), 7 python-multipart's and 1 python-dotenv's, which is the file's own rule. **fastapi 0.141.1 (starlette 1.10.0) was adopted on 29-10-2026 (POST-A-171) and supabase 2.31.0 is NOT taken.** fastapi stores each included router as ONE `_IncludedRouter` in `app.routes`, so the suite reads the flat list through a shim in `tests/conftest.py` (`Starlette.routes` returns real `APIRoute`s rebuilt from `effective_route_contexts()`, include-time dependencies included), a route's body type through `tests/_fastapi_compat.body_annotation`, and a count of routes as a count of OpenAPI paths; the full suite ran on it with only the two example.com name-resolution tests failing, and pip-audit reports nothing against the new lock (the baseline lost its 7 starlette lines). supabase 2.31.0 removes `postgrest._sync.client.SyncClient` and `SyncPostgrestClient.create_session`, which `core/supabase_client._force_http1` imports and calls inside a try that LOGS and carries on, so production would keep running on HTTP/2 and silently re-open the multi-thread h2 bug that function exists to fix (`LocalProtocolError: Received pseudo-header in trailer`); the new client has `ClientOptions(httpx_client=...)` as the seam, so that one is a code change and not a bump. The Dockerfile's worker class is `uvicorn_worker.UvicornWorker` (the `uvicorn-worker` package, 28-10-2026). Not measured: the full suite under either held-back package, and the multipart upload path under real concurrency. Not run: Docker is not available here, so the image workflow's first run is on GitHub. The base image is pinned by digest and all 85 locked packages have an arm64 wheel.
+- **THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE** (engineering-04, ops-27). `requirements.in` is what a person edits and `requirements.txt` is pip-compile's hash-pinned output; the dev set adds the test tools and is constrained to the first. **To change a dependency, edit the `.in` and recompile; never edit the `.txt`.** Every install uses `--require-hashes`, and `.dockerignore` leaves `tests/` out (`migrations/` stays: the schema guard reads it at boot). Which upgrades were taken, which were held back and why (supabase 2.31.0 is NOT taken: it breaks `_force_http1`) is in `docs/design-record/engineering-and-ci.md`.
 
 _Longer design records for this area were moved to `docs/design-record/engineering-and-ci.md`, `docs/design-record/frontend.md`; see the Design record index._
 
