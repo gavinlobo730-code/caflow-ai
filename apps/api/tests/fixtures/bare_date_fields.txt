@@ -1,110 +1,21 @@
 # Request-model date fields that are still a bare `str` (POST-A-380), one `file::Class.field` per line, sorted.
 # SHRINK-ONLY: see tests/test_a_date_field_on_a_request_model_is_a_real_date_or_is_on_the_frozen_list.py. Give a field IsoDate / OptionalIsoDate / PatchIsoDate
 # (models/iso_date) or a field_validator and delete its line here in the same commit. Do not add a line to make a new field pass.
-# One entry is bare ON PURPOSE: routers/purchase_bills.py::NearDuplicateProbeIn.bill_date (a read-only advisory probe that never refuses; its reason is at the field).
-# First written 13-11-2026 after the documents' slice; narrowed 13-11-2026 by the second slice (quotation, sales order, purchase order, goods receipt).
-models/accounting.py::DisposalIn.disposal_date
-models/accounting.py::FixedAssetIn.purchase_date
-models/accounting.py::FixedAssetIn.put_to_use_date
-models/accounting.py::FixedAssetUpdateIn.purchase_date
-models/accounting.py::FixedAssetUpdateIn.put_to_use_date
-models/banking.py::BankAccountIn.opening_balance_date
-models/banking.py::BankAccountUpdateIn.opening_balance_date
-models/banking.py::StatementImportRow.transaction_date
-models/inventory.py::CostingPolicyIn.effective_from
-models/inventory.py::NrvWritedownIn.writedown_date
-models/inventory.py::StockAdjustmentIn.adjustment_date
-models/inventory.py::StockCountOpenIn.count_date
-models/parties.py::CustomerIn.opening_balance_date
-models/parties.py::CustomerUpdateIn.opening_balance_date
-models/parties.py::VendorIn.opening_balance_date
-models/parties.py::VendorUpdateIn.opening_balance_date
-models/payroll.py::EmployeeIn.date_of_birth
-models/payroll.py::EmployeeIn.joining_date
-models/payroll.py::EmployeeUpdateIn.date_of_birth
-models/payroll.py::EmployeeUpdateIn.joining_date
-models/sales_cycle.py::DeliveryChallanIn.document_date
-models/service_catalogue.py::ServiceCatalogueIn.opening_balance_date
+# Every entry left is bare ON PURPOSE, and its reason is a `#:` comment at the field: a door that judges the date by its own rule and in its own sentence
+# (a GST return's filed date, judged only when the status files it; an MCA filing's date; a notice reading a CA corrects, where a blank clears; the
+# §80EE/80EEA sanction date, where an unreadable date allows nothing), a date read as a spreadsheet cell, day first, row by row or for the whole file
+# (a ledger import leg, the opening documents' and the opening register's rows, the opening register's as-at day), and the advisory near-duplicate probe.
+# First written 13-11-2026 after the documents' slice; narrowed 13-11-2026 by the second slice; narrowed to the deliberate entries 14-11-2026.
 models/service_catalogue.py::ServiceCatalogueUpdateIn.opening_balance_date
-routers/accounting.py::OpeningBalancePostIn.opening_date
-routers/accounting.py::TrialBalanceImportIn.opening_date
 routers/accounting.py::VoucherLegIn.date
-routers/billing.py::BillingScheduleIn.due_date
-routers/billing.py::BillingScheduleIn.next_run_date
-routers/billing.py::BillingScheduleUpdateIn.next_run_date
-routers/billing.py::FeeReceiptIn.receipt_date
-routers/bills_of_entry.py::BillOfEntryIn.be_date
-routers/bills_of_entry.py::BillOfEntryUpdateIn.be_date
-routers/client_gst_registrations.py::CloseRegistrationIn.effective_to
-routers/client_gst_registrations.py::RegistrationIn.effective_from
-routers/client_gst_registrations.py::RegistrationIn.effective_to
-routers/compliance_records.py::ComplianceRecordIn.due_date
-routers/compliance_records.py::ComplianceRecordIn.period_end
-routers/compliance_records.py::ComplianceRecordIn.period_start
-routers/compliance_records.py::ComplianceRecordUpdateIn.due_date
-routers/compliance_records.py::ComplianceRecordUpdateIn.filed_date
-routers/compliance_records.py::ComplianceRecordUpdateIn.filing_date
-routers/customer_statements.py::StatementEmailIn.end_date
-routers/customer_statements.py::StatementEmailIn.start_date
 routers/document_intelligence_v2.py::CorrectNoticeReadingRequest.issue_date
 routers/document_intelligence_v2.py::CorrectNoticeReadingRequest.response_due_date
-routers/dsc.py::DSCCreate.expiry_date
-routers/dsc.py::DSCCreate.issued_date
-routers/dsc.py::DSCRenew.new_expiry_date
-routers/dsc.py::DSCRenew.new_issued_date
-routers/dsc.py::DSCUpdate.expiry_date
-routers/dsc.py::DSCUpdate.issued_date
-routers/engagements.py::EngagementCreate.due_date
-routers/engagements.py::EngagementCreate.start_date
-routers/engagements.py::EngagementUpdate.due_date
-routers/engagements.py::EngagementUpdate.end_date
-routers/engagements.py::EngagementUpdate.start_date
-routers/fixed_assets.py::AmortisationReclassIn.as_at
 routers/fixed_assets.py::OpeningAssetRowIn.purchase_date
 routers/fixed_assets.py::OpeningAssetRowIn.put_to_use_date
 routers/fixed_assets.py::OpeningRegisterIn.as_at
 routers/gst_workspace.py::UpdateStatusRequest.filed_date
 routers/income_tax.py::ChapterVIAInput.housing_loan_sanctioned_on
-routers/intelligence.py::JournalSuggestionApproval.suggested_date
-routers/invoices.py::InvoiceListQuery.date_from
-routers/invoices.py::InvoiceListQuery.date_to
-routers/lifecycle.py::LeadIn.expected_close_date
-routers/lifecycle.py::LeadUpdateIn.expected_close_date
-routers/lifecycle.py::ProposalIn.valid_until
-routers/lifecycle.py::RenewalIn.renewal_date
 routers/mca_workspace.py::UpdateFilingStatusRequest.filing_date
-routers/opening_documents.py::OpeningDocumentIn.document_date
-routers/opening_documents.py::OpeningDocumentIn.due_date
 routers/opening_documents.py::OpeningDocumentRowIn.document_date
 routers/opening_documents.py::OpeningDocumentRowIn.due_date
-routers/payroll.py::BonusDisqualificationIn.dismissed_on
-routers/payroll.py::EmployeeLoanIn.started_on
-routers/payroll.py::SalaryRevisionIn.effective_from
-routers/payroll.py::SettlementIn.leaving_date
-routers/payroll.py::SettlementRecordIn.payment_date
-routers/portal.py::CreateDocRequestBody.due_date
 routers/purchase_bills.py::NearDuplicateProbeIn.bill_date
-routers/rcm_documents.py::IssueRcmDocumentIn.document_date
-routers/recurring_journals.py::TemplateIn.end_date
-routers/recurring_journals.py::TemplateIn.next_run_date
-routers/recurring_journals.py::TemplateIn.start_date
-routers/recurring_journals.py::TemplateUpdateIn.end_date
-routers/recurring_journals.py::TemplateUpdateIn.next_run_date
-routers/recurring_journals.py::TemplateUpdateIn.start_date
-routers/relationships.py::EntityIn.date_of_birth
-routers/relationships.py::EntityRoleIn.effective_from
-routers/relationships.py::EntityRoleIn.effective_to
-routers/relationships.py::EntityToEntityRelIn.effective_from
-routers/relationships.py::EntityToEntityRelIn.effective_to
-routers/relationships.py::EntityUpdateIn.date_of_birth
-routers/relationships.py::LoanIn.due_date
-routers/relationships.py::LoanIn.sanction_date
-routers/relationships.py::PropertyIn.acquisition_date
-routers/relationships.py::RelationshipIn.effective_from
-routers/relationships.py::RelationshipIn.effective_to
-routers/service_catalogue.py::ServiceBulkIn.opening_balance_date
-routers/task_recurring.py::RecurringCreate.next_due_date
-routers/task_recurring.py::RecurringUpdate.next_due_date
-routers/task_templates.py::InstantiateRequest.due_date
-routers/tds_workspace.py::CreateDeductionRequest.transaction_date
-routers/tds_workspace.py::UpdateDeductionRequest.transaction_date

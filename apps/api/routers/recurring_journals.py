@@ -18,6 +18,7 @@ from core.query_day import query_day
 from models.common import api_response
 from services import recurring_journal_service as svc
 from services.audit_service import log_event
+from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
 
 router = APIRouter(prefix="/api/recurring-journals", tags=["recurring_journals"])
 
@@ -42,9 +43,9 @@ class TemplateIn(BaseModel):
     frequency: str
     day_of_month: int = Field(default=1, ge=1, le=28)
     narration: Optional[str] = None
-    start_date: str
-    end_date: Optional[str] = None
-    next_run_date: Optional[str] = None
+    start_date: IsoDate
+    end_date: OptionalIsoDate = None
+    next_run_date: OptionalIsoDate = None
     status: str = "active"
     lines: list[TemplateLineIn]
 
@@ -62,9 +63,9 @@ class TemplateUpdateIn(BaseModel):
     frequency: Optional[str] = None
     day_of_month: Optional[int] = Field(default=None, ge=1, le=28)
     narration: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    next_run_date: Optional[str] = None
+    start_date: PatchIsoDate = None
+    end_date: OptionalIsoDate = None
+    next_run_date: PatchIsoDate = None
     status: Optional[str] = None
     lines: Optional[list[TemplateLineIn]] = None
 

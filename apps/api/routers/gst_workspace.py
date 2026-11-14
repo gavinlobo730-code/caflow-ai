@@ -181,6 +181,8 @@ class UpdateStatusRequest(BaseModel):
     # correction window key on the real filing date, not on when someone got
     # round to recording it. It is Optional in the model only because every
     # other status leaves it out; the route refuses a submit without it.
+    #: judged by `_filed_date_or_refusal` (`checked_filed_date`) only when the status files the return, against the return's own period; a date sent with a status that
+    #: files nothing is not judged, on purpose, and its refusal is the routes' own sentence (POST-A-380: bare on purpose)
     filed_date: Optional[str] = None
 
 

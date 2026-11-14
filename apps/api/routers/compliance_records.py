@@ -10,6 +10,7 @@ from models.common import api_response
 from domain.compliance_record_service import compliance_record_service
 from core.exceptions import NotFoundError, ValidationError
 from models.fy import OptionalFYLabel
+from models.iso_date import OptionalIsoDate
 
 
 class ComplianceRecordIn(BaseModel):
@@ -18,22 +19,24 @@ class ComplianceRecordIn(BaseModel):
     compliance_type: str
     financial_year: OptionalFYLabel = None
     period_label: Optional[str] = None
-    period_start: Optional[str] = None
-    period_end: Optional[str] = None
-    due_date: Optional[str] = None
+    period_start: OptionalIsoDate = None
+    period_end: OptionalIsoDate = None
+    due_date: OptionalIsoDate = None
     status: str = "Not Started"
     notes: Optional[str] = None
 
 
 class ComplianceRecordUpdateIn(BaseModel):
     status: Optional[str] = None
-    due_date: Optional[str] = None
+    # The three dates take the OPTIONAL kind and not the edit kind: the route reads a blank the way it reads an absent date (the stored filed date is
+    # kept, or the day is taken; `due_date` is not read at all), so a blank is no date here, as it always was (POST-A-380).
+    due_date: OptionalIsoDate = None
     notes: Optional[str] = None
     # `filing_date` was declared here and never read — the service looks for
     # `filed_date` — so a caller that sent it had it dropped with a 200. It is
     # now the old spelling of `filed_date`, and either is honoured.
-    filing_date: Optional[str] = None
-    filed_date: Optional[str] = None
+    filing_date: OptionalIsoDate = None
+    filed_date: OptionalIsoDate = None
     acknowledgement_no: Optional[str] = None
 
 router = APIRouter(prefix="/api/compliance-records", tags=["compliance-records"])

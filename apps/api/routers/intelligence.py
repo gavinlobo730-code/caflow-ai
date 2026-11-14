@@ -12,6 +12,7 @@ from models.common import api_response
 from core.permissions import can_user, rbac
 from core.authz import assert_client_access, effective_client_ids
 from middleware.rate_limit import ai_limit
+from models.iso_date import OptionalIsoDate
 
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 
@@ -99,7 +100,7 @@ class JournalSuggestionApproval(BaseModel):
     client_id: Optional[str] = None
     narration: str
     entry_type: str = "Journal"
-    suggested_date: Optional[str] = None
+    suggested_date: OptionalIsoDate = None
     lines: list[dict]
 
 

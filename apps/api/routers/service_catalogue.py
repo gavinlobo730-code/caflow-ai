@@ -42,6 +42,7 @@ from core.authz import assert_client_access, can_access_client
 from core.ist_clock import ist_today
 from services.period_validation_service import period_validation_service
 from domain.inventory import costing
+from models.iso_date import OptionalIsoDate
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.service_catalogue")
@@ -507,7 +508,7 @@ class ServiceBulkIn(BaseModel):
     # ones; the CA sets it once (see ProductServiceManagerPanel's import
     # flow). Falls back to each row's client's FY start if omitted — never
     # to "today"/upload time. See _resolve_opening_balance_date.
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: OptionalIsoDate = None
 
 
 @router.post("/bulk")

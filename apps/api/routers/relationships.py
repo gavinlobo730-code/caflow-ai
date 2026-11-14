@@ -27,6 +27,7 @@ from core import db_provider
 from core.db_paging import fetch_window
 from core.list_window import probe, split
 from core.db_provider import privileged_for
+from models.iso_date import OptionalIsoDate, PatchIsoDate
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
@@ -149,7 +150,7 @@ class EntityIn(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    date_of_birth: Optional[str] = None
+    date_of_birth: OptionalIsoDate = None
     notes: Optional[str] = None
 
 
@@ -171,7 +172,7 @@ class EntityUpdateIn(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    date_of_birth: Optional[str] = None
+    date_of_birth: PatchIsoDate = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -180,8 +181,8 @@ class EntityRoleIn(BaseModel):
     client_id: str
     role_type: str  # Director | Shareholder | Partner | Trustee | Proprietor | Guarantor | Authorized Signatory
     ownership_percent: Optional[float] = None  # numeric(5,2) — stored as float, displayed as percent
-    effective_from: Optional[str] = None
-    effective_to: Optional[str] = None
+    effective_from: OptionalIsoDate = None
+    effective_to: OptionalIsoDate = None
     notes: Optional[str] = None
 
 
@@ -190,8 +191,8 @@ class RelationshipIn(BaseModel):
     to_entity_id: str
     relationship_type: str  # e.g. Spouse | Parent | Child | Associated Company | Group Company
     description: Optional[str] = None
-    effective_from: Optional[str] = None
-    effective_to: Optional[str] = None
+    effective_from: OptionalIsoDate = None
+    effective_to: OptionalIsoDate = None
 
 
 class CrossMatchReviewIn(BaseModel):
@@ -206,8 +207,8 @@ class EntityToEntityRelIn(BaseModel):
     # CGST Act Sec 2(76) — related party; Companies Act Sec 2(87) — subsidiary
     relationship_type: str  # holding | subsidiary | associate | joint_venture | related_party
     ownership_percent: Optional[float] = None
-    effective_from: Optional[str] = None
-    effective_to: Optional[str] = None
+    effective_from: OptionalIsoDate = None
+    effective_to: OptionalIsoDate = None
     notes: Optional[str] = None
 
 
@@ -224,8 +225,8 @@ class LoanIn(BaseModel):
     # table's CHECK. related_party_loans requires principal_paise > 0.
     principal_paise: int = Field(gt=0)   # integer paise — never float
     interest_rate: float    # annual % (display only — not used in calculations)
-    sanction_date: Optional[str] = None
-    due_date: Optional[str] = None
+    sanction_date: OptionalIsoDate = None
+    due_date: OptionalIsoDate = None
     notes: Optional[str] = None
 
     @field_validator("loan_type")
@@ -251,7 +252,7 @@ class PropertyIn(BaseModel):
     property_type: str      # residential | commercial | land | industrial
     cost_paise: int         # integer paise — IT Act Sec 48 cost of acquisition
     annual_rent_paise: int = 0  # integer paise — IT Act Sec 23 annual value
-    acquisition_date: Optional[str] = None
+    acquisition_date: OptionalIsoDate = None
     notes: Optional[str] = None
 
 

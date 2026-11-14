@@ -26,7 +26,7 @@ from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel, OptionalFYLabel
-from models.iso_date import a_real_date
+from models.iso_date import IsoDate, PatchIsoDate, a_real_date
 from core.db_paging import fetch_all
 from core.ist_clock import fy_bounds, ist_today
 from domain.tds import deductor_26as as D26
@@ -314,7 +314,7 @@ class CreateDeductionRequest(BaseModel):
     # The TAXABLE amount, excluding GST (CBDT Circular 23/2017) — the same
     # meaning services/tds_register_service.py gives the column it lands in.
     payment_amount_paise: int = Field(..., ge=0)
-    transaction_date: str = Field(..., description="YYYY-MM-DD")
+    transaction_date: IsoDate = Field(..., description="YYYY-MM-DD")
     nature_of_payment: Optional[str] = None
     challan_no: Optional[str] = None
     notes: Optional[str] = None
@@ -331,7 +331,7 @@ class UpdateDeductionRequest(BaseModel):
     deductee_pan: Optional[str] = None
     section: Optional[str] = None
     payment_amount_paise: Optional[int] = Field(default=None, ge=0)
-    transaction_date: Optional[str] = None
+    transaction_date: PatchIsoDate = None
     nature_of_payment: Optional[str] = None
     challan_no: Optional[str] = None
     notes: Optional[str] = None

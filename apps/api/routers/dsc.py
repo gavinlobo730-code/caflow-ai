@@ -17,6 +17,7 @@ from core.permissions import rbac
 from models.common import api_response
 from repositories.dsc_repository import dsc_repo
 from services.audit_service import log_event
+from models.iso_date import IsoDate, OptionalIsoDate
 
 router = APIRouter(prefix="/api/dsc", tags=["dsc"])
 
@@ -33,8 +34,8 @@ class DSCCreate(BaseModel):
     pan: Optional[str] = None
     dsc_type: str = "Class 3"
     purpose: str = "Income Tax"
-    issued_date: Optional[str] = None
-    expiry_date: str
+    issued_date: OptionalIsoDate = None
+    expiry_date: IsoDate
     issued_by: Optional[str] = None
     token_no: Optional[str] = None
     notes: Optional[str] = None
@@ -45,16 +46,16 @@ class DSCUpdate(BaseModel):
     pan: Optional[str] = None
     dsc_type: Optional[str] = None
     purpose: Optional[str] = None
-    issued_date: Optional[str] = None
-    expiry_date: Optional[str] = None
+    issued_date: OptionalIsoDate = None
+    expiry_date: OptionalIsoDate = None
     issued_by: Optional[str] = None
     token_no: Optional[str] = None
     notes: Optional[str] = None
 
 
 class DSCRenew(BaseModel):
-    new_expiry_date: str
-    new_issued_date: Optional[str] = None
+    new_expiry_date: IsoDate
+    new_issued_date: OptionalIsoDate = None
     token_no: Optional[str] = None
 
 

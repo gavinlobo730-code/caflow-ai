@@ -12,6 +12,7 @@ from typing import Optional
 from domain.banking import account_kind
 from domain.banking.register import OPENING_DATE_REQUIRED
 from decimal import Decimal
+from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
 
 
 class BankAccountIn(BaseModel):
@@ -21,7 +22,7 @@ class BankAccountIn(BaseModel):
     ifsc: Optional[str] = None
     account_type: str = "Current"
     opening_balance_paise: int = 0
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: OptionalIsoDate = None
     coa_account_id: Optional[str] = None
     # Multi-Currency Phase 5 — account denomination currency (default INR). A non-INR
     # currency is accepted only when multi-currency is active for the client (enforced
@@ -92,7 +93,7 @@ class BankAccountUpdateIn(BaseModel):
     ifsc: Optional[str] = None
     account_type: Optional[str] = None
     opening_balance_paise: Optional[int] = None
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: PatchIsoDate = None
     coa_account_id: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -112,7 +113,7 @@ class BankAccountUpdateIn(BaseModel):
 
 class StatementImportRow(BaseModel):
     """One already-parsed bank-statement line. Parsing happens upstream (Phase B.1)."""
-    transaction_date: str
+    transaction_date: IsoDate
     description: str = ""
     debit_paise: int = 0
     credit_paise: int = 0

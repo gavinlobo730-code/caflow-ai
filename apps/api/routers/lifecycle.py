@@ -26,6 +26,7 @@ from core import db_provider
 from core.db_paging import fetch_window
 from core.list_window import probe, split
 from core.db_provider import privileged_for
+from models.iso_date import OptionalIsoDate, PatchIsoDate
 
 _logger = logging.getLogger("caflow.lifecycle")
 
@@ -589,7 +590,7 @@ class LeadIn(BaseModel):
     stage: str = "Lead"
     estimated_value_paise: int = 0
     assigned_to: Optional[str] = None
-    expected_close_date: Optional[str] = None
+    expected_close_date: OptionalIsoDate = None
     notes: Optional[str] = None
 
 
@@ -602,7 +603,7 @@ class LeadUpdateIn(BaseModel):
     stage: Optional[str] = None
     estimated_value_paise: Optional[int] = None
     assigned_to: Optional[str] = None
-    expected_close_date: Optional[str] = None
+    expected_close_date: PatchIsoDate = None
     notes: Optional[str] = None
 
 
@@ -625,7 +626,7 @@ class ProposalIn(BaseModel):
     title: str
     description: Optional[str] = None
     total_value_paise: int = 0
-    valid_until: Optional[str] = None
+    valid_until: OptionalIsoDate = None
     status: str = "Draft"
 
 
@@ -666,7 +667,7 @@ class RenewalIn(BaseModel):
     client_id: str
     financial_year: FYLabel
     service_type: Optional[str] = None  # migration 438 — renewals.service_type
-    renewal_date: Optional[str] = None
+    renewal_date: OptionalIsoDate = None
     value_paise: int = 0               # mapped to fee_paise in DB
     status: str = "pending"
     # No `assigned_to` here: `renewals` has no such column and this handler never stored one, so the field was accepted and dropped.

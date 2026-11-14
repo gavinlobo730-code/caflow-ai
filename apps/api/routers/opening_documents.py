@@ -21,6 +21,7 @@ from core.permissions import rbac
 from models.common import api_response
 from domain.accounting import opening_documents as od
 from services import opening_document_service as svc
+from models.iso_date import IsoDate, OptionalIsoDate
 
 router = APIRouter(prefix="/api/opening-documents", tags=["opening_documents"])
 
@@ -36,8 +37,8 @@ class OpeningDocumentIn(BaseModel):
     kind: str
     party_id: str
     document_no: str
-    document_date: str
-    due_date: Optional[str] = None
+    document_date: IsoDate
+    due_date: OptionalIsoDate = None
     outstanding_paise: int
     notes: Optional[str] = None
 
@@ -59,7 +60,9 @@ class OpeningDocumentRowIn(BaseModel):
     party: str = ""
     party_gstin: Optional[str] = None
     document_no: str = ""
+    #: a spreadsheet cell as typed: a row with a blank or bad date is that row's error, reported by number, not the batch's (POST-A-380: bare on purpose)
     document_date: str = ""
+    #: a spreadsheet cell as typed, judged row by row as `document_date` above (POST-A-380: bare on purpose)
     due_date: Optional[str] = None
     outstanding_paise: Optional[int] = None
     notes: Optional[str] = None
