@@ -2,7 +2,7 @@
 
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { arrayOrEmpty } from "@/lib/api/shape";
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw, Pencil } from "lucide-react";
 import { PurchaseBillViewDrawer } from "@/components/purchases/PurchaseBillViewDrawer";
@@ -1327,6 +1327,8 @@ interface VendorRow {
   no_pe_declaration_on_file: boolean | null;
   no_pe_declaration_on: string | null;
   no_pe_declaration_ref: string | null;
+  // POST-A-407: the member whose save put the declaration on file (an internal id; the NAME is read on the server, see `declarant`).
+  no_pe_declaration_by?: string | null;
   treaty_rate_bps: number | null;
   // TDS-30 (migration 454). Which s.194A(3)(i) limit this supplier's interest
   // is tested against; null is "nobody said" and takes the lowest. Optional in
@@ -1406,6 +1408,9 @@ function Vendors({ clientId }: { clientId: string }) {
   const [trcOnFile, setTrcOnFile] = useState(false);
   const [form10fOnFile, setForm10fOnFile] = useState(false);
   const [noPeDeclaration, setNoPeDeclaration] = useState(false);
+  // POST-A-407: who the server says put the declaration on file, read when an edit opens. Null until read; `read` false when it could not be.
+  const [declarant, setDeclarant] = useState<{ name: string | null; found: boolean; read: boolean } | null>(null);
+  const declarantFor = useRef<string | null>(null);
   // Who obtained the declaration and when. §201(1)/(1A) put the consequence of
   // a wrong nil on the deductor, so a ticked box with no date behind it is a
   // claim with no evidence — the register reports it as a gap.
@@ -1533,6 +1538,19 @@ function Vendors({ clientId }: { clientId: string }) {
   function openEdit(v: VendorRow) {
     setEditOpened((n) => n + 1);
     setEditingVendor(v);
+    setDeclarant(null);
+    declarantFor.current = v.id;
+    if (v.no_pe_declaration_by) {
+      void (async () => {
+        let said: { name: string | null; found: boolean; read: boolean } = { name: null, found: false, read: false };
+        try {
+          const res = await apiGet(`/api/vendors/${v.id}`, await getAuthToken());
+          const d = (res.success ? res.data : null) as { no_pe_declarant?: typeof said } | null;
+          if (d?.no_pe_declarant) said = d.no_pe_declarant;
+        } catch { /* said stays "could not be read" */ }
+        if (declarantFor.current === v.id) setDeclarant(said);
+      })();
+    }
     // A stale "this looks like an existing vendor" banner from an earlier
     // create is about a DIFFERENT vendor and has no place over an edit.
     setResemblances([]);
@@ -2302,6 +2320,17 @@ function Vendors({ clientId }: { clientId: string }) {
                       />
                     </div>
                   </div>
+                )}
+                {noPeDeclaration && editingVendor?.no_pe_declaration_on_file && editingVendor.no_pe_declaration_on && (
+                  <p className="text-xs text-ps-label">
+                    {editingVendor.no_pe_declaration_by
+                      ? (declarant === null ? "Recorded here by a member (reading the name…)."
+                        : !declarant.read ? "Recorded here by a member whose name could not be read just now."
+                        : !declarant.found ? "Recorded here by a member who is no longer in this practice."
+                        : `Recorded here by ${declarant.name}.`)
+                      : "Not yet recorded by a member who can approve TDS, so the TDS register names this declaration as a gap. "
+                        + "It is recorded when a Manager or Partner saves this supplier with the declaration on file."}
+                  </p>
                 )}
                 {natureOfIncome === "business_profits_no_pe" && (
                   <p className="text-xs text-ps-label">

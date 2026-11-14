@@ -91,6 +91,7 @@ def app_db(monkeypatch):
     monkeypatch.setattr(mod, "_USE_MOCK", False)
     monkeypatch.setattr(mod, "log_event", lambda *a, **k: None)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
+    monkeypatch.setattr("core.db_provider.service_db_or_none", lambda: None)   # the privileged reader is this same fake (POST-A-409's document read)
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
     app = FastAPI()
     app.include_router(mod.router)
@@ -362,6 +363,94 @@ def test_the_two_doors_keep_their_words_for_a_bill_and_still_change_a_typed_row(
     app.dependency_overrides[get_current_user] = lambda: MANAGER                  # _post spoke as an Executive; removing a register row is a Manager's
     assert client.patch(f"/api/tds-workspace/deductions/{typed['id']}", json={"payment_amount_paise": 2_00_000_00}).json()["success"] is True
     assert client.delete(f"/api/tds-workspace/deductions/{typed['id']}").json()["success"] is True
+
+
+# ── POST-A-409: a row its own document no longer carries can be removed, by the document's own sync ───────
+
+def test_a_row_a_reversed_advance_left_behind_is_removed_by_the_payments_own_sync(app_db):
+    """A failed sync of a reversed advance left its register row behind, and the remove door refused every row a document wrote, so nothing removed it."""
+    app, db = app_db
+    db.seed("purchase_payments", {"id": "p1", "firm_id": FIRM, "client_id": CLIENT, "is_reversed": True, "tds_paise": 10_000_00, "tds_base_paise": 1_00_000_00})
+    db.seed("tds_deductions", _register_row("D-adv", purchase_payment_id="p1"))
+    app.dependency_overrides[get_current_user] = lambda: MANAGER
+    out = TestClient(app, raise_server_exceptions=False).delete("/api/tds-workspace/deductions/D-adv").json()
+    assert out["success"] is True and out["data"]["removed_because"].startswith("The vendor payment this deduction recorded has been reversed")
+    assert db.rows("tds_deductions") == []
+
+
+def test_a_row_a_live_advance_wrote_is_still_refused_and_kept(app_db):
+    app, db = app_db
+    db.seed("purchase_payments", {"id": "p1", "firm_id": FIRM, "client_id": CLIENT, "is_reversed": False, "tds_paise": 10_000_00, "tds_base_paise": 1_00_000_00})
+    db.seed("tds_deductions", _register_row("D-adv", purchase_payment_id="p1"))
+    app.dependency_overrides[get_current_user] = lambda: MANAGER
+    out = TestClient(app, raise_server_exceptions=False).delete("/api/tds-workspace/deductions/D-adv").json()
+    assert out["success"] is False and out["error"].endswith("It follows the payment and cannot be removed here.")
+    assert len(db.rows("tds_deductions")) == 1
+
+
+def test_a_payment_of_another_client_does_not_release_the_row(app_db):
+    """The payment is read under the ROW's own firm and client, so a reversed payment of the same id elsewhere cannot vouch for removing it."""
+    app, db = app_db
+    db.seed("purchase_payments", {"id": "p1", "firm_id": FIRM, "client_id": "C-other", "is_reversed": True})
+    db.seed("tds_deductions", _register_row("D-adv", purchase_payment_id="p1"))
+    app.dependency_overrides[get_current_user] = lambda: MANAGER
+    assert TestClient(app, raise_server_exceptions=False).delete("/api/tds-workspace/deductions/D-adv").json()["success"] is False
+    assert len(db.rows("tds_deductions")) == 1
+
+
+@pytest.mark.parametrize("status,deleted_at,removed", [("cancelled", None, True), ("draft", None, True), ("received", "2026-07-01T00:00:00+00:00", True),
+                                                       ("received", None, False), ("paid", None, False)])
+def test_a_bills_row_is_removed_only_when_the_bill_has_left_the_books(app_db, status, deleted_at, removed):
+    app, db = app_db
+    db.seed("purchase_bills", {"id": "B1", "firm_id": FIRM, "client_id": CLIENT, "status": status, "deleted_at": deleted_at, "tds_paise": 10_000_00})
+    db.seed("tds_deductions", _register_row("D-bill", purchase_bill_id="B1"))
+    app.dependency_overrides[get_current_user] = lambda: MANAGER
+    out = TestClient(app, raise_server_exceptions=False).delete("/api/tds-workspace/deductions/D-bill").json()
+    assert out["success"] is removed
+    assert (db.rows("tds_deductions") == []) is removed
+    if not removed:
+        assert out["error"] == "This deduction came from a purchase bill. Cancel or edit the bill instead."
+
+
+def test_the_register_list_names_the_rows_their_document_left_behind_and_only_those(app_db):
+    """The screen offers to remove a row only where the list says its document no longer carries it, and a typed row or a live document's row says nothing."""
+    app, db = app_db
+    for table, row in (("purchase_payments", {"id": "p-rev", "firm_id": FIRM, "client_id": CLIENT, "is_reversed": True}),
+                       ("purchase_payments", {"id": "p-live", "firm_id": FIRM, "client_id": CLIENT, "is_reversed": False}),
+                       ("purchase_bills", {"id": "B-cancel", "firm_id": FIRM, "client_id": CLIENT, "status": "cancelled"}),
+                       ("purchase_bills", {"id": "B-live", "firm_id": FIRM, "client_id": CLIENT, "status": "received"}),
+                       ("tds_deductions", _register_row("D1", purchase_payment_id="p-rev")), ("tds_deductions", _register_row("D2", purchase_payment_id="p-live")),
+                       ("tds_deductions", _register_row("D3", purchase_bill_id="B-cancel")), ("tds_deductions", _register_row("D4", purchase_bill_id="B-live")),
+                       ("tds_deductions", _register_row("D5"))):
+        db.seed(table, row)
+    app.dependency_overrides[get_current_user] = lambda: MANAGER
+    out = TestClient(app, raise_server_exceptions=False).get(f"/api/tds-workspace/deductions?client_id={CLIENT}").json()["data"]
+    assert out["left_behind_checked"] is True
+    said = {d["id"]: d["left_behind_by_its_document"] for d in out["deductions"]}
+    assert said == {"D1": "The vendor payment this deduction recorded has been reversed, so it no longer belongs on the register.", "D2": None,
+                    "D3": "The purchase bill this deduction recorded is no longer in the books, so it no longer belongs on the register.", "D4": None, "D5": None}
+
+
+def test_a_list_that_could_not_read_the_documents_says_so_and_names_nothing(app_db, monkeypatch):
+    import routers.tds_workspace as mod
+    app, db = app_db
+    db.seed("tds_deductions", _register_row("D1", purchase_payment_id="p-rev"))
+    monkeypatch.setattr(mod, "_mark_left_behind", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("read failed")))
+    app.dependency_overrides[get_current_user] = lambda: MANAGER
+    out = TestClient(app, raise_server_exceptions=False).get(f"/api/tds-workspace/deductions?client_id={CLIENT}").json()["data"]
+    assert out["left_behind_checked"] is False and "left_behind_by_its_document" not in out["deductions"][0]
+
+
+def test_a_sync_that_fails_again_is_a_refusal_that_says_so_and_keeps_the_row(app_db, monkeypatch):
+    from services import tds_register_service
+    app, db = app_db
+    monkeypatch.setattr(tds_register_service, "sync_for_payment", lambda *a, **k: {"synced": False, "reason": "boom"})
+    db.seed("purchase_payments", {"id": "p1", "firm_id": FIRM, "client_id": CLIENT, "is_reversed": True})
+    db.seed("tds_deductions", _register_row("D-adv", purchase_payment_id="p1"))
+    app.dependency_overrides[get_current_user] = lambda: MANAGER
+    res = TestClient(app, raise_server_exceptions=False).delete("/api/tds-workspace/deductions/D-adv")
+    assert res.status_code == 409 and "could not be removed just now" in res.json()["detail"]
+    assert len(db.rows("tds_deductions")) == 1
 
 
 # ── the year was added up only if the register was asked and the section has a yearly limit ───────
