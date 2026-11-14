@@ -59,10 +59,10 @@ class OpeningDocumentRowIn(BaseModel):
     row: int
     party: str = ""
     party_gstin: Optional[str] = None
-    #: a spreadsheet cell as typed: a row with a blank or bad date is that row's error, reported by number, not the batch's (POST-A-380: bare on purpose)
     document_no: str = ""
-    #: a spreadsheet cell as typed, judged row by row as `document_date` above (POST-A-380: bare on purpose)
+    #: a spreadsheet cell as typed: a row with a blank or bad date is that row's error, reported by number, not the batch's (POST-A-380: bare on purpose)
     document_date: str = ""
+    #: a spreadsheet cell as typed, judged row by row as `document_date` above (POST-A-380: bare on purpose)
     due_date: Optional[str] = None
     outstanding_paise: Optional[int] = None
     notes: Optional[str] = None

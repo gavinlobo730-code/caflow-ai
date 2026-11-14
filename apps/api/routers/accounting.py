@@ -554,8 +554,8 @@ class VoucherLegIn(BaseModel):
     number the person saw in the preview.
     """
     row: int
-    #: a spreadsheet cell as typed, read by the server's rule row by row (`domain/accounting/voucher_import`) so one bad row is refused BY NUMBER and not the batch (POST-A-380: bare on purpose)
     voucher_no: str = ""
+    #: a spreadsheet cell as typed, read by the server's rule row by row (`domain/accounting/voucher_import`) so one bad row is refused BY NUMBER and not the batch (POST-A-380: bare on purpose)
     date: str = ""
     voucher_type: str = ""
     account: str = ""

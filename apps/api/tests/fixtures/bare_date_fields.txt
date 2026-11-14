@@ -6,6 +6,7 @@
 # §80EE/80EEA sanction date, where an unreadable date allows nothing), a date read as a spreadsheet cell, day first, row by row or for the whole file
 # (a ledger import leg, the opening documents' and the opening register's rows, the opening register's as-at day), and the advisory near-duplicate probe.
 # First written 13-11-2026 after the documents' slice; narrowed 13-11-2026 by the second slice; narrowed to the deliberate entries 14-11-2026.
+models/service_catalogue.py::ServiceCatalogueUpdateIn.opening_balance_date
 routers/accounting.py::VoucherLegIn.date
 routers/document_intelligence_v2.py::CorrectNoticeReadingRequest.issue_date
 routers/document_intelligence_v2.py::CorrectNoticeReadingRequest.response_due_date

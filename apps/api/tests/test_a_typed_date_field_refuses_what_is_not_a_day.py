@@ -73,7 +73,8 @@ def test_a_typed_date_field_refuses_what_is_not_a_day(entry, kind):
     for value in NOT_A_DAY:
         with pytest.raises(ValidationError) as caught:
             model(**{field: value})
-        assert field in str(caught.value), f"{entry}: the refusal of {value!r} does not name the field"
+        # The SENTENCE names the field, not only Pydantic's location line (which always would): a validator that raised "bad" fails here.
+        assert f"{field} must be a date written YYYY-MM-DD" in str(caught.value), f"{entry}: the refusal of {value!r} is not the sentence"
     if kind == "OptionalIsoDate":
         assert getattr(model(**{field: ""}), field) is None, f"{entry}: a blank on an optional date is no date"
         assert getattr(model(**{field: None}), field) is None
@@ -82,3 +83,13 @@ def test_a_typed_date_field_refuses_what_is_not_a_day(entry, kind):
             model(**{field: ""})
         if kind == "PatchIsoDate":
             assert getattr(model(**{field: None}), field) is None, f"{entry}: an edit that does not send the date keeps it"
+
+
+def test_a_correction_cannot_clear_an_assets_purchase_date():
+    """The fixed-asset correction is read with exclude_unset, so an explicit null is a CHANGE there and would repost the acquisition with no date."""
+    from models.accounting import FixedAssetUpdateIn
+    assert "purchase_date" not in FixedAssetUpdateIn(reason="x").model_dump(exclude_unset=True)
+    for value in (None, ""):
+        with pytest.raises(ValidationError) as caught:
+            FixedAssetUpdateIn(purchase_date=value, reason="x")
+        assert "purchase_date" in str(caught.value) and "cannot be cleared" in str(caught.value)

@@ -755,10 +755,10 @@ class OpeningAssetRowIn(BaseModel):
     row: int
     asset_code: Optional[str] = None
     asset_name: Optional[str] = None
-    #: a spreadsheet cell as typed, read by `domain/fixed_assets/opening_register` row by row so a bad date is that row's error (POST-A-380: bare on purpose)
     asset_category: Optional[str] = None
-    #: a spreadsheet cell as typed, as `purchase_date` above (POST-A-380: bare on purpose)
+    #: a spreadsheet cell as typed, read by `domain/fixed_assets/opening_register` row by row so a bad date is that row's error (POST-A-380: bare on purpose)
     purchase_date: Optional[str] = None
+    #: a spreadsheet cell as typed, as `purchase_date` above (POST-A-380: bare on purpose)
     put_to_use_date: Optional[str] = None
     cost_paise: Optional[int] = None
     accumulated_depreciation_paise: Optional[int] = None

@@ -697,6 +697,15 @@ class FixedAssetUpdateIn(BaseModel):
             raise ValueError("Amounts must be non-negative paise integers.")
         return v
 
+    @field_validator("purchase_date")
+    @classmethod
+    def purchase_date_is_not_cleared(cls, v):
+        # Runs only for a purchase_date the request SENT. The route reads a correction with exclude_unset, so an explicit null is not "leave it" there: it
+        # would reverse the acquisition and post it again with no date. An asset is always bought on a day (POST-A-380).
+        if v is None:
+            raise ValueError("purchase_date cannot be cleared: leave it out to keep it as it is.")
+        return v
+
     @field_validator("acquisition_mode")
     @classmethod
     def known_mode(cls, v):
