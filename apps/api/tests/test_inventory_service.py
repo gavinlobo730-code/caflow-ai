@@ -331,7 +331,7 @@ def test_record_stock_in_then_out_round_trip_matches_pure_math():
     assert cached["stock_qty_units"] == "7"
     assert cached["avg_cost_paise"] == 1_000_00
 
-    ledger = get_stock_ledger(db, "item-1")
+    ledger = get_stock_ledger(db, "item-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["purchase", "sale"]
 
 
@@ -349,7 +349,7 @@ def test_record_stock_out_with_no_prior_history_records_as_oversold_at_zero_cost
     assert result["running_qty_units"] == "-1"
     assert result["running_value_paise"] == 0
     assert result["running_avg_cost_paise"] == 0
-    assert len(get_stock_ledger(db, "item-1")) == 1
+    assert len(get_stock_ledger(db, "item-1", firm_id="firm-1", client_id="client-1")) == 1
 
 
 def test_seed_opening_balance_is_idempotent():
@@ -493,7 +493,7 @@ def test_apply_sale_to_inventory_records_stock_out_for_goods_line_only():
 
     apply_sale_to_inventory(db, firm_id="firm-1", client_id="client-1", invoice=invoice)
 
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["opening", "sale"]
     assert ledger[-1]["quantity_delta"] == "-3"
     goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
@@ -513,7 +513,7 @@ def test_apply_sale_to_inventory_records_as_oversold_when_item_has_no_stock_hist
     # records (visible as -1 on hand at Rs 0 cost) instead of vanishing; no
     # COGS journal posts since there's no cost basis to recognise yet.
     apply_sale_to_inventory(db, firm_id="firm-1", client_id="client-1", invoice=invoice)
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["sale"]
     assert ledger[0]["running_qty_units"] == "-1"
     assert ledger[0]["running_value_paise"] == 0
@@ -532,7 +532,7 @@ def test_apply_purchase_to_inventory_records_stock_in_and_updates_average():
 
     apply_purchase_to_inventory(db, firm_id="firm-1", client_id="client-1", bill=bill)
 
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert len(ledger) == 1
     assert ledger[0]["movement_type"] == "purchase"
     assert ledger[0]["running_qty_units"] == "10"
@@ -579,7 +579,7 @@ def test_apply_purchase_to_inventory_partial_cover_posts_trueup_only(monkeypatch
 
     apply_purchase_to_inventory(db, firm_id="firm-1", client_id="client-1", bill=bill)
 
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert ledger[-1]["running_qty_units"] == "-2"
     assert ledger[-1]["running_value_paise"] == 0
 
@@ -609,7 +609,7 @@ def test_apply_purchase_to_inventory_full_cover_with_excess_posts_both_journals(
 
     apply_purchase_to_inventory(db, firm_id="firm-1", client_id="client-1", bill=bill)
 
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert ledger[-1]["running_qty_units"] == "3"
     assert ledger[-1]["running_value_paise"] == 300_00
     assert ledger[-1]["running_avg_cost_paise"] == 100_00
@@ -679,12 +679,12 @@ def test_reverse_sale_stock_restores_quantity_and_is_idempotent():
 
     goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
     assert goods_row["stock_qty_units"] == "10"  # back to pre-sale quantity
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["opening", "sale", "sale_reversal"]
 
     # A second cancellation attempt (e.g. a retried request) must not double-reverse.
     reverse_sale_stock(db, firm_id="firm-1", client_id="client-1", invoice_id="inv-1", invoice_no="INV-1")
-    assert len(get_stock_ledger(db, "good-1")) == 3
+    assert len(get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")) == 3
 
 
 def test_reverse_sale_stock_never_raises_with_no_sale_to_reverse():
@@ -692,7 +692,7 @@ def test_reverse_sale_stock_never_raises_with_no_sale_to_reverse():
     _seed_catalogue_item(db, item_id="good-1", kind="good", name="Widget")
     # No prior sale recorded for this invoice — must complete without raising.
     reverse_sale_stock(db, firm_id="firm-1", client_id="client-1", invoice_id="inv-none", invoice_no="INV-NONE")
-    assert get_stock_ledger(db, "good-1") == []
+    assert get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1") == []
 
 
 def test_reverse_purchase_stock_removes_quantity_and_is_idempotent():
@@ -709,11 +709,11 @@ def test_reverse_purchase_stock_removes_quantity_and_is_idempotent():
 
     goods_row = next(r for r in db.store["service_catalogue"] if r["id"] == "good-1")
     assert goods_row["stock_qty_units"] == "0"
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["purchase", "purchase_reversal"]
 
     reverse_purchase_stock(db, firm_id="firm-1", client_id="client-1", bill_id="bill-1", bill_reference="BILL-1")
-    assert len(get_stock_ledger(db, "good-1")) == 2
+    assert len(get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")) == 2
 
 
 # ── Credit Note / Debit Note inventory wiring ────────────────────────────────
@@ -749,7 +749,7 @@ def test_apply_credit_note_to_inventory_restocks_goods_line_only():
 
     apply_credit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", credit_note=credit_note)
 
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["opening", "sale", "sale_return"]
     assert ledger[-1]["quantity_delta"] == "2"
     assert ledger[-1]["value_delta_paise"] == 2_000_00
@@ -788,7 +788,7 @@ def test_apply_debit_note_to_inventory_destocks_goods_line_at_current_average():
 
     apply_debit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", debit_note=debit_note)
 
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["purchase", "purchase_return"]
     # Priced at the CURRENT moving average (Rs 1000/unit), not any value carried
     # on the debit note line itself — debit_note_lines has no taxable_amount_paise
@@ -811,7 +811,7 @@ def test_apply_debit_note_to_inventory_records_as_oversold_with_no_stock_history
     # hand at Rs 0 cost) instead of vanishing; no reclass journal posts since
     # there's no cost basis to move.
     apply_debit_note_to_inventory(db, firm_id="firm-1", client_id="client-1", debit_note=debit_note)
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert [r["movement_type"] for r in ledger] == ["purchase_return"]
     assert ledger[0]["running_qty_units"] == "-1"
     assert ledger[0]["running_value_paise"] == 0
@@ -839,7 +839,7 @@ def test_apply_sale_to_inventory_backfills_journal_entry_id_onto_its_movement(mo
 
     apply_sale_to_inventory(db, firm_id="firm-1", client_id="client-1", invoice=invoice)
 
-    sale_row = next(r for r in get_stock_ledger(db, "good-1") if r["movement_type"] == "sale")
+    sale_row = next(r for r in get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1") if r["movement_type"] == "sale")
     assert sale_row["journal_entry_id"] == "journal-cogs-1"
 
 
@@ -1030,7 +1030,7 @@ def test_apply_stock_adjustment_writeoff_reverses_itc_using_item_gst_rate(monkey
     assert gst_credit is not None
     assert gst_credit["credit_paise"] == 360_00
     assert captured["entry_type"] == "Journal"  # journal_entries.entry_type CHECK constraint
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert ledger[-1]["journal_entry_id"] == "journal-woff-1"
 
 
@@ -1153,7 +1153,7 @@ def test_record_nrv_writedown_returns_none_when_nrv_not_below_cost():
         movement_date="2026-04-15", nrv_per_unit_paise=1_500_00,  # NRV above cost
     ) is None
     # Only the opening row exists — no spurious write-down row inserted.
-    assert len(get_stock_ledger(db, "good-1")) == 1
+    assert len(get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")) == 1
 
 
 def test_apply_nrv_writedown_posts_journal_with_valid_entry_type(monkeypatch):
@@ -1182,7 +1182,7 @@ def test_apply_nrv_writedown_posts_journal_with_valid_entry_type(monkeypatch):
     lines = captured["lines"]
     assert any(l["account_id"] == "acct-writedown" and l["debit_paise"] == 3_000_00 for l in lines)
     assert any(l["account_id"] == "acct-inventory" and l["credit_paise"] == 3_000_00 for l in lines)
-    ledger = get_stock_ledger(db, "good-1")
+    ledger = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
     assert ledger[-1]["journal_entry_id"] == "journal-nrv-1"
 
 
@@ -1198,7 +1198,7 @@ def test_apply_nrv_writedown_returns_none_without_posting_when_not_needed(monkey
         movement_date="2026-04-15", nrv_per_unit_paise=1_500_00,
     )
     assert result is None
-    assert len(get_stock_ledger(db, "good-1")) == 1  # only the opening row
+    assert len(get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")) == 1  # only the opening row
 
 
 # ── Task #232: manual-adjustment/NRV journal reference_no collision ─────────
@@ -1250,8 +1250,8 @@ def test_two_same_day_adjustments_for_different_items_get_distinct_journal_refs(
 
     # The ledger rows themselves still keep the human-facing (colliding)
     # reference_no — only the JOURNAL reference had to become unique.
-    ledger1 = get_stock_ledger(db, "good-1")
-    ledger2 = get_stock_ledger(db, "good-2")
+    ledger1 = get_stock_ledger(db, "good-1", firm_id="firm-1", client_id="client-1")
+    ledger2 = get_stock_ledger(db, "good-2", firm_id="firm-1", client_id="client-1")
     assert ledger1[-1]["reference_no"] == "ADJ-2026-04-15"
     assert ledger2[-1]["reference_no"] == "ADJ-2026-04-15"
 
@@ -1371,8 +1371,8 @@ def test_record_stock_in_retries_and_converges_under_simulated_concurrent_write(
     cached = db.store["service_catalogue"][0]
     assert cached["stock_qty_units"] == "14"
     assert cached["stock_version"] == 3   # 1 (seed) -> 2 (rival) -> 3 (retried write)
-    ledger_types = [r["movement_type"] for r in get_stock_ledger(db, "item-1")]
+    ledger_types = [r["movement_type"] for r in get_stock_ledger(db, "item-1", firm_id="firm-1", client_id="client-1")]
     assert ledger_types == ["purchase", "sale", "purchase"]
     # The LOSING attempt's ledger row must never have been inserted at all —
     # only 3 rows exist, not 4 (no orphaned/half-applied movement).
-    assert len(get_stock_ledger(db, "item-1")) == 3
+    assert len(get_stock_ledger(db, "item-1", firm_id="firm-1", client_id="client-1")) == 3

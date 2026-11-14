@@ -220,7 +220,7 @@ def test_the_stored_running_columns_do_not_foot_in_display_order():
     """The defect, stated as a test so the fix cannot be mistaken for a
     no-op. Delete this only when the chain itself changes."""
     db = _seed_backdated_case()
-    rows = get_stock_ledger(db, ITEM)
+    rows = get_stock_ledger(db, ITEM, firm_id=FIRM, client_id=CLIENT)
     assert [r["movement_date"] for r in rows] == [
         "2026-06-01", "2026-07-01", "2026-07-10"]
 
@@ -232,7 +232,7 @@ def test_the_stored_running_columns_do_not_foot_in_display_order():
 def test_every_row_foots_once_the_balance_is_derived_in_display_order():
     db = _seed_backdated_case()
     rows = stock_position.ledger_with_balances(
-        get_stock_ledger(db, ITEM), Decimal("0"), 0)
+        get_stock_ledger(db, ITEM, firm_id=FIRM, client_id=CLIENT), Decimal("0"), 0)
 
     running_qty, running_value = Decimal("0"), 0
     for r in rows:
@@ -248,7 +248,7 @@ def test_the_derived_balance_leaves_the_stored_columns_alone():
     """New keys, not a relabelling: running_qty_units is what the database
     holds and what every future movement costs off."""
     db = _seed_backdated_case()
-    raw = get_stock_ledger(db, ITEM)
+    raw = get_stock_ledger(db, ITEM, firm_id=FIRM, client_id=CLIENT)
     rows = stock_position.ledger_with_balances(raw, Decimal("0"), 0)
     for before, after in zip(raw, rows):
         assert after["running_qty_units"] == before["running_qty_units"]
@@ -261,7 +261,7 @@ def test_a_filtered_range_runs_forward_from_its_opening():
     db = _seed_backdated_case()
     opening = _one(db, "2026-06-30")
     rows = stock_position.ledger_with_balances(
-        get_stock_ledger(db, ITEM, "2026-07-01", "2026-07-31"),
+        get_stock_ledger(db, ITEM, "2026-07-01", "2026-07-31", firm_id=FIRM, client_id=CLIENT),
         Decimal(opening["qty_units"]), opening["value_paise"])
 
     assert [r["movement_date"] for r in rows] == ["2026-07-01", "2026-07-10"]
@@ -274,6 +274,6 @@ def test_an_empty_range_still_carries_its_opening():
     db = _seed_backdated_case()
     opening = _one(db, "2026-06-30")
     rows = stock_position.ledger_with_balances(
-        get_stock_ledger(db, ITEM, "2026-08-01", "2026-08-31"),
+        get_stock_ledger(db, ITEM, "2026-08-01", "2026-08-31", firm_id=FIRM, client_id=CLIENT),
         Decimal(opening["qty_units"]), opening["value_paise"])
     assert rows == []

@@ -197,7 +197,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SETTLEMENT AND A YEAR-END ADJUSTMENT OPEN FROM THE LEDGER ROW THAT NAMES THEM
 - AN AGEING BUCKET ON THE PRACTICE'S RECEIVABLES LISTS ITS INVOICES
 
-### `docs/design-record/engineering-and-ci.md` (14 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (15 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -213,6 +213,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TEST STUBS A JOURNAL METHOD THROUGH MONKEYPATCH, NEVER BY ASSIGNING IT
 - A TEST THAT NAMES ANOTHER TEST NAMES ONE THAT EXISTS
 - THE BACKEND INSTALLS FROM A HASH-PINNED LOCK AND THE IMAGE HOLDS NO TEST SUITE
+- THE SHARED PAGER RETRIES A READ, BUILDS A QUERY AFRESH FOR EVERY PAGE, AND READS IN A STATED ORDER THAT ENDS IN `id`
 
 ### `docs/design-record/filing-and-compliance.md` (9 entries): Filing to government portals, trackers and the period lock
 - A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT

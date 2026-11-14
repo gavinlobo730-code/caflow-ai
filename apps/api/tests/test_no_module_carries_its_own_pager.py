@@ -20,11 +20,13 @@ THE RULE, NOT A LIST OF TODAY'S MODULES
     reason each could not simply call `fetch_all`; the list may only shrink, and an entry whose function no
     longer pages by hand fails as loudly as a new pager does, so a fix cannot leave its exemption behind.
 
-WHAT IS NOT CLAIMED
-    That the ten survivors are right to survive. Four of them are plain keyset walks over `id` that
-    `fetch_all` could do (marked "could move"); the five OFFSET ones page in a caller-chosen order that
-    `fetch_all`, which imposes ORDER BY id, cannot give them. Moving the first four is a refactor of
-    statutory reads with their own tests, and is named here rather than done under another finding's id.
+WHAT IS LEFT
+    One. The four plain keyset walks moved onto `fetch_all` on 28-10-2026, and on 14-11-2026 (POST-A-045) the
+    shared pager learned what the next five needed: a retry per page (the reporting source), a query built
+    afresh for every page so an IN list can shrink (the bank history), and an ordered OFFSET read whose order
+    ends in `id` (the three readers of stock movements, which page in (movement_date, created_at) order; ending
+    it in `id` is also what stops a movement that ties on both from being read twice or never). The survivor
+    asks for one row per item, which is a database's question (POST-A-435).
 """
 from __future__ import annotations
 
@@ -82,21 +84,12 @@ def _tree() -> dict[tuple[str, str], str]:
 
 #: Every hand-rolled pager that remains, and why it is not a call to `fetch_all`. Shrink-only.
 FROZEN: dict[tuple[str, str], str] = {
-    ("domain/reporting/sources.py", "_fetch_page"):
-        "keyset with a retry and back-off per page (`max_retries`): the ledger source retries a transient "
-        "failure on page N, which fetch_all does not",
-    ("services/bank_exception_service.py", "_seen_before"):
-        "keyset over a SHRINKING IN list that stops as soon as every wanted value is seen, with a page cap "
-        "whose hit is the answer ('complete' is False)",
-    ("domain/inventory_service.py", "get_stock_ledger"):
-        "OFFSET in (movement_date, created_at) order: the stored running totals were chained in that order and "
-        "the display must keep it (its own comment); fetch_all imposes ORDER BY id",
+    # Five left on 14-11-2026 (POST-A-045): the reporting source's retrying keyset (`retries` on the shared pager), the bank history's
+    # shrinking IN list (`iter_pages` builds its query afresh each page) and the three readers of stock movements in (movement_date,
+    # created_at) order (`fetch_all_ordered`, which ends the order in `id`).
     ("routers/inventory.py", "_last_ledger_rows"):
-        "OFFSET in created_at DESC order over a filter that narrows as items are found (INV-07)",
-    ("services/stock_ageing_service.py", "_fetch_movements"):
-        "OFFSET in (movement_date, created_at) order, the FIFO walk's own",
-    ("services/stock_position_service.py", "_fetch_movements"):
-        "OFFSET in (movement_date, created_at) order, the position's own",
+        "OFFSET in created_at DESC order over a filter that narrows as items are found (INV-07), restarting at 0 when it does: the "
+        "question is one row per item, so its answer belongs in the database (POST-A-435), not in a pager",
 }
 
 
@@ -113,9 +106,15 @@ def test_the_detector_finds_a_keyset_loop_an_offset_loop_and_nothing_else():
     assert hand_rolled_pagers(one_read) == hand_rolled_pagers(shared) == hand_rolled_pagers(loop_without_paging) == []
 
 
-def test_the_scan_finds_the_pagers_that_remain_so_it_is_not_vacuous():
-    # 8 until the four plain walks moved onto fetch_all (POST-A-045); six remain, each with a reason it cannot
-    assert len(_tree()) >= 5, "the tree scan stopped finding hand-rolled pagers; the rule below would pass over nothing"
+def _modules_scanned() -> int:
+    return sum(1 for path in API.rglob("*.py") if path.relative_to(API).parts[0] not in SKIP
+               and str(path.relative_to(API)) != "core/db_paging.py" and ".execute()" in path.read_text(encoding="utf-8"))
+
+
+def test_the_scan_reads_the_application_so_it_is_not_vacuous():
+    """Counting the pagers it finds stopped being the measure once nearly all of them moved (POST-A-045): the scan must read the modules
+    that query the database (the detector's own test above proves it recognises both shapes when it reads them)."""
+    assert _modules_scanned() >= 150, "the tree scan stopped reading the modules that query the database; the rule would pass over nothing"
 
 
 def test_no_module_pages_a_query_by_hand_except_the_frozen_ones():
@@ -331,3 +330,357 @@ def test_a_service_that_paged_privately_reads_every_row_through_the_one_pager(na
         assert db.pages(table) == [3, 3, 2], f"{name}: {db.log}"
     if expected is not None:
         assert len(out) == expected, f"{name} handed back {len(out)} of 8 rows"
+
+
+# ═══ What the shared pager learned for the five that moved (POST-A-045) ═══════════════════════════════════════════
+
+class OrderedQuery:
+    """A builder that honours `.order()` terms in the sequence given and `.range()`, and returns rows that TIE on every term in an order
+    of its own that changes from request to request, as Postgres may. That freedom is exactly what makes an OFFSET read without a total
+    order read a row twice or never."""
+
+    def __init__(self, rows, log, seed):
+        self._rows, self._log, self._seed = rows, log, seed
+        self._terms: list[tuple[str, bool]] = []
+        self._range = None
+
+    def select(self, *a, **k):
+        return self
+
+    def eq(self, *a, **k):
+        return self
+
+    def order(self, column, desc=False):
+        self._terms.append((column, desc))
+        return self
+
+    def range(self, start, end):
+        self._range = (start, end)
+        return self
+
+    def execute(self):
+        import random
+        rows = [dict(r) for r in self._rows]
+        random.Random(self._seed).shuffle(rows)              # the arrival order of rows that tie on every term
+        for column, desc in reversed(self._terms):           # a stable sort per term, last term first
+            rows.sort(key=lambda r: r[column], reverse=desc)
+        start, end = self._range
+        self._log.append((tuple(self._terms), start, end))
+        return _Result(rows[start:end + 1])
+
+
+def _movements():
+    """Ten movements, seven of which share the date and the recorded-at instant (an opening batch is one statement)."""
+    tie = [{"id": f"m{i:02d}", "movement_date": "2025-04-01", "created_at": "2025-04-01T10:00:00+00:00"} for i in range(7)]
+    rest = [{"id": "a01", "movement_date": "2025-03-31", "created_at": "2025-04-01T09:00:00+00:00"},
+            {"id": "z01", "movement_date": "2025-04-02", "created_at": "2025-04-02T09:00:00+00:00"},
+            {"id": "b01", "movement_date": "2025-04-01", "created_at": "2025-04-01T11:00:00+00:00"}]
+    return tie + rest
+
+
+def _requests(rows):
+    """A make_query whose every request is a fresh builder with its own arrival order."""
+    log, n = [], {"i": 0}
+
+    def make():
+        n["i"] += 1
+        return OrderedQuery(rows, log, seed=n["i"])
+    return make, log
+
+
+def test_an_ordered_read_ends_its_order_in_id_and_reads_every_tied_row_exactly_once():
+    rows = _movements()
+    make, log = _requests(rows)
+    got = db_paging.fetch_all_ordered(make, ("movement_date", "created_at"), page_size=3)
+    assert [r["id"] for r in got] == ["a01", *[f"m{i:02d}" for i in range(7)], "b01", "z01"]
+    assert all(terms == (("movement_date", False), ("created_at", False), ("id", False)) for terms, _, _ in log)
+    assert [(s, e) for _, s, e in log] == [(0, 2), (3, 5), (6, 8), (9, 11)]
+
+
+def test_without_the_id_the_same_offset_read_loses_or_repeats_a_tied_row():
+    """The negative control: the loop the four stock readers carried, over the same double, is wrong for some arrival order."""
+    rows = _movements()
+
+    def old_loop(seed0):
+        out, offset, n = [], 0, 0
+        while True:
+            n += 1
+            page = (OrderedQuery(rows, [], seed=seed0 + n).order("movement_date").order("created_at")
+                    .range(offset, offset + 2).execute().data)
+            out.extend(page)
+            if len(page) < 3:
+                return out
+            offset += 3
+
+    wrong = [s for s in range(20) if sorted(r["id"] for r in old_loop(s)) != sorted(r["id"] for r in rows)]
+    assert wrong, "the double never produced the fault, so the test above would pass without the tie-break"
+
+
+def test_an_ordered_read_keeps_a_descending_term_and_does_not_add_id_twice():
+    rows = _movements()
+    make, log = _requests(rows)
+    got = db_paging.fetch_all_ordered(make, (("created_at", True), "id"), page_size=4)
+    assert log[0][0] == (("created_at", True), ("id", False))
+    assert [r["id"] for r in got][:2] == ["z01", "b01"] and len(got) == len(rows) == len({r["id"] for r in got})
+
+
+def test_an_ordered_read_of_a_builder_that_cannot_page_is_read_once():
+    rows, stats = [{"id": str(i)} for i in range(5)], {}
+    q = _ExecuteOnly(rows)
+    assert db_paging.fetch_all_ordered(lambda: q.select("id").eq("a", 1), ("movement_date",), stats=stats) == rows
+    assert q.executed == 1 and stats == {"pages": 1, "rows": 5}
+
+
+class _FailsOnce(PagingQuery):
+    """Raises on the first execute of the page after `fail_after`, then behaves."""
+
+    failures: dict = {}
+
+    def execute(self):
+        if self._cursor == "0002" and not _FailsOnce.failures.get("done"):
+            _FailsOnce.failures["done"] = True
+            raise RuntimeError("transient 500")
+        return super().execute()
+
+
+def test_a_failed_page_is_asked_again_with_a_growing_wait_and_every_row_arrives(small_pages, monkeypatch):
+    waits = []
+    monkeypatch.setattr(db_paging, "_sleep", waits.append)
+    _FailsOnce.failures = {}
+    db = PagingDB(8)
+    rows = db_paging.fetch_all(lambda: _FailsOnce(db._rows, "t", db.log), retries=3)
+    assert [r["id"] for r in rows] == [f"{i:04d}" for i in range(8)] and waits == [db_paging.RETRY_BACKOFF_SECONDS]
+
+
+def test_one_attempt_raises_the_failure_as_it_came_and_waits_for_nothing(small_pages, monkeypatch):
+    waits = []
+    monkeypatch.setattr(db_paging, "_sleep", waits.append)
+    _FailsOnce.failures = {}
+    db = PagingDB(8)
+    with pytest.raises(RuntimeError, match="transient 500"):
+        db_paging.fetch_all(lambda: _FailsOnce(db._rows, "t", db.log))
+    assert waits == []
+
+
+def test_a_page_that_keeps_failing_raises_its_last_failure_after_every_attempt(small_pages, monkeypatch, caplog):
+    waits, attempts = [], {"n": 0}
+    monkeypatch.setattr(db_paging, "_sleep", waits.append)
+
+    class Down(PagingQuery):
+        def execute(self):
+            attempts["n"] += 1
+            raise RuntimeError(f"down {attempts['n']}")
+
+    db = PagingDB(8)
+    with caplog.at_level(logging.ERROR, logger="caflow.db.paging"), pytest.raises(RuntimeError, match="down 3"):
+        db_paging.fetch_all(lambda: Down(db._rows, "t", db.log), retries=3, label="t")
+    assert attempts["n"] == 3 and waits == [0.3, 0.6] and "after 3 attempts" in caplog.text
+
+
+def test_the_reporting_source_reads_through_the_shared_pager_with_its_retry(monkeypatch):
+    """The ledger source's own retry moved into the pager: a page that fails once is asked again, and the report gets every row."""
+    from domain.reporting import sources
+    monkeypatch.setattr(db_paging, "_sleep", lambda s: None)
+    monkeypatch.setattr(sources.SupabaseLedgerSource, "_PAGE", 3)
+    _FailsOnce.failures = {}
+    db = PagingDB(8)
+    src = sources.SupabaseLedgerSource.__new__(sources.SupabaseLedgerSource)
+    stats: dict = {}
+    rows = src._fetch_all(lambda: _FailsOnce(db._rows, "journal_entries", db.log), stats=stats)
+    assert len(rows) == 8 and stats["pages"] == 3 and stats["rows"] == 8 and "seconds" in stats
+    assert not hasattr(sources.SupabaseLedgerSource, "_fetch_page"), "the private page reader is gone"
+
+
+def test_a_query_built_afresh_each_page_may_narrow_its_filter_and_the_cursor_stays_true(small_pages):
+    """The bank history's shape: each page asks only for the values not yet seen."""
+    asked, seen = [], set()
+
+    class Narrowing(PagingQuery):
+        def in_(self, column, values):
+            asked.append(tuple(values))
+            self._wanted = set(values)
+            return self
+
+        def execute(self):
+            rows = [r for r in sorted(self._store(self._name), key=lambda r: r["id"]) if r["x"] in self._wanted]
+            if self._cursor is not None:
+                rows = [r for r in rows if r["id"] > self._cursor]          # the server filters, seeks, then limits
+            rows = rows[: self._limit]
+            self._log.append((self._name, len(rows), self._limit))
+            return _Result([dict(r) for r in rows])
+
+    letters = "aabbbcccd"
+    db = PagingDB(len(letters))
+    rows = [{**r, "x": letters[i]} for i, r in enumerate(db._rows("t"))]
+    pages = []
+    for page in db_paging.iter_pages(lambda: Narrowing(lambda _n: rows, "t", db.log).in_("x", sorted({"a", "b", "c", "d"} - seen))):
+        pages.append([r["id"] for r in page])
+        seen.update(r["x"] for r in page)
+    assert asked == [("a", "b", "c", "d"), ("c", "d"), ("d",)], "page one built more than once, or the list did not narrow"
+    flat = [i for p in pages for i in p]
+    assert len(flat) == len(set(flat)) and seen == set(letters), "the cursor skipped or repeated a row under the narrower filter"
+
+
+# ── what the independent read of POST-A-045 asked for ────────────────────────────────────────────────────────────────
+
+class _AnyFilterOrdered(OrderedQuery):
+    """OrderedQuery that accepts every other filter a reader chains (eq, lte, in_ ...) and ignores it: the fixture holds only rows
+    that match."""
+
+    def __getattr__(self, attr):
+        return lambda *a, **k: self
+
+
+def test_the_three_stock_readers_page_past_one_page_and_read_every_tied_row_once(monkeypatch):
+    from domain import inventory_service
+    from services import stock_ageing_service, stock_position_service
+    rows = [{**r, "service_catalogue_id": "X", "quantity_delta": "1", "value_delta_paise": 1} for r in _movements()]
+    expected = ["a01", *[f"m{i:02d}" for i in range(7)], "b01", "z01"]
+    monkeypatch.setattr(db_paging, "PAGE", 3)
+    monkeypatch.setattr(stock_ageing_service, "_PAGE", 3)
+    monkeypatch.setattr(stock_position_service, "_PAGE", 3)
+    for read in (lambda db: inventory_service.get_stock_ledger(db, "X", firm_id="F", client_id="C"),
+                 lambda db: stock_ageing_service._fetch_movements(db, "F", "C", "2026-03-31"),
+                 lambda db: stock_position_service._fetch_movements(db, "F", "C", "2026-03-31")):
+        log, n = [], {"i": 0}
+
+        class DB:
+            def table(self, _name, log=log, n=n):            # bound now: each reader gets its own log and seed counter
+                n["i"] += 1
+                return _AnyFilterOrdered(rows, log, seed=n["i"])
+
+        got = read(DB())
+        assert [r["id"] for r in got] == expected and [(s, e) for _, s, e in log] == [(0, 2), (3, 5), (6, 8), (9, 11)]
+
+
+class _History(PagingQuery):
+    """The bank history's builder: it honours the IN list on the column it is asked about, as the server would."""
+
+    def __init__(self, store, name, log, values):
+        super().__init__(store, name, log)
+        self._values, self._in = values, None
+
+    def in_(self, column, values):
+        if column == "payee_name":
+            self._in = set(values)
+        return self
+
+    def execute(self):
+        rows = sorted(self._store(self._name), key=lambda r: r["id"])
+        if self._in is not None:
+            rows = [r for r in rows if r["payee_name"] in self._in]
+        if self._cursor is not None:
+            rows = [r for r in rows if r["id"] > self._cursor]
+        rows = rows[: self._limit]
+        self._log.append((tuple(sorted(self._in or ())), len(rows), self._limit))
+        return _Result([dict(r) for r in rows])
+
+
+def _bank_history(monkeypatch, payees):
+    from services import bank_exception_service as bes
+    log = []
+    rows = [{"id": f"{i:04d}", "payee_name": p} for i, p in enumerate(payees)]
+    monkeypatch.setattr(bes, "privileged_for", lambda db: db)
+
+    class DB:
+        def table(self, name):
+            return _History(lambda _n: rows, name, log, None)
+
+    return bes, DB(), log
+
+
+def test_the_bank_history_pages_with_its_own_page_size_and_narrows_its_list_as_it_finds(monkeypatch):
+    monkeypatch.setattr(db_paging, "PAGE", 3)
+    bes, db, log = _bank_history(monkeypatch, ["a", "a", "a", "b", "b", "b", "c"])
+    seen, complete = bes._seen_before(db, "F", "C", column="payee_name", wanted={"a", "b", "c", "d"}, before="2026-04-01",
+                                      bank_account_id=None)
+    assert seen == {"a", "b", "c"} and complete is True
+    assert [entry[0] for entry in log] == [("a", "b", "c", "d"), ("b", "c", "d"), ("c", "d")], log
+    assert all(limit == 3 for _, _, limit in log), "the request size was not the page size the short-page test uses"
+
+
+def test_the_bank_history_reports_a_cut_off_history_as_incomplete(monkeypatch):
+    monkeypatch.setattr(db_paging, "PAGE", 3)
+    bes, db, log = _bank_history(monkeypatch, ["a"] * 3 + ["b"] * 3 + ["c"] * 3)
+    monkeypatch.setattr(bes, "_HISTORY_PAGE_CAP", 2)
+    # Each page is full and finds one new value; the cap is reached with c and z still unanswered.
+    assert bes._seen_before(db, "F", "C", column="payee_name", wanted={"a", "b", "c", "z"}, before="2026-04-01",
+                            bank_account_id=None) == ({"a", "b"}, False)
+
+
+def test_a_bank_history_the_pager_stops_early_is_not_called_complete(monkeypatch):
+    """A full page whose last row has no id ends the pager's read; that is not the end of the history."""
+    monkeypatch.setattr(db_paging, "PAGE", 3)
+    bes, db, log = _bank_history(monkeypatch, ["a", "a", "a", "f"])
+    real_execute = _History.execute
+
+    def keyless_last(self):
+        res = real_execute(self)
+        if res.data:
+            res.data[-1].pop("id", None)
+        return res
+
+    monkeypatch.setattr(_History, "execute", keyless_last)
+    seen, complete = bes._seen_before(db, "F", "C", column="payee_name", wanted={"a", "f"}, before="2026-04-01",
+                                      bank_account_id=None)
+    assert complete is False and "f" not in seen
+
+
+def test_a_page_that_fails_twice_waits_longer_the_second_time(small_pages, monkeypatch):
+    waits, failures = [], {"n": 0}
+    monkeypatch.setattr(db_paging, "_sleep", waits.append)
+
+    class TwiceDown(PagingQuery):
+        def execute(self):
+            if self._cursor == "0002" and failures["n"] < 2:
+                failures["n"] += 1
+                raise RuntimeError("transient")
+            return super().execute()
+
+    db = PagingDB(8)
+    assert len(db_paging.fetch_all(lambda: TwiceDown(db._rows, "t", db.log), retries=3)) == 8
+    assert waits == [db_paging.RETRY_BACKOFF_SECONDS, 2 * db_paging.RETRY_BACKOFF_SECONDS]
+
+
+def test_a_builder_that_sorts_but_cannot_page_is_read_once_in_the_stated_order():
+    class SortsOnly:
+        def __init__(self):
+            self.terms, self.executed = [], 0
+
+        def order(self, column, desc=False):
+            self.terms.append((column, desc))
+            return self
+
+        def execute(self):
+            self.executed += 1
+            rows = [{"id": "2", "d": "b"}, {"id": "1", "d": "a"}]
+            for column, desc in reversed(self.terms):
+                rows.sort(key=lambda r: r[column], reverse=desc)
+            return _Result(rows)
+
+    q = SortsOnly()
+    assert [r["id"] for r in db_paging.fetch_all_ordered(lambda: q, ("d",))] == ["1", "2"]
+    assert q.executed == 1 and q.terms == [("d", False), ("id", False)]
+
+
+def test_a_strict_read_raises_where_a_lenient_one_returns_part(small_pages):
+    class Keyless(PagingQuery):
+        def execute(self):
+            self._log.append((self._name, 3, self._limit))
+            return _Result([{"other": 1}] * 3)
+
+    db = PagingDB()
+    assert len(db_paging.fetch_all(lambda: Keyless(db._rows, "t", db.log))) == 3
+    with pytest.raises(RuntimeError, match="nothing partial is returned"):
+        db_paging.fetch_all(lambda: Keyless(db._rows, "t", db.log), strict=True)
+
+
+def test_the_reporting_source_reads_strictly_and_orders_by_its_key_once():
+    import ast
+    import inspect
+    from domain.reporting import sources
+    src = inspect.getsource(sources.SupabaseLedgerSource)
+    assert 'order("id")' not in src, "a reporting builder orders by id itself, and the pager orders by it again (id,id)"
+    calls = [n for n in ast.walk(ast.parse(inspect.getsource(sources.SupabaseLedgerSource._fetch_all).lstrip()))
+             if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "fetch_all"]
+    assert calls and any(k.arg == "strict" and getattr(k.value, "value", None) is True for k in calls[0].keywords)

@@ -54,7 +54,8 @@ WHY THE STOP CONDITION IS A SHORT PAGE
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Iterator, Optional
+import time
+from typing import Any, Callable, Iterator, Optional, Sequence, Union
 
 _logger = logging.getLogger("caflow.db.paging")
 
@@ -67,6 +68,36 @@ PAGE = 1000
 # answer, which is not an improvement.
 MAX_PAGES = 1000
 
+# The wait before the n-th retry of a failed page is n times this. A module attribute so a test can make it nothing, and `_sleep` so a
+# test can see it was asked for.
+RETRY_BACKOFF_SECONDS = 0.3
+_sleep = time.sleep
+
+
+def _read_page(build: Callable[[], Any], *, retries: int, label: str, where: Any) -> list[dict]:
+    """One page, asked again up to `retries` times in all on a failure, with a growing wait (POST-A-045).
+
+    WHY A READ IS RETRIED HERE AND NOT A WRITE. The ledger source learned this in production: for a client with 12k+ posted entries one
+    page hit a transient PostgREST 500 while every other page, and the SAME page moments later, succeeded, and before the retry that one
+    failure aborted the whole report, which the screen rendered as "no posted journal entries". Asking a READ again changes nothing; a
+    write asked again is a duplicate, so nothing in this module writes. `retries=1` (the default) asks once and raises the failure as it
+    came, which is what every caller had before. `build` returns a FRESH builder each attempt, because a builder that raised mid-execute
+    is not one to reuse."""
+    attempts = max(1, int(retries))
+    last: Optional[BaseException] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return build().execute().data or []
+        except Exception as exc:  # noqa: BLE001 — a transient PostgREST or network failure is asked again; the last one is raised
+            last = exc
+            if attempt < attempts:
+                _logger.warning("read %s failed at %s (attempt %d of %d), asking again: %s",
+                                label or "unlabelled", where, attempt, attempts, exc)
+                _sleep(RETRY_BACKOFF_SECONDS * attempt)
+    if attempts > 1:
+        _logger.error("read %s failed at %s after %d attempts: %s", label or "unlabelled", where, attempts, last)
+    raise last  # type: ignore[misc]
+
 
 def iter_pages(
     make_query: Callable[[], Any],
@@ -74,6 +105,9 @@ def iter_pages(
     *,
     label: str = "",
     stats: Optional[dict] = None,
+    page_size: Optional[int] = None,
+    retries: int = 1,
+    strict: bool = False,
 ) -> Iterator[list[dict]]:
     """The pages of the rows `make_query` matches, one list per request, in keyset order over `key`.
 
@@ -82,32 +116,52 @@ def iter_pages(
     that called `fetch_all` held the whole table. Everything `fetch_all` says about `make_query`, the key, the short-page stop and the
     test-double tolerance holds here (it is one implementation). An empty page is not yielded. `stats` is filled when the generator has
     been read to its end, not before.
+
+    `page_size` is the request size and the short-page test; it must not exceed the server's `db-max-rows` (the module docstring says why)
+    and exists so a test can make pages small. `retries` asks a failed page again (`_read_page`); the default asks once. `strict` RAISES
+    where the read would otherwise stop early and say so in the log (the page cap, a row without the key): right for a financial
+    statement, which must fail rather than add up part of a ledger.
+
+    `make_query` is called afresh for every page, so a caller may narrow its filter between pages (an IN list of the values not yet
+    found): the cursor stays valid, because a narrower filter over `key > cursor` is a subset of what the cursor was measured against.
     """
     cursor: Any = None
     pages = 0
     rows = 0
+    size = page_size or PAGE          # read when called, so a test that shrinks PAGE shrinks every reader
 
+    unused: list = []                 # the first page's builder, built once to judge it and then used, so page one is ONE builder
     while True:
-        q = make_query()
-        if pages == 0 and not (hasattr(q, "gt") and hasattr(q, "order") and hasattr(q, "limit")):
-            page = list(q.execute().data or [])
-            pages = 1
-            rows += len(page)
-            if page:
-                yield page
-            break
-        if cursor is not None:
-            q = q.gt(key, cursor)
-        page = q.order(key).limit(PAGE).execute().data or []
+        if pages == 0:
+            probe = make_query()
+            if not (hasattr(probe, "gt") and hasattr(probe, "order") and hasattr(probe, "limit")):
+                page = list(probe.execute().data or [])
+                pages = 1
+                rows += len(page)
+                if page:
+                    yield page
+                break
+            unused.append(probe)
+
+        def build(cursor=cursor):
+            q = unused.pop() if unused else make_query()
+            if cursor is not None:
+                q = q.gt(key, cursor)
+            return q.order(key).limit(size)
+
+        page = _read_page(build, retries=retries, label=label, where=f"{key} > {cursor!r}")
         pages += 1
         rows += len(page)
         if page:
             yield page
 
-        if len(page) < PAGE:
+        if len(page) < size:
             break
 
         if pages >= MAX_PAGES:
+            if strict:
+                raise RuntimeError(f"read {label or 'unlabelled'} reached the {MAX_PAGES}-page cap at {rows} rows; nothing partial "
+                                   "is returned")
             # Loud, because silence is the failure mode this module exists to
             # remove. Returning what we have beats hanging, but it must be said.
             _logger.error(
@@ -119,6 +173,9 @@ def iter_pages(
 
         cursor = page[-1].get(key)
         if cursor is None:
+            if strict:
+                raise RuntimeError(f"read {label or 'unlabelled'}: the last row of a full page has no `{key}`, so the rest cannot be "
+                                   "read; nothing partial is returned")
             _logger.error(
                 "fetch_all(%s): last row has no `%s`, so paging cannot continue "
                 "— returning %d rows, which may be incomplete.",
@@ -137,6 +194,9 @@ def fetch_all(
     *,
     label: str = "",
     stats: Optional[dict] = None,
+    page_size: Optional[int] = None,
+    retries: int = 1,
+    strict: bool = False,
 ) -> list[dict]:
     """Every row `make_query` matches, read in keyset pages over `key`.
 
@@ -162,8 +222,73 @@ def fetch_all(
     page's builder only, so a real query cannot slip into it halfway.
     """
     out: list[dict] = []
-    for page in iter_pages(make_query, key, label=label, stats=stats):
+    for page in iter_pages(make_query, key, label=label, stats=stats, page_size=page_size, retries=retries, strict=strict):
         out.extend(page)
+    return out
+
+
+#: A column to order by, ascending; or (column, descending).
+OrderTerm = Union[str, tuple[str, bool]]
+
+
+def fetch_all_ordered(
+    make_query: Callable[[], Any],
+    order: Sequence[OrderTerm],
+    *,
+    label: str = "",
+    stats: Optional[dict] = None,
+    page_size: Optional[int] = None,
+) -> list[dict]:
+    """Every row the query matches, in a stated order that is made TOTAL by ending in `id`, read in OFFSET pages (POST-A-045).
+
+    WHY THIS IS NOT `fetch_all`. Some reads need every row in an order of their own and not in `id` order: the stock ledger's stored
+    running totals were chained in (movement date, recorded at) order and the screen shows them that way, and the stock position and
+    ageing walks read movements in that order. `fetch_all`'s keyset needs one unique column to seek past, which a date is not.
+
+    WHY THE ORDER ENDS IN `id`. OFFSET pages are only consistent when the order is total: rows that tie on every ordered column may come
+    back in a different order on each request, so one can fall on both sides of a page boundary (read twice) or on neither (never read),
+    silently. Ties are not rare here: an opening-stock batch inserts every item in ONE statement, so hundreds of rows share the movement
+    date and the recorded-at instant. `id` is unique, so it is appended unless the caller already ordered by it, and the rows that tied
+    are returned in `id` order, which is stable from request to request. What a total order does NOT cure is a write between two page
+    requests: a row inserted (or deleted) ahead of the offset moves every later row by one, so one is read twice (or skipped). That was
+    true of the loops this replaced too; the exact-once guarantee is for a table nobody writes to while it is read.
+
+    WHAT OFFSET COSTS. Page k re-reads the k x `page_size` rows before it (the module docstring), so this is for reads whose size is a
+    client's or an item's history, as the three callers' are, and not for a whole-tenant table. `make_query` returns a FRESH builder
+    carrying the table, the projection and the filters and NO order (this applies it). A builder with no `.order`/`.range` (a test double)
+    is read once, as `fetch_all` does. The stop condition is a short page, and the page cap is `MAX_PAGES`, said loudly when hit.
+    """
+    terms = [(o, False) if isinstance(o, str) else (str(o[0]), bool(o[1])) for o in order]
+    if not any(column == "id" for column, _ in terms):
+        terms.append(("id", False))
+    probe = make_query()
+    if not (hasattr(probe, "order") and hasattr(probe, "range")):
+        if hasattr(probe, "order"):                                    # a double that sorts and cannot page: still in order
+            for column, desc in terms:
+                probe = probe.order(column, desc=desc)
+        out = list(probe.execute().data or [])
+        if stats is not None:
+            stats.update(pages=1, rows=len(out))
+        return out
+    out: list[dict] = []
+    position, pages, size = 0, 0, page_size or PAGE
+    unused = [probe]                  # page one is the builder already made, so a reader counted per builder is read once
+    while True:
+        q = unused.pop() if unused else make_query()
+        for column, desc in terms:
+            q = q.order(column, desc=desc)
+        page = q.range(position, position + size - 1).execute().data or []
+        pages += 1
+        out.extend(page)
+        position += len(page)
+        if len(page) < size:
+            break
+        if pages >= MAX_PAGES:
+            _logger.error("fetch_all_ordered(%s) hit the %d-page cap at %d rows; the rest were not read",
+                          label or "unlabelled", MAX_PAGES, len(out))
+            break
+    if stats is not None:
+        stats.update(pages=pages, rows=len(out))
     return out
 
 
