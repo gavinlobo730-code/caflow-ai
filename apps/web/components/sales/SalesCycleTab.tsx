@@ -23,6 +23,7 @@ import {
   api,
   type ChallanParticulars,
   type DeliveryChallan,
+  type OrderInvoiceSeed,
   type OrderPosition,
   type SalesCycleVocabulary,
   type SalesOrder,
@@ -39,14 +40,26 @@ import { jobWorkerHasNoGstin, owesItsBackDay } from "@/lib/sales/challanOffers";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { useRouter } from "next/navigation";
+import { writeDuplicateSeed } from "@/lib/invoices/duplicateSeed";
+import { newInvoiceHref } from "@/lib/invoices/workspaceNav";
+import { invoiceDetailFromOrderSeed } from "@/lib/sales/orderInvoiceSeed";
+import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
+import { serviceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 
 type Tab = "quotations" | "orders" | "challans";
 type Msg = { type: "ok" | "err"; text: string } | null;
 
 interface Customer { id: string; name?: string; customer_name?: string }
 
-const BLANK_LINE = { description: "", hsn_sac: "", quantity: "1", unit: "NOS",
-                     rate: "", gst_rate_percent: "18" };
+/** One line of a quotation, order or challan as the form holds it. The catalogue item is the line's product or service (POST-A-104): an
+ *  invoice raised from an order needs one on every line, and a pick fills the line from the catalogue the way the invoice editor does. */
+type CycleLineDraft = {
+  description: string; hsn_sac: string; quantity: string; unit: string; rate: string; gst_rate_percent: string;
+  service_catalogue_id: string | null; is_service: boolean; product: ServiceCatalogueItem | null;
+};
+const BLANK_LINE: CycleLineDraft = { description: "", hsn_sac: "", quantity: "1", unit: "NOS",
+                     rate: "", gst_rate_percent: "18", service_catalogue_id: null, is_service: false, product: null };
 
 function rupees(paise: number): string {
   return `₹${(paise / 100).toLocaleString("en-IN", {
@@ -90,6 +103,24 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
   const [cancelAnswer, setCancelAnswer] = useState<{ id: string; text: string } | null>(null);
   const [correcting, setCorrecting] = useState(false);
   const [position, setPosition] = useState<OrderPosition | null>(null);
+  // POST-A-104 — raising an invoice from the open order: the server's sentences to read first, held until the CA goes on, and its
+  // refusal in its own words. Both belong to the order shown, and closing the order clears them.
+  const router = useRouter();
+  const [seeding, setSeeding] = useState(false);
+  const [seedNotes, setSeedNotes] = useState<{ notes: string[]; go: () => void } | null>(null);
+  const [seedProblem, setSeedProblem] = useState<string | null>(null);
+  // Which press and which order an answer belongs to: an answer that arrives after the order was closed or another was opened is
+  // dropped, and a second press while one is in flight is ignored (a ref, so two clicks in one tick cannot both pass).
+  const seedRun = useRef(0);
+  const seedBusy = useRef(false);
+  const positionRun = useRef(0);
+  const forgetTheSeed = () => {
+    seedRun.current += 1;
+    seedBusy.current = false;
+    setSeeding(false);
+    setSeedNotes(null);
+    setSeedProblem(null);
+  };
 
   const [form, setForm] = useState({
     kind: "quotation",
@@ -110,7 +141,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     place_of_supply: "",
     notes: "",
   });
-  const [lines, setLines] = useState([{ ...BLANK_LINE }]);
+  const [lines, setLines] = useState<CycleLineDraft[]>([{ ...BLANK_LINE }]);
 
   // The tab shows "Loading…" for the FIRST read of a client's lists and keeps itself drawn for every read after it (POST-A-385). A reload replaced the whole tab with "Loading…", which unmounted the
   // FORM GST ITC-04 panel inside it: recording a lot calls `onChanged` (this reload), so the panel's "Recorded. That was the last lot — … its s.143 clock has stopped." line, the year and window it had
@@ -177,6 +208,8 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       unit: l.unit.trim() || "NOS",
       rate_paise: paiseFromRupeeInput(l.rate) ?? 0,
       gst_rate_percent: Number(l.gst_rate_percent) || 0,
+      service_catalogue_id: l.service_catalogue_id,
+      is_service: l.is_service,
     }));
 
   async function save() {
@@ -645,7 +678,22 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             <div className="mb-2 text-sm font-medium text-ps-body">Lines</div>
             <div className="space-y-2">
               {lines.map((l, i) => (
-                <div key={i} className="grid gap-2 sm:grid-cols-6">
+                <div key={i} className="grid gap-2 sm:grid-cols-7">
+                  <ServiceCataloguePicker
+                    clientId={clientId}
+                    value={l.product}
+                    onPick={(item) => {
+                      const filled = serviceToLine(item);
+                      const next = [...lines];
+                      next[i] = {
+                        ...l, description: filled.description || item.name, hsn_sac: filled.hsn_sac, rate: filled.rate,
+                        gst_rate_percent: String(filled.gst_rate), unit: filled.unit || l.unit,
+                        service_catalogue_id: item.id, is_service: item.kind === "service", product: item,
+                      };
+                      setLines(next);
+                    }}
+                    ariaLabel={`Line ${i + 1} product or service`}
+                  />
                   <input aria-label={`Line ${i + 1} description`}
                     value={l.description}
                     placeholder="Description"
@@ -767,15 +815,20 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
             ])}
             empty="No sales orders yet."
             onRow={(i) => {
+              forgetTheSeed();
+              const mine = ++positionRun.current;
               void api.salesCycle.orderPosition(orders[i].id, clientId)
-                .then((r) => { if (r.success && r.data) setPosition(objectWithLists<OrderPosition>(r.data, "gaps", "lines")); });
+                .then((r) => {
+                  if (mine !== positionRun.current) return;
+                  if (r.success && r.data) setPosition(objectWithLists<OrderPosition>(r.data, "gaps", "lines"));
+                });
             }}
           />
           {position && (
             <div className="rounded border border-ps-border bg-white p-4">
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold">What is still open</h4>
-                <button onClick={() => setPosition(null)}><X size={14} /></button>
+                <button aria-label="Close" onClick={() => { positionRun.current += 1; setPosition(null); forgetTheSeed(); }}><X size={14} /></button>
               </div>
               <Table
                 head={["Line", "Ordered", "Delivered", "Undelivered", "Invoiced", "Unbilled"]}
@@ -788,6 +841,70 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
               {position.gaps.map((g) => (
                 <p key={g} className="mt-2 text-xs text-state-attention">{g}</p>
               ))}
+              {position.order && position.lines.some((l) => l.unbilled_qty !== "0.000") && (
+                <div className="mt-3 space-y-2">
+                  <button
+                    type="button"
+                    data-testid="raise-invoice-from-order"
+                    disabled={seeding}
+                    className="rounded border border-ps-border px-3 py-1.5 text-xs font-medium text-ps-ink hover:bg-ps-muted disabled:opacity-50"
+                    onClick={() => {
+                      const order = position.order;
+                      if (!order || seedBusy.current) return;
+                      seedBusy.current = true;
+                      const mine = ++seedRun.current;
+                      setSeeding(true);
+                      setSeedNotes(null);
+                      setSeedProblem(null);
+                      void api.salesCycle.orderInvoiceSeed(order.id, clientId).then((r) => {
+                        if (mine !== seedRun.current) return;
+                        if (!r.success || !r.data) {
+                          setSeedProblem(r.error || "The invoice could not be prepared from this order.");
+                          return;
+                        }
+                        const answer = objectWithLists<OrderInvoiceSeed>(r.data, "notes");
+                        const seed = answer ? objectWithLists<OrderInvoiceSeed["seed"]>(answer.seed, "lines") : null;
+                        const detail = answer && seed ? invoiceDetailFromOrderSeed({ ...answer, seed }) : null;
+                        if (!answer || !detail) {
+                          setSeedProblem("The answer about this order could not be read, so no invoice was prepared from it.");
+                          return;
+                        }
+                        const go = () => {
+                          writeDuplicateSeed(detail, { keepOrderLinks: true });
+                          router.push(newInvoiceHref(clientId));
+                        };
+                        if (answer.notes.length > 0) setSeedNotes({ notes: answer.notes, go });
+                        else go();
+                      }).catch((e: unknown) => {
+                        if (mine !== seedRun.current) return;
+                        setSeedProblem(e instanceof Error && e.message ? e.message : "The invoice could not be prepared from this order.");
+                      }).finally(() => {
+                        if (mine !== seedRun.current) return;
+                        seedBusy.current = false;
+                        setSeeding(false);
+                      });
+                    }}
+                  >
+                    {seeding ? "Preparing…" : "Raise an invoice for what is unbilled"}
+                  </button>
+                  {seedProblem && <p className="text-xs text-state-problem" role="alert">{seedProblem}</p>}
+                  {seedNotes && (
+                    <div className="rounded border border-ps-border bg-ps-muted p-3" data-testid="order-invoice-notes">
+                      <p className="text-xs font-semibold text-ps-ink">Read before the invoice opens</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4">
+                        {seedNotes.notes.map((n, k) => <li key={`${k}:${n}`} className="text-xs text-ps-body">{n}</li>)}
+                      </ul>
+                      <button
+                        type="button"
+                        className="mt-2 rounded border border-ps-border bg-white px-3 py-1.5 text-xs font-medium text-ps-ink hover:bg-ps-muted"
+                        onClick={seedNotes.go}
+                      >
+                        Open the invoice
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

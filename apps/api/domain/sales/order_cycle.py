@@ -194,10 +194,9 @@ def open_quantities(order_lines: Iterable[dict],
     """Per order line: ordered, delivered, invoiced, and what is left of each.
 
     DELIVERED AND INVOICED ARE TWO DIFFERENT CLOCKS and an order needs both.
-    Goods can be delivered on a challan and billed a month later (Rule 55's
-    whole purpose), and a service can be billed in advance of performance. An
-    order that tracked only one would show a fully delivered order as open,
-    or a fully billed one as undelivered.
+    Goods can leave on a delivery challan and be billed later, and a service
+    can be billed before it is performed. An order that tracked only one would
+    show a fully delivered order as open, or a fully billed one as undelivered.
     """
     delivered = delivered_by_line or {}
     invoiced = invoiced_by_line or {}
@@ -260,14 +259,17 @@ def over_delivery(line: OpenLine, quantity: Decimal) -> Optional[str]:
     return None
 
 
-def over_billing(line: OpenLine, quantity: Decimal) -> Optional[str]:
+def over_billing(line: OpenLine, quantity: Decimal, *, including_drafts: bool = False) -> Optional[str]:
+    """`including_drafts` says what `invoiced_qty` counted: the check made on save counts every live invoice, drafts too, so two
+    drafts cannot each bill the same quantity (POST-A-104)."""
     if quantity <= 0:
         return f"{line.description}: an invoice line must be of a positive quantity."
     if quantity > line.unbilled_qty:
+        already = "already invoiced or on a draft invoice" if including_drafts else "already invoiced"
         return (f"{line.description}: {_q(quantity)} is more than the "
                 f"{_q(line.unbilled_qty)} still unbilled on this order line "
                 f"({_q(line.ordered_qty)} ordered, {_q(line.invoiced_qty)} "
-                f"already invoiced).")
+                f"{already}).")
     return None
 
 

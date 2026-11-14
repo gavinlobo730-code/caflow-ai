@@ -27,7 +27,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
-from core.db_paging import fetch_all
+from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_now, ist_today
 from services import delivery_challan_writes as challan_writes
 from services import named_row_ownership
@@ -319,8 +319,10 @@ def order_open_position(db, firm_id: str, order_id: str, *, with_drafts: bool = 
             delivered[lid] = (oc.to_decimal(delivered.get(lid))
                               + oc.to_decimal(r.get("quantity")))
 
-    # `invoiced` is deliberately EMPTY and says so — see the constant below.
-    open_lines = oc.open_quantities(lines, delivered, {})
+    # What has been INVOICED is read off the invoice lines that name these order lines (POST-A-104, migration 589). An issued invoice
+    # bills; a draft bills nothing yet and counts only where the question is "what hangs from these lines" (`with_drafts`).
+    invoiced = billed_by_line(db, firm_id, line_ids, with_drafts=with_drafts)
+    open_lines = oc.open_quantities(lines, delivered, invoiced)
     return {
         "order": order,
         "lines": [ln.as_dict() for ln in open_lines],
@@ -330,18 +332,251 @@ def order_open_position(db, firm_id: str, order_id: str, *, with_drafts: bool = 
     }
 
 
-#: Why `invoiced_qty` is always zero today, said out loud rather than left to
-#: be discovered. An invoice line has no `sales_order_line_id`, so the only way
-#: to pair the two would be to match on description and rate — a guess, and one
-#: that silently under-bills an order whose invoice line was reworded. The
-#: column is a migration; naming the gap costs nothing and a wrong figure costs
-#: the client an unbilled delivery.
+#: What the invoiced figure counts, said on every answer (POST-A-104). An invoice line counts against an order line only where it NAMES
+#: it, which it does when the invoice was raised from the order; pairing an invoice typed separately by its description and rate would
+#: be a guess, and one that silently under-bills an order whose invoice line was reworded.
 INVOICED_QUANTITY_IS_NOT_LINKED = (
-    "What has been INVOICED against this order is not tracked: an invoice line "
-    "carries no link back to an order line, so the figure shown is zero rather "
-    "than a guess made by matching descriptions. What has been DELIVERED is "
-    "real — a delivery challan line names the order line it delivers."
+    "Invoiced counts the issued invoices raised from this order: a draft is not yet invoiced, a cancelled invoice billed nothing, and "
+    "an invoice typed without the order is not matched to it by its description. What has been DELIVERED is what the issued delivery "
+    "challans against this order carry."
 )
+
+#: An invoice in this state bills nothing: a cancelled invoice is not a supply, and a deleted one (only a draft can be) is not there.
+INVOICE_STATES_THAT_BILL_NOTHING = frozenset({"cancelled"})
+
+#: Why an order whose lines an invoice names keeps them (POST-A-104).
+ORDER_LINES_ARE_BILLED = (
+    "An invoice raised from this order names its lines, so they cannot be replaced: an issued or cancelled invoice keeps that link "
+    "for good, and a draft keeps it until the draft is deleted. Amend the order's header, or raise a new order for what has changed.")
+
+
+def billed_by_line(db, firm_id: str, line_ids: list, *, with_drafts: bool,
+                   exclude_invoice_id: Optional[str] = None) -> dict:
+    """Per order line id, the quantity the client's sales invoices bill against it (POST-A-104).
+
+    Read off `client_sales_invoice_lines.sales_order_line_id` over THESE order lines (a read the size of the order, not of the client's
+    invoices), and only where the parent invoice, read under the firm, is live: not deleted, not cancelled, and not a draft unless
+    `with_drafts` (a draft bills nothing yet, but it does hang from the line). `exclude_invoice_id` leaves one invoice out, so an edit
+    of a draft is checked against everything else that bills the line.
+    """
+    if not line_ids:
+        return {}
+    rows = fetch_all_in(
+        lambda: db.table("client_sales_invoice_lines")
+        .select("id, sales_invoice_id, sales_order_line_id, quantity"),
+        "sales_order_line_id", list(line_ids), label="sales_cycle.billed")
+    invoice_ids = sorted({str(r.get("sales_invoice_id")) for r in rows if r.get("sales_invoice_id")}
+                         - {str(exclude_invoice_id)})
+    live: set = set()
+    if invoice_ids:
+        for inv in fetch_all_in(
+                lambda: db.table("client_sales_invoices").select("id, status, deleted_at").eq("firm_id", firm_id),
+                "id", invoice_ids, label="sales_cycle.billed_parents"):
+            status = str(inv.get("status") or "")
+            if inv.get("deleted_at") or status in INVOICE_STATES_THAT_BILL_NOTHING:
+                continue
+            if status == "draft" and not with_drafts:
+                continue
+            live.add(str(inv.get("id")))
+    out: dict = {}
+    for r in rows:
+        if str(r.get("sales_invoice_id")) not in live:
+            continue
+        lid = str(r.get("sales_order_line_id"))
+        out[lid] = oc.to_decimal(out.get(lid)) + oc.to_decimal(r.get("quantity"))
+    return out
+
+
+def invoice_lines_naming(db, order_line_ids: list) -> int:
+    """How many invoice lines name any of these order lines, whatever their invoice's state (POST-A-104).
+
+    `billed_by_line` answers what is BILLED and leaves a cancelled or deleted invoice out; this answers whether anything still POINTS at
+    the lines, which is what migration 589's ON DELETE RESTRICT asks. The ids were read under the firm by the caller, and the trigger
+    keeps a line from naming another client's order line, so the read needs no firm of its own (the line table has none).
+    """
+    if not order_line_ids:
+        return 0
+    return len(fetch_all_in(
+        lambda: db.table("client_sales_invoice_lines").select("id"),
+        "sales_order_line_id", list(order_line_ids), label="sales_cycle.lines_naming"))
+
+
+def check_invoice_lines_against_orders(db, firm_id: str, client_id: str, customer_id: Optional[str], lines: list, *,
+                                       exclude_invoice_id: Optional[str] = None) -> None:
+    """Refuse, in words, an invoice whose lines bill order lines they may not (POST-A-104). Lines that name no order line are not
+    asked about: most invoices are never ordered.
+
+    Each named order line must be one of THIS client's, on an order that is not cancelled and is the invoice's customer's; where both
+    name a catalogue item, the invoice line's must be the order line's (a line re-pointed at another product would count as the order's
+    item billed); and what the invoice bills against a line, with what every other live invoice (drafts included) already bills against
+    it, may not exceed what was ordered (`order_cycle.over_billing`: refused, not clamped, because billing more than was ordered is
+    either a keying error or an order the customer agreed to amend). The database refuses another client's order line as well
+    (migration 589's trigger).
+
+    WHAT IT DOES NOT HOLD: the read and the write are two requests, so two saves made at the same moment can each find the other absent.
+    Such a draft is refused at ISSUE, where this is asked again (`check_invoice_still_bills_its_orders`) and the other draft is counted;
+    only two issues made at the same moment as well get past it (POST-A-440).
+    """
+    wanted: dict = {}
+    items: dict = {}
+    for ln in lines or []:
+        lid = ln.get("sales_order_line_id")
+        if lid:
+            wanted[str(lid)] = oc.to_decimal(wanted.get(str(lid))) + oc.to_decimal(ln.get("quantity"))
+            if ln.get("service_catalogue_id"):
+                items.setdefault(str(lid), set()).add(str(ln.get("service_catalogue_id")))
+    if not wanted:
+        return
+    found = {str(r.get("id")): r for r in fetch_all_in(
+        lambda: db.table("sales_order_lines").select("id, order_id, description, quantity, service_catalogue_id")
+        .eq("firm_id", firm_id).eq("client_id", client_id),
+        "id", list(wanted), label="sales_cycle.lines_billed")}
+    if any(lid not in found for lid in wanted):
+        raise HTTPException(status_code=422, detail="An invoice line names an order line that is not one of this client's orders.")
+    order_ids = sorted({str(r.get("order_id")) for r in found.values()})
+    orders = {str(o.get("id")): o for o in fetch_all_in(
+        lambda: db.table("sales_orders").select("id, status, customer_id, document_no")
+        .eq("firm_id", firm_id).eq("client_id", client_id),
+        "id", order_ids, label="sales_cycle.orders_billed")}
+    problems: list = []
+    for oid in order_ids:
+        order = orders.get(oid)
+        if order is None:
+            problems.append("An invoice line names an order line whose order is not one of this client's.")
+            continue
+        number = order.get("document_no") or "(no number)"
+        if str(order.get("status")) == "cancelled":
+            problems.append(f"Sales order {number} is cancelled, so nothing can be billed against it.")
+        elif customer_id and order.get("customer_id") and str(order.get("customer_id")) != str(customer_id):
+            problems.append(f"Sales order {number} is another customer's, so this invoice cannot bill it.")
+    billed = billed_by_line(db, firm_id, list(wanted), with_drafts=True, exclude_invoice_id=exclude_invoice_id)
+    for lid, quantity in wanted.items():
+        row = found[lid]
+        ordered_item = str(row.get("service_catalogue_id") or "")
+        if ordered_item and items.get(lid, set()) - {ordered_item}:
+            problems.append(f"A line billing the order's \"{row.get('description') or ''}\" names a different product or service: an "
+                            "invoice line raised from an order bills the order's own item.")
+        line = oc.OpenLine(order_line_id=lid, description=str(row.get("description") or ""),
+                           ordered_qty=oc.to_decimal(row.get("quantity")), delivered_qty=Decimal(0),
+                           invoiced_qty=oc.to_decimal(billed.get(lid)))
+        message = oc.over_billing(line, quantity, including_drafts=True)
+        if message:
+            problems.append(message)
+    if problems:
+        raise HTTPException(status_code=422, detail=" ".join(problems))
+
+
+def check_invoice_still_bills_its_orders(db, firm_id: str, invoice: dict) -> None:
+    """At ISSUE, the stored draft's lines are asked the order rule again (POST-A-104).
+
+    A draft was checked when its lines were saved, but three things can change before it is issued without its lines being saved
+    again: its customer (a header-only edit), its order (cancelled since), and what other drafts bill (two saved at the same moment
+    each found the other absent). The issue is the moment the draft becomes a tax invoice, so it is asked here, against everything else
+    that bills the lines, drafts included. The lines are keyed on an invoice the issue route has already read under the firm.
+    """
+    invoice_id = str(invoice.get("id") or "")
+    if not invoice_id:
+        return
+    lines = fetch_all(
+        lambda: db.table("client_sales_invoice_lines")
+        .select("id, sales_order_line_id, quantity, service_catalogue_id").eq("sales_invoice_id", invoice_id),
+        label="sales_cycle.issue_lines")
+    check_invoice_lines_against_orders(db, firm_id, str(invoice.get("client_id") or ""), invoice.get("customer_id"), lines,
+                                       exclude_invoice_id=invoice_id)
+
+
+def _quantity_text(value: Decimal) -> str:
+    """A quantity as an editor box shows it: no exponent and no trailing zeros (`2`, `2.5`)."""
+    text = format(Decimal(value).quantize(Decimal("0.001")), "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+#: Said when the order carries a discount on the whole document. Every order line's stored `discount_paise` is its own discount PLUS
+#: its share of the document's (`domain/gst/discount.apply_to_lines`), so no line's amount can be carried or named on its own: one
+#: sentence for all of it, and never one per line beside it, which would invite the same discount twice.
+ORDER_DISCOUNT_NOT_CARRIED = (
+    "The order has a discount on the whole document, and each line's discount figure on the order includes a share of it, so no "
+    "discount amount is carried: enter on the invoice the discount that applies to what is billed. A line's own percentage is carried.")
+
+
+def _seed_notes(order: dict, ln: dict, unbilled: Decimal, delivered: Decimal, any_delivery: bool) -> list:
+    """The sentences one seeded line owes the CA before the editor opens. Each is a fact about the records, not a reading of law."""
+    description = str(ln.get("description") or "")
+    notes: list = []
+    not_delivered = oc.to_decimal(ln.get("quantity")) - delivered
+    # Only an order that is delivered on challans at all says what a challan has not carried: goods that leave under the tax invoice
+    # itself have no challan, and a sentence on every such line would be noise.
+    if any_delivery and not ln.get("is_service") and not_delivered > 0:
+        notes.append(f"{description}: {_quantity_text(min(not_delivered, unbilled))} of the {_quantity_text(unbilled)} offered is not "
+                     f"yet on an issued delivery challan against this order.")
+    if not ln.get("service_catalogue_id"):
+        notes.append(f"{description}: the order line names no product or service, and an invoice line must. Picking one fills the "
+                     f"line from the catalogue, so check afterwards that the rate, HSN or SAC and GST rate are still the order's.")
+    has_document_discount = order.get("discount_percent_bps") or order.get("discount_paise")
+    if not has_document_discount and ln.get("discount_paise") and not ln.get("discount_percent_bps"):
+        notes.append(f"{description}: the order line's discount is an amount for the whole ordered quantity and is not carried; "
+                     f"enter it on the invoice if it applies to what is billed.")
+    return notes
+
+
+def invoice_seed_from_order(db, firm_id: str, order_id: str) -> dict:
+    """What a new invoice raised from this order starts with (POST-A-104): every line that still has something unbilled, at the
+    unbilled quantity, naming the order line it bills, with the order's customer and place of supply. Nothing is written: the CA opens
+    it in the invoice editor, chooses the number and date, changes what they need to, and saves through the one create path, which
+    refuses billing more than was ordered.
+
+    WHAT IT DOES NOT CARRY, said on the answer (`_seed_notes`): an absolute discount (a line's was an amount for the whole ordered
+    quantity, and with a document discount every line's stored figure includes a share of it), and when the supply is made. Goods an
+    order delivers on challans that a challan has not yet carried are offered too, and named: whether to bill ahead of a delivery is the
+    CA's decision, not a default this answer takes. A line with no catalogue item is named, because an invoice line needs one.
+    """
+    order = _one(db, "sales_orders", firm_id, order_id, "sales order")
+    if str(order.get("status")) == "cancelled":
+        raise HTTPException(status_code=409, detail="A cancelled order cannot be invoiced.")
+    lines = order_lines(db, firm_id, order_id)
+    line_ids = [str(ln.get("id")) for ln in lines]
+    billed = billed_by_line(db, firm_id, line_ids, with_drafts=True)
+    delivered = {ln["order_line_id"]: oc.to_decimal(ln["delivered_qty"])
+                 for ln in order_open_position(db, firm_id, order_id)["lines"]}
+    any_delivery = any(q > 0 for q in delivered.values())
+    seed_lines: list = []
+    notes: list = []
+    for ln in lines:
+        lid = str(ln.get("id"))
+        unbilled = oc.to_decimal(ln.get("quantity")) - oc.to_decimal(billed.get(lid))
+        if unbilled <= 0:
+            continue
+        gst_percent = ln.get("gst_rate_percent")
+        seed_lines.append({
+            "description": str(ln.get("description") or ""),
+            "hsn_sac": ln.get("hsn_sac"),
+            "quantity": _quantity_text(unbilled),
+            "unit": ln.get("unit"),
+            "rate_paise": int(ln.get("rate_paise") or 0),
+            "gst_rate_bps": int((Decimal(str(gst_percent)) * 100).to_integral_value()) if gst_percent is not None else None,
+            "is_service": ln.get("is_service"),
+            "service_catalogue_id": ln.get("service_catalogue_id"),
+            "discount_percent_bps": ln.get("discount_percent_bps"),
+            "cess_rate_bps": ln.get("cess_rate_bps"),
+            "cess_specific_paise_per_unit": ln.get("cess_specific_paise_per_unit"),
+            "sales_order_line_id": lid,
+        })
+        notes.extend(_seed_notes(order, ln, unbilled, delivered.get(lid, Decimal(0)), any_delivery))
+    if not seed_lines:
+        raise HTTPException(status_code=409, detail=("Every line of this order has been invoiced or is on a draft invoice, so there "
+                                                     "is nothing left to bill."))
+    if order.get("discount_percent_bps") or order.get("discount_paise"):
+        notes.append(ORDER_DISCOUNT_NOT_CARRIED)
+    return {
+        "order": {"id": order_id, "document_no": order.get("document_no")},
+        "seed": {
+            "customer_id": order.get("customer_id"),
+            "supply_state_code": order.get("supply_state_code"),
+            "is_interstate": bool(order.get("is_inter_state")),
+            "lines": seed_lines,
+        },
+        "notes": notes,
+    }
 
 
 # ── Writes ───────────────────────────────────────────────────────────────────
@@ -845,6 +1080,11 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
     lines = patch.get("lines")
     if lines is not None:
         position = order_open_position(db, firm_id, order_id, with_drafts=True)
+        if invoice_lines_naming(db, [ln["order_line_id"] for ln in position["lines"]]):
+            # POST-A-104: an invoice names these lines, WHATEVER its state: a cancelled or deleted invoice's lines still point at them,
+            # and the database refuses their delete (migration 589's ON DELETE RESTRICT). Asked before the first delete, so the lines
+            # are never half replaced; the count is not `invoiced_qty`, which leaves cancelled and deleted invoices out.
+            raise HTTPException(status_code=409, detail=ORDER_LINES_ARE_BILLED)
         if any(ln["delivered_qty"] != "0.000" for ln in position["lines"]):
             raise HTTPException(
                 status_code=409,

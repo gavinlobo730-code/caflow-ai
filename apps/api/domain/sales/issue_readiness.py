@@ -1,10 +1,10 @@
 """What stands between a draft sales invoice and its issue, as a list a screen can show BEFORE the click (POST-A-125).
 
 Issuing a draft posts a dated journal and turns the draft into a tax invoice (CGST Act §31, Rule 46), so the route refuses in a
-fixed order for seven reasons: the status; a locked period (the firm's locked year, a finalised client year or a filed return
+fixed order for these reasons: the status; a locked period (the firm's locked year, a finalised client year or a filed return
 covering the date, which the lock check reports together and which therefore share one code, `PERIOD_LOCKED`, with the sentence
 saying which); a number Rule 46(b) does not allow; a placeholder number; a place of supply Rule 46(n) needs; a draft that does not
-add up to its own lines; a chart of accounts that lacks an account the posting needs; and an entry already in the ledger under the invoice's number and date, or belonging to it by its source, that the draft does not match (usually one an earlier issue left, POST-A-092). Each was an English sentence, and the
+add up to its own lines; a line that bills a sales-order line it may no longer bill (POST-A-104); a chart of accounts that lacks an account the posting needs; and an entry already in the ledger under the invoice's number and date, or belonging to it by its source, that the draft does not match (usually one an earlier issue left, POST-A-092). Each was an English sentence, and the
 editor showed whichever the server sent after the CA had already clicked, with no way for the screen to tell "go and fix the state"
 from "ask a Partner to reopen the year".
 
@@ -39,10 +39,12 @@ PLACE_OF_SUPPLY_INVALID = "PLACE_OF_SUPPLY_INVALID"
 DRAFT_DOES_NOT_ADD_UP = "DRAFT_DOES_NOT_ADD_UP"
 COA_MISSING = "COA_MISSING"
 ENTRY_ALREADY_IN_LEDGER = "ENTRY_ALREADY_IN_LEDGER"
+ORDER_LINES_NOT_BILLABLE = "ORDER_LINES_NOT_BILLABLE"
 
 CODES: tuple[str, ...] = (
     NOT_A_DRAFT, PERIOD_LOCKED, INVOICE_NO_NOT_ALLOWED, INVOICE_NO_PLACEHOLDER,
-    PLACE_OF_SUPPLY_MISSING, PLACE_OF_SUPPLY_INVALID, DRAFT_DOES_NOT_ADD_UP, COA_MISSING, ENTRY_ALREADY_IN_LEDGER,
+    PLACE_OF_SUPPLY_MISSING, PLACE_OF_SUPPLY_INVALID, DRAFT_DOES_NOT_ADD_UP, ORDER_LINES_NOT_BILLABLE, COA_MISSING,
+    ENTRY_ALREADY_IN_LEDGER,
 )
 
 # What the SCREEN can do about a blocker. `fix_in_editor` carries the field; the screen maps the field to its own control.
@@ -82,6 +84,10 @@ ACTION_FOR: dict[str, Optional[dict]] = {
     PLACE_OF_SUPPLY_MISSING: fix_in_editor("supply_state", "Set the supply state"),
     PLACE_OF_SUPPLY_INVALID: fix_in_editor("supply_state", "Set the supply state"),
     DRAFT_DOES_NOT_ADD_UP: None,
+    # A line that bills a sales-order line it may no longer bill (POST-A-104): the order was cancelled, the customer changed, another
+    # invoice bills the quantity, or the line names another item. The sentence says which; the fix is in the lines or on the order,
+    # and which of the two is the CA's answer.
+    ORDER_LINES_NOT_BILLABLE: None,
     COA_MISSING: seed_chart_of_accounts(),
     # An entry is already in the ledger under this invoice's number and date, or belongs to this invoice by its source, and the draft does
     # not match it: usually one an earlier issue left (POST-A-092), though the check cannot tell it from another entry that carries the

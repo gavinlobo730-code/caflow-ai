@@ -73,7 +73,6 @@ IDs `POST-A-NNN` are stable: never renumber; add new items at the next free numb
 
 ## Sales and purchase documents
 
-- **POST-A-104** · `sales-purchase-docs` · low · days — **Link sales invoice lines back to the order line they bill.** An order's open quantity is derived from challan lines, but what has been INVOICED against an order is honestly shown as zero because client_sales_invoice_lines carries no link back to a sales-order line (a description match would silently under-bill a reworded line). Add a nullable link column by migration and have the create and convert paths set it, so the order cycle can show billed vs delivered. Sources disagreed on whether this needs an owner decision; the facts need none (additive nullable column, as PUR-25 did for bill lines, no external input). Follow-on noted by the probe pass: CompliancePanel posts invoice_number on the e-way record, so a Rule 55 challan feeding an e-way bill needs that path widened. — _Sources:_ CLAUDE.md lines 1147-1153 (SALES-21); docs/audits/findings-status.json SALES-21; docs/audits/2026-09-12-the-probe-pass/sales.md SALES-21 (+ CLAUDE.md SALES-21 bullet) — _Refs:_ SALES-21
 
 ## Inventory and fixed assets
 

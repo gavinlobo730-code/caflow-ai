@@ -16,14 +16,22 @@
  * sidesteps both.
  */
 import type { InvoiceDetail } from "@/lib/invoices/shared";
-import { objectWithLists } from "@/lib/api/shape";
+import { objectWithLists } from "../api/shape.ts";
 
 const KEY = "practicesync_invoice_duplicate_seed_v1";
 
-export function writeDuplicateSeed(inv: InvoiceDetail): void {
+/** `keepOrderLinks` is for an invoice raised FROM AN ORDER (POST-A-104), whose lines name the order lines they bill. A duplicate of an
+ *  existing invoice drops them: a copy of an invoice is a new supply, and carrying the links would bill the same order lines again. */
+export function seedForStorage(inv: InvoiceDetail, keepOrderLinks: boolean): InvoiceDetail {
+  return keepOrderLinks ? inv
+    : { ...inv, lines: (inv.lines ?? []).map((l) => ({ ...l, sales_order_line_id: null })) };
+}
+
+export function writeDuplicateSeed(inv: InvoiceDetail, { keepOrderLinks = false }: { keepOrderLinks?: boolean } = {}): void {
   if (typeof window === "undefined") return;
+  const seed = seedForStorage(inv, keepOrderLinks);
   try {
-    window.sessionStorage.setItem(KEY, JSON.stringify(inv));
+    window.sessionStorage.setItem(KEY, JSON.stringify(seed));
   } catch {
     // Private-mode / quota errors: the New Invoice page just opens blank.
   }

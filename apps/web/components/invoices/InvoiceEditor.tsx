@@ -106,6 +106,9 @@ function detailLinesToEditorLines(lines: InvoiceDetail["lines"]): EditorLine[] {
     // silently drop the delete-guard link — update_invoice deletes and
     // reinserts every line from whatever gets sent back.
     serviceCatalogueId: l.service_catalogue_id ?? null,
+    // The order line this line bills (POST-A-104), rehydrated for the same reason: update_invoice deletes and reinserts every line
+    // from whatever is sent back, so a link the editor did not carry would silently stop the line billing its order.
+    salesOrderLineId: l.sales_order_line_id ?? null,
     // §15(3)(a) — rehydrated for the same reason serviceCatalogueId is:
     // update_invoice deletes and reinserts every line from whatever is sent
     // back, so a discount the editor did not carry would be silently dropped
@@ -1508,6 +1511,22 @@ export function InvoiceEditor({
                           disabled={isLocked}
                           placeholder="Description" aria-label={`Line ${idx + 1} description`}
                           className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs disabled:bg-ps-bg disabled:text-ps-hint" />
+                        {/* POST-A-104: a line raised from a sales order bills that order's line, and its quantity is checked against what
+                            the order has left when it is saved and again when it is issued. Said on the line, with a way to stop. */}
+                        {line.salesOrderLineId && (
+                          <p className="mt-0.5 text-xs text-ps-label" data-testid={`line-${idx + 1}-bills-an-order`}>
+                            Bills a line of a sales order
+                            {!isLocked && (
+                              <>
+                                {" · "}
+                                <button type="button" className="underline hover:text-ps-ink"
+                                  onClick={() => setLine(idx, { salesOrderLineId: undefined })}>
+                                  stop billing the order
+                                </button>
+                              </>
+                            )}
+                          </p>
+                        )}
                       </td>
                       <td className="py-1.5 pr-2">
                         {/* Auto-filled from the Product/Service pick; renders

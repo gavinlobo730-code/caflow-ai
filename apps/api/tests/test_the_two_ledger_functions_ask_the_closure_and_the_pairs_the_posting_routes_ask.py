@@ -153,7 +153,6 @@ REVIEWED_NOT_POSTING: dict[str, str] = {
     "portal_data": "the client's own view; the online payment is posted by the gateway's webhook as the backend, with no JWT",
     "report_exports": "reads",
     "reports": "reads",
-    "sales_cycle": "quotations, orders and delivery challans; it does not import the posting kernel and a test asserts that",
     "scheduler_status": "triggers the scheduler, which runs as the service role",
     "scheduler_trigger": "triggers the scheduler, which runs as the service role",
     "tasks": "task management; the scheduler it imports runs as the service role",

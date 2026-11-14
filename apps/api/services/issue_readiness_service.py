@@ -11,7 +11,8 @@ Each check is the function the route already called, run under a catch of the 42
 site. The code is never read back out of the sentence, so rewording a sentence cannot change what a screen branches on.
 
 THE ORDER IS THE ROUTE'S OLD ORDER: status, the locks (the firm's year, then the client's closures and a filed return: one blocker
-for one cause), the number's two rules, the place of supply, whether the draft adds up to its own lines, the chart of accounts. A
+for one cause), the number's two rules, the place of supply, whether the draft adds up to its own lines, whether the lines that bill a
+sales order may still bill it (POST-A-104), the chart of accounts. A
 draft that is not a draft has one blocker and nothing after it is asked: its lock and its accounts are a different question about a
 document that is already issued.
 
@@ -120,6 +121,13 @@ def blockers_for_sales_invoice(db, firm_id: str, invoice: dict, *, first_only: b
         return found
     _ask(found, ir.DRAFT_DOES_NOT_ADD_UP,
          lambda: draft_integrity_service.assert_draft_adds_up(db, draft_integrity.SALES_INVOICE, invoice))
+    if first_only and found:
+        return found
+    # POST-A-104: a line that bills a sales-order line is asked again here, because its customer, its order or what other drafts bill
+    # can all change after the lines were saved. Lazily imported: the sales cycle reads the invoice tables, not the other way round.
+    from services import sales_cycle_service
+    _ask(found, ir.ORDER_LINES_NOT_BILLABLE,
+         lambda: sales_cycle_service.check_invoice_still_bills_its_orders(db, firm_id, invoice))
     if first_only and found:
         return found
 

@@ -4,6 +4,8 @@ CGST Act §31: Tax invoice mandatory fields.
 CGST §8: CGST+SGST (intra-state), IGST (inter-state).
 All monetary values in integer paise.
 """
+import uuid
+
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from domain.gst import uqc as _uqc
@@ -229,6 +231,20 @@ class SalesInvoiceLineIn(InvoiceLineIn):
     # A flat amount instead, in paise. Resolved against the line's gross; the
     # resolved figure is what is stored and what the tax is charged on.
     discount_paise: Optional[int] = None
+    # Which sales-order line this line bills (POST-A-104, migration 589), set when the invoice was raised from an order. NOT on the
+    # shared parent: a credit or debit note does not bill an order line. Checked on save against the client's orders and what is left
+    # unbilled (`sales_cycle_service.check_invoice_lines_against_orders`); the database refuses another client's line as well.
+    sales_order_line_id: Optional[str] = None
+
+    @field_validator("sales_order_line_id")
+    @classmethod
+    def order_line_is_an_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
+        try:
+            return str(uuid.UUID(str(v).strip()))
+        except ValueError:
+            raise ValueError("sales_order_line_id must be the id of a sales-order line.") from None
 
     @field_validator("discount_percent_bps")
     @classmethod

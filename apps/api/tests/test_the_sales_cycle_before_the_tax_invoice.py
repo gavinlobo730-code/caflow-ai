@@ -846,10 +846,36 @@ def test_EVERY_read_and_write_in_the_service_carries_the_firm_filter():
             scoped = "'firm_id'" in chain or _insert_payload_carries_firm(tree, node)
         else:
             scoped = "eq('firm_id'" in chain or 'eq("firm_id"' in chain
+        if not scoped and table in HAS_NO_FIRM_COLUMN and _is_a_read(chain):
+            scoped = True                       # a READ of a table with no firm column, vouched for by the reason named there
         if not scoped:
             missing.append(f"{table}: {chain[:110]}")
     assert not missing, (
         "these queries omit the firm filter:\n" + "\n".join(missing))
+
+
+#: Tables this service READS that have no firm column to filter on, and why each read is still the firm's own. Shrink-only, and
+#: only ever a read: a write to one of these is not excused by it (`_is_a_read`).
+HAS_NO_FIRM_COLUMN = {
+    "client_sales_invoice_lines": (
+        "billed_by_line and invoice_lines_naming (POST-A-104) read only the lines that name THIS firm's order lines, read under the firm, "
+        "and migration 589's trigger refuses a line naming an order line of another firm or client; billed_by_line counts a line only "
+        "when its parent invoice, read under the firm, is found; check_invoice_still_bills_its_orders reads the lines of an invoice the "
+        "issue route has already read under the firm"),
+}
+
+
+def _is_a_read(chain: str) -> bool:
+    """A chain that only selects: no insert, update, upsert or delete rides on the exemption for a table with no firm column."""
+    return ".select(" in chain and not any(w in chain for w in (".insert(", ".update(", ".upsert(", ".delete("))
+
+
+def test_the_exemption_for_a_table_with_no_firm_column_covers_reads_only():
+    assert _is_a_read("db.table('client_sales_invoice_lines').select('id').eq('sales_invoice_id', x)")
+    for write in ("db.table('client_sales_invoice_lines').update({'quantity': 1}).eq('id', x)",
+                  "db.table('client_sales_invoice_lines').delete().eq('id', x)",
+                  "db.table('client_sales_invoice_lines').select('id').delete()"):
+        assert not _is_a_read(write), write
 
 
 def _insert_payload_carries_firm(tree: ast.AST, table_call: ast.Call) -> bool:
@@ -944,16 +970,20 @@ def test_a_kind_of_goods_belongs_ONLY_to_a_job_work_movement():
                                  "extended_to": "2027-01-01"})
 
 
-def test_the_invoiced_figure_is_ZERO_and_says_why_rather_than_guessing():
-    """An invoice line carries no link back to an order line, so pairing them
-    would mean matching on description and rate — a guess that silently
-    under-bills an order whose invoice line was reworded."""
+def test_the_invoiced_figure_says_what_it_counts_and_never_guesses_by_description():
+    """POST-A-104: an invoice line counts against an order line only where it NAMES it (migration 589). Pairing an invoice typed
+    separately by its description and rate would be a guess that silently under-bills an order whose invoice line was reworded, so an
+    order with no linked invoice shows nothing invoiced and says what the figure counts. The counting itself is held in
+    `test_an_invoice_line_bills_the_order_line_it_names.py`."""
     from services import sales_cycle_service as svc
     db = _order_db()
+    db.store["client_sales_invoices"] = [{"id": "I1", "firm_id": "F1", "client_id": "C1", "status": "issued"}]
+    db.store["client_sales_invoice_lines"] = [{"id": "I1-0", "sales_invoice_id": "I1", "sales_order_line_id": None,
+                                               "description": "Widget", "quantity": "3.000"}]
     position = svc.order_open_position(db, "F1", "O1")
     assert all(ln["invoiced_qty"] == "0.000" for ln in position["lines"])
     assert position["gaps"] == [svc.INVOICED_QUANTITY_IS_NOT_LINKED]
-    assert "not tracked" in svc.INVOICED_QUANTITY_IS_NOT_LINKED
+    assert "not matched to it by its description" in svc.INVOICED_QUANTITY_IS_NOT_LINKED
 
 
 def test_two_documents_may_not_bear_one_number():

@@ -330,16 +330,20 @@ def test_the_rollback_runs_once_the_goods_are_back(db):
     assert _psql(db, """
         UPDATE delivery_challans SET received_back_on = DATE '2026-06-01',
                status = 'received_back';""").returncode == 0
-    # Rolled back NEWEST FIRST, as a real rollback runs. Migration 462's
-    # `delivery_challan_returns` holds foreign keys into both tables below, so
-    # 392 cannot be undone until 462 has been (GST-30). 462's own rollback
-    # refuses while a challan is part returned, and here none is.
-    newer = (pathlib.Path(__file__).resolve().parent.parent / "migrations"
-             / "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return"
-               "_rollback.sql").read_text(encoding="utf-8")
-    r = subprocess.run(["psql", db, "-v", "ON_ERROR_STOP=1", "-X", "-q"],
-                       input=newer, capture_output=True, text=True)
-    assert r.returncode == 0, r.stderr
+    # Rolled back NEWEST FIRST, as a real rollback runs. Migration 589's
+    # `client_sales_invoice_lines.sales_order_line_id` and migration 462's
+    # `delivery_challan_returns` hold foreign keys into the tables below, so
+    # 392 cannot be undone until both have been (GST-30, POST-A-104). 462's
+    # own rollback refuses while a challan is part returned, and here none is.
+    migrations = pathlib.Path(__file__).resolve().parent.parent / "migrations"
+    for newer_name in (
+            "589_a_sales_invoice_line_names_the_order_line_it_bills_rollback.sql",
+            "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return"
+            "_rollback.sql"):
+        newer = (migrations / newer_name).read_text(encoding="utf-8")
+        r = subprocess.run(["psql", db, "-v", "ON_ERROR_STOP=1", "-X", "-q"],
+                           input=newer, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
     r = subprocess.run(["psql", db, "-v", "ON_ERROR_STOP=1", "-X", "-q"],
                        input=rollback, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
