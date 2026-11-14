@@ -327,6 +327,15 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Charging the part month at disposal. The disposal keeps refusing while whole months are undepreciated and keeps telling the CA that the part month was not charged.
 - **Ledger:** POST-A-113
 
+
+### S33. Does a nil-rated or exempt supply to a registered person need an IRN?
+
+- **Question:** CGST Rule 48(4) requires an IRN on the invoice for the supplies it names. Does it reach a nil-rated or exempt supply to a registered person (a bill of supply, which the return declares only within the nil-rated and exempt total, not invoice by invoice)? The missing-IRN list today treats such an invoice as owing an IRN (its scope rule reads an exempt supply as an ordinary one), while the new check of recorded IRNs against GSTR-1 reports an IRN on it as not declared invoice by invoice. Neither is wrong about what it reads; the two cannot both be the right advice.
+- **Needed:** CGST Rule 48(4) and the notifications that set which supplies and documents it reaches, as in force for the period.
+- **Who can supply it:** Claude once the government sites are reachable (section 1) for the text; a practising CA for the reading.
+- **Stays unbuilt meanwhile:** Changing either screen. The check says plainly that an invoice may sit within a total and that it cannot tell which.
+- **Ledger:** POST-A-066 (closed); the reading decides whether `irn_scope` changes.
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.

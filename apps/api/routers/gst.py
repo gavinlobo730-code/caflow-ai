@@ -580,6 +580,35 @@ def gstr3b_detail_endpoint(
     return api_response(True, data)
 
 
+@router.get("/gstr1/irn-check")
+def gstr1_irn_check(
+    *,
+    client_id: str = Query(...),
+    period: Annotated[PeriodMMYYYY, Query()],
+    gstin: Optional[str] = Query(None),
+    current_user: dict = Depends(rbac("gst", "read")),
+):
+    """The period's live IRN records against the GSTR-1 the books build for it (POST-A-066): every IRN recorded as live for an
+    invoice this return does not declare, with the reason (cancelled in the books, a draft, a carried-over document, another
+    period, not declared as a B2B supply or an export, or no invoice at all), and every record whose invoice number or date is
+    not its invoice's. The converse, an invoice that owes an IRN and has none, is the missing-IRN list. It reads and reports;
+    nothing reaches the IRP or the portal.
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    assert_client_access(current_user, client_id)
+    from core.supabase_client import get_supabase
+    from services import irn_return_check_service
+    db = get_supabase()
+    firm_id = current_user.get("firm_id")
+    reg = _client_registration(db, firm_id, client_id, gstin)
+    try:
+        return api_response(True, irn_return_check_service.check(
+            db, firm_id, client_id, period, reg.gstin, reg.filing_frequency))
+    except ValueError as ve:
+        raise HTTPException(status_code=422, detail=str(ve)) from ve
+
+
 @router.post("/gstr1/from-books")
 def gstr1_from_books_endpoint(req: GSTR1FromBooksRequest, current_user: dict = Depends(rbac("gst", "compute"))):
     """Build GSTR-1 ENTIRELY from posted sales invoices + issued credit notes and

@@ -376,3 +376,13 @@ def test_every_answer_says_what_it_cannot_see(db):
     assert "[S]-graded" in text
     assert "Credit notes and debit notes are not listed" in text
     assert out["verified"] is False and out["ca_review_required"] is True
+
+
+def test_a_record_linked_to_another_invoice_does_not_lend_its_irn_by_number(db):
+    """POST-A-066: a draft whose IRN was recorded is deleted and a new invoice takes its number. The record belongs to the deleted
+    draft (it is linked to it), so the new invoice still owes an IRN and is listed; only an UNLINKED record names its invoice by
+    number."""
+    draft = _invoice(db, "INV-REUSED", 12, status="draft", deleted_at="2026-09-20T10:00:00+00:00")
+    _record(db, draft)
+    _invoice(db, "INV-REUSED", 10)
+    assert "INV-REUSED" in _by_no(_list(db, client_id=CLIENT))

@@ -179,13 +179,16 @@ def worklist(db, firm_id: str, *, client_id: Optional[str] = None,
     for r in records:
         if r.get("sales_invoice_id"):
             by_id.setdefault(str(r["sales_invoice_id"]), []).append(r)
-        by_number.setdefault((str(r["client_id"]), str(r.get("invoice_number") or "").strip().upper()),
-                             []).append(r)
+        else:
+            # Only an UNLINKED record names its invoice by number (POST-A-066): a record linked to another invoice, a deleted draft
+            # whose number a new invoice reused, belongs to that invoice and must not lend its IRN to the new one.
+            by_number.setdefault((str(r["client_id"]), str(r.get("invoice_number") or "").strip().upper()),
+                                 []).append(r)
 
     def matched(inv: dict) -> list:
         # By the invoice it names first, then by the NUMBER — a record may be
         # prepared for an invoice without being linked to it, and invoice
-        # numbers are unique per client (migration 151).
+        # numbers are unique per client (migration 151) among live invoices.
         return (by_id.get(str(inv["id"]))
                 or by_number.get((str(inv["client_id"]),
                                   str(inv.get("invoice_no") or "").strip().upper()), []))
