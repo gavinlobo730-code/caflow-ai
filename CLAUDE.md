@@ -447,7 +447,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A REGISTER ROW ITS DOCUMENT NO LONGER CARRIES IS NAMED ON THE LIST AND REMOVED BY THE DOCUMENT'S OWN SYNC
 - ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED AS HAVING RECORDED A NO-PE DECLARATION, AND THE SUPPLIER FORM SAYS WHO
 
-### `docs/design-record/tenancy-and-security.md` (85 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (86 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -534,6 +534,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A REQUEST THAT NAMES A PERSON ASKS WHETHER THEY ARE A MEMBER OF THE CALLER'S FIRM, BECAUSE NINE DOORS TOOK
 - EVERY WRITER OF A PERSON COLUMN IS TRACED TO THE ID IT STORES, A MODEL CALL IS ATTRIBUTED TO THE INTERNAL ID, AND AN AUDIT ROW NAM
 - THE IRN AND E-WAY BILL RECORDS AND THE SECTION 140A CHALLANS ARE WRITTEN BY THE API ONLY
+- A PERSON COLUMN WITH NO ROWS TAKES THE ID ITS CODE DECIDES, ITS WRITERS ARE FOLLOWED LIKE THE OTHERS', AND A NEW ONE IS ON NO LIST UNTIL
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
 - MIGRATION 481 IS THE SCHEMA FOR BOTH WORKFLOW HALVES, AND NOTHING READS IT YET

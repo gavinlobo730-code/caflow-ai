@@ -1747,7 +1747,7 @@ def match_transaction(
     return api_response(True, bank_matching_service.match(
         db, current_user["firm_id"], txn_id, data.matched_entity_type,
         data.matched_entity_id, category=data.category,
-        actor_id=current_user.get("auth_user_id")))
+        actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id")))
 
 
 @router.post("/transactions/{txn_id}/unmatch")
@@ -1985,7 +1985,7 @@ def pair_transfer(
     _assert_txn_scope(db, current_user, data.counterpart_id)
     return api_response(True, bank_transfer_service.pair(
         db, current_user["firm_id"], txn_id, data.counterpart_id,
-        actor_id=current_user.get("auth_user_id"), rpc_db=_service_db() or db))
+        actor_id=current_user.get("id"), actor_auth_id=current_user.get("auth_user_id"), rpc_db=_service_db() or db))
 
 
 @router.delete("/transactions/{txn_id}/transfer-pair")
@@ -2001,7 +2001,7 @@ def unpair_transfer(
     _assert_txn_scope(db, current_user, txn_id)
     return api_response(True, bank_transfer_service.unpair(
         db, current_user["firm_id"], txn_id,
-        actor_id=current_user.get("auth_user_id"), rpc_db=_service_db() or db))
+        actor_auth_id=current_user.get("auth_user_id"), rpc_db=_service_db() or db))
 
 
 @router.put("/transactions/{txn_id}/payee")

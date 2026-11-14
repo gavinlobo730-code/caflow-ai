@@ -818,7 +818,8 @@ class BankMatchingService:
 
     # ── B.2.5 — manual match (accept suggestion / link) ──────────────────────
     def match(self, db, firm_id: str, txn_id: str, entity_type: str, entity_id: str,
-              category: Optional[str] = None, actor_id: Optional[str] = None) -> dict:
+              category: Optional[str] = None, actor_id: Optional[str] = None,
+              actor_auth_id: Optional[str] = None) -> dict:
         if entity_type not in _MATCH_ENTITY_TYPES:
             raise HTTPException(status_code=422, detail="Invalid matched_entity_type.")
         if category is not None and not is_valid_category(category):
@@ -859,7 +860,7 @@ class BankMatchingService:
         privileged_for(db).table("bank_transactions").update(update).eq("id", txn_id).eq("firm_id", firm_id).execute()
         try:
             from services.audit_service import log_event
-            log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_id,
+            log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_auth_id,
                       new_data={"matched_entity_type": entity_type, "matched_entity_id": entity_id,
                                 "category": update.get("category")},
                       metadata={"source": "bank_match"})
@@ -869,7 +870,7 @@ class BankMatchingService:
             timeline_service.log(txn["client_id"], "accounting", "Bank Transaction Matched",
                                  f"Matched to {entity_type} (CA reviewed)", "info",
                                  firm_id=firm_id, entity_type="bank_transaction",
-                                 entity_id=txn_id, actor_id=actor_id)
+                                 entity_id=txn_id, actor_id=actor_auth_id)
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="bank_match.timeline", firm_id=firm_id, txn_id=txn_id)
         return {"id": txn_id, "match_status": "matched", "matched_entity_type": entity_type,

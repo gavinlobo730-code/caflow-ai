@@ -58,7 +58,7 @@ def _no_reads(monkeypatch):
 def test_pairing_calls_the_function_through_the_service_client_and_never_the_callers():
     caller, service = _Client(refuses=True), _Client()
 
-    bank_transfer_service.pair(caller, FIRM, "out", "in", actor_id="auth-1", rpc_db=service)
+    bank_transfer_service.pair(caller, FIRM, "out", "in", actor_id="user-1", actor_auth_id="auth-1", rpc_db=service)
 
     assert service.calls == ["pair_bank_transfer"] and caller.calls == []
 
@@ -66,7 +66,7 @@ def test_pairing_calls_the_function_through_the_service_client_and_never_the_cal
 def test_unpairing_calls_the_function_through_the_service_client_and_never_the_callers():
     caller, service = _Client(refuses=True), _Client()
 
-    bank_transfer_service.unpair(caller, FIRM, "out", actor_id="auth-1", rpc_db=service)
+    bank_transfer_service.unpair(caller, FIRM, "out", actor_auth_id="auth-1", rpc_db=service)
 
     assert service.calls == ["unpair_bank_transfer"] and caller.calls == []
 

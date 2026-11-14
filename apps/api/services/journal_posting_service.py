@@ -89,8 +89,9 @@ class JournalPostingService:
 
         actor_id is the internal public.users.id — it lands in
         journal_entries.posted_by, the same id space as created_by (which is
-        FK-enforced against users(id)). actor_auth_id is the Supabase auth id
-        and is used only for audit_log attribution; it falls back to actor_id."""
+        FK-enforced against users(id)). actor_auth_id is the Supabase auth id,
+        for the audit and timeline rows; it does NOT fall back to actor_id
+        (an internal id there is the other kind of id, POST-A-377)."""
         res = (db.table("journal_entries").select(self._SELECT)
                .eq("id", journal_id).eq("firm_id", firm_id).maybe_single().execute())
         je = res.data
@@ -134,7 +135,7 @@ class JournalPostingService:
             timeline_service.log(je.get("client_id"), "accounting", "Journal Posted",
                                  f"Draft {je.get('reference_no') or journal_id[:8]} approved and posted to the ledger",
                                  "success", firm_id=firm_id, entity_type="journal_entry",
-                                 entity_id=journal_id, actor_id=actor_id)
+                                 entity_id=journal_id, actor_id=actor_auth_id)   # the timeline's actor is the sign-in id (POST-A-377)
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="journal_posting.timeline", firm_id=firm_id, journal_id=journal_id)
 

@@ -558,7 +558,7 @@ def approve_notice(
                 severity="success",
                 entity_type="government_notice",
                 entity_id=notice_id,
-                actor_id=current_user.get("id"),
+                actor_id=current_user.get("auth_user_id"),      # the timeline's actor is the sign-in id (POST-A-377)
                 actor_name=current_user.get("email"),
             )
             _notify_partners(firm_id, notice_id, rec)

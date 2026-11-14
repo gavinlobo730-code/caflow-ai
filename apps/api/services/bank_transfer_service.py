@@ -112,8 +112,11 @@ class BankTransferService:
 
     # ── pairing ─────────────────────────────────────────────────────────────
     def pair(self, db, firm_id: str, primary_id: str, counterpart_id: str,
-             actor_id: Optional[str] = None, rpc_db=None) -> dict:
+             actor_id: Optional[str] = None, rpc_db=None, actor_auth_id: Optional[str] = None) -> dict:
         """Record two lines as one transfer. The RPC re-checks every rule.
+
+        `actor_id` is the member's INTERNAL id (`users.id`): the function writes it into `transfer_paired_by`, beside `posted_by`, which holds
+        that id. `actor_auth_id` is the same member's SIGN-IN id, for the audit rows, because `audit_log.actor_id` takes that one (POST-A-377).
 
         `rpc_db` is the client the two functions are CALLED through, and it has to be the SERVICE role:
         migration 258 grants EXECUTE on them to `service_role` alone, deliberately ("a SECURITY DEFINER function
@@ -133,28 +136,28 @@ class BankTransferService:
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Could not pair the transfer: {e}")
 
-        self._log(firm_id, primary_id, actor_id,
+        self._log(firm_id, primary_id, actor_auth_id,
                   {"transfer_pair_id": counterpart_id, "transfer_is_primary": True})
-        self._log(firm_id, counterpart_id, actor_id,
+        self._log(firm_id, counterpart_id, actor_auth_id,
                   {"transfer_pair_id": primary_id, "transfer_is_primary": False})
         return self.get(db, firm_id, primary_id)
 
-    def unpair(self, db, firm_id: str, txn_id: str, actor_id: Optional[str] = None, rpc_db=None) -> dict:
-        """Undo a pairing. `rpc_db` is the service role, for the reason given on `pair`."""
+    def unpair(self, db, firm_id: str, txn_id: str, actor_auth_id: Optional[str] = None, rpc_db=None) -> dict:
+        """Undo a pairing. `rpc_db` is the service role, for the reason given on `pair`; `actor_auth_id` is the sign-in id, for the audit row."""
         try:
             privileged_for(rpc_db or db).rpc("unpair_bank_transfer", {
                 "p_firm_id": firm_id, "p_txn_id": txn_id,
             }).execute()
         except Exception as e:
             raise HTTPException(status_code=422, detail=f"Could not unpair the transfer: {e}")
-        self._log(firm_id, txn_id, actor_id, {"transfer_pair_id": None})
+        self._log(firm_id, txn_id, actor_auth_id, {"transfer_pair_id": None})
         return self.get(db, firm_id, txn_id)
 
     @staticmethod
-    def _log(firm_id, txn_id, actor_id, new_data) -> None:
+    def _log(firm_id, txn_id, actor_auth_id, new_data) -> None:
         try:
             from services.audit_service import log_event
-            log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_id,
+            log_event(firm_id, "bank_transaction", txn_id, "update", actor_id=actor_auth_id,
                       new_data=new_data, metadata={"source": "bank_transfer_pair"})
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="bank_transfer.audit_log", firm_id=firm_id, txn_id=txn_id)

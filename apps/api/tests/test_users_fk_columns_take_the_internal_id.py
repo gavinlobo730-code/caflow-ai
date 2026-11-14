@@ -307,3 +307,12 @@ def test_no_caller_passes_the_auth_id_into_a_parameter_that_becomes_a_users_fk(p
     assert not offenders, (
         "these arguments end up in a column that FKs public.users(id), but are "
         "supplied from the Supabase auth id:\n  " + "\n  ".join(sorted(set(offenders))))
+
+
+def test_the_year_end_dashboard_names_a_review_actor_by_the_internal_id():
+    """POST-A-377 (an independent read): `year_end_review_events.actor_id` is a key to users(id) (migration 315) and the router writes the
+    internal id, but the dashboard looked the name up by `users.auth_user_id`, which never equals it, so every event's actor was blank."""
+    src = (API.parent / "web" / "app" / "clients" / "[id]" / "year-end" / "[engagementId]" / "dashboard" / "_page.tsx").read_text()
+    assert 'from("users").select("id, full_name")' in src
+    assert "selfNameById.get(e.actor_id)" in src and "auth_user_id" not in src.split('from("year_end_review_events")')[1].split("setData(")[0]
+    assert "REFERENCES public.users(id)" in (API / "migrations" / "315_year_end_review_events_actor_fk.sql").read_text().replace("\n", " ")

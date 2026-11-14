@@ -659,7 +659,9 @@ class BankingService:
             client_id, "accounting", "Bank Transaction Posted",
             f"Posted to ledger: {txn.get('description', '')}", "success",
             firm_id=firm_id, entity_type="bank_transaction", entity_id=txn_id,
-            actor_id=actor_id,
+            # Nobody, for the reason the journal names nobody above: nothing calls this method, so nothing says which of a member's two ids
+            # `actor_id` would be, and the timeline's actor is the sign-in id (POST-A-377).
+            actor_id=None,
         )
         return {"id": txn_id, "match_status": "posted", "journal_entry_id": journal_entry_id}
 

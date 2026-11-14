@@ -35,8 +35,8 @@ SKIP_DIRS = ("tests", "node_modules", "__pycache__")
 #: (file, enclosing function) -> why it names nobody. Shrink-only.
 EXEMPT: dict[tuple[str, str], str] = {
     ("services/banking_service.py", "post_transaction"):
-        "no caller anywhere (the bank screen posts through the bank posting service, not this method); it only hands its `actor_id` to the "
-        "timeline log and nothing says which id a caller would give it, so it names nobody rather than guess at a foreign-keyed column, and "
+        "no caller anywhere (the bank screen posts through the bank posting service, not this method); nothing says which id a caller would "
+        "give its `actor_id`, so it names nobody (in the journal or on the timeline) rather than guess at a foreign-keyed column, and "
         "wiring a person into dead code would be a second posting path nobody asked for",
 }
 

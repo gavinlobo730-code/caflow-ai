@@ -547,7 +547,7 @@ def test_passed_set_aside_and_covered_lines_are_skipped_not_failed(poster):
 def test_passing_either_side_of_a_transfer_pairs_them_and_posts_the_paying_side(poster, monkeypatch):
     paired = []
 
-    def fake_pair(db, firm_id, primary_id, counterpart_id, actor_id=None):
+    def fake_pair(db, firm_id, primary_id, counterpart_id, actor_id=None, actor_auth_id=None):
         paired.append((primary_id, counterpart_id))
         for tid, prim in ((primary_id, True), (counterpart_id, False)):
             other = counterpart_id if prim else primary_id
