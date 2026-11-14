@@ -16,6 +16,7 @@ from pydantic import BaseModel, field_validator
 
 from core.authz import assert_client_access
 from core.permissions import rbac
+from core.query_day import query_day
 from models.common import api_response
 from domain.gst import rcm_documents as rd
 from services import rcm_document_service as svc
@@ -92,6 +93,7 @@ def preview_self_invoice(
     """What a CGST Act s.31(3)(f) self-invoice for this bill would say, or why
     none is due. Writes nothing."""
     assert_client_access(current_user, client_id)
+    document_date = query_day(document_date, "document_date")
     if _mock_enabled():
         return api_response(True, {"kind": rd.KIND_SELF_INVOICE, "due": False,
                                    "reasons": [], "gaps": [], "particulars": None,
@@ -114,6 +116,7 @@ def preview_payment_voucher(
     """What a CGST Act s.31(3)(g) payment voucher for this payment would say, or
     why none is due. Writes nothing."""
     assert_client_access(current_user, client_id)
+    document_date = query_day(document_date, "document_date")
     if _mock_enabled():
         return api_response(True, {"kind": rd.KIND_PAYMENT_VOUCHER, "due": False,
                                    "reasons": [], "gaps": [], "particulars": None,

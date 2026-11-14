@@ -187,6 +187,7 @@ def stock_summary(
     answer at all, because the running totals are chained in INSERTION order.
     See migration 363 and domain/reporting/stock_position.py."""
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of")
     try:
         from services import stock_position_service
         if _USE_MOCK:
@@ -233,6 +234,7 @@ def stock_ageing(
     to complete and sell, which is a fact about the market no ledger holds.
     """
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of")
     try:
         from services import stock_ageing_service
         if _USE_MOCK:
@@ -277,6 +279,7 @@ def reorder_report(
     nothing and moves no stock.
     """
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of")
     try:
         from services import reorder_service
         if _USE_MOCK:
@@ -331,6 +334,8 @@ def get_item_stock_ledger(
     """Movement history for one stock item — mirrors the accounting Ledger
     view's shape (opening/running balance per row)."""
     assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date")
+    end_date = query_day(end_date, "end_date")
     try:
         if _USE_MOCK:
             return api_response(True, {"item": None, "lines": []})
@@ -868,6 +873,7 @@ from datetime import date as _date  # noqa: E402 — module already imported abo
 from pydantic import BaseModel as _BaseModel, Field as _Field, field_validator, model_validator  # noqa: E402
 from core.ist_clock import ist_today  # noqa: E402
 from core import db_provider
+from core.query_day import query_day
 from models.iso_date import a_real_date  # noqa: E402
 
 
@@ -1129,6 +1135,7 @@ def position_detail(
     the totals agree by construction.
     """
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of", required=True)
     try:
         when = _date.fromisoformat(as_of[:10])
     except Exception:
@@ -1150,6 +1157,7 @@ def expiry_report(
 ):
     """What has expired and what is about to, by lot."""
     assert_client_access(current_user, client_id)
+    as_of = query_day(as_of, "as_of", required=True)
     try:
         when = _date.fromisoformat(as_of[:10])
     except Exception:

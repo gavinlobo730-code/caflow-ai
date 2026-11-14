@@ -24,6 +24,7 @@ from services.audit_service import log_event
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core import db_provider
 from core.observability import capture_soft_failure
+from core.query_day import query_day
 from models.iso_date import IsoDate
 
 _logger = logging.getLogger("caflow.customer_statements")
@@ -57,6 +58,8 @@ def get_statement(
     # Mount-guard-covered (client_id is required here); explicit so the scope
     # check is visible at the read, and AHEAD of the no-DB early return.
     assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date", required=True)
+    end_date = query_day(end_date, "end_date", required=True)
     db = _db()
     if not db:
         return api_response(True, {"customer": {"id": customer_id}, "transactions": [],
@@ -79,6 +82,8 @@ def get_statement_pdf(
     # Mount-guard-covered (client_id is required here); explicit so the scope
     # check is visible at the read, and AHEAD of the no-DB early return.
     assert_client_access(current_user, client_id)
+    start_date = query_day(start_date, "start_date", required=True)
+    end_date = query_day(end_date, "end_date", required=True)
     db = _db()
     if not db:
         return Response(content=b"", media_type="application/pdf")

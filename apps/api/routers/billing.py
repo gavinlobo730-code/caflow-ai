@@ -283,6 +283,8 @@ def collections_dashboard(
 ):
     """Firm Collections/AR KPIs: total receivable, aging, overdue, TDS receivable,
     collected cash. (DSO/realization are deferred Revenue Intelligence.)"""
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     return api_response(True, collections_service.dashboard(current_user["firm_id"], date_from, date_to))
 
 

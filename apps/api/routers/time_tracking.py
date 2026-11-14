@@ -6,6 +6,7 @@ from models.common import api_response
 from core.list_window import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from core.permissions import rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids, filter_by_client
+from core.query_day import query_day
 from repositories.time_tracking_repository import time_tracking_repo
 from domain.billing import time_rate
 from services import time_rates_service
@@ -131,6 +132,8 @@ def list_entries(
     (they were named like totals and were computed from a read the database
     cut at ~1000 rows without a word). The export is the complete read."""
     firm_id = current_user.get("firm_id")
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     entries, has_more = time_tracking_repo.find_page(
         firm_id=firm_id,
         limit=limit,
@@ -182,6 +185,8 @@ def export_entries(
     # unassigned client's billing data, or every client in the firm's, by
     # passing client_id (or omitting it) with no ownership check.
     firm_id = current_user.get("firm_id")
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     content, filename, media_type = export_time_entries(
         firm_id=firm_id,
         fmt=fmt,

@@ -106,6 +106,7 @@ from models.fy import FYLabel, OptionalFYLabel
 from models.iso_date import IsoDate, OptionalIsoDate, a_real_date
 from services.compliance_obligation_service import fy_months
 from core.ist_clock import ist_today
+from core.query_day import query_day
 from domain.money_sentence import rupee_text, rupee_whole_text
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -4615,6 +4616,7 @@ def delete_pt_slabs(
     state = (state or "").strip().upper()
     db = _db()
     firm_id = current_user["firm_id"]
+    effective_from = query_day(effective_from, "effective_from", required=True)
     if not db:
         _MOCK_PT_SLABS.pop((firm_id, state, effective_from), None)
         return api_response(True, {"state": state, "effective_from": effective_from,

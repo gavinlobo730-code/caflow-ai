@@ -20,6 +20,7 @@ from core.permissions import rbac
 from domain.gst import eway_validity
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from core.ist_clock import ist_date_of, ist_day_iso, ist_today, portal_day
+from core.query_day import query_day
 from models.common import api_response
 from services.timeline_service import timeline_service
 
@@ -224,6 +225,7 @@ def eway_validity_for_record(
     product had stored and never used.
     """
     rec = _assert_ewb_scope(current_user, record_id)
+    ewb_date = query_day(ewb_date, "ewb_date")
     return api_response(True, {
         "distance_km": rec.get("distance_km"),
         "vehicle_type": rec.get("vehicle_type"),

@@ -88,6 +88,7 @@ from domain.banking.normalizer import (
 from services import bank_column_mapping_service as column_mappings
 from core.uploads import read_limited
 from core import db_provider
+from core.query_day import query_day
 
 # Defensive upload cap (bank statements are small; protects the parser/DB).
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -1547,6 +1548,11 @@ def list_transactions(
     current_user: dict = Depends(rbac("banking", "read")),
 ):
     """List bank transactions with date / amount / account filters (B.1, Part E)."""
+    # The caller's access to a named client is asked before the days are judged (POST-A-380); `_scope_rows` asks it again of the rows read.
+    if client_id:
+        assert_client_access(current_user, client_id)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     db = _db()
     if not db:
         return api_response(True, [])
@@ -1587,6 +1593,8 @@ def worth_a_look(
     """
     assert_client_access(current_user, client_id)
     db = _db()
+    from_date = query_day(from_date, "from_date", required=True)
+    to_date = query_day(to_date, "to_date", required=True)
     if not db:
         # Mock mode has no statements to review. An empty `flagged` with no gap
         # would read as "reviewed and clean", which is a stronger claim than
@@ -1652,6 +1660,8 @@ def bank_register(
     # API read with the privileged client the assignment policy on the bank tables answered an unassigned caller with a 404 here;
     # naming an account of someone else's client and naming no client of one's own must not read it now.
     _assert_row_scope(db, current_user, "bank_accounts", bank_account_id, "Bank account")
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     return api_response(True, bank_register_service.register(
         db, current_user["firm_id"], bank_account_id, client_id=client_id,
         date_from=date_from, date_to=date_to, status=status, q=q,
@@ -1698,6 +1708,8 @@ def transaction_candidate_search(
     if not db:
         return api_response(True, {"transaction_id": txn_id, "results": [], "total": 0})
     _assert_txn_scope(db, current_user, txn_id)
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
     return api_response(True, bank_candidate_search_service.search(
         db, current_user["firm_id"], txn_id,
         q=q, date_from=date_from, date_to=date_to,
