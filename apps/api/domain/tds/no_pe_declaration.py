@@ -38,7 +38,17 @@ WHAT THE COLUMN HOLDS
     and dated, by whoever makes it and for whatever reason (a changed phone
     number is enough), names that member. It is the first time a person has put
     a name on it, and the register's gap then clears; it is not evidence that
-    the member obtained the paper. No screen shows who is named (an open item).
+    the member obtained the paper.
+
+ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED (POST-A-407, 14-11-2026). A declaration is the evidence a nil withholding rests on, and
+    s.201 puts a wrong nil on the deductor, so the name beside it is a statement that somebody accountable put it on file. The supplier
+    form is open to members who cannot approve TDS (a changed phone number is an ordinary edit), so the rule asks the caller's
+    PER-PERSON `tds:approve` (`can_user`, the grid rbac() asks), passed in as `actor_may_vouch`:
+      * a save that leaves the declaration as it was names the member only if they may vouch for it; otherwise the row stays
+        unattributed and the register keeps reporting the gap;
+      * a save that CHANGES the declaration (ticked, its date or its reference) by a member who may not vouch for it empties an
+        earlier name, because that name was given to a different declaration, and the gap shows again until somebody who may saves it.
+    The supplier form says who is named ("Recorded here by ..."), read on the server (`routers/vendors.get_vendor`).
 
 THE REASONING OF s.195 AND OF s.201 IS NOT RESTATED HERE and is not changed.
 """
@@ -62,14 +72,14 @@ def _read(row: dict, key: str):
     return str(value or "").strip()
 
 
-def declarant_write(*, sent: dict, stored: Optional[dict], actor_id: Optional[str]) -> dict:
+def declarant_write(*, sent: dict, stored: Optional[dict], actor_id: Optional[str], actor_may_vouch: bool) -> dict:
     """The write that goes with a supplier write for `no_pe_declaration_by`: `{}` (leave the column alone),
     `{"no_pe_declaration_by": <member>}` (attribute it to the member whose save this is) or
     `{"no_pe_declaration_by": None}` (the declaration is no longer on file, so it names nobody).
 
     `sent` is what the request carries (a create's whole payload, or a PATCH's present fields); `stored` is the row as it
     stands (None for a create); `actor_id` is the member's INTERNAL id (`users.id`, which is what the column references,
-    and not the sign-in id).
+    and not the sign-in id); `actor_may_vouch` is whether that member may approve TDS (POST-A-407, above).
     """
     if not any(field in sent for field in DECLARATION_FIELDS):
         return {}
@@ -79,9 +89,10 @@ def declarant_write(*, sent: dict, stored: Optional[dict], actor_id: Optional[st
     already_named = before.get(DECLARANT_COLUMN)
     if not on_file_and_dated:
         return {DECLARANT_COLUMN: None} if already_named else {}
-    if not actor_id:
-        return {}
     changed = any(_read(after, field) != _read(before, field) for field in DECLARATION_FIELDS)
+    if not actor_id or not actor_may_vouch:
+        # Nobody to name, or a member who may not vouch for it: a changed declaration loses a name given to a different one.
+        return {DECLARANT_COLUMN: None} if (changed and already_named) else {}
     if changed or not already_named:
         return {DECLARANT_COLUMN: actor_id}
     return {}

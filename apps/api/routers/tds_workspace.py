@@ -28,6 +28,7 @@ from services.period_validation_service import period_validation_service
 from models.fy import FYLabel, OptionalFYLabel
 from models.iso_date import IsoDate, PatchIsoDate, a_real_date
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from core.ist_clock import fy_bounds, ist_today
 from core.query_day import query_day
 from domain.tds import deductor_26as as D26
@@ -535,8 +536,17 @@ def list_deductions(
                                              quarter=quarter, limit=limit, offset=offset, financial_year=financial_year)
         else:
             from core.supabase_client import get_supabase
-            out = lists.deductions(get_supabase(), firm_id, client_id, quarter=quarter, limit=limit, offset=offset,
+            db = get_supabase()
+            out = lists.deductions(db, firm_id, client_id, quarter=quarter, limit=limit, offset=offset,
                                    financial_year=financial_year)
+            # POST-A-409: a row whose payment was reversed, or whose bill left the books, after a sync that failed is named so the screen can offer to remove
+            # it. A read that fails is said (`left_behind_checked` false), not taken for "none were left behind".
+            try:
+                _mark_left_behind(db, firm_id, client_id, out["deductions"])
+                out["left_behind_checked"] = True
+            except Exception as exc:                                  # noqa: BLE001
+                _logger.warning("tds.register.left_behind_unread: %s", exc)
+                out["left_behind_checked"] = False
         return api_response(True, out)
     except Exception as e:
         return _could_not(e, "list the TDS deductions")
@@ -559,14 +569,91 @@ def _not_typed_here(rec: dict, *, removing: bool) -> str:
     """The refusal for a register row a document wrote, in the words of the document that did (`manual_register.written_by_a_document`).
 
     A row a purchase bill wrote is rebuilt on every receive, and one a vendor advance wrote follows the payment (a reversed payment loses its row): changing or
-    removing either here would look like it worked and be put back, or would leave the register short of a payment the books hold. The advance sentence does not
-    name a door ("reverse the payment"): there is none that changes the row, and a row left behind by a failed sync of an already reversed payment is not helped by it.
+    removing either here would look like it worked and be put back, or would leave the register short of a payment the books hold. A row whose document no longer
+    carries it (a failed sync after a reversal or a cancellation) is not refused: `_remove_what_its_document_left_behind` removes it by the document's own sync (POST-A-409).
     """
     if rec.get("purchase_bill_id"):
         return ("This deduction came from a purchase bill. Cancel or edit the bill instead." if removing
                 else "This deduction came from a purchase bill. Edit the bill instead — the register is rebuilt from it on every receive.")
     return ("This deduction came from a vendor payment (an advance). It follows the payment and cannot be removed here."  if removing
             else "This deduction came from a vendor payment (an advance). It follows the payment and cannot be changed here.")
+
+
+#: POST-A-409. The two sentences a register row left behind by its document is named with, on the list and in the remove door's answer.
+LEFT_BEHIND_BY_A_REVERSED_PAYMENT = "The vendor payment this deduction recorded has been reversed, so it no longer belongs on the register."
+LEFT_BEHIND_BY_A_BILL_OFF_THE_BOOKS = "The purchase bill this deduction recorded is no longer in the books, so it no longer belongs on the register."
+
+
+def left_behind_sentence(rec: dict, document: Optional[dict]) -> Optional[str]:
+    """POST-A-409. Why a register row a document wrote no longer belongs on the register, or None (it does, or its document could not be read).
+
+    `tds_register_service` removes an advance's row when the payment is reversed and a bill's row when the bill leaves the books (`IN_THE_BOOKS`, or a soft delete),
+    and neither sync raises into the document's path, so a sync that failed leaves a row for a document that no longer carries it: a deduction the deposit worksheet,
+    the hub's "deducted and not yet deposited" and FORM 3CD clause 34 would still count. `document` is the payment or the bill the row names, read under the ROW's
+    firm and client; None (not found) is not "gone": the payment link deletes with its payment, so a missing one is not a state the database allows.
+    """
+    from services.tds_register_service import IN_THE_BOOKS
+    if document is None:
+        return None
+    if rec.get("purchase_payment_id"):
+        return LEFT_BEHIND_BY_A_REVERSED_PAYMENT if document.get("is_reversed") else None
+    if rec.get("purchase_bill_id"):
+        off_the_books = (document.get("status") or "").lower() not in IN_THE_BOOKS or bool(document.get("deleted_at"))
+        return LEFT_BEHIND_BY_A_BILL_OFF_THE_BOOKS if off_the_books else None
+    return None
+
+
+def _document_of(db, firm_id: str, rec: dict) -> Optional[dict]:
+    """The payment or the bill a register row names (the whole row: its own sync is handed it), read with the privileged client under the
+    row's own firm and client, or None."""
+    # Each table and its columns are written where they are read, so the firm-scope and column guards can see both chains.
+    if rec.get("purchase_payment_id"):
+        found = (privileged_for(db).table("purchase_payments").select("*").eq("id", rec["purchase_payment_id"])
+                 .eq("firm_id", firm_id).eq("client_id", rec.get("client_id")).limit(1).execute().data) or []
+    elif rec.get("purchase_bill_id"):
+        found = (privileged_for(db).table("purchase_bills").select("*").eq("id", rec["purchase_bill_id"])
+                 .eq("firm_id", firm_id).eq("client_id", rec.get("client_id")).limit(1).execute().data) or []
+    else:
+        return None
+    return found[0] if found else None
+
+
+def _mark_left_behind(db, firm_id: str, client_id: str, rows: list) -> None:
+    """Put `left_behind_by_its_document` (the sentence, or None) on every row of a register window, reading the window's payments and bills in chunks."""
+    payment_ids = sorted({r["purchase_payment_id"] for r in rows if r.get("purchase_payment_id")})
+    bill_ids = sorted({r["purchase_bill_id"] for r in rows if r.get("purchase_bill_id")})
+    found: dict = {}
+    reader = privileged_for(db)
+    # Each table is named where it is read, so the firm-scope guard can see both chains.
+    for start in range(0, len(payment_ids), 100):
+        for doc in (reader.table("purchase_payments").select("id, is_reversed").eq("firm_id", firm_id).eq("client_id", client_id)
+                    .in_("id", payment_ids[start:start + 100]).execute().data) or []:
+            found[("purchase_payments", doc["id"])] = doc
+    for start in range(0, len(bill_ids), 100):
+        for doc in (reader.table("purchase_bills").select("id, status, deleted_at").eq("firm_id", firm_id).eq("client_id", client_id)
+                    .in_("id", bill_ids[start:start + 100]).execute().data) or []:
+            found[("purchase_bills", doc["id"])] = doc
+    for r in rows:
+        key = (("purchase_payments", r.get("purchase_payment_id")) if r.get("purchase_payment_id")
+               else ("purchase_bills", r.get("purchase_bill_id")))
+        r["left_behind_by_its_document"] = left_behind_sentence(r, found.get(key)) if key[1] else None
+
+
+def _remove_what_its_document_left_behind(db, firm_id: str, rec: dict) -> Optional[str]:
+    """POST-A-409. Remove a register row its document no longer carries, by the document's OWN sync rather than a delete written here, so the one rule that writes
+    the row decides that a reversed payment or a bill off the books has none. Returns the sentence, or None to refuse the row as before (its document still carries
+    it, or cannot be read). A sync that fails again is a 409 that says so, and the row stays."""
+    from services import tds_register_service
+    document = _document_of(db, firm_id, rec)
+    why = left_behind_sentence(rec, document)
+    if why is None:
+        return None
+    client_id = rec.get("client_id")
+    done = (tds_register_service.sync_for_payment(db, firm_id, client_id, document) if rec.get("purchase_payment_id")
+            else tds_register_service.sync_for_bill(db, firm_id, client_id, document))
+    if not (done or {}).get("synced") or (done or {}).get("action") != "removed":
+        raise HTTPException(status_code=409, detail="This deduction's document no longer carries it, and it could not be removed just now. Try again.")
+    return why
 
 
 def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
@@ -909,7 +996,9 @@ def delete_deduction(
 
     tds:write (Manager+), NOT tds:compute — the same tier migration 345 gives
     DELETE on this table, because removing a statutory register row is not data
-    entry. A bill-sourced row is refused for the same reason as the edit.
+    entry. A row a bill or an advance wrote is refused for the same reason as the edit,
+    unless its document no longer carries it (a reversed payment, a bill off the books,
+    after a sync that failed): that row is removed by the document's own sync (POST-A-409).
     """
     firm_id = current_user["firm_id"]
     try:
@@ -928,7 +1017,13 @@ def delete_deduction(
         if rec is None:
             return api_response(False, None, "Not found")
         if manual_register.written_by_a_document(rec):
-            return api_response(False, None, _not_typed_here(rec, removing=True))
+            why = _remove_what_its_document_left_behind(db, firm_id, rec)
+            if why is None:
+                return api_response(False, None, _not_typed_here(rec, removing=True))
+            log_event(firm_id, "tds_deduction", deduction_id, "delete",
+                      actor_id=current_user.get("auth_user_id"),
+                      actor_email=current_user.get("email"), new_data={**dict(rec), "removed_because": why})
+            return api_response(True, {"deleted": deduction_id, "removed_because": why})
         db.table("tds_deductions").delete().eq("id", deduction_id).eq("firm_id", firm_id).execute()
         log_event(firm_id, "tds_deduction", deduction_id, "delete",
                   actor_id=current_user.get("auth_user_id"),

@@ -112,7 +112,8 @@ test("the deductions table asks the register what became of each deduction and n
   assert.ok(/\{row\.due_note && <span /.test(PAGE), "the server's due note is never drawn");
   assert.ok(!/row\.label|row\.detail !== null/.test(PAGE), "the page reads a per-row label the answer no longer carries");
   assert.ok(/This deduction was added after the deposit state was read\./.test(PAGE), "a row missing from an answer that did load says the answer was never read");
-  assert.ok(/\], \[depositForClient, depositStateError, choices\.labels\]\);/.test(PAGE), "the columns do not follow the deposit state and the section names");
+  // `canRetract` joined on 14-11-2026: the name cell offers "Remove this row" on a row its document left behind only to the tier the server asks (POST-A-409).
+  assert.ok(/\], \[depositForClient, depositStateError, choices\.labels, canRetract\]\);/.test(PAGE), "the columns do not follow the deposit state, the section names and the remove tier");
   assert.ok(/depositStateError \? "Not read" : depositForClient \? "Added after the read" : "—"/.test(PAGE), "a row whose state was not read does not say so");
   // The manual form's typed number stays a NOTE and says so.
   assert.ok(PAGE.includes("Challan No. (a note only)"), "the deduction form's challan number is not marked as a note");
@@ -189,4 +190,21 @@ test("the data module types the server's answer and reads no table itself for it
   assert.ok(/due_note\?: string;/.test(DATA) && /overdue\?: boolean;/.test(DATA) && /paid_late\?: boolean;/.test(DATA),
     "a row's due note, overdue and paid_late flags are not typed (and optional: a key is absent when it says nothing)");
   assert.ok(/needs_action\?: boolean;/.test(DATA), "a calendar answer's needs_action is not typed");
+});
+
+test("a register row its document left behind shows the server's sentence and is removed only through the tier and a dialog (POST-A-409)", () => {
+  // The sentence is the server's, read off the row; the screen decides nothing about whether a payment or a bill still carries the row.
+  assert.ok(/\{d\.left_behind_by_its_document && \(/.test(PAGE) && /\{d\.left_behind_by_its_document\}\{" "\}/.test(PAGE),
+    "the name cell does not show the server's left-behind sentence");
+  assert.ok(!/left_behind_by_its_document\s*=/.test(PAGE), "the screen sets the left-behind sentence itself");
+  // The button is offered to the tier the remove door asks (tds:write), and everyone else is told who can.
+  assert.ok(/\{canRetract \? \(\s*<button type="button"[^>]*onClick=\{\(\) => setLeftBehindToRemove\(d\)\}>Remove this row<\/button>\s*\) : "A Manager or Partner can remove it\."\}/.test(PAGE),
+    "Remove is not offered by tier, or the other members are not told who can remove it");
+  // The remove asks in the product's dialog (never a browser pop-up), calls the one remove door, and reads the register again.
+  const effect = PAGE.slice(PAGE.indexOf("const row = leftBehindToRemove;"), PAGE.indexOf("}, [leftBehindToRemove]);"));
+  assert.ok(effect.length > 0, "the remove effect is missing");
+  assert.ok(/await confirmDialog\(\{/.test(effect) && /danger: true/.test(effect), "the remove does not ask in the product's dialog");
+  assert.ok(/await deleteTdsDeduction\(row\.id\)/.test(effect) && /await loadLists\(clientAtClick, true\)/.test(effect),
+    "the remove does not call the remove door and read the register again");
+  assert.ok(/finally \{\s*setLeftBehindToRemove\(null\);/.test(effect), "a remove that fails or is cancelled leaves the row asked about");
 });

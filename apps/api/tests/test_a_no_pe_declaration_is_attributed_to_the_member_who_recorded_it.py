@@ -24,36 +24,36 @@ TICKED = {"no_pe_declaration_on_file": True, "no_pe_declaration_on": "2026-05-01
 # ── the rule ────────────────────────────────────────────────────────────────
 
 def test_a_request_that_ticks_and_dates_the_declaration_names_the_member():
-    assert declarant_write(sent=dict(TICKED), stored=None, actor_id=ME) == {DECLARANT_COLUMN: ME}
-    assert declarant_write(sent=dict(TICKED), stored={"name": "Helvetica AG"}, actor_id=ME) == {DECLARANT_COLUMN: ME}
+    assert declarant_write(sent=dict(TICKED), stored=None, actor_id=ME, actor_may_vouch=True) == {DECLARANT_COLUMN: ME}
+    assert declarant_write(sent=dict(TICKED), stored={"name": "Helvetica AG"}, actor_id=ME, actor_may_vouch=True) == {DECLARANT_COLUMN: ME}
 
 
 def test_a_request_that_carries_none_of_the_three_fields_never_writes_the_column():
     stored = {**TICKED, DECLARANT_COLUMN: SOMEONE_ELSE}
-    assert declarant_write(sent={"name": "Renamed"}, stored=stored, actor_id=ME) == {}
-    assert declarant_write(sent={"phone": "1"}, stored={**TICKED}, actor_id=ME) == {}      # an unattributed legacy row is left alone too
+    assert declarant_write(sent={"name": "Renamed"}, stored=stored, actor_id=ME, actor_may_vouch=True) == {}
+    assert declarant_write(sent={"phone": "1"}, stored={**TICKED}, actor_id=ME, actor_may_vouch=True) == {}      # an unattributed legacy row is left alone too
 
 
 @pytest.mark.parametrize("missing", ["no_pe_declaration_on_file", "no_pe_declaration_on"])
 def test_a_declaration_that_is_not_on_file_or_has_no_date_names_nobody(missing):
     sent = {**TICKED}
     sent[missing] = False if missing == "no_pe_declaration_on_file" else None
-    assert declarant_write(sent=sent, stored=None, actor_id=ME) == {}
+    assert declarant_write(sent=sent, stored=None, actor_id=ME, actor_may_vouch=True) == {}
 
 
 def test_taking_the_declaration_off_file_empties_the_name_that_stood_on_it():
     stored = {**TICKED, DECLARANT_COLUMN: SOMEONE_ELSE}
-    assert declarant_write(sent={"no_pe_declaration_on_file": False}, stored=stored, actor_id=ME) == {DECLARANT_COLUMN: None}
+    assert declarant_write(sent={"no_pe_declaration_on_file": False}, stored=stored, actor_id=ME, actor_may_vouch=True) == {DECLARANT_COLUMN: None}
     # …and so does a request that leaves it with no date (no door sends one today, PATCH refuses a blank date and drops a null, but the rule is total
     # and a name on an undated declaration attributes nothing)
-    assert declarant_write(sent={"no_pe_declaration_on": ""}, stored=stored, actor_id=ME) == {DECLARANT_COLUMN: None}
+    assert declarant_write(sent={"no_pe_declaration_on": ""}, stored=stored, actor_id=ME, actor_may_vouch=True) == {DECLARANT_COLUMN: None}
 
 
 def test_a_save_that_leaves_an_attributed_declaration_exactly_as_it_was_keeps_its_declarant():
     """The supplier form sends the three fields on every save. Whoever saves the form to change a phone number did not
     record the declaration, and must not take it over."""
     stored = {**TICKED, DECLARANT_COLUMN: SOMEONE_ELSE}
-    assert declarant_write(sent=dict(TICKED), stored=stored, actor_id=ME) == {}
+    assert declarant_write(sent=dict(TICKED), stored=stored, actor_id=ME, actor_may_vouch=True) == {}
 
 
 @pytest.mark.parametrize("change", [
@@ -62,7 +62,7 @@ def test_a_save_that_leaves_an_attributed_declaration_exactly_as_it_was_keeps_it
 ])
 def test_a_save_that_changes_the_date_or_the_reference_is_the_recording_of_that_member(change):
     stored = {**TICKED, DECLARANT_COLUMN: SOMEONE_ELSE}
-    assert declarant_write(sent={**TICKED, **change}, stored=stored, actor_id=ME) == {DECLARANT_COLUMN: ME}
+    assert declarant_write(sent={**TICKED, **change}, stored=stored, actor_id=ME, actor_may_vouch=True) == {DECLARANT_COLUMN: ME}
 
 
 def test_a_ticked_and_dated_declaration_nobody_is_named_on_is_named_by_the_next_save_that_carries_it():
@@ -70,13 +70,48 @@ def test_a_ticked_and_dated_declaration_nobody_is_named_on_is_named_by_the_next_
     inventing evidence, so nothing sweeps them). A person saving the form with the declaration ticked and dated is the first
     to put a name on it; a save that carries none of its fields does not."""
     stored = {**TICKED, DECLARANT_COLUMN: None}
-    assert declarant_write(sent=dict(TICKED), stored=stored, actor_id=ME) == {DECLARANT_COLUMN: ME}
-    assert declarant_write(sent={"name": "x"}, stored=stored, actor_id=ME) == {}
+    assert declarant_write(sent=dict(TICKED), stored=stored, actor_id=ME, actor_may_vouch=True) == {DECLARANT_COLUMN: ME}
+    assert declarant_write(sent={"name": "x"}, stored=stored, actor_id=ME, actor_may_vouch=True) == {}
 
 
 def test_a_request_with_no_member_names_nobody_rather_than_something_unreadable():
-    assert declarant_write(sent=dict(TICKED), stored=None, actor_id=None) == {}
-    assert declarant_write(sent=dict(TICKED), stored=None, actor_id="") == {}
+    assert declarant_write(sent=dict(TICKED), stored=None, actor_id=None, actor_may_vouch=True) == {}
+    assert declarant_write(sent=dict(TICKED), stored=None, actor_id="", actor_may_vouch=True) == {}
+
+
+# ── POST-A-407: only a member who may approve TDS is named ──────────────────
+
+def test_a_member_who_may_not_approve_tds_is_never_named():
+    """The supplier form is open to members below the TDS approval tier; a declaration is the evidence a nil withholding rests on, so their save names nobody."""
+    assert declarant_write(sent=dict(TICKED), stored=None, actor_id=ME, actor_may_vouch=False) == {}
+    assert declarant_write(sent=dict(TICKED), stored={**TICKED}, actor_id=ME, actor_may_vouch=False) == {}, \
+        "a legacy unattributed declaration is not named by a save that cannot vouch for it"
+
+
+def test_a_member_who_may_not_approve_tds_changing_the_declaration_empties_the_earlier_name():
+    stored = {**TICKED, DECLARANT_COLUMN: SOMEONE_ELSE}
+    for change in ({"no_pe_declaration_on": "2026-06-01"}, {"no_pe_declaration_ref": "Letter 8"}):
+        assert declarant_write(sent={**TICKED, **change}, stored=stored, actor_id=ME, actor_may_vouch=False) == {DECLARANT_COLUMN: None}, change
+    # Leaving it exactly as it was keeps the name that stood on it, whoever saves.
+    assert declarant_write(sent=dict(TICKED), stored=stored, actor_id=ME, actor_may_vouch=False) == {}
+    # Taking it off file empties the name for anyone, as before.
+    assert declarant_write(sent={"no_pe_declaration_on_file": False}, stored=stored, actor_id=ME, actor_may_vouch=False) == {DECLARANT_COLUMN: None}
+
+
+def test_the_doors_ask_the_callers_own_tds_approval(doors):
+    """Through the edit door: an Executive's save of an unattributed declaration names nobody; a Manager's names the Manager; an Executive who
+    changes a Manager's declaration empties the name. Asked per person, so a Partner who blocked a member's TDS approval is obeyed."""
+    executive = {**USER, "role": "Executive"}
+    _stored(doors, **TICKED)
+    assert doors.update_vendor("V1", VendorUpdateIn(**TICKED), current_user=executive)["data"].get(DECLARANT_COLUMN) is None
+    manager = {**USER, "role": "Manager"}
+    assert doors.update_vendor("V1", VendorUpdateIn(**TICKED), current_user=manager)["data"][DECLARANT_COLUMN] == ME
+    _stored(doors, **TICKED, **{DECLARANT_COLUMN: SOMEONE_ELSE})
+    out = doors.update_vendor("V1", VendorUpdateIn(**{**TICKED, "no_pe_declaration_ref": "Letter 8"}), current_user=executive)
+    assert out["data"][DECLARANT_COLUMN] is None
+    blocked = {**USER, "role": "Manager", "permission_overrides": {"tds:approve": False}}
+    _stored(doors, **TICKED)
+    assert doors.update_vendor("V1", VendorUpdateIn(**TICKED), current_user=blocked)["data"].get(DECLARANT_COLUMN) is None
 
 
 def test_the_fields_and_the_column_are_the_ones_migration_311_and_the_model_carry():
@@ -203,3 +238,39 @@ def test_a_declaration_recorded_through_a_door_clears_the_gap_on_the_next_bill(d
     # recorded through the create door: the stored row carries the member, and the gap is gone
     stored = doors.create_vendor(_vendor(**TICKED), current_user=USER)["data"]
     assert GAP_NO_PE_DECLARATION_UNDATED not in _gaps_on_a_nil_195_bill({**stored, "id": "v1"})
+
+
+# ── POST-A-407: the form is told who is named, read on the server ───────────
+
+@pytest.fixture
+def live(monkeypatch):
+    from tests.e2e_harness import FakeDB
+    db = FakeDB()
+    monkeypatch.setattr(ve, "_USE_MOCK", False)
+    monkeypatch.setattr(ve, "can_access_client", lambda u, c: True)
+    monkeypatch.setattr(ve, "assert_client_access", lambda u, c: None)
+    monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
+    return db
+
+
+def test_the_supplier_read_names_the_member_who_put_the_declaration_on_file(live):
+    live.seed("vendors", {"id": "V1", "firm_id": "F", "client_id": "C1", "name": "Helvetica AG", **TICKED, DECLARANT_COLUMN: SOMEONE_ELSE})
+    live.seed("users", {"id": SOMEONE_ELSE, "firm_id": "F", "full_name": "Asha Rao", "email": "asha@f.test"})
+    out = ve.get_vendor("V1", current_user=USER)["data"]
+    assert out["no_pe_declarant"] == {"name": "Asha Rao", "found": True, "read": True}
+
+
+def test_a_member_of_another_firm_or_none_at_all_is_not_a_name(live):
+    """The member is read under the CALLER's firm, so a member of another firm is not found, and is never shown as a name."""
+    live.seed("vendors", {"id": "V1", "firm_id": "F", "client_id": "C1", "name": "Helvetica AG", **TICKED, DECLARANT_COLUMN: SOMEONE_ELSE})
+    live.seed("users", {"id": SOMEONE_ELSE, "firm_id": "OTHER", "full_name": "Not Ours"})
+    assert ve.get_vendor("V1", current_user=USER)["data"]["no_pe_declarant"] == {"name": None, "found": False, "read": True}
+
+
+def test_a_name_that_could_not_be_read_says_so_and_a_supplier_nobody_is_named_on_carries_nothing(live, monkeypatch):
+    live.seed("vendors", {"id": "V1", "firm_id": "F", "client_id": "C1", "name": "Helvetica AG", **TICKED, DECLARANT_COLUMN: SOMEONE_ELSE})
+    live.seed("vendors", {"id": "V2", "firm_id": "F", "client_id": "C1", "name": "Nobody Named AG", **TICKED})
+    assert "no_pe_declarant" not in ve.get_vendor("V2", current_user=USER)["data"]
+    real_table = live.table
+    monkeypatch.setattr(live, "table", lambda name: (_ for _ in ()).throw(RuntimeError("users unreadable")) if name == "users" else real_table(name))
+    assert ve.get_vendor("V1", current_user=USER)["data"]["no_pe_declarant"] == {"name": None, "found": False, "read": False}

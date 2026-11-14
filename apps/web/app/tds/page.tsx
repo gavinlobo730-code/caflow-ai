@@ -85,8 +85,9 @@ import {
   listTdsSections, listTdsDeductions, listTdsChallans, listTdsReturns, listTdsCertificates, previewTdsDeduction, createTdsDeduction,
   createTdsChallan, retractTdsChallan, fetchDepositDue, fetchTdsDepositState, currentFinancialYear, type DepositDueWorksheet, type TdsDepositState,
   type CalendarAnswer, type TdsDeductionTotals, type TdsReturnCounts, type TdsCertificateCounts,
-  fetchChallanLedgerCandidates, linkChallanPayment, unlinkChallanPayment, type ChallanLedgerCandidates,
+  fetchChallanLedgerCandidates, linkChallanPayment, unlinkChallanPayment, type ChallanLedgerCandidates, deleteTdsDeduction,
 } from "@/lib/data/tds";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { NO_SECTIONS, sectionChoices, sectionOptionText, type SectionChoices } from "@/lib/tds/sectionChoices";
 import { MINOR_HEAD_LABEL, minorHeadLabel } from "@/lib/tds/minorHead";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
@@ -183,6 +184,9 @@ interface TDSDeduction {
   financial_year: string | null;
   quarter: string | null;
   created_at: string;
+  /** POST-A-409: the server's sentence when this row's payment was reversed, or its bill left the books, and a sync that failed left the row
+   *  behind; null or absent otherwise (absent also when the list could not check). Only such a row is offered for removal. */
+  left_behind_by_its_document?: string | null;
 }
 
 // The three below are migration 037's tables as they ACTUALLY are. Every one
@@ -856,6 +860,9 @@ export default function TDSPage() {
   const canRetract = can("tds", "write");                 // Manager and above: the tier the server asks, and it asks again
   const { toast } = useToast();
   const [retracting, setRetracting] = useState<TDSChallan | null>(null);
+  // POST-A-409: the register row whose document no longer carries it that the CA asked to remove. The remove itself runs in an effect so the
+  // column definitions below (memoised) only call a state setter, which is stable.
+  const [leftBehindToRemove, setLeftBehindToRemove] = useState<TDSDeduction | null>(null);
   const [retractBusy, setRetractBusy] = useState(false);
   const [retractError, setRetractError] = useState<string | null>(null);
   const [retractionNotes, setRetractionNotes] = useState<string[]>([]);
@@ -1106,7 +1113,19 @@ export default function TDSPage() {
     {
       key: "party_name", header: "Party Name", accessor: (d) => d.deductee_name,
       searchable: true, sortable: true, sticky: true, hideable: false,
-      render: (d) => <span className="font-medium text-ps-ink">{d.deductee_name}</span>,
+      render: (d) => (
+        <span className="block">
+          <span className="font-medium text-ps-ink">{d.deductee_name}</span>
+          {d.left_behind_by_its_document && (
+            <span className="block max-w-xs text-3xs leading-snug text-state-attention">
+              {d.left_behind_by_its_document}{" "}
+              {canRetract ? (
+                <button type="button" className="underline font-medium" onClick={() => setLeftBehindToRemove(d)}>Remove this row</button>
+              ) : "A Manager or Partner can remove it."}
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: "party_pan", header: "PAN", accessor: (d) => d.deductee_pan ?? "", searchable: true,
@@ -1190,7 +1209,32 @@ export default function TDSPage() {
         );
       },
     },
-  ], [depositForClient, depositStateError, choices.labels]);
+  ], [depositForClient, depositStateError, choices.labels, canRetract]);
+
+  useEffect(() => {
+    const row = leftBehindToRemove;
+    if (!row) return;
+    const clientAtClick = selectedClientId;
+    (async () => {
+      try {
+        const yes = await confirmDialog({
+          title: "Remove this register row?",
+          message: `${row.left_behind_by_its_document} It is removed by checking it against that document again, and the removal is kept in the audit log.`,
+          confirmLabel: "Remove the row", danger: true,
+        });
+        if (!yes) return;
+        await deleteTdsDeduction(row.id);
+        toast({ title: "Register row removed" });
+        if (clientAtClick) await loadLists(clientAtClick, true);
+      } catch (e) {
+        toast({ title: "The row was not removed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      } finally {
+        setLeftBehindToRemove(null);
+      }
+    })();
+    // Runs once per row asked about; the latest render's loadLists is the one called.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leftBehindToRemove]);
 
   const deductionFilters: FilterDef<TDSDeduction>[] = useMemo(() => [
     {

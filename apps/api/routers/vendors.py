@@ -18,7 +18,7 @@ from models.parties import VendorIn, VendorUpdateIn
 from domain.tds.section_rates import threshold_class_problem
 from domain.tds.no_pe_declaration import declarant_write
 from core.authz import assert_client_access, can_access_client
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from services import party_erasure
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
@@ -255,7 +255,8 @@ def create_vendor(
         payload["created_at"] = datetime.now(timezone.utc).isoformat()
         # POST-A-401: a declaration recorded with this supplier is attributed to the member recording it (users.id, the
         # internal id the column references), or the register's "nobody recorded who obtained it" gap could never clear.
-        payload.update(declarant_write(sent=payload, stored=None, actor_id=current_user.get("id")))
+        payload.update(declarant_write(sent=payload, stored=None, actor_id=current_user.get("id"),
+                                       actor_may_vouch=can_user(current_user, "tds", "approve")))
 
         gstin = _norm(payload.get("gstin"))
         # Shape AND check digit (CGST Act s.25) — see routers/customers.py for
@@ -515,7 +516,8 @@ def create_vendors_bulk(
         # two assignments before it into one statement, because this function is on the ruff ratchet's size baseline and may not grow; `firm_id` stays
         # a visible assignment because the firm-scope guard reads the payload's firm from it.
         payload.update(is_active=True, created_at=datetime.now(timezone.utc).isoformat(),
-                       **declarant_write(sent=payload, stored=None, actor_id=current_user.get("id")))
+                       **declarant_write(sent=payload, stored=None, actor_id=current_user.get("id"),
+                                         actor_may_vouch=can_user(current_user, "tds", "approve")))
         valid_items.append((i, payload))
 
     if not valid_items:
@@ -661,14 +663,33 @@ def ap_aging(
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
+def _declarant(current_user: dict, member_id: str) -> dict:
+    """Who `no_pe_declaration_by` names, read on the server under the caller's firm: `{"name", "found", "read"}`. A member who is not (or no
+    longer) in the firm is `found` false, and a read that failed is `read` false; neither is shown as a name."""
+    if _USE_MOCK:
+        return {"name": None, "found": False, "read": False}
+    try:
+        from core.supabase_client import get_supabase
+        rows = (get_supabase().table("users").select("id, full_name, email").eq("id", member_id)
+                .eq("firm_id", current_user.get("firm_id")).limit(1).execute().data) or []
+    except Exception as exc:                                          # noqa: BLE001
+        _logger.warning("vendors.no_pe_declarant_unread: %s", exc)
+        return {"name": None, "found": False, "read": False}
+    if not rows:
+        return {"name": None, "found": False, "read": True}
+    return {"name": rows[0].get("full_name") or rows[0].get("email"), "found": True, "read": True}
+
+
 @router.get("/{vendor_id}")
 def get_vendor(
     vendor_id: str,
     current_user: dict = Depends(rbac("client", "read")),
 ):
-    """Get a single vendor by ID."""
+    """Get a single vendor by ID, with the name of the member who put its no-PE declaration on file (`no_pe_declarant`, POST-A-407)."""
     try:
         vendor = _load_vendor_or_404(current_user, vendor_id)
+        if vendor.get("no_pe_declaration_by"):
+            vendor = {**vendor, "no_pe_declarant": _declarant(current_user, vendor["no_pe_declaration_by"])}
         return api_response(True, vendor)
     except HTTPException:
         raise
@@ -703,7 +724,8 @@ def update_vendor(
         # POST-A-401. A save that RECORDS the no-PE declaration (ticked and dated, changed or not yet attributed) names the
         # member who made it; one that takes the declaration off file empties the name. Asked of the stored row and the
         # fields this request carries, because a PATCH names only what it changes.
-        data.update(declarant_write(sent=data, stored=prior, actor_id=current_user.get("id")))
+        data.update(declarant_write(sent=data, stored=prior, actor_id=current_user.get("id"),
+                                    actor_may_vouch=can_user(current_user, "tds", "approve")))
 
         # TDS-30. The model judged the §194A limit class against the section
         # only where one request carried both. A PATCH carrying just the
