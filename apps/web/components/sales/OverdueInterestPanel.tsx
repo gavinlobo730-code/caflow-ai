@@ -577,6 +577,11 @@ function PartyRows({
                       )}
                       {d.start_note && <span className="block text-ps-hint">{d.start_note}</span>}
                       {d.note && <span className="block text-ps-hint">{d.note}</span>}
+                      {d.balance_note && (
+                        <span className="block text-ps-hint" data-testid={`balance-note-${d.invoice_id}`}>
+                          {d.balance_note}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

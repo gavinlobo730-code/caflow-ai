@@ -49,13 +49,21 @@ THE BALANCE IS READ, NEVER RE-SUBTRACTED
     (and the credit note ADDS to a purchase bill and SUBTRACTS from an
     invoice). This module takes the figure it is given.
 
-    ⚠️ IT IS THE BALANCE AS IT STANDS TODAY, applied to the whole late period.
-    A part-payment received midway reduced the balance from its own date and
-    not before, so where one was received late this figure OVERSTATES the
-    interest, and an as-at date earlier than today does not restate balances as
-    they were then. Rebuilding the balance on every day from receipt
-    allocations is a different and much larger report; the overstatement is the
-    direction a CA can see and correct, and every answer says it.
+    THE BALANCE ON EACH LATE DAY IS THE BALANCE THAT DAY (POST-A-101). The figure used to be the balance as it stands
+    TODAY applied to the whole late period. Where a part-payment arrived during that period today's balance is LOWER than
+    what was owed before it, so the figure UNDERSTATED the interest the client's own terms allow (the old caveat said it
+    overstated, which was the wrong way round); only a debit note that raised the balance during the period made it
+    overstate, and an as-at date earlier than today used balances after payments that had not yet been made. Now a
+    document carries the history of what moved its balance (`BalanceChange`): money the customer paid reduces the balance
+    from the date it arrived (a receipt allocated to it, a posted bank line matched to it); an amount credited by a credit
+    note or applied from the customer's credit is treated as never owed (`FROM_THE_START`, the reading that cannot
+    overstate, since nothing records why or when it was credited); and what a debit note adds bears no interest here
+    (`OUTSIDE_THE_WINDOW`: it is a separate demand on its own terms). On the day a
+    payment arrives the balance before it is still owed (the day it is received is a late day on the amount it pays, as
+    the as-at date is), so the base for a late day is today's balance plus every change dated that day or later. An as-at
+    date earlier than today therefore uses the balances as they were then. The history is used only when it accounts for
+    the whole of what the invoice shows as settled (`history_ties`); otherwise the document falls back to today's balance
+    and SAYS so, because a history that misses a payment would understate.
 
 NOTHING IS POSTED, AND NOTHING IS BILLED BY ITSELF
 
@@ -167,6 +175,49 @@ def interest_paise(outstanding_paise: int, rate_bps: int, days: int) -> int:
     return round_half_up(outstanding_paise * rate_bps * days, 10_000 * YEAR_DAYS)
 
 
+#: A change dated FROM_THE_START has already happened on every late day (an amount treated as never owed); one dated
+#: OUTSIDE_THE_WINDOW never happens inside it (an amount that bears no interest here). See `BalanceChange`.
+FROM_THE_START = date.min
+OUTSIDE_THE_WINDOW = date.max
+
+
+@dataclass(frozen=True)
+class BalanceChange:
+    """Something that moved a document's balance on a date. `amount_paise` > 0 REDUCES it (a receipt allocated to it, a credit
+    note); < 0 increases it (a debit note)."""
+
+    on: date
+    amount_paise: int
+
+
+def history_ties(*, total_paise: int, outstanding_paise: int, changes: Iterable[BalanceChange]) -> bool:
+    """Whether the changes account for exactly what the document shows as settled: total less what is open today."""
+    return sum(int(c.amount_paise) for c in changes) == int(total_paise) - int(outstanding_paise)
+
+
+def balance_paise_days(outstanding_paise: int, changes: Iterable[BalanceChange], after: date, through: date) -> int:
+    """Σ over the days AFTER `after` up to and including `through` of the balance that day, in paise-days.
+
+    The balance on a day is today's balance plus every change dated that day or later (a change has not happened yet on the
+    days before it, and a payment received on a day still leaves that day owed). Never below nil. Integer arithmetic only, so
+    the interest is rounded once, on the whole product, as the convention says.
+    """
+    if through <= after:
+        return 0
+    points = sorted(changes, key=lambda c: c.on)
+    pending = sum(int(c.amount_paise) for c in points if c.on > after)
+    i = next((k for k, c in enumerate(points) if c.on > after), len(points))
+    total, day = 0, after + timedelta(days=1)
+    while day <= through:
+        while i < len(points) and points[i].on < day:
+            pending -= int(points[i].amount_paise)
+            i += 1
+        end = through if i >= len(points) else min(through, points[i].on)
+        total += max(0, int(outstanding_paise) + pending) * ((end - day).days + 1)
+        day = end + timedelta(days=1)
+    return total
+
+
 def as_date(value) -> Optional[date]:
     if value is None or value == "":
         return None
@@ -190,11 +241,13 @@ class DocumentInterest:
     period_to: Optional[str] = None          # ... up to and including this
     already_charged_through: Optional[str] = None
     note: Optional[str] = None
+    #: "history" when the balance was followed day by day, "today" when today's balance was applied to the whole period.
+    balance_basis: str = "today"
 
 
 def document_interest(
     *, outstanding_paise: int, invoice_date, due_date, terms: Terms, as_of: date,
-    charged_through: Optional[date] = None,
+    charged_through: Optional[date] = None, history: Optional[tuple[BalanceChange, ...]] = None,
 ) -> DocumentInterest:
     """One overdue invoice's interest, or the reason there is none.
 
@@ -202,6 +255,9 @@ def document_interest(
     next period starts the day after it, so the same days are never charged
     twice. It is the caller's to derive, because whether a draft still stands
     is a fact about another invoice.
+
+    `history` is what moved the balance, by date (`BalanceChange`); given, the base on each late day is the balance that day,
+    and None means today's balance over the whole period (the caller passes None when the history does not tie).
     """
     if terms.rate_bps is None:
         return DocumentInterest(status=NO_TERMS)
@@ -236,14 +292,19 @@ def document_interest(
         counted_from=start.isoformat(), start_note=note, days_late=days_late,
         period_from=period_from.isoformat(), period_to=as_of.isoformat(),
         already_charged_through=charged_through.isoformat() if charged_through else None)
+    basis = "today" if history is None else "history"
     if days == 0:
-        return DocumentInterest(status=COVERED, days_charged=0, **base)
+        return DocumentInterest(status=COVERED, days_charged=0, balance_basis=basis, **base)
     if terms.rate_bps == 0:
-        return DocumentInterest(status=WAIVED, days_charged=days, **base)
-    amount = interest_paise(int(outstanding_paise), int(terms.rate_bps), days)
+        return DocumentInterest(status=WAIVED, days_charged=days, balance_basis=basis, **base)
+    if history is None:
+        amount = interest_paise(int(outstanding_paise), int(terms.rate_bps), days)
+    else:
+        paise_days = balance_paise_days(int(outstanding_paise), history, period_from, as_of)
+        amount = round_half_up(paise_days * int(terms.rate_bps), 10_000 * YEAR_DAYS) if paise_days > 0 else 0
     if amount == 0:
-        return DocumentInterest(status=ROUNDS_TO_NIL, days_charged=days, **base)
-    return DocumentInterest(status=CHARGE, interest_paise=amount, days_charged=days, **base)
+        return DocumentInterest(status=ROUNDS_TO_NIL, days_charged=days, balance_basis=basis, **base)
+    return DocumentInterest(status=CHARGE, interest_paise=amount, days_charged=days, balance_basis=basis, **base)
 
 
 # ── The preview over a whole customer book ───────────────────────────────────
@@ -260,6 +321,12 @@ class DocInput:
     charged_through: Optional[date] = None
     #: True for an invoice that IS a prepared interest draft: never a base.
     is_interest_invoice: bool = False
+    #: What moved the balance, by date, when it ties to what the invoice shows as settled; None = today's balance.
+    history: Optional[tuple[BalanceChange, ...]] = None
+    #: Why the history was not used, in a sentence, when it was read and did not tie (or could not be read).
+    history_note: Optional[str] = None
+    #: Which: "untied" (read, and it does not account for what is settled) or "unread" (the reads failed).
+    history_reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -286,20 +353,43 @@ def convention(as_of: date) -> dict:
             "terms say the invoice date."),
         "statement": (
             "Simple interest at the customer's annual rate on each overdue "
-            "invoice's open balance, in actual days over a 365-day year, from "
+            "invoice's balance outstanding on each late day (today's balance where "
+            "a row says so), in actual days over a 365-day year, from "
             "the day after the start date and any grace up to and including the "
-            f"as-at date ({as_of.isoformat()}); half a paisa and over rounds up."),
+            f"as-at date ({as_of.isoformat()}); half a paisa and over rounds up, once "
+            "on the whole sum."),
     }
 
 
 #: Said on every answer that carries a figure. The first is a limitation of the
 #: method and the second is the statutory reading, graded.
-CAVEAT_BALANCE_IS_TODAYS = (
-    "The base is each invoice's open balance AS IT STANDS TODAY, applied to the "
-    "whole late period. A part-payment received during that period reduced the "
-    "balance only from its own date, so where one was received late the figure "
-    "OVERSTATES the interest; and an as-at date earlier than today does not "
-    "restate balances as they were then.")
+CAVEAT_BALANCE_FOLLOWED = (
+    "The base on each late day is the invoice's balance on that day. A receipt allocated to it, or a bank line settling it, "
+    "reduces the balance from the date the money arrived, and the day it arrives is still a late day on the amount it pays. "
+    "An amount credited to it by a credit note, or applied from the customer's credit, is treated as never owed: whether it "
+    "corrected the price or recorded a later return, or when the credited money arrived, is not recorded, and this reading "
+    "cannot overstate. The amount a debit note adds bears no interest here; it is a separate demand with its own terms. An "
+    "as-at date earlier than today uses the balances as they were then. Only invoices still open today are listed.")
+
+
+#: What today's balance applied to every late day gets wrong, the right way round: a payment during the period makes today's
+#: balance lower than what was owed before it, and today's balance carries what a debit note added, which bears no interest here.
+TODAYS_BALANCE_ERRS = ("Today's balance applied to every late day UNDERSTATES the interest where a payment arrived during the late "
+                       "period, and OVERSTATES it where a debit note added to the balance, since that amount bears no interest here.")
+
+
+def caveat_balance_is_todays(untied: int = 0, unread: int = 0) -> str:
+    """Said when one or more charged documents fell back to today's balance, naming how many and why."""
+    parts = []
+    if untied:
+        parts.append(f"for {untied} invoice(s) the receipts, bank lines, credits and notes recorded against it do not account for "
+                     "everything it shows as settled")
+    if unread:
+        parts.append(f"for {unread} invoice(s) the receipts, bank lines, credits and notes against it could not be read")
+    return ("; ".join(parts)[:1].upper() + "; ".join(parts)[1:] + ", so its interest is on today's balance over the whole late "
+            f"period, and the row says why. {TODAYS_BALANCE_ERRS}")
+
+
 STATUTORY_READING = {
     "section": "CGST Act s.15(2)(d)",
     "grade": "[S]",
@@ -339,7 +429,7 @@ def party_preview(party: PartyInput, as_of: date) -> dict:
         result = document_interest(
             outstanding_paise=doc.outstanding_paise, invoice_date=doc.invoice_date,
             due_date=doc.due_date, terms=party.terms, as_of=as_of,
-            charged_through=doc.charged_through)
+            charged_through=doc.charged_through, history=doc.history)
         late = result.status != NOT_OVERDUE
         if party.terms.rate_bps is None:
             # No rate: nothing is computed, but the reader needs to know how
@@ -371,6 +461,9 @@ def party_preview(party: PartyInput, as_of: date) -> dict:
             "period_from": result.period_from, "period_to": result.period_to,
             "already_charged_through": result.already_charged_through,
             "interest_paise": result.interest_paise, "note": result.note,
+            "balance_basis": result.balance_basis,
+            "balance_note": (doc.history_note if result.balance_basis == "today" else None),
+            "balance_reason": (doc.history_reason if result.balance_basis == "today" else None),
         })
     rows.sort(key=lambda r: (-int(r.get("days_late") or 0), str(r.get("invoice_no") or "")))
     terms = party.terms
@@ -403,7 +496,12 @@ def build_preview(parties: Iterable[PartyInput], as_of: date) -> dict:
                             str(p["customer_name"] or "")))
     with_interest = [p for p in out if p["interest_paise"] > 0]
     without_terms = [p for p in out if not p["terms_set"]]
-    caveats = [CAVEAT_BALANCE_IS_TODAYS, CAVEAT_NOT_POSTED]
+    # Counted only where the basis can move the figure: a covered row charges nothing new and a waived one charges nothing.
+    charged = [d for p in out for d in p["documents"] if d.get("status") in (CHARGE, ROUNDS_TO_NIL) and d.get("balance_basis") == "today"]
+    untied = sum(1 for d in charged if d.get("balance_reason") != "unread")
+    unread = sum(1 for d in charged if d.get("balance_reason") == "unread")
+    caveats = ([CAVEAT_BALANCE_FOLLOWED] + ([caveat_balance_is_todays(untied, unread)] if (untied or unread) else [])
+               + [CAVEAT_NOT_POSTED])
     gaps = []
     if without_terms:
         gaps.append(
@@ -445,6 +543,8 @@ class ChargeableDoc:
     #: The CUSTOMER's annual interest rate this was computed at, in basis
     #: points — what the line says in words. Not the GST rate below.
     interest_rate_bps: int = 0
+    #: "history" when the base was the balance on each day, "today" when today's balance was applied to every day.
+    balance_basis: str = "today"
     #: What the invoice's own lines say. `None` means "not one rate".
     gst_rate_bps: Optional[int] = None
     rate_state: str = "single"               # single | mixed | none
@@ -536,6 +636,7 @@ def line_description(doc: ChargeableDoc) -> str:
     ReportLab's core fonts have no glyph for U+20B9 (it prints a black box)."""
     bps = doc.interest_rate_bps
     pct = f"{bps // 100}.{bps % 100:02d}".rstrip("0").rstrip(".")
+    base = ("on the balance outstanding on each of those days" if doc.balance_basis == "history"
+            else f"on the balance of {rupee_text(doc.outstanding_paise, 'Rs.')}")
     return (f"Interest for delayed payment of invoice {doc.invoice_no}: "
-            f"{doc.days} days from {doc.period_from} to {doc.period_to} at {pct}% a year "
-            f"on the balance of {rupee_text(doc.outstanding_paise, 'Rs.')}")
+            f"{doc.days} days from {doc.period_from} to {doc.period_to} at {pct}% a year {base}")

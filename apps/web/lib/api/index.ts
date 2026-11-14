@@ -3868,6 +3868,11 @@ export interface LateInterestDocument {
   already_charged_through?: string | null;
   interest_paise: number;
   note?: string | null;
+  /** "history": the base on each late day was the balance on that day; "today": today's balance over the whole period. */
+  balance_basis?: "history" | "today" | null;
+  /** Why this row is on today's balance (its records did not account for what it shows as settled, or could not be read). */
+  balance_note?: string | null;
+  balance_reason?: "untied" | "unread" | null;
 }
 
 export interface LateInterestParty {

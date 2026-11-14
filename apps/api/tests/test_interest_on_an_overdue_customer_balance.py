@@ -175,7 +175,9 @@ def test_the_convention_is_stated_on_every_answer_and_the_balance_caveat_with_it
     assert c["day_count"] == "actual/365" and c["interest"] == "simple"
     assert c["compounding"] == "not offered"
     assert "half a paisa" in c["statement"] and AS_OF.isoformat() in c["statement"]
-    assert any("AS IT STANDS TODAY" in cv for cv in out["caveats"])
+    assert L.CAVEAT_BALANCE_FOLLOWED in out["caveats"]
+    # A document with no history (the test double here) is on today's balance, and the caveat says which way that errs.
+    assert any("UNDERSTATES the interest where a payment arrived" in cv for cv in out["caveats"])
     assert any("Nothing here is posted" in cv for cv in out["caveats"])
     # The statutory reading is carried, graded, and says it is not the Act's text.
     assert out["statutory_reading"]["section"] == "CGST Act s.15(2)(d)"
