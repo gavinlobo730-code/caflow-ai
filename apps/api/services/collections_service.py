@@ -190,11 +190,45 @@ def sweep_overdue(firm_id: str, today: Optional[date] = None) -> dict:
     return {"swept": updated}
 
 
-def ar_aging(firm_id: str, today: Optional[date] = None) -> dict:
-    """AR aging across the internal client's open invoices (paise + counts per bucket)."""
+#: The most invoices one ageing bucket LISTS (POST-A-099). The bucket's count and total stay the whole bucket's, and a list cut here says
+#: so (`truncated`), most overdue first, so what is cut is what is least late.
+BUCKET_LIST_CAP = 100
+
+
+def _customer_names(firm_id: str, customer_ids: list[str]) -> Optional[dict[str, str]]:
+    """{customer id: name} for the fee ledger's customers, or None when the read failed (the names are then unknown, never blank)."""
+    if not customer_ids:
+        return {}
+    if _USE_MOCK:
+        try:
+            from routers.customers import MOCK_CUSTOMERS
+        except ImportError:                                            # pragma: no cover
+            return None
+        return {c["id"]: c.get("name") for c in MOCK_CUSTOMERS if c.get("firm_id") == firm_id and c.get("id") in customer_ids}
+    try:
+        rows = fetch_all_in(lambda: _db().table("customers").select("id,name").eq("firm_id", firm_id),
+                            "id", customer_ids, label="collections.ar_aging.customers")
+    except Exception as exc:                                           # noqa: BLE001
+        capture_soft_failure(exc, operation="collections.ar_aging.customers_unread")
+        return None
+    return {r["id"]: r.get("name") for r in rows}
+
+
+def ar_aging(firm_id: str, today: Optional[date] = None, *, with_invoices: bool = False) -> dict:
+    """AR aging across the internal client's open invoices (paise + counts per bucket).
+
+    With `with_invoices`, each bucket also LISTS its invoices (POST-A-099): number, customer, the day the ageing runs from, days overdue
+    and what is still owed, most overdue first (and so soonest due first in `not_due`, where every row is 0 days overdue), at most
+    BUCKET_LIST_CAP per bucket with `truncated` saying when the list stopped. The
+    figures are the same reading the totals are made of (`assess_invoice` over `_open_invoices`), so a bucket's list adds up to its
+    total whenever it is not truncated. A customer whose name could not be read is `customer_name: None` and `customer_names_read`
+    says why, so the screen can say "not read" rather than show a blank.
+    """
     today = today or _today()
     internal_id = get_internal_client_id(firm_id)
-    buckets = {b: {"paise": 0, "count": 0} for b in ("not_due", "0-30", "31-60", "61-90", "90+")}
+    order = ("not_due", "0-30", "31-60", "61-90", "90+")
+    buckets = {b: {"paise": 0, "count": 0} for b in order}
+    listed: dict[str, list[dict]] = {b: [] for b in order}
     total_outstanding = 0
     overdue_paise = 0
     overdue_count = 0
@@ -207,12 +241,38 @@ def ar_aging(firm_id: str, today: Optional[date] = None) -> dict:
         if m["is_overdue"]:
             overdue_paise += m["outstanding_paise"]
             overdue_count += 1
-    return {
+        if with_invoices:
+            ref = reference_due_date(inv)
+            listed[b].append({
+                "id": inv.get("id"),
+                "invoice_no": inv.get("invoice_no"),
+                "customer_id": inv.get("customer_id"),
+                "invoice_date": str(inv.get("invoice_date") or "")[:10] or None,
+                # The day the ageing is measured from: the invoice's due date, or its date plus its credit days where it has none.
+                "ageing_from": ref.isoformat() if ref else None,
+                "days_overdue": m["days_overdue"],
+                "outstanding_paise": m["outstanding_paise"],
+            })
+    out = {
         "buckets": buckets,
         "total_outstanding_paise": total_outstanding,
         "overdue_paise": overdue_paise,
         "overdue_count": overdue_count,
     }
+    if not with_invoices:
+        return out
+    names = _customer_names(firm_id, sorted({i["customer_id"] for rows in listed.values() for i in rows if i["customer_id"]}))
+    invoices_by_bucket = {}
+    for b in order:
+        rows = sorted(listed[b], key=lambda i: (-int(i["days_overdue"] or 0), i["ageing_from"] or "", str(i["invoice_no"] or ""),
+                                                str(i["id"] or "")))
+        for i in rows:
+            i["customer_name"] = (names or {}).get(i["customer_id"]) if names is not None else None
+        invoices_by_bucket[b] = {"invoices": rows[:BUCKET_LIST_CAP], "truncated": len(rows) > BUCKET_LIST_CAP}
+    out["invoices_by_bucket"] = invoices_by_bucket
+    out["customer_names_read"] = names is not None
+    out["list_cap"] = BUCKET_LIST_CAP
+    return out
 
 
 def _collected_and_tds(firm_id: str, internal_id: Optional[str],

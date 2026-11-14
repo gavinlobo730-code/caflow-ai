@@ -2,7 +2,7 @@
 
 Everything that is yours to decide, do or supply, and every statutory or legal point I will not assume. Kept in one place and refreshed, not scattered across replies. Each row names the ledger ids behind it (`decisions-taken-2026-10-14.md` has what I decided myself). Written in plain English: you decide the money and do what only you can do; the legal and statutory points need a primary text, a practising CA or counsel, and **nothing is built on a guess**.
 
-**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (28, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
+**At a glance:** section 1 is the one thing that unlocks the most; section 2 is money and the commitments only you can make (13 rows, each with my recommendation); section 3 is what only you can do; section 4 is the statutory and legal questions (32, each with what stays unbuilt meanwhile); section 5 is the wait-until-asked items the new goal probably needs; section 6 is two questions the goal raises.
 
 **How many ledger items wait on you:** the ledger README's "Who must act" line counts them and is generated from the ledger itself. It is every item lettered B (you decide first) or C (only you or someone outside can do), plus the items lettered A that carry the `waits on owner` marker. Those marked items are the ones whose question is in section 4 below: S14 (POST-A-343), S15 (POST-A-348), S16 (POST-A-055), S17 (POST-A-059 and POST-A-064), S18 (POST-A-067), S19 (POST-A-114) and S20 (POST-A-063). Answering a question removes the marker and Claude builds the item.
 
@@ -318,6 +318,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
 - **Stays unbuilt meanwhile:** Any refusal of 96, 97, 25 or 28 as a job worker's State, and any change to what the statement counts as identified: today it treats any recorded place of supply as the State. The box offers current States only and says in words when a recorded value is not one of them.
 - **Ledger:** POST-A-432
+
+### S32. Schedule II: is depreciation charged for the part of the month an asset is sold or discarded in, and is the day itself charged?
+
+- **Question:** The product charges depreciation month by month and pro-rates only the month an asset is bought, citing a note to Schedule II it calls "Note 3". When an asset is sold or discarded partway through a month, the days after the last whole month charged are not charged, and the disposal screen says so in words, so the gain or loss on disposal can be up to a month's charge off. (1) Does Schedule II to the Companies Act 2013 require the charge to run pro rata up to the date the asset is sold, discarded, demolished or destroyed, as it runs from the date of an addition? (2) Is the day of disposal itself charged? (3) What is the number of the note that says so, and is the purchase-month rule the code cites as "Note 3" the same note?
+- **Needed:** Schedule II to the Companies Act 2013 (Part C and its notes) as amended; for an entity under the Accounting Standards, AS 10 on the same point.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Charging the part month at disposal. The disposal keeps refusing while whole months are undepreciated and keeps telling the CA that the part month was not charged.
+- **Ledger:** POST-A-113
 
 ## 5. Wait-until-asked items the goal probably needs
 

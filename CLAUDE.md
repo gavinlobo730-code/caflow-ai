@@ -173,7 +173,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
 
-### `docs/design-record/documents-sales-purchase.md` (19 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
+### `docs/design-record/documents-sales-purchase.md` (21 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 - A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS
 - A CREDIT OR DEBIT NOTE LINE RECORDED THROUGH THE NUMBERING FUNCTION KEEPS ITS UNIT AND ITS CATALOGUE ITEM,
 
@@ -194,6 +194,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DRAFT IS ASKED WHETHER IT ADDS UP TO ITS OWN LINES BEFORE IT IS ISSUED, BECAUSE THE ISSUE POSTS FROM THE STORED HEADER AND A MEMBER'S
 - A RECEIPT'S ALLOCATED TOTAL IS THE SUM OF ITS LIVE ALLOCATION ROWS, AND THE DATABASE KEEPS IT
 - AN INVOICE'S ISSUE IS ONE DATABASE TRANSACTION, AND THE TWO WAYS THE LEDGER AND
+- A SETTLEMENT AND A YEAR-END ADJUSTMENT OPEN FROM THE LEDGER ROW THAT NAMES THEM
+- AN AGEING BUCKET ON THE PRACTICE'S RECEIVABLES LISTS ITS INVOICES
 
 ### `docs/design-record/engineering-and-ci.md` (13 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 

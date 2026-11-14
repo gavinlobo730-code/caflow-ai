@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, X, Loader2 } from "lucide-react";
 import { yearEndApi, type Adjustment, type AdjustmentType, type AdjustmentStatus } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -21,6 +21,7 @@ import { fyRangeFor } from "@/lib/dates/periods";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
 import { objectOrNull } from "@/lib/api/shape";
+import { openedAt } from "@/lib/accounting/sourceDocument";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -137,6 +138,17 @@ export default function AdjustmentsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // POST-A-096: a ledger row's adjustment arrives as `?tab=adjustments&doc=<id>` (through the year-end list, which found its engagement)
+  // and is ringed and scrolled to, the way the shared table rings a drill-through's row. Read once on mount: this stage mounts when the
+  // workspace opens it, and nothing on this page writes `doc`.
+  const [ringed, setRinged] = useState<string | null>(null);
+  const ringRef = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => { setRinged(openedAt(window.location.search).doc); }, []);
+  useEffect(() => {
+    if (ringed && !loading) ringRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [ringed, loading]);
+  const ringedMissing = Boolean(ringed) && !loading && !error && !adjustments.some((a) => a.id === ringed);
+
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 4000);
@@ -219,6 +231,12 @@ export default function AdjustmentsPage() {
         />
       )}
 
+      {ringedMissing && (
+        <p role="status" className="text-xs text-ps-label">
+          The adjustment the ledger named is not in this engagement&apos;s list.
+        </p>
+      )}
+
       {/* Table */}
       {adjustments.length > 0 ? (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -238,7 +256,9 @@ export default function AdjustmentsPage() {
               </thead>
               <tbody className="divide-y divide-ps-border">
                 {adjustments.map((adj) => (
-                  <tr key={adj.id} className="hover:bg-ps-bg">
+                  <tr key={adj.id} ref={adj.id === ringed ? ringRef : undefined}
+                    data-ringed={adj.id === ringed ? "true" : undefined}
+                    className={adj.id === ringed ? "hover:bg-ps-bg bg-state-attention-surface ring-2 ring-inset ring-amber-300" : "hover:bg-ps-bg"}>
                     <td className="px-4 py-2.5">
                       <span className={`text-3xs font-medium px-1.5 py-0.5 rounded-full ${TYPE_BADGE[adj.adjustment_type]}`}>
                         {TYPE_LABELS[adj.adjustment_type]}

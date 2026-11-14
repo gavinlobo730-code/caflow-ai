@@ -271,8 +271,8 @@ def run(as_of: Optional[str] = Query(None),
 
 @router.get("/ar-aging")
 def ar_aging(current_user: dict = Depends(rbac("billing", "read"))):
-    """Due-date based AR aging across the firm's fee invoices (internal client)."""
-    return api_response(True, collections_service.ar_aging(current_user["firm_id"]))
+    """Due-date based AR aging across the firm's fee invoices (internal client), with each bucket's invoices listed (POST-A-099)."""
+    return api_response(True, collections_service.ar_aging(current_user["firm_id"], with_invoices=True))
 
 
 @router.get("/collections/dashboard")

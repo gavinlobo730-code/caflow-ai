@@ -410,7 +410,6 @@ routers/xbrl_engine.py :: B904 :: validate_package :: 1
 routers/xbrl_engine.py :: F401 :: <module> :: 1
 routers/year_end.py :: B904 :: _parse_financial_year :: 1
 routers/year_end_adjustments.py :: B904 :: post_adjustment :: 2
-routers/year_end_adjustments.py :: F401 :: <module> :: 1
 routers/year_end_exports.py :: B904 :: _upload_and_record :: 1
 routers/year_end_exports.py :: B904 :: export_complete_pack :: 1
 routers/year_end_exports.py :: B904 :: export_financial_statements :: 1

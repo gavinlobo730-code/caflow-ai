@@ -219,6 +219,7 @@ EXEMPT = {
     "apply_salary_structure": "the roster is read by firm and client; an employee id outside it is refused (`strangers`, 422)",
     "get_slips": "the runs are resolved by firm and client, and an employee id only narrows the slips of those runs",
     "get_attendance": "the roster is read by firm and client",
+    "get_settlement": "the settlement is read by firm and client and the employee off it by firm and client too; one that cannot be read under that client is shown as unknown, never another client's (POST-A-096)",
     "put_attendance": "the roster is read by firm and client and an id outside it is refused",
     "get_one_time_earnings": "the rows are read by firm, client and month",
     "put_one_time_earnings": "the roster is read by firm and client; an id outside it is refused (`strangers`)",

@@ -8409,6 +8409,69 @@ def record_settlement(
     return api_response(True, payload)
 
 
+@router.get("/settlements/{settlement_id}")
+def get_settlement(
+    settlement_id: str,
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """One RECORDED full-and-final settlement, as it was stored (POST-A-096).
+
+    The ledger names a settlement's journal by `payroll_settlements.id`, and nothing could open that id: the leaver's drawer computes a NEW
+    settlement and shows none that was recorded. This is the stored row with its components, the employee it settled and the member who
+    recorded it, read under the firm AND the client the caller named, so a missing settlement and one of another client say the same words.
+
+    The components are listed in the order they were recorded (`created_at`, then `id`), which is the order the computation produced them:
+    earnings first, then the recoveries. Nothing here is recomputed: a settlement is stored precisely so the ledger, Annexure II and 24Q
+    read one agreed figure."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    if not db:
+        # Mock mode records no settlement (the record route answers `recorded: false`), so there is none to open.
+        raise HTTPException(status_code=404, detail="Settlement not found")
+    firm_id = current_user["firm_id"]
+    rows = (db.table("payroll_settlements").select("*")
+            .eq("id", settlement_id).eq("firm_id", firm_id).eq("client_id", client_id)
+            .limit(1).execute().data) or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Settlement not found")
+    s = rows[0]
+    components = (db.table("payroll_settlement_components")
+                  .select("kind, label, gross_paise, exempt_paise, tax_head, exempt_section, statute, created_at, id")
+                  .eq("settlement_id", s["id"]).eq("firm_id", firm_id)
+                  .order("created_at").order("id").execute().data) or []
+    emp = (db.table("payroll_employees").select("id, name, employee_code, status")
+           .eq("id", s["employee_id"]).eq("firm_id", firm_id).eq("client_id", client_id)
+           .limit(1).execute().data) or []
+    recorder = None
+    if s.get("created_by"):
+        users = (db.table("users").select("full_name, email").eq("id", s["created_by"])
+                 .eq("firm_id", firm_id).limit(1).execute().data) or []
+        if users:
+            recorder = users[0].get("full_name") or users[0].get("email")
+    return api_response(True, {
+        "settlement_id": s["id"],
+        "employee_id": s["employee_id"],
+        # None when the employee row cannot be read under this client: the settlement is still shown, and the screen says whose it is not known.
+        "employee": ({"id": emp[0]["id"], "name": emp[0].get("name"), "employee_code": emp[0].get("employee_code"),
+                      "status": emp[0].get("status")} if emp else None),
+        "financial_year": s.get("fy"),
+        "leaving_date": s.get("leaving_date"),
+        "gross_paise": s.get("gross_paise"),
+        "exempt_paise": s.get("exempt_paise"),
+        "taxable_paise": s.get("taxable_paise"),
+        "deductions_paise": s.get("deductions_paise"),
+        "tds_paise": s.get("tds_paise"),
+        "net_paid_paise": s.get("net_paid_paise"),
+        "journal_entry_id": s.get("journal_entry_id"),
+        "posted": bool(s.get("journal_entry_id")),
+        "recorded_at": s.get("created_at"),
+        "recorded_by": recorder,
+        "components": [{k: c.get(k) for k in ("kind", "label", "gross_paise", "exempt_paise", "tax_head", "exempt_section", "statute")}
+                       for c in components],
+    })
+
+
 # ─── Arrears and §89(1) relief ───────────────────────────────────────────────
 
 class ArrearSliceIn(BaseModel):

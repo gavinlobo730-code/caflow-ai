@@ -17,17 +17,16 @@ WHY THIS GUARD LIVES HERE AND NOT IN apps/web
     somebody says where it goes.
 
 WHAT A REFUSAL HAS TO BE
-    A sentence about THAT source, not a shared paragraph. `settlement` and
-    `year_end_adjustment` are refused for different reasons — one's screen is
-    keyed on the employee, the other's on the engagement — and the difference
-    is what tells a CA whether there is anything to go and do. A test asserts
-    they are different, on the answers rather than on the data, so folding them
-    into one sentence cannot pass.
+    A sentence about THAT source, not a shared paragraph: two sources are refused for different reasons and a CA acts on each
+    differently. The map is EMPTY since POST-A-096, when the last two (a settlement, whose screen was keyed on the employee, and a
+    year-end adjustment, whose screen lives under its engagement) got a way in. The rule stays for the next source that has nowhere
+    to go, and a test below holds those two routed so neither slips back onto the map unseen.
 """
 from __future__ import annotations
 
 import pathlib
 import re
+import sys
 
 from domain.accounting import journal_source as JS
 
@@ -72,8 +71,10 @@ def _entry_is_the_record() -> set[str]:
 
 def test_the_guard_is_reading_something():
     """A regex that stops matching must fail, not quietly approve everything."""
-    assert len(_routed()) >= 15, f"only {len(_routed())} routes parsed — the regex has drifted"
-    assert len(_refused()) >= 2, "no refusals parsed"
+    assert len(_routed()) >= 21, f"only {len(_routed())} routes parsed — the regex has drifted"
+    # The refusal map is empty, so a regex that stopped matching would read the same as an empty map: the parse is asked of a
+    # sample that has one entry, through the same function.
+    assert "export const NO_ROUTE_REASON" in _source(), "the refusal map is gone"
     assert len(_entry_is_the_record()) == 3, "ENTRY_IS_THE_RECORD is three values"
 
 
@@ -121,3 +122,19 @@ def test_a_routed_source_is_not_one_whose_entry_is_the_record():
     # source_id that is, by construction, null.
     overlap = sorted(_routed() & set(JS.ENTRY_IS_THE_RECORD))
     assert overlap == [], f"these have no document row to open: {overlap}"
+
+
+def test_a_settlement_and_a_year_end_adjustment_are_routed_and_not_refused():
+    """POST-A-096: both have a screen that opens them by the id the row carries (the payroll Inputs tab shows the recorded settlement,
+    and the year-end list finds an adjustment's engagement). Neither goes back on the refusal map without this failing."""
+    assert {"settlement", "year_end_adjustment"} <= _routed()
+    assert not ({"settlement", "year_end_adjustment"} & set(_refused()))
+
+
+def test_the_refusal_parse_reads_an_entry_when_there_is_one(monkeypatch):
+    """The negative control for the empty map: one refusal written in the file's own shape is read back."""
+    sample = ('export const NO_ROUTE_REASON: Record<string, string> = {\n'
+              '  some_source:\n    "A sentence about some source that says why there is nowhere to send the CA.",\n'
+              '};\n')
+    monkeypatch.setattr(sys.modules[__name__], "_source", lambda: sample)
+    assert _refused() == {"some_source": "A sentence about some source that says why there is nowhere to send the CA."}

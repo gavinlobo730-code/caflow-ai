@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { openedAt } from "@/lib/accounting/sourceDocument";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -25,6 +26,11 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // helper (lib/dates/periods.ts); see
 // scripts/a-financial-year-choice-comes-from-the-clock.test.ts.
 const FY_OPTIONS = financialYearChoicesAround(null);
+
+// The stages of an engagement a ledger row's drill-through may open from here (POST-A-096). The ledger names a year-end adjustment
+// by its own id and not by its engagement, so the row's link lands on this list, which asks the server whose adjustment it is and
+// goes on to that engagement's stage. Only an adjustment is a document the ledger names, so it is the only one.
+const TABS = [{ id: "adjustments" }] as const;
 
 const STATUS_BADGE: Record<string, string> = {
   draft:     "bg-ps-muted text-ps-label",
@@ -108,6 +114,32 @@ export default function YearEndPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // POST-A-096: `?tab=adjustments&doc=<adjustment id>` from a ledger row. The engagement is asked of the server (the row carries only
+  // the adjustment's id), and the stage is opened with the adjustment ringed. A refusal is said in its own words and the list stays.
+  const [opening, setOpening] = useState<{ doc: string; problem: string | null } | null>(null);
+  useEffect(() => {
+    if (!clientId || clientId === "_placeholder") return;
+    const { tab: t, doc } = openedAt(window.location.search);
+    if (!t || !doc || !TABS.some((x) => x.id === t)) return;
+    let live = true;
+    setOpening({ doc, problem: null });
+    apiFetch(`/api/year-end/adjustments/${encodeURIComponent(doc)}/engagement?client_id=${encodeURIComponent(clientId)}`)
+      .then((res) => {
+        if (!live) return;
+        const engagementId = res?.success ? res.data?.engagement_id : null;
+        // A refusal arrives as FastAPI's `{detail: "<sentence>"}` with an error status: the server's own words are shown when it gave some.
+        const said = typeof res?.error === "string" ? res.error : typeof res?.detail === "string" ? res.detail : null;
+        if (!engagementId) throw new Error(said ?? "The adjustment the ledger named could not be found for this client.");
+        // REPLACE, not push: this list is only a hop, and a pushed hop would answer Back by going forward again, so the CA could never
+        // return to the ledger row they came from.
+        router.replace(`/clients/${clientId}/year-end/${engagementId}?tab=${t}&doc=${encodeURIComponent(doc)}`);
+      })
+      .catch((err) => {
+        if (live) setOpening({ doc, problem: err instanceof Error ? err.message : "The adjustment the ledger named could not be opened." });
+      });
+    return () => { live = false; };
+  }, [clientId, router]);
+
   async function handleCreate() {
     setCreating(true);
     setCreateError(null);
@@ -128,6 +160,11 @@ export default function YearEndPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-4">
+      {opening && (
+        opening.problem
+          ? <p role="alert" className="text-xs text-state-problem">{opening.problem}</p>
+          : <p role="status" className="text-xs text-ps-label">Opening the adjustment the ledger named…</p>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">Year-End Engagements</h2>
