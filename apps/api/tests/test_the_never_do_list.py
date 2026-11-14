@@ -208,8 +208,8 @@ OUTBOUND_MODULES: dict[str, str] = {
     # copilots, the digest, the statement narrator, invoice and notice extraction
     # and the statement reader — goes through one of these two, which is where the
     # timeout, the retry, the fallback model and the usage record live. A third
-    # entry here is a third door, and tests/test_one_door_to_every_model.py fails
-    # it before this test is asked.
+    # entry here is a third door, and tests/test_no_model_call_site_sends_an_identifier.py
+    # (test_one_module_sends_text_to_groq_and_it_redacts) fails a new sender before this test is asked.
     "domain/ai/groq_text.py":
         "Groq (api.groq.com chat completions) — the ONE door for every text model "
         "call: the assistant, both copilots, the practice digest, the statement "

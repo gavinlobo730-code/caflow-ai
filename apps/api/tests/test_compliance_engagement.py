@@ -54,7 +54,8 @@ def _client(client_id, firm=FIRM, gstin="27AAPFU0939F1ZV"):
     # gstin defaults to a registered client (a real, check-digit-valid GSTIN
     # from tests/fixtures/gstin.json) because every existing caller of this
     # helper is exercising GST obligation generation for a client assumed to
-    # be registered — see test_a_client_with_no_gstin_gets_no_gst_obligations
+    # be registered — see test_the_fallback_generates_nothing_for_a_client_with_no_gstin_recorded
+    # and test_an_active_gst_engagement_generates_nothing_for_a_client_with_no_gstin
     # for the unregistered case this default exists to keep apart from it.
     return client_repo.create({"id": client_id, "firm_id": firm, "client_name": f"Client {client_id}",
                                "gstin": gstin})

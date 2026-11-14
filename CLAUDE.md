@@ -195,7 +195,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RECEIPT'S ALLOCATED TOTAL IS THE SUM OF ITS LIVE ALLOCATION ROWS, AND THE DATABASE KEEPS IT
 - AN INVOICE'S ISSUE IS ONE DATABASE TRANSACTION, AND THE TWO WAYS THE LEDGER AND
 
-### `docs/design-record/engineering-and-ci.md` (12 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
+### `docs/design-record/engineering-and-ci.md` (13 entries): Tests, lint and coverage ratchets, CI, dependency lock, migrations and the schema-drift check
 
 - THE BACKEND HAS A LINT RATCHET, A PROPERTY SUITE, ONE PAGER, ONE DOOR TO THE DATABASE CLIENT AND A COVERAGE FLOOR, AND EACH IS A R
 - THE SMOKE WALK RUNS BY ITSELF, NIGHTLY AND ON DEMAND, AND IS NOT A CHECK ANYTHING WAITS ON
@@ -209,6 +209,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE SCHEMA GUARD EXPECTS COLUMNS ON TABLES A MIGRATION CREATES, AND A WORD OF THE SQL AROUND A TABLE NAME IS NOT ONE
 - A WINDOW IS READ IN REQUESTS THE DATABASE WILL HONOUR, AND AN ID IT CANNOT READ IS A 422 WITH A SENTENCE, SAID BY THE ONE SPEAKER
 - A TEST STUBS A JOURNAL METHOD THROUGH MONKEYPATCH, NEVER BY ASSIGNING IT
+- A TEST THAT NAMES ANOTHER TEST NAMES ONE THAT EXISTS
 
 ### `docs/design-record/filing-and-compliance.md` (9 entries): Filing to government portals, trackers and the period lock
 - A TIED CHALLAN IS CHECKED AGAINST THE ACCOUNT IT CLEARS, AND THE CHALLANS NOBODY HAS TIED ARE A WORKLIST THAT FLAGS A MONTH'S WAIT

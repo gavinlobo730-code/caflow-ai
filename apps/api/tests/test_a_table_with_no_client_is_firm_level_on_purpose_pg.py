@@ -34,7 +34,7 @@ WHAT THIS HOLDS
 WHAT THIS CANNOT SEE, SAID PLAINLY
     * It reads what a policy REFERS TO (from `pg_depend`), not what it ADMITS: a policy that names `my_role_at_least` with the
       lowest floor is a tier by this rule. The floor is a decision, and the real-Postgres matrix test
-      (`test_rls_actor_by_table_matrix_pg`) is the proof of what each role can do.
+      (`test_rls_role_by_table_matrix_pg`) is the proof of what each role can do.
     * A category is checked against the policies, not against the data: `entities` holds a date of birth and a PAN and is
       read by every member of the firm. Whether it should be is the open question POST-A-357, and this file
       records that the list was reviewed, not that the decision is right.
