@@ -355,7 +355,7 @@ def get_item_stock_ledger(
         if not item_resp.data:
             raise HTTPException(status_code=404, detail="Stock item not found.")
 
-        lines = get_stock_ledger(db, service_catalogue_id, start_date, end_date)
+        lines = get_stock_ledger(db, service_catalogue_id, start_date, end_date, firm_id=firm_id, client_id=client_id)
 
         # ── THE BALANCE COLUMN IS A PROPERTY OF THE ORDER IT IS SHOWN IN ─────
         # `lines` come back ordered by (movement_date, created_at) while each

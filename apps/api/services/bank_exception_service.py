@@ -72,7 +72,8 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
-from core.db_paging import fetch_all
+from core import db_paging
+from core.db_paging import fetch_all, iter_pages
 from core.observability import capture_soft_failure
 from domain.banking import exceptions as rules
 from domain.banking.matcher import bill_open_paise, invoice_open_paise
@@ -168,32 +169,40 @@ def _seen_before(db, firm_id: str, client_id: str, *, column: str, wanted: set[s
     if not wanted:
         return set(), True
     seen: set[str] = set()
-    page_size, last_id = 1000, None
     statements = _statement_ids(db, firm_id, bank_account_id) if bank_account_id else None
-    for _ in range(_HISTORY_PAGE_CAP):
+
+    def history():
         # The two questions are spelled out rather than interpolated, for the
         # reason at the top of this module: `f"id, {column}"` is a projection
-        # the column guard cannot read.
+        # the column guard cannot read. Built afresh for every page, so the IN
+        # list holds only the values not yet seen (the shared pager's keyset
+        # cursor stays valid under a narrower filter: POST-A-045).
         base = privileged_for(db).table("bank_transactions")
         q = (base.select("id, payee_name") if column == "payee_name"
              else base.select("id, account_id"))
         q = (q.eq("firm_id", firm_id).eq("client_id", client_id)
              .lt("transaction_date", before)
-             .in_(column, sorted(wanted - seen))
-             .order("id").limit(page_size))
+             .in_(column, sorted(wanted - seen)))
         if statements is not None:
             q = q.in_("statement_id", statements)
-        if last_id:
-            q = q.gt("id", last_id)
-        rows = q.execute().data or []
+        return q
+
+    # The page size is read when called and handed to the pager, so the request and the short-page test below are one number (a
+    # copy taken at import would disagree with a pager whose PAGE a test shrank, and call a cut-off history complete).
+    size, pages, read = db_paging.PAGE, 0, {}
+    for rows in iter_pages(history, "id", label="bank_exceptions.seen_before", stats=read, page_size=size):
+        pages += 1
         for r in rows:
             value = r.get(column)
             if value is not None:
                 seen.add(str(value))
-        if len(rows) < page_size or seen >= wanted:
+        if len(rows) < size or seen >= wanted:
             return seen, True
-        last_id = rows[-1]["id"]
-    return seen, False
+        if pages >= _HISTORY_PAGE_CAP:
+            return seen, False
+    # The pager stopped by itself. That is the end of the history only if it read a page past the last one it handed over (the empty
+    # page after a full one) or nothing at all; a stop after a full page (its own cap, a row without an id) is NOT complete.
+    return seen, (pages == 0 or read.get("pages", 0) > pages)
 
 
 def _any_earlier_line(db, firm_id: str, client_id: str, *, before: str,

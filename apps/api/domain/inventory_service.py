@@ -48,6 +48,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_paging import fetch_all_ordered
 from core.ist_clock import ist_today, ist_date_of
 from core.observability import capture_posting_failure
 from domain.inventory import costing
@@ -981,34 +982,22 @@ def record_stock_out(
     return _with_stock_cas_retry(_attempt)
 
 
-def get_stock_ledger(db, service_catalogue_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> list[dict]:
+def get_stock_ledger(db, service_catalogue_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None, *,
+                     firm_id: str, client_id: str) -> list[dict]:
     def base_q():
-        q = db.table("inventory_stock_ledger").select("*").eq("service_catalogue_id", service_catalogue_id)
+        q = (db.table("inventory_stock_ledger").select("*")
+             .eq("firm_id", firm_id).eq("client_id", client_id).eq("service_catalogue_id", service_catalogue_id))
         if start_date:
             q = q.gte("movement_date", start_date)
         if end_date:
             q = q.lte("movement_date", end_date)
-        return q.order("movement_date").order("created_at")
+        return q
 
-    # OFFSET-paged, not keyset (task #221): an un-paged .execute() silently
-    # capped at PostgREST's ~1000-row limit for a high-turnover SKU with years
-    # of daily movements, truncating the running balance shown to the CA.
-    # Keyset-by-id isn't usable here — running_qty_units/running_avg_cost_paise
-    # are STORED at insert time in (movement_date, created_at) order, so that
-    # exact display order must be preserved; offset is simplest and safe at
-    # this per-item (not whole-tenant) row count.
-    if not hasattr(base_q(), "range"):
-        return base_q().execute().data or []
-    out: list[dict] = []
-    page = 1000
-    offset = 0
-    while True:
-        rows = base_q().range(offset, offset + page - 1).execute().data or []
-        out.extend(rows)
-        if len(rows) < page:
-            break
-        offset += page
-    return out
+    # OFFSET-paged, not keyset (task #221): an un-paged .execute() silently capped at PostgREST's ~1000-row limit for a high-turnover SKU
+    # with years of daily movements, truncating the running balance shown to the CA. Keyset by id cannot keep the display order, which is
+    # (movement_date, created_at): the running totals are shown in it. The shared ordered reader (POST-A-045) ends the order in `id`, so two
+    # movements that tie on both are shown in one order on every request and neither is read twice or dropped at a page boundary.
+    return fetch_all_ordered(base_q, ("movement_date", "created_at"), label="inventory.stock_ledger")
 
 
 # ── COGS / Inventory journal postings ────────────────────────────────────────

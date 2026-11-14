@@ -16,6 +16,7 @@ import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
+from core.db_paging import fetch_all
 
 from .model import (
     Account, Bill, CreditNote, Invoice, JournalEntry, JournalLine,
@@ -343,45 +344,15 @@ class SupabaseLedgerSource(LedgerSource):
             for r in rows
         }
 
-    def _fetch_page(self, make_query, cursor, key: str, max_retries: int) -> list[dict]:
-        """Fetch ONE keyset page — the next <=_PAGE rows whose `key` is strictly
-        greater than `cursor` (None on the first page) — with retry-with-backoff
-        on transient failure.
-
-        Confirmed in production: for a client with 12k+ posted entries, one page
-        hit a transient PostgREST 500 while every other page — including the SAME
-        page moments later — succeeded. Before the retry, that single transient
-        failure aborted the entire report, which the frontend then rendered as "no
-        posted journal entries" (indistinguishable from a genuinely empty ledger)
-        instead of a retryable error."""
-        last_err: Optional[Exception] = None
-        for attempt in range(max_retries):
-            try:
-                q = make_query()
-                if cursor is not None:
-                    q = q.gt(key, cursor)
-                return q.limit(self._PAGE).execute().data or []
-            except Exception as e:  # noqa: BLE001 — retry transient PostgREST/network failures
-                last_err = e
-                if attempt < max_retries - 1:
-                    _logger.warning(
-                        "Reporting fetch page failed (cursor=%s, attempt=%d/%d) — retrying: %s",
-                        cursor, attempt + 1, max_retries, e,
-                    )
-                    time.sleep(0.3 * (attempt + 1))
-        _logger.error(
-            "Reporting fetch page failed permanently after %d attempts (cursor=%s): %s",
-            max_retries, cursor, last_err,
-        )
-        raise last_err
-
     def _fetch_all(self, make_query, key: str = "id", max_retries: int = 3,
                    stats: Optional[dict] = None) -> list[dict]:
-        """Fetch EVERY matching row via KEYSET (cursor) paging over a query ordered
-        ascending by `key`, so results are never silently capped at PostgREST's
-        ~1000-row limit (audit C6). `make_query` must return a fresh builder
-        ordered ascending by `key`, and its select MUST include `key` so the next
-        page's cursor can be read from the last row.
+        """Fetch EVERY matching row via KEYSET (cursor) paging over `key`, so results
+        are never silently capped at PostgREST's ~1000-row limit (audit C6).
+        `make_query` must return a fresh builder with NO order of its own (the
+        shared pager orders by `key`; an order here too was sent as `id,id`), and
+        its select MUST include `key` so the next page's cursor can be read from
+        the last row. The read is STRICT: a page cap or a row without the key
+        raises rather than returning part of the ledger to a financial statement.
 
         KEYSET, not OFFSET — this is the fix for the report timeout (2026-07-18).
         With OFFSET, page k must re-scan (and, because journal_lines is embedded,
@@ -407,19 +378,17 @@ class SupabaseLedgerSource(LedgerSource):
         sequentially by design (see above), so wall-clock is roughly pages ×
         round-trip, and "is it a big query or a lot of small ones?" is otherwise
         unanswerable from the outside. Costs nothing when not passed."""
-        out: list[dict] = []
-        cursor = None
-        pages = 0
         started = time.monotonic()
-        while True:
-            page = self._fetch_page(make_query, cursor, key, max_retries)
-            pages += 1
-            out.extend(page)
-            if len(page) < self._PAGE:
-                break                                    # genuine end-of-data
-            cursor = page[-1][key]                        # next page starts after this row
+        # The shared pager (POST-A-045), with this source's page size and its retry: confirmed in production, for a client with 12k+
+        # posted entries one page hit a transient PostgREST 500 while every other page, and the SAME page moments later, succeeded, and
+        # before the retry that one failure aborted the whole report, which the screen rendered as "no posted journal entries"
+        # (indistinguishable from an empty ledger). `core.db_paging._read_page` asks a failed page again, up to `max_retries` times in
+        # all, with the back-off this method used to carry, and raises the last failure.
+        counted: dict = {}
+        out = fetch_all(make_query, key, label="reporting.ledger_source", stats=counted, page_size=self._PAGE, retries=max_retries,
+                        strict=True)
         if stats is not None:
-            stats["pages"] = pages
+            stats["pages"] = counted.get("pages", 0)
             stats["rows"] = len(out)
             stats["seconds"] = time.monotonic() - started
         return out
@@ -455,7 +424,7 @@ class SupabaseLedgerSource(LedgerSource):
                 q = q.gte("entry_date", date_from)
             if date_to:
                 q = q.lte("entry_date", date_to)
-            return q.order("id")   # stable key → correct keyset paging
+            return q   # no order here: the shared pager orders by the key it seeks on (id)
 
         # Probe reversal_of (migration 055) and the FX line memo (migration 147)
         # independently; on a missing column, disable that probe and retry. This
@@ -533,7 +502,7 @@ class SupabaseLedgerSource(LedgerSource):
         rows = self._fetch_all(lambda: (
             self.db.table("account_period_balances")
             .select("id, account_id, period_month, debit_paise, credit_paise")
-            .eq("firm_id", firm_id).eq("client_id", client_id).order("id")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
         ), stats=stats)
         return {
             (r["account_id"], str(r["period_month"])[:10]):
@@ -572,7 +541,7 @@ class SupabaseLedgerSource(LedgerSource):
             q = self.db.table("client_sales_invoices").select(
                 "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
             q = self._scope(q, client_id)
-            return q.order("id")
+            return q
         # Paged (task #221, same audit C6 class as _entries): unpaged, this
         # silently dropped invoices past PostgREST's ~1000-row cap for any
         # client with a large sales history, corrupting cash-basis revenue
@@ -586,7 +555,7 @@ class SupabaseLedgerSource(LedgerSource):
             q = self.db.table("receipts").select(
                 "id, amount_paise, tds_paise, journal_entry_id").eq("firm_id", firm_id)
             q = self._scope(q, client_id)
-            return q.order("id")
+            return q
         rows = self._fetch_all(make_q)
         return {r["id"]: Receipt(r["id"], r.get("journal_entry_id"),
                                  int(r.get("amount_paise", 0) or 0),
@@ -607,7 +576,7 @@ class SupabaseLedgerSource(LedgerSource):
             def make_q(chunk=chunk):
                 return (self.db.table("receipt_allocations")
                         .select("id, receipt_id, sales_invoice_id, allocated_paise")
-                        .in_("receipt_id", chunk).order("id"))
+                        .in_("receipt_id", chunk))
             all_rows.extend(self._fetch_all(make_q))
         for r in all_rows:
             out.setdefault(r["receipt_id"], []).append(ReceiptAllocation(
@@ -619,7 +588,7 @@ class SupabaseLedgerSource(LedgerSource):
             q = self.db.table("credit_notes").select(
                 "id, sales_invoice_id, journal_entry_id").eq("firm_id", firm_id)
             q = self._scope(q, client_id)
-            return q.order("id")
+            return q
         rows = self._fetch_all(make_q)
         return [CreditNote(r["id"], r.get("sales_invoice_id"), r.get("journal_entry_id")) for r in rows]
 
@@ -628,7 +597,7 @@ class SupabaseLedgerSource(LedgerSource):
             q = self.db.table("purchase_bills").select(
                 "id, total_paise, journal_entry_id").eq("firm_id", firm_id)
             q = self._scope(q, client_id)
-            return q.order("id")
+            return q
         rows = self._fetch_all(make_q)
         return {r["id"]: Bill(r["id"], int(r.get("total_paise", 0) or 0),
                               r.get("journal_entry_id")) for r in rows}
@@ -638,7 +607,7 @@ class SupabaseLedgerSource(LedgerSource):
             q = self.db.table("purchase_payments").select(
                 "id, purchase_bill_id, amount_paise, journal_entry_id").eq("firm_id", firm_id)
             q = self._scope(q, client_id)
-            return q.order("id")
+            return q
         rows = self._fetch_all(make_q)
         return [Payment(r["id"], r.get("purchase_bill_id"), r.get("journal_entry_id"),
                         int(r.get("amount_paise", 0) or 0)) for r in rows]

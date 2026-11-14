@@ -22,6 +22,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_paging import fetch_all_ordered
 from core.ist_clock import ist_today
 from domain.reporting import stock_position
 
@@ -64,19 +65,11 @@ def _fetch_movements(db, firm_id: str, client_id: str, as_of: str,
                 .lte("movement_date", as_of))
         if item_id:
             base = base.eq("service_catalogue_id", item_id)
-        return base.order("movement_date").order("created_at")
+        return base
 
-    if not hasattr(q(), "range"):
-        return q().execute().data or []
-    out: list[dict] = []
-    offset = 0
-    while True:
-        rows = q().range(offset, offset + _PAGE - 1).execute().data or []
-        out.extend(rows)
-        if len(rows) < _PAGE:
-            break
-        offset += _PAGE
-    return out
+    # The shared ordered reader (POST-A-045), for the reason stock_ageing_service gives: the order ends in `id`, so a movement that
+    # ties on the date and the instant is read exactly once.
+    return fetch_all_ordered(q, ("movement_date", "created_at"), label="stock_position.movements", page_size=_PAGE)
 
 
 def _fetch_catalogue(db, firm_id: str, client_id: str) -> dict[str, dict]:
