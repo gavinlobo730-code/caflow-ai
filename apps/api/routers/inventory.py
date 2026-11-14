@@ -20,6 +20,7 @@ from models.inventory import (StockAdjustmentIn, NrvWritedownIn, NrvWritedownPre
                               CostingPolicyIn, StockEffectRetryIn)
 from core.permissions import rbac
 from core.authz import assert_client_access
+from core.db_paging import fetch_all_ordered
 from services.audit_service import log_event
 from services.period_validation_service import period_validation_service
 from services import period_lock_service
@@ -31,96 +32,24 @@ _logger = logging.getLogger("caflow.inventory")
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
 
-# One page is 1000 ledger rows, and the scan is bounded to this many of them.
-# Every round trip is Singapore→Mumbai (CLAUDE.md, "Reporting performance"), so
-# the cap is what stops a pathological client turning a register load into a
-# walk of its whole movement history. Hit, it is logged rather than swallowed —
-# a register missing an item's running totals shows 0, which is
-# indistinguishable from "never received stock", and that must not happen
-# silently.
-_LEDGER_SCAN_PAGES = 8
-
-#: Rows per page. A named constant rather than a literal so the cap above can be
-#: reached in a test without ten thousand fixture rows.
-_LEDGER_PAGE_SIZE = 1000
-
-
 def _last_ledger_rows(db, firm_id: str, client_id: str, item_ids: set[str]) -> dict[str, dict]:
-    """Each item's current (most-recently-inserted) ledger row — the same
-    running_qty_units/running_avg_cost_paise/running_value_paise every new
-    movement chains from (domain/inventory_service.py::_last_ledger_row) —
-    fetched in bulk for the whole stock register instead of one row per item.
+    """Each item's current (most-recently-recorded) ledger row: the running_qty_units / running_avg_cost_paise / running_value_paise
+    every new movement chains from (domain/inventory_service.py::_last_ledger_row), for the whole register in ONE question (POST-A-435).
 
-    THE DOCSTRING USED TO CLAIM this "stops as soon as every item has been
-    seen, rather than scanning the client's entire movement history", and that
-    is precisely what it did not do (INV-07). `remaining` is seeded from every
-    `kind='good'` catalogue row, INCLUDING items that have never had a
-    movement — and an item with no ledger row can never be found, so
-    `while remaining` stayed true and the loop paged to the end of the ledger
-    every time. One catalogue item created and never received was enough. The
-    query was also unfiltered, so each of those pages was a full-width read of
-    rows belonging to items already found.
+    WHAT IT REPLACED. A scan of the client's movements newest first, with an IN list that shrank as items were found (INV-07), capped
+    at eight pages of a thousand. Each page found the items among its rows, so it ran out only when page after page was filled by one
+    busy item each; every item older than eight such items was not reached, and the register showed it as zero quantity and zero
+    value, with a log line only. The answer is one row per item, so it is asked where the
+    rows are: `public.stock_latest_rows` (migration 588) probes each item once and returns its latest row, newest `created_at` and then
+    `id`, the order `_last_ledger_row` chains from.
 
-    Both are fixed by filtering the query to the items still WANTED and
-    re-issuing it as that set shrinks. Two consequences worth stating:
-
-      * `range` restarts at 0 whenever the filter narrows, because a narrowed
-        filter is a different result set and an offset into the old one indexes
-        nothing meaningful. Offset only advances while the filter is unchanged
-        — the case where a single item's rows fill a whole page.
-      * a page that returns nothing means the remaining items have no ledger
-        rows AT ALL, which is the terminating answer the old loop could never
-        reach. It is not an error: the caller renders 0, which is correct for
-        an item that has never received stock.
-
-    Ordering is `created_at desc`, matching `_last_ledger_row`'s exactly —
-    which is INSERTION order, not `movement_date` order, and deliberately so:
-    these are the chained running totals, and the chain is built in the order
-    rows were written. A position AS AT a date is a different question and has
-    its own answer (`public.stock_position_as_at`, migration 363).
+    `services/stock_latest_rows_service.latest_rows_for` asks it (the nightly cache-drift check asks the same function): on the
+    privileged client after the route asserted the caller's access, as ONE jsonb array (a set of rows would be cut at 1,000), raising on
+    anything else so the route says the register could not be loaded rather than showing zeros. An item absent from the answer has
+    never had a movement, which the register shows as nothing received.
     """
-    found: dict[str, dict] = {}
-    remaining = set(item_ids)
-    page_size = _LEDGER_PAGE_SIZE      # module attribute, so a test can shrink it
-    offset = 0
-    filtered_for: Optional[frozenset] = None
-    pages = 0
-    while remaining and pages < _LEDGER_SCAN_PAGES:
-        wanted = frozenset(remaining)
-        if wanted != filtered_for:
-            offset = 0                      # a new filter is a new result set
-            filtered_for = wanted
-        resp = (
-            db.table("inventory_stock_ledger")
-            .select("service_catalogue_id, running_qty_units, running_avg_cost_paise, running_value_paise")
-            .eq("firm_id", firm_id).eq("client_id", client_id)
-            .in_("service_catalogue_id", sorted(wanted))
-            .order("created_at", desc=True)
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        pages += 1
-        page = resp.data or []
-        if not page:
-            break                           # the rest have no ledger rows
-        for row in page:
-            sid = row["service_catalogue_id"]
-            if sid in remaining:
-                found[sid] = row
-                remaining.discard(sid)
-        if len(page) < page_size:
-            break
-        if frozenset(remaining) == filtered_for:
-            # A full page and not one new item: every row belonged to items
-            # already found, so page past them rather than re-reading the same
-            # rows under an unchanged filter for ever.
-            offset += page_size
-    if remaining and pages >= _LEDGER_SCAN_PAGES:
-        _logger.warning(
-            "stock register scan hit its %d-page cap for client %s with %d item(s) "
-            "unresolved — their running totals will render as zero",
-            _LEDGER_SCAN_PAGES, client_id, len(remaining))
-    return found
+    from services.stock_latest_rows_service import latest_rows_for
+    return latest_rows_for(db, firm_id, client_id, item_ids)
 
 
 @router.get("/items")
@@ -146,13 +75,13 @@ def list_stock_items(
         firm_id = current_user.get("firm_id")
         from core.supabase_client import get_supabase
         db = get_supabase()
-        rows = (
-            db.table("service_catalogue")
-            .select("id, name, description, hsn_sac, unit, kind, is_active")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "good")
-            .order("name").order("id")
-            .execute().data
-        ) or []
+        # Every good of the client, in name order (POST-A-435): one request answered at most a thousand, so a client with more goods
+        # saw the first thousand with nothing saying so. The shared ordered reader ends the order in id.
+        rows = fetch_all_ordered(
+            lambda: (db.table("service_catalogue")
+                     .select("id, name, description, hsn_sac, unit, kind, is_active")
+                     .eq("firm_id", firm_id).eq("client_id", client_id).eq("kind", "good")),
+            ("name",), label="inventory.stock_register_items")
         last_rows = _last_ledger_rows(db, firm_id, client_id, {r["id"] for r in rows})
         for r in rows:
             last = last_rows.get(r["id"])

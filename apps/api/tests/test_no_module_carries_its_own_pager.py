@@ -21,12 +21,12 @@ THE RULE, NOT A LIST OF TODAY'S MODULES
     longer pages by hand fails as loudly as a new pager does, so a fix cannot leave its exemption behind.
 
 WHAT IS LEFT
-    One. The four plain keyset walks moved onto `fetch_all` on 28-10-2026, and on 14-11-2026 (POST-A-045) the
+    Nothing. The four plain keyset walks moved onto `fetch_all` on 28-10-2026, and on 14-11-2026 (POST-A-045) the
     shared pager learned what the next five needed: a retry per page (the reporting source), a query built
     afresh for every page so an IN list can shrink (the bank history), and an ordered OFFSET read whose order
     ends in `id` (the three readers of stock movements, which page in (movement_date, created_at) order; ending
-    it in `id` is also what stops a movement that ties on both from being read twice or never). The survivor
-    asks for one row per item, which is a database's question (POST-A-435).
+    it in `id` is also what stops a movement that ties on both from being read twice or never). The last, the
+    stock register's latest row per item, is one question to the database since POST-A-435, so the list is empty.
 """
 from __future__ import annotations
 
@@ -84,12 +84,9 @@ def _tree() -> dict[tuple[str, str], str]:
 
 #: Every hand-rolled pager that remains, and why it is not a call to `fetch_all`. Shrink-only.
 FROZEN: dict[tuple[str, str], str] = {
-    # Five left on 14-11-2026 (POST-A-045): the reporting source's retrying keyset (`retries` on the shared pager), the bank history's
-    # shrinking IN list (`iter_pages` builds its query afresh each page) and the three readers of stock movements in (movement_date,
-    # created_at) order (`fetch_all_ordered`, which ends the order in `id`).
-    ("routers/inventory.py", "_last_ledger_rows"):
-        "OFFSET in created_at DESC order over a filter that narrows as items are found (INV-07), restarting at 0 when it does: the "
-        "question is one row per item, so its answer belongs in the database (POST-A-435), not in a pager",
+    # EMPTY since 14-11-2026. Five left with POST-A-045 (the reporting source's retrying keyset, the bank history's shrinking IN list,
+    # the three readers of stock movements in (movement_date, created_at) order) and the sixth, the stock register's latest row per
+    # item, became one question to the database with POST-A-435 (`public.stock_latest_rows`, migration 588).
 }
 
 
