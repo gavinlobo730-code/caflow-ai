@@ -474,3 +474,12 @@ export function dateFieldState(text: string, read: TypedDate): DateFieldState {
 export function isoFromRead(read: TypedDate): string {
   return read.kind === "date" ? read.iso : "";
 }
+
+/** An `onStateChange` that says whether its form refuses a day after the box's maximum (POST-A-384). */
+export type DateStateListener = ((state: DateFieldState) => void) & { refusesAfterMax?: true };
+
+/** Whether the parent behind `onStateChange` refuses a day after the box's maximum: `useDateProblems().watch(..., { afterMax: true })` marks its
+ *  listener so, and `DateInput` then draws such a day as invalid (red border, `aria-invalid`) and not as a hint, without every call site saying it twice. */
+export function refusesAfterMax(listener: unknown): boolean {
+  return typeof listener === "function" && (listener as DateStateListener).refusesAfterMax === true;
+}

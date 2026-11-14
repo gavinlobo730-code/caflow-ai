@@ -179,3 +179,29 @@ test("the wrapper class is the screen's, and the wrapper can shrink inside a gri
   const out = html({ value: "", wrapperClassName: "col-span-2" });
   assert.match(out, /^<span class="block min-w-0 col-span-2">/);
 });
+
+// ── POST-A-384: a day after the maximum is drawn invalid where the form REFUSES it, and stays a hint where it does not ──────────────
+
+test("a day after notAfter is aria-invalid when the parent's listener refuses a later day, and a hint otherwise", async () => {
+  const refusing = Object.assign(() => {}, { refusesAfterMax: true as const });
+  const later = { value: "2030-01-01", notAfter: "2026-11-14" };
+  assert.match(inputTag(html({ ...later, onStateChange: refusing })), /aria-invalid="true"/, "a refused later day is not marked invalid");
+  assert.match(inputTag(html({ ...later, refuseAfterMax: true })), /aria-invalid="true"/, "the prop does not mark a refused later day invalid");
+  assert.doesNotMatch(inputTag(html({ ...later, onStateChange: () => {} })), /aria-invalid/, "a later day nobody refuses is drawn as an error");
+  assert.doesNotMatch(inputTag(html({ ...later, onStateChange: refusing, refuseAfterMax: false })), /aria-invalid/, "the prop does not overrule the listener");
+  assert.doesNotMatch(inputTag(html({ value: "2026-11-14", notAfter: "2026-11-14", onStateChange: refusing })), /aria-invalid/,
+    "the last day allowed is drawn as an error");
+});
+
+test("useDateProblems().watch(..., { afterMax: true }) is what marks the listener, and a plain watch does not", async () => {
+  const { useDateProblems } = await import(pathToFileURL(path.join(WEB, "lib/dates/useDateProblems.ts")).href);
+  function Form(props: { afterMax: boolean }) {
+    const dates = useDateProblems();
+    return React.createElement(DateInput, {
+      value: "2030-01-01", notAfter: "2026-11-14", onChange: noop,
+      onStateChange: dates.watch("filed", "Filed on", props.afterMax ? { afterMax: true } : undefined),
+    });
+  }
+  assert.match(inputTag(renderToStaticMarkup(React.createElement(Form, { afterMax: true }))), /aria-invalid="true"/);
+  assert.doesNotMatch(inputTag(renderToStaticMarkup(React.createElement(Form, { afterMax: false }))), /aria-invalid/);
+});

@@ -19,7 +19,7 @@
  * refusal is shown the way it always was.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { DateFieldState } from "./typedDate.ts";
+import type { DateFieldState, DateStateListener } from "./typedDate.ts";
 
 /** What a box refuses beyond text that is not a date. */
 export interface DateRefusals {
@@ -49,10 +49,14 @@ export function reportDateState(
 
 export function useDateProblems() {
   const [problems, setProblems] = useState<Record<string, string>>({});
-  /** The `onStateChange` for one field. */
+  /** The `onStateChange` for one field. A field that refuses a later day says so on the listener (see `refusesAfterMax`). */
   const watch = useCallback(
-    (key: string, label: string, refuse?: DateRefusals) => (state: DateFieldState) =>
-      setProblems((prev) => reportDateState(prev, key, label, state, refuse)),
+    (key: string, label: string, refuse?: DateRefusals): DateStateListener => {
+      const listener: DateStateListener = (state: DateFieldState) =>
+        setProblems((prev) => reportDateState(prev, key, label, state, refuse));
+      if (refuse?.afterMax === true) listener.refusesAfterMax = true;
+      return listener;
+    },
     [],
   );
   return {

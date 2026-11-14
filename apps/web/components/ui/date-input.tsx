@@ -120,6 +120,7 @@ import {
   TYPED_DATE_MARKER,
   TYPED_DATE_PLACEHOLDER,
   dateFieldState,
+  refusesAfterMax,
   isoFromRead,
   parseTypedDate,
   stepTypedDate,
@@ -169,6 +170,9 @@ export interface DateInputProps
   /** Marks the box invalid for a reason the PARENT knows (the server refused the
    *  date). The field's own unreadable-text state needs no help. */
   invalid?: boolean;
+  /** A day after `max`/`notAfter` is REFUSED by the parent, not merely hinted at: the box draws it invalid (red, `aria-invalid`). Read from an
+   *  `onStateChange` made by `useDateProblems().watch(..., { afterMax: true })` when not given (POST-A-384). */
+  refuseAfterMax?: boolean;
   /** Classes for the element around the box and its message. */
   wrapperClassName?: string;
 }
@@ -245,7 +249,7 @@ function boxFor(value: string, min?: string, max?: string): Box {
 
 export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
   function DateInput(
-    { value, onChange, onStateChange, financialYear, anchor, min: minHint, max: maxHint, notBefore, notAfter, invalid, wrapperClassName,
+    { value, onChange, onStateChange, financialYear, anchor, min: minHint, max: maxHint, notBefore, notAfter, invalid, refuseAfterMax, wrapperClassName,
       id, onFocus, onBlur, onKeyDown, disabled, readOnly, ...rest },
     ref,
   ) {
@@ -328,6 +332,9 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     const shown: TypedDate = box.read.kind === "date" ? parseTypedDate(box.read.iso, { min, max }) : box.read;
     const message = shown.kind === "empty" ? null : shown.message;
     const showMessage = message !== null && touched && !focused;
+    // A day after the maximum is a hint unless the parent refuses it (POST-A-384): then it is drawn as the refusal it is, red and `aria-invalid`, so a
+    // screen reader can tell WHICH box the form's sentence was about. Asked of the prop, or of a listener `watch(..., { afterMax: true })` marked.
+    const refusedLater = shown.kind === "date" && shown.outOfRange === "max" && (refuseAfterMax ?? refusesAfterMax(onStateChange));
 
     // A bound that FOLLOWS another field (a filing date that cannot be after today once the status says filed; a challan date that cannot be after the day the goods came back) moves after a day was
     // typed. The hint above is judged against the bound of every render, but a parent that refuses a day past the bound (`afterMax`) hears only what the box reports, so it is told again when the
@@ -348,8 +355,8 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
         inputId={inputId}
         text={box.text}
         problem={showMessage ? message : null}
-        tone={shown.kind === "error" ? "problem" : "hint"}
-        invalid={invalid}
+        tone={shown.kind === "error" || refusedLater ? "problem" : "hint"}
+        invalid={invalid || refusedLater}
         wrapperClassName={wrapperClassName}
         disabled={disabled}
         readOnly={readOnly}
