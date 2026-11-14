@@ -14,7 +14,7 @@ from core.validators import validate_pan
 from domain.payroll import identity as identity_domain
 from domain.payroll import pf_wage_election as pf_election_domain
 from models.fy import FYLabel
-from models.iso_date import a_real_date
+from models.iso_date import OptionalIsoDate, PatchIsoDate, a_real_date
 from core.ist_clock import ist_today
 
 
@@ -47,14 +47,14 @@ class EmployeeIn(BaseModel):
     # NOT demographics: Part III of the First Schedule widens the OLD-regime nil
     # band at 60 and again at 80, and domain/payroll/age.py reads this to decide
     # which ladder §192 withholds on.
-    date_of_birth: Optional[str] = None
+    date_of_birth: OptionalIsoDate = None
     # Privacy-by-design: we store ONLY the last 4 digits of Aadhaar, never the full
     # number (UIDAI norms). The full value must never reach the backend.
     aadhaar_last4: Optional[str] = None
     gender: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
-    joining_date: Optional[str] = None
+    joining_date: OptionalIsoDate = None
     basic_paise: int = 0
     hra_percent: float = 0.0
     da_percent: float = 0.0
@@ -255,7 +255,7 @@ class EmployeeImportIn(BaseModel):
 class EmployeeUpdateIn(BaseModel):
     name: Optional[str] = None
     employee_code: Optional[str] = None
-    date_of_birth: Optional[str] = None
+    date_of_birth: PatchIsoDate = None
     pan: Optional[str] = None
     aadhaar_last4: Optional[str] = None
     gender: Optional[str] = None
@@ -329,7 +329,7 @@ class EmployeeUpdateIn(BaseModel):
     #
     # apps/web/scripts/employee-form-captures-what-filing-needs.test.ts asserts
     # joining_date is on the FORM, and passed throughout.
-    joining_date: Optional[str] = None
+    joining_date: PatchIsoDate = None
 
     @field_validator("pf_on_actual_wages_from")
     @classmethod

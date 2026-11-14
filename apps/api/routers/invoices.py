@@ -81,19 +81,6 @@ def _assert_engagement_scope(current_user: dict, engagement_id: str) -> dict:
     return engagement
 
 
-class InvoiceListQuery(BaseModel):
-    engagement_id: Optional[str] = None
-    client_id: Optional[str] = None
-    status: Optional[str] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
-
-
-class GenerateFromTimeQuery(BaseModel):
-    invoice_month: Optional[str] = None
-    billable_only: bool = True
-
-
 #: The status moves a person may make by hand. Paid is reached by a receipt (migration 172) and left by nobody, and an invoice
 #: that has had money received against it moves only between Issued and Overdue, which is what the nightly check does too.
 _MANUAL_STATUS_MOVES: dict[str, tuple[str, ...]] = {

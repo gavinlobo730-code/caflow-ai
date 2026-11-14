@@ -119,9 +119,11 @@ class TestCreateDSC:
         assert exc.value.status_code == 422
 
     def test_unparseable_expiry_returns_422(self):
-        with pytest.raises(HTTPException) as exc:
-            create_dsc(body=_valid_body(expiry_date="not-a-date"), current_user=USER_MANAGER_A)
-        assert exc.value.status_code == 422
+        # The request model refuses it now (POST-A-380), so a request never reaches the route: over HTTP this is the same 422, naming the field.
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError) as exc:
+            _valid_body(expiry_date="not-a-date")
+        assert "expiry_date must be a date written YYYY-MM-DD" in str(exc.value)
 
     def test_duplicate_returns_409(self):
         create_dsc(body=_valid_body(), current_user=USER_MANAGER_A)

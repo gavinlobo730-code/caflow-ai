@@ -16,6 +16,7 @@ reason and always sends the CA-confirmed value explicitly.
 """
 from pydantic import BaseModel, field_validator
 from typing import Literal, Optional
+from models.iso_date import IsoDate, OptionalIsoDate
 
 ADJUSTMENT_REASONS = {
     "physical_count_shortage",
@@ -30,7 +31,7 @@ ADJUSTMENT_REASONS = {
 
 class StockAdjustmentIn(BaseModel):
     client_id: str
-    adjustment_date: str  # YYYY-MM-DD
+    adjustment_date: IsoDate  # YYYY-MM-DD
     quantity: float
     direction: str  # "increase" | "decrease"
     reason: str
@@ -86,7 +87,7 @@ class NrvWritedownIn(BaseModel):
     the stock ledger (inventory stays at cost, the normal case). The test
     is on the carrying value, not on the rounded average cost."""
     client_id: str
-    writedown_date: str  # YYYY-MM-DD
+    writedown_date: IsoDate  # YYYY-MM-DD
     nrv_per_unit_paise: int
     reference_no: Optional[str] = None
     notes: Optional[str] = None
@@ -120,7 +121,7 @@ class NrvWritedownPreviewIn(BaseModel):
 
 class StockCountOpenIn(BaseModel):
     client_id: str
-    count_date: Optional[str] = None     # YYYY-MM-DD; defaults to today in IST
+    count_date: OptionalIsoDate = None     # YYYY-MM-DD; defaults to today in IST
     reference_no: Optional[str] = None   # defaults to PC-<date>
     notes: Optional[str] = None
 
@@ -172,7 +173,7 @@ class CostingPolicyIn(BaseModel):
     """
     client_id: str
     method: str
-    effective_from: Optional[str] = None  # YYYY-MM-DD
+    effective_from: OptionalIsoDate = None  # YYYY-MM-DD
 
 
 class StockEffectRetryIn(BaseModel):

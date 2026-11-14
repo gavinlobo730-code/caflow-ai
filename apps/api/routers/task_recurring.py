@@ -9,6 +9,7 @@ from core.authz import (
 from repositories.assignment_rule_repository import assignment_rule_repo
 from core import db_provider
 from services import named_row_ownership
+from models.iso_date import IsoDate, PatchIsoDate
 
 router = APIRouter(prefix="/api/task-recurring", tags=["task-recurring"])
 
@@ -29,7 +30,7 @@ class RecurringCreate(BaseModel):
     description: Optional[str] = None
     priority: str = "medium"
     frequency: str  # daily, weekly, monthly, quarterly, annual
-    next_due_date: str  # YYYY-MM-DD
+    next_due_date: IsoDate  # YYYY-MM-DD
     is_active: bool = True
 
 
@@ -40,7 +41,7 @@ class RecurringUpdate(BaseModel):
     description: Optional[str] = None
     priority: Optional[str] = None
     frequency: Optional[str] = None
-    next_due_date: Optional[str] = None
+    next_due_date: PatchIsoDate = None
     is_active: Optional[bool] = None
 
 

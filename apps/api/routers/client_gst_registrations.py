@@ -30,6 +30,7 @@ from models.fy import FYLabel
 from domain.gst import hsn_digits, registrations as reg
 from services import client_gst_registration_service as svc
 from services import client_gst_turnover_service as turnover_svc
+from models.iso_date import IsoDate, OptionalIsoDate
 
 router = APIRouter(prefix="/api/client-gst-registrations",
                    tags=["client_gst_registrations"])
@@ -59,14 +60,14 @@ class RegistrationIn(BaseModel):
     address_line2: Optional[str] = None
     city: Optional[str] = None
     pincode: Optional[str] = None
-    effective_from: Optional[str] = None
-    effective_to: Optional[str] = None
+    effective_from: OptionalIsoDate = None
+    effective_to: OptionalIsoDate = None
     notes: Optional[str] = None
 
 
 class CloseRegistrationIn(BaseModel):
     client_id: str
-    effective_to: str
+    effective_to: IsoDate
 
 
 def _mock_enabled() -> bool:

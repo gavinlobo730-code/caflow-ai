@@ -103,7 +103,7 @@ from domain.income_tax.statutory_rates import (
     fy_rate_gap as income_tax_rate_gap,
 )
 from models.fy import FYLabel, OptionalFYLabel
-from models.iso_date import a_real_date
+from models.iso_date import IsoDate, OptionalIsoDate, a_real_date
 from services.compliance_obligation_service import fy_months
 from core.ist_clock import ist_today
 from domain.money_sentence import rupee_text, rupee_whole_text
@@ -7998,7 +7998,7 @@ class SettlementIn(BaseModel):
     notice, and what they still owe.
     """
     client_id: str
-    leaving_date: str                      # ISO
+    leaving_date: IsoDate                      # ISO
     on_death_or_disablement: bool = False
     on_retirement: bool = True             # decides §10(10AA) entirely
     is_government_employee: bool = False
@@ -8204,7 +8204,7 @@ class SettlementRecordIn(SettlementIn):
     new_status: str = "resigned"
     # Set when the money actually left, so the ledger date is the payment date
     # rather than the day someone happened to press the button.
-    payment_date: Optional[str] = None
+    payment_date: OptionalIsoDate = None
 
 
 @router.post("/employees/{employee_id}/settlement/record", dependencies=_NEEDS_PAYROLL_READ)
@@ -8712,7 +8712,7 @@ class SalaryRevisionIn(BaseModel):
     were entered.
     """
     client_id: str
-    effective_from: str                    # ISO date
+    effective_from: IsoDate                    # ISO date
     basic_paise: int = 0
     hra_percent: float = 0
     da_percent: float = 0
@@ -8816,7 +8816,7 @@ class EmployeeLoanIn(BaseModel):
     # is a perquisite. Zero means interest-free.
     interest_rate_bps: int = 0
     purpose: str = ""
-    started_on: Optional[str] = None
+    started_on: OptionalIsoDate = None
 
 
 @router.post("/employees/{employee_id}/loans")
@@ -8950,7 +8950,7 @@ class BonusDisqualificationIn(BaseModel):
     employee_id: str
     accounting_year: FYLabel
     ground: str
-    dismissed_on: str
+    dismissed_on: IsoDate
     notes: Optional[str] = None
 
     @field_validator("ground")

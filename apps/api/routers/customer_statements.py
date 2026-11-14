@@ -24,6 +24,7 @@ from services.audit_service import log_event
 from services.email_service import GENERIC_SEND_FAILURE_MESSAGE
 from core import db_provider
 from core.observability import capture_soft_failure
+from models.iso_date import IsoDate
 
 _logger = logging.getLogger("caflow.customer_statements")
 
@@ -39,8 +40,8 @@ DELIVERY_LIST_LIMIT = 50
 class StatementEmailIn(BaseModel):
     client_id: str
     customer_id: str
-    start_date: str
-    end_date: str
+    start_date: IsoDate
+    end_date: IsoDate
     to_email: Optional[str] = None
 
 

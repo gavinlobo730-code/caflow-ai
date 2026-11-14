@@ -20,7 +20,8 @@ THE RULE, NOT A SPELLING OF IT
     does nothing counts as judging; this is a ratchet against the commonest spelling of the defect and not a proof that no request model takes a bad date.
 
     A RENAME OR A MOVE of a still-bare field replaces its line (delete the old one, add the new); every other addition is a violation.
-    A field that is bare ON PURPOSE stays on the list with its reason where the field is declared: `NearDuplicateProbeIn.bill_date` is a read-only advisory probe that never refuses.
+    A field that is bare ON PURPOSE stays on the list with its reason where the field is declared: `NearDuplicateProbeIn.bill_date` is a read-only advisory probe that never refuses,
+    and since 14-11-2026 every line left is one of those (a door that judges the date by its own rule, in its own sentence, or reads it as a spreadsheet cell).
 """
 from __future__ import annotations
 
@@ -121,7 +122,7 @@ def test_the_scan_sees_what_it_is_for():
     bare, typed = scan()
     # Vacuity floors on what does not shrink with the work: the typed fields only grow, and bare + typed together are the date fields the scan sees at all
     # (a field moves from one to the other as the list is narrowed, so the sum holds while either floor alone would be wrong).
-    assert len(typed) >= 20, f"only {len(typed)} fields are annotated with a date type"
+    assert len(typed) >= 130, f"only {len(typed)} fields are annotated with a date type"
     assert "models/invoices.py::ReceiptIn.receipt_date" in typed and "models/invoices.py::PurchasePaymentIn.payment_date" in typed
     assert len(bare) + len(typed) >= 120, f"the scan found only {len(bare) + len(typed)} date fields; it has stopped reading what it reads"
     # The aliased import is read: routers/inventory.py writes `from pydantic import BaseModel as _BaseModel`.

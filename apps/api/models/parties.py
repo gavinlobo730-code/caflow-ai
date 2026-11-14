@@ -17,7 +17,7 @@ from domain.tds.residency import (NON_RESIDENT, RESIDENTIAL_STATUSES,
 from domain.tds.section_195_rates import (
     ALL_NATURES, NATURE_BUSINESS_PROFITS_NO_PE)
 from domain.tds.section_rates import threshold_class_problem
-from models.iso_date import a_day_that_has_happened
+from models.iso_date import OptionalIsoDate, PatchIsoDate, a_day_that_has_happened
 
 
 def _no_pe_declaration_day(v: Optional[str], *, a_blank_is_no_date: bool) -> Optional[str]:
@@ -245,7 +245,7 @@ class CustomerIn(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     opening_balance_paise: int = 0
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: OptionalIsoDate = None
     # Must match the customers.credit_days DB column default (migration 049) —
     # model_dump() always includes this field (Pydantic has no way to
     # distinguish "caller omitted it" from "caller sent the default"), so any
@@ -333,7 +333,7 @@ class CustomerUpdateIn(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     opening_balance_paise: Optional[int] = None
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: PatchIsoDate = None
     credit_days: Optional[int] = None
     credit_limit_paise: Optional[int] = None   # see CustomerIn
     is_active: Optional[bool] = None
@@ -429,7 +429,7 @@ class VendorIn(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     opening_balance_paise: int = 0
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: OptionalIsoDate = None
     # Optional — genuinely unset ("no payment terms confirmed for this
     # vendor yet") is a different fact from 0 ("Due on Receipt", a real
     # choice a CA can make). BUG FOUND LIVE (migration 202): this used to
@@ -575,7 +575,7 @@ class VendorUpdateIn(BaseModel):
     state: Optional[str] = None
     pincode: Optional[str] = None
     opening_balance_paise: Optional[int] = None
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: PatchIsoDate = None
     credit_days: Optional[int] = None
     credit_limit_paise: Optional[int] = None
     tds_applicable: Optional[bool] = None

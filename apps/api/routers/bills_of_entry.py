@@ -27,6 +27,7 @@ from domain.gst import bill_of_entry as boe
 from services import bill_of_entry_service as svc
 from services import landed_cost_service
 from services import named_row_ownership
+from models.iso_date import IsoDate, PatchIsoDate
 
 router = APIRouter(prefix="/api/bills-of-entry", tags=["bills_of_entry"])
 
@@ -41,7 +42,7 @@ class BillOfEntryIn(BaseModel):
     """
     client_id: str
     be_number: str
-    be_date: str
+    be_date: IsoDate
     port_code: Optional[str] = None
     vendor_id: Optional[str] = None
     purchase_bill_id: Optional[str] = None
@@ -77,7 +78,7 @@ class BillOfEntryIn(BaseModel):
 class BillOfEntryUpdateIn(BaseModel):
     """Every field optional — a PATCH leaves what it omits alone."""
     be_number: Optional[str] = None
-    be_date: Optional[str] = None
+    be_date: PatchIsoDate = None
     port_code: Optional[str] = None
     vendor_id: Optional[str] = None
     purchase_bill_id: Optional[str] = None

@@ -6,6 +6,7 @@ from core.permissions import rbac
 from core.authz import assert_client_access
 from domain.practice import task_estimate
 from repositories.task_template_repository import task_template_repo
+from models.iso_date import OptionalIsoDate
 
 router = APIRouter(prefix="/api/task-templates", tags=["task-templates"])
 
@@ -31,7 +32,7 @@ class TemplateUpdate(BaseModel):
 class InstantiateRequest(BaseModel):
     client_id: str
     assignee_id: Optional[str] = None
-    due_date: Optional[str] = None
+    due_date: OptionalIsoDate = None
     title_override: Optional[str] = None
 
 

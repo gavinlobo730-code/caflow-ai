@@ -19,6 +19,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from domain.gst import uqc as _uqc
 from domain.gst.goods_or_services import catalogue_kind
 from typing import Optional
+from models.iso_date import OptionalIsoDate, PatchIsoDate
 
 
 class ServiceCatalogueIn(BaseModel):
@@ -52,7 +53,7 @@ class ServiceCatalogueIn(BaseModel):
     # financial-year start (matching QuickBooks Online / Zoho Books, and the
     # platform's own opening_balance_service.py convention for AR/AP/bank
     # opening balances) rather than silently using today's date.
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: OptionalIsoDate = None
 
     @field_validator("name")
     @classmethod
@@ -224,7 +225,7 @@ class ServiceCatalogueUpdateIn(BaseModel):
     is_active: Optional[bool] = None
     opening_qty_units: Optional[float] = None
     opening_cost_paise: Optional[int] = None
-    opening_balance_date: Optional[str] = None
+    opening_balance_date: PatchIsoDate = None
 
     @field_validator("name")
     @classmethod

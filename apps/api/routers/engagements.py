@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from models.fy import OptionalFYLabel
 from core import db_provider
 from services import named_row_ownership
+from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -73,14 +74,14 @@ class EngagementCreate(BaseModel):
     service_type: str
     fee_paise: int = Field(gt=0)
     billing_cycle: str
-    start_date: str
+    start_date: IsoDate
     status: str = "Active"
     notes: Optional[str] = None
     # Phase 4.4 (Module A) — assignment chain + deadline (all optional, additive)
     assigned_to: Optional[str] = None
     reviewer_id: Optional[str] = None
     partner_id: Optional[str] = None
-    due_date: Optional[str] = None
+    due_date: OptionalIsoDate = None
 
 
 class EngagementUpdate(BaseModel):
@@ -88,14 +89,14 @@ class EngagementUpdate(BaseModel):
     service_type: Optional[str] = None
     fee_paise: Optional[int] = None
     billing_cycle: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    start_date: PatchIsoDate = None
+    end_date: PatchIsoDate = None
     status: Optional[str] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None
     reviewer_id: Optional[str] = None
     partner_id: Optional[str] = None
-    due_date: Optional[str] = None
+    due_date: PatchIsoDate = None
 
 
 class EngagementTransition(BaseModel):

@@ -35,6 +35,7 @@ from services import ageing_schedule_service, ratio_analysis_service, budget_ser
 from models.fy import FYLabel, OptionalFYLabel
 from core.ist_clock import ist_fy_label
 from core import db_provider
+from models.iso_date import OptionalIsoDate
 
 
 def _reporting_service(current_user: Optional[dict] = None) -> ReportingService:
@@ -434,7 +435,7 @@ _prod_db = db_provider.service_db_or_none
 
 class OpeningBalancePostIn(BaseModel):
     client_id: str
-    opening_date: Optional[str] = None  # defaults to the client's FY start
+    opening_date: OptionalIsoDate = None  # defaults to the client's FY start
 
 
 @router.post("/opening-balances")
@@ -482,7 +483,7 @@ class TrialBalanceRowIn(BaseModel):
 class TrialBalanceImportIn(BaseModel):
     client_id: str
     rows: list[TrialBalanceRowIn]
-    opening_date: Optional[str] = None   # defaults to the client's FY start
+    opening_date: OptionalIsoDate = None   # defaults to the client's FY start
     preview: bool = False                # validate only; post nothing
 
 
@@ -553,6 +554,7 @@ class VoucherLegIn(BaseModel):
     number the person saw in the preview.
     """
     row: int
+    #: a spreadsheet cell as typed, read by the server's rule row by row (`domain/accounting/voucher_import`) so one bad row is refused BY NUMBER and not the batch (POST-A-380: bare on purpose)
     voucher_no: str = ""
     date: str = ""
     voucher_type: str = ""

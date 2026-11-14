@@ -331,7 +331,7 @@ class DeliveryChallanIn(BaseModel):
     customer_id: Optional[str] = None
     vendor_id: Optional[str] = None
     document_no: str
-    document_date: str
+    document_date: IsoDate
     reason: str
     goods_kind: Optional[str] = None
     extended_to: Optional[str] = None

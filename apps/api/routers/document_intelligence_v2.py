@@ -92,7 +92,9 @@ class CorrectNoticeReadingRequest(BaseModel):
     authority: Optional[str] = Field(None, max_length=200)
     notice_type: Optional[str] = Field(None, max_length=80)
     reference_no: Optional[str] = Field(None, max_length=100)
+    #: judged by `extraction_schemas.correct_notice`, the rule the model's reading was checked by; an empty string clears a date the notice states none (POST-A-380: bare on purpose)
     issue_date: Optional[str] = Field(None, max_length=40)
+    #: judged by `extraction_schemas.correct_notice`, as `issue_date` above (POST-A-380: bare on purpose)
     response_due_date: Optional[str] = Field(None, max_length=40)
     description: Optional[str] = Field(None, max_length=1000)
 

@@ -24,6 +24,7 @@ from services import portal_notice_service  # practice_management-02: tell both 
 from core import db_provider
 from core.db_paging import fetch_all
 from core.db_provider import privileged_for
+from models.iso_date import OptionalIsoDate
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
@@ -45,7 +46,7 @@ class CreateDocRequestBody(BaseModel):
     client_id: str
     title: str
     description: Optional[str] = None
-    due_date: Optional[str] = None
+    due_date: OptionalIsoDate = None
     is_urgent: bool = False
 
 

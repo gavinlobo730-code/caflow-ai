@@ -47,6 +47,7 @@ from services.audit_service import log_event
 from services.numbering import next_sequence
 from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
+from models.iso_date import IsoDate
 
 router = APIRouter(prefix="/api/fixed-assets", tags=["fixed_assets"])
 
@@ -754,7 +755,9 @@ class OpeningAssetRowIn(BaseModel):
     row: int
     asset_code: Optional[str] = None
     asset_name: Optional[str] = None
+    #: a spreadsheet cell as typed, read by `domain/fixed_assets/opening_register` row by row so a bad date is that row's error (POST-A-380: bare on purpose)
     asset_category: Optional[str] = None
+    #: a spreadsheet cell as typed, as `purchase_date` above (POST-A-380: bare on purpose)
     purchase_date: Optional[str] = None
     put_to_use_date: Optional[str] = None
     cost_paise: Optional[int] = None
@@ -773,7 +776,8 @@ class OpeningRegisterIn(BaseModel):
     #: REQUIRED, no default: the date every accumulated depreciation in the file is
     #: stated as at. A default of "last 31 March" would be a guess about a fact
     #: only the file's author holds, and it decides which month the next
-    #: depreciation run starts at.
+    #: depreciation run starts at. Judged by `opening_register.position_problem`, which reads it as a spreadsheet cell (day first) and words
+    #: its own refusals, a blank included (POST-A-380: bare on purpose).
     as_at: str
     rows: list[OpeningAssetRowIn]
     #: Judge every row and write nothing.
@@ -2509,7 +2513,7 @@ class AmortisationReclassIn(BaseModel):
     client_id: str
     #: REQUIRED, no default (the opening-register import's rule): the date the reclassification is AS AT decides which balance sheets
     #: change, and a default of "today" would silently leave the year being filed for unchanged.
-    as_at: str
+    as_at: IsoDate
     asset_ids: list[str]
     #: The total the Partner saw. A register that moved since is answered 409, not posted at a different figure.
     expected_total_paise: int

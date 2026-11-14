@@ -156,6 +156,7 @@ class UpdateFilingStatusRequest(BaseModel):
     status: str
     ca_approved: bool = False
     srn: Optional[str] = None
+    #: judged by `_judged_filing_date` (`clean_filed_date` and the year-end floor), which answers a sentence that ends "Nothing was changed." (POST-A-380: bare on purpose)
     filing_date: Optional[str] = None
     acknowledgement_url: Optional[str] = None
 

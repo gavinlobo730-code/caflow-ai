@@ -19,6 +19,7 @@ from core.permissions import rbac
 from models.common import api_response
 from domain.gst import rcm_documents as rd
 from services import rcm_document_service as svc
+from models.iso_date import OptionalIsoDate
 
 router = APIRouter(prefix="/api/rcm-documents", tags=["rcm_documents"])
 
@@ -36,7 +37,7 @@ class IssueRcmDocumentIn(BaseModel):
     purchase_bill_id: Optional[str] = None
     purchase_payment_id: Optional[str] = None
     document_no: Optional[str] = None
-    document_date: Optional[str] = None
+    document_date: OptionalIsoDate = None
     notes: Optional[str] = None
 
     @field_validator("kind")

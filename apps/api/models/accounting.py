@@ -9,7 +9,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from enum import Enum
 from domain.money_sentence import rupee_text
-from models.iso_date import IsoDate
+from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
 
 
 def _posting_date(v: Optional[str]) -> Optional[str]:
@@ -419,7 +419,7 @@ class FixedAssetIn(BaseModel):
     #: Optional: left unset, the generated series still applies.
     asset_code: Optional[str] = None
     asset_category: str = "Other"
-    purchase_date: str  # YYYY-MM-DD
+    purchase_date: IsoDate  # YYYY-MM-DD
     purchase_cost_paise: int
     salvage_value_paise: int = 0
     useful_life_years: Optional[int] = None
@@ -437,7 +437,7 @@ class FixedAssetIn(BaseModel):
     # in June belongs to the next previous year entirely. Both default to None,
     # which the §32 computation reports as a named gap (migration 357).
     it_block_key: Optional[str] = None
-    put_to_use_date: Optional[str] = None    # YYYY-MM-DD
+    put_to_use_date: OptionalIsoDate = None    # YYYY-MM-DD
 
     # ── FA-07: how it was acquired, and from whom ───────────────────────────
     # 'paid' | 'credit' | 'from_bill'. Decides the CREDIT leg — see
@@ -648,11 +648,11 @@ class FixedAssetUpdateIn(BaseModel):
     location: Optional[str] = None
     notes: Optional[str] = None
     it_block_key: Optional[str] = None
-    put_to_use_date: Optional[str] = None
+    put_to_use_date: OptionalIsoDate = None
 
     purchase_cost_paise: Optional[int] = None
     asset_category: Optional[str] = None
-    purchase_date: Optional[str] = None
+    purchase_date: PatchIsoDate = None
     acquisition_mode: Optional[str] = None
     vendor_id: Optional[str] = None
     purchase_bill_id: Optional[str] = None
@@ -724,7 +724,7 @@ class FixedAssetUpdateIn(BaseModel):
 class DisposalIn(BaseModel):
     disposal_type: str = "Sale"  # Sale | Scrapped | Written Off
     sale_proceeds_paise: int = 0
-    disposal_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
+    disposal_date: OptionalIsoDate = None  # YYYY-MM-DD; defaults to today
     notes: Optional[str] = None
     # ── the GST treatment (FA-08b, migration 383) ────────────────────────────
     # A sale of a capital asset is a SUPPLY, and CGST Act s.18(6) charges the

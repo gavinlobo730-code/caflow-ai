@@ -148,6 +148,7 @@ class ChapterVIAInput(BaseModel):
     #: §80EE and §80EEA are shut windows keyed on the SANCTION date, which fixes
     #: the section for the life of the loan. Their limits differ by ₹1,00,000,
     #: so an absent date allows NOTHING rather than one being assumed.
+    #: an unreadable date is read as not given and allows NOTHING (`_chapter_vi_a_claims`), the direction that cannot over-deduct (POST-A-380: bare on purpose)
     housing_loan_sanctioned_on: Optional[str] = None
     has_disabled_dependant: bool = False
     dependant_disability_is_severe: bool = False

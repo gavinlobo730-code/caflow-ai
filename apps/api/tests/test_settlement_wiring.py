@@ -182,11 +182,11 @@ def test_record_settlement_refuses_a_status_that_is_not_a_departure():
 
 
 def test_record_settlement_refuses_a_malformed_leaving_date():
-    from fastapi import HTTPException
-    body = pr.SettlementRecordIn(client_id=CLIENT, leaving_date="last Tuesday")
-    with pytest.raises(HTTPException) as e:
-        pr.record_settlement(EMPLOYEE, body, USER)
-    assert e.value.status_code == 422
+    # The request model refuses it now (POST-A-380): over HTTP the same 422, naming the field, and the route is never reached.
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError) as e:
+        pr.SettlementRecordIn(client_id=CLIENT, leaving_date="last Tuesday")
+    assert "leaving_date must be a date written YYYY-MM-DD" in str(e.value)
 
 
 def test_preview_and_record_compose_through_the_same_path():

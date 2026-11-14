@@ -95,12 +95,11 @@ def test_add_salary_revision_is_callable():
 
 
 def test_add_salary_revision_refuses_a_malformed_date():
-    from fastapi import HTTPException
-    body = pr.SalaryRevisionIn(client_id=CLIENT, effective_from="next October",
-                            basic_paise=60_000 * 100)
-    with pytest.raises(HTTPException) as e:
-        pr.add_salary_revision(EMPLOYEE, body, USER)
-    assert e.value.status_code == 422
+    # The request model refuses it now (POST-A-380): over HTTP the same 422, naming the field, and the route is never reached.
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError) as e:
+        pr.SalaryRevisionIn(client_id=CLIENT, effective_from="next October", basic_paise=60_000 * 100)
+    assert "effective_from must be a date written YYYY-MM-DD" in str(e.value)
 
 
 def test_list_salary_revisions_is_callable():

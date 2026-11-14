@@ -24,6 +24,7 @@ from services import collections_service
 from services import fee_billing_service
 from services.audit_service import log_event
 from repositories.invoice_repository import invoice_repo
+from models.iso_date import OptionalIsoDate, PatchIsoDate
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -53,9 +54,9 @@ class BillingScheduleIn(BaseModel):
     amount_paise: int                   # integer paise
     gst_rate: float = 18.0              # percentage rate
     service_id: str                     # -> service_catalogue; mandatory (migration 206)
-    next_run_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
+    next_run_date: OptionalIsoDate = None  # YYYY-MM-DD; defaults to today
     description: Optional[str] = None
-    due_date: Optional[str] = None
+    due_date: OptionalIsoDate = None
     is_active: bool = True
 
     @field_validator("service_id")
@@ -128,7 +129,7 @@ class BillingScheduleUpdateIn(BaseModel):
     amount_paise: Optional[int] = None
     gst_rate: Optional[float] = None
     service_id: Optional[str] = None
-    next_run_date: Optional[str] = None
+    next_run_date: PatchIsoDate = None
     is_active: Optional[bool] = None
     # No `description` / `due_date`. `billing_schedules` has neither column
     # (migration 073) — `BillingScheduleIn` accepts them and create_schedule
@@ -417,7 +418,7 @@ def set_staff_billable_rate(user_id: str, body: StaffBillableRateIn,
 # migrating it onto the other engine (a bigger, separate product decision).
 
 class FeeReceiptIn(BaseModel):
-    receipt_date: Optional[str] = None  # YYYY-MM-DD; defaults to today
+    receipt_date: OptionalIsoDate = None  # YYYY-MM-DD; defaults to today
     amount_paise: int
     payment_mode: str = "NEFT"
     reference_no: Optional[str] = None
