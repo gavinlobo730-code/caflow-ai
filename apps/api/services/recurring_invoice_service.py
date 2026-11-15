@@ -185,7 +185,7 @@ def create_template(firm_id: str, data: dict, created_by: Optional[str], db=None
     for ln in lines:
         ln["template_id"] = row["id"]
     if lines:
-        db.table("recurring_invoice_template_lines").insert(lines).execute()
+        privileged_for(db).table("recurring_invoice_template_lines").insert(lines).execute()
     row["lines"] = lines
     return row
 
@@ -248,11 +248,11 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
     _assert_edited_lines_are_the_clients(db, firm_id, existing, data)
     privileged_for(db).table("recurring_invoice_templates").update(fields).eq("id", template_id).eq("firm_id", firm_id).execute()
     if new_lines is not None:
-        db.table("recurring_invoice_template_lines").delete().eq("template_id", template_id).execute()
+        privileged_for(db).table("recurring_invoice_template_lines").delete().eq("template_id", template_id).execute()
         for ln in new_lines:
             ln["template_id"] = template_id
         if new_lines:
-            db.table("recurring_invoice_template_lines").insert(new_lines).execute()
+            privileged_for(db).table("recurring_invoice_template_lines").insert(new_lines).execute()
     return get_template(firm_id, template_id, db=db)
 
 
@@ -400,7 +400,7 @@ def _record_run(firm_id: str, template_id: str, occurrence_iso: str, invoice_id:
         return
     db = db or _db()
     try:
-        db.table("recurring_invoice_runs").upsert(rec, on_conflict="template_id,occurrence_date").execute()
+        privileged_for(db).table("recurring_invoice_runs").upsert(rec, on_conflict="template_id,occurrence_date").execute()
     except Exception as e:  # pragma: no cover - history is best-effort
         _logger.warning("recurring run-log failed (%s/%s): %s", template_id, occurrence_iso, e)
 
