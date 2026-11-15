@@ -151,7 +151,10 @@ def test_the_policies_grants_and_unique_key_are_what_the_migrations_before_made_
     policies, grants = _rows(dsn, _POLICIES), _rows(dsn, _GRANTS)
     assert {"firm_income_tax_asset_blocks", "income_tax_asset_blocks_role_insert", "income_tax_asset_blocks_role_update",
             "income_tax_asset_blocks_role_delete"} <= {r[0] for r in policies}
-    assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= {r[1] for r in grants if r[0] == "authenticated"}
+    # the signed-in role reads the blocks; since migration 596 (POST-A-008, the income-tax tranche) the API writes them with its
+    # privileged client and a signed-in session holds no write
+    assert {r[1] for r in grants if r[0] == "authenticated"} & {"SELECT", "INSERT", "UPDATE", "DELETE"} == {"SELECT"}
+    assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= {r[1] for r in grants if r[0] == "service_role"}
     assert _psql_file(dsn, MIGRATION).returncode == 0
     assert (_rows(dsn, _POLICIES), _rows(dsn, _GRANTS)) == (policies, grants)
     assert _psql_file(dsn, ROLLBACK).returncode == 0

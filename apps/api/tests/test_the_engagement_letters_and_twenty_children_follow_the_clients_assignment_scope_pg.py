@@ -44,6 +44,7 @@ from pathlib import Path
 import pytest
 
 from tests._signed_in_document_access import give_the_signed_in_document_access_back
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -354,6 +355,10 @@ def seeded(pg_template):
         # Migration 551 (POST-A-339) is the FIRST lock on `document_extractions` (no signed-in privilege at all); this module
         # measures the SECOND (the parent scope in the policy), so the privilege it took is given back in this throwaway database.
         give_the_signed_in_document_access_back(d)
+        # POST-A-008's tranche migrations (596 on) take the signed-in write away from the tables of this module whose writers moved to
+        # the API's privileged client, the FIRST lock in the same sense; the write proof below measures the SECOND, so the write is
+        # handed back on whichever of the writable tables the closed list names (READ_ONLY's nine were never granted one, and stay so).
+        hand_back(d, WRITABLE)
         yield name, w.ids
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')

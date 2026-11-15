@@ -45,6 +45,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -316,6 +317,10 @@ def dsn(pg_template):
             for client, tag in clients:
                 done = _psql(d, spec["seed"](client, tag))
                 assert done.returncode == 0, f"seeding {table} for {tag}: {done.stderr}"
+        # POST-A-008's tranche migrations (596 on) take the signed-in write away from the tables of this module whose writers moved to
+        # the API's privileged client, the FIRST lock; this module measures the SECOND (the assignment scope and the internal-practice
+        # guard) by writing as a signed-in member, so the write is handed back on whichever of its tables the closed list names.
+        hand_back(d, list(SPECS))
         yield d
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
