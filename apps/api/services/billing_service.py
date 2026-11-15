@@ -629,7 +629,7 @@ def mark_time_entries_billed(firm_id: str, entry_ids: list[str], invoice_id: str
     db = _db()
     count = 0
     for eid in entry_ids:
-        db.table("time_entries").update({"billed_invoice_id": invoice_id}).eq("id", eid).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("time_entries").update({"billed_invoice_id": invoice_id}).eq("id", eid).eq("firm_id", firm_id).execute()
         count += 1
     return {"marked": count}
 

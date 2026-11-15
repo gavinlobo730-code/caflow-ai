@@ -2,6 +2,7 @@ from typing import Optional
 from datetime import date, datetime, timezone
 from repositories.base import BaseRepository
 from core import db_provider
+from core.db_provider import privileged_for
 from core.db_paging import fetch_all
 from core.ist_clock import ist_day_window
 from core.list_window import probe, split
@@ -100,28 +101,23 @@ class TimeTrackingRepository(BaseRepository[dict]):
         return result.data
 
     def create(self, data: dict) -> dict:
-        result = _get_db().table("time_entries").insert({
+        # Written with the privileged client (POST-A-008), naming the firm on every update and delete.
+        result = privileged_for(_get_db()).table("time_entries").insert({
             **data,
             "created_at": self.now_iso(),
             "updated_at": self.now_iso(),
         }).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict, firm_id: Optional[str] = None) -> Optional[dict]:
-        query = _get_db().table("time_entries").update({
+    def update(self, id: str, data: dict, *, firm_id: str) -> Optional[dict]:
+        result = privileged_for(_get_db()).table("time_entries").update({
             **data,
             "updated_at": self.now_iso(),
-        }).eq("id", id)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        result = query.execute()
+        }).eq("id", id).eq("firm_id", firm_id).execute()
         return result.data[0] if result.data else None
 
-    def delete(self, id: str, firm_id: Optional[str] = None) -> bool:
-        query = _get_db().table("time_entries").delete().eq("id", id)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        result = query.execute()
+    def delete(self, id: str, *, firm_id: str) -> bool:
+        result = privileged_for(_get_db()).table("time_entries").delete().eq("id", id).eq("firm_id", firm_id).execute()
         return len(result.data) > 0
 
     def get_summary(self, firm_id: str, user_id: str, date_from: date, date_to: date) -> dict:

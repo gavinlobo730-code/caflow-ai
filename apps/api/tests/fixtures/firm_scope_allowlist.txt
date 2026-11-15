@@ -62,7 +62,6 @@ repositories/invoice_repository.py | InvoiceRepository.find_by_id | fee_invoices
 repositories/notifications_repository.py | NotificationsRepository.create | notifications | insert | 1 | repository-contract
 repositories/reminders_repository.py | RemindersRepository.create | reminders | insert | 1 | repository-contract
 repositories/reminders_repository.py | RemindersRepository.find_by_id | reminders | read | 1 | repository-contract
-repositories/reminders_repository.py | RemindersRepository.update | reminders | update | 1 | repository-contract
 repositories/task_extras_repository.py | TaskExtrasRepository.find_events_by_type | task_timeline_events | read | 1 | repository-contract
 repositories/task_extras_repository.py | TaskExtrasRepository.get_dependencies | tasks | read | 1 | repository-contract
 repositories/task_extras_repository.py | TaskExtrasRepository.get_tags | task_tags | read | 1 | repository-contract
