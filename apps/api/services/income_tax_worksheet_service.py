@@ -33,6 +33,7 @@ from domain.income_tax import house_property as hp
 from domain.income_tax import schedule_s as ss
 from models.income_tax_worksheets import PAYLOADS
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.income_tax_worksheets")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -142,7 +143,7 @@ def _upsert(*, firm_id: str, client_id: str, fy: str, kind: str,
         }
         _MOCK_ROWS[(firm_id, client_id, fy, kind)] = saved
         return dict(saved)
-    res = (_supabase().table("income_tax_worksheets")
+    res = (privileged_for(_supabase()).table("income_tax_worksheets")
            .upsert({
                "firm_id": firm_id,
                "client_id": client_id,

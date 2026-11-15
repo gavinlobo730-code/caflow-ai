@@ -31,6 +31,7 @@ from uuid import uuid4
 
 from domain.income_tax import return_type as RT
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.itr.workflow")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -504,7 +505,7 @@ def save_itr_version(
         "json_payload": json_payload,
         "created_by": created_by,
     }
-    res = sb.table("itr_filing_versions").insert(row).execute()
+    res = privileged_for(sb).table("itr_filing_versions").insert(row).execute()
     return res.data[0] if res.data else row
 
 
