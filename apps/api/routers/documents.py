@@ -77,7 +77,8 @@ BUCKET = "Documents"
 #: referenced `team_members`, which holds no rows, so no upload ever succeeded.
 #: The audit log below is the opposite case and keeps the AUTH id: `audit_log.
 #: actor_id` has no foreign key and takes the auth id (CLAUDE.md, "the audit log
-#: names one kind of actor"). `deleted_by` is left as it was: it has no foreign key.
+#: names one kind of actor"). `deleted_by` has no foreign key and takes the INTERNAL id like the row's `uploaded_by` and `reviewed_by`
+#: (POST-A-377: it held no rows on 14-11-2026, so nothing stored is mixed by the change).
 
 #: What `documents.document_type` accepts — `documents_document_type_check`, from
 #: migration 001 and still in the production snapshot. It is the route's own
@@ -265,7 +266,7 @@ def delete_document(
     kept for audit purposes — no hard deletes on document records."""
     doc = _assert_document_scope(doc_id, current_user)
 
-    document_repo.soft_delete(doc_id, deleted_by=current_user.get("auth_user_id"), firm_id=current_user["firm_id"])
+    document_repo.soft_delete(doc_id, deleted_by=current_user.get("id"), firm_id=current_user["firm_id"])
 
     log_activity(
         action="document_deleted",

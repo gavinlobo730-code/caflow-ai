@@ -595,9 +595,11 @@ class BankPostingService:
 
         actor_id MUST be the internal public.users.id — it becomes
         journal_entries.created_by, which FKs to users(id), NOT the Supabase
-        auth id. actor_auth_id is the Supabase auth id and is used only for
-        audit_log attribution, where every other router writes the auth id;
-        it defaults to actor_id when the caller has nothing better.
+        auth id. actor_auth_id is the Supabase auth id and is used for the
+        audit_log and timeline rows, which take the auth id everywhere; where
+        a caller has none the row names nobody, and it NEVER falls back to
+        actor_id, which would put an internal id into a column that holds the
+        other kind (POST-A-361, POST-A-377).
 
         WHY THIS NO LONGER CREATES A DRAFT
             It used to write an unposted journal that a Partner had to approve
@@ -755,7 +757,7 @@ class BankPostingService:
             timeline_service.log(txn["client_id"], "accounting", "Bank Transaction Posted",
                                  f"Posted to ledger ({txn.get('category') or 'mapped'})", "success",
                                  firm_id=firm_id, entity_type="bank_transaction",
-                                 entity_id=txn_id, actor_id=actor_id)
+                                 entity_id=txn_id, actor_id=actor_auth_id)       # the timeline's actor is the sign-in id (POST-A-377)
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="bank_posting.timeline", firm_id=firm_id, txn_id=txn_id)
         return settled
@@ -979,7 +981,7 @@ class BankPostingService:
             timeline_service.log(client_id, "accounting", "Bank Transaction Undone",
                                  f"Posting reversed ({reversal_date}); back in the queue", "warning",
                                  firm_id=firm_id, entity_type="bank_transaction",
-                                 entity_id=txn_id, actor_id=actor_id)
+                                 entity_id=txn_id, actor_id=actor_auth_id)       # the timeline's actor is the sign-in id (POST-A-377)
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="bank_undo.timeline", firm_id=firm_id, txn_id=txn_id)
 

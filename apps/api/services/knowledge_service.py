@@ -344,7 +344,7 @@ def _emit_article_event(current_user: dict, art: dict, event_type: str, title: s
             timeline_service.log(art["client_id"], "ai", title, art.get("title", ""), "info",
                                  firm_id=current_user.get("firm_id", ""),
                                  entity_type="knowledge_article", entity_id=art.get("id"),
-                                 actor_id=current_user.get("id"))
+                                 actor_id=current_user.get("auth_user_id"))   # the timeline's actor is the sign-in id (POST-A-377)
         else:
             from services.audit_service import log_event
             log_event(current_user.get("firm_id", ""), "knowledge_article", str(art.get("id", "")),
@@ -360,6 +360,6 @@ def _emit_instruction_event(current_user: dict, row: dict, event_type: str, titl
         timeline_service.log(row["client_id"], "ai", title, row.get("title", ""), "info",
                              firm_id=current_user.get("firm_id", ""),
                              entity_type="client_instruction", entity_id=row.get("id"),
-                             actor_id=current_user.get("id"))
+                             actor_id=current_user.get("auth_user_id"))   # the timeline's actor is the sign-in id (POST-A-377)
     except Exception:  # pragma: no cover - non-fatal
         pass

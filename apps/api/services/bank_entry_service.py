@@ -718,7 +718,7 @@ class BankEntryService:
         applied = False
         try:
             if not E.coded_by_a_human(txn):
-                post_id, draft_gst, draft_inter = self._apply_draft(db, firm_id, txn, actor_id)
+                post_id, draft_gst, draft_inter = self._apply_draft(db, firm_id, txn, actor_id, actor_auth_id)
                 applied = True
                 # The draft's GST treatment unless the CA said otherwise from
                 # the detail — a person's choice outranks a rule's proposal.
@@ -811,7 +811,7 @@ class BankEntryService:
         except Exception as e:  # pragma: no cover - the refusal is still reported
             _logger.warning("could not restore bank line %s after a failed pass: %s", txn["id"], e)
 
-    def _apply_draft(self, db, firm_id, txn, actor_id) -> tuple[str, Optional[int], bool]:
+    def _apply_draft(self, db, firm_id, txn, actor_id, actor_auth_id=None) -> tuple[str, Optional[int], bool]:
         """Returns (the id to post, gst_rate_bps, is_interstate)."""
         source = txn.get("draft_source")
         txn_id = txn["id"]
@@ -840,7 +840,7 @@ class BankEntryService:
                     bank_payee_service.apply_rule_party(
                         db, firm_id, txn_id,
                         payee_type=txn.get("draft_payee_type"),
-                        payee_id=txn.get("draft_payee_id"), actor_id=actor_id)
+                        payee_id=txn.get("draft_payee_id"), actor_id=actor_auth_id)   # the party tag's only person is its audit row
                 except Exception as e:
                     from core.observability import capture_soft_failure
                     capture_soft_failure(e, operation="bank_entries.rule_party",
@@ -877,7 +877,7 @@ class BankEntryService:
                     status_code=422,
                     detail=f"{txn.get('draft_reason') or 'Needs a decision'} — settle it from the line.")
             bank_matching_service.match(db, firm_id, txn_id, txn.get("draft_entity_type"),
-                                        txn.get("draft_entity_id"), actor_id=actor_id)
+                                        txn.get("draft_entity_id"), actor_id=actor_id, actor_auth_id=actor_auth_id)
             return txn_id, None, False
         if source == E.SOURCE_TRANSFER:
             other = txn.get("draft_entity_id")
@@ -885,7 +885,7 @@ class BankEntryService:
                 raise HTTPException(status_code=422, detail="The transfer names no counterpart.")
             is_out = int(txn.get("credit_paise") or 0) == 0
             primary, counter = (txn_id, other) if is_out else (other, txn_id)
-            bank_transfer_service.pair(db, firm_id, primary, counter, actor_id=actor_id)
+            bank_transfer_service.pair(db, firm_id, primary, counter, actor_id=actor_id, actor_auth_id=actor_auth_id)
             return primary, None, False
         if source == E.SOURCE_CHALLAN:
             return self._apply_challan_draft(db, firm_id, txn)

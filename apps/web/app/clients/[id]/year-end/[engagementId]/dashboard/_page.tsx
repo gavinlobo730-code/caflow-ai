@@ -205,8 +205,11 @@ export default function YearEndDashboardPage() {
         // user's display name, never other actors'. Used below to label an
         // event as performed by name when the viewer is that actor; other
         // actors' events fall back to actor: null (matches team/page.tsx's
-        // documented workaround for the same RLS limit).
-        supabase.from("users").select("auth_user_id, full_name"),
+        // documented workaround for the same RLS limit). Keyed by `id`:
+        // `year_end_review_events.actor_id` is a key to users(id) (migration
+        // 315), so a lookup by the sign-in id never matched and every event's
+        // actor showed blank, the viewer's own included (POST-A-377).
+        supabase.from("users").select("id, full_name"),
       ]);
 
       if (engErr) throw new Error(engErr.message);
@@ -226,9 +229,9 @@ export default function YearEndDashboardPage() {
         actor_id: string | null;
         created_at: string;
       }[];
-      const selfNameByAuthId = new Map(
-        ((selfRows ?? []) as { auth_user_id: string; full_name: string | null }[]).map(
-          (r) => [r.auth_user_id, r.full_name]
+      const selfNameById = new Map(
+        ((selfRows ?? []) as { id: string; full_name: string | null }[]).map(
+          (r) => [r.id, r.full_name]
         )
       );
 
@@ -256,7 +259,7 @@ export default function YearEndDashboardPage() {
             description: e.comment
               ? `${describeEvent(e.event_type)} — ${e.comment}`
               : describeEvent(e.event_type),
-            actor: (e.actor_id && selfNameByAuthId.get(e.actor_id)) || null,
+            actor: (e.actor_id && selfNameById.get(e.actor_id)) || null,
             created_at: e.created_at,
           })
         ),
