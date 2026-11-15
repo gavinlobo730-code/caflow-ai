@@ -844,9 +844,11 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
     # EVERY LINE NAMES AN ITEM OF THIS CLIENT (POST-A-246). The posting paths look an item up under the firm AND the client, so
     # a line naming a sibling's item would otherwise issue, post revenue and GST, and move no stock. In a bulk import the
     # batch keeps the set it has already found, so it costs one read per distinct item and not one per invoice.
+    # And a line that bills an order line bills one of this client's, with that much left unbilled (POST-A-104): asked by the same call.
     assert_items_are_the_clients(
         None if _USE_MOCK else db, firm_id or "", client_id, lines_data,  # type: ignore[possibly-undefined]
-        known=None if bulk_cache is None else bulk_cache.setdefault("owned_items", {}).setdefault(client_id, set()))
+        known=None if bulk_cache is None else bulk_cache.setdefault("owned_items", {}).setdefault(client_id, set()),
+        customer_id=data.get("customer_id"))
 
     # RULE 46(b)'s CONSECUTIVE LIMB, SAID ONCE, AT THE MOMENT THE NUMBER IS
     # CHOSEN. A warning and not a refusal — `domain/gst/invoice_series.py`
@@ -1052,6 +1054,8 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "line_total_paise": taxable_paise + cgst_paise + sgst_paise + igst_paise + cess_paise,
             # Pure traceability (migration 184) — see InvoiceLineIn.service_catalogue_id.
             "service_catalogue_id": ln.get("service_catalogue_id"),
+            # The order line this line bills (POST-A-104, migration 589); checked above.
+            "sales_order_line_id": ln.get("sales_order_line_id"),
         })
 
     # The line totals above are in the document (txn) currency's minor units.
@@ -1328,6 +1332,7 @@ def _create_invoice_core(data: dict, current_user: dict, bulk_cache: Optional[di
             "line_total_paise":      ln["line_total_paise"],
             "service_catalogue_id":  ln["service_catalogue_id"],
             "is_service":            ln["is_service"],
+            "sales_order_line_id":   ln["sales_order_line_id"],
         })
     # Atomicity: PostgREST exposes no multi-statement transaction here, so if
     # the line insert fails we compensate by deleting the just-created header.
@@ -1889,7 +1894,10 @@ def update_invoice(
             # one. The GST math (_compute_line_gst) itself is unchanged.
             inv_resp = db.table("client_sales_invoices").select("*").eq("id", invoice_id).eq("firm_id", current_user.get("firm_id")).limit(1).execute()
             inv = inv_resp.data[0]
-            assert_items_are_the_clients(db, current_user.get("firm_id") or "", inv.get("client_id") or "", data["lines"])
+            # The order lines the edited lines bill are checked against what every OTHER invoice bills (POST-A-104): this draft's own
+            # lines are the ones being replaced.
+            assert_items_are_the_clients(db, current_user.get("firm_id") or "", inv.get("client_id") or "", data["lines"],
+                                         customer_id=data.get("customer_id") or inv.get("customer_id"), exclude_invoice_id=invoice_id)
             is_interstate = data.get("is_interstate", inv.get("is_interstate", False))
             # task #103: currency/exchange_rate can never change on edit (no such
             # fields on SalesInvoiceUpdateIn) — reconstruct the FROZEN DocumentCurrency
@@ -1983,6 +1991,9 @@ def update_invoice(
                     # would silently drop the link on save, wrongly making an
                     # in-use preset look deletable again.
                     "service_catalogue_id": ln.get("service_catalogue_id"),
+                    # Carried through the delete-then-reinsert for the service_catalogue_id reason above: a line re-sent without it
+                    # would silently stop billing its order line (POST-A-104).
+                    "sales_order_line_id": ln.get("sales_order_line_id"),
                 })
 
             # Replace the lines in ONE transaction that locks the header first and refuses if the invoice was issued meanwhile

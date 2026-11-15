@@ -173,6 +173,23 @@ def order_position(
         _db(), current_user.get("firm_id"), order_id))
 
 
+@router.get("/orders/{order_id}/invoice-seed")
+def order_invoice_seed(
+    order_id: str,
+    client_id: Annotated[str, Query()],
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """What a new invoice raised from this order starts with: every line still unbilled, at the unbilled quantity, naming the order
+    line it bills (POST-A-104). Writes nothing; the invoice editor opens with it and saves through the one create path, which refuses
+    billing more than was ordered. The permission is the one that create path asks (`accounting:write`), because the only use of the
+    answer is to raise an invoice: a member who cannot save one is refused here, before filling one in."""
+    assert_client_access(current_user, client_id)
+    if _mock():
+        raise HTTPException(status_code=503, detail="Raising an invoice from an order reads the order's lines, which needs the database.")
+    svc.row_of_client(_db(), "sales_orders", current_user.get("firm_id"), order_id, client_id, "sales order")
+    return api_response(True, svc.invoice_seed_from_order(_db(), current_user.get("firm_id"), order_id))
+
+
 @router.post("/orders")
 def create_order(
     payload: SalesOrderIn,

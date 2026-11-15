@@ -4256,6 +4256,35 @@ export interface OrderPosition {
   gaps: string[];
 }
 
+/** POST-A-104 — the server's answer to "raise an invoice from this order": the lines still unbilled, each naming the order line it
+ *  bills, and the sentences the CA should read first (what is not delivered, what is not carried). */
+export interface OrderInvoiceSeedLine {
+  description: string;
+  hsn_sac: string | null;
+  /** As the order's NUMERIC(10,3) holds it, written as text. */
+  quantity: string;
+  unit: string | null;
+  rate_paise: number;
+  gst_rate_bps: number | null;
+  is_service: boolean | null;
+  service_catalogue_id: string | null;
+  discount_percent_bps: number | null;
+  cess_rate_bps: number | null;
+  cess_specific_paise_per_unit: number | null;
+  sales_order_line_id: string;
+}
+
+export interface OrderInvoiceSeed {
+  order: { id: string; document_no: string | null };
+  seed: {
+    customer_id: string | null;
+    supply_state_code: string | null;
+    is_interstate: boolean;
+    lines: OrderInvoiceSeedLine[];
+  };
+  notes: string[];
+}
+
 /** PUR-25 — the purchase cycle before the bill. */
 export interface PurchaseCycleVocabulary {
   order_statuses: string[];
@@ -7967,6 +7996,11 @@ export const api = {
     orderPosition: (id: string, clientId: string) =>
       request<ApiResp<OrderPosition>>(
         `/api/sales-cycle/orders/${id}/position`
+        + `?client_id=${encodeURIComponent(clientId)}`),
+    /** What a new invoice raised from this order starts with (POST-A-104). Writes nothing. */
+    orderInvoiceSeed: (id: string, clientId: string) =>
+      request<ApiResp<OrderInvoiceSeed>>(
+        `/api/sales-cycle/orders/${id}/invoice-seed`
         + `?client_id=${encodeURIComponent(clientId)}`),
     createOrder: (body: Record<string, unknown>) =>
       request<ApiResp<SalesOrder>>("/api/sales-cycle/orders",

@@ -161,6 +161,9 @@ export interface InvoiceLine {
   unit: string;
   /** service_catalogue pick for this line — mandatory on every line (migration 206). */
   serviceCatalogueId?: string | null;
+  /** The sales-order line this line bills (POST-A-104). Carried, never shown as a box: set when the invoice was raised from an
+   *  order, and sent back on every save so a draft edit does not silently stop billing it. */
+  salesOrderLineId?: string | null;
   /**
    * A discount recorded in the invoice — CGST §15(3)(a) — as a PERCENTAGE, as
    * typed. Excluded from the value of supply, so the GST is charged on the net.
@@ -224,6 +227,8 @@ export interface ServerInvoiceLine {
   cess_rate_bps?: number | null;
   cess_specific_paise_per_unit?: number | null;
   cess_paise?: number | null;
+  /** The sales-order line this line bills, where the invoice was raised from an order (POST-A-104, migration 589). */
+  sales_order_line_id?: string | null;
 }
 
 /** Full invoice detail (header + lines + accounting + customer embed). */

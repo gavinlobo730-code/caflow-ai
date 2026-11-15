@@ -27,6 +27,9 @@ export interface InvoiceLineInput {
    * journal computation.
    */
   serviceCatalogueId?: string | null;
+  /** The sales-order line this line bills (POST-A-104, migration 589). Sales invoices only: the server checks it against the
+   *  client's orders and what is left unbilled. */
+  salesOrderLineId?: string | null;
   /**
    * A §15(3)(a) discount as a PERCENTAGE, as typed. Sales invoices only —
    * `SalesInvoiceLineIn` is the model that has it, and the credit/debit note
@@ -72,6 +75,8 @@ export interface InvoiceLinePayload {
   cess_rate_bps?: number;
   /** Compensation cess, quantity limb, in paise per unit of this line's UQC. */
   cess_specific_paise_per_unit?: number;
+  /** The sales-order line this line bills; omitted on a line that bills none (POST-A-104). */
+  sales_order_line_id?: string;
 }
 
 export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload {
@@ -85,6 +90,7 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
     gst_rate_percent: line.gst_rate,
     unit: line.unit?.trim() || undefined,
     service_catalogue_id: line.serviceCatalogueId ?? undefined,
+    ...(line.salesOrderLineId ? { sales_order_line_id: line.salesOrderLineId } : {}),
     // bpsFromPercentInput is the one parser (lib/money/rupeeInput.ts). It
     // REFUSES anything that is not a number rather than coercing it to 0 —
     // a discount silently read as zero is an invoice charging tax the customer

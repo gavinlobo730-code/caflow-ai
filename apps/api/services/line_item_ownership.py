@@ -34,8 +34,15 @@ def _item_id(line) -> Optional[str]:
 
 
 def assert_items_are_the_clients(db, firm_id: str, client_id: str, lines: Iterable,
-                                 known: Optional[set] = None) -> None:
+                                 known: Optional[set] = None, *, customer_id: Optional[str] = None,
+                                 exclude_invoice_id: Optional[str] = None) -> None:
     """Refuse (422) a document whose lines name an item that is not this firm's and this client's.
+
+    A sales invoice's lines may also name the ORDER LINE each bills (POST-A-104, migration 589), and that is asked here too, by the order
+    cycle's own rule (`sales_cycle_service.check_invoice_lines_against_orders`): the order line must be this client's, on an order that
+    is not cancelled and is `customer_id`'s, with that much still unbilled (every other live invoice counted, `exclude_invoice_id` left
+    out, so a draft's edit is checked against everything else). A document whose lines name no order line, which is every document but
+    a sales invoice raised from an order, asks nothing more.
 
     `lines` are the request's lines, as dicts or models. `db` is a client that can read `service_catalogue` (None in mock mode,
     which has no catalogue, and then nothing is asked). Names the offending lines by their 1-based position.
@@ -45,6 +52,7 @@ def assert_items_are_the_clients(db, firm_id: str, client_id: str, lines: Iterab
     Only ids that were FOUND are ever added, never a refused one."""
     if db is None:
         return
+    lines = list(lines)
     named = [(n, _item_id(line)) for n, line in enumerate(lines, 1)]
     owned: set[str] = set(known) if known is not None else set()
     # Compared in lower case (a uuid column answers in lower case and a request may not), asked as typed.
@@ -64,6 +72,16 @@ def assert_items_are_the_clients(db, firm_id: str, client_id: str, lines: Iterab
             detail=(f"{'Lines' if many else 'Line'} {', '.join(str(n) for n in refused)} "
                     f"{'name' if many else 'names'} a product or service that is not in this client's catalogue. "
                     "Pick one from this client's catalogue, or add it there first."))
+    billing = [{"sales_order_line_id": _field(line, "sales_order_line_id"), "quantity": _field(line, "quantity")} for line in lines]
+    if any(b["sales_order_line_id"] for b in billing):
+        from services import sales_cycle_service       # the order cycle's own rule, imported where it is asked
+        sales_cycle_service.check_invoice_lines_against_orders(
+            db, firm_id, client_id, customer_id, billing, exclude_invoice_id=exclude_invoice_id)
+
+
+def _field(line, name: str):
+    """A field of a request line, whether it arrived as a dict or as a model."""
+    return line.get(name) if isinstance(line, Mapping) else getattr(line, name, None)
 
 
 class ItemOwner(NamedTuple):
