@@ -20,6 +20,8 @@
 # 593 closes tds_deductions, tds_returns, tds_challans and tds_certificates (POST-A-443): the TDS register, returns, challans and certificates are written by the API's privileged client since the change that shipped before it.
 # 595 closes itc_reversal_register, gstr2b_uploads, gst_sync_jobs, gst_portal_snapshots, client_gst_turnover, hsn_sac_preferences and gst_challans (POST-A-008, the GST tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing writes gst_challans.
 # 596 closes ais_uploads, ais_records, ais_reconciliations, ais_computation_decisions, form_26as_records, income_tax_asset_blocks, income_tax_worksheets, itr_filing_versions, tax_deduction_claims, it_deductions and tax_notices (POST-A-008, the income-tax tranche): the API writes the first nine with its privileged client since the change that shipped before it, and nothing reads or writes the last two.
+# 597 closes schedule_iii_ratio_explanations, schedule_iii_ratio_inputs, schedule_iii_unbilled_reviews, account_budgets, cost_centres, year_end_checklist_items, year_end_checklists, year_end_reviews and notes_to_accounts (POST-A-008, the accounting tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
+account_budgets
 account_group_mappings
 account_period_balances
 activity_logs
@@ -74,6 +76,7 @@ client_sales_invoice_lines
 client_sales_invoices
 client_statutory_identity
 client_year_locks
+cost_centres
 credit_note_allocations
 credit_note_lines
 credit_notes
@@ -154,6 +157,7 @@ lead_contacts
 leads
 leave_balances
 login_events
+notes_to_accounts
 party_credit_balances
 party_credit_ledger
 pattern_anomalies
@@ -207,6 +211,9 @@ sales_order_lines
 sales_orders
 sales_quotation_lines
 sales_quotations
+schedule_iii_ratio_explanations
+schedule_iii_ratio_inputs
+schedule_iii_unbilled_reviews
 scheduler_claims
 scheduler_runs
 self_assessment_challans
@@ -241,4 +248,7 @@ workflow_templates
 workflow_triggers
 workflows
 xbrl_tag_mappings
+year_end_checklist_items
+year_end_checklists
 year_end_reports
+year_end_reviews
