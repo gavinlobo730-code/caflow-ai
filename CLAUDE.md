@@ -453,7 +453,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED AS HAVING RECORDED A NO-PE DECLARATION, AND THE SUPPLIER FORM SAYS WHO
 - A DEDUCTION TYPED ON THE TDS SCREEN MAY NAME THE SUPPLIER IT WAS PAID TO, AND IS THEN COUNTED IN THAT SUPPLIER'S YEAR WITH ITS BILLS AND ADVANCES
 
-### `docs/design-record/tenancy-and-security.md` (87 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (88 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -542,6 +542,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE IRN AND E-WAY BILL RECORDS AND THE SECTION 140A CHALLANS ARE WRITTEN BY THE API ONLY
 - A PERSON COLUMN WITH NO ROWS TAKES THE ID ITS CODE DECIDES, ITS WRITERS ARE FOLLOWED LIKE THE OTHERS', AND A NEW ONE IS ON NO LIST UNTIL
 - THE TDS REGISTER, THE TDS RETURNS, THE TDS CHALLANS AND THE TDS CERTIFICATES ARE WRITTEN BY THE API ONLY
+- EVERY TABLE A SIGNED-IN SESSION CAN REACH IS OBSERVED BY THE ROLE-BY-TABLE MATRIX OR NAMED ON A LIST THAT ONLY SHRINKS
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
 - MIGRATION 481 IS THE SCHEMA FOR BOTH WORKFLOW HALVES, AND NOTHING READS IT YET
