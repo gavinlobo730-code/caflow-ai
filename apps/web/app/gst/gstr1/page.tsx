@@ -29,6 +29,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Gstr1Findings, heldOutGaps } from "@/components/gst/Gstr1Findings";
 import { Gstr1Amendments } from "@/components/gst/Gstr1Amendments";
 import { IffPanel } from "@/components/gst/IffPanel";
+import { IrnReturnCheck } from "@/components/gst/IrnReturnCheck";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { RegistrationPicker, useRegistrationChoice } from "@/components/gst/RegistrationPicker";
 import { formatPaise } from "@/lib/services/formatting";
@@ -521,6 +522,9 @@ export default function GSTR1Page() {
                     isQuarter={result.period_window?.frequency === "quarterly"}
                     gstin={result.gstin}
                   />
+                  {/* The period's live IRN records against the invoices this return declares (POST-A-066), for the
+                      registration the return was built for. */}
+                  <IrnReturnCheck clientId={clientId} yearMonth={yearMonth} gstin={result.gstin} />
                 </div>
               )}
 

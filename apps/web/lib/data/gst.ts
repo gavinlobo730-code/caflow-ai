@@ -1177,6 +1177,42 @@ export async function approveGSTR3B(
 
 // ── GSTR-1 ─────────────────────────────────────────────────────────────────
 
+/** One live IRN record the period's GSTR-1 does not declare, or whose number or date is not its invoice's (POST-A-066). */
+export interface IrnReturnRow {
+  record_id: string;
+  irn: string | null;
+  sales_invoice_id: string | null;
+  record_number: string | null;
+  record_date: string | null;
+  linked?: boolean;
+  reason?: "invoice_deleted" | "invoice_cancelled" | "invoice_not_issued" | "carried_over" | "other_period"
+    | "declared_elsewhere" | "not_declared" | "no_invoice";
+  invoice_number?: string | null;
+  invoice_date?: string | null;
+  sentence: string;
+}
+
+/** The period's live IRN records against the GSTR-1 the books build for it (`GET /api/gst/gstr1/irn-check`). Every sentence and
+ *  every count is the server's. */
+export interface IrnReturnCheck {
+  period: string;
+  from: string;
+  to: string;
+  gstin: string;
+  live_irns_compared: number;
+  declared_invoices: number;
+  not_declared: IrnReturnRow[];
+  differs: IrnReturnRow[];
+  duplicates: { record_ids: string[]; invoice_number: string | null; sentence: string }[];
+  converse: string;
+  not_compared: string;
+}
+
+export async function checkGSTR1Irns(clientId: string, yearMonth: string, gstin?: string): Promise<IrnReturnCheck> {
+  const q = new URLSearchParams({ client_id: clientId, period: toPeriod(yearMonth), ...(gstin ? { gstin } : {}) });
+  return apiGet<IrnReturnCheck>(`/api/gst/gstr1/irn-check?${q.toString()}`);
+}
+
 /**
  * Build GSTR-1 for a client and period.
  * Classifies invoices, builds payload, stores result.
