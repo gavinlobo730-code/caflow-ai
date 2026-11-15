@@ -21,6 +21,7 @@
 # 595 closes itc_reversal_register, gstr2b_uploads, gst_sync_jobs, gst_portal_snapshots, client_gst_turnover, hsn_sac_preferences and gst_challans (POST-A-008, the GST tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing writes gst_challans.
 # 596 closes ais_uploads, ais_records, ais_reconciliations, ais_computation_decisions, form_26as_records, income_tax_asset_blocks, income_tax_worksheets, itr_filing_versions, tax_deduction_claims, it_deductions and tax_notices (POST-A-008, the income-tax tranche): the API writes the first nine with its privileged client since the change that shipped before it, and nothing reads or writes the last two.
 # 597 closes schedule_iii_ratio_explanations, schedule_iii_ratio_inputs, schedule_iii_unbilled_reviews, account_budgets, cost_centres, year_end_checklist_items, year_end_checklists, year_end_reviews and notes_to_accounts (POST-A-008, the accounting tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
+# 598 closes capital_work_in_progress, cwip_additions, godowns, inventory_batches and purchase_bill_landed_costs (POST-A-008, the stock tranche): the API writes all five with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -63,6 +64,7 @@ bonus_declarations
 bonus_disqualifications
 capital_gain_reinvestments
 capital_gains
+capital_work_in_progress
 client_documents
 client_gst_registrations
 client_gst_turnover
@@ -81,6 +83,7 @@ credit_note_allocations
 credit_note_lines
 credit_notes
 currencies
+cwip_additions
 debit_note_allocations
 debit_note_lines
 debit_notes
@@ -123,6 +126,7 @@ fixed_assets
 form_26as_records
 fx_adjustments
 fx_revaluations
+godowns
 goods_receipt_lines
 goods_receipt_notes
 gst_challans
@@ -141,6 +145,7 @@ hsn_master
 hsn_sac_preferences
 income_tax_asset_blocks
 income_tax_worksheets
+inventory_batches
 inventory_stock_ledger
 invoice_sequences
 invoice_settings
@@ -182,6 +187,7 @@ post_dated_cheques
 practice_email_log
 price_list_items
 price_lists
+purchase_bill_landed_costs
 purchase_bill_lines
 purchase_bills
 purchase_credit_note_allocations
