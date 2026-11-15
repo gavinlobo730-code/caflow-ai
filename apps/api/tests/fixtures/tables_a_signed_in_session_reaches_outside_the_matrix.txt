@@ -174,8 +174,8 @@ self_assessment_challans	read
 stock_count_lines	read
 stock_count_sessions	read
 suppliers	read
-tally_migration_items	write
-tally_migration_jobs	write
+tally_migration_items	read
+tally_migration_jobs	read
 task_dependencies	read
 task_escalations	read
 task_recurring_configs	read
