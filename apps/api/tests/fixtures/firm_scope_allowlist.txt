@@ -120,13 +120,10 @@ services/notification_service.py | NotificationService.notify_task_assigned | re
 services/notification_service.py | NotificationService.notify_task_reassigned | repo:client_repo.find_by_id | read | 1 | from-scoped-row | source=routers/tasks.py::create_task
 services/numbering.py | insert_with_number | <dynamic> | insert | 1 | unreachable-code | symbol=insert_with_number
 services/numbering.py | next_sequence | <dynamic> | read | 1 | numbering-series
-services/payment_service.py | _apply_event | customer_payment_links | update | 1 | provider-callback | signature=process_webhook
-services/payment_service.py | _apply_event | customer_payments | update | 4 | provider-callback | signature=process_webhook
 services/payment_service.py | _event_seen | customer_payment_events | read | 1 | provider-callback | signature=process_webhook
 services/payment_service.py | _find_link | customer_payment_links | read | 2 | provider-callback | signature=process_webhook
 services/payment_service.py | _resolve_payment | call:_find_link | read | 1 | provider-callback | signature=process_webhook
 services/payment_service.py | _resolve_payment | customer_payments | read | 1 | provider-callback | signature=process_webhook
-services/payment_service.py | process_webhook | call:_apply_event | update | 1 | provider-callback | signature=process_webhook
 services/payment_service.py | process_webhook | call:_event_seen | read | 1 | provider-callback | signature=process_webhook
 services/payment_service.py | process_webhook | call:_resolve_payment | read | 1 | provider-callback | signature=process_webhook
 services/period_lock_service.py | reason_from_tables | filings | read | 1 | gated-by-route | route=routers/debit_notes.py::create_debit_note via=assert_open
