@@ -154,7 +154,7 @@ def email_statement(
 
     customer_statement_service.finish_delivery(
         db, delivery_id, success, provider_id,
-        None if success else GENERIC_SEND_FAILURE_MESSAGE)
+        None if success else GENERIC_SEND_FAILURE_MESSAGE, firm_id=firm_id, client_id=data.client_id)
     _audit(current_user, data.customer_id, "email", data.client_id, data.start_date, data.end_date,
            extra={"sent_to": to_email, "success": success})
     if not success:

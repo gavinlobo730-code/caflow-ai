@@ -632,7 +632,7 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
 
     delivery_id = None
     try:
-        d = (db.table("invoice_deliveries").insert({
+        d = (privileged_for(db).table("invoice_deliveries").insert({
             "firm_id": firm_id, "client_id": inv.get("client_id"), "invoice_id": invoice_id,
             "kind": "reminder", "sent_to": to_email, "sent_by_id": actor_id, "status": "sending",
         }).execute().data or [{}])[0]
@@ -673,7 +673,8 @@ def _dispatch_invoice_reminder(db, firm_id: str, inv: dict, customer: dict,
         else:
             upd["error_message"] = GENERIC_SEND_FAILURE_MESSAGE
         try:
-            db.table("invoice_deliveries").update(upd).eq("id", delivery_id).execute()
+            privileged_for(db).table("invoice_deliveries").update(upd).eq("id", delivery_id).eq("firm_id", firm_id).eq(
+                "client_id", inv.get("client_id")).execute()
         except Exception as swallowed:
             capture_soft_failure(swallowed, operation="collections.delivery_log_update", firm_id=firm_id, invoice_id=invoice_id, delivery_id=delivery_id)
 
