@@ -117,7 +117,7 @@ it_deductions	read
 itc_reversal_register	read
 itr_filing_versions	read
 journal_narration_templates	read
-knowledge_article_versions	write
+knowledge_article_versions	read
 late_interest_charges	read
 leads	read
 ledger_balances	read
@@ -157,7 +157,7 @@ recurring_purchase_bill_template_lines	read
 recurring_purchase_bill_templates	read
 related_party_loans	read
 reminder_settings	read
-reminders	write
+reminders	read
 retainer_clients	read
 sales_debit_note_allocations	read
 sales_debit_note_lines	read
@@ -178,7 +178,7 @@ tally_migration_items	write
 tally_migration_jobs	write
 task_dependencies	read
 task_escalations	read
-task_recurring_configs	write
+task_recurring_configs	read
 task_tags	read
 task_templates	read
 task_timeline_events	read
@@ -188,7 +188,7 @@ tds_certificates	read
 tds_deductions	read
 tds_lower_deduction_certificates	read
 tds_section_limits	read
-time_entries	write
+time_entries	read
 user_capacity	read
 user_notification_preferences	write
 workflow_action_logs	read

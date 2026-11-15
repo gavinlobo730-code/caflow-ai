@@ -34,6 +34,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -136,12 +137,23 @@ def _append(who: str, dsn: str, article: str, firm: str = FIRM, version: int = 2
 
 # ── privileges ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-def test_a_signed_in_role_can_read_and_append_and_nothing_else_and_the_api_keeps_its_own(db):
-    for op in ("SELECT", "INSERT"):
-        assert _holds(db, "authenticated", op), f"authenticated lost {op}, which the API needs"
-    for op in ("UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"):
+@pytest.fixture()
+def appendable(db):
+    """Migration 606 (POST-A-008, the practice tranche) took the signed-in INSERT away too: the API appends a version with its privileged
+    client since. The tests below that append as a signed-in member measure what 501 leaves as the second lock (the policies and the
+    article guard), so the INSERT 501 left is handed back on this throwaway copy, and nothing more."""
+    assert hand_back(db, [TABLE]) == [TABLE]
+    return db
+
+
+def test_a_signed_in_role_reads_and_writes_nothing_and_the_api_keeps_its_own(db):
+    """501 left a signed-in session SELECT and INSERT (append, never rewrite); since migration 606 the API appends with its privileged
+    client and a signed-in session holds SELECT alone."""
+    assert _holds(db, "authenticated", "SELECT"), "authenticated lost SELECT, which the screens' reads need"
+    for op in ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"):
         assert not _holds(db, "authenticated", op), f"authenticated still holds {op}"
-    assert _ok(db, f"SELECT has_any_column_privilege('authenticated', 'public.{TABLE}', 'UPDATE');") == "f"
+    for op in ("INSERT", "UPDATE"):
+        assert _ok(db, f"SELECT has_any_column_privilege('authenticated', 'public.{TABLE}', '{op}');") == "f"
     for op in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"):
         assert not _holds(db, "anon", op), f"anon holds {op}"
     for op in ("SELECT", "INSERT", "UPDATE", "DELETE"):
@@ -165,28 +177,28 @@ def test_a_partner_reads_all_of_their_firms_versions_and_not_another_firms(db):
 
 # ── appending needs the article's write tier ──────────────────────────────────────────────────────────────────────────
 
-def test_a_manager_appends_a_version_to_an_article_they_can_see(db):
-    r = _append("manager", db, "client_a")
+def test_a_manager_appends_a_version_to_an_article_they_can_see(appendable):
+    r = _append("manager", appendable, "client_a")
     assert r.returncode == 0, r.stderr
-    assert _ok(db, f"SELECT count(*) FROM {TABLE} WHERE article_id = '{ART['client_a']}';") == "2"
+    assert _ok(appendable, f"SELECT count(*) FROM {TABLE} WHERE article_id = '{ART['client_a']}';") == "2"
 
 
-def test_a_manager_cannot_append_to_the_practices_own_article_or_to_another_firms(db):
-    r = _append("manager", db, "internal")
+def test_a_manager_cannot_append_to_the_practices_own_article_or_to_another_firms(appendable):
+    r = _append("manager", appendable, "internal")
     assert r.returncode != 0 and "row-level security" in r.stderr, r.stderr or "it succeeded"
-    r = _append("manager", db, "other", firm=FIRM2)
+    r = _append("manager", appendable, "other", firm=FIRM2)
     assert r.returncode != 0 and "row-level security" in r.stderr, r.stderr or "it succeeded"
-    assert _ok(db, f"SELECT count(*) FROM {TABLE};") == "5"
+    assert _ok(appendable, f"SELECT count(*) FROM {TABLE};") == "5"
 
 
-def test_an_executive_cannot_append_even_to_an_article_they_can_see(db):
-    r = _append("executive", db, "client_a")
+def test_an_executive_cannot_append_even_to_an_article_they_can_see(appendable):
+    r = _append("executive", appendable, "client_a")
     assert r.returncode != 0 and "row-level security" in r.stderr, r.stderr or "it succeeded"
-    assert _ok(db, f"SELECT count(*) FROM {TABLE};") == "5"
+    assert _ok(appendable, f"SELECT count(*) FROM {TABLE};") == "5"
 
 
-def test_a_version_cannot_claim_another_firm_than_its_article_belongs_to(db):
-    r = _as("manager", db, f"INSERT INTO {TABLE} (firm_id, article_id, version, content) "
+def test_a_version_cannot_claim_another_firm_than_its_article_belongs_to(appendable):
+    r = _as("manager", appendable, f"INSERT INTO {TABLE} (firm_id, article_id, version, content) "
                            f"VALUES ('{FIRM2}', '{ART['client_a']}', 2, 'x');")
     assert r.returncode != 0 and "row-level security" in r.stderr, r.stderr or "it succeeded"
 
@@ -220,14 +232,14 @@ def test_the_two_restrictive_policies_and_row_security_are_in_place(db):
 
 # ── what the API does with it, as a Manager on their own JWT ──────────────────────────────────────────────────────────
 
-def test_the_statements_the_knowledge_service_issues_still_work_for_a_manager(db):
+def test_the_statements_the_knowledge_service_issues_still_work_for_a_manager(appendable):
     """`services/knowledge_service` runs on the caller's own sign-in (`db_provider.request_db`) and issues exactly these
     statements: create (article, then its first version, each answered with the row it wrote, which is why the new
     version must be READABLE by the policy that gates it), edit (a new version, then the pointer), restore (read a version,
     append it as the next), the current content and the history list. A policy that broke one of them would break the
     knowledge base for every Manager and Partner."""
     new_article = "dddddddd-0000-0000-0000-0000000005ff"
-    r = _as("manager", db, f"""
+    r = _as("manager", appendable, f"""
         INSERT INTO knowledge_articles (id, firm_id, scope, client_id, title, current_version, tags, is_archived, created_by)
           VALUES ('{new_article}', '{FIRM}', 'client', '{CLIENT_A}', 'New', 1, '{{}}', false, '{USER['manager']}') RETURNING id;
         INSERT INTO {TABLE} (firm_id, article_id, version, content, changed_by)
@@ -241,8 +253,8 @@ def test_the_statements_the_knowledge_service_issues_still_work_for_a_manager(db
         SELECT version, changed_by, changed_at FROM {TABLE} WHERE article_id = '{new_article}' ORDER BY version DESC;
     """)
     assert r.returncode == 0, r.stderr
-    assert _ok(db, f"SELECT count(*) FROM {TABLE} WHERE article_id = '{new_article}';") == "3"
-    assert _ok(db, f"SELECT content FROM {TABLE} WHERE article_id = '{new_article}' AND version = 3;") == "first"
+    assert _ok(appendable, f"SELECT count(*) FROM {TABLE} WHERE article_id = '{new_article}';") == "3"
+    assert _ok(appendable, f"SELECT content FROM {TABLE} WHERE article_id = '{new_article}' AND version = 3;") == "first"
 
 
 # ── the migration itself ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -296,12 +308,12 @@ def test_501_is_idempotent(db):
     assert _readable("executive", db) == {"firm", "client_a"}
 
 
-def test_its_own_rollback_puts_the_holes_back(db):
+def test_its_own_rollback_puts_the_holes_back(appendable):
     """The negative control: without the policies and the revoke, the statements refused above go through."""
-    r = _psql(db, ROLLBACK.read_text(encoding="utf-8"), tuples=False)
+    r = _psql(appendable, ROLLBACK.read_text(encoding="utf-8"), tuples=False)
     assert r.returncode == 0, r.stderr
-    assert "client_b" in _readable("executive", db), "the Executive should read an unassigned client's article text again"
-    assert _append("executive", db, "client_a").returncode == 0, "the Executive should append again"
-    wrote = _as("manager", db, f"UPDATE {TABLE} SET content = 'rewritten' WHERE article_id = '{ART['client_a']}' AND version = 1;")
+    assert "client_b" in _readable("executive", appendable), "the Executive should read an unassigned client's article text again"
+    assert _append("executive", appendable, "client_a").returncode == 0, "the Executive should append again"
+    wrote = _as("manager", appendable, f"UPDATE {TABLE} SET content = 'rewritten' WHERE article_id = '{ART['client_a']}' AND version = 1;")
     assert wrote.returncode == 0, wrote.stderr
-    assert _ok(db, f"SELECT content FROM {TABLE} WHERE article_id = '{ART['client_a']}' AND version = 1;") == "rewritten"
+    assert _ok(appendable, f"SELECT content FROM {TABLE} WHERE article_id = '{ART['client_a']}' AND version = 1;") == "rewritten"
