@@ -52,6 +52,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -155,22 +156,31 @@ def migrated_db(pg_template):
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')
 
 
+@pytest.fixture()
+def postable(migrated_db):
+    """Migration 607 (POST-A-008, the messages tranche) took the signed-in write on `portal_messages` away: the API posts a message with
+    its privileged client since. The tests that post as a portal client or a staff member measure migration 440's policy, the SECOND
+    lock, so the write is handed back on this throwaway copy."""
+    assert hand_back(migrated_db, ["portal_messages"]) == ["portal_messages"]
+    return migrated_db
+
+
 def test_a_portal_client_can_read_their_empty_thread(migrated_db):
     r = _as(migrated_db, PORTAL_AUTH_1, f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';")
     assert r.returncode == 0, r.stderr
 
 
-def test_a_portal_client_can_post_to_their_own_thread(migrated_db):
+def test_a_portal_client_can_post_to_their_own_thread(postable):
     """This is the bug. Before migration 440 this failed with:
     'new row violates row-level security policy "portal_messages_assignment_scope"'."""
-    r = _as(migrated_db, PORTAL_AUTH_1, _INSERT_C1_FROM_CLIENT)
+    r = _as(postable, PORTAL_AUTH_1, _INSERT_C1_FROM_CLIENT)
     assert r.returncode == 0, r.stderr
-    assert _count(migrated_db, f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';") == 1
+    assert _count(postable, f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';") == 1
 
 
-def test_a_portal_client_then_sees_their_own_message(migrated_db):
-    assert _as(migrated_db, PORTAL_AUTH_1, _INSERT_C1_FROM_CLIENT).returncode == 0
-    n = _as_count(migrated_db, PORTAL_AUTH_1, f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';")
+def test_a_portal_client_then_sees_their_own_message(postable):
+    assert _as(postable, PORTAL_AUTH_1, _INSERT_C1_FROM_CLIENT).returncode == 0
+    n = _as_count(postable, PORTAL_AUTH_1, f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';")
     assert n == 1
 
 
@@ -183,9 +193,9 @@ def test_a_different_portal_client_sees_none_of_it(migrated_db):
     assert n == 0
 
 
-def test_a_different_portal_client_cannot_post_into_someone_elses_thread(migrated_db):
+def test_a_different_portal_client_cannot_post_into_someone_elses_thread(postable):
     r = _as(
-        migrated_db, PORTAL_AUTH_2,
+        postable, PORTAL_AUTH_2,
         f"INSERT INTO portal_messages (firm_id, client_id, sender_type, sender_name, body) "
         f"VALUES ('{FIRM}', '{CLIENT_1}', 'client', 'Impersonator', 'should fail');",
     )
@@ -203,21 +213,22 @@ def test_an_unassigned_staff_member_still_sees_nothing(migrated_db):
     assert n == 0
 
 
-def test_an_assigned_staff_member_can_still_read_and_reply(migrated_db):
-    assert _psql(migrated_db, _INSERT_C1_FROM_CLIENT).returncode == 0
-    r = _as(migrated_db, ASSIGNED_STAFF_AUTH,
+def test_an_assigned_staff_member_can_still_read_and_reply(postable):
+    assert _psql(postable, _INSERT_C1_FROM_CLIENT).returncode == 0
+    r = _as(postable, ASSIGNED_STAFF_AUTH,
             f"INSERT INTO portal_messages (firm_id, client_id, sender_type, sender_name, body) "
             f"VALUES ('{FIRM}', '{CLIENT_1}', 'ca', 'Staff', 'reply');")
     assert r.returncode == 0, r.stderr
-    n = _as_count(migrated_db, ASSIGNED_STAFF_AUTH,
+    n = _as_count(postable, ASSIGNED_STAFF_AUTH,
                   f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';")
     assert n == 2
 
 
-def test_the_authenticated_grant_is_the_full_set(migrated_db):
-    """048/094 declare SELECT, INSERT, UPDATE; 194 adds DELETE. This is the
-    other half of the symptom this migration re-asserts regardless of which
-    cause production actually hit."""
+def test_the_authenticated_grant_is_select_alone_since_migration_607(migrated_db):
+    """048/094 declared SELECT, INSERT, UPDATE and 194 added DELETE, the other
+    half of the symptom this migration re-asserted. Since POST-A-008's messages
+    tranche the API posts a message with its privileged client, and migration
+    607 took INSERT, UPDATE and DELETE away: a signed-in session reads."""
     got = subprocess.run(
         ["psql", migrated_db, "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-c",
          "SELECT privilege_type FROM information_schema.role_table_grants "
@@ -226,10 +237,10 @@ def test_the_authenticated_grant_is_the_full_set(migrated_db):
         capture_output=True, text=True,
     )
     assert got.returncode == 0, got.stderr
-    assert got.stdout.strip().splitlines() == ["DELETE", "INSERT", "SELECT", "UPDATE"]
+    assert got.stdout.strip().splitlines() == ["SELECT"]
 
 
-def test_a_portal_client_still_cannot_update_or_delete(migrated_db):
+def test_a_portal_client_still_cannot_update_or_delete(postable):
     """Nothing in this codebase updates or deletes a portal_messages row from
     the portal side — the fix widens SELECT and INSERT only, per 262's own
     reasoning about not opening a write nobody uses.
@@ -239,20 +250,20 @@ def test_a_portal_client_still_cannot_update_or_delete(migrated_db):
     untouched (and still there) rather than expecting a raised exception,
     which is what an assignment-scope violation on a write actually looks
     like."""
-    assert _psql(migrated_db, _INSERT_C1_FROM_CLIENT).returncode == 0
+    assert _psql(postable, _INSERT_C1_FROM_CLIENT).returncode == 0
 
-    r = _as(migrated_db, PORTAL_AUTH_1,
+    r = _as(postable, PORTAL_AUTH_1,
             f"UPDATE portal_messages SET body = 'edited' WHERE client_id = '{CLIENT_1}';")
     assert r.returncode == 0, r.stderr
     body = subprocess.run(
-        ["psql", migrated_db, "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-c",
+        ["psql", postable, "-v", "ON_ERROR_STOP=1", "-X", "-tA", "-c",
          f"SELECT body FROM portal_messages WHERE client_id='{CLIENT_1}';"],
         capture_output=True, text=True,
     ).stdout.strip()
     assert body == "hello", f"the portal client's UPDATE must not have taken effect, got body={body!r}"
 
-    r = _as(migrated_db, PORTAL_AUTH_1, f"DELETE FROM portal_messages WHERE client_id = '{CLIENT_1}';")
+    r = _as(postable, PORTAL_AUTH_1, f"DELETE FROM portal_messages WHERE client_id = '{CLIENT_1}';")
     assert r.returncode == 0, r.stderr
-    assert _count(migrated_db, f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';") == 1, (
+    assert _count(postable, f"SELECT count(*) FROM portal_messages WHERE client_id='{CLIENT_1}';") == 1, (
         "the portal client's DELETE must not have removed the row"
     )

@@ -30,6 +30,7 @@
 # 604 closes entity_roles, properties, related_party_loans and dtaa_treaty_rates (POST-A-008, the relationships tranche): the API writes all four with its privileged client since the change that shipped before it; and entity_client_links, auto_journal_suggestions and engagement_letters, which nothing in the API, the browser or a database function writes.
 # 605 closes customer_payment_links, customer_payments and customer_payment_events (POST-A-008, the payments tranche): the API writes all three with its privileged client since the change that shipped before it.
 # 606 closes time_entries, task_recurring_configs, reminders and knowledge_article_versions (POST-A-008, the practice tranche): the API writes all four with its privileged client since the change that shipped before it.
+# 607 closes notifications, portal_messages and user_notification_preferences (POST-A-008, the messages tranche): the API writes all three with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -193,6 +194,7 @@ login_events
 msme_payments
 msme_vendors
 notes_to_accounts
+notifications
 onboarding_checklist_steps
 onboarding_checklists
 onboarding_tasks
@@ -216,6 +218,7 @@ pending_invites
 permission_grants
 platform_admins
 platform_audit
+portal_messages
 post_dated_cheques
 practice_email_log
 price_list_items
@@ -288,6 +291,7 @@ tds_section_limits
 team_members
 time_entries
 user_capacity
+user_notification_preferences
 workflow_action_logs
 workflow_approvals
 workflow_conditions

@@ -193,8 +193,8 @@
     },
     "user_notification_preferences": {
       "category": "personal",
-      "writes": "awd",
-      "why": "One person's choices about which emails they receive; a restrictive policy lets a person read and change only their own rows."
+      "writes": "",
+      "why": "One person's choices about which emails they receive; a restrictive policy lets a person read only their own rows. The signed-in role holds no write since migration 607 (POST-A-008); the server writes a person's own choice."
     },
     "user_permissions": {
       "category": "tiered",

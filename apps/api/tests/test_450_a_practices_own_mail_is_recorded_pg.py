@@ -29,6 +29,7 @@ import subprocess
 import uuid
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 _ADMIN = os.environ.get("HARNESS_PG")
 
@@ -93,6 +94,10 @@ def db(pg_template):
               VALUES ('{CLIENT}', '{FIRM}', 'C1', 'Private Limited', 'AAACA1234A');
         """)
         assert seed.returncode == 0, seed.stderr
+        # Migration 607 (POST-A-008, the messages tranche) took the signed-in write on `user_notification_preferences` away, the FIRST
+        # lock: the API writes a preference with its privileged client since. The preference tests below write as a signed-in person to
+        # measure the policy and the trigger, the SECOND lock, so the write is handed back on this throwaway copy.
+        hand_back(dsn, ["user_notification_preferences"])
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
