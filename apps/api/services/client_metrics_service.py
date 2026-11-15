@@ -361,7 +361,7 @@ def store(db, row: dict) -> None:
     # payload as a DICT LITERAL and cannot see one bound to a name, so a spread
     # would take this write out of the check that proves it supplies every NOT
     # NULL column — on the one table this feature exists to fill.
-    db.table("client_period_metrics").upsert({
+    privileged_for(db).table("client_period_metrics").upsert({
         "firm_id": row["firm_id"],
         "client_id": row["client_id"],
         "financial_year": row["financial_year"],
