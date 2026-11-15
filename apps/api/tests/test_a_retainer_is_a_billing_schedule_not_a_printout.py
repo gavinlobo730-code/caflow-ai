@@ -59,7 +59,7 @@ def test_the_fee_can_be_changed_in_place():
     then bills the client twice."""
     from services import billing_service
     s = _make()
-    out = billing_service.update_schedule("F1", s["id"], {"amount_paise": 20_00_000})
+    out = billing_service.update_schedule("F1", s["id"], {"amount_paise": 20_00_000}, client_id=s["client_id"])
     assert out["amount_paise"] == 20_00_000
     assert len(billing_service.list_schedules("F1")) == 1
 
@@ -70,7 +70,7 @@ def test_the_client_cannot_be_moved():
     so the new client's first period would read as already billed."""
     from services import billing_service
     s = _make(client="C1")
-    out = billing_service.update_schedule("F1", s["id"], {"client_id": "C2"})
+    out = billing_service.update_schedule("F1", s["id"], {"client_id": "C2"}, client_id=s["client_id"])
     assert out["client_id"] == "C1"
 
 
@@ -80,20 +80,20 @@ def test_a_retainer_can_be_paused_and_resumed():
     impossible."""
     from services import billing_service
     s = _make()
-    assert billing_service.update_schedule("F1", s["id"], {"is_active": False})["is_active"] is False
-    assert billing_service.update_schedule("F1", s["id"], {"is_active": True})["is_active"] is True
+    assert billing_service.update_schedule("F1", s["id"], {"is_active": False}, client_id=s["client_id"])["is_active"] is False
+    assert billing_service.update_schedule("F1", s["id"], {"is_active": True}, client_id=s["client_id"])["is_active"] is True
 
 
 def test_a_zero_amount_is_written_not_dropped():
     from services import billing_service
     s = _make()
-    assert billing_service.update_schedule("F1", s["id"], {"amount_paise": 0})["amount_paise"] == 0
+    assert billing_service.update_schedule("F1", s["id"], {"amount_paise": 0}, client_id=s["client_id"])["amount_paise"] == 0
 
 
 def test_an_empty_update_leaves_the_row_alone():
     from services import billing_service
     s = _make()
-    out = billing_service.update_schedule("F1", s["id"], {})
+    out = billing_service.update_schedule("F1", s["id"], {}, client_id=s["client_id"])
     assert out["amount_paise"] == s["amount_paise"]
 
 
@@ -101,8 +101,8 @@ def test_another_firms_schedule_is_not_found():
     """None rather than a silent success, so the router can 404."""
     from services import billing_service
     s = _make(firm="F1")
-    assert billing_service.update_schedule("F2", s["id"], {"amount_paise": 1}) is None
-    assert billing_service.update_schedule("F1", "no-such-id", {"amount_paise": 1}) is None
+    assert billing_service.update_schedule("F2", s["id"], {"amount_paise": 1}, client_id=s["client_id"]) is None
+    assert billing_service.update_schedule("F1", "no-such-id", {"amount_paise": 1}, client_id=s["client_id"]) is None
 
 
 # ── the endpoint ────────────────────────────────────────────────────────────
@@ -210,18 +210,27 @@ def test_the_database_update_is_filtered_on_the_firm():
     from services import billing_service
     rows = [{"id": "S1", "firm_id": "F1", "client_id": "C1", "amount_paise": 1}]
     db = _FakeDb(rows)
-    out = billing_service.update_schedule("F1", "S1", {"amount_paise": 99}, db=db)
+    out = billing_service.update_schedule("F1", "S1", {"amount_paise": 99}, db=db, client_id="C1")
     assert out["amount_paise"] == 99
     # The filter itself, not just the outcome — an UPDATE keyed on the id alone
     # would reach another firm's row and this asserts it cannot.
-    assert db.log["filters"] == {"id": "S1", "firm_id": "F1"}
+    assert db.log["filters"] == {"id": "S1", "firm_id": "F1", "client_id": "C1"}
 
 
 def test_the_database_update_finds_nothing_for_another_firm():
     from services import billing_service
     rows = [{"id": "S1", "firm_id": "F1", "client_id": "C1", "amount_paise": 1}]
     assert billing_service.update_schedule("F2", "S1", {"amount_paise": 99},
-                                           db=_FakeDb(rows)) is None
+                                           db=_FakeDb(rows), client_id="C1") is None
+
+
+def test_the_database_update_finds_nothing_for_another_client_of_the_firm():
+    # POST-A-008, the recurring-billing tranche: the UPDATE is made with the privileged client, which has no row security, so the client it
+    # names is what keeps a schedule id from reaching another client's schedule in the same firm.
+    from services import billing_service
+    rows = [{"id": "S1", "firm_id": "F1", "client_id": "C1", "amount_paise": 1}]
+    assert billing_service.update_schedule("F1", "S1", {"amount_paise": 99},
+                                           db=_FakeDb(rows), client_id="C2") is None
 
 
 def test_the_router_404s_when_the_row_vanishes_between_read_and_write():
