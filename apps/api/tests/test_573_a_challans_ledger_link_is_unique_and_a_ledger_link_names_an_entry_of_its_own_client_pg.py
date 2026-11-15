@@ -44,6 +44,7 @@ _STEM = "573_a_challans_ledger_link_is_unique_and_a_ledger_link_names_an_entry_o
 MIGRATION = MIGRATIONS / f"{_STEM}.sql"
 ROLLBACK = MIGRATIONS / f"{_STEM}_rollback.sql"
 ROLLBACK_568 = next(MIGRATIONS.glob("568_*_rollback.sql"))
+ROLLBACK_593 = next(MIGRATIONS.glob("593_*_rollback.sql"))
 
 pytestmark = pytest.mark.skipif(
     not _ADMIN or shutil.which("psql") is None or not RUNNER.exists(),
@@ -208,9 +209,21 @@ def test_the_clients_own_entry_is_accepted_and_so_is_no_link_and_a_missing_entry
     assert _psql(db, _challan("57300000-0000-0000-0000-0000000000b2", C1, "00100")).returncode == 0
 
 
-def test_a_signed_in_partner_cannot_tie_their_challan_to_an_entry_of_another_firm_which_row_security_hides_from_them(db):
+def test_a_signed_in_partner_cannot_write_a_challan_at_all_since_migration_593(db):
+    """Migration 593 took the signed-in role's write on `tds_challans` away (the API writes it with its privileged client), so a signed-in
+    session is refused by the PRIVILEGE before the guard is asked, for another firm's entry and for its own client's alike."""
+    for je in (JE_G, JE1):
+        r = _signed_in_partner(db, f"UPDATE tds_challans SET journal_entry_id = '{je}' WHERE id = '{CH1}';")
+        assert r.returncode != 0 and "permission denied for table tds_challans" in r.stderr, r.stderr or "it succeeded"
+    assert _link(db) == "NULL"
+
+
+def test_with_the_signed_in_write_given_back_the_guard_still_refuses_an_entry_of_another_firm_which_row_security_hides(db):
     """The reason the check is SECURITY DEFINER: the Partner of F cannot SEE firm G's entry, so a check run as them would find nothing and let
-    the key (which bypasses row security) accept it."""
+    the key (which bypasses row security) accept it. Migration 593 means no signed-in session writes the table today, so the guard is proved
+    on the database 593's own rollback leaves (the grant back), which is what any later grant of the write would be exposed to."""
+    rb = _run_file(db, ROLLBACK_593)
+    assert rb.returncode == 0, rb.stderr
     assert _signed_in_partner(db, f"SELECT count(*) FROM journal_entries WHERE id = '{JE_G}';").stdout.strip() == "0", "row security must hide it"
     r = _signed_in_partner(db, f"UPDATE tds_challans SET journal_entry_id = '{JE_G}' WHERE id = '{CH1}';")
     assert r.returncode != 0 and WORDS in r.stderr, r.stderr or "it succeeded"
