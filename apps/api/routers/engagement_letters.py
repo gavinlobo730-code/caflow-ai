@@ -573,7 +573,7 @@ def _log_engagement_event(
         _MOCK_EVENTS.append(event_row)
     else:
         try:
-            db.table("engagement_events").insert(event_row).execute()
+            privileged_for(db).table("engagement_events").insert(event_row).execute()
         except Exception:
             pass
 
