@@ -35,10 +35,10 @@ capital_gains	read
 capital_work_in_progress	read
 client_gst_registrations	read
 client_gst_turnover	read
-client_health_overrides	write
-client_health_scores	write
-client_lifecycle_events	write
-client_period_metrics	write
+client_health_overrides	read
+client_health_scores	read
+client_lifecycle_events	read
+client_period_metrics	read
 client_portal_sessions	read
 client_profile_history	read
 client_profiles	read
@@ -101,8 +101,8 @@ gstr4_annual_urp_supplies	read
 gstr9c_expense_lines	read
 gstr9c_rate_wise_lines	read
 gstr9c_reconciliations	read
-health_dimension_scores	write
-health_overrides	write
+health_dimension_scores	read
+health_overrides	read
 hsn_master	read
 hsn_sac_preferences	read
 income_tax_asset_blocks	read
