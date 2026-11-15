@@ -51,6 +51,7 @@ from pathlib import Path
 import pytest
 
 from tests._signed_in_document_writes import give_the_signed_in_writes_back
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
@@ -250,6 +251,9 @@ def seeded(pg_template):
         # Migration 563 took the signed-in write on the six document headers and their lines; this file measures the SECOND lock (the
         # policies and the triggers), so the write is given back on this throwaway copy once its rows are seeded.
         give_the_signed_in_writes_back(d)
+        # Migration 600 (POST-A-008, the recurring-billing tranche) took the signed-in write on the two recurring-template lines tables away
+        # in the same sense; this module measures the tier policies on them, so the write is handed back too.
+        hand_back(d, TABLES)
         yield name, w.ids
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
