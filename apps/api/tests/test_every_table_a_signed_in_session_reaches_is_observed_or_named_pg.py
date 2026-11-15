@@ -50,7 +50,7 @@ _ADMIN = os.environ.get("HARNESS_PG")
 #: Only ever lowered. Raising one is a decision a reviewer sees in the diff: a new table a signed-in session reaches that the matrix
 #: does not observe.
 CEILING = 193
-WRITABLE_CEILING = 32
+WRITABLE_CEILING = 30
 
 _REACHABLE = """
 SELECT c.relname,

@@ -24,6 +24,7 @@
 # 598 closes capital_work_in_progress, cwip_additions, godowns, inventory_batches and purchase_bill_landed_costs (POST-A-008, the stock tranche): the API writes all five with its privileged client since the change that shipped before it.
 # 599 closes client_lifecycle_events, client_period_metrics, health_overrides, client_health_scores, health_dimension_scores and client_health_overrides (POST-A-008, the health tranche): the API writes the first three with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
 # 600 closes billing_schedules, recurring_invoice_template_lines, recurring_purchase_bill_template_lines, recurring_invoice_runs, recurring_purchase_bill_runs and recurring_journal_runs (POST-A-008, the recurring-billing tranche): the API writes all six with its privileged client since the change that shipped before it.
+# 601 closes invoice_deliveries and customer_statement_deliveries (POST-A-008, the deliveries tranche): the API writes both with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -90,6 +91,7 @@ credit_note_allocations
 credit_note_lines
 credit_notes
 currencies
+customer_statement_deliveries
 cwip_additions
 debit_note_allocations
 debit_note_lines
@@ -156,6 +158,7 @@ income_tax_asset_blocks
 income_tax_worksheets
 inventory_batches
 inventory_stock_ledger
+invoice_deliveries
 invoice_sequences
 invoice_settings
 invoice_templates
