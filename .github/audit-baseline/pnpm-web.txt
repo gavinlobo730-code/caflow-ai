@@ -1,4 +1,4 @@
-# Known vulnerable PRODUCTION dependencies of apps/web, as locked on 2026-09-30.
+# Known vulnerable PRODUCTION dependencies of apps/web, as locked on 2026-11-15.
 # Only high and critical are listed: that is all the gate counts (--min-severity high).
 # Regenerate: (cd apps/web && pnpm audit --prod --json > r.json); then
 #   python3 apps/api/scripts/ci/audit_gate.py --kind pnpm --report r.json --baseline /dev/null --print-baseline
@@ -15,26 +15,12 @@
 #
 # Format: one advisory id per line, then `# package version [severity] - title (fix: ...)`.
 
-# Added 22-10-2026, with the reason this file asks for: GHSA-2464-FHR4-W9XW (next, Image Optimization API) and
-# GHSA-P3M5-59MP-JV5R (next, Server Actions) were first reported by the audit that afternoon. Both are about a
-# RUNNING Next server. This app is built with output: "export" and images.unoptimized and is deployed as the static
-# `out` directory (wrangler.toml, pages_build_output_dir), and its source has no Server Action, no Pages Functions
-# directory and no middleware, so no Next server receives a request. They are listed, not dismissed: the upgrade to
-# Next 15 is engineering-03's, and these two lines leave with it.
+# 15-11-2026 (POST-A-174): the twelve next 14.2.35 lines, three of them critical, left with the upgrade of this app to
+# Next 15.5.28 and React 19, as their note had said they would. The two postcss lines stay: Next 15.5 still pins its own
+# postcss 8.4.31 exactly, a tool that runs while the site is BUILT (it reads stylesheets and their source maps from this
+# repository) and is not served to anyone; they leave when Next moves its pin.
 
-GHSA-2464-FHR4-W9XW      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution in Image Optimization API when SVG files ar (fix: >=15.5.28)
-GHSA-2XP9-VWFH-VXW4      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files a (fix: >=15.5.24)
-GHSA-36QX-FR4F-26G5      # next 14.2.35 [high] — Next.js has a Middleware / Proxy bypass in Pages Router applications using i18n (fix: >=15.5.16)
-GHSA-89XV-2M56-2M9X      # next 14.2.35 [high] — Next.js: Server-Side Request Forgery in Server Actions on custom servers (fix: >=15.5.21)
-GHSA-8H8Q-6873-Q5FJ      # next 14.2.35 [high] — Next.js Vulnerable to Denial of Service with Server Components (fix: >=15.5.16)
-GHSA-C4J6-FC7J-M34R      # next 14.2.35 [high] — Next.js vulnerable to server-side request forgery in applications using WebSocket upgrades (fix: >=15.5.16)
-GHSA-H25M-26QC-WCJF      # next 14.2.35 [high] — Next.js HTTP request deserialization can lead to DoS when using insecure React Server Comp (fix: >=15.0.8)
-GHSA-M99W-X7HQ-7VFJ      # next 14.2.35 [high] — Next.js: Denial of Service in App Router using Server Actions (fix: >=15.5.21)
-GHSA-P293-QW3H-JR36      # next 14.2.35 [critical] — Next.js: Unauthenticated Remote Code Execution on windows-hosted servers (fix: >=15.5.24)
-GHSA-P3M5-59MP-JV5R      # next 14.2.35 [high] — Next.js: Denial of Service in App Router using Server Actions (fix: >=15.5.28)
-GHSA-P9J2-GV94-2WF4      # next 14.2.35 [high] — Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostn (fix: >=15.5.21)
-GHSA-Q4GF-8MX6-V5V3      # next 14.2.35 [high] — Next.js has a Denial of Service with Server Components (fix: >=15.5.15)
 GHSA-6G55-P6WH-862Q      # postcss 8.4.31 [high] — PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMapp (fix: >=8.5.12)
-GHSA-R28C-9Q8G-F849      # postcss 8.4.31, 8.5.15 [high] — PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Ar (fix: >=8.5.18)
+GHSA-R28C-9Q8G-F849      # postcss 8.4.31 [high] — PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Ar (fix: >=8.5.18)
 GHSA-4R6H-8V6P-XVW6      # xlsx 0.18.5 [high] — Prototype Pollution in sheetJS (fix: <0.0.0)
 GHSA-5PGG-2G8V-P4X9      # xlsx 0.18.5 [high] — SheetJS Regular Expression Denial of Service (ReDoS) (fix: <0.0.0)

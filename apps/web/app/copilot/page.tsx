@@ -38,7 +38,7 @@ interface Message {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CONTEXT_ICONS: Record<string, JSX.Element> = {
+const CONTEXT_ICONS: Record<string, React.JSX.Element> = {
   global: <Sparkles size={14} />,
   client: <Users size={14} />,
   compliance: <Shield size={14} />,

@@ -1,0 +1,55 @@
+{
+ "taken": "15-11-2026",
+ "what_this_is": "The high and critical advisories `pnpm audit --prod --json` reported for each frontend lockfile on the day they were last regenerated (15-11-2026, after the upgrade to Next 15.5.28; first taken 30-09-2026), reduced to (id, package, version, severity). tests/test_dependencies_are_audited_and_watched.py asserts each baseline names every one of them that affects a version its lockfile still holds.",
+ "how_to_regenerate": "from the repo root, for APP in web marketing: (cd apps/$APP && pnpm audit --prod --json > /tmp/$APP.json); then python3 apps/api/scripts/ci/audit_gate.py --kind pnpm --report /tmp/$APP.json --baseline /dev/null --print-baseline lists what the baseline must hold; rewrite the matching `advisories` array below as {id, package, version, severity} for every finding at high or above.",
+ "apps": {
+  "web": {
+   "lockfile": "apps/web/pnpm-lock.yaml",
+   "baseline": ".github/audit-baseline/pnpm-web.txt",
+   "advisories": [
+    {
+     "id": "GHSA-6G55-P6WH-862Q",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-R28C-9Q8G-F849",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-4R6H-8V6P-XVW6",
+     "package": "xlsx",
+     "version": "0.18.5",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-5PGG-2G8V-P4X9",
+     "package": "xlsx",
+     "version": "0.18.5",
+     "severity": "high"
+    }
+   ]
+  },
+  "marketing": {
+   "lockfile": "apps/marketing/pnpm-lock.yaml",
+   "baseline": ".github/audit-baseline/pnpm-marketing.txt",
+   "advisories": [
+    {
+     "id": "GHSA-6G55-P6WH-862Q",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    },
+    {
+     "id": "GHSA-R28C-9Q8G-F849",
+     "package": "postcss",
+     "version": "8.4.31",
+     "severity": "high"
+    }
+   ]
+  }
+ }
+}

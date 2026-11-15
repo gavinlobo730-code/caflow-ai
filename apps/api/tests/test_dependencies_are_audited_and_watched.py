@@ -252,7 +252,9 @@ def test_a_baseline_parses_holds_one_id_per_line_and_says_it_may_only_shrink(pat
     # A baseline that shrank to nothing is the END STATE of a ratchet and not a failed parse: the Python one did on 29-10-2026,
     # when fastapi 0.141.1 took starlette 1.10.0 and the last seven advisories with it (POST-A-171). The header, which is what
     # stops the file growing back into an allowlist, is still required below.
-    assert len(base) > 0 or path.name in EMPTY_IS_A_BASELINE_TOO
+    # A pnpm baseline may reach it too, on the evidence of its own regenerated report: when the snapshot below holds
+    # nothing for the app, the baseline holds nothing either (marketing carries two lines, both postcss pinned by Next).
+    assert len(base) > 0 or path.name in EMPTY_IS_A_BASELINE_TOO or _its_report_holds_nothing(path)
     assert "MAY ONLY SHRINK" in text, "the header that stops this file growing into an allowlist is missing"
     for advisory, note in base.items():
         assert note and "—" in note, f"{advisory} has no `package version [severity] — title` note"
@@ -275,7 +277,7 @@ def test_the_pip_baseline_names_no_severity_because_pip_audit_reports_none():
 
 # ── the baselines cover the reports they were written from ──────────────────────
 
-SNAPSHOT = json.loads((Path(__file__).resolve().parent / "fixtures" / "audit" / "pnpm-reports-2026-09-30.json")
+SNAPSHOT = json.loads((Path(__file__).resolve().parent / "fixtures" / "audit" / "pnpm-reports-2026-11-15.json")
                       .read_text(encoding="utf-8"))
 
 
@@ -297,9 +299,17 @@ def test_a_pnpm_baseline_names_every_high_advisory_its_own_report_carried_agains
     this baseline's to name; one that is still there must be, or the gate fails on it.
     """
     entry = SNAPSHOT["apps"][app]
-    baseline = _gate().read_baseline((REPO / entry["baseline"]).read_text(encoding="utf-8"))
+    baseline = _baseline_of(entry)
+    if not entry["advisories"]:
+        # A report with nothing high in it is the truth about a clean app, and it may be regenerated to one: then
+        # the baseline must carry nothing either (the empty-shell test below holds the same pairing).
+        assert not baseline, f"{app}: the snapshot reports nothing, so {entry['baseline']} may name nothing"
+        return
     applies = [a for a in entry["advisories"] if _locked(entry["lockfile"], a["package"], a["version"])]
-    assert len(applies) >= 10, (
+    # At least half of what the snapshot holds must still be locked, so a stale snapshot fails rather than passing having looked at
+    # almost nothing. It was a flat ten while the frontends carried dozens; the upgrade to Next 15 (15-11-2026) left four and two.
+    floor = max(1, (len(entry["advisories"]) + 1) // 2)
+    assert len(applies) >= floor, (
         f"only {len(applies)} of {len(entry['advisories'])} snapshot advisories still match a version in "
         f"{entry['lockfile']}: the snapshot has gone stale (regenerate it, see the fixture's how_to_regenerate) "
         "and this test would otherwise pass having looked at almost nothing")
@@ -310,11 +320,23 @@ def test_a_pnpm_baseline_names_every_high_advisory_its_own_report_carried_agains
         "the package so it leaves the lockfile.")
 
 
+def _its_report_holds_nothing(path: Path) -> bool:
+    entries = [e for e in SNAPSHOT["apps"].values() if (REPO / e["baseline"]).resolve() == path.resolve()]
+    return len(entries) == 1 and not entries[0]["advisories"]
+
+
+def _baseline_of(entry: dict) -> dict:
+    return _gate().read_baseline((REPO / entry["baseline"]).read_text(encoding="utf-8"))
+
+
 def test_the_snapshot_covers_the_population_and_is_not_an_empty_shell():
-    """Vacuity guard for the test above: every pnpm app in the tree has a snapshot, each with real rows."""
+    """Vacuity guard for the test above: every pnpm app in the tree has a snapshot, and each has real rows unless
+    its baseline is empty too. The second half is so that the day an app's last high advisory leaves its lockfile
+    (marketing carries two, both postcss 8.4.31 pinned by Next), regenerating the snapshot is the fix, and an
+    emptied snapshot beside a baseline that still names something is refused."""
     assert sorted(SNAPSHOT["apps"]) == _npm_apps()
     for app, entry in SNAPSHOT["apps"].items():
-        assert entry["advisories"], app
+        assert entry["advisories"] or not _baseline_of(entry), app
         assert {a["severity"] for a in entry["advisories"]} <= {"high", "critical"}, app
         assert all(a["id"].upper().startswith("GHSA-") for a in entry["advisories"]), app
 

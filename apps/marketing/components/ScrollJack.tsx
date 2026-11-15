@@ -31,7 +31,7 @@ type ScrollJackCtx = {
   scrollToId: (id: string) => void;
   /** Mutated by the ScrollJack engine on start/stop; scrollToId delegates here. */
   scrollToIdRef: MutableRefObject<(id: string) => void>;
-  contentRef: RefObject<HTMLDivElement>;
+  contentRef: RefObject<HTMLDivElement | null>;
 };
 
 const ScrollJackContext = createContext<ScrollJackCtx | null>(null);
@@ -49,7 +49,7 @@ export function useScrollToSection(): (id: string) => void {
  * Returns null outside a ScrollJackProvider; returns a ref whose `.current`
  * is always null today, since no page populates it — callers should treat
  * both the same way (i.e. fall back to `window.scrollY`). */
-export function useScrollJackContentRef(): RefObject<HTMLDivElement> | null {
+export function useScrollJackContentRef(): RefObject<HTMLDivElement | null> | null {
   const ctx = useContext(ScrollJackContext);
   return ctx ? ctx.contentRef : null;
 }

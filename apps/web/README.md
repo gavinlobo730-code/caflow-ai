@@ -1,7 +1,7 @@
 # apps/web — the PracticeSync product UI
 
 The browser app a practising Chartered Accountant works in: clients, accounting, GST, TDS, income tax, payroll,
-banking, the employee and client portals. Next.js 14 (App Router), TypeScript, Tailwind, shadcn-style primitives.
+banking, the employee and client portals. Next.js 15 (App Router, React 19), TypeScript, Tailwind, shadcn-style primitives.
 
 It is one of three apps in this repository: the FastAPI backend lives in `apps/api` and the separate public site
 in `apps/marketing`. The design record for all three is [`CLAUDE.md`](../../CLAUDE.md) at the repository root; read the

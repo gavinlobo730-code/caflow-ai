@@ -28,7 +28,7 @@
 # ONE PULL REQUEST A WEEK PER ECOSYSTEM FOR MINOR AND PATCH, A SEPARATE ONE PER MAJOR
 #     Grouping stops the update stream becoming a daily chore nobody does. A MAJOR version is
 #     deliberately left to arrive on its own, because it is the one that can break the build
-#     (Next 14 to 15, React 18 to 19) and deserves its own review.
+#     (Next 15 to 16, as Next 14 to 15 and React 18 to 19 were) and deserves its own review.
 #
 # WHAT IS DELIBERATELY IGNORED, AND UNTIL WHEN (8 October 2026, the owner's decision; ledger items
 # POST-A-171, POST-A-172 and POST-A-213 in docs/open-items/)
