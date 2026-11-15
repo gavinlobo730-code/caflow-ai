@@ -34,6 +34,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
@@ -119,6 +120,9 @@ def db(pg_template):
                 ('{VEND_G}', '{G}', '{C_G}', 'vend G'), ('{VEND_G2}', '{G}', '{C_G2}', 'vend G2');
         """)
         assert seed.returncode == 0, seed.stderr
+        # Migration 603 (POST-A-008, the onboarding tranche) took the signed-in write on `proposals` away, the FIRST lock; the review's
+        # case below is a signed-in Partner's write and measures the guard trigger, the SECOND, so the write is handed back here.
+        hand_back(dsn, ["proposals"])
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
