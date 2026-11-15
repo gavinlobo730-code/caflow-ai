@@ -126,3 +126,16 @@ test("an asset that already carries them shows them, rather than a blank", () =>
   assert.equal(form.put_to_use_date, "2025-04-05");
   assert.equal(changedFields(withBlock, form).ok, false, "unchanged means unchanged");
 });
+
+test("a keeper corrected is sent trimmed, a cleared one as null, and an unchanged one not at all (migration 591)", () => {
+  const kept = { ...ASSET, custodian: "R. Iyer" };
+  assert.equal(formFor(kept).custodian, "R. Iyer");
+  const renamed = changedFields(kept, { ...formFor(kept), custodian: "  R. Iyengar " });
+  assert.equal(renamed.ok, true);
+  if (renamed.ok) assert.deepEqual(renamed.body, { custodian: "R. Iyengar" });
+  const cleared = changedFields(kept, { ...formFor(kept), custodian: "   " });
+  assert.equal(cleared.ok, true);
+  if (cleared.ok) assert.deepEqual(cleared.body, { custodian: null });
+  assert.equal(changedFields(kept, formFor(kept)).ok, false, "unchanged means unchanged");
+  assert.equal(formFor(ASSET).custodian, "", "an asset nobody keeps opens with a blank box");
+});

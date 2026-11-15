@@ -165,7 +165,7 @@ _db = db_provider.service_db_or_none
 #: itself (domain/income_tax/section_32.py); Rule 43 is a third system again,
 #: read by domain/gst/rule_43.py. A correction to any of them is a correction
 #: to a CLASSIFICATION, not to an estimate.
-_TIER_A_FIELDS = frozenset({"asset_name", "location", "notes",
+_TIER_A_FIELDS = frozenset({"asset_name", "location", "custodian", "notes",
                             "it_block_key", "put_to_use_date",
                             "rule_43_use",
                             # IT-09, migration 406. Tier A for exactly the
@@ -709,6 +709,9 @@ def create_asset(
         "wdv_rate_percent":            float(wdv_rate) if wdv_rate is not None else None,
         "accumulated_depreciation_paise": 0,
         "location":                    data.location,
+        # Who keeps it (migration 591), one line, and a blank is nobody named (the model tidies it). A later move is a movement,
+        # recorded with its date.
+        "custodian":                   data.custodian,
         "notes":                       data.notes,
         # IT Act §32 (migration 357). Neither affects the Companies Act charge
         # above; both are read by domain/income_tax/section_32.py, and each is

@@ -228,7 +228,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A WRONG TDS CHALLAN IS CORRECTED BY RETRACTING IT AND RECORDING IT AGAIN, NEVER EDITED IN PLACE, AND A MONTH CLOSED
 - A TAX AUDIT RECORDED AS COMPLETED OR FILED DOES NOT CARRY A DAY THAT HAS NOT COME
 - A NEW MCA FILING NAMES THE CLIENT'S COMPANY AND A YEAR THE CALENDAR HOLDS OPEN, AND BOTH COME FROM THE SERVER
-### `docs/design-record/fixed-assets-and-inventory.md` (22 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
+### `docs/design-record/fixed-assets-and-inventory.md` (23 entries): Fixed assets, capital work in progress, stock costing, ageing, godowns, batches and counts
 
 - AN ASSET UNDER CONSTRUCTION IS NOT IN THE REGISTER, AND THAT IS THE FIX
 - AN ASSET CATEGORY IS BOOKED TO A LEDGER BY ONE TABLE, AND THE CHART A FIRM GETS MUST HOLD EVERY LEDGER IT NAMES
@@ -252,6 +252,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE STOCK REGISTER ASKS THE DATABASE FOR EACH ITEM'S LATEST ROW, ONE ROW PER ITEM
 - THE DEPRECIATION TAB SHOWS EACH ASSET'S REMAINING LIFE YEAR BY YEAR, AND THE PROJECTION IS THE POSTINGS' OWN ARITHMETIC
 - A YEAR'S DEPRECIATION IS POSTED IN FULL: EACH MONTH TAKES ITS SHARE OF THE YEAR'S FIGURE, AND THE TWELVE ADD UP TO IT
+- AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 
 ### `docs/design-record/frontend.md` (10 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 

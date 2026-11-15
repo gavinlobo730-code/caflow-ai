@@ -5,11 +5,24 @@ CGST Act §2(59): all money values stored as integer paise (never float).
 """
 import re
 from datetime import date as _date
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import Field, BaseModel, field_validator, model_validator
 from typing import Optional
 from enum import Enum
 from domain.money_sentence import rupee_text
 from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
+
+
+_WHITE_SPACE = re.compile(r"[ \t\n\r\f\v]+")
+
+
+def one_line(v):
+    """A place or a keeper of an asset as one line (migration 591): every run of ASCII white space is one space, the ends are trimmed,
+    and a blank is none. `record_fixed_asset_movement` tidies the same way with the same explicit class (never `\\s`, whose reach
+    over a non-breaking space differs between Python and Postgres), so a place typed on the asset and one typed on a movement compare
+    alike. Anything that is not a string is left to the field's own type."""
+    if isinstance(v, str):
+        return _WHITE_SPACE.sub(" ", v).strip(" ") or None
+    return v
 
 
 def _posting_date(v: Optional[str]) -> Optional[str]:
@@ -425,8 +438,13 @@ class FixedAssetIn(BaseModel):
     useful_life_years: Optional[int] = None
     depreciation_method: DepreciationMethod = DepreciationMethod.WDV
     wdv_rate_percent: Optional[float] = None
-    location: Optional[str] = None
+    #: Where the asset is, one line of at most 200 characters (a movement's place is held to the same, migration 591).
+    location: Optional[str] = Field(None, max_length=200)
+    #: Who the asset is in the keeping of (migration 591). Moving it later is a movement, with a date (`POST .../movements`).
+    custodian: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = None
+
+    _place_and_keeper_are_lines = field_validator("location", "custodian", mode="before")(lambda cls, v: one_line(v))
 
     # ── IT Act §32, which is a different system from Schedule II above ──────
     # Neither of these touches the Companies Act charge. `it_block_key` says
@@ -645,8 +663,13 @@ class FixedAssetUpdateIn(BaseModel):
     alongside a cost re-runs that calculation once, from the figures given.
     """
     asset_name: Optional[str] = None
-    location: Optional[str] = None
+    location: Optional[str] = Field(None, max_length=200)
+    #: A correction of a mistyped keeper, as `location` is of a mistyped place; a move is a movement (`POST .../movements`), which keeps
+    #: the history (migration 591).
+    custodian: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = None
+
+    _place_and_keeper_are_lines = field_validator("location", "custodian", mode="before")(lambda cls, v: one_line(v))
     it_block_key: Optional[str] = None
     put_to_use_date: OptionalIsoDate = None
 
