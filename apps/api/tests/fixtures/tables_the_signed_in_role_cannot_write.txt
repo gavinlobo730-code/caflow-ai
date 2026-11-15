@@ -19,6 +19,7 @@
 # 592 creates fixed_asset_verifications and fixed_asset_verification_findings (POST-A-112) with no signed-in write: the API's privileged client opens a count, and record_fixed_asset_finding and close_fixed_asset_verification are the only other writers.
 # 593 closes tds_deductions, tds_returns, tds_challans and tds_certificates (POST-A-443): the TDS register, returns, challans and certificates are written by the API's privileged client since the change that shipped before it.
 # 595 closes itc_reversal_register, gstr2b_uploads, gst_sync_jobs, gst_portal_snapshots, client_gst_turnover, hsn_sac_preferences and gst_challans (POST-A-008, the GST tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing writes gst_challans.
+# 596 closes ais_uploads, ais_records, ais_reconciliations, ais_computation_decisions, form_26as_records, income_tax_asset_blocks, income_tax_worksheets, itr_filing_versions, tax_deduction_claims, it_deductions and tax_notices (POST-A-008, the income-tax tranche): the API writes the first nine with its privileged client since the change that shipped before it, and nothing reads or writes the last two.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -37,6 +38,10 @@ ai_signals
 ai_summaries
 ai_trigger_registry
 ai_usage_events
+ais_computation_decisions
+ais_reconciliations
+ais_records
+ais_uploads
 approval_requests
 assignment_rules
 attendance
@@ -112,6 +117,7 @@ fixed_asset_movements
 fixed_asset_verification_findings
 fixed_asset_verifications
 fixed_assets
+form_26as_records
 fx_adjustments
 fx_revaluations
 goods_receipt_lines
@@ -130,11 +136,15 @@ gstr9c_rate_wise_lines
 gstr9c_reconciliations
 hsn_master
 hsn_sac_preferences
+income_tax_asset_blocks
+income_tax_worksheets
 inventory_stock_ledger
 invoice_sequences
 invoice_settings
 invoice_templates
+it_deductions
 itc_reversal_register
+itr_filing_versions
 journal_entries
 journal_lines
 journal_narration_templates
@@ -209,6 +219,8 @@ task_tags
 task_templates
 task_timeline_events
 tax_audit_checklists
+tax_deduction_claims
+tax_notices
 tds_certificates
 tds_challans
 tds_deductions
