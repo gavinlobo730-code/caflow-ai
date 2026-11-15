@@ -56,6 +56,7 @@ from uuid import uuid4
 from core.ist_clock import assessment_year_for
 from services import ais_service
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.ais_computation")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -287,7 +288,7 @@ def _upsert_decision(row: dict) -> None:
                          row["assessment_year"], row["line_key"])] = {
             "id": str(uuid4()), "decided_at": _now(), **row}
         return
-    (_supabase().table("ais_computation_decisions")
+    (privileged_for(_supabase()).table("ais_computation_decisions")
      .upsert({
          "firm_id": row["firm_id"],
          "client_id": row["client_id"],
@@ -305,7 +306,7 @@ def _delete_decision(firm_id: str, client_id: str, ay: str, line_key: str) -> No
     if _USE_MOCK:
         _MOCK_DECISIONS.pop((firm_id, client_id, ay, line_key), None)
         return
-    (_supabase().table("ais_computation_decisions").delete()
+    (privileged_for(_supabase()).table("ais_computation_decisions").delete()
      .eq("firm_id", firm_id).eq("client_id", client_id)
      .eq("assessment_year", ay).eq("line_key", line_key).execute())
 

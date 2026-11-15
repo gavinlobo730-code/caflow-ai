@@ -59,6 +59,7 @@ from domain.income_tax.ais import (
     parse,
 )
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.ais")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -362,7 +363,7 @@ def add_manual_record(
                           tds_deducted_paise=tds_deducted_paise,
                           source="manual"))
     saved = _insert_records([row])[0]
-    _restate_totals(firm_id, upload_id)
+    _restate_totals(firm_id, client_id, upload_id)
     return saved
 
 
@@ -384,8 +385,8 @@ def delete_record(*, firm_id: str, record_id: str) -> dict:
             "(IT Act §285BB), so it cannot be removed here — the screen would "
             "then disagree with the portal. Submit feedback on the AIS at "
             "incometax.gov.in if the line is wrong.")
-    _delete_record(firm_id, record_id)
-    _restate_totals(firm_id, record["upload_id"])
+    _delete_record(firm_id, record["client_id"], record_id)
+    _restate_totals(firm_id, record["client_id"], record["upload_id"])
     return {"deleted": record_id}
 
 
@@ -511,7 +512,7 @@ def _insert_upload(row: dict) -> str:
         row = {"id": str(uuid4()), "created_at": _now(), **row}
         _MOCK_UPLOADS[row["id"]] = row
         return row["id"]
-    res = _supabase().table("ais_uploads").insert({
+    res = privileged_for(_supabase()).table("ais_uploads").insert({
         "firm_id": row["firm_id"],
         "client_id": row["client_id"],
         "assessment_year": row["assessment_year"],
@@ -574,7 +575,7 @@ def _insert_records(rows: list[dict]) -> list[dict]:
             _MOCK_RECORDS[r["id"]] = r
             saved.append(r)
         return saved
-    return _supabase().table("ais_records").insert([{
+    return privileged_for(_supabase()).table("ais_records").insert([{
         "firm_id": r["firm_id"],
         "client_id": r["client_id"],
         "upload_id": r["upload_id"],
@@ -617,15 +618,15 @@ def _get_record(firm_id: str, record_id: str) -> Optional[dict]:
     return (res.data or [None])[0]
 
 
-def _delete_record(firm_id: str, record_id: str) -> None:
+def _delete_record(firm_id: str, client_id: str, record_id: str) -> None:
     if _USE_MOCK:
         _MOCK_RECORDS.pop(record_id, None)
         for key, w in list(_MOCK_RECONS.items()):
             if w["record_id"] == record_id:
                 _MOCK_RECONS.pop(key, None)
         return
-    (_supabase().table("ais_records").delete()
-     .eq("id", record_id).eq("firm_id", firm_id).execute())
+    (privileged_for(_supabase()).table("ais_records").delete()
+     .eq("id", record_id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
 
 
 def _recons_for_year(firm_id: str, client_id: str, ay: str) -> list[dict]:
@@ -646,7 +647,7 @@ def _insert_recons(rows: list[dict]) -> None:
             r = {"id": str(uuid4()), "created_at": _now(), "updated_at": _now(), **r}
             _MOCK_RECONS[r["record_id"]] = r
         return
-    _supabase().table("ais_reconciliations").insert([{
+    privileged_for(_supabase()).table("ais_reconciliations").insert([{
         "firm_id": r["firm_id"],
         "client_id": r["client_id"],
         "record_id": r["record_id"],
@@ -667,7 +668,7 @@ def _upsert_recon(row: dict) -> dict:
                  **row, "updated_at": _now()}
         _MOCK_RECONS[row["record_id"]] = saved
         return saved
-    res = (_supabase().table("ais_reconciliations")
+    res = (privileged_for(_supabase()).table("ais_reconciliations")
            .upsert({
                "firm_id": row["firm_id"],
                "client_id": row["client_id"],
@@ -684,7 +685,7 @@ def _upsert_recon(row: dict) -> dict:
     return (res.data or [row])[0]
 
 
-def _restate_totals(firm_id: str, upload_id: str) -> None:
+def _restate_totals(firm_id: str, client_id: str, upload_id: str) -> None:
     """Keep the upload's stored totals in step with the lines it now has.
 
     They exist so a list of statements can be shown without reading every
@@ -701,11 +702,11 @@ def _restate_totals(firm_id: str, upload_id: str) -> None:
         if upload_id in _MOCK_UPLOADS:
             _MOCK_UPLOADS[upload_id].update(patch)
         return
-    (_supabase().table("ais_uploads").update({
+    (privileged_for(_supabase()).table("ais_uploads").update({
         "record_count": patch["record_count"],
         "total_amount_paise": patch["total_amount_paise"],
         "total_tds_paise": patch["total_tds_paise"],
-     }).eq("id", upload_id).eq("firm_id", firm_id).execute())
+     }).eq("id", upload_id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
 
 
 def _reset_mock_state() -> None:

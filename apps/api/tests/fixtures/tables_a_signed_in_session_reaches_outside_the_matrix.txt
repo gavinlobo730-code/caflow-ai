@@ -34,7 +34,7 @@ capital_gain_reinvestments	read
 capital_gains	read
 capital_work_in_progress	write
 client_gst_registrations	read
-client_gst_turnover	write
+client_gst_turnover	read
 client_health_overrides	write
 client_health_scores	write
 client_lifecycle_events	write
@@ -89,11 +89,11 @@ fx_revaluations	read
 godowns	write
 goods_receipt_lines	read
 goods_receipt_notes	read
-gst_challans	write
+gst_challans	read
 gst_credit_ledger_openings	read
-gst_portal_snapshots	write
-gst_sync_jobs	write
-gstr2b_uploads	write
+gst_portal_snapshots	read
+gst_sync_jobs	read
+gstr2b_uploads	read
 gstr4_annual_b2b_rc_supplies	read
 gstr4_annual_b2b_supplies	read
 gstr4_annual_import_of_services	read
@@ -104,7 +104,7 @@ gstr9c_reconciliations	read
 health_dimension_scores	write
 health_overrides	write
 hsn_master	read
-hsn_sac_preferences	write
+hsn_sac_preferences	read
 income_tax_asset_blocks	write
 income_tax_worksheets	write
 inventory_batches	write
@@ -114,7 +114,7 @@ invoice_sequences	read
 invoice_settings	read
 invoice_templates	read
 it_deductions	write
-itc_reversal_register	write
+itc_reversal_register	read
 itr_filing_versions	write
 journal_narration_templates	read
 knowledge_article_versions	write

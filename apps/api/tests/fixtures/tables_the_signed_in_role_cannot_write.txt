@@ -18,6 +18,7 @@
 # 591 creates fixed_asset_movements (POST-A-112) with no signed-in write: record_fixed_asset_movement, called by the API's privileged client, is its one writer.
 # 592 creates fixed_asset_verifications and fixed_asset_verification_findings (POST-A-112) with no signed-in write: the API's privileged client opens a count, and record_fixed_asset_finding and close_fixed_asset_verification are the only other writers.
 # 593 closes tds_deductions, tds_returns, tds_challans and tds_certificates (POST-A-443): the TDS register, returns, challans and certificates are written by the API's privileged client since the change that shipped before it.
+# 595 closes itc_reversal_register, gstr2b_uploads, gst_sync_jobs, gst_portal_snapshots, client_gst_turnover, hsn_sac_preferences and gst_challans (POST-A-008, the GST tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing writes gst_challans.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -57,6 +58,7 @@ capital_gain_reinvestments
 capital_gains
 client_documents
 client_gst_registrations
+client_gst_turnover
 client_payroll_settings
 client_portal_sessions
 client_portal_users
@@ -114,7 +116,11 @@ fx_adjustments
 fx_revaluations
 goods_receipt_lines
 goods_receipt_notes
+gst_challans
 gst_credit_ledger_openings
+gst_portal_snapshots
+gst_sync_jobs
+gstr2b_uploads
 gstr4_annual_b2b_rc_supplies
 gstr4_annual_b2b_supplies
 gstr4_annual_import_of_services
@@ -123,10 +129,12 @@ gstr9c_expense_lines
 gstr9c_rate_wise_lines
 gstr9c_reconciliations
 hsn_master
+hsn_sac_preferences
 inventory_stock_ledger
 invoice_sequences
 invoice_settings
 invoice_templates
+itc_reversal_register
 journal_entries
 journal_lines
 journal_narration_templates

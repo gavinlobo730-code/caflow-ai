@@ -146,6 +146,12 @@ HELPERS = {
     # triggers of 539, 541 and 544, the internal-practice guard) write as a signed-in member, so each gives the privilege back in its
     # throwaway database through this one helper, which applies 563's rollback file and so cannot drift from what the migration took.
     "_signed_in_document_writes.py",
+    # POST-A-008, the tranche migrations from 595 on. The same device for the tables each tranche closes: a migration takes INSERT,
+    # UPDATE and DELETE from `authenticated` on the tables the API writes with its privileged client, and the older modules that
+    # measure the second lock (a row policy, a guard trigger) by writing as a signed-in member give the privilege back in their
+    # throwaway database through this one helper, which grants it only on the tables the closed list names, so one call stays right
+    # as later tranches close more of a module's tables.
+    "_signed_in_writes_handed_back.py",
     # POST-A-314, migration 532. A PostgREST-shaped client that runs each call in a REAL database as `authenticated` (with a
     # token's claims) or as `service_role`, for the tests that must see row security and grants: every other double answers from
     # Python, which is how the year lock's table could refuse every signed-in write and no test notice. Imported by
