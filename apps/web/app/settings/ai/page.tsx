@@ -37,6 +37,7 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { AiUsagePanel } from "@/components/settings/AiUsagePanel";
+import { TechnicalDetails } from "@/components/ai/TechnicalDetails";
 import {
   api,
   type AiProbeAnswer,
@@ -73,17 +74,23 @@ function when(at: string | null | undefined): string {
   return formatIstLabelled(at, "never");
 }
 
-function seen(s: { model?: string | null; at?: string | null; latency_ms?: number | null;
-                   total_tokens?: number | null } | null | undefined): React.ReactNode {
+type Seen = { model?: string | null; at?: string | null; latency_ms?: number | null;
+              total_tokens?: number | null } | null | undefined;
+
+/** When, how long and how much. The model code is not here: it is under Technical details (`modelOf`). */
+function seen(s: Seen): React.ReactNode {
   if (!s) return <span className="text-ps-label">none</span>;
   return (
     <>
       {when(s.at)}
-      {s.model ? <span className="text-ps-label"> · <span className="font-mono">{s.model}</span></span> : null}
       {s.latency_ms != null ? <span className="text-ps-label"> · {s.latency_ms} ms</span> : null}
       {s.total_tokens != null ? <span className="text-ps-label"> · {s.total_tokens} tokens</span> : null}
     </>
   );
+}
+
+function modelOf(s: Seen): React.ReactNode {
+  return s?.model ? <span className="font-mono">{s.model}</span> : <span className="text-ps-label">none recorded</span>;
 }
 
 function ProviderCard({
@@ -119,11 +126,10 @@ function ProviderCard({
             <Callout tone={result.tone ?? "attention"}>
               {result.state === "ok" ? (
                 <>
-                  Answered in {result.latency_ms ?? "—"} ms
-                  {result.answered_by ? <> using <span className="font-mono">{result.answered_by}</span></> : null}
+                  {p.label} answered in {result.latency_ms ?? "—"} ms
                   {result.total_tokens != null ? <> ({result.total_tokens} tokens)</> : null}.
                   {result.answered_by && result.answered_by !== result.model
-                    ? <> The configured model <span className="font-mono">{result.model}</span> did not answer; a fallback did.</>
+                    ? <> The model it is set to use did not answer; a fallback model did (both are named under Technical details).</>
                     : null}
                 </>
               ) : (
@@ -133,12 +139,6 @@ function ProviderCard({
           </div>
         )}
         <dl className="divide-y divide-ps-border">
-          <Fact label="Model asked for"><span className="font-mono">{p.model}</span></Fact>
-          <Fact label="Fallback models">
-            {fallbacks.length > 0
-              ? <span className="font-mono">{fallbacks.join(", ")}</span>
-              : <span className="text-ps-label">none configured — if this model is retired, nothing else is tried</span>}
-          </Fact>
           <Fact label="Last answer this server saw">{seen(p.this_process?.last_success)}</Fact>
           <Fact label="Last attempt this server saw">
             {seen(attempt)}
@@ -156,6 +156,31 @@ function ProviderCard({
             </Fact>
           )}
         </dl>
+        <TechnicalDetails>
+          <dl className="divide-y divide-ps-border">
+            <Fact label="Model asked for"><span className="font-mono">{p.model}</span></Fact>
+            <Fact label="Fallback models">
+              {fallbacks.length > 0
+                ? <span className="font-mono">{fallbacks.join(", ")}</span>
+                : <span className="text-ps-label">none configured — if this model is retired, nothing else is tried</span>}
+            </Fact>
+            {result?.state === "ok" && result.answered_by ? (
+              <Fact label="Answered the last check">
+                <span className="font-mono">{result.answered_by}</span>
+                {result.answered_by !== result.model
+                  ? <span className="text-ps-label"> (asked for <span className="font-mono">{result.model}</span>)</span> : null}
+              </Fact>
+            ) : null}
+            <Fact label="Model of the last answer this server saw">{modelOf(p.this_process?.last_success)}</Fact>
+            <Fact label="Model of the last attempt this server saw">{modelOf(attempt)}</Fact>
+            {firm ? (
+              <>
+                <Fact label="Model of the last answer for this firm">{modelOf(firm.last_answered)}</Fact>
+                <Fact label="Model of the last attempt for this firm">{modelOf(firm.last_attempt)}</Fact>
+              </>
+            ) : null}
+          </dl>
+        </TechnicalDetails>
       </div>
     </section>
   );
@@ -222,12 +247,13 @@ export default function AiStatusPage() {
         <PageHeader
           back={{ href: "/settings", label: "Settings" }}
           icon={<Cpu size={17} className="text-blue-600" />}
-          title="AI status"
+          title="PracticeSync AI status"
           subtitle={
             <>
-              Whether the assistant, the copilot and the invoice and notice readers can reach
-              their AI providers. &quot;Check now&quot; sends one short fixed request — nothing
-              about any client — and tells you in words if it did not answer.
+              PracticeSync AI — the assistant, the copilot and the invoice and notice readers — runs on
+              the two outside providers named below, outside India. This says whether each is answering.
+              &quot;Check now&quot; sends one short fixed request — nothing about any client — and tells
+              you in words if it did not answer. The exact models are under Technical details.
             </>
           }
           actions={providers.some((p) => p.configured) && (

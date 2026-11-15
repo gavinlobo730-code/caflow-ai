@@ -189,7 +189,7 @@ export default function AIAssistantPage() {
           page's sibling in the AI section, has never had one either. */}
       <PageHeader
         icon={<Sparkles size={15} className="text-blue-500" />}
-        title="AI Assistant"
+        title="PracticeSync AI Assistant"
         subtitle="Ask about GST, Income Tax, TDS, and practice management"
         actions={
           <>

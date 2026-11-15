@@ -255,6 +255,24 @@ def _add(into: dict, d: dict) -> None:
         into[k] += v
 
 
+#: What each feature is called on a screen (POST-A-448): the everyday features carry the product's name, and the key is
+#: the `feature` the gateway records with each call. A feature not listed here is shown by its key, as a code, and never
+#: given a guessed name.
+FEATURE_LABELS: dict[str, str] = {
+    "assistant": "PracticeSync AI Assistant",
+    "firm_copilot": "PracticeSync AI Copilot",
+    "invoice_extraction": "PracticeSync AI invoice reader",
+    "notice_extraction": "PracticeSync AI notice reader",
+    "statement_scan": "PracticeSync AI bank statement scan",
+    "statement_analysis": "PracticeSync AI statement analysis",
+    "practice_digest": "PracticeSync AI practice digest",
+}
+
+#: The company each call went to, by the name the status page shows. The provider is never hidden behind the product's
+#: name: it is the company that receives a CA's content.
+PROVIDER_LABELS: dict[str, str] = {"groq": gateway.GROQ.name, "gemini": gateway.GEMINI.name}
+
+
 def fold(by_day: Iterable[dict], by_feature: Iterable[dict]) -> dict:
     """The two grouped answers (`ai_usage_by_day`, `ai_usage_by_feature`) as the three views
     a Partner reads: month totals, by feature, by day. The totals are summed from the DAY
@@ -276,7 +294,10 @@ def fold(by_day: Iterable[dict], by_feature: Iterable[dict]) -> dict:
         _add(features.setdefault(key, {"feature": r.get("feature"), "provider": r.get("provider"),
                                        **_ZERO}), _delta(r))
         models.setdefault(key, set()).add(r.get("model"))
-    by_feature_list = [{**e, "models": sorted(m for m in models[k] if m)} for k, e in features.items()]
+    by_feature_list = [{**e, "models": sorted(m for m in models[k] if m),
+                        "label": FEATURE_LABELS.get(str(e["feature"])),
+                        "provider_label": PROVIDER_LABELS.get(str(e["provider"]))}
+                       for k, e in features.items()]
     by_feature_list.sort(key=lambda e: (-e["tokens"], -e["pages"], str(e["feature"])))
 
     return {"totals": totals, "by_feature": by_feature_list,
