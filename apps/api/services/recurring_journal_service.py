@@ -416,7 +416,7 @@ def _record_run(firm_id: str, template_id: str, occurrence: str, status: str,
         MOCK_JOURNAL_RUNS.append(row)
         return row
     db = db or _db()
-    return db.table("recurring_journal_runs").insert({
+    return privileged_for(db).table("recurring_journal_runs").insert({
         "firm_id": firm_id,
         "template_id": template_id,
         "occurrence_date": occurrence,

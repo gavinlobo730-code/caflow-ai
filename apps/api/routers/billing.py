@@ -187,7 +187,7 @@ def update_schedule(schedule_id: str = Path(...),
     assert_client_access(current_user, sched.get("client_id"), detail="Billing schedule not found")
     out = billing_service.update_schedule(
         current_user["firm_id"], schedule_id,
-        body.model_dump(exclude_unset=True), current_user.get("id"))
+        body.model_dump(exclude_unset=True), current_user.get("id"), client_id=sched.get("client_id"))
     if out is None:
         raise HTTPException(status_code=404, detail="Billing schedule not found")
     return api_response(True, out)

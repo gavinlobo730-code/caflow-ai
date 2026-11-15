@@ -83,7 +83,7 @@ def test_the_scheduler_advance_uses_the_schedules_own_anchor():
 
 def test_editing_the_next_run_date_by_hand_rebases_the_schedule():
     s = _schedule(next_run_date="2026-10-31")
-    updated = billing.update_schedule("F1", s["id"], {"next_run_date": "2026-12-15"})
+    updated = billing.update_schedule("F1", s["id"], {"next_run_date": "2026-12-15"}, client_id=s["client_id"])
     assert updated["anchor_date"] == "2026-12-15"
     billing._advance_schedule("F1", updated, "monthly")
     assert updated["next_run_date"] == "2027-01-15"
@@ -91,7 +91,7 @@ def test_editing_the_next_run_date_by_hand_rebases_the_schedule():
 
 def test_editing_something_else_leaves_the_anchor_alone():
     s = _schedule(next_run_date="2026-10-31")
-    updated = billing.update_schedule("F1", s["id"], {"amount_paise": 250000})
+    updated = billing.update_schedule("F1", s["id"], {"amount_paise": 250000}, client_id=s["client_id"])
     assert updated["anchor_date"] == "2026-10-31"
 
 
