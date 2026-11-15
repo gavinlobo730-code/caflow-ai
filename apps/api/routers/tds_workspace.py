@@ -23,6 +23,7 @@ from core.permissions import can_user, rbac
 from core.authz import assert_client_access, can_access_client, effective_client_ids
 from domain.tds.tds_validator import TDSValidator
 from services.audit_service import log_event
+from services.internal_client_service import assert_partner_for_internal_id
 from services.timeline_service import timeline_service
 from services.period_validation_service import period_validation_service
 from models.fy import FYLabel, OptionalFYLabel
@@ -850,7 +851,9 @@ def create_deduction(
         # counted as an unreadable reference and its columns stop being checked
         # against the real schema. Same reason the year-end and compliance
         # writes are spelt out.
-        ins = db.table("tds_deductions").insert({
+        # THE PRIVILEGED CLIENT WRITES THE REGISTER (POST-A-443): the route has asked the role tier and the client above, and the row names
+        # the firm and the client it was asked for. The read that follows a write, and every read here, stays on the caller's own client.
+        ins = privileged_for(db).table("tds_deductions").insert({
             "firm_id": row["firm_id"],
             "client_id": row["client_id"],
             "deductee_name": row["deductee_name"],
@@ -950,6 +953,9 @@ def update_deduction(
         rec = _visible_or_none(current_user, got[0] if got else None)
         if rec is None:
             return api_response(False, None, "Not found")
+        # The firm's own practice is a Partner's (G1, migration 074's `_internal_partner_only` policy on this table): the router's guard reads a
+        # client id off the request, and this one names a row, so the row's client is asked here before the privileged client writes (POST-A-443).
+        assert_partner_for_internal_id(rec.get("client_id"), current_user)
         if manual_register.written_by_a_document(rec):
             return api_response(False, None, _not_typed_here(rec, removing=False))
         merged = {**rec, **{k: v for k, v in body.model_dump().items() if v is not None}}
@@ -958,7 +964,7 @@ def update_deduction(
         row = resolved["row"]
         # Inline again, and only the columns an edit may move — firm_id and
         # client_id are the row's identity, not its content.
-        upd = (db.table("tds_deductions").update({
+        upd = (privileged_for(db).table("tds_deductions").update({
             "deductee_name": row["deductee_name"],
             "deductee_pan": row["deductee_pan"],
             "section": row["section"],
@@ -973,7 +979,7 @@ def update_deduction(
             "financial_year": row["financial_year"],
             "challan_no": row["challan_no"],
             "notes": row["notes"],
-        }).eq("id", deduction_id).eq("firm_id", firm_id).execute().data) or []
+        }).eq("id", deduction_id).eq("firm_id", firm_id).eq("client_id", rec["client_id"]).execute().data) or []
         log_event(firm_id, "tds_deduction", deduction_id, "update",
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
@@ -1016,6 +1022,7 @@ def delete_deduction(
         rec = _visible_or_none(current_user, got[0] if got else None)
         if rec is None:
             return api_response(False, None, "Not found")
+        assert_partner_for_internal_id(rec.get("client_id"), current_user)   # G1, as on the correction above (POST-A-443)
         if manual_register.written_by_a_document(rec):
             why = _remove_what_its_document_left_behind(db, firm_id, rec)
             if why is None:
@@ -1024,7 +1031,8 @@ def delete_deduction(
                       actor_id=current_user.get("auth_user_id"),
                       actor_email=current_user.get("email"), new_data={**dict(rec), "removed_because": why})
             return api_response(True, {"deleted": deduction_id, "removed_because": why})
-        db.table("tds_deductions").delete().eq("id", deduction_id).eq("firm_id", firm_id).execute()
+        (privileged_for(db).table("tds_deductions").delete()
+         .eq("id", deduction_id).eq("firm_id", firm_id).eq("client_id", rec["client_id"]).execute())
         log_event(firm_id, "tds_deduction", deduction_id, "delete",
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"), new_data=dict(rec))
@@ -1255,7 +1263,8 @@ def create_challan(
             _MOCK_CHALLANS[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("tds_challans").insert(record).execute()
+            # The privileged client writes (POST-A-443); `record` names the firm and the client the route asked for.
+            privileged_for(get_supabase()).table("tds_challans").insert(record).execute()
 
         log_event(firm_id, "tds_challan", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)
@@ -1631,7 +1640,8 @@ def _revise_tds_return(existing: dict, body: CreateReturnRequest,
         rec = dict(_MOCK_RETURNS[return_id])
     else:
         from core.supabase_client import get_supabase
-        rows = (get_supabase().table("tds_returns").update({
+        # The privileged client writes (POST-A-443), naming the firm and the client of the row the route read.
+        rows = (privileged_for(get_supabase()).table("tds_returns").update({
             # Back to pending with the approver cleared: see the docstring.
             "status": "pending",
             "ca_approved_by": None,
@@ -1644,10 +1654,11 @@ def _revise_tds_return(existing: dict, body: CreateReturnRequest,
             "deductee_count": deductees,
             "validation_errors": errors,
             "updated_at": now_iso,
-        }).eq("id", return_id).eq("firm_id", firm_id).execute().data) or []
+        }).eq("id", return_id).eq("firm_id", firm_id).eq("client_id", existing["client_id"]).execute().data) or []
         if not rows:
             # The row was read a moment ago in this request; an update that
-            # matched nothing means it is gone or not writable by this caller.
+            # matched nothing means it is gone (the privileged client writes it,
+            # POST-A-443, so no row security can be what refused it).
             # Answering success with the OLD figures would report a revision
             # that did not happen.
             raise HTTPException(status_code=404, detail=(
@@ -1735,7 +1746,8 @@ def create_return(
             _MOCK_RETURNS[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("tds_returns").insert(record).execute()
+            # The privileged client writes (POST-A-443); `record` names the firm and the client the route asked for.
+            privileged_for(get_supabase()).table("tds_returns").insert(record).execute()
 
         log_event(firm_id, "tds_return", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)
@@ -1900,6 +1912,29 @@ def _close_the_obligation(current_user: dict, row: dict, body: UpdateReturnStatu
                            "Mark the obligation filed from Compliance."}
 
 
+def _status_request_refusal(body: "UpdateReturnStatusRequest", current_user: dict) -> Optional[str]:
+    """What is wrong with a status request on its face, before any row is read, or None. Moved out of `update_return_status` unchanged when that
+    route gained its own refusal for the firm's own practice (POST-A-443), which took it past the complexity limit."""
+    allowed = {"pending", "prepared", "ca_approved", "filed"}
+    if body.status not in allowed:
+        return f"Invalid status. Allowed: {allowed}"
+
+    # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    if body.status in ("ca_approved", "filed") and not body.ca_approved:
+        return "Explicit ca_approved=true required for ca_approved/filed status. CA must confirm."
+
+    # IT Act §200/§203: only Manager+ can approve/file a TDS return —
+    # ca_approved=true alone is a caller-supplied flag, not proof of role.
+    # Asked of the PERSON (`can_user`: a per-person row wins, the role decides where there is none), not of the role template: a Manager whose
+    # approval of TDS the Team grid switched off still approved, filed and could record over a refusal, and an Executive it had granted it to could not.
+    if body.status in ("ca_approved", "filed") and not can_user(current_user, "tds", "approve"):
+        return "Only Manager or above can approve or file a TDS return."
+
+    if body.status == "filed" and not (body.prn or "").strip():
+        return "PRN (Provisional Receipt Number) is required to mark a return as filed."
+    return None
+
+
 @router.patch("/returns/{return_id}/status")
 def update_return_status(
     return_id: str,
@@ -1912,27 +1947,9 @@ def update_return_status(
     """
     try:
         firm_id = current_user["firm_id"]
-        allowed = {"pending", "prepared", "ca_approved", "filed"}
-        if body.status not in allowed:
-            return api_response(False, None, f"Invalid status. Allowed: {allowed}")
-
-        # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        if body.status in ("ca_approved", "filed") and not body.ca_approved:
-            return api_response(False, None,
-                "Explicit ca_approved=true required for ca_approved/filed status. CA must confirm.")
-
-        # IT Act §200/§203: only Manager+ can approve/file a TDS return —
-        # ca_approved=true alone is a caller-supplied flag, not proof of role.
-        # Asked of the PERSON (`can_user`: a per-person row wins, the role decides where there is none), not of the role template: a Manager whose
-        # approval of TDS the Team grid switched off still approved, filed and could record over a refusal, and an Executive it had granted it to could not.
-        if body.status in ("ca_approved", "filed"):
-            if not can_user(current_user, "tds", "approve"):
-                return api_response(False, None,
-                    "Only Manager or above can approve or file a TDS return.")
-
-        if body.status == "filed" and not (body.prn or "").strip():
-            return api_response(False, None,
-                "PRN (Provisional Receipt Number) is required to mark a return as filed.")
+        why_not = _status_request_refusal(body, current_user)
+        if why_not:
+            return api_response(False, None, why_not)
         filed_on, why_not_this_date = _the_filing_date(body)
         if why_not_this_date:
             return api_response(False, None, why_not_this_date)
@@ -1956,6 +1973,7 @@ def update_return_status(
         current = _visible_or_none(current_user, current)
         if current is None:
             return api_response(False, None, "Not found")
+        assert_partner_for_internal_id(current.get("client_id"), current_user)   # G1: the request names a return, not a client (POST-A-443)
         refusal = _the_refusal(body, current, filed_on)
         if refusal:
             return api_response(False, refusal.marker(), refusal.sentence)
@@ -1980,15 +1998,17 @@ def update_return_status(
             from core.supabase_client import get_supabase
             # Conditional on the status that was READ: two requests to mark the same statement filed (a double click) both
             # read ca_approved and both pass the checks above, and without this the second would overwrite the first's PRN.
-            rows = (get_supabase().table("tds_returns").update(update_payload)
-                    .eq("id", return_id).eq("firm_id", firm_id).eq("status", current.get("status")).execute().data)
+            # The privileged client writes (POST-A-443), naming the firm and the client of the row read and checked above.
+            rows = (privileged_for(get_supabase()).table("tds_returns").update(update_payload)
+                    .eq("id", return_id).eq("firm_id", firm_id).eq("client_id", current["client_id"])
+                    .eq("status", current.get("status")).execute().data)
             if not rows:
-                # The row was removed or changed between the read and the write, or the caller's row security refused the
-                # change: PostgREST answers all three with an empty list. It used to be answered `{}` as a success, with
-                # the audit row and the timeline entry written for a change that never happened.
+                # The row was removed or changed between the read and the write: PostgREST answers both with an empty list (the
+                # privileged client writes it since POST-A-443, so row security is no longer a third reason). It used to be answered
+                # `{}` as a success, with the audit row and the timeline entry written for a change that never happened.
                 return api_response(False, None,
-                    "Could not update this TDS return: it may have been removed or changed by someone else in the "
-                    "meantime, or your access does not let you change it. Nothing was changed.")
+                    "Could not update this TDS return: it was removed or changed by someone else in the meantime. "
+                    "Nothing was changed. Reload the returns and try again.")
             rec = rows[0]
 
         # THE OVERRIDE IS WRITTEN TO THE AUDIT LOG (POST-A-402): a statement recorded over what was incomplete about it says so, with what it
@@ -2009,6 +2029,9 @@ def update_return_status(
             )
             return api_response(True, {**rec, "compliance_obligation": _close_the_obligation(current_user, rec, body)})
         return api_response(True, rec)
+    except HTTPException:
+        # A refusal this route means (the firm's own practice is a Partner's, POST-A-443) is its answer, not a failure to word.
+        raise
     except Exception as e:
         return _could_not(e, "update the TDS return status")
 
@@ -2103,7 +2126,8 @@ def create_certificate(
             _MOCK_CERTIFICATES[record["id"]] = record
         else:
             from core.supabase_client import get_supabase
-            get_supabase().table("tds_certificates").insert(record).execute()
+            # The privileged client writes (POST-A-443); `record` names the firm and the client the route asked for.
+            privileged_for(get_supabase()).table("tds_certificates").insert(record).execute()
 
         log_event(firm_id, "tds_certificate", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)

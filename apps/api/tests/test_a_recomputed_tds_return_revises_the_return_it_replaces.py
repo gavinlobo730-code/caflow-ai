@@ -233,7 +233,8 @@ def test_against_a_database_the_existing_id_is_updated_not_inserted(against):
     ops = [c[0] for c in db.calls]
     assert "insert" not in ops
     (_, filters, payload), = [c for c in db.calls if c[0] == "update"]
-    assert filters == {"id": "R-1", "firm_id": "F-rev"}
+    # The privileged client writes the return (POST-A-443), so the update names the row's own client as well as the firm.
+    assert filters == {"id": "R-1", "firm_id": "F-rev", "client_id": "C-rev"}
     assert payload["status"] == "pending"
     assert payload["ca_approved_by"] is None and payload["ca_approved_at"] is None
     assert payload["total_deductions_paise"] == 35000
