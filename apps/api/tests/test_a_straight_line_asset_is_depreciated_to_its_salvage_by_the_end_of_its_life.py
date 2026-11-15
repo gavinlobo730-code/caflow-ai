@@ -20,10 +20,11 @@ straight-line asset's year stick; the figures below were reproduced by posting m
 WHAT IS HELD
     * the year's figure is resolved from the balance the year opened at, for either method, so every month of one year posts the
       same charge;
-    * a straight-line asset bought on 1 April posts its whole cost less salvage by 31 March of its fifth year (to within the paise
-      the monthly division discards, a fixed 8 paise a year on a cost that does not divide into twelve);
-    * an asset brought over with more than its straight-line share already carried posts what is left, evenly, and not a
-      shrinking figure;
+    * a straight-line asset bought on 1 April posts its whole cost less salvage by 31 March of its fifth year, to the paisa: each
+      month takes its share of the year's figure (`_month_share`), so the twelve add up to it exactly even when the figure does not
+      divide into twelve (they posted twelve floored twelfths, 8 paise a year short, until POST-A-436);
+    * an asset brought over with more than its straight-line share already carried posts what is left, evenly (each month within a
+      paisa of a twelfth), and not a shrinking figure;
     * an asset already at its salvage value posts nothing.
 """
 import pytest
@@ -104,20 +105,28 @@ def test_every_month_of_every_year_of_the_life_posts_the_same_charge_and_the_cos
     assert asset["current_wdv_paise"] == 0
 
 
-def test_a_cost_that_does_not_divide_into_twelve_loses_only_the_paise_the_division_discards_and_the_same_every_year(posting):
+#: A year's figure of 20,000.00 in its twelve shares (POST-A-436): 1,666.66, 1,666.67, 1,666.67, ... adding up to it exactly.
+TWELFTHS_OF_20_000 = [2_000_000 * k // 12 - 2_000_000 * (k - 1) // 12 for k in range(1, 13)]
+
+
+def test_a_cost_that_does_not_divide_into_twelve_is_charged_in_full_every_year(posting):
+    """1,00,000.00 over five years is 20,000.00 a year, which does not divide into twelve: every year posts all of it, the months
+    within a paisa of each other, and the asset reaches nil at the end of its fifth year (twelve floored twelfths posted 19,999.92
+    and left 40 paise, posted in a sixth year, until POST-A-436)."""
     asset = _seed_asset(posting, purchase_date="2026-04-01", purchase_cost_paise=LAKH, salvage_value_paise=0,
                         useful_life_years=5, accumulated_depreciation_paise=0, **SL)
     by_year = _charges_by_year(asset, 2026, 5)
-    totals = [sum(c) for c in by_year.values()]
-    assert len(set(totals)) == 1 and totals[0] == 12 * 1_666_66, totals          # five equal years, none shrinking
-    assert 0 <= LAKH - asset["accumulated_depreciation_paise"] <= 5 * 12, "only the discarded paise may be left"
+    assert [sum(c) for c in by_year.values()] == [20_000_00] * 5
+    assert all(c == TWELFTHS_OF_20_000 for c in by_year.values()) and max(TWELFTHS_OF_20_000) - min(TWELFTHS_OF_20_000) == 1
+    assert asset["accumulated_depreciation_paise"] == LAKH, "nothing is left after the fifth year"
+    assert _post("2031-04")["data"]["depreciation_paise"] == 0, "and nothing posts in a sixth"
 
 
 def test_the_final_years_months_are_not_a_shrinking_series(posting):
     asset = _seed_asset(posting, purchase_date="2026-04-01", purchase_cost_paise=LAKH, salvage_value_paise=0,
                         useful_life_years=5, accumulated_depreciation_paise=0, **SL)
     last = _charges_by_year(asset, 2026, 5)[2030]
-    assert last == [1_666_66] * 12, last
+    assert last == TWELFTHS_OF_20_000, last
 
 
 def test_an_asset_brought_over_with_most_of_its_cost_written_off_posts_what_is_left_evenly(posting):
@@ -125,8 +134,8 @@ def test_an_asset_brought_over_with_most_of_its_cost_written_off_posts_what_is_l
     asset = _seed_asset(posting, purchase_date="2022-04-01", purchase_cost_paise=LAKH, salvage_value_paise=0,
                         useful_life_years=5, accumulated_depreciation_paise=90_000_00, **SL)
     charges = _charges_by_year(asset, 2026, 1)[2026]
-    assert charges == [833_33] * 12, charges                                      # 10,000.00 / 12, not a shrinking tail
-    assert LAKH - asset["accumulated_depreciation_paise"] <= 12
+    assert sum(charges) == 10_000_00 and max(charges) - min(charges) <= 1, charges   # 10,000.00 in twelfths, not a shrinking tail
+    assert asset["accumulated_depreciation_paise"] == LAKH
 
 
 def test_the_charge_never_takes_the_asset_below_its_salvage_value(posting):

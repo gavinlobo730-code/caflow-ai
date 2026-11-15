@@ -18,8 +18,9 @@ WHAT IS HELD
       basis says why;
     * the schedule row's year figure is the projection's for the current year, so a register with months behind is not shown a
       year's figure no posting can charge; the full projection is served per asset, when its row is opened;
-    * the year's twelve floored twelfths leave a few paise a year, which a straight-line asset posts in a year after its life
-      (the projection shows it; POST-A-436 is the item to post the year's figure in full);
+    * each month takes its share of the year's figure, so a straight-line asset is charged its whole cost by the end of its life
+      and nothing is left for a year after it (POST-A-436: twelve floored twelfths had left 40 paise on 1,00,000.00 over five
+      years, posted in a sixth year, and the first version of the projection showed exactly that);
 """
 from __future__ import annotations
 
@@ -49,13 +50,12 @@ def test_a_straight_line_asset_runs_its_life_and_says_where_it_ends():
     got = fa.project_remaining_life(_sl(), "2026-04")
     assert got["starts_at"] == "2026-04" and got["start_note"] is None, "bought this month: nothing before it is foreclosed"
     years = [(y["financial_year"], y["months"], y["charge_paise"]) for y in got["years"]]
-    # Twelve floored twelfths of 20,000.00 are 19,999.92 a year: 40 paise are left after five years, posted in a sixth at three
-    # paise a month (36), and the last four never post.
-    assert years == [("2026-27", 12, 19_999_92), ("2027-28", 12, 19_999_92), ("2028-29", 12, 19_999_92),
-                     ("2029-30", 12, 19_999_92), ("2030-31", 12, 19_999_92), ("2031-32", 12, 36)]
-    assert (got["ends"], got["total_paise"], got["years"][-1]["closing_wdv_paise"]) == ("rounds_to_nil", 99_999_96, 4)
-    assert got["end_note"] == ("From Apr 2032 a month's charge rounds to nil, so no further month posts anything and the asset "
-                               "stays on the register at ₹0.04.")
+    # Each month takes its share of the year's 20,000.00, so five years charge the whole 1,00,000.00 and the sixth has nothing.
+    assert years == [("2026-27", 12, 20_000_00), ("2027-28", 12, 20_000_00), ("2028-29", 12, 20_000_00),
+                     ("2029-30", 12, 20_000_00), ("2030-31", 12, 20_000_00)]
+    assert (got["ends"], got["total_paise"], got["years"][-1]["closing_wdv_paise"]) == ("fully_depreciated", LAKH, 0)
+    assert got["end_note"] == ("The last charge is in Mar 2031; the asset then stands at ₹0.00 on the register and every later "
+                               "year's figure is nil.")
 
 
 def test_each_year_opens_where_the_last_closed():
@@ -81,7 +81,9 @@ def test_a_purchase_month_is_pro_rated_as_a_posting_pro_rates_it():
     got = fa.project_remaining_life(_sl(purchase_date="2026-06-17"), "2026-04")
     first = got["years"][0]
     assert (first["first_month"], first["months"]) == ("2026-06", 10)
-    assert first["charge_paise"] == 1_66_666 * 14 // 30 + 1_66_666 * 9      # 14 of June's 30 days, then nine whole months
+    # June is the third month of the year: its share is 1,666.67, held 14 of its 30 days; July to March take the rest of the year.
+    june = 20_000_00 * 3 // 12 - 20_000_00 * 2 // 12
+    assert first["charge_paise"] == june * 14 // 30 + (20_000_00 - 20_000_00 * 3 // 12)
 
 
 # ── where it starts and where it ends ────────────────────────────────────────
@@ -185,12 +187,14 @@ def test_the_months_posted_through_the_route_are_the_projection(monkeypatch):
 
 
 def test_a_straight_line_asset_across_its_capped_last_year_is_the_projection(monkeypatch):
-    """1,00,000.00 over two years: the third year's figure is capped at what the first two left, so this posts across the cap."""
+    """1,00,000.00 over two years, bought in October: half a year, a whole one, and a third year whose figure is capped at what the
+    first two left, so this posts across the cap."""
     db = _firm(monkeypatch)
-    row = _create(db, name="Licence", category="Intangibles", cost=LAKH, life=2, method="SL", date="2024-04-01")
-    before = _post_through_and_compare(row, "2024-04", _months("2024-04", "2026-10"))
+    row = _create(db, name="Licence", category="Intangibles", cost=LAKH, life=2, method="SL", date="2024-10-01")
+    before = _post_through_and_compare(row, "2024-10", _months("2024-10", "2026-10"))
     assert [y["financial_year"] for y in before["years"]][:3] == ["2024-25", "2025-26", "2026-27"]
-    assert before["years"][2]["year_figure_paise"] < before["years"][0]["year_figure_paise"], "the third year is the capped one"
+    assert before["years"][2]["year_figure_paise"] < before["years"][1]["year_figure_paise"], "the third year is the capped one"
+    assert before["total_paise"] == LAKH, "and the life charges the whole cost"
 
 
 def test_an_asset_brought_over_mid_year_is_the_projection(monkeypatch):

@@ -330,7 +330,7 @@ def _compute_annual_depreciation(asset: dict) -> int:
 
 def _annual_depreciation_for_period(asset: dict, period: str) -> tuple[int, str, int]:
     """Resolve the FIXED annual depreciation charge this asset's `period`
-    posting (or projection) should divide by 12, plus which financial year
+    posting (or projection) takes its month's share of (`_month_share`), plus which financial year
     it belongs to and the opening-of-year accumulated_depreciation_paise it
     was computed from — the router persists both back onto the asset row
     (fixed_assets.depreciation_fy / depreciation_fy_start_accum_paise,
@@ -853,18 +853,34 @@ def import_opening_register(
     return api_response(True, out)
 
 
+def _month_of_the_year(period: str) -> int:
+    """Where a 'YYYY-MM' month falls in its financial year: April is 1 and March is 12."""
+    month = int(period[5:7])
+    return month - 3 if month >= 4 else month + 9
+
+
+def _month_share(annual: int, period: str, purchase_date) -> int:
+    """One month's part of a year's figure: month k charges `annual x k // 12 - annual x (k - 1) // 12`, so the twelve months add up
+    to the year's figure EXACTLY and any run of months to the same fraction of it, each month within a paisa of a twelfth
+    (POST-A-436). Twelve floored twelfths, which is what this replaced, posted 19,999.92 of a year whose figure is 20,000.00 and
+    left a straight-line asset 40 paise short at the end of its life, posted in a year after it. The purchase month is then
+    pro-rated by the days held (Schedule II Note 3), as it always was."""
+    k = _month_of_the_year(period)
+    share = annual * k // 12 - annual * (k - 1) // 12
+    if period == str(purchase_date or "")[:7]:
+        share = _prorate_purchase_month(share, purchase_date)
+    return share
+
+
 def _month_charge(asset: dict, period: str) -> tuple[int, int, str, int]:
     """(the month's charge, the year's annual figure, its financial year, the year's opening accumulated depreciation) for one
-    asset and one 'YYYY-MM' period: the year's fixed figure over twelve, floored, and the purchase month pro-rated by the days
-    held (Schedule II Note 3). The one rule a posting charges by and the remaining-life projection runs (POST-A-115). Raises
-    ValueError where the asset has no statutory basis for a charge."""
+    asset and one 'YYYY-MM' period: the month's share of the year's fixed figure (`_month_share`), the purchase month pro-rated by
+    the days held. The one rule a posting charges by and the remaining-life projection runs (POST-A-115). Raises ValueError where
+    the asset has no statutory basis for a charge."""
     annual, fy, fy_start_accum = _annual_depreciation_for_period(asset, period)
     if annual <= 0:
         return 0, annual, fy, fy_start_accum
-    monthly = math.floor(Decimal(annual) / Decimal(12))
-    if period == str(asset.get("purchase_date") or "")[:7]:
-        monthly = _prorate_purchase_month(monthly, asset["purchase_date"])
-    return monthly, annual, fy, fy_start_accum
+    return _month_share(annual, period, asset.get("purchase_date")), annual, fy, fy_start_accum
 
 
 #: How many financial years a projection runs before it stops and says so: a reducing balance with no residual recorded
@@ -909,6 +925,14 @@ def _projection_start(asset: dict, today_period: str) -> tuple[str, Optional[str
     return start, None
 
 
+def _projected_month(sim: dict, period: str, year_of: str, asked: dict) -> tuple[int, int, str, int]:
+    """`_month_charge` for the projection, with the year's figure asked once per financial year (`asked`, keyed by the year)."""
+    if year_of not in asked:
+        asked[year_of] = _annual_depreciation_for_period(sim, period)
+    annual, fy, fy_start_accum = asked[year_of]
+    return (_month_share(annual, period, sim.get("purchase_date")) if annual > 0 else 0), annual, fy, fy_start_accum
+
+
 def project_remaining_life(asset: dict, today_period: str, *, through_fy: Optional[str] = None,
                            _every_month: bool = False) -> dict:
     """What the postings will charge on this asset, financial year by financial year, until it is fully depreciated
@@ -923,8 +947,8 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
     `through_fy` stops it after that financial year (the schedule's row reads the current year's figure from it).
 
     The year's figure is fixed once per financial year (`_annual_depreciation_for_period` reads the opening the copy carries), so
-    a month's charge is the same for every month of a year but the purchase month, and it is asked once per year and kind of month
-    rather than twelve times; `_every_month` asks it every month, which the tests use as the reference the two must agree with.
+    it is asked once per year and each month takes its share of it (`_month_share`, the same function `_month_charge` ends in);
+    `_every_month` asks `_month_charge` every month, which the tests use as the reference the two must agree with.
 
     Answers `{"starts_at", "start_note", "years": [{financial_year, year_figure_paise, first_month, last_month, months,
     opening_wdv_paise, charge_paise, closing_wdv_paise}], "total_paise", "ends", "end_note"}`; `ends` is `fully_depreciated`,
@@ -932,7 +956,6 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
     no years), or None where `through_fy` stopped it. Every ending carries a sentence naming what stays on the register.
     """
     start, start_note = _projection_start(asset, today_period)
-    purchase_month = str(asset.get("purchase_date") or "")[:7]
     out = {"starts_at": start, "start_note": start_note, "years": [], "total_paise": 0, "ends": None, "end_note": None}
     if (asset.get("asset_category") or "Other") in _NOT_DEPRECIABLE:
         out.update(ends="not_depreciable", start_note=None,
@@ -950,11 +973,9 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
             year_of = get_fy_for_date(f"{period}-01")
         if through_fy is not None and year_of > through_fy:
             break
-        key = (year_of, period == purchase_month)
         try:
-            if _every_month or key not in asked:
-                asked[key] = _month_charge(sim, period)
-            monthly, annual, fy, fy_start_accum = asked[key]
+            monthly, annual, fy, fy_start_accum = (_month_charge(sim, period) if _every_month
+                                                   else _projected_month(sim, period, year_of, asked))
         except ValueError as e:
             out.update(ends="no_basis", end_note=str(e), years=[])
             return out
@@ -1099,9 +1120,10 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
 
     # Fixed annual figure for THIS financial year (see
     # _annual_depreciation_for_period's docstring for why it must be fixed
-    # per-FY, not recomputed every month) — monthly = annual / 12, the purchase
-    # month pro-rated. `_month_charge` is the one rule; the remaining-life
-    # projection runs it too (POST-A-115).
+    # per-FY, not recomputed every month) — each month takes its share of it, so
+    # the twelve add up to it exactly (POST-A-436), the purchase month pro-rated.
+    # `_month_charge` is the one rule; the remaining-life projection runs it too
+    # (POST-A-115).
     try:
         monthly, annual, fy, fy_start_accum = _month_charge(asset, period)
     except ValueError as e:
@@ -1979,7 +2001,7 @@ def correct_asset(
                     f"computed from the figure being changed."))
 
     # TIER C on a financial year that already carries postings. Schedule II
-    # charges ONE annual figure divided by twelve (see
+    # charges ONE annual figure, each month its share of it (see
     # _annual_depreciation_for_period), so a revised life or rate part-way
     # through a year would give the remaining months a different monthly charge
     # from the ones already posted — the fixed-annual-charge rule broken with
@@ -2664,7 +2686,10 @@ def depreciation_schedule(
             "accumulated_paise":      a.get("accumulated_depreciation_paise", 0),
             "current_wdv_paise":      wdv,
             "annual_depreciation_paise": annual,
-            "monthly_depreciation_paise": math.floor(Decimal(annual) / Decimal(12)),
+            # The share TODAY's month takes of the year's figure (POST-A-436); the twelve shares add up to it and differ from one
+            # another by a paisa at most. It is not the charge of the next month due where postings are behind, nor of a purchase
+            # month (pro-rated by the days held), which the remaining-life projection shows month by month.
+            "monthly_depreciation_paise": _month_share(annual, today_period, a.get("purchase_date")) if annual > 0 else 0,
             "depreciation_method":    a["depreciation_method"],
             "salvage_value_paise":    a.get("salvage_value_paise", 0),
             # Both bases travel with the row so the screen can SHOW what it is

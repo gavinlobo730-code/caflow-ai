@@ -73,13 +73,19 @@ def posting(monkeypatch):
     return db
 
 
+#: The first k months of a year whose figure is 20,000.00: each month takes its share (POST-A-436), so k months post
+#: 20,000.00 x k / 12, floored once, and not k floored twelfths.
+def _first_months(k: int) -> int:
+    return 20_000_00 * k // 12
+
+
 def test_the_stored_opening_does_not_move_while_a_year_of_straight_line_depreciation_is_posted(posting):
     asset = _seed_asset(posting, purchase_date="2026-04-01", **SL, accumulated_depreciation_paise=0)
     for n, period in enumerate(("2026-04", "2026-05", "2026-06", "2026-07"), start=1):
         _post(posting, period)
         assert asset["depreciation_fy_start_accum_paise"] == 0, f"after posting {n} months the year's opening had moved"
         assert asset["depreciation_fy"] == "2026-27"
-    assert asset["accumulated_depreciation_paise"] == 4 * 1_666_66
+    assert asset["accumulated_depreciation_paise"] == _first_months(4)
 
 
 def test_the_fixed_assets_note_shows_the_whole_years_charge_for_an_asset_bought_in_the_year(posting):
@@ -88,9 +94,9 @@ def test_the_fixed_assets_note_shows_the_whole_years_charge_for_an_asset_bought_
         _post(posting, period)
     movement = fam.movement_from_rows([asset], "2027-03-31")
     row = movement.classes[0]
-    assert row["charge_paise"] == 4 * 1_666_66 and row["opening_accum_paise"] == 0
+    assert row["charge_paise"] == _first_months(4) and row["opening_accum_paise"] == 0
     assert row["closing_accum_paise"] == asset["accumulated_depreciation_paise"], "the note's closing balance is the register's"
-    assert row["closing_net_paise"] == 100_000_00 - 4 * 1_666_66
+    assert row["closing_net_paise"] == 100_000_00 - _first_months(4)
     assert movement.split_known is True
 
 
@@ -103,7 +109,7 @@ def test_the_note_splits_an_asset_held_at_the_start_of_the_year_between_opening_
     assert asset["depreciation_fy"] == "2026-27" and asset["depreciation_fy_start_accum_paise"] == 20_000_00
     row = fam.movement_from_rows([asset], "2027-03-31").classes[0]
     assert row["opening_accum_paise"] == 20_000_00, "the year opened at the balance carried in, not at the balance before the last month"
-    assert row["charge_paise"] == 3 * 1_666_66
+    assert row["charge_paise"] == _first_months(3)
     assert row["closing_accum_paise"] == asset["accumulated_depreciation_paise"]
 
 

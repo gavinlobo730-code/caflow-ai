@@ -302,8 +302,10 @@ def test_month_after_purchase_month_gets_the_full_charge_not_prorated(monkeypatc
 
     result = fa_router.post_depreciation("asset-1", _dep(period="2026-05"), {"firm_id": FIRM, "id": "u1"})
 
-    full_monthly = (100_000_00 * 24 // 100) // 12
-    assert result["data"]["depreciation_paise"] == full_monthly
+    # May is the second month of the year and takes its share of the year's figure (POST-A-436); 24,000.00 divides into twelve, so
+    # the share is also a twelfth.
+    annual = 100_000_00 * 24 // 100
+    assert result["data"]["depreciation_paise"] == fa_router._month_share(annual, "2026-05", None) == annual // 12
 
 
 # ── Purchase-date validation ─────────────────────────────────────────────────
