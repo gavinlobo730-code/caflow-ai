@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from domain.accounting import opening_documents as _opening
 from domain.gst import draft_bill_from_2b, gstr2b_intake, itc_probable
 from domain.gst.gstr2b_routing import Holder, normalise as _normalise_gstin
@@ -440,7 +441,7 @@ def keep_upload(db, *, firm_id: str, client_id: str, period: str, raw: dict,
     `reconciliation_result` is the answer WITHOUT its per-document `matches`,
     which would be a second copy of what `gstr2a_records` already holds.
     """
-    db.table("gstr2b_uploads").insert({
+    privileged_for(db).table("gstr2b_uploads").insert({
         "id": str(uuid.uuid4()),
         "firm_id": firm_id,
         "client_id": client_id,

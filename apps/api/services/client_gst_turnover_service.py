@@ -27,6 +27,7 @@ from typing import Optional
 from core.ist_clock import normalise_fy_label
 from domain.gst import hsn_digits, irn_scope
 from services import gst_read_memo
+from core.db_provider import privileged_for
 
 #: The table, for a caller that wants to name it. Every query below writes the
 #: name out as a LITERAL instead of reaching through this: a dynamic table name
@@ -166,13 +167,13 @@ def record(db, firm_id: str, client_id: str, financial_year: str,
     # made. The update omits the three the row is KEYED on: it was found by
     # them, so re-sending them could only ever move a row to another year.
     if existing:
-        res = (db.table("client_gst_turnover").update({
+        res = (privileged_for(db).table("client_gst_turnover").update({
             "aggregate_turnover_paise": int(aggregate_turnover_paise),
             "source_note": source_note,
             "recorded_by": recorded_by,
-        }).eq("id", existing[0]["id"]).eq("firm_id", firm_id).execute())
+        }).eq("id", existing[0]["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute())
     else:
-        res = db.table("client_gst_turnover").insert({
+        res = privileged_for(db).table("client_gst_turnover").insert({
             "firm_id": firm_id,
             "client_id": client_id,
             "financial_year": fy,
