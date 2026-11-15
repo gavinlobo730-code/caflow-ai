@@ -297,7 +297,7 @@ def send_message(
         "created_at": now,
     }
 
-    res = db.table("portal_messages").insert(row).execute()
+    res = privileged_for(db).table("portal_messages").insert(row).execute()
     written = (res.data or [row])[0]
     out = {
         "id": written["id"], "firm_id": written["firm_id"],

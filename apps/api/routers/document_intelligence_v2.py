@@ -29,6 +29,7 @@ from core.authz import assert_client_access, can_access_client
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
 from core import ist_clock
+from core.db_provider import privileged_for
 from domain.ai import extraction_schemas, groq_text, untrusted
 from domain.ai.gateway import ProviderFailed
 
@@ -224,7 +225,7 @@ def _notify_partners(firm_id: str, notice_id: str, notice: dict) -> None:
             #   type         -> "compliance_alert" is not in the CHECK.
             #                   A notice carrying a response deadline is
             #                   a compliance_due.
-            _db.table("notifications").insert({
+            privileged_for(_db).table("notifications").insert({
                 "firm_id": firm_id,
                 "user_id": partner["id"],
                 "title": f"Government notice approved: {notice.get('authority') or 'Unknown authority'}",
