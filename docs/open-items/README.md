@@ -55,7 +55,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 
 **Who must act (backlog).** 81 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 68 can be built now. 179 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **395 of the 463 wait on the owner.**
 
-**NEW FINDINGS: 39 open** (7 before the demo, 32 after; 6 `high` priority; 1 UNSURE), counted apart from the backlog. 37 are Claude's alone to build (6 of them `waits on owner`, so 31 can be built now), 2 need the owner to decide first and 0 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+**NEW FINDINGS: 39 open** (7 before the demo, 32 after; 6 `high` priority; 1 UNSURE), counted apart from the backlog. 37 are Claude's alone to build (5 of them `waits on owner`, so 32 can be built now), 2 need the owner to decide first and 0 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
 
 <!-- counts:end -->
 
@@ -79,7 +79,7 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 29. **PRE-A-023** (Claude) — Redesign the Settings page into clear groups (owner's request)
 30. **PRE-A-024** (Claude) — The AI status page scrolled past its end and hid the top bar
 31. **PRE-A-025** (Claude) — An engagement letter from an older stored template prints a doubled rupee sign
-32. **PRE-A-026** (Claude, after your answer) — The website shows an email that does not exist; demo requests reach no one
+32. **PRE-A-026** (Claude) — Remove the website's non-existent email and phone; demo requests reach no one
 29. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
 31. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it
 32. **PRE-B-003** (live) — Check the seeded and a fresh firm can raise a first invoice
