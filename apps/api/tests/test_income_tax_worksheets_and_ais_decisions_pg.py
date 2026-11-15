@@ -48,6 +48,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -308,6 +309,9 @@ def scoped(db):
     for sql in stmts:
         r = _psql(db, sql)
         assert r.returncode == 0, f"{sql[:70]}... -> {r.stderr}"
+    # Migration 596 (POST-A-008, the income-tax tranche) took the signed-in write on both tables away, the FIRST lock; the tests below
+    # measure the SECOND (the assignment and role policies) by writing as a signed-in member, so the write is handed back here.
+    hand_back(db, TABLES)
     return db
 
 
