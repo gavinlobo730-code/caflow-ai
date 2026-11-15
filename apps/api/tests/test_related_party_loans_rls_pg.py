@@ -212,14 +212,18 @@ def test_service_role_still_sees_everything(seeded_db):
     assert int(r.stdout.strip().splitlines()[-1]) >= 2
 
 
-def test_the_api_role_holds_dml(seeded_db):
-    """With USE_USER_JWT on the API runs as `authenticated`; without these
-    grants every write here would be a 42501, which is the bug that started
-    this whole sequence."""
+def test_the_signed_in_role_reads_and_the_api_role_writes(seeded_db):
+    """With USE_USER_JWT on the API runs as `authenticated` for its reads, so
+    without SELECT every read here would be a 42501, which is the bug that
+    started this whole sequence. The writes were the caller's too until POST-A-008's
+    relationships tranche: the API writes a loan with its privileged client since,
+    and migration 604 took INSERT, UPDATE and DELETE from `authenticated`."""
     r = _psql(seeded_db, """
         SELECT has_table_privilege('authenticated','public.related_party_loans','SELECT'),
                has_table_privilege('authenticated','public.related_party_loans','INSERT'),
                has_table_privilege('authenticated','public.related_party_loans','UPDATE'),
-               has_table_privilege('service_role','public.related_party_loans','INSERT');
+               has_table_privilege('authenticated','public.related_party_loans','DELETE'),
+               has_table_privilege('service_role','public.related_party_loans','INSERT'),
+               has_table_privilege('service_role','public.related_party_loans','UPDATE');
     """, tuples=True)
-    assert r.stdout.strip() == "t|t|t|t", r.stdout
+    assert r.stdout.strip() == "t|f|f|f|t|t", r.stdout

@@ -63,8 +63,8 @@
     },
     "dtaa_treaty_rates": {
       "category": "firm_wide",
-      "writes": "awd",
-      "why": "The firm's own reading of the tax treaty rates it withholds under, one row per country and nature of income (its table comment says why it ships empty). Writing is held to a Manager or above."
+      "writes": "",
+      "why": "The firm's own reading of the tax treaty rates it withholds under, one row per country and nature of income (its table comment says why it ships empty). The signed-in role holds no write since migration 604 (POST-A-008); the server writes it, for a Manager or above."
     },
     "email_templates": {
       "category": "firm_wide",

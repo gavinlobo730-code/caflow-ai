@@ -236,8 +236,9 @@ def world(seeded):
         handed_back = _psql(w.dsn, "GRANT SELECT, UPDATE ON public.activity_logs, public.ai_evidence, public.ai_signals TO authenticated;")
         assert handed_back.returncode == 0, handed_back.stderr
         # The same for the tables of this family POST-A-008's tranche migrations (599 on) closed to the signed-in role, the API writing
-        # them with its privileged client since: the clearing guard stays on each as the second lock, and this file measures it.
-        hand_back(w.dsn, [table for table, _column in CLEARABLE] + [CHART[0]])
+        # them with its privileged client since, 537's three included: the clearing guard stays on each as the second lock, and this
+        # file measures it.
+        hand_back(w.dsn, [table for table, _column in CLEARABLE] + [CHART[0]] + sorted(GUARDED_BY_537))
         yield w
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
