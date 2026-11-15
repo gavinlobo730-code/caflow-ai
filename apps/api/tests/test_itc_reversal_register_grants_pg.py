@@ -44,6 +44,7 @@ from pathlib import Path
 
 import pytest
 from tests._cross_tenant_rows import LEGACY_ROWS_ALLOWED
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -281,19 +282,27 @@ def test_the_operator_tables_stay_out_of_reach(seeded_db):
 
 # ── The table that broke ─────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("privilege", ["SELECT", "INSERT", "UPDATE", "DELETE"])
-def test_the_api_role_holds_dml_on_the_register(seeded_db, privilege):
-    """The exact grant migration 285 omitted. SELECT is what 500ed; the other
-    three are what recording a reversal from the UI needs, and would have been
-    the next 42501 one line down."""
+def test_the_signed_in_role_reads_the_register(seeded_db):
+    """The exact grant migration 285 omitted: SELECT is what 500ed, and a signed-in session still reads the register (the GSTR-3B
+    computation's period read below is made as the caller)."""
     r = _psql(seeded_db,
-              f"SELECT has_table_privilege('authenticated','public.itc_reversal_register','{privilege}');",
+              "SELECT has_table_privilege('authenticated','public.itc_reversal_register','SELECT');",
               tuples=True)
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip() == "t", (
-        f"`authenticated` cannot {privilege} itc_reversal_register — this is the "
-        "403 that broke Compute from Books"
-    )
+    assert r.stdout.strip() == "t", "`authenticated` cannot SELECT itc_reversal_register — this is the 403 that broke Compute from Books"
+
+
+@pytest.mark.parametrize("privilege", ["INSERT", "UPDATE", "DELETE"])
+def test_since_migration_595_the_register_is_written_by_the_api_role_and_not_by_a_signed_in_session(seeded_db, privilege):
+    """Recording a reversal needed INSERT, UPDATE and DELETE as the caller while the API wrote with the caller's sign-in (287 granted
+    them). Since POST-A-008's GST tranche the API writes the register with its privileged client and migration 595 took the three away
+    from `authenticated`, so a reversal is recorded by `service_role` and a hand-made request cannot write one."""
+    r = _psql(seeded_db,
+              f"SELECT has_table_privilege('authenticated','public.itc_reversal_register','{privilege}'), "
+              f"has_table_privilege('service_role','public.itc_reversal_register','{privilege}');",
+              tuples=True)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "f|t", f"{privilege}: authenticated|service_role = {r.stdout.strip()}"
 
 
 def test_the_backend_role_keeps_its_own_dml(seeded_db):
@@ -355,7 +364,9 @@ def test_an_unassigned_clients_reversals_are_not_visible(seeded_db):
 
 def test_a_write_for_an_unassigned_client_is_refused(seeded_db):
     """WITH CHECK, not just USING — otherwise a user could declare a reversal
-    on a return they cannot read back."""
+    on a return they cannot read back. Measured with the signed-in write handed back (migration 595 took it away, so without it the
+    privilege would refuse first and this would pass for the wrong reason): the policy is the second lock."""
+    assert hand_back(seeded_db, ["itc_reversal_register"]) == ["itc_reversal_register"]
     r = _psql(seeded_db, _as_user(f"""
         INSERT INTO itc_reversal_register
           (firm_id, client_id, journal_entry_id, kind, reason_code, period, igst_paise)
@@ -368,7 +379,8 @@ def test_a_write_for_an_unassigned_client_is_refused(seeded_db):
 
 def test_an_assigned_client_can_still_be_written(seeded_db):
     """The negative control for the two tests above: if the RESTRICTIVE policy
-    were simply refusing everything, they would both pass for the wrong reason."""
+    were simply refusing everything, they would both pass for the wrong reason. With the write handed back, as above."""
+    assert hand_back(seeded_db, ["itc_reversal_register"]) == ["itc_reversal_register"]
     r = _psql(seeded_db, _as_user(f"""
         INSERT INTO itc_reversal_register
           (firm_id, client_id, journal_entry_id, kind, reason_code, period, igst_paise)
@@ -378,6 +390,17 @@ def test_an_assigned_client_can_still_be_written(seeded_db):
         "the assignment policy is too tight — a user assigned to this client "
         f"cannot record its own reversal: {r.stderr}"
     )
+
+
+def test_without_the_write_handed_back_even_an_assigned_clients_reversal_is_refused_by_the_privilege(seeded_db):
+    """The first lock, as production holds it since migration 595: the same statement the test above writes is refused with 42501
+    before the policy is asked."""
+    r = _psql(seeded_db, _as_user(f"""
+        INSERT INTO itc_reversal_register
+          (firm_id, client_id, journal_entry_id, kind, reason_code, period, igst_paise)
+        VALUES ('{FIRM}','{ASSIGNED}','{JE_SPARE_ASSIGNED}','reversal','rule_37','042026',100);
+    """))
+    assert r.returncode != 0 and "permission denied for table itc_reversal_register" in r.stderr, r.stderr or "it succeeded"
 
 
 def test_the_old_policy_name_is_gone(seeded_db):
