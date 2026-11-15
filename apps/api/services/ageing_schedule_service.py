@@ -39,6 +39,7 @@ from fastapi import HTTPException
 from core.ist_clock import ist_today
 from domain.reporting import ageing
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.ageing")
 
@@ -500,7 +501,7 @@ def review_unbilled(db, firm_id: str, client_id: str, reviewed: bool,
         raise HTTPException(status_code=422, detail="client_id is required")
 
     if not reviewed:
-        (db.table("schedule_iii_unbilled_reviews").delete()
+        (privileged_for(db).table("schedule_iii_unbilled_reviews").delete()
          .eq("firm_id", firm_id).eq("client_id", client_id).execute())
         return {"reviewed": False, "reviewed_on": None, "note": None}
 
@@ -510,7 +511,7 @@ def review_unbilled(db, firm_id: str, client_id: str, reviewed: bool,
     on = ist_today().isoformat()
     text = (note or "").strip() or None
     # Payload written INLINE with literal keys — see _write() for why.
-    db.table("schedule_iii_unbilled_reviews").upsert(
+    privileged_for(db).table("schedule_iii_unbilled_reviews").upsert(
         {"firm_id": firm_id, "client_id": client_id, "reviewed_on": on,
          "reviewed_by": actor_id, "note": text,
          "updated_at": datetime.now(timezone.utc).isoformat()},

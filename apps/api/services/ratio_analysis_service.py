@@ -31,6 +31,7 @@ from fastapi import HTTPException
 
 from core.ist_clock import fy_bounds as _fy_bounds, ist_fy_label, preceding_fy
 from domain.reporting import ratios as ratio_rules
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.ratios")
 
@@ -181,7 +182,7 @@ def save_explanation(db, firm_id: str, client_id: str, fy: str, ratio_key: str,
     # tests/test_backend_columns_exist_pg.py can only check the columns of a
     # query it can read, and a dict held in a variable hides every one of them.
     # Same choice as services/ageing_schedule_service._write.
-    db.table("schedule_iii_ratio_explanations").upsert(
+    privileged_for(db).table("schedule_iii_ratio_explanations").upsert(
         {"firm_id": firm_id, "client_id": client_id, "fy_label": fy,
          "ratio_key": ratio_key, "explanation": text,
          "recorded_by": actor_id, "updated_at": _now()},
@@ -193,7 +194,7 @@ def delete_explanation(db, firm_id: str, client_id: str, fy: str, ratio_key: str
     fy_bounds(fy)
     if db is None:
         raise HTTPException(status_code=503, detail="No database configured")
-    (db.table("schedule_iii_ratio_explanations").delete()
+    (privileged_for(db).table("schedule_iii_ratio_explanations").delete()
      .eq("firm_id", firm_id).eq("client_id", client_id)
      .eq("fy_label", fy).eq("ratio_key", ratio_key).execute())
     return {"fy": fy, "ratio_key": ratio_key, "explanation": None}
@@ -221,7 +222,7 @@ def save_principal_repaid(db, firm_id: str, client_id: str, fy: str,
         raise HTTPException(status_code=503,
                             detail="No database configured — the figure cannot be recorded")
 
-    db.table("schedule_iii_ratio_inputs").upsert(
+    privileged_for(db).table("schedule_iii_ratio_inputs").upsert(
         {"firm_id": firm_id, "client_id": client_id, "fy_label": fy,
          "principal_repaid_paise": principal_repaid_paise,
          "recorded_by": actor_id, "updated_at": _now()},
