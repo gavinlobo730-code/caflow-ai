@@ -2650,14 +2650,15 @@ def delete_landed_cost(
     current_user: dict = Depends(rbac("accounting", "write")),
 ):
     """Remove a charge that has not reached a receipt. An applied one is refused."""
-    _assert_bill_scope(current_user, bill_id)
+    bill_client = _assert_bill_scope(current_user, bill_id)
     assert_client_access(current_user, client_id)
     if _USE_MOCK:
         return api_response(True, None)
     from core.supabase_client import get_supabase
     from services import landed_cost_service as svc
     firm_id = current_user.get("firm_id") or ""
-    result = svc.remove_charge(get_supabase(), firm_id=firm_id,
+    # The charge is the BILL's client's: the bill scope above resolved it, and the delete names it.
+    result = svc.remove_charge(get_supabase(), firm_id=firm_id, client_id=bill_client or client_id,
                                charge_id=charge_id, bill_id=bill_id)
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result.get("refusal"))
