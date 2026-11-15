@@ -297,15 +297,15 @@ def test_the_quarter_is_the_one_vocabulary_the_bill_path_uses(app_db):
     assert row["financial_year"] == fy_label(date(2026, 11, 20)) == "2026-27"
 
 
-def test_the_unified_aggregate_gap_is_reported_on_every_row(app_db):
-    """The aggregate counts hand-entered rows only; purchase bills for the same
-    payee sit in a register it does not read. Said out loud rather than left to
-    be discovered, because the number is right about what it saw."""
+def test_a_deduction_that_names_no_supplier_says_its_year_has_no_bills_in_it(app_db):
+    """A deduction that names no supplier (none holds its PAN here) is added up with the other typed deductions for its PAN that name none,
+    and not with any supplier's bills: said on the row, because the number is right about what it saw (POST-A-078)."""
     app, _ = app_db
     d = _post(app, payment_amount_paise=1_00_000_00).json()["data"]
-    from domain.tds.manual_register import GAP_REGISTERS_NOT_UNIFIED
-    assert GAP_REGISTERS_NOT_UNIFIED in d["explain"]["gaps"]
-    assert any("purchase bill" in m.lower() for m in d["explain"]["gap_messages"])
+    from domain.tds.manual_register import GAP_NO_SUPPLIER
+    assert d["vendor_id"] is None and d["explain"]["supplier"] is None
+    assert GAP_NO_SUPPLIER in d["explain"]["gaps"]
+    assert any("purchase bills" in m.lower() and "pick the supplier" in m.lower() for m in d["explain"]["gap_messages"])
 
 
 def test_the_request_cannot_carry_a_rate_or_an_amount(app_db):

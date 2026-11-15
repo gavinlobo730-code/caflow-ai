@@ -84,6 +84,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("fixed_assets", "depreciation_reversal_month"): "migration 587 (POST-A-349): a depreciation reversal's marker, the month it claimed and when; NULL = none in flight",
     ("fixed_assets", "custodian"): "migration 591 (POST-A-112): who the asset is in the keeping of; NULL = nobody named",
     ("client_sales_invoice_lines", "sales_order_line_id"): "migration 589 (POST-A-104): the sales-order line an invoice line bills; NULL = none",
+    ("tds_deductions", "vendor_id"): "migration 594 (POST-A-078): the supplier a deduction typed on the TDS screen was paid to; NULL = none named",
     ("fixed_assets", "depreciation_reversal_claimed_at"): "migration 587 (POST-A-349): a depreciation reversal's marker, the month it claimed and when; NULL = none in flight",
 }
 

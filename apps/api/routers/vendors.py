@@ -147,6 +147,10 @@ _VENDOR_DEPENDENCY_TABLES: list[tuple[str, str, str | None]] = [
     # without a word. UNDATED on purpose, as the recurring template is: they block on referential grounds and claim no statutory clock.
     ("cheques", "post_dated_cheques", None),
     ("certificates", "tds_lower_deduction_certificates", None),
+    # A deduction typed on the TDS screen that names this supplier (POST-A-078, migration 594). Its vendor_id is ON DELETE RESTRICT, so
+    # without this line a permanent delete would reach the database's refusal and come back as a general failure. DATED: it is a statutory
+    # register row (s.200, the 26Q), kept as the rest of the register is.
+    ("tds_register", "tds_deductions", None),
 ]
 # Tables with a deleted_at (soft-delete) column — a deleted row is no longer
 # a live accounting record and must not block a vendor's permanent delete.
@@ -799,7 +803,7 @@ def get_vendor_dependencies(
         opening = vend.get("opening_balance_paise") or 0
         if _USE_MOCK:
             deps = {"counts": {"bills": 0, "payments": 0, "debit_notes": 0, "credit_notes": 0, "recurring_templates": 0,
-                               "cheques": 0, "certificates": 0, "opening_balance": 1 if opening else 0},
+                               "cheques": 0, "certificates": 0, "tds_register": 0, "opening_balance": 1 if opening else 0},
                     "total": 1 if opening else 0, "has_any": bool(opening)}
         else:
             from core.supabase_client import get_supabase

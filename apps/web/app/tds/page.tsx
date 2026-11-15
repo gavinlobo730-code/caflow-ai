@@ -69,6 +69,9 @@ const TDS_IMPORT_COLUMNS = [
 // PAN decides §206AA's 20% floor, so refusing a good one here sends the CA
 // back to the spreadsheet rather than letting them import the quarter.
 import { ClientLookup } from "@/components/lookups/ClientLookup";
+import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
+import { api, type Vendor } from "@/lib/api";
+import { arrayOrEmpty } from "@/lib/api/shape";
 import { useClientPicker } from "@/lib/workspace/useClientPicker";
 import { formatPaise } from "@/lib/services/formatting";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -253,6 +256,14 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   const [partyName, setPartyName] = useState("");
   const [partyPan, setPartyPan] = useState("");
   const [section, setSection] = useState("194J");
+  // THE SUPPLIER THE PAYMENT WAS MADE TO, IF IT IS ONE (POST-A-078). Picking one sends its id: the server takes the name and PAN from its record and
+  // counts the payment in the supplier's year of purchase bills, advances and typed deductions, so a fee typed here and the supplier's bills are
+  // tested against one yearly threshold, and its s.197 certificate and s.194A class apply. Not picking one is ordinary (a dividend, a partner's
+  // remuneration, a landowner are not suppliers); the server then looks for the one active supplier holding the PAN and says what it found.
+  const [vendorId, setVendorId] = useState("");
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorsErr, setVendorsErr] = useState<string | null>(null);
+  const picked = vendorId ? vendors.find((v) => v.id === vendorId) ?? null : null;
   const [grossRupees, setGrossRupees] = useState("");
   const [paymentDate, setPaymentDate] = useState("");
   const [challanNo, setChallanNo] = useState("");
@@ -280,6 +291,31 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   // does not hold an amount.
   const grossPaise = grossRupees ? paiseFromRupeeInput(grossRupees) : null;
 
+  // The client's active suppliers, for the picker. A list that cannot be read is said in words, and the form still works: the server matches the
+  // PAN to a supplier on its own.
+  useEffect(() => {
+    if (!clientId) return;
+    let alive = true;
+    api.vendors.list(clientId)
+      .then((res) => {
+        if (!alive) return;
+        if (res.success) { setVendors(arrayOrEmpty<Vendor>(res.data)); setVendorsErr(null); }
+        else setVendorsErr(res.error ?? "The server did not say why.");
+      })
+      .catch((e) => { if (alive) setVendorsErr(e instanceof Error ? e.message : "The request failed."); });
+    return () => { alive = false; };
+  }, [clientId]);
+
+  function onPickSupplier(v: VendorLike | null) {
+    if (!v) { setVendorId(""); return; }
+    setVendorId(v.id);
+    // The boxes show what the server will store: the supplier's own name and PAN. They are read-only while a supplier is picked.
+    setPartyName(v.name);
+    setPartyPan((v.pan ?? "").toUpperCase());
+    // The supplier's own section, where it has one this form offers; the CA may still choose another.
+    if (v.tds_section && choices.deductible.includes(v.tds_section)) setSection(v.tds_section);
+  }
+
   // THE FIGURE COMES FROM THE SERVER, through the same function the save uses,
   // so what a CA approves is what lands. Debounced because it is a request per
   // keystroke otherwise.
@@ -292,6 +328,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
     const t = setTimeout(() => {
       previewTdsDeduction({
         client_id: clientId,
+        vendor_id: vendorId || null,
         deductee_name: partyName.trim() || "—",
         deductee_pan: partyPan.trim().toUpperCase() || null,
         section,
@@ -303,7 +340,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
         .finally(() => { if (alive) setQuoting(false); });
     }, 350);
     return () => { alive = false; clearTimeout(t); };
-  }, [clientId, section, grossPaise, paymentDate, partyPan, partyName]);
+  }, [clientId, vendorId, section, grossPaise, paymentDate, partyPan, partyName]);
 
   async function handleSubmit() {
     if (dates.first) { setErr(dates.first); return; }
@@ -329,6 +366,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
       // where rbac() never ran.
       await createTdsDeduction({
         client_id: clientId,
+        vendor_id: vendorId || null,
         deductee_name: partyName.trim(),
         deductee_pan: partyPan.trim().toUpperCase() || null,
         section,
@@ -357,12 +395,28 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
+            <label htmlFor="tds-supplier" className="text-xs font-medium text-ps-body block mb-1">Supplier (optional)</label>
+            <VendorLookup id="tds-supplier" vendors={vendors} value={vendorId} onChange={setVendorId} onSelect={onPickSupplier}
+              ariaLabel="Supplier (optional)" placeholder="Not a supplier, or not chosen" clearable />
+            <p className="text-3xs text-ps-label mt-1">
+              {picked
+                ? "Counted in this supplier's year with its purchase bills and advances. Clear it to type a payee who is not a supplier."
+                : "Pick the supplier if the payment was made to one, so it is counted in the supplier's year with its purchase bills. Without a pick, the PAN finds the supplier where exactly one of the client's suppliers holds it."}
+            </p>
+            {vendorsErr && (
+              <p className="text-2xs text-state-attention bg-state-attention-surface rounded px-2 py-1 mt-1">
+                The client&apos;s suppliers could not be read, so none can be picked here: {vendorsErr} The payment is still matched to a supplier
+                by its PAN where exactly one active supplier holds it.
+              </p>
+            )}
+          </div>
+          <div className="col-span-2">
             <label className="text-xs font-medium text-ps-body block mb-1">Party / Vendor Name</label>
-            <input aria-label="Party / Vendor Name" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" />
+            <input aria-label="Party / Vendor Name" className={`w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand ${picked ? "bg-ps-bg" : ""}`} value={partyName} onChange={e => setPartyName(e.target.value)} placeholder="Vendor name" readOnly={!!picked} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">PAN of Party</label>
-            <input aria-label="PAN of Party" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand" value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} placeholder="ABCDE1234F" maxLength={10} />
+            <input aria-label="PAN of Party" className={`w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand ${picked ? "bg-ps-bg" : ""}`} value={partyPan} onChange={e => setPartyPan(e.target.value.toUpperCase())} {...(picked ? { placeholder: "No PAN on the supplier's record" } : { placeholder: "ABCDE1234F" })} maxLength={10} readOnly={!!picked} />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
@@ -401,22 +455,48 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
                 server ADDED UP, so it is said only when the server says it did (`aggregate_tested`): the register was asked, the payee has a usable PAN to be
                 looked up by (a blank, a placeholder or text that is not a PAN has none, and the nil is then "not looked for"), the year's rates are confirmed
                 (otherwise the server's gap says so), and the section HAS a yearly threshold to add them up against (s.194I tests a month and s.194B one transaction). A server that predates the field says nothing, which is not
-                "tested" either (POST-A-078). What was added up is the typed deductions, and the standing sentence below says the purchase bills are not in it. */}
-            {shown && !shown.explain.applies && (
+                "tested" either (POST-A-078). What was added up is the supplier's year (its bills, advances and typed deductions) where the server found a supplier, and
+                the typed deductions for the PAN that name none otherwise; the sentence says which, and the server's gap says when no supplier was found. */}
+            {/* WHOSE YEAR THIS PAYMENT IS COUNTED IN, said whenever the server found a supplier, including one it matched by the PAN alone: a CA who typed a PAN
+                needs to know it was added to that supplier's bills. And why it found none where a supplier holds the PAN (two do, or only an inactive one). */}
+            {shown?.explain.supplier && (
               <p className="text-2xs text-blue-800">
-                Nothing is deducted — this payment is below §{section}&apos;s threshold
-                {shown.explain.aggregate_tested === true
-                  ? ", and with the payments already typed on this screen for this payee in the year it is below the section's yearly threshold too."
-                  : "."}
+                Counted in the year of supplier {shown.explain.supplier.name}
+                {vendorId ? "" : ", found by the PAN"}, with its purchase bills and advances.
               </p>
+            )}
+            {shown?.explain.supplier_note && (
+              <p className="text-2xs text-blue-800">{shown.explain.supplier_note}</p>
+            )}
+            {/* A supplier's charge is worded by the bill path's own resolver (`why`, always sent where a supplier is named), which already names the year it was
+                charged on, a s.197 certificate or a s.194A class; the two sentences below are this door's own wording for a payee who is not a supplier, whose year is
+                the typed deductions for the PAN. */}
+            {shown?.explain.why ? (
+              <p className="text-2xs text-blue-800">{shown.explain.why}</p>
+            ) : (
+              <>
+                {shown && !shown.explain.applies && (
+                  <p className="text-2xs text-blue-800">
+                    Nothing is deducted — this payment is below §{section}&apos;s threshold
+                    {shown.explain.aggregate_tested === true
+                      ? ", and with the payments already typed on this screen for this payee in the year it is below the section's yearly threshold too."
+                      : "."}
+                  </p>
+                )}
+                {shown && (shown.explain.fy_prior_tds_paise ?? 0) > 0 && (
+                  <p className="text-2xs text-blue-800">
+                    Charged on the year&apos;s aggregate for this payee, crediting the{" "}
+                    {formatPaise(shown.explain.fy_prior_tds_paise ?? 0)} already withheld (IT Act §200).
+                  </p>
+                )}
+              </>
             )}
             {shown?.explain.rate_basis && (
               <p className="text-2xs text-blue-800">{shown.explain.rate_basis}</p>
             )}
-            {shown && shown.explain.fy_prior_tds_paise > 0 && (
+            {shown && (shown.explain.shortfall_paise ?? 0) > 0 && (
               <p className="text-2xs text-blue-800">
-                Charged on the year&apos;s aggregate for this payee, crediting the{" "}
-                {formatPaise(shown.explain.fy_prior_tds_paise)} already withheld (IT Act §200).
+                {formatPaise(shown.explain.shortfall_paise ?? 0)} of the year&apos;s tax is not withheld on this payment, because it is more than the payment.
               </p>
             )}
             {shown && shown.quarter && (
