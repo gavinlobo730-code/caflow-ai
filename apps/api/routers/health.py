@@ -1533,7 +1533,7 @@ def create_override(
         return api_response(True, row)
 
     db_row = {k: v for k, v in row.items() if k != "id"}
-    res = db.table("health_overrides").insert(db_row).execute()
+    res = privileged_for(db).table("health_overrides").insert(db_row).execute()
     return api_response(True, (res.data or [row])[0])
 
 
@@ -1545,7 +1545,7 @@ def deactivate_override(
     # M2 audit finding: row-addressed by override_id, firm-scoped only in
     # live mode and not even that in mock mode — health_overrides.client_id
     # was never checked before deactivating.
-    _assert_override_scope(current_user, override_id)
+    override = _assert_override_scope(current_user, override_id)
     db = _db()
     firm_id = current_user["firm_id"]
 
@@ -1556,9 +1556,9 @@ def deactivate_override(
                 return api_response(True, {"override_id": override_id, "is_active": False})
         raise HTTPException(status_code=404, detail="Override not found")
 
-    db.table("health_overrides").update({
+    privileged_for(db).table("health_overrides").update({
         "is_active": False,
-    }).eq("id", override_id).eq("firm_id", firm_id).execute()
+    }).eq("id", override_id).eq("firm_id", firm_id).eq("client_id", override["client_id"]).execute()
 
     return api_response(True, {"override_id": override_id, "is_active": False})
 

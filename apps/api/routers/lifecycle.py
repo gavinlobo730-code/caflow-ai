@@ -342,7 +342,7 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
         pass
     if db:
         try:
-            db.table("client_lifecycle_events").insert({
+            privileged_for(db).table("client_lifecycle_events").insert({
                 "id":          str(uuid.uuid4()),
                 "firm_id":     firm_id,
                 "lead_id":     lead_id,
@@ -483,7 +483,7 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
         pass
     if db:
         try:
-            db.table("client_lifecycle_events").insert({
+            privileged_for(db).table("client_lifecycle_events").insert({
                 "id":          str(uuid.uuid4()),
                 "firm_id":     firm_id,
                 "lead_id":     lead_id,
@@ -845,7 +845,7 @@ def create_lead(
         actor_id=current_user.get("auth_user_id"),
     )
     try:
-        db.table("client_lifecycle_events").insert({
+        privileged_for(db).table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
             "firm_id":     current_user["firm_id"],
             "lead_id":     db_row["id"],
@@ -919,7 +919,7 @@ def update_lead(
             actor_id=current_user.get("auth_user_id"),
         )
         try:
-            db.table("client_lifecycle_events").insert({
+            privileged_for(db).table("client_lifecycle_events").insert({
                 "id":          str(uuid.uuid4()),
                 "firm_id":     current_user["firm_id"],
                 "lead_id":     lead_id,
@@ -1224,7 +1224,7 @@ def convert_lead(
         actor_id=current_user.get("auth_user_id"),
     )
     try:
-        db.table("client_lifecycle_events").insert({
+        privileged_for(db).table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
             "firm_id":     firm_id,
             "client_id":   client_id,
@@ -1949,7 +1949,7 @@ def complete_onboarding_checklist(
         actor_id=current_user.get("auth_user_id"),
     )
     try:
-        db.table("client_lifecycle_events").insert({
+        privileged_for(db).table("client_lifecycle_events").insert({
             "id":          str(uuid.uuid4()),
             "firm_id":     current_user["firm_id"],
             "client_id":   wf["client_id"],
