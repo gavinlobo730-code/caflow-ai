@@ -122,7 +122,6 @@ jobs/scheduler.py :: PLR0915 :: run_daily_jobs :: 184
 main.py :: F401 :: <module> :: 1
 mock_data.py :: F401 :: <module> :: 2
 models/accounting.py :: B904 :: _posting_date :: 1
-models/accounting.py :: F401 :: <module> :: 1
 models/common.py :: F401 :: <module> :: 1
 models/compliance.py :: F401 :: <module> :: 2
 models/parties.py :: C901 :: CustomerIn.validate_identifiers :: 16

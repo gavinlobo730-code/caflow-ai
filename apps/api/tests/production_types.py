@@ -82,6 +82,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("debit_notes", "goods_returned"): "migration 581 (POST-A-371): whether the goods on a credit or debit note physically came back; NULL = not stated",
     ("delivery_challans", "issued_at"): "migration 585 (POST-A-419): the moment a challan was issued, written once with the status; NULL = not recorded",
     ("fixed_assets", "depreciation_reversal_month"): "migration 587 (POST-A-349): a depreciation reversal's marker, the month it claimed and when; NULL = none in flight",
+    ("fixed_assets", "custodian"): "migration 591 (POST-A-112): who the asset is in the keeping of; NULL = nobody named",
     ("client_sales_invoice_lines", "sales_order_line_id"): "migration 589 (POST-A-104): the sales-order line an invoice line bills; NULL = none",
     ("fixed_assets", "depreciation_reversal_claimed_at"): "migration 587 (POST-A-349): a depreciation reversal's marker, the month it claimed and when; NULL = none in flight",
 }

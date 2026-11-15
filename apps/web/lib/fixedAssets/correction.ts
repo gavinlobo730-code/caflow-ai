@@ -23,6 +23,8 @@ export interface CorrectableAsset {
   // `null` and `undefined` both mean "not recorded" — the register's own row
   // type uses one and PostgREST returns the other.
   location?: string | null;
+  /** Who keeps the asset (migration 591). Correcting a mistyped keeper is an edit; a move is a movement, with its date. */
+  custodian?: string | null;
   notes?: string | null;
   purchase_cost_paise: number;
   salvage_value_paise: number;
@@ -38,6 +40,7 @@ export interface CorrectableAsset {
 export interface CorrectionForm {
   asset_name: string;
   location: string;
+  custodian: string;
   notes: string;
   purchase_cost_rs: string;
   salvage_value_rs: string;
@@ -54,6 +57,7 @@ export function formFor(asset: CorrectableAsset): CorrectionForm {
   return {
     asset_name:        asset.asset_name,
     location:          asset.location ?? "",
+    custodian:         asset.custodian ?? "",
     notes:             asset.notes ?? "",
     purchase_cost_rs:  (asset.purchase_cost_paise / 100).toString(),
     salvage_value_rs:  (asset.salvage_value_paise / 100).toString(),
@@ -81,6 +85,7 @@ export function changedFields(asset: CorrectableAsset, form: CorrectionForm): Co
 
   if (form.asset_name !== base.asset_name) body.asset_name = form.asset_name;
   if (form.location !== base.location) body.location = form.location || null;
+  if (form.custodian !== base.custodian) body.custodian = form.custodian.trim() || null;
   if (form.notes !== base.notes) body.notes = form.notes || null;
 
   if (form.purchase_cost_rs !== base.purchase_cost_rs) {

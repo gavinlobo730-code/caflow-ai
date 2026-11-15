@@ -567,6 +567,15 @@ def with_lines(db: "FakeDB", kind: str, header: dict) -> dict:
 # --------------------------------------------------------------------------- #
 #  RPC double — mirrors the SQL functions the kernel calls
 # --------------------------------------------------------------------------- #
+class _DatabaseRefusal(Exception):
+    """A refusal raised inside a database function, shaped as supabase-py's APIError carries it: a SQLSTATE in `.code` and the
+    function's own sentence in `.message` (and the two in the first argument, a dict, as some versions put them)."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__({"code": code, "message": message})
+        self.code, self.message = code, message
+
+
 class _Rpc:
     def __init__(self, db: "FakeDB", fn: str, params: dict):
         self.db = db
@@ -600,6 +609,59 @@ class _Rpc:
             row.setdefault("id", str(uuid.uuid4()))
             store.append(row)
         return len(self.params["p_lines"])
+
+    def _fn_record_fixed_asset_movement(self):
+        """Mirror migration 591 (POST-A-112): the same refusals in the same words and SQLSTATEs, in the same order, then the movement
+        stored with the asset's own place and keeper (tidied) as "before" and the asset moved (trivially one transaction in memory).
+        The real function is held by `tests/test_591_..._pg.py`; this double only has to say what it says, and it tidies with the one
+        rule the models use (`models.accounting.one_line`), whose class is the function's."""
+        import re as _re
+        from datetime import date as _date
+        from core.ist_clock import ist_today
+        from models.accounting import one_line
+        p = self.params
+        asset = next((r for r in self.db.rows("fixed_assets") if r.get("id") == p["p_asset_id"] and r.get("firm_id") == p["p_firm_id"]
+                      and r.get("client_id") == p["p_client_id"] and not r.get("deleted_at")), None)
+        if asset is None:
+            raise _DatabaseRefusal("P0002", "Asset not found")
+        if asset.get("is_disposed"):
+            raise _DatabaseRefusal("23514", "This asset has been disposed of, so it is no longer held and cannot be moved.")
+        was_place, was_keeper = one_line(asset.get("location") or ""), one_line(asset.get("custodian") or "")
+        if one_line(p.get("p_seen_location") or "") != was_place or one_line(p.get("p_seen_custodian") or "") != was_keeper:
+            raise _DatabaseRefusal("55000", f"The asset has moved since this was opened: the register now has it at "
+                                            f"{was_place or 'no place recorded'}, kept by {was_keeper or 'nobody named'}. Nothing was "
+                                            f"recorded. Open the movement again, which starts from where the asset is now.")
+        if not p.get("p_moved_on"):
+            raise _DatabaseRefusal("23514", "Moved on: enter the date the asset moved.")
+        day = _date.fromisoformat(str(p["p_moved_on"])[:10])
+        show = lambda d: d.strftime("%d %b %Y")
+        if day > ist_today():
+            raise _DatabaseRefusal("23514", f"Moved on: {show(day)} has not come yet. A movement is recorded once it has happened.")
+        bought = asset.get("purchase_date")
+        if bought and day < _date.fromisoformat(str(bought)[:10]):
+            raise _DatabaseRefusal("23514", f"Moved on: {show(day)} is before the asset was bought on "
+                                            f"{show(_date.fromisoformat(str(bought)[:10]))}.")
+        earlier = [_date.fromisoformat(str(r["moved_on"])[:10]) for r in self.db.rows("fixed_asset_movements")
+                   if r.get("asset_id") == p["p_asset_id"]]
+        if earlier and day < max(earlier):
+            raise _DatabaseRefusal("23514", f"Moved on: the asset's latest movement is dated {show(max(earlier))}, and one recorded "
+                                            f"before it would leave the register showing the wrong place. Record movements in the order "
+                                            f"they happened.")
+        place, keeper = one_line(p.get("p_to_location") or ""), one_line(p.get("p_to_custodian") or "")
+        note = _re.sub(r"^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$", "", p.get("p_note") or "") or None
+        if place == was_place and keeper == was_keeper:
+            raise _DatabaseRefusal("23514", "Nothing moved: the place and the keeper are the ones the register already holds.")
+        if len(place or "") > 200 or len(keeper or "") > 200:
+            raise _DatabaseRefusal("23514", "A place or a keeper is at most 200 characters.")
+        if len(note or "") > 500:
+            raise _DatabaseRefusal("23514", "A note is at most 500 characters.")
+        now = datetime.now(timezone.utc).isoformat()
+        row = self.db.seed("fixed_asset_movements", {
+            "firm_id": p["p_firm_id"], "client_id": p["p_client_id"], "asset_id": p["p_asset_id"], "moved_on": day.isoformat(),
+            "from_location": was_place, "to_location": place, "from_custodian": was_keeper, "to_custodian": keeper, "note": note,
+            "created_by": p.get("p_created_by"), "created_at": now})
+        asset["location"], asset["custodian"], asset["updated_at"] = place, keeper, now
+        return dict(row)
 
     def _fn_stock_latest_rows(self):
         """Mirror migration 588 (POST-A-435) through its mock-mode twin: ONE array of each asked item's latest row of the firm and client,

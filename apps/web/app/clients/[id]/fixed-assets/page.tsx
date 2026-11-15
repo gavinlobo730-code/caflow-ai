@@ -22,6 +22,7 @@ import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
 import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
 import { AmortisationReclassification } from "@/components/fixed-assets/AmortisationReclassification";
+import { AssetMovements } from "@/components/fixed-assets/AssetMovements";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { PAYMENT_MODES, isCashMode } from "@/lib/payments/modes";
 import { Callout, GapList } from "@/components/ui/callout";
@@ -61,6 +62,8 @@ interface Asset {
   asset_name: string;
   asset_category: string;
   location?: string;
+  /** Who keeps it (migration 591); its history is the movement panel's. */
+  custodian?: string | null;
   purchase_date: string;
   purchase_cost_paise: number;
   salvage_value_paise: number;
@@ -366,7 +369,7 @@ function RegisterTab({ clientId, openDoc }:
       const supabase = getSupabaseClient();
       const { data, error } = await selectAll(() => supabase
         .from("fixed_assets")
-        .select("id, asset_code, asset_name, asset_category, location, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes, it_block_key, put_to_use_date")
+        .select("id, asset_code, asset_name, asset_category, location, custodian, purchase_date, purchase_cost_paise, salvage_value_paise, depreciation_method, wdv_rate_percent, useful_life_years, accumulated_depreciation_paise, is_disposed, notes, it_block_key, put_to_use_date")
         .eq("client_id", clientId)
         .eq("is_disposed", false)
         // SOFT-DELETED ASSETS ARE NOT ON THE REGISTER, and this read was the one
@@ -549,10 +552,17 @@ function RegisterTab({ clientId, openDoc }:
                     <tr key={`${a.id}-exp`} className="bg-ps-bg">
                       <td colSpan={11} className="px-8 py-3">
                         <div className="grid grid-cols-4 gap-4 text-xs">
-                          <div><span className="text-ps-hint">Location:</span> <span className="text-ps-ink">{a.location ?? "—"}</span></div>
+                          <div><span className="text-ps-hint">Location:</span> <span className="text-ps-ink">{a.location ?? "none recorded"}</span></div>
+                          <div><span className="text-ps-hint">Kept by:</span> <span className="text-ps-ink">{a.custodian ?? "nobody named"}</span></div>
                           <div><span className="text-ps-hint">Salvage Value:</span> <span className="text-ps-ink font-mono">{fmt(a.salvage_value_paise)}</span></div>
                           <div><span className="text-ps-hint">Notes:</span> <span className="text-ps-ink">{a.notes ?? "—"}</span></div>
                         </div>
+                        {/* Where it has been and who has kept it (POST-A-112): the server's history, and a move recorded with its date. */}
+                        {/* The row takes the place and keeper the server answered with, in place: reading the whole register again would
+                            swap the table for its loading state and take this panel, and what it just said, with it. */}
+                        <AssetMovements assetId={a.id}
+                          onMoved={(moved) => setAssets((rows) => rows.map((r) => (r.id === a.id
+                            ? { ...r, location: moved.to_location ?? undefined, custodian: moved.to_custodian } : r)))} />
                       </td>
                     </tr>
                   )}
@@ -659,6 +669,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
         {[
           { k: "asset_name" as const,        label: "Asset name" },
           { k: "location" as const,          label: "Location" },
+          { k: "custodian" as const,         label: "Kept by" },
           { k: "purchase_cost_rs" as const,  label: "Purchase cost (₹)" },
           { k: "salvage_value_rs" as const,  label: "Salvage value (₹)" },
           { k: "wdv_rate_percent" as const,  label: "WDV rate (%)" },
@@ -750,6 +761,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
     schedule_ii_class:     0,
     asset_code:            "",
     location:              "",
+    custodian:             "",
     purchase_date:         todayIstISO(),
     purchase_cost_paise:   "",
     salvage_value_paise:   "0",
@@ -936,6 +948,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         asset_category:        form.asset_category,
         asset_code:            form.asset_code || undefined,
         location:              form.location || undefined,
+        custodian:             form.custodian.trim() || undefined,
         purchase_date:         form.purchase_date,
         // The cost is the depreciable base for the life of the asset: read it
         // wrong once and every Schedule II charge after it is wrong too.
@@ -1021,6 +1034,9 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
             </Field>
             <Field label="Location">
               <input className={INPUT} value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="Head Office" />
+            </Field>
+            <Field label="Kept by (optional)">
+              <input className={INPUT} value={form.custodian} maxLength={200} onChange={e => setForm(f => ({ ...f, custodian: e.target.value }))} placeholder="Accounts department" />
             </Field>
           </div>
           {catsFailed && (
