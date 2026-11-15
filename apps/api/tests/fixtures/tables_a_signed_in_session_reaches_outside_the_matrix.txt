@@ -32,7 +32,7 @@ billing_schedules	write
 bills_of_entry	read
 capital_gain_reinvestments	read
 capital_gains	read
-capital_work_in_progress	write
+capital_work_in_progress	read
 client_gst_registrations	read
 client_gst_turnover	read
 client_health_overrides	write
@@ -52,7 +52,7 @@ customer_payment_events	write
 customer_payment_links	write
 customer_payments	write
 customer_statement_deliveries	write
-cwip_additions	write
+cwip_additions	read
 debit_note_allocations	read
 debit_note_lines	read
 delivery_challan_lines	read
@@ -86,7 +86,7 @@ fixed_asset_verifications	read
 form_26as_records	read
 fx_adjustments	read
 fx_revaluations	read
-godowns	write
+godowns	read
 goods_receipt_lines	read
 goods_receipt_notes	read
 gst_challans	read
@@ -107,7 +107,7 @@ hsn_master	read
 hsn_sac_preferences	read
 income_tax_asset_blocks	read
 income_tax_worksheets	read
-inventory_batches	write
+inventory_batches	read
 inventory_stock_ledger	read
 invoice_deliveries	write
 invoice_sequences	read
@@ -138,7 +138,7 @@ price_list_items	read
 price_lists	read
 properties	write
 proposals	write
-purchase_bill_landed_costs	write
+purchase_bill_landed_costs	read
 purchase_bill_lines	read
 purchase_credit_note_allocations	read
 purchase_credit_note_lines	read
