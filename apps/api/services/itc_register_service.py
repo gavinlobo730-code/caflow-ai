@@ -43,6 +43,7 @@ import logging
 from typing import Optional
 from core.db_paging import fetch_all
 from domain.money_sentence import rupee_text
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.itc_register")
 
@@ -198,7 +199,8 @@ def record_reversal(db, firm_id: str, client_id: str, *, journal_entry_id: str,
     # against the real schema. Building it in a variable and passing
     # .insert(row) hides all of them — the parser sees a Name — and these are
     # the columns that carry figures onto a filed return.
-    return (db.table("itc_reversal_register").insert({
+    # Written with the privileged client (POST-A-008, the GST working tables): the route asked the person's gst permission and the client.
+    return (privileged_for(db).table("itc_reversal_register").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "journal_entry_id": journal_entry_id,
@@ -284,7 +286,7 @@ def record_reclaim(db, firm_id: str, client_id: str, *, journal_entry_id: str,
             f"The journal {_took_back(moved)}; this row "
             f"declares {rupee_text(_total(amt))}.")
 
-    return (db.table("itc_reversal_register").insert({
+    return (privileged_for(db).table("itc_reversal_register").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "journal_entry_id": journal_entry_id,

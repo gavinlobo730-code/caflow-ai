@@ -292,14 +292,14 @@ def _record_hsn_preferences(db, firm_id: str, client_id: str, lines: list[dict])
             )
             if existing.data:
                 row = existing.data[0]
-                db.table("hsn_sac_preferences").update({
+                privileged_for(db).table("hsn_sac_preferences").update({
                     "use_count":          (row.get("use_count") or 0) + 1,
                     "last_used_at":       now_iso,
                     "sample_description": desc,
                     "gst_rate_bps":       gst_rate_bps,
-                }).eq("id", row["id"]).execute()
+                }).eq("id", row["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute()
             else:
-                db.table("hsn_sac_preferences").insert({
+                privileged_for(db).table("hsn_sac_preferences").insert({
                     "firm_id":            firm_id,
                     "client_id":          client_id,
                     "description_key":    key,
