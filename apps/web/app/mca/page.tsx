@@ -26,7 +26,7 @@ import { obligationNote } from "@/lib/compliance/obligationNote";
 import { DataTable } from "@/components/ui/data-table";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
-import { daysBetweenLocalISO, toLocalISO, currentFinancialYearLabel } from "@/lib/dateMath";
+import { daysBetweenLocalISO, toLocalISO } from "@/lib/dateMath";
 import { filingTrackerStatus, calendarWordForMcaStatus, type FilingTrackerStatus } from "@/lib/compliance/overdue";
 import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { isCompaniesActCompany } from "@/lib/entityObligations";
@@ -39,6 +39,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { selectAll } from "@/lib/supabase/selectAll";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
+import { useFilingChoices } from "@/lib/mca/useFilingChoices";
+import { chosenCompany, preselectedYear } from "@/lib/mca/filingChoices";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -203,6 +205,9 @@ function calendarSentence(note: string | null): string | undefined {
 
 // ─── Add Filing Modal ────────────────────────────────────────────────────────
 
+/** The period list's last option: the CA types a year the calendar does not hold open. */
+const ANOTHER_YEAR = "__another__";
+
 function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   clients: Client[];
   firmId: string;
@@ -218,7 +223,40 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   const [clientId, setClientId] = useState("");
   const [cin, setCin] = useState("");
   const [formType, setFormType] = useState("AOC-4");
-  const [period, setPeriod] = useState(() => `FY ${currentFinancialYearLabel()}`);
+  // WHICH COMPANY AND WHICH YEAR (POST-A-291). The CIN was typed, so a CIN that is none of the client's companies placed nobody; and the
+  // period defaulted to the CURRENT financial year from the browser's clock, while an AOC-4 or MGT-7 filed in season is for the year that has
+  // just ended, so the commonest first click filed it under a year the calendar does not hold open. Both now come from the server: the
+  // client's active companies (the CIN is the chosen company's own) and the years the calendar holds this form's obligation open in.
+  // This form inserts the row from the browser (POST-A-442), so nothing on the server asks which company when the answer cannot be read: the
+  // sentence says what is done instead, which is that a typed CIN is matched to the client's companies when the filing is marked filed.
+  const { state: choices, retry: readChoicesAgain } = useFilingChoices(clientId, formType, (c, f) => api.mca.filingChoices(c, f),
+    "Type the CIN and the year; the CIN typed is matched to the client's companies when the filing is marked filed. Try again to choose "
+    + "them instead.");
+  const [companyId, setCompanyId] = useState("");
+  const [year, setYear] = useState("");
+  // The CA chose "Another year", or no year was offered: the period is typed, with nothing filled in for them.
+  const [periodTyped, setPeriodTyped] = useState(false);
+  const [period, setPeriod] = useState("");
+  const offeredYears = choices.kind === "read" ? choices.choices.periods ?? [] : [];
+  const company = choices.kind === "read" ? chosenCompany(choices.choices, companyId) : null;
+  const companiesOffered = choices.kind === "read" ? choices.choices.companies : [];
+  // The CIN is typed, as it always was, only where no company's own CIN can stand in: a company chosen whose CIN is not on record, a client
+  // with no company on record, or companies that could not be read (or no client chosen yet). Never while the client's companies are being
+  // read, and never with several offered and none chosen yet, where the CIN is the chosen company's.
+  const cinTyped = choices.kind === "read"
+    ? (company ? !company.cin : companiesOffered.length === 0)
+    : choices.kind !== "loading";
+  useEffect(() => {
+    // A new answer is a new client or form (or a second read): a company chosen stays chosen while it is still offered (the companies do not
+    // depend on the form), and the year is the new answer's (the only open one, or nothing).
+    if (choices.kind !== "read") return;
+    const offered = choices.choices.companies;
+    setCompanyId((id) => (offered.some((c) => c.id === id) ? id : ""));
+    setPeriodTyped(false);
+    setYear(preselectedYear(choices.choices));
+  }, [choices]);
+  // A CIN typed for one client is not another's: a new client starts with an empty box.
+  useEffect(() => { setCin(""); }, [clientId]);
   const [dueDate, setDueDate] = useState("");
   const [srn, setSrn] = useState("");
   // The date the CA filed it on MCA21, which the software must not supply (it used to write today's).
@@ -234,7 +272,20 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
 
   async function handleSubmit() {
     if (dueDates.first) { setErr(dueDates.first); return; }
-    if (!clientId || !cin.trim() || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
+    if (choices.kind === "read" && choices.choices.company_required && !company) {
+      setErr("Choose the company this filing is for. The calendar's obligation closes only when each of this client's companies has filed.");
+      return;
+    }
+    const cinValue = (company?.cin ?? cin).trim().toUpperCase();
+    if (!clientId || !cinValue || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
+    const fromList = offeredYears.length > 0 && !periodTyped;
+    if (fromList && !year) { setErr("Choose the year this filing is for, or Another year to type it."); return; }
+    // A form that stands for an obligation needs a year, or the filing can never close it (the server refuses the same on its own door; this
+    // form's insert does not reach it). Asked only where the server said so.
+    if (!fromList && !period.trim() && choices.kind === "read" && choices.choices.has_obligation) {
+      setErr(`Period: type the financial year this ${formType} is for, for example FY 2025-26. Without a year it can never close its obligation on the compliance calendar.`);
+      return;
+    }
     // The date box is on the form only for a filed filing, so an unreadable one matters only then.
     if (status === "Filed" && dates.first) { setErr(dates.first); return; }
     if (status === "Filed" && (!srn.trim() || !filedOn)) {
@@ -249,10 +300,13 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
         firm_id: firmId,
         client_id: clientId,
         client_name: selectedClient?.client_name ?? "",
-        cin: cin.trim().toUpperCase(),           // DB column is 'cin'
-        company_cin: cin.trim().toUpperCase(),    // alias column added in migration 038
+        cin: cinValue,           // DB column is 'cin'
+        company_cin: cinValue,    // alias column added in migration 038
+        // The company chosen from the client's own (POST-A-291), which is how the calendar's closer places a filing among several.
+        company_id: company?.id ?? null,
         form_type: formType,
-        period,
+        period: fromList ? `FY ${year}` : (period.trim() || null),
+        financial_year: fromList ? year : null,
         due_date: dueDate,
         // A row is CREATED not started (or overdue) and never filed: recording it as filed goes through the API
         // below, which asks for Manager and above and the CA's confirmation. Writing `filed`, the SRN and a
@@ -326,10 +380,32 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
               />
             </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-ps-body block mb-1">CIN / LLPIN</label>
-            <input aria-label="CIN / LLPIN" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
-          </div>
+          {companiesOffered.length > 1 && (
+            <div>
+              <label htmlFor="mca-add-company" className="text-xs font-medium text-ps-body block mb-1">Company</label>
+              <select id="mca-add-company" aria-label="Company" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={companyId} onChange={e => setCompanyId(e.target.value)}>
+                <option value="">Choose the company</option>
+                {companiesOffered.map(c => <option key={c.id} value={c.id}>{c.company_name}{c.cin ? ` · ${c.cin}` : ""}</option>)}
+              </select>
+            </div>
+          )}
+          {company?.cin && (
+            <p className="text-xs text-ps-label" data-testid="mca-add-company-cin">
+              CIN <span className="font-mono">{company.cin}</span> · {company.company_name}
+            </p>
+          )}
+          {cinTyped && (
+            <div>
+              <label className="text-xs font-medium text-ps-body block mb-1">CIN / LLPIN</label>
+              <input aria-label="CIN / LLPIN" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand" placeholder="U17200MH2010PTC205678" value={cin} onChange={e => setCin(e.target.value.toUpperCase())} />
+              {choices.kind === "read" && companiesOffered.length === 0 && (
+                <p className="text-3xs text-ps-label mt-1">No active company of this client is in the Company Master, so type its CIN.</p>
+              )}
+              {company && !company.cin && (
+                <p className="text-3xs text-ps-label mt-1">The Company Master holds no CIN for {company.company_name}, so type it.</p>
+              )}
+            </div>
+          )}
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Form Type</label>
             <select aria-label="Form Type" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={formType} onChange={e => setFormType(e.target.value)}>
@@ -339,7 +415,23 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-ps-body block mb-1">Period</label>
-              <input aria-label="Period" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
+              {offeredYears.length > 0 && !periodTyped ? (
+                <select aria-label="Period" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={year}
+                  onChange={e => {
+                    if (e.target.value === ANOTHER_YEAR) { setPeriodTyped(true); setYear(""); return; }
+                    setYear(e.target.value);
+                  }}>
+                  <option value="">Choose the year</option>
+                  {offeredYears.map(y => (
+                    <option key={y.financial_year} value={y.financial_year}>
+                      FY {y.financial_year}{y.due_date ? ` · due ${formatDate(y.due_date)}` : ""}
+                    </option>
+                  ))}
+                  <option value={ANOTHER_YEAR}>Another year…</option>
+                </select>
+              ) : (
+                <input aria-label="Period" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={period} onChange={e => setPeriod(e.target.value)} placeholder="FY 2025-26" />
+              )}
             </div>
             <div>
               <label htmlFor="mca-due-date" className="text-xs font-medium text-ps-body block mb-1">Due Date</label>
@@ -379,6 +471,15 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
               />
             </div>
           )}
+          {choices.kind === "unreadable" && (
+            <p className="text-xs text-ps-label">
+              {choices.sentence}{" "}
+              <button type="button" onClick={readChoicesAgain} className="underline">Try again</button>
+            </p>
+          )}
+          {choices.kind === "read" && offeredYears.length === 0 && choices.choices.periods_note && (
+            <p className="text-xs text-ps-label">{choices.choices.periods_note}</p>
+          )}
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>
             <input aria-label="Notes" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
@@ -386,7 +487,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
-          <Button variant="plain" size="none" onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
+          <Button variant="plain" size="none" onClick={handleSubmit} disabled={saving || choices.kind === "loading"} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Filing"}
           </Button>
         </div>

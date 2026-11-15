@@ -477,6 +477,73 @@ def list_filings(
         return api_response(False, None, "Unable to complete MCA operation. Please try again.")
 
 
+def _client_companies(firm_id: str, client_id: str) -> list[dict]:
+    """The client's companies (`id`, `company_name`, `cin`, `is_active`), in name order; every one, active or not."""
+    if _USE_MOCK:
+        rows = [c for c in _MOCK_COMPANIES.values() if c.get("firm_id") == firm_id and c.get("client_id") == client_id]
+    else:
+        from core.supabase_client import get_supabase
+        from core.db_paging import fetch_all
+        rows = fetch_all(lambda: get_supabase().table("mca_companies").select("id,company_name,cin,is_active")
+                         .eq("firm_id", firm_id).eq("client_id", client_id), label="mca_workspace.client_companies")
+    return sorted(rows, key=lambda c: (str(c.get("company_name") or "").casefold(), str(c.get("id"))))
+
+
+def _is_active(company: dict) -> bool:
+    """The closer's own test (`_company_facts`): `is_active` is NOT NULL DEFAULT true in the database, and a mock row without it is active."""
+    return bool(company.get("is_active", True))
+
+
+def _active(companies: list[dict]) -> list[dict]:
+    return [c for c in companies if _is_active(c)]
+
+
+@router.get("/filing-choices")
+def filing_choices(
+    client_id: str = Query(...),
+    form_type: str = Query(..., max_length=20),
+    current_user: dict = Depends(rbac("mca", "read")),
+):
+    """What a screen offers when a filing is created for this client and form (POST-A-291): the client's ACTIVE companies
+    and the financial years the compliance calendar holds this form's obligation open in.
+
+    WHY. An AOC-4 or MGT-7 obligation is the client's while the filings are its companies' (`mca_companies` allows several),
+    so the closer places a filing by its company and declines one that names none; and neither screen offered a company.
+    The firm-level form also offered the CURRENT financial year as the period, while a form filed in season is for the year
+    that has just ended, so the commonest first click filed it under a year the calendar does not hold open.
+
+    `companies` is `[{id, company_name, cin}]`, in name order; `company_required` is true when there is more than one, and a
+    filing created through the API is then refused unless it names one. `periods` is `[{financial_year, due_date, status}]`,
+    newest first, or None with `periods_note` saying why no year is offered (the form has no obligation on the calendar, or
+    the caller's access does not include Compliance). An empty list carries a note too: the calendar holds none open.
+    """
+    assert_client_access(current_user, client_id)
+    try:
+        from services import mca_filing_closes_obligation as closes
+        firm_id = current_user["firm_id"]
+        companies = [{"id": c.get("id"), "company_name": c.get("company_name"), "cin": c.get("cin")}
+                     for c in _active(_client_companies(firm_id, client_id))]
+        periods = None
+        if not closes.has_an_obligation(form_type):
+            note = (f"The compliance calendar holds no obligation for {form_type}, so no year is offered. "
+                    "Type the year this filing is for.")
+        elif not can_user(current_user, "compliance", "read"):
+            note = ("Your access does not include Compliance, so the years the calendar holds open are not shown. "
+                    "Type the year this filing is for.")
+        else:
+            periods = closes.open_years_for(firm_id, client_id, form_type)
+            note = None if periods else (f"The compliance calendar holds no open {form_type} for this client, so no year is "
+                                         "offered. Type the year this filing is for.")
+        return api_response(True, {"companies": companies, "company_required": len(companies) > 1,
+                                   "has_obligation": closes.has_an_obligation(form_type),
+                                   "periods": periods, "periods_note": note})
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.exception("filing choices could not be read")
+        return api_response(False, None, "The client's companies and open years could not be read. Please try again.")
+
+
 @router.post("/filings")
 def create_filing(
     body: CreateFilingRequest,
@@ -498,13 +565,43 @@ def create_filing(
         if body.form_type not in valid_forms:
             return api_response(False, None, f"Invalid form_type. Must be one of: {sorted(valid_forms)}")
 
+        # WHICH COMPANY (POST-A-291). A filing on MCA21 is one company's, and the calendar's obligation is the client's: with
+        # several active companies a filing that names none can never be placed, so it is refused here rather than accepted
+        # and declined when it is marked filed. The company's CIN is stored from its own row, never typed.
+        companies = _client_companies(firm_id, body.client_id)
+        named = str(body.company_id or "").strip().lower()
+        # A uuid compares without case in Postgres, so it does here too: an id the ownership check above found is found again.
+        company = next((c for c in companies if str(c.get("id")).lower() == named), None) if named else None
+        if named and company is None:
+            raise HTTPException(status_code=404, detail="That company was not found.")
+        if company is not None and not _is_active(company):
+            # The closer counts only ACTIVE companies, so a filing for an inactive one could never be placed among several, and
+            # with one active company it would close the client's obligation although that company has not filed.
+            return api_response(False, None, f"{company.get('company_name') or 'That company'} is not an active company of this "
+                                             f"client. Choose one of its active companies.")
+        active = _active(companies)
+        if company is None and len(active) > 1:
+            return api_response(False, None, f"This client has {len(active)} active companies. Choose the company this "
+                                             f"filing is for.")
+        from services import mca_filing_closes_obligation as closes
+        if closes.has_an_obligation(body.form_type) and closes.filing_year(
+                {"financial_year": body.financial_year, "period": body.period}) is None:
+            # A filing of a form that stands for an obligation, with no year, can never close it (`filing_year` answers None).
+            return api_response(False, None, f"{body.form_type}: say the financial year this filing is for. Without a year it "
+                                             f"can never close its obligation on the compliance calendar.")
+        cin = (str(company.get("cin") or "").strip().upper() or None) if company else None
+
         category = "annual" if body.form_type in _ANNUAL_FORMS else "event"
 
         record = {
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
-            "company_id": body.company_id,
+            # The company's own id as its row holds it (the request may spell a uuid in another case).
+            "company_id": company.get("id") if company else None,
+            # The firm-level list shows `company_cin`, and the browser's own insert writes both columns.
+            "company_cin": cin,
+            "cin": cin,
             "form_type": body.form_type,
             "category": category,
             "financial_year": body.financial_year,

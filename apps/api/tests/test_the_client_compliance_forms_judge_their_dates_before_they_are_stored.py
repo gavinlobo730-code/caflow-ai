@@ -158,6 +158,14 @@ def test_a_challans_identifying_text_is_stored_trimmed_and_no_format_is_assumed(
 
 # ── over HTTP: a sentence at the door, not a database refusal swallowed into "try again" ────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _own_company_store(monkeypatch):
+    """The companies this file registers for client C1 stay in this file: since POST-A-291 a filing that names no company is refused when the
+    client has several active ones, so a company left in the shared mock store changes another file's answer."""
+    import routers.mca_workspace as mw
+    monkeypatch.setattr(mw, "_MOCK_COMPANIES", {})
+
+
 @pytest.fixture
 def client():
     app = FastAPI()
