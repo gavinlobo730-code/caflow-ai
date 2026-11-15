@@ -81,6 +81,7 @@ from routers import opening_documents  # ACC-14 — the bill-wise breakup of an 
 from routers import sales_cycle  # SALES-21 — quotation, proforma, order, Rule 55 challan
 from routers import purchase_cycle  # PUR-25 — purchase order, goods receipt, three-way match
 from routers import recurring_journals
+from routers import narration_templates
 from routers import compliance_ops
 from routers import purchase_bills, purchase_payments, document_intelligence_v1
 from routers import party_credits
@@ -473,6 +474,7 @@ app.include_router(opening_documents.router, dependencies=_CLIENT_GUARD)
 app.include_router(sales_cycle.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_cycle.router, dependencies=_CLIENT_GUARD)
 app.include_router(recurring_journals.router, dependencies=_CLIENT_GUARD)
+app.include_router(narration_templates.router, dependencies=_CLIENT_GUARD)
 app.include_router(compliance_ops.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_bills.router, dependencies=_CLIENT_GUARD)
 app.include_router(purchase_payments.router, dependencies=_CLIENT_GUARD)
