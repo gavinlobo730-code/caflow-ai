@@ -26,6 +26,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from domain.accounting import journal_source as JS
 from domain.fixed_assets import cwip as cwip_domain
 from services.fixed_asset_accumulated_ledger import birth_pointer_fields
@@ -179,7 +180,7 @@ def create_project(db, *, firm_id: str, client_id: str, project_name: str,
                    approved_cost_paise: Optional[int],
                    expected_completion_date: Optional[str],
                    notes: Optional[str], actor_id: Optional[str]) -> dict:
-    rows = db.table("capital_work_in_progress").insert({
+    rows = privileged_for(db).table("capital_work_in_progress").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "project_code": project_code,
@@ -221,7 +222,7 @@ def set_status(db, *, firm_id: str, client_id: str, cwip_id: str,
         return {"ok": False, "refusal": (
             "This project has been capitalised — its cost is a fixed asset and "
             "a posted journal, neither of which can be rewritten.")}
-    db.table("capital_work_in_progress").update({
+    privileged_for(db).table("capital_work_in_progress").update({
         "status": status,
         "status_changed_on": on_date,
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -254,7 +255,7 @@ def add_cost(db, *, firm_id: str, client_id: str, cwip_id: str,
             "This project is no longer capital work-in-progress, so a further "
             "cost belongs on the asset it became — or on a new project.")}
 
-    inserted = db.table("cwip_additions").insert({
+    inserted = privileged_for(db).table("cwip_additions").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "cwip_id": cwip_id,
@@ -291,8 +292,8 @@ def add_cost(db, *, firm_id: str, client_id: str, cwip_id: str,
             addition={**row, "project_name": rows[0].get("project_name")},
             firm_id=firm_id, client_id=client_id, created_by=actor_id)
         if entry_id:
-            db.table("cwip_additions").update(
-                {"journal_entry_id": entry_id}).eq("id", row["id"]).execute()
+            privileged_for(db).table("cwip_additions").update(
+                {"journal_entry_id": entry_id}).eq("id", row["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute()
             row["journal_entry_id"] = entry_id
         else:
             gaps.append(NOT_POSTED)
@@ -380,7 +381,7 @@ def capitalise(db, *, firm_id: str, client_id: str, cwip_id: str,
             project={**project, "id": cwip_id}, asset=asset, cost_paise=cost,
             entry_date=put_to_use_date, firm_id=firm_id, client_id=client_id, created_by=actor_id)
 
-    db.table("capital_work_in_progress").update({
+    privileged_for(db).table("capital_work_in_progress").update({
         "status": "capitalised",
         "status_changed_on": put_to_use_date,
         "capitalised_on": put_to_use_date,

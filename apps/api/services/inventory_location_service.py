@@ -31,6 +31,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from domain.inventory import batches as batch_domain
 from domain.inventory import location as loc
 from services.inventory_costing_policy_service import formula_in_force
@@ -88,10 +89,10 @@ def create_godown(db, *, firm_id: str, client_id: str, name: str,
     constraint violation would be a worse way to say so.
     """
     if is_default:
-        db.table("godowns").update({"is_default": False}).eq(
+        privileged_for(db).table("godowns").update({"is_default": False}).eq(
             "firm_id", firm_id).eq("client_id", client_id).eq(
             "is_default", True).execute()
-    rows = db.table("godowns").insert({
+    rows = privileged_for(db).table("godowns").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "name": name,
@@ -126,7 +127,7 @@ def close_godown(db, *, firm_id: str, client_id: str, godown_id: str) -> dict:
             f"({len(held)} item(s)). Transfer it to another godown first — "
             f"moving it automatically would invent a transfer nobody made, and "
             f"between two registrations that transfer is a supply.")}
-    db.table("godowns").update({
+    privileged_for(db).table("godowns").update({
         "is_active": False,
         "is_default": False,
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -143,7 +144,7 @@ def reopen_godown(db, *, firm_id: str, client_id: str, godown_id: str) -> dict:
             .eq("id", godown_id).limit(1).execute().data) or []
     if not rows:
         return {"ok": False, "refusal": "That godown is not this client's."}
-    db.table("godowns").update({
+    privileged_for(db).table("godowns").update({
         "is_active": True,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("firm_id", firm_id).eq("client_id", client_id).eq("id", godown_id).execute()
@@ -197,7 +198,7 @@ def create_batch(db, *, firm_id: str, client_id: str, service_catalogue_id: str,
         raise HTTPException(status_code=404, detail="Stock item not found.")
     if item[0].get("kind") != "good":
         raise HTTPException(status_code=422, detail="Only stock-tracked products have batches.")
-    rows = db.table("inventory_batches").insert({
+    rows = privileged_for(db).table("inventory_batches").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "service_catalogue_id": service_catalogue_id,
