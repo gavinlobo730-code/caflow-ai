@@ -551,13 +551,13 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 Three apps, not two:
 
 - `apps/api` — FastAPI (Python 3.11). **All** business logic lives here.
-- `apps/web` — Next.js 14, the product. Static export (`output: "export"` in
+- `apps/web` — Next.js 15, the product. Static export (`output: "export"` in
   `next.config.mjs`), deployed to Cloudflare Pages.
 - `apps/marketing` — separate Next.js marketing site, its own Cloudflare Pages project.
 
 ## Tech stack
 
-- Frontend: Next.js 14, TypeScript, Tailwind CSS, shadcn/ui primitives in
+- Frontend: Next.js 15 (React 19), TypeScript, Tailwind CSS, shadcn/ui primitives in
   `apps/web/components/ui/` (vendored source — there is no `components.json`, so the
   shadcn CLI will not work; add primitives by hand).
 - Backend: FastAPI (Python 3.11)

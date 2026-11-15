@@ -111,7 +111,7 @@ HARNESS_PG="host=127.0.0.1 port=5432 user=postgres password=postgres" \
 ```
 caflow-ai/
 ├── apps/
-│   ├── web/          # Next.js 14 app (static export → Cloudflare Pages)
+│   ├── web/          # Next.js 15 app (static export → Cloudflare Pages)
 │   ├── api/          # FastAPI backend (→ Render)
 │   │   └── migrations/   # THE database migrations, applied in numeric order
 │   └── marketing/    # Next.js marketing site (→ Cloudflare Pages)

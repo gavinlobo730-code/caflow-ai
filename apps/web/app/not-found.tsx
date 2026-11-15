@@ -41,6 +41,9 @@ export default function NotFound() {
         <p className="text-5xl font-bold text-brand/10">404</p>
         <p className="text-base font-semibold text-brand">Page not found</p>
         <p className="text-sm text-gray-400">The page you&apos;re looking for doesn&apos;t exist.</p>
+        {/* A full page load, as the redirects above are: a 404 served for an unknown address leaves it whole rather than
+            through the client router. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/"
           className="inline-flex items-center text-sm font-medium text-brand hover:text-brand/70 underline underline-offset-4"
