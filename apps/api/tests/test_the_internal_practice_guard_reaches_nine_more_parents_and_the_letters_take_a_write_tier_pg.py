@@ -50,6 +50,7 @@ import pytest
 
 from tests._cross_tenant_rows import allow_legacy_rows
 from tests._signed_in_document_writes import give_the_signed_in_writes_back
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
@@ -245,6 +246,9 @@ def seeded(pg_template):
         # Migration 563 took the signed-in write on the six document headers and their lines; this file measures the SECOND lock (the
         # policies and the triggers), so the write is given back on this throwaway copy once its rows are seeded.
         give_the_signed_in_writes_back(d)
+        # POST-A-008's tranche migrations (603 on) took the signed-in write away from the letters, their events and the clearable tables
+        # of this file in the same sense; the write is handed back on whichever of them the closed list names.
+        hand_back(d, [*WRITABLE_NINE, "engagements", "engagement_events", *(table for table, _column in CLEARABLE)])
         yield name, w.ids
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')

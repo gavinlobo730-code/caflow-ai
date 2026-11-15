@@ -64,7 +64,7 @@ ecommerce_operator_supplies	read
 ecommerce_operator_unregistered_supplies	read
 einvoice_records	read
 email_templates	read
-engagement_events	write
+engagement_events	read
 engagement_letters	write
 engagement_templates	read
 engagements	write
@@ -126,9 +126,9 @@ msme_payments	read
 msme_vendors	read
 notes_to_accounts	read
 notifications	write
-onboarding_checklist_steps	write
-onboarding_checklists	write
-onboarding_tasks	write
+onboarding_checklist_steps	read
+onboarding_checklists	read
+onboarding_tasks	read
 party_credit_balances	read
 party_credit_ledger	read
 portal_messages	write
@@ -137,7 +137,7 @@ practice_email_log	read
 price_list_items	read
 price_lists	read
 properties	write
-proposals	write
+proposals	read
 purchase_bill_landed_costs	read
 purchase_bill_lines	read
 purchase_credit_note_allocations	read
