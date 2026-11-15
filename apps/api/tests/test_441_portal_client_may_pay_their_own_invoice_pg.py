@@ -65,6 +65,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -171,6 +172,10 @@ def seeded(pg_template):
     try:
         assert _THIS_MIGRATION not in pg_template.failed
         _seed(dsn)
+        # Migration 605 (POST-A-008, the payments tranche) took the signed-in write on the payment links away, the FIRST lock: the API
+        # writes them with its privileged client since. This file measures the portal policies, the SECOND lock, so the write is handed
+        # back on this throwaway copy.
+        hand_back(dsn, ["customer_payment_links"])
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')
@@ -409,6 +414,7 @@ def before_this_migration():
     dsn = f"{_ADMIN.strip()} dbname={name}"
     try:
         _seed(dsn)
+        hand_back(dsn, ["customer_payment_links"])           # the same, so the refusal measured is the policy's (see `seeded`)
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE);')
