@@ -120,10 +120,10 @@ journal_narration_templates	read
 knowledge_article_versions	write
 late_interest_charges	read
 leads	read
-ledger_balances	write
+ledger_balances	read
 login_events	read
-msme_payments	write
-msme_vendors	write
+msme_payments	read
+msme_vendors	read
 notes_to_accounts	read
 notifications	write
 onboarding_checklist_steps	write
@@ -158,7 +158,7 @@ recurring_purchase_bill_templates	read
 related_party_loans	write
 reminder_settings	read
 reminders	write
-retainer_clients	write
+retainer_clients	read
 sales_debit_note_allocations	read
 sales_debit_note_lines	read
 sales_invoices	read
@@ -173,7 +173,7 @@ scheduler_runs	read
 self_assessment_challans	read
 stock_count_lines	read
 stock_count_sessions	read
-suppliers	write
+suppliers	read
 tally_migration_items	write
 tally_migration_jobs	write
 task_dependencies	read
