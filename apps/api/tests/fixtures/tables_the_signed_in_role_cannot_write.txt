@@ -22,6 +22,7 @@
 # 596 closes ais_uploads, ais_records, ais_reconciliations, ais_computation_decisions, form_26as_records, income_tax_asset_blocks, income_tax_worksheets, itr_filing_versions, tax_deduction_claims, it_deductions and tax_notices (POST-A-008, the income-tax tranche): the API writes the first nine with its privileged client since the change that shipped before it, and nothing reads or writes the last two.
 # 597 closes schedule_iii_ratio_explanations, schedule_iii_ratio_inputs, schedule_iii_unbilled_reviews, account_budgets, cost_centres, year_end_checklist_items, year_end_checklists, year_end_reviews and notes_to_accounts (POST-A-008, the accounting tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
 # 598 closes capital_work_in_progress, cwip_additions, godowns, inventory_batches and purchase_bill_landed_costs (POST-A-008, the stock tranche): the API writes all five with its privileged client since the change that shipped before it.
+# 599 closes client_lifecycle_events, client_period_metrics, health_overrides, client_health_scores, health_dimension_scores and client_health_overrides (POST-A-008, the health tranche): the API writes the first three with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -68,7 +69,11 @@ capital_work_in_progress
 client_documents
 client_gst_registrations
 client_gst_turnover
+client_health_overrides
+client_health_scores
+client_lifecycle_events
 client_payroll_settings
+client_period_metrics
 client_portal_sessions
 client_portal_users
 client_profile_history
@@ -141,6 +146,8 @@ gstr4_annual_urp_supplies
 gstr9c_expense_lines
 gstr9c_rate_wise_lines
 gstr9c_reconciliations
+health_dimension_scores
+health_overrides
 hsn_master
 hsn_sac_preferences
 income_tax_asset_blocks
