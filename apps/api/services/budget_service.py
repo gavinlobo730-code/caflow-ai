@@ -45,6 +45,7 @@ from typing import Optional
 from core.db_paging import fetch_all
 from core.ist_clock import fy_quarters
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.budget")
 
@@ -114,12 +115,12 @@ def set_budget(firm_id: str, client_id: str, account_id: str, fy: str,
     # the unreadable budget and the write goes unchecked. A wrong key here does
     # not fail one column: PostgREST rejects the WHOLE row with PGRST204.
     if existing.data:
-        return (db.table("account_budgets").update({
+        return (privileged_for(db).table("account_budgets").update({
             "firm_id": firm_id, "client_id": client_id, "account_id": account_id,
             "fy": fy, "budget_paise": int(budget_paise),
             "updated_by": actor_id, "updated_at": _now(),
-        }).eq("id", existing.data[0]["id"]).execute().data[0])
-    return db.table("account_budgets").insert({
+        }).eq("id", existing.data[0]["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute().data[0])
+    return privileged_for(db).table("account_budgets").insert({
         "firm_id": firm_id, "client_id": client_id, "account_id": account_id,
         "fy": fy, "budget_paise": int(budget_paise),
         "created_by": actor_id, "updated_by": actor_id, "updated_at": _now(),
@@ -136,7 +137,7 @@ def clear_budget(firm_id: str, client_id: str, account_id: str, fy: str,
     if _USE_MOCK and db is None:
         return MOCK_BUDGETS.pop(key, None) is not None
     db = db or _db()
-    res = (db.table("account_budgets").delete()
+    res = (privileged_for(db).table("account_budgets").delete()
            .eq("firm_id", firm_id).eq("client_id", client_id)
            .eq("account_id", account_id).eq("fy", fy).execute())
     return bool(res.data)
