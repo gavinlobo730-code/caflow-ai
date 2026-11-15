@@ -15,10 +15,11 @@ WHAT THIS HOLDS
     * the stage revert, run with a caller who sees only one of two letters, does not downgrade a lead whose other letter is
       signed (the control: read as the caller, the same lead is downgraded and the stage is written);
     * the conversion's signed-letter lookup (`_signed_letters_of_lead`) finds a signed letter the caller's own sign-in cannot
-      see, and the write that links it to the new client stays the CALLER's (deliberately not widened), so when the database
-      hides that letter from the update and answers with no row and no error, `_link_signed_letter` SAYS the letter was not
-      linked instead of letting the conversion go on as though it were (the review of this change found the silent zero-row
-      outcome: before the privileged read the same lead ended in a 409);
+      see, and the link to the new client is NOT widened to match: until POST-A-008 it ran as the caller and the database
+      refused a letter of a client they cannot reach; it is made with the privileged client now, so `_link_signed_letter`
+      asks the caller's reach of the letter's client and of the new one first, and SAYS the letter was not linked (with no
+      write) when either is out of reach, as it says so when an update matches no row (the review of the original change
+      found the silent zero-row outcome: before the privileged read the same lead ended in a 409);
     * every `.table("engagements")` in `routers/lifecycle.py` is either a SELECT on `_letters_db(...)` or the UPDATE of
       `_link_signed_letter`; a chain held in a variable, which the select rule could not see, fails.
 
@@ -151,12 +152,21 @@ def test_a_link_the_database_refuses_with_an_error_still_says_so(monkeypatch):
     assert said and said.startswith("Client created, but linking the signed engagement to it failed")
 
 
-def test_the_link_is_written_as_the_caller_and_never_as_the_server(monkeypatch):
-    """Widening the read is the fix; widening the write would let a Manager move another client's letter."""
+def test_the_link_moves_no_letter_of_a_client_the_caller_cannot_reach(monkeypatch):
+    """Widening the read is the fix; a write widened with nothing in its place would let a Manager move another client's
+    letter. The link is made with the privileged client since POST-A-008, so the route asks first, and the letter of a
+    client the caller cannot reach is written by neither client; a letter they may reach is written by the server."""
+    import core.authz
     caller, server = _world(monkeypatch, privileged=True)
-    caller.rows["engagements"] = [dict(SIGNED_ON_AN_UNASSIGNED_CLIENT)]
-    lc._link_signed_letter(lc._db(), "E1", "C-NEW", "F1", "2026-10-21T00:00:00+00:00")
-    assert caller.updates and server.updates == [], "the link was written with the privileged client"
+    server.rows["engagements"] = [dict(SIGNED_ON_AN_UNASSIGNED_CLIENT, client_id="C-OTHER")]
+    who = {"id": "U1", "firm_id": "F1", "role": "Manager"}
+    monkeypatch.setattr(core.authz, "can_access_client", lambda _user, cid: cid in (None, "C-NEW"))
+    said = lc._link_signed_letter(lc._db(), "E1", "C-NEW", "F1", "2026-10-21T00:00:00+00:00", who)
+    assert said and "not linked" in said and "not assigned" in said, said
+    assert caller.updates == [] and server.updates == [], "a letter of a client the caller cannot reach was written"
+    monkeypatch.setattr(core.authz, "can_access_client", lambda _user, cid: True)
+    assert lc._link_signed_letter(lc._db(), "E1", "C-NEW", "F1", "2026-10-21T00:00:00+00:00", who) is None
+    assert server.updates and caller.updates == [], "the link was not written with the privileged client"
 
 
 def _engagement_chains():
