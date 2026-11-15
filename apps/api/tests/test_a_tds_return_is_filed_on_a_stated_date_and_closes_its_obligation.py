@@ -332,7 +332,8 @@ def test_the_live_update_is_conditional_on_the_status_that_was_read_so_a_double_
     db = _against_a_database(monkeypatch, update_matches=True)
     update_return_status("r-1", UpdateReturnStatusRequest(
         status="filed", ca_approved=True, prn=PRN, filing_date=STATED), PARTNER)
-    assert dict(db.update_filters) == {"id": "r-1", "firm_id": FIRM, "status": "ca_approved"}
+    # The privileged client writes the return (POST-A-443), so the update names the row's own client as well as the firm.
+    assert dict(db.update_filters) == {"id": "r-1", "firm_id": FIRM, "client_id": "client-1", "status": "ca_approved"}
     assert dict(db.read_filters) == {"id": "r-1", "firm_id": FIRM}
 
 
@@ -535,3 +536,27 @@ def test_the_routing_keys_are_the_four_the_table_accepts():
     keys = set(typing.get_args(tw.ReturnTypeKey))
     assert keys == {"24Q", "26Q", "27Q", "27EQ"}
     assert set(closes.OBLIGATION_FOR_STATEMENT) == keys - {"27EQ"}
+
+
+# ── the firm's own practice is a Partner's on the status door, which names a return and not a client (POST-A-443) ──
+
+def test_a_manager_cannot_file_a_return_of_the_firms_own_practice_and_nothing_is_written(monkeypatch):
+    from fastapi import HTTPException
+    import services.internal_client_service as ics
+    db = _against_a_database(monkeypatch, update_matches=True)
+    monkeypatch.setattr(ics, "get_internal_client_id", lambda firm_id: CLIENT if firm_id == FIRM else None)
+    manager = {**PARTNER, "id": "u9", "role": "Manager", "auth_user_id": "a9"}
+    with pytest.raises(HTTPException) as refused:
+        update_return_status("r-1", UpdateReturnStatusRequest(
+            status="filed", ca_approved=True, prn=PRN, filing_date=STATED), manager)
+    assert refused.value.status_code == 404
+    assert db.updates == [], "the privileged client wrote nothing"
+
+
+def test_a_partner_still_files_it(monkeypatch):
+    import services.internal_client_service as ics
+    db = _against_a_database(monkeypatch, update_matches=True)
+    monkeypatch.setattr(ics, "get_internal_client_id", lambda firm_id: CLIENT if firm_id == FIRM else None)
+    out = update_return_status("r-1", UpdateReturnStatusRequest(
+        status="filed", ca_approved=True, prn=PRN, filing_date=STATED), PARTNER)
+    assert out["success"] is True and db.updates

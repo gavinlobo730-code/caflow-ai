@@ -53,6 +53,8 @@ def app_db(monkeypatch):
     monkeypatch.setattr(mod, "_USE_MOCK", False)
     monkeypatch.setattr(mod, "log_event", lambda *a, **k: None)
     monkeypatch.setattr("core.supabase_client.get_supabase", lambda: db)
+    # The register is written with the privileged client (POST-A-443), which in production reaches the same database: the double stands in for both.
+    monkeypatch.setattr("core.supabase_client.get_service_supabase", lambda: db)
     monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
     app = FastAPI()
     app.include_router(mod.router)
@@ -378,3 +380,40 @@ def test_another_firms_row_is_not_found(app_db):
     r = _client(app, MANAGER).delete("/api/tds-workspace/deductions/D8")
     assert r.json()["success"] is False
     assert len(db.rows("tds_deductions")) == 1
+
+
+# ── the firm's own practice is a Partner's, on the doors that name a row (POST-A-443) ──
+
+PARTNER = {"id": "u0", "firm_id": FIRM, "role": "Partner", "email": "p@f1.test", "auth_user_id": "auth-partner"}
+
+
+def _the_client_is_the_practice(monkeypatch):
+    """CLIENT is the firm's internal practice client (migration 074's G1). The router's own guard reads a client id off a request; a correction and
+    a removal name a ROW, so the route asks the row's client itself now that the privileged client writes the register."""
+    import services.internal_client_service as ics
+    monkeypatch.setattr(ics, "get_internal_client_id", lambda firm_id: CLIENT if firm_id == FIRM else None)
+
+
+def test_a_manager_cannot_correct_or_remove_a_deduction_of_the_firms_own_practice(app_db, monkeypatch):
+    app, db = app_db
+    r = _post(app, user=PARTNER, section="194J", payment_amount_paise=1_00_000_00)
+    assert r.status_code == 200, r.text
+    row_id = r.json()["data"]["id"]
+    _the_client_is_the_practice(monkeypatch)
+    before = [dict(x) for x in db._tables.get("tds_deductions", [])]
+    fixed = _client(app, MANAGER).patch(f"/api/tds-workspace/deductions/{row_id}", json={"payment_amount_paise": 2_00_000_00})
+    gone = _client(app, MANAGER).delete(f"/api/tds-workspace/deductions/{row_id}")
+    assert fixed.status_code == 404 and gone.status_code == 404, (fixed.text, gone.text)
+    assert [dict(x) for x in db._tables.get("tds_deductions", [])] == before, "nothing was written"
+
+
+def test_a_partner_still_corrects_and_removes_one(app_db, monkeypatch):
+    app, db = app_db
+    r = _post(app, user=PARTNER, section="194J", payment_amount_paise=1_00_000_00)
+    row_id = r.json()["data"]["id"]
+    _the_client_is_the_practice(monkeypatch)
+    fixed = _client(app, PARTNER).patch(f"/api/tds-workspace/deductions/{row_id}", json={"payment_amount_paise": 2_00_000_00})
+    assert fixed.status_code == 200 and fixed.json()["success"] is True, fixed.text
+    gone = _client(app, PARTNER).delete(f"/api/tds-workspace/deductions/{row_id}")
+    assert gone.status_code == 200 and gone.json()["success"] is True, gone.text
+    assert db._tables.get("tds_deductions", []) == []
