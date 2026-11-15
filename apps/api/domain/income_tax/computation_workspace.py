@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.tax.workspace")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -403,7 +404,7 @@ def create_deduction_claim(
         "status": "pending",
         "created_by": created_by,
     }
-    res = sb.table("tax_deduction_claims").insert(row).execute()
+    res = privileged_for(sb).table("tax_deduction_claims").insert(row).execute()
     return res.data[0] if res.data else row
 
 

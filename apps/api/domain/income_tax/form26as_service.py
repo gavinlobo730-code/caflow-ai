@@ -30,6 +30,7 @@ from domain.income_tax import claimable_credit as _claimable
 from domain.income_tax import form26as_matcher as _m
 from domain.money_sentence import rupee_whole_text
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.form26as")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -379,7 +380,7 @@ def save_parsed_records(
         for r in records
     ]
     if rows:
-        sb.table("form_26as_records").insert(rows).execute()
+        privileged_for(sb).table("form_26as_records").insert(rows).execute()
 
     update_res = sb.table("form_26as_uploads").update({
         "parse_status": "parsed",
@@ -784,7 +785,7 @@ def run_reconciliation(
         return {**recon, **aside}
 
     sb = _supabase()
-    _write_record_outcomes(sb, result.entry_outcomes)
+    _write_record_outcomes(sb, firm_id, client_id, result.entry_outcomes)
     res = sb.table("form_26as_reconciliations").insert(recon_row).execute()
     stored = res.data[0] if res.data else recon_row
 
@@ -810,7 +811,7 @@ def _load_records(firm_id: str, upload_id: str) -> list[dict]:
     ).data or []
 
 
-def _write_record_outcomes(sb, outcomes: list[_m.EntryOutcome]) -> None:
+def _write_record_outcomes(sb, firm_id: str, client_id: str, outcomes: list[_m.EntryOutcome]) -> None:
     """Write each 26AS row's outcome back, batching the rows that share a payload.
 
     Unmatched rows all carry the identical patch, so they go in one call; matched
@@ -825,18 +826,18 @@ def _write_record_outcomes(sb, outcomes: list[_m.EntryOutcome]) -> None:
         # tests/test_backend_columns_exist_pg.py parses these calls statically
         # and cannot see through a helper's return value, so a payload built
         # elsewhere is a column reference nothing checks.
-        sb.table("form_26as_records").update({
+        privileged_for(sb).table("form_26as_records").update({
             "reconciliation_status": "unmatched",
             "matched_receipt_id": None,
             "match_basis": None,
             "variance_paise": 0,
             "mismatch_reason": unmatched[0].reason,
-        }).in_("id", [o.entry_id for o in unmatched]).execute()
+        }).in_("id", [o.entry_id for o in unmatched]).eq("firm_id", firm_id).eq("client_id", client_id).execute()
 
     for outcome in outcomes:
         if outcome.status == _m.STATUS_MISSING_IN_BOOKS:
             continue
-        sb.table("form_26as_records").update({
+        privileged_for(sb).table("form_26as_records").update({
             "reconciliation_status": _RECORD_STATUS[outcome.status],
             "matched_receipt_id": outcome.matched_credit_id,
             "match_basis": outcome.basis,
@@ -844,7 +845,7 @@ def _write_record_outcomes(sb, outcomes: list[_m.EntryOutcome]) -> None:
             "mismatch_reason": (
                 None if outcome.status == _m.STATUS_MATCHED else outcome.reason
             ),
-        }).eq("id", outcome.entry_id).execute()
+        }).eq("id", outcome.entry_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
 
 
 def _trigger_26as_ai_insight(
