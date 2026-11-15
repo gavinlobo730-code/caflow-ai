@@ -38,12 +38,12 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | file | items | what it holds |
 |---|---|---|
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 2 | before the demo: Claude can do alone |
-| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 13 | before the demo: owner decides, or a live session |
-| [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
+| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 10 | before the demo: owner decides, or a live session |
+| [pre-demo-C-yours.md](pre-demo-C-yours.md) | 3 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 79 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 166 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 197 | after the demo: only the owner or outsiders can do |
-| [new-findings.md](new-findings.md) | 39 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
+| [new-findings.md](new-findings.md) | 42 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
 | [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
@@ -51,11 +51,11 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [progress.md](progress.md) | — | the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days) |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**THE BACKLOG: 463 open items** (21 before the demo, 442 after); 11 after-demo items are `high` priority; 26 are UNSURE. A further **150 items are parked** (not counted above).
+**THE BACKLOG: 457 open items** (15 before the demo, 442 after); 11 after-demo items are `high` priority; 23 are UNSURE. A further **150 items are parked** (not counted above).
 
-**Who must act (backlog).** 81 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 68 can be built now. 179 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **395 of the 463 wait on the owner.**
+**Who must act (backlog).** 81 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 68 can be built now. 176 need the owner to decide first and 200 only the owner or someone outside this container can do. In all **389 of the 457 wait on the owner.**
 
-**NEW FINDINGS: 39 open** (7 before the demo, 32 after; 6 `high` priority; 1 UNSURE), counted apart from the backlog. 37 are Claude's alone to build (5 of them `waits on owner`, so 32 can be built now), 2 need the owner to decide first and 0 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+**NEW FINDINGS: 42 open** (7 before the demo, 35 after; 7 `high` priority; 1 UNSURE), counted apart from the backlog. 37 are Claude's alone to build (5 of them `waits on owner`, so 32 can be built now), 4 need the owner to decide first and 1 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
 
 <!-- counts:end -->
 
@@ -64,15 +64,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 Pre-demo items by suggested order. The first is the date; Render and Supabase dashboard checks and the fixes Claude can make come next, then the seeded-firm work, then the rehearsals, then the day-of wake-up.
 
 1. **PRE-C-001** (you) — Tell Claude the demo date once you set one, and who attends (the demo was moved later on 9 Oct; build everything first)
-2. **PRE-C-002** (you) — Check the Render dashboard variables
-3. **PRE-B-012** (decision) — Check the Supabase dashboard: plan, backups, password and auth limits
-4. **PRE-B-016** (decision) — Buy the domain and make mail leave: a verified Resend sender and Supabase sign-up mail
-5. **PRE-C-003** (you) — Confirm Resend delivers: verified domain, webhook, one real mail of each kind
 6. **PRE-B-004** (decision) — Decide which known gaps the demo fixes, shows or avoids
 9. **PRE-B-002** (decision) — Stop three screens promising what they do not do
-10. **PRE-B-013** (decision) — Look at which tier the Gemini and Groq keys are on
 11. **PRE-C-006** (you) — Check the website's support and onboarding promises are staffed
-25. **PRE-C-004** (you) — Redeploy the latest main on Render and record how it deploys
 26. **PRE-A-020** (Claude) — A staff invite not yet accepted shows Active on the Team screen
 27. **PRE-A-021** (Claude) — The Secure your account banner names Billing to a Manager, who has no Billing
 28. **PRE-A-022** (Claude) — The dark layer behind a dialog starts 24 px down and cuts the top bar in two

@@ -1073,3 +1073,32 @@ its own applicant's data. A CA product is **third-party by construction**.
 4. **Professional confidentiality and DPDP are additive.** ICAI's duty and DPDP
    sit on top of each other; neither displaces the other, and confidentiality now
    has to be **documented and demonstrable** rather than merely professional.
+
+## 8. The AI providers' terms, as read on 16 November 2026
+
+Read from each provider's own pages through the owner's screenshots on 16-11-2026 (this container's egress to
+those sites is refused, so the screenshots are the primary text here). Nothing below is a legal reading of
+what the DPDP Act requires of us about it; that stays with counsel (POST-B-259, POST-B-266).
+
+- **Google Gemini** reads photographed and scanned bills and statements. The key the API uses belongs to the
+  Google AI Studio project "CAFlow". Until 16-11-2026 it was on the **free tier**, whose terms say Google uses
+  the content submitted "to provide, improve, and develop Google products and services and machine learning
+  technologies" and that "human reviewers may read, annotate, and process your API input and output". The
+  owner moved the project to the **paid tier** the same day. The paid terms say Google "doesn't use your
+  prompts (including associated system instructions, cached content, and files such as images, videos, or
+  documents) or responses to improve our products", logs them "for a limited period of time, solely for
+  detecting and preventing violations of the Prohibited Use Policy" and required legal disclosures, and that
+  the data "may be stored transiently or cached in any country in which Google or its agents maintain
+  facilities". Billing is **prepaid, Rs 500, auto-reload off**: when the credit is spent the service stops,
+  which is the cap the owner asked for.
+- **Groq** answers chat and reads PDFs with a text layer. The account is on Groq's **Free** plan (its paid
+  Developer tier read "temporarily unavailable" that day). Its Data Controls page said Groq "may store inputs
+  and outputs for up to 30 days, strictly for purposes of maintaining system reliability and compliance";
+  the owner switched **Inference APIs Zero Data Retention ON** ("opt out of storing input and output data").
+  The organisation-wide switch was left off; it also disables batch and fine-tuning, which the product does
+  not use.
+- **Both are outside India**, which the in-app notice already says before content is sent
+  (`docs/design-record/ai.md`). A PAN or a GSTIN shape is still replaced before a chat request leaves;
+  documents sent for reading go as they are.
+- **Proven live the same night**: Settings > AI status answered for Groq in 316 ms and for Gemini in 1,723 ms
+  at 02:09 IST, and the two usage rows were read in the production database.
