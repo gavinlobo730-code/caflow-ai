@@ -115,7 +115,9 @@ def create_link(db, firm_id: str, invoice_id: str, actor: dict,
         return existing[0]
 
     # Insert first so the provider reference_id == our link id (clean webhook correlation).
-    link_row = (db.table("customer_payment_links").insert({
+    # The three payment tables are written with the privileged client (POST-A-008): staff reach this with their own sign-in, a portal
+    # client with theirs, and the gateway's webhook with none; every update names the firm and the client of the row it acts for.
+    link_row = (privileged_for(db).table("customer_payment_links").insert({
         "firm_id": firm_id, "client_id": inv["client_id"], "customer_id": inv["customer_id"],
         "invoice_id": invoice_id, "amount_paise": outstanding, "currency": "INR",
         "provider": provider.name, "status": "created", "created_by": actor.get("auth_user_id"),
@@ -134,10 +136,10 @@ def create_link(db, firm_id: str, invoice_id: str, actor: dict,
         notes={"invoice_id": invoice_id, "link_id": str(link_id)},
     ))
 
-    updated = (db.table("customer_payment_links").update({
+    updated = (privileged_for(db).table("customer_payment_links").update({
         "provider_link_id": result.provider_link_id, "provider_order_id": result.provider_order_id,
         "short_url": result.short_url, "status": "active", "updated_at": _now(),
-    }).eq("id", link_id).execute().data or [{}])[0]
+    }).eq("id", link_id).eq("firm_id", firm_id).eq("client_id", inv["client_id"]).execute().data or [{}])[0]
 
     log_event(firm_id, "payment_link", str(link_id), "create",
               actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
@@ -251,7 +253,7 @@ def _event_seen(db, provider: str, event_id: str) -> bool:
 
 def _record_event(db, payment_id: Optional[str], event, firm_id: Optional[str]) -> None:
     try:
-        db.table("customer_payment_events").insert({
+        privileged_for(db).table("customer_payment_events").insert({
             "firm_id": firm_id, "payment_id": payment_id, "provider": event.provider,
             "provider_event_id": event.event_id or None, "event_type": event.event_type,
             "status": event.status, "signature_verified": event.signature_verified,
@@ -290,7 +292,7 @@ def _resolve_payment(db, event) -> Optional[dict]:
     if not link:
         return None
     amount = int(event.amount_paise or link["amount_paise"])
-    return (db.table("customer_payments").insert({
+    return (privileged_for(db).table("customer_payments").insert({
         "firm_id": link["firm_id"], "client_id": link["client_id"], "customer_id": link["customer_id"],
         "invoice_id": link["invoice_id"], "payment_link_id": link["id"], "amount_paise": amount,
         "currency": "INR", "status": event.status, "provider": event.provider,
@@ -328,9 +330,10 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
     # delivery matches zero rows and bails — no second receipt. (Sequential
     # redelivery is also covered by event dedupe + the receipt_id seal.)
     if event.status == CAPTURED and not payment.get("receipt_id"):
-        claimed = (db.table("customer_payments")
+        claimed = (privileged_for(db).table("customer_payments")
                    .update({"status": "capturing", "updated_at": _now()})
-                   .eq("id", payment["id"]).is_("receipt_id", "null")
+                   .eq("id", payment["id"]).eq("firm_id", payment["firm_id"]).eq("client_id", payment["client_id"])
+                   .is_("receipt_id", "null")
                    .neq("status", "capturing").execute().data or [])
         if not claimed:
             return  # another delivery is settling / already settled this payment
@@ -344,16 +347,16 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
             # yet — so the claim condition (receipt_id IS NULL, status !=
             # 'capturing') is satisfied again and a webhook redelivery or manual
             # reconciliation retry can re-attempt settlement.
-            db.table("customer_payments").update({
+            privileged_for(db).table("customer_payments").update({
                 "status": event.status, "updated_at": _now(),
-            }).eq("id", payment["id"]).execute()
+            }).eq("id", payment["id"]).eq("firm_id", payment["firm_id"]).eq("client_id", payment["client_id"]).execute()
             raise
-        db.table("customer_payments").update({
+        privileged_for(db).table("customer_payments").update({
             "status": CAPTURED, "receipt_id": receipt.get("id"), "updated_at": _now(),
-        }).eq("id", payment["id"]).execute()
+        }).eq("id", payment["id"]).eq("firm_id", payment["firm_id"]).eq("client_id", payment["client_id"]).execute()
         if payment.get("payment_link_id"):
-            db.table("customer_payment_links").update({"status": "paid", "updated_at": _now()}) \
-              .eq("id", payment["payment_link_id"]).execute()
+            privileged_for(db).table("customer_payment_links").update({"status": "paid", "updated_at": _now()}) \
+              .eq("id", payment["payment_link_id"]).eq("firm_id", payment["firm_id"]).eq("client_id", payment["client_id"]).execute()
         log_event(firm_id, "customer_payment", str(payment["id"]), "captured",
                   new_data={"receipt_id": receipt.get("id"), "amount_paise": payment["amount_paise"]})
         timeline_service.log_timeline_event(
@@ -368,8 +371,8 @@ def _apply_event(db, payment: dict, event, firm_id: str) -> None:
     if event.status in (FAILED, REFUNDED):
         log_event(firm_id, "customer_payment", str(payment["id"]), event.status,
                   new_data={"event_type": event.event_type})
-    db.table("customer_payments").update({"status": event.status, "updated_at": _now()}) \
-      .eq("id", payment["id"]).execute()
+    privileged_for(db).table("customer_payments").update({"status": event.status, "updated_at": _now()}) \
+      .eq("id", payment["id"]).eq("firm_id", payment["firm_id"]).eq("client_id", payment["client_id"]).execute()
 
 
 # ── What an UNSIGNED request to the public webhook may cost us ───────────────
