@@ -423,7 +423,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ITR-6'S GROSS BLOCK IS FILLED ONLY WHERE EACH LEDGER LINE TIES
 - A BROUGHT-FORWARD LOSS IS OFFERED FROM ITS RECORD, USED PER FILING AND PER YEAR, AND AN UPDATED RETURN WRITES NOTHING
 
-### `docs/design-record/tax-tds.md` (26 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (27 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -451,8 +451,9 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN AIS FIGURE IS WHAT OTHERS REPORTED, SO IT IS OFFERED LINE BY LINE AND APPLIED ONLY TO AN EMPTY BOX
 - A REGISTER ROW ITS DOCUMENT NO LONGER CARRIES IS NAMED ON THE LIST AND REMOVED BY THE DOCUMENT'S OWN SYNC
 - ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED AS HAVING RECORDED A NO-PE DECLARATION, AND THE SUPPLIER FORM SAYS WHO
+- A DEDUCTION TYPED ON THE TDS SCREEN MAY NAME THE SUPPLIER IT WAS PAID TO, AND IS THEN COUNTED IN THAT SUPPLIER'S YEAR WITH ITS BILLS AND ADVANCES
 
-### `docs/design-record/tenancy-and-security.md` (87 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (88 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -541,6 +542,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE IRN AND E-WAY BILL RECORDS AND THE SECTION 140A CHALLANS ARE WRITTEN BY THE API ONLY
 - A PERSON COLUMN WITH NO ROWS TAKES THE ID ITS CODE DECIDES, ITS WRITERS ARE FOLLOWED LIKE THE OTHERS', AND A NEW ONE IS ON NO LIST UNTIL
 - THE TDS REGISTER, THE TDS RETURNS, THE TDS CHALLANS AND THE TDS CERTIFICATES ARE WRITTEN BY THE API ONLY
+- EVERY TABLE A SIGNED-IN SESSION CAN REACH IS OBSERVED BY THE ROLE-BY-TABLE MATRIX OR NAMED ON A LIST THAT ONLY SHRINKS
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
 - MIGRATION 481 IS THE SCHEMA FOR BOTH WORKFLOW HALVES, AND NOTHING READS IT YET

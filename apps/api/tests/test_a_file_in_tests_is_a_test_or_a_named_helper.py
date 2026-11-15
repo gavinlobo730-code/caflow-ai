@@ -110,6 +110,11 @@ HELPERS = {
     # fixture and one read back out of Postgres, and a second double would be
     # two fixtures agreeing with each other rather than with the database.
     "_hub_worklist_double.py",
+    # POST-A-008, the tranches of the tables a signed-in session can write that the access matrix does not observe. The three rules each
+    # "these tables are written with the privileged client" guard asks (every write privileged, every update and delete naming the firm
+    # and the client, the census of write sites), with the group as an argument, so each tranche names its tables and counts and none
+    # carries its own copy of the rules.
+    "_privileged_write_sites.py",
     # POST-A-234. Migration 499 takes the signed-in write privilege from seventeen payroll tables. The real-Postgres modules
     # that exist to measure the SECOND lock (the row policies and the 498 triggers) write as a signed-in role, so each
     # gives the privilege back in its own throwaway database through this one helper, which applies 499's rollback file

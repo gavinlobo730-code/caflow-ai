@@ -224,7 +224,8 @@ def _typed_deductions_in_quarter(db, firm_id: str, client_id: str, start: str, e
 #: the lead, which the screen writes from the count and the tax: that these are the deductions typed on the TDS screen, and that they are not on the statement.
 EXCLUDED_TYPED_REASON = (
     "A statement built from the books carries posted purchase bills and advances only, so deductions typed on the TDS screen are not in its totals. "
-    "Key them from the register when you key the statement, or leave them out knowingly."
+    "Key them from the register when you key the statement: tax withheld on a typed deduction is still owed on the statement, and a typed "
+    "deduction counted in a supplier's year was taken into the tax worked out on that supplier's later bills."
 )
 
 

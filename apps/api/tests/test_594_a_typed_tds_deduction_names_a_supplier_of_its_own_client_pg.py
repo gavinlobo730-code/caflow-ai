@@ -2,7 +2,7 @@
 client's (POST-A-078).
 
 WHAT ONLY POSTGRES CAN PROVE
-    The mock-mode tests that part 2 of POST-A-078 adds hold the API's arithmetic. Here:
+    The mock-mode file (`test_a_typed_deduction_that_names_its_supplier_shares_the_suppliers_year.py`) holds the API's arithmetic. Here:
     the column exists and is nullable (a typed deduction paid to someone who is not a supplier is written exactly as before); the shared
     guard of migration 565 now carries the table's vendor triggers and refuses a supplier of a sibling client and one of another firm, on
     an INSERT and on an UPDATE of the column, and an UPDATE that moves a named row to another client; a row a purchase bill or a vendor
