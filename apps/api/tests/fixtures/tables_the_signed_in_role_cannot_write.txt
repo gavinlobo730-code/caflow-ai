@@ -27,6 +27,7 @@
 # 601 closes invoice_deliveries and customer_statement_deliveries (POST-A-008, the deliveries tranche): the API writes both with its privileged client since the change that shipped before it.
 # 602 closes msme_payments, msme_vendors, retainer_clients, suppliers and ledger_balances (POST-A-008, the unwritten tables): nothing in the API, the browser or a database function writes them.
 # 603 closes onboarding_checklists, onboarding_checklist_steps, onboarding_tasks, proposals and engagement_events (POST-A-008, the onboarding tranche): the API writes all five with its privileged client since the change that shipped before it.
+# 604 closes entity_roles, properties, related_party_loans and dtaa_treaty_rates (POST-A-008, the relationships tranche): the API writes all four with its privileged client since the change that shipped before it; and entity_client_links, auto_journal_suggestions and engagement_letters, which nothing in the API, the browser or a database function writes.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -54,6 +55,7 @@ approval_requests
 assignment_rules
 attendance
 audit_log
+auto_journal_suggestions
 automation_executions
 automation_rules
 bank_accounts
@@ -107,6 +109,7 @@ document_requests
 document_risks
 documents
 dsc_records
+dtaa_treaty_rates
 ecommerce_operator_supplies
 ecommerce_operator_unregistered_supplies
 einvoice_records
@@ -114,11 +117,14 @@ email_outbox
 email_suppressions
 email_templates
 engagement_events
+engagement_letters
 engagement_templates
 entities
 entity_addresses
+entity_client_links
 entity_documents
 entity_relationships
+entity_roles
 entity_to_entity_relationships
 epfo_ecr_filings
 escalation_rules
@@ -208,6 +214,7 @@ post_dated_cheques
 practice_email_log
 price_list_items
 price_lists
+properties
 proposals
 purchase_bill_landed_costs
 purchase_bill_lines
@@ -233,6 +240,7 @@ recurring_journal_templates
 recurring_purchase_bill_runs
 recurring_purchase_bill_template_lines
 recurring_purchase_bill_templates
+related_party_loans
 reminder_settings
 retainer_clients
 retainer_logs
