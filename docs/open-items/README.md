@@ -38,7 +38,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | file | items | what it holds |
 |---|---|---|
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 2 | before the demo: Claude can do alone |
-| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 14 | before the demo: owner decides, or a live session |
+| [pre-demo-B-ours.md](pre-demo-B-ours.md) | 13 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 6 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 79 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 166 | after the demo: owner decides first, then Claude builds |
@@ -51,9 +51,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [progress.md](progress.md) | — | the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days) |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**THE BACKLOG: 464 open items** (22 before the demo, 442 after); 11 after-demo items are `high` priority; 26 are UNSURE. A further **150 items are parked** (not counted above).
+**THE BACKLOG: 463 open items** (21 before the demo, 442 after); 11 after-demo items are `high` priority; 26 are UNSURE. A further **150 items are parked** (not counted above).
 
-**Who must act (backlog).** 81 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 68 can be built now. 180 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **396 of the 464 wait on the owner.**
+**Who must act (backlog).** 81 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 68 can be built now. 179 need the owner to decide first and 203 only the owner or someone outside this container can do. In all **395 of the 463 wait on the owner.**
 
 **NEW FINDINGS: 35 open** (3 before the demo, 32 after; 3 `high` priority; 0 UNSURE), counted apart from the backlog. 33 are Claude's alone to build (5 of them `waits on owner`, so 28 can be built now), 2 need the owner to decide first and 0 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
 
@@ -77,7 +77,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 27. **PRE-A-021** (Claude) — The Secure your account banner names Billing to a Manager, who has no Billing
 28. **PRE-A-022** (Claude) — The dark layer behind a dialog starts 24 px down and cuts the top bar in two
 29. **PRE-B-006** (live) — Rehearse sign-up and first Partner sign-in as a stranger would
-30. **PRE-B-014** (live) — Press Check now on Settings > AI status for Groq and Gemini
 31. **PRE-B-001** (live) — Seed the demo firm with seed_demo_firm.py --confirm and walk it
 32. **PRE-B-003** (live) — Check the seeded and a fresh firm can raise a first invoice
 33. **PRE-A-004** (Claude) — Run the seeded firm through GST, year-end and ITR; fill empty screens
