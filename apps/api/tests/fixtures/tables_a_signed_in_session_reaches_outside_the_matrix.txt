@@ -48,9 +48,9 @@ client_year_locks	read
 cost_centres	read
 credit_note_allocations	read
 credit_note_lines	read
-customer_payment_events	write
-customer_payment_links	write
-customer_payments	write
+customer_payment_events	read
+customer_payment_links	read
+customer_payments	read
 customer_statement_deliveries	read
 cwip_additions	read
 debit_note_allocations	read
