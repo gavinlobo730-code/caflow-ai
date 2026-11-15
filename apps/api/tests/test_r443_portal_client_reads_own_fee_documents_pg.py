@@ -435,12 +435,14 @@ def test_a_portal_client_still_cannot_write_any_of_the_eight(post_fix_db):
 
 
 def test_the_authenticated_grants_are_the_documented_set(post_fix_db):
-    """SELECT/INSERT/UPDATE/DELETE on three of the eight, SELECT alone on the other five — matches what this environment's own
+    """SELECT/INSERT/UPDATE/DELETE on one of the eight (customers), SELECT alone on the other seven — matches what this environment's own
     information_schema shows today (194's grant sweep gave invoice_deliveries and customer_statement_deliveries DELETE on top of
     their own creating migrations' SELECT/INSERT/UPDATE; migration 559 took every write from the two receipt tables, which only
     the API writes, POST-A-336; migration 563 took every write from the invoice, credit note and sales debit note headers,
-    POST-A-335)."""
-    read_only = {"receipts", "receipt_allocations", "client_sales_invoices", "credit_notes", "sales_debit_notes"}
+    POST-A-335; migration 601 took every write from the two delivery tables, which the API writes with its privileged client since
+    POST-A-008's deliveries tranche)."""
+    read_only = {"receipts", "receipt_allocations", "client_sales_invoices", "credit_notes", "sales_debit_notes",
+                 "invoice_deliveries", "customer_statement_deliveries"}
     for table in ("client_sales_invoices", "invoice_deliveries", "customers",
                   "receipts", "receipt_allocations", "credit_notes",
                   "sales_debit_notes", "customer_statement_deliveries"):
