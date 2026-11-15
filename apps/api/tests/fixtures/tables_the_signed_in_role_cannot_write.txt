@@ -28,6 +28,7 @@
 # 602 closes msme_payments, msme_vendors, retainer_clients, suppliers and ledger_balances (POST-A-008, the unwritten tables): nothing in the API, the browser or a database function writes them.
 # 603 closes onboarding_checklists, onboarding_checklist_steps, onboarding_tasks, proposals and engagement_events (POST-A-008, the onboarding tranche): the API writes all five with its privileged client since the change that shipped before it.
 # 604 closes entity_roles, properties, related_party_loans and dtaa_treaty_rates (POST-A-008, the relationships tranche): the API writes all four with its privileged client since the change that shipped before it; and entity_client_links, auto_journal_suggestions and engagement_letters, which nothing in the API, the browser or a database function writes.
+# 605 closes customer_payment_links, customer_payments and customer_payment_events (POST-A-008, the payments tranche): the API writes all three with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -95,6 +96,9 @@ credit_note_allocations
 credit_note_lines
 credit_notes
 currencies
+customer_payment_events
+customer_payment_links
+customer_payments
 customer_statement_deliveries
 cwip_additions
 debit_note_allocations
