@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Building2, Calendar, ShieldCheck, User, Palette, Hash, FileText, Mail, Globe2, Scale, Coins, Cpu } from "lucide-react";
+import { Building2, Calendar, User } from "lucide-react";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
+import { hasRole } from "@/lib/auth/permissions";
+import { SETTINGS_GROUPS, groupFromTab, visibleLinks } from "@/lib/settings/groups";
 import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
 import { gstinProblem } from "@/lib/gst/gstin";
@@ -208,8 +211,10 @@ function Field({
 }
 
 // ─── Main page ──────────────────────────────────────────────────────────────
-export default function SettingsPage() {
-  const { user, fullName, refreshUserContext } = useAuth();
+function SettingsHome() {
+  const { user, fullName, refreshUserContext, userRole } = useAuth();
+  const tab = useSearchParams()?.get("tab") ?? null;
+  const isPartner = hasRole(userRole, ["Partner"]);
   const supabase = getSupabaseClient();
 
   const [personalName, setPersonalName] = useState(fullName ?? "");
@@ -404,6 +409,12 @@ export default function SettingsPage() {
     }
   }
 
+  // The tab a person is on (PRE-A-023): the groups are lib/settings/groups.ts, and the forms this page saves in
+  // place are shown on the tab that holds them, the links on every tab.
+  const group = SETTINGS_GROUPS.find((g) => g.id === groupFromTab(tab)) ?? SETTINGS_GROUPS[0];
+  const inline = group.inline ?? [];
+  const links = visibleLinks(group, isPartner);
+
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
       {toast && (
@@ -416,404 +427,229 @@ export default function SettingsPage() {
 
       <PageHeader
         back={{ href: "/", label: "Dashboard" }}
-        title="Settings"
-        subtitle="Firm configuration and preferences"
+        title={group.label}
+        subtitle={group.says}
       />
 
-      {/* ── Personal Profile — all users ──────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
-          <User size={15} className="text-ps-label" />
-          <h2 className="text-sm font-semibold text-ps-ink">Personal Profile</h2>
-        </div>
-        <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-medium text-ps-label block mb-1">
-              Full Name<span className="text-state-problem ml-0.5">*</span>
-            </label>
-            <input aria-label="Full name"
-              type="text"
-              value={personalName}
-              onChange={(e) => setPersonalName(e.target.value)}
-              placeholder="e.g. CA Ravi Sharma"
-              className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-ps-label block mb-1">Email</label>
-            <input aria-label="Email"
-              type="email"
-              value={user?.email ?? ""}
-              disabled
-              className="w-full text-sm text-ps-hint border border-ps-border rounded-lg px-3 py-2 bg-ps-bg cursor-not-allowed"
-            />
-            <p className="text-xs text-ps-hint mt-1">Email cannot be changed here</p>
-          </div>
-        </div>
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end">
-          <button
-            onClick={savePersonalProfile}
-            disabled={actionInFlight}
-            className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {savingPersonal ? "Saving…" : "Save Profile"}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Firm Profile — Partner only (firm financials) ────────────────── */}
-      <RoleGuard allowed={["Partner"]} redirect={false}>
-      {/* ── Firm Profile ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
-          <Building2 size={15} className="text-ps-label" />
-          <h2 className="text-sm font-semibold text-ps-ink">Firm Profile</h2>
-        </div>
-
-        {profileLocked && !loading && (
-          <div className="mx-5 my-4 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
-            <p className="text-xs text-state-attention">
-              <RefusalText message={loadError ?? ""} />
-            </p>
-          </div>
-        )}
-
-        {loadError && !profileLocked && !loading && (
-          <div className="mx-5 mt-4 flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-state-problem">
-              Couldn&apos;t load your saved firm profile — the form below may not reflect what&apos;s saved. {loadError}
-            </p>
-            <button onClick={loadFirmData} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-hover text-state-problem shrink-0">
-              Retry
-            </button>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="px-5 py-5"><FormSkeleton fields={6} /></div>
-        ) : profileLocked ? null : (
-          <div className="px-5 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Row 1: Firm name spans full width */}
-              <div className="sm:col-span-2">
-                <Field label="Firm Name" field="name" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Sharma & Associates" required />
-              </div>
-
-              {/* Row 2: GSTIN + PAN */}
-              <Field
-                label="GSTIN"
-                field="gstin"
-                form={form}
-                onChange={handleChange}
-                errors={errors}
-                placeholder="e.g. 27AABCU9603R1ZN"
-                hint="15-char GST Identification Number (CGST Act §25)"
-                maxLength={15}
-              />
-              <Field
-                label="PAN"
-                field="pan"
-                form={form}
-                onChange={handleChange}
-                errors={errors}
-                placeholder="e.g. AABCU9603R"
-                hint="10-char Permanent Account Number (IT Act §139A)"
-                maxLength={10}
-              />
-
-              {/* Row 3: Registration number + Phone */}
-              <Field
-                label="Registration / ICAI MRN"
-                field="icai_mrn"
-                form={form}
-                onChange={handleChange}
-                errors={errors}
-                placeholder="e.g. ICAI-MRN-123456"
-              />
-              <Field label="Phone" field="phone" form={form} onChange={handleChange} errors={errors} type="tel" placeholder="+91 98765 43210" />
-
-              {/* Row 4: Email + Website */}
-              <Field label="Email" field="email" form={form} onChange={handleChange} errors={errors} type="email" placeholder="firm@example.com" />
-              <Field label="Website" field="website" form={form} onChange={handleChange} errors={errors} type="url" placeholder="https://example.com" />
-
-              {/* Row 5: Address line 1 spans full */}
-              <div className="sm:col-span-2">
-                <Field label="Address Line 1" field="address_line1" form={form} onChange={handleChange} errors={errors} placeholder="Street, Building, Suite" />
-              </div>
-
-              {/* Row 6: City + State + Pincode */}
-              <Field label="City" field="city" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Mumbai" />
-
+      {inline.includes("personal-profile") && (
+        <>
+          {/* ── Personal Profile — all users ──────────────────────────────── */}
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
+              <User size={15} className="text-ps-label" />
+              <h2 className="text-sm font-semibold text-ps-ink">Personal Profile</h2>
+            </div>
+            <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-medium text-ps-label block mb-1">State</label>
-                <select aria-label="State"
-                  value={form.state}
-                  onChange={(e) => handleChange("state", e.target.value)}
+                <label className="text-xs font-medium text-ps-label block mb-1">
+                  Full Name<span className="text-state-problem ml-0.5">*</span>
+                </label>
+                <input aria-label="Full name"
+                  type="text"
+                  value={personalName}
+                  onChange={(e) => setPersonalName(e.target.value)}
+                  placeholder="e.g. CA Ravi Sharma"
                   className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ps-label block mb-1">Email</label>
+                <input aria-label="Email"
+                  type="email"
+                  value={user?.email ?? ""}
+                  disabled
+                  className="w-full text-sm text-ps-hint border border-ps-border rounded-lg px-3 py-2 bg-ps-bg cursor-not-allowed"
+                />
+                <p className="text-xs text-ps-hint mt-1">Email cannot be changed here</p>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-ps-border flex justify-end">
+              <button
+                onClick={savePersonalProfile}
+                disabled={actionInFlight}
+                className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingPersonal ? "Saving…" : "Save Profile"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {inline.includes("firm-profile") && (
+        <>
+          {/* ── Firm Profile — Partner only (firm financials) ────────────────── */}
+          <RoleGuard allowed={["Partner"]} redirect={false}>
+          {/* ── Firm Profile ─────────────────────────────────────────────────── */}
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
+              <Building2 size={15} className="text-ps-label" />
+              <h2 className="text-sm font-semibold text-ps-ink">Firm Profile</h2>
+            </div>
+
+            {profileLocked && !loading && (
+              <div className="mx-5 my-4 bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3">
+                <p className="text-xs text-state-attention">
+                  <RefusalText message={loadError ?? ""} />
+                </p>
+              </div>
+            )}
+
+            {loadError && !profileLocked && !loading && (
+              <div className="mx-5 mt-4 flex items-center justify-between gap-3 bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3">
+                <p className="text-xs text-state-problem">
+                  Couldn&apos;t load your saved firm profile — the form below may not reflect what&apos;s saved. {loadError}
+                </p>
+                <button onClick={loadFirmData} className="text-xs px-3 py-1.5 border border-state-problem-border rounded-lg hover:bg-state-problem-hover text-state-problem shrink-0">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {loading ? (
+              <div className="px-5 py-5"><FormSkeleton fields={6} /></div>
+            ) : profileLocked ? null : (
+              <div className="px-5 py-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Row 1: Firm name spans full width */}
+                  <div className="sm:col-span-2">
+                    <Field label="Firm Name" field="name" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Sharma & Associates" required />
+                  </div>
+
+                  {/* Row 2: GSTIN + PAN */}
+                  <Field
+                    label="GSTIN"
+                    field="gstin"
+                    form={form}
+                    onChange={handleChange}
+                    errors={errors}
+                    placeholder="e.g. 27AABCU9603R1ZN"
+                    hint="15-char GST Identification Number (CGST Act §25)"
+                    maxLength={15}
+                  />
+                  <Field
+                    label="PAN"
+                    field="pan"
+                    form={form}
+                    onChange={handleChange}
+                    errors={errors}
+                    placeholder="e.g. AABCU9603R"
+                    hint="10-char Permanent Account Number (IT Act §139A)"
+                    maxLength={10}
+                  />
+
+                  {/* Row 3: Registration number + Phone */}
+                  <Field
+                    label="Registration / ICAI MRN"
+                    field="icai_mrn"
+                    form={form}
+                    onChange={handleChange}
+                    errors={errors}
+                    placeholder="e.g. ICAI-MRN-123456"
+                  />
+                  <Field label="Phone" field="phone" form={form} onChange={handleChange} errors={errors} type="tel" placeholder="+91 98765 43210" />
+
+                  {/* Row 4: Email + Website */}
+                  <Field label="Email" field="email" form={form} onChange={handleChange} errors={errors} type="email" placeholder="firm@example.com" />
+                  <Field label="Website" field="website" form={form} onChange={handleChange} errors={errors} type="url" placeholder="https://example.com" />
+
+                  {/* Row 5: Address line 1 spans full */}
+                  <div className="sm:col-span-2">
+                    <Field label="Address Line 1" field="address_line1" form={form} onChange={handleChange} errors={errors} placeholder="Street, Building, Suite" />
+                  </div>
+
+                  {/* Row 6: City + State + Pincode */}
+                  <Field label="City" field="city" form={form} onChange={handleChange} errors={errors} placeholder="e.g. Mumbai" />
+
+                  <div>
+                    <label className="text-xs font-medium text-ps-label block mb-1">State</label>
+                    <select aria-label="State"
+                      value={form.state}
+                      onChange={(e) => handleChange("state", e.target.value)}
+                      className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
+                    >
+                      <option value="">Select state…</option>
+                      {INDIAN_STATES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <Field label="Pincode" field="pincode" form={form} onChange={handleChange} errors={errors} placeholder="e.g. 400001" hint="6-digit postal code" />
+                </div>
+              </div>
+            )}
+
+            {!profileLocked && (
+            <div className="px-5 py-3 border-t border-ps-border flex justify-end">
+              <button
+                onClick={handleSave}
+                disabled={actionInFlight || loading}
+                className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+            )}
+          </div>
+
+          </RoleGuard>
+        </>
+      )}
+
+      {inline.includes("financial-year") && (
+        <>
+          {/* ── Financial Year (display only) ────────────────────────────────── */}
+          <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+            <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
+              <Calendar size={15} className="text-ps-label" />
+              <h2 className="text-sm font-semibold text-ps-ink">Financial Year</h2>
+            </div>
+            <div className="px-5 py-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-ps-label">Current Financial Year</span>
+                <span className="text-sm font-semibold text-ps-ink">{fy.label}</span>
+              </div>
+              <p className="text-xs text-ps-hint">
+                Indian financial year runs April 1 to March 31. This is computed automatically from the current date.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── The group's screens: each link says what it opens ──────────────── */}
+      {links.length > 0 && (
+        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+          <ul className="divide-y divide-ps-border">
+            {links.map((l) => (
+              <li key={l.href} className="px-5 py-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-ps-ink">{l.label}</p>
+                  <p className="text-xs text-ps-hint mt-0.5">{l.says}</p>
+                </div>
+                <Link
+                  href={l.href}
+                  className="px-4 py-1.5 border border-ps-border text-ps-ink text-sm font-medium rounded-lg hover:border-brand hover:bg-ps-bg transition-colors whitespace-nowrap shrink-0"
                 >
-                  <option value="">Select state…</option>
-                  {INDIAN_STATES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <Field label="Pincode" field="pincode" form={form} onChange={handleChange} errors={errors} placeholder="e.g. 400001" hint="6-digit postal code" />
-            </div>
-          </div>
-        )}
-
-        {!profileLocked && (
-        <div className="px-5 py-3 border-t border-ps-border flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={actionInFlight || loading}
-            className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? "Saving…" : "Save Changes"}
-          </button>
+                  Open →
+                </Link>
+              </li>
+            ))}
+          </ul>
         </div>
-        )}
-      </div>
-
-      </RoleGuard>
-
-      {/* ── Financial Year (display only) ────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
-          <Calendar size={15} className="text-ps-label" />
-          <h2 className="text-sm font-semibold text-ps-ink">Financial Year</h2>
-        </div>
-        <div className="px-5 py-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-ps-label">Current Financial Year</span>
-            <span className="text-sm font-semibold text-ps-ink">{fy.label}</span>
-          </div>
-          <p className="text-xs text-ps-hint">
-            Indian financial year runs April 1 to March 31. This is computed automatically from the current date.
-          </p>
-        </div>
-      </div>
-
-      {/* ── Security / MFA — all users ───────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
-          <ShieldCheck size={15} className="text-blue-600" />
-          <h2 className="text-sm font-semibold text-ps-ink">Security</h2>
-        </div>
-        <div className="px-5 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm text-ps-body">Enable two-factor authentication (authenticator app) for your account.</p>
-            <p className="text-xs text-ps-hint mt-0.5">Required for Partner accounts.</p>
-          </div>
-          <Link
-            href="/settings/security"
-            className="px-4 py-1.5 border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
-          >
-            Manage 2FA →
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Audit Log — Partner only ─────────────────────────────────────── */}
-      <RoleGuard allowed={["Partner"]} redirect={false}>
-        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
-            <ShieldCheck size={15} className="text-blue-600" />
-            <h2 className="text-sm font-semibold text-ps-ink">Audit Log</h2>
-          </div>
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-ps-body">View a timeline of all changes made across clients, journals, compliance and accounts.</p>
-              <p className="text-xs text-ps-hint mt-0.5">Partner access only.</p>
-            </div>
-            <Link
-              href="/settings/audit-log"
-              className="px-4 py-1.5 border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors"
-            >
-              View Audit Log →
-            </Link>
-          </div>
-        </div>
-      </RoleGuard>
-
-      {/* ── Scheduled Reports ───────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
-          <Calendar size={15} className="text-blue-600" />
-          <h2 className="text-sm font-semibold text-ps-ink">Scheduled Reports</h2>
-        </div>
-        <div className="px-5 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm text-ps-body">Plan which reports go to which clients, and when. Sending them is coming soon: nothing is emailed automatically yet.</p>
-            <p className="text-xs text-ps-hint mt-0.5">Record the frequency, recipients and day for each report.</p>
-          </div>
-          <Link
-            href="/settings/scheduled-reports"
-            className="px-4 py-1.5 border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
-          >
-            Manage Schedules →
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Firm Branding & Document Customization — Partner only ────────── */}
-      <RoleGuard allowed={["Partner"]} redirect={false}>
-        <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
-          <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
-            <Palette size={15} className="text-violet-600" />
-            <h2 className="text-sm font-semibold text-ps-ink">Branding &amp; Document Customization</h2>
-          </div>
-
-          <div className="divide-y divide-ps-border">
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Palette size={15} className="text-violet-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">Firm Branding</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Logo, tagline and primary colour for your practice&apos;s own invoices; the other settings are kept on file.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/branding"
-                className="px-4 py-1.5 border border-violet-200 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Hash size={15} className="text-blue-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">Invoice Settings</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Invoice numbering format, bank details, UPI, and footer text.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/invoice-settings"
-                className="px-4 py-1.5 border border-blue-200 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <FileText size={15} className="text-indigo-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">Invoice Templates</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Where the logo and the signature sit on your practice&apos;s own invoices.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/invoice-templates"
-                className="px-4 py-1.5 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Hash size={15} className="text-violet-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">Firm HSN/SAC Library</p>
-                  <p className="text-xs text-ps-hint mt-0.5">The HSN/SAC codes your firm bills against. You own and curate this list — Caflow does not ship or suggest classifications.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/firm-hsn-library"
-                className="px-4 py-1.5 border border-violet-200 text-violet-700 text-sm font-medium rounded-lg hover:bg-violet-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Scale size={15} className="text-indigo-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">Statutory Values</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Your firm&apos;s reading of the state professional-tax notifications. Twenty-two states levy it and four are built in; the rest deduct nothing until you record them here, once, for every client.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/statutory-values"
-                className="px-4 py-1.5 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Globe2 size={15} className="text-sky-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">DTAA Treaty Rates</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Your firm&apos;s reading of the treaty rates it withholds under, per country and nature of income. Ships empty and is never seeded — India has agreements with over ninety countries.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/treaty-rates"
-                className="px-4 py-1.5 border border-sky-200 text-sky-700 text-sm font-medium rounded-lg hover:bg-sky-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Coins size={15} className="text-amber-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">Multi-Currency</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Whether this firm records foreign-currency documents at all, and which clients may. Off by default — a client whose books are not kept in rupees is not supported.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/multi-currency"
-                className="px-4 py-1.5 border border-state-attention-border text-state-attention text-sm font-medium rounded-lg hover:bg-state-attention-hover transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Cpu size={15} className="text-blue-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">AI status</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Whether the assistant, the copilot and the invoice and notice readers can reach their AI providers — and one button that asks, in words.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/ai"
-                className="px-4 py-1.5 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
-              >
-                Open →
-              </Link>
-            </div>
-
-            <div className="px-5 py-4 flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <Mail size={15} className="text-teal-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-ps-ink">Email Templates</p>
-                  <p className="text-xs text-ps-hint mt-0.5">Customize emails sent for invoices, engagements, documents, and reminders.</p>
-                </div>
-              </div>
-              <Link
-                href="/settings/email-templates"
-                className="px-4 py-1.5 border border-teal-200 text-teal-700 text-sm font-medium rounded-lg hover:bg-teal-50 transition-colors whitespace-nowrap"
-              >
-                Manage →
-              </Link>
-            </div>
-          </div>
-        </div>
-      </RoleGuard>
+      )}
     </div>
+  );
+}
+
+// useSearchParams() must sit inside a Suspense boundary or `next build` refuses the static page.
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<FormSkeleton />}>
+      <SettingsHome />
+    </Suspense>
   );
 }

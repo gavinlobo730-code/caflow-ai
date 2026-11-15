@@ -27,6 +27,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { whySettingsDoesNotLinkTo } from "./settingsLinks.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.join(__dirname, "..");
@@ -84,8 +85,8 @@ test("a payload field is checked before it is read as a list", () => {
 
 test("the screen is registered, in the rail, and linked from the Settings landing", () => {
   assert.match(read("lib", "navigation", "screens.ts"), /firm\("\/settings\/ai",/);
-  assert.match(read("components", "panels", "SettingsPanel.tsx"), /href: "\/settings\/ai"/);
-  assert.match(read("app", "settings", "page.tsx"), /href="\/settings\/ai"/);
+  // Settings' links are one list since PRE-A-023 (lib/settings/groups.ts), rendered by the home and the panel.
+  assert.deepEqual(whySettingsDoesNotLinkTo("/settings/ai"), []);
 });
 
 test("the api helper asks the two routes and probes with POST", () => {

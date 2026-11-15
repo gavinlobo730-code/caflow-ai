@@ -376,6 +376,19 @@ for (const run of selected) {
     }
     const violations = await page.evaluate(() => window.__cspViolations || []).catch(() => []);
     for (const v of violations) problems.push(`CSP violation: ${String(v).slice(0, 200)}`);
+    // PRE-A-024. Inside the app's shell a page scrolls in its own area and the window never does. A window taller
+    // than the screen is what the owner saw on the AI status page: the top bar scrolled away over a screen of blank
+    // space. Every page a scenario ends on is measured for it, so the drive itself is the list of screens that do
+    // it. A page outside the shell (the portal, the sign-in screens) scrolls the window as usual and is not asked.
+    const stretched = await page.evaluate((mainId) => {
+      const main = document.getElementById(mainId);
+      if (!main || getComputedStyle(main).overflowY !== "auto") return null;
+      const height = document.scrollingElement.scrollHeight;
+      return height > innerHeight + 1 ? { height, window: innerHeight } : null;
+    }, "main-content").catch(() => null);
+    if (stretched) {
+      problems.push(`the window is ${stretched.height}px tall in a ${stretched.window}px screen: something on the page escapes its scrolling area and the window can scroll (PRE-A-024)`);
+    }
   } catch (e) {
     error = (e && e.message ? e.message : String(e)).split("\n").slice(0, 6).join(" | ").slice(0, 700);
     if (shots) {

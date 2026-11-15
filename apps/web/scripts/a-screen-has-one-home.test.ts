@@ -39,6 +39,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { SCREENS } from "../lib/navigation/screens.ts";
 import { stripComments } from "./stripComments.ts";
+import { settingsPanelAddresses } from "./settingsLinks.ts";
 
 const WEB = join(import.meta.dirname, "..");
 const PANELS = join(WEB, "components/panels");
@@ -96,10 +97,15 @@ const LISTED_TWICE: Record<string, string> = {
 function panelSources(): Array<{ name: string; src: string }> {
   return readdirSync(PANELS)
     .filter((f) => f.endsWith("Panel.tsx"))
-    .map((f) => ({
-      name: f.replace(/\.tsx$/, ""),
-      src: stripComments(readFileSync(join(PANELS, f), "utf8")),
-    }));
+    .map((f) => {
+      const src = stripComments(readFileSync(join(PANELS, f), "utf8"));
+      // The Settings panel renders lib/settings/groups.ts, the one list of Settings links (PRE-A-023), keeping
+      // only the links under /settings, so those addresses are read from the list with it.
+      const listed = f === "SettingsPanel.tsx" && src.includes('from "@/lib/settings/groups"')
+        ? src + "\n" + settingsPanelAddresses()
+        : src;
+      return { name: f.replace(/\.tsx$/, ""), src: listed };
+    });
 }
 
 /** Which panels declare this href. Quoted, so `/gst` is not satisfied by

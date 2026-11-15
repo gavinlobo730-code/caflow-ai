@@ -26,6 +26,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { whySettingsDoesNotLinkTo } from "./settingsLinks.ts";
 
 const ROOT = path.join(import.meta.dirname, "..");
 const PAGE = "app/settings/statutory-values/page.tsx";
@@ -40,8 +41,8 @@ const code = src
 
 test("the page exists and is reachable from Settings", () => {
   assert.match(code, /export default function StatutoryValuesPage/);
-  const index = fs.readFileSync(path.join(ROOT, "app/settings/page.tsx"), "utf8");
-  assert.match(index, /href="\/settings\/statutory-values"/);
+  // Settings' links are one list since PRE-A-023 (lib/settings/groups.ts), rendered by the home and the panel.
+  assert.deepEqual(whySettingsDoesNotLinkTo("/settings/statutory-values"), []);
 });
 
 test("amounts go through the exact parser, never parseFloat", () => {
