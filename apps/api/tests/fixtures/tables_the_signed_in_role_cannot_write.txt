@@ -26,6 +26,7 @@
 # 600 closes billing_schedules, recurring_invoice_template_lines, recurring_purchase_bill_template_lines, recurring_invoice_runs, recurring_purchase_bill_runs and recurring_journal_runs (POST-A-008, the recurring-billing tranche): the API writes all six with its privileged client since the change that shipped before it.
 # 601 closes invoice_deliveries and customer_statement_deliveries (POST-A-008, the deliveries tranche): the API writes both with its privileged client since the change that shipped before it.
 # 602 closes msme_payments, msme_vendors, retainer_clients, suppliers and ledger_balances (POST-A-008, the unwritten tables): nothing in the API, the browser or a database function writes them.
+# 603 closes onboarding_checklists, onboarding_checklist_steps, onboarding_tasks, proposals and engagement_events (POST-A-008, the onboarding tranche): the API writes all five with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -112,6 +113,7 @@ einvoice_records
 email_outbox
 email_suppressions
 email_templates
+engagement_events
 engagement_templates
 entities
 entity_addresses
@@ -179,6 +181,9 @@ login_events
 msme_payments
 msme_vendors
 notes_to_accounts
+onboarding_checklist_steps
+onboarding_checklists
+onboarding_tasks
 party_credit_balances
 party_credit_ledger
 pattern_anomalies
@@ -203,6 +208,7 @@ post_dated_cheques
 practice_email_log
 price_list_items
 price_lists
+proposals
 purchase_bill_landed_costs
 purchase_bill_lines
 purchase_bills
