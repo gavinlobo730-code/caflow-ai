@@ -626,7 +626,8 @@ def upsert_treaty_rate(body: TreatyRateIn,
                 detail="rate_bps is a rate in basis points, 0 to 10000 "
                        f"(10% is 1000). Got {body.rate_bps}.")
     try:
-        db = get_supabase()
+        from core.db_provider import privileged_for
+        db = privileged_for(get_supabase())
         # Payload inline with literal keys so tests/test_backend_columns_
         # exist_pg.py can check every column against the real schema.
         got = (db.table("dtaa_treaty_rates").upsert({
@@ -653,7 +654,8 @@ def delete_treaty_rate(rate_id: str, user: dict = Depends(rbac("tds", "write")))
     from core.supabase_client import get_supabase
     from core.exceptions import document_failure_detail
     try:
-        get_supabase().table("dtaa_treaty_rates").delete().eq(
+        from core.db_provider import privileged_for
+        privileged_for(get_supabase()).table("dtaa_treaty_rates").delete().eq(
             "id", rate_id).eq("firm_id", user["firm_id"]).execute()
     except Exception as e:                                      # noqa: BLE001
         raise HTTPException(status_code=400, detail=document_failure_detail(

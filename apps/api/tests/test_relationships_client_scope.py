@@ -430,6 +430,19 @@ def test_live_deleting_your_own_clients_role_still_works(live_db, deny):
     assert "delete" in [op for _n, op, _c in live_db.log]
 
 
+def test_live_the_delete_names_the_roles_own_client(live_db, deny):
+    """The delete is made with the privileged client (POST-A-008), so it names the
+    client the scope check resolved as well as the firm: a role id alone must not
+    reach another client's role."""
+    made = []
+    orig = live_db.table
+    live_db.table = lambda name: made.append(orig(name)) or made[-1]
+    rel.remove_entity_role("R-MINE", current_user=USER)
+    deletes = [q for q in made if q.op == "delete"]
+    assert len(deletes) == 1
+    assert {("id", "R-MINE"), ("firm_id", FIRM), ("client_id", A)} <= set(deletes[0].filters)
+
+
 def test_live_the_roles_on_an_entity_are_narrowed(live_db, deny):
     out = rel.get_entity("E-1", current_user=USER)
     assert out["data"]["full_name"] == "A Person"
