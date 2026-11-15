@@ -116,7 +116,8 @@ class _Recorder:
             # the rules are WRITTEN (an empty chart skips them all, which is
             # the seeder's correct answer and would leave their bodies
             # unchecked).
-            names = sorted({r.ledger for c in fixture.build().clients for r in c.bank_rules})
+            # And the Capital Account the capital introductions credit (POST-A-269).
+            names = sorted({r.ledger for c in fixture.build().clients for r in c.bank_rules} | {"Capital Account"})
             return {"success": True, "error": None,
                     "data": [{"id": f"ledger-{i}", "account_name": n}
                              for i, n in enumerate(names)]}
@@ -200,6 +201,8 @@ class _Recorder:
             "total_paise": 118_000_00,
             "taxable_amount_paise": 100_000_00,
             "months_posted": 1, "remaining_months": 0,
+            # The ledger a bank account is given, which the capital introductions debit.
+            "coa_account_id": "ledger-bank",
             "imported": 1, "drafted": 1, "remaining": 0,
         }}
 

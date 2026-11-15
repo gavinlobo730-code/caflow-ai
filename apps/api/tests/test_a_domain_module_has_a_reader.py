@@ -73,16 +73,14 @@ NO_READER_YET: dict[str, str] = {
         "is deleted. Until then `tests/test_a_schedule_says_which_period_it_covers_and_when_it_is_due.py` and "
         "`tests/test_a_scheduled_report_is_one_the_server_can_make_and_goes_only_to_people_it_may.py` hold it, "
         "including that it reads no clock and does no I/O.",
-    "domain/demo/fixture.py":
-        "NOT A STATUTORY RULE, which is what this guard is for. It is the "
-        "fictional practice a demo is seeded from — eight clients and a year "
-        "of documents, as data — and its only reader is "
-        "`scripts/seed_demo_firm.py`, which is outside the production tree by "
-        "design: the seeder is a hand-run tool and importing it from a router "
-        "would put a writer that creates 500-odd documents one call away from "
-        "a live request. `tests/test_the_demo_practice_is_a_real_set_of_books"
-        ".py` is what holds it honest instead, and it asserts the fixture "
-        "holds no database handle and reaches no network at all.",
+    "domain/demo/year_estimate.py":
+        "NOT A STATUTORY RULE, which is what this guard is for. It works a demo client's year out from the fictional "
+        "practice in `domain/demo/fixture.py` (which it reads, so the fixture's own entry here was deleted when it "
+        "arrived): revenue, cost, depreciation, profit and the bank's lowest balance, so a test can hold the seeded "
+        "books in proportion without seeding them (POST-A-269). Its readers are "
+        "`tests/test_the_demo_companies_are_in_proportion.py` and a person sizing the fixture; the seeder that walks "
+        "the fixture is outside the production tree by design (a hand-run writer of 500-odd documents is kept one "
+        "step away from a live request), so nothing in that tree reads either module.",
 }
 
 
