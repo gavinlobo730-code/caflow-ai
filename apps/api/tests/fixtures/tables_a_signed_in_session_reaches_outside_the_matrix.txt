@@ -125,13 +125,13 @@ login_events	read
 msme_payments	read
 msme_vendors	read
 notes_to_accounts	read
-notifications	write
+notifications	read
 onboarding_checklist_steps	read
 onboarding_checklists	read
 onboarding_tasks	read
 party_credit_balances	read
 party_credit_ledger	read
-portal_messages	write
+portal_messages	read
 post_dated_cheques	read
 practice_email_log	read
 price_list_items	read
@@ -190,7 +190,7 @@ tds_lower_deduction_certificates	read
 tds_section_limits	read
 time_entries	read
 user_capacity	read
-user_notification_preferences	write
+user_notification_preferences	read
 workflow_action_logs	read
 workflow_approvals	read
 workflow_executions	read
