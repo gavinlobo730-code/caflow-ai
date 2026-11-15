@@ -29,6 +29,7 @@
 # 603 closes onboarding_checklists, onboarding_checklist_steps, onboarding_tasks, proposals and engagement_events (POST-A-008, the onboarding tranche): the API writes all five with its privileged client since the change that shipped before it.
 # 604 closes entity_roles, properties, related_party_loans and dtaa_treaty_rates (POST-A-008, the relationships tranche): the API writes all four with its privileged client since the change that shipped before it; and entity_client_links, auto_journal_suggestions and engagement_letters, which nothing in the API, the browser or a database function writes.
 # 605 closes customer_payment_links, customer_payments and customer_payment_events (POST-A-008, the payments tranche): the API writes all three with its privileged client since the change that shipped before it.
+# 606 closes time_entries, task_recurring_configs, reminders and knowledge_article_versions (POST-A-008, the practice tranche): the API writes all four with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -181,6 +182,7 @@ itr_filing_versions
 journal_entries
 journal_lines
 journal_narration_templates
+knowledge_article_versions
 late_interest_charges
 lead_activities
 lead_contacts
@@ -246,6 +248,7 @@ recurring_purchase_bill_template_lines
 recurring_purchase_bill_templates
 related_party_loans
 reminder_settings
+reminders
 retainer_clients
 retainer_logs
 salary_structures
@@ -269,6 +272,7 @@ stock_count_sessions
 suppliers
 task_dependencies
 task_escalations
+task_recurring_configs
 task_tags
 task_templates
 task_timeline_events
@@ -282,6 +286,7 @@ tds_lower_deduction_certificates
 tds_returns
 tds_section_limits
 team_members
+time_entries
 user_capacity
 workflow_action_logs
 workflow_approvals
