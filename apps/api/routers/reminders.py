@@ -67,5 +67,5 @@ def mark_reminder_sent(reminder_id: str, current_user: dict = Depends(rbac("remi
     if not can_access_client(current_user, reminder.get("client_id")):
         raise HTTPException(status_code=404, detail="Reminder not found")
     updates = mark_sent(reminder)
-    updated = reminders_repo.update(reminder_id, updates)
+    updated = reminders_repo.update(reminder_id, updates, firm_id=firm_id)
     return api_response(True, {"reminder": updated})

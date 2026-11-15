@@ -8,6 +8,7 @@ from core.authz import (
 )
 from repositories.assignment_rule_repository import assignment_rule_repo
 from core import db_provider
+from core.db_provider import privileged_for
 from services import named_row_ownership
 from models.iso_date import IsoDate, PatchIsoDate
 
@@ -158,7 +159,7 @@ def create_recurring(body: RecurringCreate, current_user: dict = Depends(rbac("t
     named_row_ownership.member_is_the_firms(db, firm_id, body.assignee_id)
 
     now = _now_iso()
-    result = db.table("task_recurring_configs").insert({
+    result = privileged_for(db).table("task_recurring_configs").insert({
         "firm_id": firm_id,
         "client_id": body.client_id,
         "template_id": body.template_id,
@@ -193,7 +194,7 @@ def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict =
         raise HTTPException(status_code=400, detail=f"Invalid frequency")
     named_row_ownership.member_is_the_firms(db, firm_id, updates.get("assignee_id"))
     updates["updated_at"] = _now_iso()
-    result = db.table("task_recurring_configs").update(updates).eq("id", config_id).eq("firm_id", firm_id).execute()
+    result = privileged_for(db).table("task_recurring_configs").update(updates).eq("id", config_id).eq("firm_id", firm_id).execute()
     return api_response(True, {"config": result.data[0] if result.data else None})
 
 
@@ -202,7 +203,7 @@ def delete_recurring(config_id: str, current_user: dict = Depends(rbac("task", "
     firm_id = current_user.get("firm_id")
     db = _get_db()
     _assert_config_scope(current_user, config_id)
-    db.table("task_recurring_configs").delete().eq("id", config_id).eq("firm_id", firm_id).execute()
+    privileged_for(db).table("task_recurring_configs").delete().eq("id", config_id).eq("firm_id", firm_id).execute()
     return api_response(True, {"deleted": True})
 
 

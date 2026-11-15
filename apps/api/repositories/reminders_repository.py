@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from repositories.base import BaseRepository
 from core import db_provider
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -50,17 +51,19 @@ class RemindersRepository(BaseRepository[dict]):
             record = {"id": str(uuid.uuid4()), **data, "created_at": self.now_iso(), "updated_at": self.now_iso()}
             _MOCK_STORE.append(record)
             return record
-        result = _get_db().table("reminders").insert({**data, "created_at": self.now_iso(), "updated_at": self.now_iso()}).execute()
+        # Written with the privileged client (POST-A-008); an update names the firm as well as the reminder.
+        result = privileged_for(_get_db()).table("reminders").insert({**data, "created_at": self.now_iso(), "updated_at": self.now_iso()}).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict) -> Optional[dict]:
+    def update(self, id: str, data: dict, *, firm_id: str) -> Optional[dict]:
         if _USE_MOCK:
             reminder = self.find_by_id(id)
             if not reminder:
                 return None
             reminder.update({**data, "updated_at": self.now_iso()})
             return reminder
-        result = _get_db().table("reminders").update({**data, "updated_at": self.now_iso()}).eq("id", id).execute()
+        result = privileged_for(_get_db()).table("reminders").update({**data, "updated_at": self.now_iso()}).eq("id", id).eq(
+            "firm_id", firm_id).execute()
         return result.data[0] if result.data else None
 
 
