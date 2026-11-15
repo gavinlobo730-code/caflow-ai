@@ -16,6 +16,7 @@
 # 583 closes einvoice_records, eway_bill_records and self_assessment_challans (POST-A-394): the IRN and e-way bill records and the section 140A challans are written by the API's privileged client since the change that shipped before it.
 # 590 creates journal_narration_templates (POST-A-093) with no signed-in write: its writers are the API's privileged client from the start.
 # 591 creates fixed_asset_movements (POST-A-112) with no signed-in write: record_fixed_asset_movement, called by the API's privileged client, is its one writer.
+# 592 creates fixed_asset_verifications and fixed_asset_verification_findings (POST-A-112) with no signed-in write: the API's privileged client opens a count, and record_fixed_asset_finding and close_fixed_asset_verification are the only other writers.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -105,6 +106,8 @@ firm_lock_pins
 firm_profiles
 firm_pt_slabs
 fixed_asset_movements
+fixed_asset_verification_findings
+fixed_asset_verifications
 fixed_assets
 fx_adjustments
 fx_revaluations

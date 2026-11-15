@@ -88,6 +88,7 @@ from routers import party_credits
 from routers import gst_workspace, tds_workspace, mca_workspace, document_intelligence_v2
 from routers import payroll, fixed_assets, banking
 from routers import fixed_asset_movements
+from routers import fixed_asset_verifications
 from routers import cwip as cwip_router
 from routers import cost_centres as cost_centres_router
 # 3b-2. Its own router rather than a seventh /api/accounting/reports entry:
@@ -502,6 +503,7 @@ app.include_router(document_intelligence_v2.router, dependencies=_CLIENT_GUARD)
 app.include_router(payroll.router, dependencies=_CLIENT_GUARD + _MFA_GUARD)
 app.include_router(fixed_assets.router, dependencies=_CLIENT_GUARD)
 app.include_router(fixed_asset_movements.router, dependencies=_CLIENT_GUARD)
+app.include_router(fixed_asset_verifications.router, dependencies=_CLIENT_GUARD)
 # Capital work-in-progress (FA-11a). Its own router BECAUSE it is not a fixed
 # asset: no depreciation, and its own Schedule III line and two schedules.
 app.include_router(cwip_router.router, dependencies=_CLIENT_GUARD)

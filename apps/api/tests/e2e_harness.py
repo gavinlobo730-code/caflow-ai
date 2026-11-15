@@ -663,6 +663,87 @@ class _Rpc:
         asset["location"], asset["custodian"], asset["updated_at"] = place, keeper, now
         return dict(row)
 
+    def _fn_record_fixed_asset_finding(self):
+        """Mirror migration 592 (POST-A-112): the same refusals in the same words, SQLSTATEs and order, then the finding stored (or the
+        asset's earlier finding in the count replaced) beside the register's place and keeper on the day counted, tidied. The real function is held by
+        `tests/test_592_..._pg.py`; whether an asset was held on the day is `domain.fixed_assets.verification.held_on`, its twin."""
+        import re as _re
+        from datetime import date as _date
+        from domain.fixed_assets.verification import held_on
+        from models.accounting import one_line
+        p = self.params
+        count = next((r for r in self.db.rows("fixed_asset_verifications") if r.get("id") == p["p_verification_id"]
+                      and r.get("firm_id") == p["p_firm_id"] and r.get("client_id") == p["p_client_id"]), None)
+        if count is None:
+            raise _DatabaseRefusal("P0002", "Verification not found")
+        if count.get("status") != "open":
+            from core.ist_clock import ist_date_of
+            closed = ist_date_of(count.get("closed_at"))
+            raise _DatabaseRefusal("55000", f"This verification was closed on {closed.strftime('%d %b %Y')}, so its findings are the "
+                                            f"working paper and cannot change.")
+        asset = next((r for r in self.db.rows("fixed_assets") if r.get("id") == p["p_asset_id"] and r.get("firm_id") == p["p_firm_id"]
+                      and r.get("client_id") == p["p_client_id"] and not r.get("deleted_at")), None)
+        if asset is None:
+            raise _DatabaseRefusal("P0002", "Asset not found")
+        day = str(count["verified_on"])[:10]
+        if not held_on(asset, day):
+            raise _DatabaseRefusal("23514", f"This asset was not held on {_date.fromisoformat(day).strftime('%d %b %Y')}, the day "
+                                            f"counted (it was bought after it or disposed of by then), so the count has nothing to "
+                                            f"find of it.")
+        finding = p.get("p_finding")
+        if finding not in ("found", "found_elsewhere", "not_found", "damaged"):
+            raise _DatabaseRefusal("23514", "Finding: one of found, found elsewhere, not found or damaged.")
+        found_in = one_line(p.get("p_found_in") or "")
+        if finding == "found_elsewhere" and not found_in:
+            raise _DatabaseRefusal("23514", "Found in: say where the asset was found, since it was not where the register has it.")
+        if len(found_in or "") > 200:
+            raise _DatabaseRefusal("23514", "A place is at most 200 characters.")
+        note = _re.sub(r"^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$", "", p.get("p_note") or "") or None
+        if len(note or "") > 500:
+            raise _DatabaseRefusal("23514", "A note is at most 500 characters.")
+        from domain.fixed_assets.verification import register_on
+        reg_place, reg_keeper = register_on(asset, [m for m in self.db.rows("fixed_asset_movements")
+                                                    if m.get("firm_id") == p["p_firm_id"] and m.get("client_id") == p["p_client_id"]], day)
+        values = {"finding": finding, "found_in": found_in if finding == "found_elsewhere" else None,
+                  "register_location": one_line(reg_place or ""),
+                  "register_custodian": one_line(reg_keeper or ""), "note": note,
+                  "recorded_by": p.get("p_recorded_by"), "recorded_at": datetime.now(timezone.utc).isoformat()}
+        earlier = next((r for r in self.db.rows("fixed_asset_verification_findings")
+                        if r.get("verification_id") == p["p_verification_id"] and r.get("asset_id") == p["p_asset_id"]), None)
+        if earlier is not None:
+            earlier.update(values)
+            return dict(earlier)
+        return dict(self.db.seed("fixed_asset_verification_findings", {
+            "firm_id": p["p_firm_id"], "client_id": p["p_client_id"], "verification_id": p["p_verification_id"],
+            "asset_id": p["p_asset_id"], **values}))
+
+    def _fn_close_fixed_asset_verification(self):
+        """Mirror migration 592's close: the count must be the client's and open, and every asset held on the day counted must have a
+        finding, or the refusal names how many have none."""
+        from datetime import date as _date
+        from domain.fixed_assets.verification import held_on
+        p = self.params
+        count = next((r for r in self.db.rows("fixed_asset_verifications") if r.get("id") == p["p_verification_id"]
+                      and r.get("firm_id") == p["p_firm_id"] and r.get("client_id") == p["p_client_id"]), None)
+        if count is None:
+            raise _DatabaseRefusal("P0002", "Verification not found")
+        if count.get("status") != "open":
+            from core.ist_clock import ist_date_of
+            closed = ist_date_of(count.get("closed_at"))
+            raise _DatabaseRefusal("55000", f"This verification was closed on {closed.strftime('%d %b %Y')} and stays closed.")
+        day = str(count["verified_on"])[:10]
+        found_for = {r.get("asset_id") for r in self.db.rows("fixed_asset_verification_findings")
+                     if r.get("verification_id") == p["p_verification_id"]}
+        missing = sum(1 for a in self.db.rows("fixed_assets") if a.get("firm_id") == p["p_firm_id"]
+                      and a.get("client_id") == p["p_client_id"] and held_on(a, day) and a.get("id") not in found_for)
+        if missing:
+            shown = _date.fromisoformat(day).strftime("%d %b %Y")
+            raise _DatabaseRefusal("23514", f"{missing} {'asset' if missing == 1 else 'assets'} held on {shown} "
+                                            f"{'has' if missing == 1 else 'have'} no finding yet. Record what the count found of each "
+                                            f"before closing it.")
+        count.update({"status": "closed", "closed_at": datetime.now(timezone.utc).isoformat(), "closed_by": p.get("p_closed_by")})
+        return dict(count)
+
     def _fn_stock_latest_rows(self):
         """Mirror migration 588 (POST-A-435) through its mock-mode twin: ONE array of each asked item's latest row of the firm and client,
         in item order (the function returns a single jsonb value, so nothing here is cut at a page)."""

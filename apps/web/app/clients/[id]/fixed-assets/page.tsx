@@ -20,6 +20,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatDate, formatDateTime, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { fyRangeFor } from "@/lib/dates/periods";
 import { CwipTab } from "@/components/fixed-assets/CwipTab";
+import { VerificationTab } from "@/components/fixed-assets/VerificationTab";
 import { OpeningRegisterImportButton } from "@/components/fixed-assets/OpeningRegisterImport";
 import { AmortisationReclassification } from "@/components/fixed-assets/AmortisationReclassification";
 import { AssetMovements } from "@/components/fixed-assets/AssetMovements";
@@ -46,13 +47,14 @@ import { istToday } from "@/lib/dateMath";
 // from lib/api is the one client that attaches the Bearer token (and refreshes
 // it once on a 401, and reads a refusal out of `detail`).
 
-type FATab = "register" | "cwip" | "depreciation" | "disposal" | "reports";
+type FATab = "register" | "cwip" | "depreciation" | "disposal" | "verification" | "reports";
 
 const TABS: { id: FATab; label: string }[] = [
   { id: "register",    label: "Asset Register" },
   { id: "cwip",        label: "Work in Progress" },
   { id: "depreciation",label: "Depreciation" },
   { id: "disposal",    label: "Disposal" },
+  { id: "verification", label: "Physical Verification" },
   { id: "reports",     label: "Reports" },
 ];
 
@@ -333,6 +335,8 @@ export default function FixedAssetsPage() {
                                      asOf={fyRangeFor(financialYear).end} />}
         {tab === "depreciation" && <DepreciationTab clientId={clientId} />}
         {tab === "disposal"     && <DisposalTab     clientId={clientId} />}
+        {/* The physical count of the assets, the audit's working paper (POST-A-112, migration 592). */}
+        {tab === "verification" && <VerificationTab clientId={clientId} />}
         {tab === "reports"      && <ReportsTab      clientId={clientId} financialYear={financialYear} />}
       </div>
     </div>
