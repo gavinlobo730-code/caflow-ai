@@ -672,7 +672,9 @@ def test_the_scan_covers_what_it_claims_to_and_no_evidence_kind_went_vacuous():
     # the frozen list, so the fourteen call sites that had to be judged as queries on their account no longer are (462 -> 448).
     # 440 -> 430 on 29-10-2026 (POST-A-322): the retired compliance "System B" repository and its three routes took their
     # queries with them, so the calls judged as queries fall by four (440+ -> 436); the floor stays a few under the count.
-    assert census["calls_judged_as_queries"] >= 430, census
+    # 430 -> 420 on 15-11-2026 (POST-A-008, the messages tranche): the notification repository's three updates take the firm and the
+    # recipient as required arguments and name them in their own filter, so the three calls to them are no longer judged as queries (432 -> 429).
+    assert census["calls_judged_as_queries"] >= 420, census
     for kind in ("filter", "payload", "gate", "flow", "parent-read", "callers", "pass-through",
                  "principal", "post-fetch"):
         assert census["by_evidence"].get(kind, 0) > 0, (

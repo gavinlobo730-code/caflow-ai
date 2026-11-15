@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 from repositories.base import BaseRepository
 from core import db_provider
+from core.db_provider import privileged_for
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -80,26 +81,23 @@ class NotificationsRepository(BaseRepository[dict]):
 
         payload = {k: v for k, v in data.items() if v is not None}
         payload["created_at"] = self.now_iso()
-        result = (db or _get_db()).table("notifications").insert(payload).execute()
+        # Written with the privileged client (POST-A-008); every update names the firm and the recipient.
+        result = privileged_for(db or _get_db()).table("notifications").insert(payload).execute()
         return result.data[0]
 
-    def mark_read(self, notification_id: str, firm_id: Optional[str] = None,
-                  user_id: Optional[str] = None) -> Optional[dict]:
+    def mark_read(self, notification_id: str, *, firm_id: str, user_id: str) -> Optional[dict]:
         if _USE_MOCK:
             notif = _notif_index.get(notification_id)
             if notif:
                 notif["is_read"] = True
             return notif
 
-        query = _get_db().table("notifications").update({"is_read": True}).eq("id", notification_id)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        if user_id:
-            query = query.eq("user_id", user_id)  # M2: only the recipient may mark their own
-        result = query.execute()
+        # M2: only the recipient may mark their own.
+        result = privileged_for(_get_db()).table("notifications").update({"is_read": True}).eq("id", notification_id).eq(
+            "firm_id", firm_id).eq("user_id", user_id).execute()
         return result.data[0] if result.data else None
 
-    def mark_all_read(self, firm_id: Optional[str] = None, user_id: Optional[str] = None) -> int:
+    def mark_all_read(self, *, firm_id: str, user_id: str) -> int:
         if _USE_MOCK:
             count = 0
             for n in MOCK_NOTIFICATIONS:
@@ -108,28 +106,20 @@ class NotificationsRepository(BaseRepository[dict]):
                     count += 1
             return count
 
-        query = _get_db().table("notifications").update({"is_read": True}).eq("is_read", False)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        if user_id:
-            query = query.eq("user_id", user_id)
-        result = query.execute()
+        result = privileged_for(_get_db()).table("notifications").update({"is_read": True}).eq("is_read", False).eq(
+            "firm_id", firm_id).eq("user_id", user_id).execute()
         return len(result.data) if result.data else 0
 
-    def archive(self, notification_id: str, firm_id: Optional[str] = None,
-                user_id: Optional[str] = None) -> Optional[dict]:
+    def archive(self, notification_id: str, *, firm_id: str, user_id: str) -> Optional[dict]:
         if _USE_MOCK:
             notif = _notif_index.get(notification_id)
             if notif:
                 notif["is_archived"] = True
             return notif
 
-        query = _get_db().table("notifications").update({"is_archived": True, "is_read": True}).eq("id", notification_id)
-        if firm_id:
-            query = query.eq("firm_id", firm_id)
-        if user_id:
-            query = query.eq("user_id", user_id)  # M2: only the recipient may archive their own
-        result = query.execute()
+        # M2: only the recipient may archive their own.
+        result = privileged_for(_get_db()).table("notifications").update({"is_archived": True, "is_read": True}).eq(
+            "id", notification_id).eq("firm_id", firm_id).eq("user_id", user_id).execute()
         return result.data[0] if result.data else None
 
     def get_stats(self, firm_id: Optional[str] = None) -> dict:

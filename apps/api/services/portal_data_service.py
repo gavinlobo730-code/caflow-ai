@@ -377,7 +377,7 @@ def post_message(firm_id: str, client_id: str, body: str, sender_name: Optional[
     # rather than sharing them, which is the same price `domain/tally/
     # party_identifiers` pays and for the same reason — a name here buys
     # tidiness and loses the check on the write that matters.
-    out = db.table("portal_messages").insert({
+    out = privileged_for(db).table("portal_messages").insert({
         "firm_id": firm_id, "client_id": client_id,
         "sender_type": "client", "sender_name": sender_name,
         "body": body,
