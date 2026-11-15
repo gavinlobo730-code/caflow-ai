@@ -153,7 +153,7 @@ def _insert_lines(db, template_id: str, rows: list[dict]):
     """
     if not rows:
         return None
-    return db.table("recurring_purchase_bill_template_lines").insert([{
+    return privileged_for(db).table("recurring_purchase_bill_template_lines").insert([{
         "template_id": template_id,
         "description": r["description"],
         "hsn_sac": r["hsn_sac"],
@@ -277,7 +277,7 @@ def update_template(firm_id: str, template_id: str, data: dict, db=None) -> dict
     (privileged_for(db).table("recurring_purchase_bill_templates").update(fields)
        .eq("id", template_id).eq("firm_id", firm_id).execute())
     if new_lines is not None:
-        (db.table("recurring_purchase_bill_template_lines").delete()
+        (privileged_for(db).table("recurring_purchase_bill_template_lines").delete()
            .eq("template_id", template_id).execute())
         _insert_lines(db, template_id, new_lines)
         for ln in new_lines:
@@ -431,7 +431,7 @@ def _record_run(firm_id: str, template_id: str, occurrence_iso: str,
         return
     db = db or _db()
     try:
-        (db.table("recurring_purchase_bill_runs")
+        (privileged_for(db).table("recurring_purchase_bill_runs")
            .upsert({"firm_id": firm_id,
                     "template_id": template_id,
                     "occurrence_date": occurrence_iso,

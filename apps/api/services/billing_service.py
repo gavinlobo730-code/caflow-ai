@@ -309,7 +309,8 @@ def _advance_schedule(firm_id: str, schedule: dict, cadence: str) -> None:
     if _USE_MOCK:
         schedule.update(updates)
         return
-    _db().table("billing_schedules").update(updates).eq("id", schedule["id"]).eq("firm_id", firm_id).execute()
+    privileged_for(_db()).table("billing_schedules").update(updates).eq("id", schedule["id"]).eq("firm_id", firm_id).eq(
+        "client_id", schedule["client_id"]).execute()
 
 
 # ── Schedules ────────────────────────────────────────────────────────────────
@@ -364,7 +365,7 @@ def create_schedule(firm_id: str, data: dict, created_by: Optional[str]) -> dict
     # PGRST204. `update_schedule` cannot do this (a PATCH's key set is
     # variable), so it closes the chain from the other end instead: its
     # `editable` tuple is asserted to be a subset of these names.
-    return _db().table("billing_schedules").insert({
+    return privileged_for(_db()).table("billing_schedules").insert({
         "firm_id": payload["firm_id"],
         "client_id": payload["client_id"],
         "arrangement": payload["arrangement"],
@@ -380,7 +381,7 @@ def create_schedule(firm_id: str, data: dict, created_by: Optional[str]) -> dict
 
 
 def update_schedule(firm_id: str, schedule_id: str, data: dict,
-                    actor_id: Optional[str] = None, db=None) -> Optional[dict]:
+                    actor_id: Optional[str] = None, db=None, *, client_id: str) -> Optional[dict]:
     """Change a schedule in place. Returns None when there is no such schedule
     for this firm, so the router can 404 rather than silently succeeding.
 
@@ -431,7 +432,7 @@ def update_schedule(firm_id: str, schedule_id: str, data: dict,
     # Same convention recurring_invoice_service states for the same reason.
     if _USE_MOCK and db is None:
         row = next((s for s in MOCK_BILLING_SCHEDULES
-                    if s["id"] == schedule_id and s["firm_id"] == firm_id), None)
+                    if s["id"] == schedule_id and s["firm_id"] == firm_id and s.get("client_id") == client_id), None)
         if row is None:
             return None
         row.update(fields)
@@ -453,8 +454,10 @@ def update_schedule(firm_id: str, schedule_id: str, data: dict,
     # would say the same thing a round trip earlier and, being the only
     # statement of the rule that mock mode cannot reach, would go untested:
     # a negative control that deleted it passed the whole suite.
-    res = ((db or _db()).table("billing_schedules").update(fields)
-           .eq("id", schedule_id).eq("firm_id", firm_id).execute())
+    # Written with the privileged client (POST-A-008, the recurring-billing tranche): the route asked the billing permission and the
+    # schedule's own client, which it passes here, so the UPDATE names the client as well as the firm.
+    res = (privileged_for(db or _db()).table("billing_schedules").update(fields)
+           .eq("id", schedule_id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
     return res.data[0] if res.data else None
 
 
