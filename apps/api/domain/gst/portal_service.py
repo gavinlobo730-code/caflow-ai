@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from uuid import uuid4
 from core import db_provider
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.gst.portal")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -140,7 +141,7 @@ def create_sync_job(
         "status": "pending",
         "triggered_by": triggered_by,
     }
-    res = sb.table("gst_sync_jobs").insert(row).execute()
+    res = privileged_for(sb).table("gst_sync_jobs").insert(row).execute()
     return res.data[0] if res.data else row
 
 
@@ -173,12 +174,13 @@ def run_sync_job(
     # provider name was wrong is a worse report than one that never started.
     provider = get_provider(provider_name)
 
-    sb.table("gst_sync_jobs").update({
-        "status": "running",
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", job_id).execute()
     gstin = job["gstin"]
     client_id = job["client_id"]
+    # The job's own firm and client name every write to it: the privileged client carries no row security (POST-A-008).
+    privileged_for(sb).table("gst_sync_jobs").update({
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", job_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
     scope = job.get("scope", list(SNAPSHOT_TYPES))
     snapshots_created = 0
 
@@ -213,13 +215,13 @@ def run_sync_job(
         if failed:
             update_payload["error_message"] = "; ".join(
                 f"{f['snap_type']}: {f['error']}" for f in failed)
-        sb.table("gst_sync_jobs").update(update_payload).eq("id", job_id).execute()
+        privileged_for(sb).table("gst_sync_jobs").update(update_payload).eq("id", job_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
 
     except Exception as e:
-        sb.table("gst_sync_jobs").update({
+        privileged_for(sb).table("gst_sync_jobs").update({
             "status": "error",
             "error_message": str(e),
-        }).eq("id", job_id).execute()
+        }).eq("id", job_id).eq("firm_id", firm_id).eq("client_id", client_id).execute()
         raise
 
     return {"status": status, "snapshots_created": snapshots_created, "failed": failed}
@@ -259,7 +261,7 @@ def _save_snapshot(
         "sync_job_id": sync_job_id,
         "synced_at": datetime.now(timezone.utc).isoformat(),
     }
-    sb.table("gst_portal_snapshots").insert(row).execute()  # type: ignore
+    privileged_for(sb).table("gst_portal_snapshots").insert(row).execute()  # type: ignore
 
 
 def save_manual_snapshot(
@@ -300,7 +302,7 @@ def save_manual_snapshot(
         "data": data,
         "provider": "manual",
     }
-    res = sb.table("gst_portal_snapshots").insert(row).execute()
+    res = privileged_for(sb).table("gst_portal_snapshots").insert(row).execute()
     return res.data[0] if res.data else row
 
 
