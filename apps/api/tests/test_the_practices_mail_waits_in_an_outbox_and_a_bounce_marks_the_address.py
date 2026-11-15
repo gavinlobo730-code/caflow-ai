@@ -779,15 +779,26 @@ def test_a_display_form_address_is_reduced_to_the_address():
 # ── the route ────────────────────────────────────────────────────────────────────
 
 class _Rows:
+    """The delivery tables as the bounce handler sees them: a READ of the rows that carry the message (one per table, of a firm and a
+    client), then an UPDATE of each by its own id, firm and client (POST-A-008, the deliveries tranche)."""
+
     def __init__(self):
         self.updates: list[tuple] = []
+        self.reads: list[tuple] = []
 
     def table(self, name):
         outer = self
 
         class _T:
+            def __init__(self):
+                self.values, self.filters, self.reading = None, [], False
+
+            def select(self, _cols):
+                self.reading = True
+                return self
+
             def update(self, values):
-                self.values, self.filters = values, []
+                self.values = values
                 return self
 
             def eq(self, col, val):
@@ -795,6 +806,12 @@ class _Rows:
                 return self
 
             def execute(self):
+                if self.reading:
+                    outer.reads.append((name, tuple(self.filters)))
+
+                    class _Read:
+                        data = [{"id": "d1", "firm_id": FIRM, "client_id": "client-1"}]
+                    return _Read()
                 outer.updates.append((name, self.values, tuple(self.filters)))
 
                 class _R:
@@ -886,6 +903,11 @@ def test_a_permanent_bounce_marks_the_address_the_message_and_the_delivery_rows(
         assert values["status"] == "bounced" and "mailbox" not in values["error_message"].lower()
         assert ("provider_message_id", "resend-msg-42") in filters and ("status", "sent") in filters, (
             "only a delivery that was SENT, and only this provider message, may become bounced")
+        assert ("id", "d1") in filters and ("firm_id", FIRM) in filters and ("client_id", "client-1") in filters, (
+            "the update names the row the read found, its firm and its client: it is made with the privileged client")
+    assert {name for name, _f in db.reads} == {"invoice_deliveries", "customer_statement_deliveries"}
+    for _name, filters in db.reads:
+        assert ("provider_message_id", "resend-msg-42") in filters and ("status", "sent") in filters
 
 
 def test_a_complaint_marks_the_address_and_message_but_not_the_delivery_rows(hook):

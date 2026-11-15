@@ -2850,7 +2850,7 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
 
     # 5. Create delivery record (status=sending)
     delivery = (
-        db.table("invoice_deliveries")
+        privileged_for(db).table("invoice_deliveries")
         .insert({
             "firm_id":       firm_id,
             "client_id":     inv["client_id"],
@@ -2869,10 +2869,10 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
         pdf_bytes, pdf_filename = get_sales_invoice_pdf(invoice_id, firm_id)
     except Exception as e:
         _logger.error("PDF gen failed for invoice %s: %s", invoice_id, e)
-        db.table("invoice_deliveries").update({
+        privileged_for(db).table("invoice_deliveries").update({
             "status":        "failed",
             "error_message": f"PDF generation failed: {str(e)[:200]}",
-        }).eq("id", delivery_id).execute()
+        }).eq("id", delivery_id).eq("firm_id", firm_id).eq("client_id", inv["client_id"]).execute()
         raise HTTPException(status_code=500, detail="PDF generation failed")
 
     # 7. WHOSE INVOICE THIS IS, for the email body.
@@ -2928,7 +2928,8 @@ def _do_send_invoice(invoice_id: str, body: _SendInvoiceBody, current_user: dict
         update_data["sent_at"] = now_iso
     else:
         update_data["error_message"] = GENERIC_SEND_FAILURE_MESSAGE
-    db.table("invoice_deliveries").update(update_data).eq("id", delivery_id).execute()
+    privileged_for(db).table("invoice_deliveries").update(update_data).eq("id", delivery_id).eq("firm_id", firm_id).eq(
+        "client_id", inv["client_id"]).execute()
 
     # 10. Audit log
     log_event(

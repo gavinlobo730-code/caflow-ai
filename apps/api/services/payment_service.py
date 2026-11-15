@@ -35,6 +35,7 @@ from services.payments.factory import configured_provider
 from domain.money_sentence import rupee_whole_text
 from domain.payments import availability as payable
 from core.observability import capture_soft_failure
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.payment_service")
 
@@ -224,7 +225,7 @@ def send_link_email(db, firm_id: str, link_id: str, actor: dict) -> dict:
         pay_url=link.get("short_url") or "")
 
     # Reuse invoice_deliveries (kind='payment_link') for delivery tracking.
-    db.table("invoice_deliveries").insert({
+    privileged_for(db).table("invoice_deliveries").insert({
         "firm_id": firm_id, "client_id": link["client_id"], "invoice_id": link["invoice_id"],
         "kind": "payment_link", "sent_to": to, "sent_by_id": actor.get("auth_user_id"),
         "sent_by_email": actor.get("email"), "status": "sent" if ok else "failed",

@@ -91,10 +91,10 @@ routers/service_catalogue.py | _resolve_opening_balance_date | call:_default_ope
 routers/service_catalogue.py | bulk_create_services | call:_resolve_opening_balance_date | read | 1 | gated-in-function | gate=_assert_batch_scope
 routers/service_catalogue.py | bulk_create_services | clients | read | 1 | gated-in-function | gate=_assert_batch_scope
 services/compliance_obligation_service.py | _reconcile_stale_gst_obligations | repo:compliance_records_repo.soft_delete | update | 1 | from-scoped-row | source=services/compliance_obligation_service.py::generate_for_engagement
-services/email_events_service.py | _mark_deliveries_bounced | customer_statement_deliveries | update | 1 | provider-callback | signature=process
-services/email_events_service.py | _mark_deliveries_bounced | invoice_deliveries | update | 1 | provider-callback | signature=process
-services/email_events_service.py | handle | call:_mark_deliveries_bounced | update | 1 | provider-callback | signature=process
-services/email_events_service.py | process | call:handle | update | 1 | provider-callback | signature=process
+services/email_events_service.py | _mark_deliveries_bounced | customer_statement_deliveries | read | 1 | provider-callback | signature=process
+services/email_events_service.py | _mark_deliveries_bounced | invoice_deliveries | read | 1 | provider-callback | signature=process
+services/email_events_service.py | handle | call:_mark_deliveries_bounced | read | 1 | provider-callback | signature=process
+services/email_events_service.py | process | call:handle | read | 1 | provider-callback | signature=process
 services/email_outbox_service.py | PostgrestOutboxStore.by_provider_message | email_outbox | read | 1 | system-job
 services/email_outbox_service.py | PostgrestOutboxStore.mark_final | email_outbox | update | 1 | system-job
 services/email_outbox_service.py | PostgrestOutboxStore.mark_retry | email_outbox | update | 1 | system-job
