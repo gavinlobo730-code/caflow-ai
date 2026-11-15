@@ -804,7 +804,7 @@ def _do_resend(db, eng: dict, firm_id: str, to_email: Optional[str], actor: dict
     if not eng.get("sign_token"):
         update["sign_token"] = sign_token   # self-heal a missing token, never overwrite
     try:
-        db.table("engagements").update(update).eq("id", engagement_id).eq("firm_id", firm_id).execute()
+        privileged_for(db).table("engagements").update(update).eq("id", engagement_id).eq("firm_id", firm_id).execute()
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     eng.update(update)
@@ -1233,7 +1233,7 @@ def create_engagement(
         return api_response(True, {"engagement": row})
 
     try:
-        res = db.table("engagements").insert(row).execute()
+        res = privileged_for(db).table("engagements").insert(row).execute()
         created = (res.data or [row])[0]
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1374,7 +1374,7 @@ def update_engagement(
 
     try:
         res = (
-            db.table("engagements")
+            privileged_for(db).table("engagements")
             .update(updates)
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
@@ -1516,7 +1516,7 @@ def generate_engagement(
 
     try:
         res = (
-            db.table("engagements")
+            privileged_for(db).table("engagements")
             .update({"status": "Generated", "content": rendered, "updated_at": now})
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
@@ -1623,7 +1623,7 @@ def send_engagement(
 
     try:
         res = (
-            db.table("engagements")
+            privileged_for(db).table("engagements")
             .update({"status": "Sent", "sent_at": now, "last_sent_at": now,
                      "updated_at": now, "sign_token": sign_token})
             .eq("id", engagement_id)
@@ -1792,7 +1792,7 @@ def change_recipient(
                             detail=f"Cannot change the recipient on a '{eng['status']}' letter.")
 
     try:
-        res = (db.table("engagements")
+        res = (privileged_for(db).table("engagements")
                .update({"recipient_email": new_email, "updated_at": now})
                .eq("id", engagement_id).eq("firm_id", firm_id).execute())
         updated = (res.data or [{}])[0]
@@ -1872,7 +1872,7 @@ def regenerate_link(
                             detail=f"Cannot regenerate the link for a '{eng['status']}' letter.")
 
     try:
-        res = (db.table("engagements")
+        res = (privileged_for(db).table("engagements")
                .update({"sign_token": new_token, "updated_at": now})
                .eq("id", engagement_id).eq("firm_id", firm_id).execute())
         updated = (res.data or [{}])[0]
@@ -2008,7 +2008,7 @@ def sign_engagement(
 
     try:
         res = (
-            db.table("engagements")
+            privileged_for(db).table("engagements")
             .update(update)
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
@@ -2098,7 +2098,7 @@ def reject_engagement(
 
     try:
         res = (
-            db.table("engagements")
+            privileged_for(db).table("engagements")
             .update(update)
             .eq("id", engagement_id)
             .eq("firm_id", firm_id)
@@ -2183,7 +2183,7 @@ def delete_engagement(
                             detail="Cannot delete a signed engagement letter. It is the binding mandate for this client.")
 
     try:
-        db.table("engagements").update({
+        privileged_for(db).table("engagements").update({
             "is_deleted": True, "updated_at": now,
         }).eq("id", engagement_id).eq("firm_id", firm_id).execute()
     except Exception as exc:

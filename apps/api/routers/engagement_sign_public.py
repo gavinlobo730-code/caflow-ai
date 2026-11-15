@@ -194,7 +194,7 @@ def view_letter(token: str, request: Request):
         try:
             db.table("engagements").update(
                 {"status": "Viewed", "viewed_at": now, "updated_at": now}
-            ).eq("id", eng["id"]).eq("sign_token", token).execute()
+            ).eq("id", eng["id"]).eq("firm_id", eng["firm_id"]).eq("sign_token", token).execute()
             eng["status"] = "Viewed"
             eng["viewed_at"] = now
             _log_engagement_event(db, eng["id"], eng["firm_id"], "viewed", None,
@@ -238,7 +238,8 @@ def sign_letter(token: str, body: SignBody, request: Request):
         "signed_user_agent": (request.headers.get("user-agent") or "")[:500],
     }
     try:
-        db.table("engagements").update(update).eq("id", eng["id"]).eq("sign_token", token).execute()
+        db.table("engagements").update(update).eq("id", eng["id"]).eq("firm_id", eng["firm_id"]).eq(
+            "sign_token", token).execute()
     except Exception as e:
         _logger.error("sign_letter update failed: %s", e)
         return api_response(False, None, "Could not record your signature. Please try again.")
@@ -284,7 +285,8 @@ def reject_letter(token: str, body: RejectBody, request: Request):
     if body.reason:
         update["rejection_notes"] = body.reason.strip()[:1000]
     try:
-        db.table("engagements").update(update).eq("id", eng["id"]).eq("sign_token", token).execute()
+        db.table("engagements").update(update).eq("id", eng["id"]).eq("firm_id", eng["firm_id"]).eq(
+            "sign_token", token).execute()
     except Exception as e:
         _logger.error("reject_letter update failed: %s", e)
         return api_response(False, None, "Could not record your response. Please try again.")

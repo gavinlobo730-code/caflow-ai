@@ -281,23 +281,38 @@ def _signed_letters_of_lead(db, lead_id: str, firm_id: str) -> list[dict]:
     ) or []
 
 
-def _link_signed_letter(db, letter_id: str, client_id: str, firm_id: str, now: str) -> Optional[str]:
-    """Stamp the signed letter with the client just made (H16), as the CALLER, and say so when it did not take.
+_NOT_LINKED = ("Client created, but the signed engagement letter was not linked to it: the letter belongs to a client "
+               "you are not assigned to, so ask a Partner to link it.")
+
+
+def _link_signed_letter(db, letter_id: str, client_id: str, firm_id: str, now: str,
+                        current_user: Optional[dict] = None) -> Optional[str]:
+    """Stamp the signed letter with the client just made (H16) for the CALLER, and say so when it did not take.
 
     The letter was READ with the privileged client, so it can be one the caller's own sign-in cannot see (it names a
-    client they are not assigned to). The write is deliberately not widened to match: the database then answers an
-    update of a row it hides with an empty result and no error, so nothing is raised, and a conversion used to go on
-    as though the letter were linked. The sentence is the refusal. Returns the warning, or None when the letter was linked."""
+    client they are not assigned to). The link is not widened to match. Until POST-A-008 the database refused it: the
+    update ran as the caller, and the assignment policy hides a letter of a client they cannot reach (its USING) and
+    refuses a row they could not reach afterwards (its WITH CHECK). The write is made with the privileged client now,
+    which carries no row security, so the route asks both questions itself before writing: the client the letter names
+    now (none for a lead's letter, which every member may reach) and the client it will name. Either one the caller
+    cannot reach is the same sentence, and nothing is written. Returns the warning, or None when the letter was linked."""
+    if current_user is not None:
+        from core.authz import can_access_client
+        rows = (_letters_db(db).table("engagements").select("client_id")
+                .eq("id", letter_id).eq("firm_id", firm_id).limit(1).execute().data) or []
+        if not rows:
+            return _NOT_LINKED
+        if not (can_access_client(current_user, rows[0].get("client_id")) and can_access_client(current_user, client_id)):
+            return _NOT_LINKED
     try:
-        done = db.table("engagements").update({
+        done = privileged_for(db).table("engagements").update({
             "client_id": client_id,
             "updated_at": now,
         }).eq("id", letter_id).eq("firm_id", firm_id).execute()
     except Exception as e:
         return f"Client created, but linking the signed engagement to it failed: {e}"
     if not (getattr(done, "data", None) or []):
-        return ("Client created, but the signed engagement letter was not linked to it: the letter belongs to a client "
-                "you are not assigned to, so ask a Partner to link it.")
+        return _NOT_LINKED
     return None
 
 
@@ -1118,7 +1133,7 @@ def convert_lead(
 
     # H16: stamp the signed engagement with the resulting client so it is no longer
     # lead-only — keeps the engagement from being orphaned. Reported, not silent.
-    link_warning = _link_signed_letter(db, signed_engagement_id, client_id, firm_id, now)
+    link_warning = _link_signed_letter(db, signed_engagement_id, client_id, firm_id, now, current_user)
     if link_warning:
         warnings.append(link_warning)
 

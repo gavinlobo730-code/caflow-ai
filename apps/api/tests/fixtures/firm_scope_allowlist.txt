@@ -75,9 +75,6 @@ repositories/user_repository.py | UserRepository.find_by_invite_token | users | 
 repositories/workflow_repository.py | WorkflowRepository.list_schedules_due | workflow_schedules | read | 1 | repository-contract
 routers/banking.py | _delete_blockers._rows | <dynamic> | read | 1 | from-scoped-row | source=routers/banking.py::delete_bank_account
 routers/engagement_sign_public.py | _load_by_token | engagements | read | 1 | bearer-token | token=sign_token
-routers/engagement_sign_public.py | reject_letter | engagements | update | 1 | bearer-token | token=sign_token
-routers/engagement_sign_public.py | sign_letter | engagements | update | 1 | bearer-token | token=sign_token
-routers/engagement_sign_public.py | view_letter | engagements | update | 1 | bearer-token | token=sign_token
 routers/identity.py | accept_invite | repo:user_repo.find_by_invite_token | read | 1 | bearer-token | token=invite_token
 routers/invoices.py | generate_from_engagement | repo:invoice_repo.find_by_id | read | 1 | own-insert-id | gate=_assert_engagement_scope
 routers/onboarding.py | create_firm | users | read | 1 | principal-lookup
