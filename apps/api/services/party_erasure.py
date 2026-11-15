@@ -112,7 +112,7 @@ def refusal(
 _RECORD_WORDS = {
     "invoices": "invoices", "receipts": "receipts", "credit_notes": "credit notes", "debit_notes": "debit notes",
     "recurring_templates": "recurring templates", "bills": "bills", "payments": "payments",
-    "cheques": "post-dated cheques", "certificates": "lower-deduction certificates",
+    "cheques": "post-dated cheques", "certificates": "lower-deduction certificates", "tds_register": "TDS deductions typed on the TDS screen",
 }
 
 

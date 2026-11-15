@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient
 from core.auth import get_current_user
 from domain.tds import manual_register
 from domain.tds.manual_register import (
-    GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN, GAP_MESSAGES, GAP_REGISTERS_NOT_UNIFIED, usable_pan_key,
+    GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN, GAP_MESSAGES, GAP_NO_SUPPLIER, usable_pan_key,
 )
 from tests.e2e_harness import FakeDB
 
@@ -135,7 +135,8 @@ def test_the_answer_says_the_year_was_not_looked_at(app_db, pan):
     assert d["aggregate_tested"] is False
     assert GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN in d["gaps"]
     assert GAP_MESSAGES[GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN] in d["gap_messages"]
-    assert GAP_REGISTERS_NOT_UNIFIED in d["gaps"], "the standing gap is still said on every row"
+    # Not both: "its year is added up with the other deductions typed for this PAN" is false where nothing was added up (POST-A-078).
+    assert GAP_NO_SUPPLIER not in d["gaps"], "a payee with no usable PAN was told its year was added up by its PAN"
 
 
 def test_the_answer_for_a_real_pan_says_the_year_was_looked_at(app_db):
@@ -601,4 +602,4 @@ def test_the_drives_copy_of_the_note_sentence_is_the_servers():
 
 def test_the_drives_copies_of_the_two_gap_sentences_are_the_servers():
     assert _drive_literal("GAP_NO_PAN") == GAP_MESSAGES[GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN]
-    assert _drive_literal("GAP_NOT_UNIFIED") == GAP_MESSAGES[GAP_REGISTERS_NOT_UNIFIED]
+    assert _drive_literal("GAP_NO_SUPPLIER") == GAP_MESSAGES[GAP_NO_SUPPLIER]

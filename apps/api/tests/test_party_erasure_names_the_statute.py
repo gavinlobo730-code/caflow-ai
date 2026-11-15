@@ -150,6 +150,9 @@ def test_every_dated_dependency_table_names_a_real_date_column():
         # would have the refusal name a statutory retention year for a document nobody has said is a book of account.
         "post_dated_cheques": None,
         "tds_lower_deduction_certificates": None,
+        # A deduction typed on the TDS screen that names the supplier (POST-A-078) blocks the delete on the same referential ground and
+        # names no retention year: which period keeps a TDS register row is a statutory reading nobody has supplied.
+        "tds_deductions": None,
     }
     for _label, table, date_col in [*_DEPENDENCY_TABLES, *_VENDOR_DEPENDENCY_TABLES]:
         assert table in expected, f"{table} is a new dependency with no date decision"
