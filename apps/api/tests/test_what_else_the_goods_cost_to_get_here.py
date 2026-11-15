@@ -388,7 +388,7 @@ def test_an_applied_charge_cannot_be_deleted():
         "firm_id": FIRM, "client_id": CLIENT, "bill_id": "b1",
         "description": "Freight", "amount_paise": 1000, "source": "manual",
         "applied_at": "2026-04-01T00:00:00Z"})
-    out = svc.remove_charge(db, firm_id=FIRM, charge_id=row["id"])
+    out = svc.remove_charge(db, firm_id=FIRM, client_id=CLIENT, charge_id=row["id"])
     assert out["ok"] is False
     assert "posted" in out["refusal"]
     assert db.rows("purchase_bill_landed_costs"), "nothing was deleted"
@@ -400,7 +400,7 @@ def test_an_unapplied_charge_can_be_deleted():
         "firm_id": FIRM, "client_id": CLIENT, "bill_id": "b1",
         "description": "Freight", "amount_paise": 1000, "source": "manual",
         "applied_at": None})
-    assert svc.remove_charge(db, firm_id=FIRM, charge_id=row["id"])["ok"] is True
+    assert svc.remove_charge(db, firm_id=FIRM, client_id=CLIENT, charge_id=row["id"])["ok"] is True
 
 
 def test_another_firms_charge_is_not_deletable():
@@ -409,8 +409,21 @@ def test_another_firms_charge_is_not_deletable():
         "firm_id": "firm-2", "client_id": CLIENT, "bill_id": "b1",
         "description": "Freight", "amount_paise": 1000, "source": "manual",
         "applied_at": None})
-    out = svc.remove_charge(db, firm_id=FIRM, charge_id=row["id"])
+    out = svc.remove_charge(db, firm_id=FIRM, client_id=CLIENT, charge_id=row["id"])
     assert out["ok"] is False and "not in this firm" in out["refusal"]
+
+
+def test_another_clients_charge_is_not_deletable():
+    # POST-A-008, the stock tranche: the delete is made with the privileged client, which has no row security, so the client it names is
+    # the only thing standing between a charge id and another client's charge in the same firm.
+    db = FakeDB()
+    row = db.seed("purchase_bill_landed_costs", {
+        "firm_id": FIRM, "client_id": "client-2", "bill_id": "b1",
+        "description": "Freight", "amount_paise": 1000, "source": "manual",
+        "applied_at": None})
+    out = svc.remove_charge(db, firm_id=FIRM, client_id=CLIENT, charge_id=row["id"], bill_id="b1")
+    assert out["ok"] is False
+    assert len(db.rows("purchase_bill_landed_costs")) == 1, "nothing was deleted"
 
 
 def test_a_charge_on_ANOTHER_bill_is_not_deletable_through_this_door():
@@ -422,7 +435,7 @@ def test_a_charge_on_ANOTHER_bill_is_not_deletable_through_this_door():
         "firm_id": FIRM, "client_id": CLIENT, "bill_id": "b-other",
         "description": "Freight", "amount_paise": 1000, "source": "manual",
         "applied_at": None})
-    out = svc.remove_charge(db, firm_id=FIRM, charge_id=row["id"], bill_id="b1")
+    out = svc.remove_charge(db, firm_id=FIRM, client_id=CLIENT, charge_id=row["id"], bill_id="b1")
     assert out["ok"] is False
     assert len(db.rows("purchase_bill_landed_costs")) == 1, "nothing was deleted"
 

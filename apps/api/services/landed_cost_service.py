@@ -143,7 +143,7 @@ def add_charge(db, *, firm_id: str, client_id: str, bill_id: str, description: s
                amount_paise: int, expense_account_id: Optional[str],
                notes: Optional[str], actor_id: Optional[str]) -> dict:
     """Record a manual landed cost against a bill."""
-    inserted = db.table("purchase_bill_landed_costs").insert({
+    inserted = privileged_for(db).table("purchase_bill_landed_costs").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "bill_id": bill_id,
@@ -158,7 +158,7 @@ def add_charge(db, *, firm_id: str, client_id: str, bill_id: str, description: s
     return (inserted.data or [{}])[0]
 
 
-def remove_charge(db, *, firm_id: str, charge_id: str,
+def remove_charge(db, *, firm_id: str, client_id: str, charge_id: str,
                   bill_id: Optional[str] = None) -> dict:
     """Delete a charge that has NOT reached a receipt.
 
@@ -171,7 +171,7 @@ def remove_charge(db, *, firm_id: str, charge_id: str,
     # id guessed from another bill cannot be deleted through this door.
     q = (db.table("purchase_bill_landed_costs")
          .select("id, applied_at, source")
-         .eq("firm_id", firm_id).eq("id", charge_id))
+         .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", charge_id))
     if bill_id:
         q = q.eq("bill_id", bill_id)
     rows = q.limit(1).execute().data or []
@@ -183,8 +183,8 @@ def remove_charge(db, *, firm_id: str, charge_id: str,
             "the stock ledger and in a posted journal, and a posted entry "
             "cannot be rewritten. Reverse the goods receipt if it has to come "
             "back out.")}
-    d = db.table("purchase_bill_landed_costs").delete().eq(
-        "firm_id", firm_id).eq("id", charge_id)
+    d = privileged_for(db).table("purchase_bill_landed_costs").delete().eq(
+        "firm_id", firm_id).eq("client_id", client_id).eq("id", charge_id)
     if bill_id:
         d = d.eq("bill_id", bill_id)
     d.execute()
@@ -269,13 +269,13 @@ def carry_over_from_bill_of_entry(db, *, firm_id: str, row: dict,
         if existing:
             # An EDIT to an unapplied row re-states the duty; an applied one is
             # left alone, because its value is already in a posted journal.
-            db.table("purchase_bill_landed_costs").update({
+            privileged_for(db).table("purchase_bill_landed_costs").update({
                 "amount_paise": duty,
                 "expense_account_id": row.get("duty_expense_account_id"),
-            }).eq("firm_id", firm_id).eq("id", existing[0]["id"]).is_(
+            }).eq("firm_id", firm_id).eq("client_id", row.get("client_id")).eq("id", existing[0]["id"]).is_(
                 "applied_at", "null").execute()
             return {"id": existing[0]["id"], "amount_paise": duty}
-        inserted = db.table("purchase_bill_landed_costs").insert({
+        inserted = privileged_for(db).table("purchase_bill_landed_costs").insert({
             "firm_id": firm_id,
             "client_id": row.get("client_id"),
             "bill_id": bill_id,

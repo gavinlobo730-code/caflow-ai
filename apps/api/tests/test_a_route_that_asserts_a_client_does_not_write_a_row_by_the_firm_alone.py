@@ -43,8 +43,6 @@ DEPTH = 3
 REVIEWED: dict[tuple[str, str], str] = {
     ("banking.py", "create_bank_account"): "rolls back the account this request created a moment ago",
     ("banking.py", "upload_statement"): "the mapping row is keyed by the bank account the upload was already tied to (`.eq('bank_account_id', ...)`)",
-    ("bills_of_entry.py", "create_bill_of_entry"): "updates the landed-cost row that a read filtered on the bill's client just returned",
-    ("bills_of_entry.py", "update_bill_of_entry"): "updates the landed-cost row that a read filtered on the bill's client just returned",
     ("gst_credit_ledger.py", "put_opening"): "updates the row a read filtered on firm, client, GSTIN and window just returned",
     ("gst_credit_ledger.py", "delete_opening"): "deletes the row a read filtered on firm, client, GSTIN and window just returned",
     ("gst_workspace.py", "save_gstr1"): "updates the return `_existing_return` found by client and period",
@@ -54,7 +52,6 @@ REVIEWED: dict[tuple[str, str], str] = {
     ("payroll.py", "record_settlement"): "the employee was read by `_employee_of_client` (firm and client) before the status is written",
     ("payroll.py", "put_bonus_declaration"): "updates the declaration `_declaration` returned, read by firm, client and year",
     ("payroll.py", "put_bonus_disqualification"): "the employee was read by `_employee_of_client` and the row by firm, employee and year",
-    ("purchase_bills.py", "delete_landed_cost"): "deletes the charge of the bill the route tied to the client (`bill_id` is part of the chain)",
     ("purchase_cycle.py", "update_receipt"): "the receipt was read by `receipt_of_client` (firm and client) before the update",
     ("sales_cycle.py", "update_quotation"): "the route calls `row_of_client` (firm and client) before the update",
     ("sales_cycle.py", "update_challan"): "the route calls `row_of_client` (firm and client) before the update",
@@ -220,8 +217,10 @@ def test_the_scan_is_not_vacuous(world):
                 handlers += 1
     assert handlers >= 400, f"only {handlers} handlers assert a client: the population moved"
     # 20 until the lot door's stamp moved into a database function (POST-A-419) and `record_challan_return` no longer fired; 19 until the
-    # AIS manual line's totals restatement named the client (POST-A-008, the income-tax tranche) and `add_manual_record` no longer fired.
-    assert len(REVIEWED) >= 18
+    # AIS manual line's totals restatement named the client (POST-A-008, the income-tax tranche) and `add_manual_record` no longer fired;
+    # 18 until the landed-cost writers named the client (POST-A-008, the stock tranche) and the Bill of Entry's two doors and the
+    # landed-cost delete no longer fired.
+    assert len(REVIEWED) >= 15
 
 
 # ── negative controls: the rule fires on the old shape and on nothing it should leave alone ───────────────────────────────────

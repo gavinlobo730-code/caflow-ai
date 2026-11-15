@@ -49,6 +49,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from core.db_paging import fetch_all_ordered
+from core.db_provider import privileged_for
 from core.ist_clock import ist_today, ist_date_of
 from core.observability import capture_posting_failure
 from domain.inventory import costing
@@ -1648,7 +1649,7 @@ def _refuse_a_purchase_retry_that_cannot_be_exact(db, prior, *, bill_id, firm_id
     prior.rehearse(owed, refuse=stock_resume.REFUSE_ANY_SHORT)
 
 
-def _mark_landed_costs_applied(db, charges: list) -> None:
+def _mark_landed_costs_applied(db, firm_id: str, client_id: str, charges: list) -> None:
     """Stamp `applied_at` once the receipt has actually posted.
 
     AFTER the journal, never before: a charge marked applied on a receipt that
@@ -1660,8 +1661,8 @@ def _mark_landed_costs_applied(db, charges: list) -> None:
     stamp = datetime.now(timezone.utc).isoformat()
     for charge in charges:
         try:
-            db.table("purchase_bill_landed_costs").update(
-                {"applied_at": stamp}).eq("id", charge["id"]).execute()
+            privileged_for(db).table("purchase_bill_landed_costs").update(
+                {"applied_at": stamp}).eq("id", charge["id"]).eq("firm_id", firm_id).eq("client_id", client_id).execute()
         except Exception as e:
             capture_posting_failure(e, operation="_mark_landed_costs_applied",
                                     landed_cost_id=charge.get("id"))
@@ -1803,7 +1804,7 @@ def apply_purchase_to_inventory(db, *, firm_id: str, client_id: str, bill: dict,
             # The receipt is posted, so the charges it carried are spent. ONLY then (no charges are passed when it did not post): a charge
             # marked applied on a receipt that did not post is left out of the cost for ever, which is the outcome
             # `_mark_landed_costs_applied` says it exists to prevent.
-            _mark_landed_costs_applied(db, charges if journal_id else [])
+            _mark_landed_costs_applied(db, firm_id, client_id, charges if journal_id else [])
         # Separate COGS true-up journal (own reference suffix, see
         # post_inventory_trueup_journal_entry) — posted independently of the
         # receipt journal above since a bill fully absorbed into a prior
