@@ -51,7 +51,7 @@ credit_note_lines	read
 customer_payment_events	write
 customer_payment_links	write
 customer_payments	write
-customer_statement_deliveries	write
+customer_statement_deliveries	read
 cwip_additions	read
 debit_note_allocations	read
 debit_note_lines	read
@@ -109,7 +109,7 @@ income_tax_asset_blocks	read
 income_tax_worksheets	read
 inventory_batches	read
 inventory_stock_ledger	read
-invoice_deliveries	write
+invoice_deliveries	read
 invoice_sequences	read
 invoice_settings	read
 invoice_templates	read
