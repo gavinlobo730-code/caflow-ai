@@ -31,6 +31,7 @@
 # 605 closes customer_payment_links, customer_payments and customer_payment_events (POST-A-008, the payments tranche): the API writes all three with its privileged client since the change that shipped before it.
 # 606 closes time_entries, task_recurring_configs, reminders and knowledge_article_versions (POST-A-008, the practice tranche): the API writes all four with its privileged client since the change that shipped before it.
 # 607 closes notifications, portal_messages and user_notification_preferences (POST-A-008, the messages tranche): the API writes all three with its privileged client since the change that shipped before it.
+# 608 closes tally_migration_jobs and tally_migration_items (POST-A-008, the Tally tranche): the API writes both with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -273,6 +274,8 @@ statutory_remittances
 stock_count_lines
 stock_count_sessions
 suppliers
+tally_migration_items
+tally_migration_jobs
 task_dependencies
 task_escalations
 task_recurring_configs
