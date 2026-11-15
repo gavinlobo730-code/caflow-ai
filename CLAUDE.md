@@ -423,7 +423,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ITR-6'S GROSS BLOCK IS FILLED ONLY WHERE EACH LEDGER LINE TIES
 - A BROUGHT-FORWARD LOSS IS OFFERED FROM ITS RECORD, USED PER FILING AND PER YEAR, AND AN UPDATED RETURN WRITES NOTHING
 
-### `docs/design-record/tax-tds.md` (26 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (27 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -451,6 +451,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN AIS FIGURE IS WHAT OTHERS REPORTED, SO IT IS OFFERED LINE BY LINE AND APPLIED ONLY TO AN EMPTY BOX
 - A REGISTER ROW ITS DOCUMENT NO LONGER CARRIES IS NAMED ON THE LIST AND REMOVED BY THE DOCUMENT'S OWN SYNC
 - ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED AS HAVING RECORDED A NO-PE DECLARATION, AND THE SUPPLIER FORM SAYS WHO
+- A DEDUCTION TYPED ON THE TDS SCREEN MAY NAME THE SUPPLIER IT WAS PAID TO, AND IS THEN COUNTED IN THAT SUPPLIER'S YEAR WITH ITS BILLS AND ADVANCES
 
 ### `docs/design-record/tenancy-and-security.md` (87 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 

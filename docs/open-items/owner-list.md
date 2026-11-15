@@ -336,6 +336,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Changing either screen. The check says plainly that an invoice may sit within a total and that it cannot tell which.
 - **Ledger:** POST-A-066 (closed); the reading decides whether `irn_scope` changes.
 
+### S34. Section 194 yearly limits: is a payee's year one person's year, keyed on the PAN, across every supplier record the client keeps for them?
+
+- **Question:** A supplier registered in two states has a record per GSTIN in the product, both with one PAN. The bill path adds up the s.194C, s.194H, s.194J (and similar) yearly totals per supplier RECORD, so each record's bills are tested against the yearly limit on their own and the tax withheld under one is not credited (s.200) under the other. Is the yearly limit tested on all sums credited or paid to the one person (the one PAN) in the year, whichever record the bill was booked under? If so, should a deduction typed on the TDS screen that names no supplier also be counted in that person's year when two records hold its PAN?
+- **Needed:** The yearly-limit provisos of sections 194C, 194H, 194J and the other s.194 sections with an aggregate limit, and the corresponding provisions of the Income-tax Act 2025, with any CBDT circular on a payee booked under more than one account.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Keying the bill path's year, its advance pool and its orphan-advance rule on the PAN. Each record keeps its own year, as today, and a typed deduction with no supplier whose PAN two records hold is counted in neither, and the form says so.
+- **Ledger:** POST-A-444
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.

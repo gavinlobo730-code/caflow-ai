@@ -2012,6 +2012,7 @@ function Vendors({ clientId }: { clientId: string }) {
                       ["recurring_templates", "Recurring templates"],
                       ["cheques", "Post-dated cheques"],
                       ["certificates", "Lower-deduction certificates"],
+                      ["tds_register", "TDS deductions typed on the TDS screen"],
                       ["opening_balance", "Opening balance"],
                     ] as const)
                       .filter(([k]) => (deleteDeps.dependencies?.[k] ?? 0) > 0)

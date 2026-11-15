@@ -434,14 +434,29 @@ export type DeductionExplain = {
    *  (see domain/tds/tds_computer.is_company_pan), and this is the one place
    *  the CA is told which limb landed and on what basis. */
   rate_basis: string;
-  fy_prior_taxable_paise: number;
-  fy_prior_tds_paise: number;
+  /** The payee's year before this payment: what was already paid and what was already withheld. NULL when a supplier is named and the
+   *  person asking may not read purchase documents (the year includes the supplier's bills), which is "not shown", never nil (POST-A-078). */
+  fy_prior_taxable_paise: number | null;
+  fy_prior_tds_paise: number | null;
   /** Whether the server ADDED UP the payee's earlier typed payments of the year against the section's yearly threshold before it answered (POST-A-078). True only
    *  when the register was asked, the payee has a usable PAN to be looked up by (not blank, not a placeholder such as PANNOTAVBL, not text that is not a PAN), the
    *  financial year's rates are confirmed (an unconfirmed year gets the `resident_tds_rates_not_verified` gap instead) and the section has a yearly threshold at all
    *  (s.194I tests a month and s.194B one transaction). False otherwise, and a nil is then "not tested" and never "none". A
    *  server that predates it sends no key, which is not true either: only `true` lets a screen say the year's total is below a threshold. */
   aggregate_tested?: boolean;
+  /** Where a supplier is named, the bill path's own sentence about this charge: the year it was charged on, a s.197 certificate, a
+   *  s.194A class (`services/vendor_tds.resolve_resident_tds`). NULL where none is named; absent from a server that predates it. */
+  why?: string | null;
+  /** The year's tax due at this payment that is more than the payment itself, so is not withheld here (the next payment or bill
+   *  credits what was). 0 when the payment covers it; NULL where a supplier's year is not shown to the person asking (it gives the year
+   *  back with the rate), which is "not shown", never nil. */
+  shortfall_paise?: number | null;
+  /** The supplier whose year this deduction is counted in: the one picked, or the one the server found by the PAN (exactly one active
+   *  supplier of the client holds it). NULL when it is counted with the other deductions that name none. */
+  supplier?: { id: string; name: string } | null;
+  /** Why no supplier was found by the PAN although one or more of the client's suppliers hold it: two hold it, the only holder is
+   *  non-resident (s.195 is worked on a bill), or every holder is inactive. NULL otherwise, a picked supplier included. */
+  supplier_note?: string | null;
   gaps: string[];
   gap_messages: string[];
 };
@@ -461,6 +476,9 @@ export type RecordedDeduction = Record<string, unknown> & {
  *  excess, and no threshold on anything. */
 export async function createTdsDeduction(body: {
   client_id: string;
+  /** The supplier the payment was made to (POST-A-078). Its name and PAN are taken from its record, and the payment is counted in its
+   *  year of purchase bills, advances and typed deductions. Omitted, the server looks for the one active supplier holding the PAN. */
+  vendor_id?: string | null;
   deductee_name: string;
   deductee_pan?: string | null;
   section: string;
@@ -487,6 +505,7 @@ export async function createTdsDeduction(body: {
  *  a §194C/§194H/§194J aggregate threshold that is the whole difference. */
 export async function previewTdsDeduction(body: {
   client_id: string;
+  vendor_id?: string | null;
   deductee_name: string;
   deductee_pan?: string | null;
   section: string;
@@ -519,6 +538,7 @@ export async function previewTdsDeduction(body: {
 export async function updateTdsDeduction(
   id: string,
   body: Partial<{
+    vendor_id: string | null;
     deductee_name: string;
     deductee_pan: string | null;
     section: string;
