@@ -21,6 +21,7 @@ from models.common import api_response
 from core.auth import get_current_user, get_jwt_user
 from core.list_window import probe, split
 from core.permissions import rbac, Role, canonical_role, get_accessible_resources
+from domain.firm.member_state import member_state
 from repositories.user_repository import user_repo
 from repositories.login_events_repository import login_events_repo
 from services.audit_service import log_event
@@ -68,7 +69,10 @@ def list_users(current_user: dict = Depends(rbac("team", "read"))):
     # The list now carries every member of the firm (the repository reads as
     # the service role), so a pending invitee's bearer secret is stripped: it
     # is returned once, to the Partner who created it, by POST /users.
-    users = [{k: v for k, v in u.items() if k != "invite_token"}
+    # Each row also carries `member_state` (PRE-A-020), asked of the row BEFORE the token is stripped, so the
+    # Team screen shows Invited or Invite expired for someone who has not accepted, never Active.
+    now = datetime.now(timezone.utc)
+    users = [{**{k: v for k, v in u.items() if k != "invite_token"}, "member_state": member_state(u, now)}
              for u in user_repo.find_all(firm_id=current_user["firm_id"])]
     return api_response(True, {"users": users})
 

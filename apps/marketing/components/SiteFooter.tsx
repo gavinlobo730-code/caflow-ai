@@ -20,7 +20,11 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
       // lib/site.ts, which records why this has moved three times.
       { label: "Our Story", href: "/" },
       { label: "Support", href: "/support" },
-      { label: "Contact", href: `mailto:${CONTACT.email}`, external: true },
+      // Only when there is a mailbox to write to: the address it used to open did
+      // not exist (PRE-A-026, lib/site.ts CONTACT).
+      ...(CONTACT.email
+        ? [{ label: "Contact", href: `mailto:${CONTACT.email}`, external: true }]
+        : []),
     ],
   },
   {

@@ -50,8 +50,11 @@ API_ROOT = Path(__file__).resolve().parents[1]
 UNPROVEN_CLAIMS: set[str] = set()
 
 # Facts no test can read. Frozen for the same reason: "commitment" must not become the
-# place a hard-to-test claim goes to stop being tested.
-COMMITMENT_CLAIMS = {"database-in-mumbai", "support-service", "onboarding-service"}
+# place a hard-to-test claim goes to stop being tested. "support-service" (email and phone
+# support, Monday to Saturday, a reply within one business day) left on 16-11-2026 with the
+# sentences that made it: the address and the number did not exist and nobody staffed them
+# (PRE-A-026), so the site says there is no public contact yet instead.
+COMMITMENT_CLAIMS = {"database-in-mumbai", "onboarding-service"}
 
 
 # ── the two halves, as pure functions so the verify clause can be exercised ───

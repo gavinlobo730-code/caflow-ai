@@ -387,22 +387,6 @@ CLAIMS: tuple[Claim, ...] = (
         ),
     ),
     Claim(
-        id="support-service",
-        status=COMMITMENT,
-        fact="The vendor answers by email and phone, Monday to Saturday 9am-7pm IST, with priority support on the Practice and Firm plans.",
-        commitment="A service the owner runs, not behaviour of the code, so no test can prove it. It exists only as copy on the Support and Pricing pages; the owner is the one who can keep it true (staffing, the phone line, the hours). If the hours or the channels change, this entry and the Support page change together.",
-        says=(
-            Says("Email support", PRICING, SUPPORT),
-            Says("Priority support", PRICING),
-            Says("Every PracticeSync plan includes real support from people who understand CA workflows.", SUPPORT),
-            Says("Get help with PracticeSync — guides, email and phone support, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.", SUPPORT),
-            Says("Our support team is available Monday to Saturday, 9am–7pm IST.", SUPPORT),
-            Says("Phone support", SUPPORT),
-            Says("Reach our support line during working hours for a quick hand with anything that needs a conversation.", SUPPORT),
-            Says("Speak to our support team during working hours, Monday to Saturday, 9am–7pm IST.", SUPPORT),
-        ),
-    ),
-    Claim(
         id="onboarding-service",
         status=COMMITMENT,
         fact="The Firm plan includes dedicated onboarding and data migration, Practice and Firm get a dedicated onboarding specialist, and the team will help import client masters and opening balances on any plan.",
@@ -410,7 +394,7 @@ CLAIMS: tuple[Claim, ...] = (
         says=(
             Says("Dedicated onboarding & migration", PRICING),
             Says("The Firm plan includes dedicated onboarding and data migration, and our team can help import client masters and opening balances on any plan.", PRICING),
-            Says("Get help with PracticeSync — guides, email and phone support, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.", SUPPORT),
+            Says("Get help with PracticeSync — guides you can read any time, plus hands-on onboarding and data migration for Indian CA firms moving from Tally, ClearTax or Winman.", SUPPORT),
             Says("Practice and Firm plans also get a dedicated onboarding specialist to set up your team, templates and compliance calendar.", SUPPORT),
         ),
     ),

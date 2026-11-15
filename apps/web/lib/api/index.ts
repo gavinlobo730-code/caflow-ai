@@ -8406,6 +8406,8 @@ export const api = {
       users: Array<{
         id: string; full_name: string; email: string; role: string;
         is_active?: boolean; created_at?: string; auth_user_id?: string; firm_id?: string;
+        /** PRE-A-020: the server's word for the member (active, invited, invite_expired, inactive). */
+        member_state?: string; invite_expires_at?: string | null;
       }>;
     }>>("/api/identity/users"),
     createUser: (full_name: string, email: string, role: string) =>

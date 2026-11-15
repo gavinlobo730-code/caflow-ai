@@ -2,7 +2,7 @@ import { Panel, SerifHeading, CineReveal } from "@/components/cinematic";
 import { DemoForm } from "@/components/DemoForm";
 import { Reveal } from "@/components/motion";
 import { instrumentSerif, manrope } from "@/lib/fonts";
-import { CONTACT } from "@/lib/site";
+import { CONTACT, DEMO_BOOKINGS_OPEN } from "@/lib/site";
 
 export const metadata = {
   title: "Book a demo",
@@ -18,13 +18,20 @@ export const metadata = {
  * subsystems — there is no metric, no customer count and no testimonial here,
  * because §16 of the redesign brief forbids inventing any of them and this
  * product has data for none of them.
+ *
+ * THE FORM IS SHOWN ONLY WHILE BOOKINGS ARE OPEN (PRE-A-026). Until a business
+ * mailbox exists the right-hand column says bookings are not open and promises
+ * no reply, and nothing on the page offers an address: the one it used to offer
+ * did not exist. `DEMO_BOOKINGS_OPEN` in lib/site.ts is the switch.
  */
 
 const WHAT_HAPPENS = [
   {
     step: "01",
     title: "Tell us how you work today",
-    body: "Which tools you are on, roughly how many clients, and what you file. Two minutes on the form below is usually enough.",
+    body: DEMO_BOOKINGS_OPEN
+      ? "Which tools you are on, roughly how many clients, and what you file. Two minutes on the form below is usually enough."
+      : "Which tools you are on, roughly how many clients, and what you file.",
   },
   {
     step: "02",
@@ -95,23 +102,33 @@ export default function DemoPage() {
               </div>
             </CineReveal>
 
-            <p className="mt-8 text-[14px] text-slate-400">
-              Would rather just write?{" "}
-              <a
-                href={`mailto:${CONTACT.email}?subject=${encodeURIComponent("Demo request")}`}
-                className="font-semibold text-brand-light underline-offset-4 hover:underline"
-              >
-                {CONTACT.email}
-              </a>
-              {" · "}
-              <a href={`tel:${CONTACT.phone.replace(/\s/g, "")}`} className="text-slate-300 hover:text-white">
-                {CONTACT.phone}
-              </a>
-            </p>
+            {CONTACT.email ? (
+              <p className="mt-8 text-[14px] text-slate-400">
+                Would rather just write?{" "}
+                <a
+                  href={`mailto:${CONTACT.email}?subject=${encodeURIComponent("Demo request")}`}
+                  className="font-semibold text-brand-light underline-offset-4 hover:underline"
+                >
+                  {CONTACT.email}
+                </a>
+              </p>
+            ) : null}
           </div>
 
           <div className="lg:pt-2">
-            <DemoForm />
+            {DEMO_BOOKINGS_OPEN && CONTACT.email ? (
+              <DemoForm contactEmail={CONTACT.email} />
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 md:p-8">
+                <h2 className="font-display text-[26px] italic leading-snug text-white">
+                  Demo bookings are not open yet.
+                </h2>
+                <p className="mt-3 text-[15px] leading-relaxed text-slate-300">
+                  There is no inbox behind this page yet, so it takes no requests rather than ones nobody
+                  would read. When bookings open, the form to ask for a demo appears here.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </Panel>

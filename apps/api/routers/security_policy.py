@@ -19,9 +19,10 @@ the same way — see `core/security_posture.py`.
 from fastapi import APIRouter, Depends
 
 from core.auth import get_current_user, mfa_guard
-from core.permissions import rbac
+from core.permissions import canonical_role, rbac
 from core.security_config import mfa_required_for, mfa_required_roles, require_mfa
 from core.security_posture import security_posture
+from domain.firm.mfa_locked_areas import locked_areas_for, locked_sentence
 from models.common import api_response
 
 router = APIRouter(prefix="/api/security", tags=["security"])
@@ -35,7 +36,17 @@ def mfa_policy(current_user: dict = Depends(get_current_user)) -> dict:
         # mfa_guard's own comparison on the caller's stored role, so the nudge
         # and the refusal cannot disagree about who is covered.
         "applies_to_caller": mfa_required_for(current_user.get("role")),
+        # PRE-A-021: what the guard locks for THIS person, from their own permissions (overrides included), so a
+        # Manager is not told that Billing, which their role never reaches, opens once they set up an
+        # authenticator. The sentence is built here so the browser words nothing.
+        **_locked(current_user),
     })
+
+
+def _locked(current_user: dict) -> dict:
+    areas = locked_areas_for(canonical_role(current_user.get("role")),
+                             current_user.get("permission_overrides") or {})
+    return {"locked_areas": areas, "locked_sentence": locked_sentence(areas)}
 
 
 @router.get("/posture", dependencies=[Depends(mfa_guard)])

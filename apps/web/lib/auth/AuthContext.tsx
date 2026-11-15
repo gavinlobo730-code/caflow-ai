@@ -167,6 +167,8 @@ interface AuthContextValue {
    * them (lib/auth/mfaEnrolment.ts). False while anything is unknown.
    */
   mustEnrolMfa: boolean;
+  /** The server's sentence naming what the authenticator guard locks for this caller (PRE-A-021), or null. */
+  mfaLockedSentence: string | null;
   /** Fetch the policy and the factor list afresh and answer the same question,
    *  for a caller that must decide NOW (onboarding's last step). */
   resolveEnrolmentRequired: () => Promise<boolean>;
@@ -496,7 +498,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, mustEnrolMfa, resolveEnrolmentRequired, signIn, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, roleLoading, mfaPending, hasFirm, fullName, permissions, can, refreshUserContext, mustEnrolMfa, mfaLockedSentence: mfaPolicy?.lockedSentence ?? null, resolveEnrolmentRequired, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

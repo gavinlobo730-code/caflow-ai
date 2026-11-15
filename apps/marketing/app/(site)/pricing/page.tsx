@@ -3,6 +3,7 @@ import { Reveal } from "@/components/motion";
 import { Button } from "@/components/ui";
 import { Check, Star, ArrowRight } from "@/components/icons";
 import { instrumentSerif, manrope } from "@/lib/fonts";
+import { DEMO_BOOKINGS_OPEN } from "@/lib/site";
 
 export const metadata = {
   title: "Pricing",
@@ -37,7 +38,6 @@ const TIERS: Tier[] = [
       "GST, ITR & TDS compliance",
       "Accounting & ledgers",
       "Document storage",
-      "Email support",
     ],
     cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: false,
@@ -57,7 +57,6 @@ const TIERS: Tier[] = [
       "AI assistant",
       "Client portal",
       "Practice analytics",
-      "Priority support",
     ],
     cta: { label: "Book a demo", href: "/demo", external: false },
     highlighted: true,
@@ -90,7 +89,9 @@ const INCLUDED = [
 const FAQS = [
   {
     q: "Is there a free trial?",
-    a: "Not yet. Book a demo and we will walk a real client's month end to end, so you can judge the workflow before you decide anything.",
+    a: DEMO_BOOKINGS_OPEN
+      ? "Not yet. Book a demo and we will walk a real client's month end to end, so you can judge the workflow before you decide anything."
+      : "Not yet. Demo bookings are not open yet either; when they open, a demo walks a real client's month end to end, so you can judge the workflow before you decide anything.",
   },
   {
     q: "Can I migrate from Tally, ClearTax or Winman?",

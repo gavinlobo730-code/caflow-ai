@@ -125,7 +125,8 @@ PAGE_FACTS: dict[str, str] = {
     "The form sends what you type to our team by email.": DEMO_FORM,
     "It does not write to the product's database.": DEMO_FORM,
     "It does not name every service the product uses; email delivery and error reporting are two it leaves out.": UNNAMED,
-    "For a question about your data, see how to reach us on the Support page.": SUPPORT_LINK,
+    "There is no public email address or phone line yet.": SUPPORT_LINK,
+    "When there is one, the Support page lists it.": SUPPORT_LINK,
 }
 
 
@@ -843,7 +844,15 @@ def test_the_support_page_the_summary_points_to_exists_and_the_page_prints_no_ad
     support = MARKETING / "app" / "(site)" / "support" / "page.tsx"
     assert support.is_file()
     assert 'href="/support"' in _code(PAGE), "the page's closing sentence no longer links to the Support page"
-    assert "CONTACT.email" in _code(support), "the Support page no longer offers a way to reach us"
+    # The Support page prints the mailbox when there is one and says plainly that there is none when there
+    # is not (PRE-A-026): either way a person sent there from this page learns how to reach us, or that they
+    # cannot yet. The summary's own sentence says the same.
+    support_code = _code(support)
+    assert "CONTACT.email" in support_code, "the Support page no longer prints the mailbox when one is set"
+    assert "There is no public email address or phone line yet." in support_code, (
+        "the Support page no longer says when there is no public contact")
+    assert "There is no public email address or phone line yet." in _code(PAGE), (
+        "the summary sends a person to the Support page without saying there is no contact yet")
 
 
 # ═══ the Python port of the replay rule ═══════════════════════════════════════════════════════════
