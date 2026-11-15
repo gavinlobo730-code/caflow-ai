@@ -56,8 +56,14 @@ def _outer_chain(node: ast.AST, parents: dict) -> ast.AST:
         return node
 
 
-def unscoped_updates_and_deletes(source: str, tables: frozenset) -> list[str]:
-    """Every `.update(` or `.delete(` on one of `tables` whose chain does not filter both `firm_id` and `client_id`."""
+#: The columns an update or a delete must filter on, unless a group names others for a table that has no `client_id` of its own (a row
+#: keyed on its parent, whose client the route asserts through the parent: `year_end_checklist_items` hangs from its engagement).
+SCOPE_KEYS = ("firm_id", "client_id")
+
+
+def unscoped_updates_and_deletes(source: str, tables: frozenset, keys: dict | None = None) -> list[str]:
+    """Every `.update(` or `.delete(` on one of `tables` whose chain does not filter each of its scope keys (`firm_id` and `client_id`,
+    or the ones `keys` names for that table)."""
     tree = ast.parse(source)
     parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
     out = []
@@ -68,8 +74,10 @@ def unscoped_updates_and_deletes(source: str, tables: frozenset) -> list[str]:
         if tc is None or node.func.attr not in {"update", "delete"}:
             continue
         chain = ast.unparse(_outer_chain(node, parents))
-        if not re.search(r"\.eq\(\s*['\"]client_id['\"]", chain) or not re.search(r"\.eq\(\s*['\"]firm_id['\"]", chain):
-            out.append(f"{tc.args[0].value} at line {node.lineno}")
+        table = tc.args[0].value
+        need = (keys or {}).get(table, SCOPE_KEYS)
+        if not all(re.search(r"\.eq\(\s*['\"]" + re.escape(k) + r"['\"]", chain) for k in need):
+            out.append(f"{table} at line {node.lineno}")
     return out
 
 
@@ -88,11 +96,11 @@ def unprivileged_writes(tables: frozenset) -> list[str]:
     return bad
 
 
-def unscoped(tables: frozenset) -> list[str]:
+def unscoped(tables: frozenset, keys: dict | None = None) -> list[str]:
     bad = []
     for rel, text in runtime_sources():
         if any(t in text for t in tables):
-            bad += [f"{rel}: {hit}" for hit in unscoped_updates_and_deletes(text, tables)]
+            bad += [f"{rel}: {hit}" for hit in unscoped_updates_and_deletes(text, tables, keys)]
     return bad
 
 

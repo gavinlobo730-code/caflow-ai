@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from core.ist_clock import fy_bounds
 from domain.accounting import cost_centre as rule
 from domain.reporting.model import EXPENSE_TYPES, INCOME_TYPES
@@ -107,7 +108,7 @@ def create_centre(db, firm_id: str, client_id: str, data: dict) -> dict:
     # price, and it is the same one `domain/tally/party_identifiers` records
     # paying for its two inserts. A test asserts the literal and `row` name the
     # same six keys, so they cannot drift.
-    return (db.table("cost_centres").insert({
+    return (privileged_for(db).table("cost_centres").insert({
         "firm_id": firm_id,
         "client_id": client_id,
         "code": code,
@@ -136,7 +137,7 @@ def update_centre(db, firm_id: str, client_id: str, centre_id: str, data: dict) 
                 r.update({k: v for k, v in patch.items() if k != "updated_at"})
                 return r
         raise ValueError("No such cost centre.")
-    return (db.table("cost_centres").update(patch)
+    return (privileged_for(db).table("cost_centres").update(patch)
             .eq("id", centre_id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute().data or [{"id": centre_id}])[0]
 
