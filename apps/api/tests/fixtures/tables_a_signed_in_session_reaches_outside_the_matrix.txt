@@ -28,7 +28,7 @@ audit_log	read
 auto_journal_suggestions	write
 automation_executions	read
 automation_rules	read
-billing_schedules	write
+billing_schedules	read
 bills_of_entry	read
 capital_gain_reinvestments	read
 capital_gains	read
@@ -147,13 +147,13 @@ purchase_orders	read
 rcm_documents	read
 reconciliation_findings	read
 reconciliation_runs	read
-recurring_invoice_runs	write
-recurring_invoice_template_lines	write
+recurring_invoice_runs	read
+recurring_invoice_template_lines	read
 recurring_invoice_templates	read
-recurring_journal_runs	write
+recurring_journal_runs	read
 recurring_journal_templates	read
-recurring_purchase_bill_runs	write
-recurring_purchase_bill_template_lines	write
+recurring_purchase_bill_runs	read
+recurring_purchase_bill_template_lines	read
 recurring_purchase_bill_templates	read
 related_party_loans	write
 reminder_settings	read

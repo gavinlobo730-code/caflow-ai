@@ -23,6 +23,7 @@
 # 597 closes schedule_iii_ratio_explanations, schedule_iii_ratio_inputs, schedule_iii_unbilled_reviews, account_budgets, cost_centres, year_end_checklist_items, year_end_checklists, year_end_reviews and notes_to_accounts (POST-A-008, the accounting tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
 # 598 closes capital_work_in_progress, cwip_additions, godowns, inventory_batches and purchase_bill_landed_costs (POST-A-008, the stock tranche): the API writes all five with its privileged client since the change that shipped before it.
 # 599 closes client_lifecycle_events, client_period_metrics, health_overrides, client_health_scores, health_dimension_scores and client_health_overrides (POST-A-008, the health tranche): the API writes the first three with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
+# 600 closes billing_schedules, recurring_invoice_template_lines, recurring_purchase_bill_template_lines, recurring_invoice_runs, recurring_purchase_bill_runs and recurring_journal_runs (POST-A-008, the recurring-billing tranche): the API writes all six with its privileged client since the change that shipped before it.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -60,6 +61,7 @@ bank_statement_column_mappings
 bank_statements
 bank_transaction_splits
 bank_transactions
+billing_schedules
 bills_of_entry
 bonus_declarations
 bonus_disqualifications
@@ -209,9 +211,14 @@ receipt_allocations
 receipts
 reconciliation_findings
 reconciliation_runs
+recurring_invoice_runs
+recurring_invoice_template_lines
 recurring_invoice_templates
+recurring_journal_runs
 recurring_journal_template_lines
 recurring_journal_templates
+recurring_purchase_bill_runs
+recurring_purchase_bill_template_lines
 recurring_purchase_bill_templates
 reminder_settings
 retainer_logs
