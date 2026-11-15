@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from models.common import api_response
 from core.permissions import rbac
+from core.db_provider import privileged_for
 # M2 audit finding: list_checklist and update_checklist_item resolved their
 # engagement by firm_id alone (live mode, via _fetch_engagement_db, now
 # removed) or not at all (mock mode — _MOCK_CHECKLIST was keyed purely by
@@ -131,7 +132,7 @@ def list_checklist(
         # then re-read: two first reads race (the dashboard and the Checklist
         # tab both call this), and a plain insert let both seed, leaving 24
         # items. Whichever loses the race inserts nothing and reads the winner's.
-        db.table("year_end_checklist_items").upsert(
+        privileged_for(db).table("year_end_checklist_items").upsert(
             rows_to_insert, on_conflict="engagement_id,item_code",
             ignore_duplicates=True).execute()
         existing = (
@@ -203,9 +204,11 @@ def update_checklist_item(
         updates["notes"] = data.notes
 
     updated = (
-        db.table("year_end_checklist_items")
+        privileged_for(db).table("year_end_checklist_items")
         .update(updates)
         .eq("id", item_id)
+        .eq("engagement_id", engagement_id)
+        .eq("firm_id", current_user["firm_id"])
         .execute()
         .data[0]
     )
