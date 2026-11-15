@@ -453,7 +453,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED AS HAVING RECORDED A NO-PE DECLARATION, AND THE SUPPLIER FORM SAYS WHO
 - A DEDUCTION TYPED ON THE TDS SCREEN MAY NAME THE SUPPLIER IT WAS PAID TO, AND IS THEN COUNTED IN THAT SUPPLIER'S YEAR WITH ITS BILLS AND ADVANCES
 
-### `docs/design-record/tenancy-and-security.md` (102 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (103 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -557,6 +557,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PRACTICE'S OWN WORK TABLES ARE WRITTEN BY THE API ONLY
 - THE NOTIFICATION AND MESSAGE TABLES ARE WRITTEN BY THE API ONLY
 - THE TALLY MIGRATION TABLES ARE WRITTEN BY THE API ONLY
+- THE ENGAGEMENT LETTERS ARE WRITTEN BY THE API ONLY
 ### `docs/design-record/workflow-and-team.md` (3 entries): Workflow engine slices and the Team screen's permission notice
 
 - MIGRATION 481 IS THE SCHEMA FOR BOTH WORKFLOW HALVES, AND NOTHING READS IT YET

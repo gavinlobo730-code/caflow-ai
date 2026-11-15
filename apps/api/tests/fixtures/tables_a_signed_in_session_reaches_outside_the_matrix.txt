@@ -67,7 +67,7 @@ email_templates	read
 engagement_events	read
 engagement_letters	read
 engagement_templates	read
-engagements	write
+engagements	read
 entities	read
 entity_client_links	read
 entity_relationships	read

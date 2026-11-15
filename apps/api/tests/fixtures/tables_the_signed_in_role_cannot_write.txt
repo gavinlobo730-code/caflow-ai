@@ -32,6 +32,7 @@
 # 606 closes time_entries, task_recurring_configs, reminders and knowledge_article_versions (POST-A-008, the practice tranche): the API writes all four with its privileged client since the change that shipped before it.
 # 607 closes notifications, portal_messages and user_notification_preferences (POST-A-008, the messages tranche): the API writes all three with its privileged client since the change that shipped before it.
 # 608 closes tally_migration_jobs and tally_migration_items (POST-A-008, the Tally tranche): the API writes both with its privileged client since the change that shipped before it.
+# 609 closes engagements (POST-A-008, the engagements tranche): the API writes it with its privileged client since the change that shipped before it, the last table outside the access matrix a signed-in session could write.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -126,6 +127,7 @@ email_templates
 engagement_events
 engagement_letters
 engagement_templates
+engagements
 entities
 entity_addresses
 entity_client_links
