@@ -290,6 +290,24 @@ def test_webhook_capture_creates_receipt_once_and_reduces_ar():
     assert db.data["customer_payment_links"][0]["status"] == "paid"
 
 
+def test_every_payment_update_names_the_firm_and_the_client_of_its_row():
+    """POST-A-008: the payment tables are written with the privileged client, so
+    each update must name the firm and the client as well as the row's id (the
+    link's activation, the payment's claim and capture, the link's 'paid')."""
+    db = FakeDB(); _seed_invoice(db, total=100000, paid=0)
+    made = []
+    orig = db.table
+    db.table = lambda name: made.append((name, orig(name))) or made[-1][1]
+    link = ps.create_link(db, FIRM, INVOICE, actor={"auth_user_id": "u1", "email": "x"})
+    headers, body = _captured(db, link, event_id="evt-1", payment_id="pay-1")
+    assert ps.process_webhook(db, "mock", headers, body)["status"] == "captured"
+    updates = [(name, dict(q._filters)) for name, q in made
+               if q._op == "update" and name in {"customer_payment_links", "customer_payments"}]
+    assert len(updates) == 4, updates  # link activated, claim, capture, link paid
+    for name, filters in updates:
+        assert filters.get("firm_id") == FIRM and filters.get("client_id") == CLIENT, (name, filters)
+
+
 def test_webhook_duplicate_event_is_ignored():
     db = FakeDB(); _seed_invoice(db, total=100000, paid=0)
     link = ps.create_link(db, FIRM, INVOICE, actor={"auth_user_id": "u1", "email": "x"})
