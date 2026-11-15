@@ -318,11 +318,12 @@ def discard_job(
         _MOCK_ITEMS.pop(job_id, None)
         return api_response(True, {"deleted": True})
 
+    from core.db_provider import privileged_for
     sb = _supabase()
-    sb.table("tally_migration_items").delete().eq("job_id", job_id).eq(
+    privileged_for(sb).table("tally_migration_items").delete().eq("job_id", job_id).eq(
         "firm_id", current_user["firm_id"]
     ).execute()
-    sb.table("tally_migration_jobs").delete().eq("id", job_id).eq(
+    privileged_for(sb).table("tally_migration_jobs").delete().eq("id", job_id).eq(
         "firm_id", current_user["firm_id"]
     ).execute()
     return api_response(True, {"deleted": True})
