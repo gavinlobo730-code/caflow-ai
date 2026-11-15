@@ -25,6 +25,7 @@
 # 599 closes client_lifecycle_events, client_period_metrics, health_overrides, client_health_scores, health_dimension_scores and client_health_overrides (POST-A-008, the health tranche): the API writes the first three with its privileged client since the change that shipped before it, and nothing reads or writes the last three.
 # 600 closes billing_schedules, recurring_invoice_template_lines, recurring_purchase_bill_template_lines, recurring_invoice_runs, recurring_purchase_bill_runs and recurring_journal_runs (POST-A-008, the recurring-billing tranche): the API writes all six with its privileged client since the change that shipped before it.
 # 601 closes invoice_deliveries and customer_statement_deliveries (POST-A-008, the deliveries tranche): the API writes both with its privileged client since the change that shipped before it.
+# 602 closes msme_payments, msme_vendors, retainer_clients, suppliers and ledger_balances (POST-A-008, the unwritten tables): nothing in the API, the browser or a database function writes them.
 account_budgets
 account_group_mappings
 account_period_balances
@@ -173,7 +174,10 @@ lead_activities
 lead_contacts
 leads
 leave_balances
+ledger_balances
 login_events
+msme_payments
+msme_vendors
 notes_to_accounts
 party_credit_balances
 party_credit_ledger
@@ -224,6 +228,7 @@ recurring_purchase_bill_runs
 recurring_purchase_bill_template_lines
 recurring_purchase_bill_templates
 reminder_settings
+retainer_clients
 retainer_logs
 salary_structures
 sales_debit_note_allocations
@@ -243,6 +248,7 @@ self_assessment_challans
 statutory_remittances
 stock_count_lines
 stock_count_sessions
+suppliers
 task_dependencies
 task_escalations
 task_tags
