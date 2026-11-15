@@ -10,7 +10,7 @@
 # or name it here and raise the ceiling in the test, which a reviewer sees); a table that leaves the matrix's blind spot (it is added
 # to the matrix, or no signed-in session reaches it any more) is deleted from here; and a `read` table that gains a write is moved
 # to `write` by hand, so a widened grant is a visible diff.
-account_budgets	write
+account_budgets	read
 account_group_mappings	read
 account_period_balances	read
 advance_tax_payments	read
@@ -45,7 +45,7 @@ client_profiles	read
 client_sales_invoice_lines	read
 client_statutory_identity	read
 client_year_locks	read
-cost_centres	write
+cost_centres	read
 credit_note_allocations	read
 credit_note_lines	read
 customer_payment_events	write
@@ -124,7 +124,7 @@ ledger_balances	write
 login_events	read
 msme_payments	write
 msme_vendors	write
-notes_to_accounts	write
+notes_to_accounts	read
 notifications	write
 onboarding_checklist_steps	write
 onboarding_checklists	write
@@ -166,9 +166,9 @@ sales_order_lines	read
 sales_orders	read
 sales_quotation_lines	read
 sales_quotations	read
-schedule_iii_ratio_explanations	write
-schedule_iii_ratio_inputs	write
-schedule_iii_unbilled_reviews	write
+schedule_iii_ratio_explanations	read
+schedule_iii_ratio_inputs	read
+schedule_iii_unbilled_reviews	read
 scheduler_runs	read
 self_assessment_challans	read
 stock_count_lines	read
@@ -200,6 +200,6 @@ workflow_schedules	read
 workflow_steps	read
 workflow_templates	read
 workflows	read
-year_end_checklist_items	write
-year_end_checklists	write
-year_end_reviews	write
+year_end_checklist_items	read
+year_end_checklists	read
+year_end_reviews	read

@@ -38,6 +38,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = API_ROOT / "migrations"
@@ -397,7 +398,10 @@ def test_an_update_to_another_firms_firm_level_account_is_refused_by_the_firm_cl
 def test_the_check_sees_an_account_that_row_security_hides_from_the_signed_in_writer(db):
     """The two trigger functions are SECURITY DEFINER because the writer cannot see another firm's account. As superuser nothing is ever
     hidden, so a version without it passed. Here the writer is a signed-in Partner of firm G: the control shows the account really is
-    invisible to them, and the budget naming it is still refused in the trigger's words (not accepted, and not an opaque foreign-key error)."""
+    invisible to them, and the budget naming it is still refused in the trigger's words (not accepted, and not an opaque foreign-key error).
+    Migration 597 (POST-A-008) took the signed-in write on `account_budgets` away, so without it handed back the privilege would refuse first
+    and the trigger would not be asked; the trigger is the second lock, measured here with the write handed back on this throwaway copy."""
+    assert hand_back(db, ["account_budgets"]) == ["account_budgets"]
     hidden = _signed_in_partner(db, f"SELECT count(*) FROM public.chart_of_accounts WHERE id = '{A_F}';")
     assert hidden.returncode == 0 and hidden.stdout.strip() == "0", f"this test's premise: firm F's account is invisible to firm G's Partner ({hidden.stdout!r} {hidden.stderr!r})"
     r = _signed_in_partner(db, f"INSERT INTO public.account_budgets (firm_id, client_id, account_id, fy) VALUES ('{G}', '{C_G}', '{A_F}', '2026-27');")
