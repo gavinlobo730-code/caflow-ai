@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from domain.tally import party_identifiers
 from core import db_provider
+from core.db_provider import privileged_for
 from core.db_paging import fetch_all
 from domain.money_sentence import rupee_text
 
@@ -219,7 +220,7 @@ def create_migration_job(
         "is_dry_run": True,
         "created_by": created_by,
     }
-    res = sb.table("tally_migration_jobs").insert(row).execute()
+    res = privileged_for(sb).table("tally_migration_jobs").insert(row).execute()
     return res.data[0] if res.data else row
 
 
@@ -455,8 +456,8 @@ def save_migration_items(
     # Chunked: one insert carrying a whole Tally export is a single very large
     # request body, and a failure anywhere in it loses the lot.
     for i in range(0, len(rows), _INSERT_CHUNK):
-        sb.table("tally_migration_items").insert(rows[i:i + _INSERT_CHUNK]).execute()
-    sb.table("tally_migration_jobs").update({
+        privileged_for(sb).table("tally_migration_items").insert(rows[i:i + _INSERT_CHUNK]).execute()
+    privileged_for(sb).table("tally_migration_jobs").update({
         "total_items": len(items),
         "status": "previewing",
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -580,7 +581,7 @@ def execute_import(
         # emptied here too: a re-run that is going fine must not keep showing
         # the sentence about why the last one did not. The items keep their
         # own statuses, which is what makes the run resumable.
-        sb.table("tally_migration_jobs").update({
+        privileged_for(sb).table("tally_migration_jobs").update({
             "status": "importing",
             "import_audit_log": [],
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -619,7 +620,7 @@ def execute_import(
             # created_record_type is what rollback_migration deletes from —
             # it was never written before, making every rollback a silent
             # no-op (R2.2 investigation finding).
-            sb.table("tally_migration_items").update({
+            privileged_for(sb).table("tally_migration_items").update({
                 "status": "imported",
                 "created_record_id": created_id,
                 "created_record_type": created_type,
@@ -631,7 +632,7 @@ def execute_import(
             # APIError payload with the reason buried inside a dict repr.
             reason = document_failure_detail(
                 e, action=f"import this {item.get('item_type') or 'item'}")
-            sb.table("tally_migration_items").update({
+            privileged_for(sb).table("tally_migration_items").update({
                 "status": "failed",
                 "error_message": reason,
             }).eq("id", item["id"]).eq("firm_id", firm_id).execute()
@@ -648,7 +649,7 @@ def execute_import(
         # item, so progress reporting cannot itself double the round trips.
         if not is_dry_run and processed % _PROGRESS_EVERY == 0:
             try:
-                sb.table("tally_migration_jobs").update({
+                privileged_for(sb).table("tally_migration_jobs").update({
                     "imported_items": imported,
                     "failed_items": failed,
                     "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -684,7 +685,7 @@ def execute_import(
 
     # The payload stays a LITERAL: tests/test_backend_columns_exist_pg counts a
     # payload reached through a name as unreadable, against an exact budget.
-    sb.table("tally_migration_jobs").update({
+    privileged_for(sb).table("tally_migration_jobs").update({
         "status": final_status,
         "imported_items": imported,
         "failed_items": failed,
@@ -906,7 +907,7 @@ def rollback_migration(firm_id: str, job_id: str, actor_id: str) -> dict:
             except Exception as e:
                 _logger.warning("Rollback failed for %s %s: %s", rec_type, rec_id, e)
 
-    sb.table("tally_migration_jobs").update({
+    privileged_for(sb).table("tally_migration_jobs").update({
         "status": "rolled_back",
         "rolled_back_at": datetime.now(timezone.utc).isoformat(),
         "rolled_back_by": actor_id,
