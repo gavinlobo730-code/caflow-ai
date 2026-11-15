@@ -9,6 +9,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/dates/format";
+import { countsAsActive, hasJoined, memberBadge, switchActionLabel, type MemberBadge } from "@/lib/team/memberState";
 import { inviteEmailNotSentMessage, inviteEmailProblem } from "@/lib/auth/authErrorMessage";
 import { PageHeader } from "@/components/ui/page-header";
 import { Modal } from "@/components/ui/modal";
@@ -89,10 +90,21 @@ interface TeamMember {
   email: string;
   role: Role;
   is_active?: boolean;
+  /** The server's word for the member (PRE-A-020): active, invited, invite_expired or inactive. */
+  member_state?: string;
+  invite_expires_at?: string | null;
   created_at?: string;
   auth_user_id?: string;
   firm_id?: string;
 }
+
+/** The badge's colours by tone; the words come from `lib/team/memberState`. */
+const BADGE_TONE: Record<MemberBadge["tone"], string> = {
+  ready: "bg-state-ready-surface text-state-ready",
+  attention: "bg-state-attention-surface text-state-attention",
+  muted: "bg-ps-muted text-ps-label",
+  unknown: "bg-ps-muted text-ps-label",
+};
 
 const ROLES: Role[] = ["Partner", "Manager", "Executive", "Reviewer"];
 
@@ -302,6 +314,7 @@ interface ActionsMenuProps {
 function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: ActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const isActive = member.is_active !== false;
+  const switchLabel = switchActionLabel(member);
 
   return (
     <div className="relative">
@@ -338,7 +351,7 @@ function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: Act
               }`}
             >
               <Users className="w-3.5 h-3.5" />
-              {isActive ? "Deactivate" : "Activate"}
+              {switchLabel}
             </button>
           </div>
         </>
@@ -472,7 +485,7 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
     return () => { cancelled = true; };
   }, []);
 
-  const activeMembers = members.filter(m => m.is_active !== false);
+  const activeMembers = members.filter(countsAsActive);
 
   // One request per active member. A firm has a handful of staff, so this is
   // proportional to the ANSWER rather than to anything that grows — the rule
@@ -747,6 +760,8 @@ export default function TeamPage() {
             email: currentUserRow.email ?? session.user.email ?? "",
             role: (currentUserRow.role as Role) ?? "Reviewer",
             is_active: currentUserRow.is_active !== false,
+            // The person reading this is signed in, so they have joined.
+            member_state: currentUserRow.is_active === false ? "inactive" : "active",
             created_at: currentUserRow.created_at,
             auth_user_id: authUserId,
             firm_id: currentUserRow.firm_id,
@@ -777,6 +792,8 @@ export default function TeamPage() {
         email: r.email ?? "",
         role: (r.role as Role) ?? "Reviewer",
         is_active: r.is_active !== false,
+        member_state: r.member_state,
+        invite_expires_at: r.invite_expires_at ?? null,
         created_at: r.created_at,
         auth_user_id: r.auth_user_id,
         firm_id: r.firm_id,
@@ -833,7 +850,7 @@ export default function TeamPage() {
   }
 
   // Summary counts
-  const activeMembers = members.filter(m => m.is_active !== false);
+  const activeMembers = members.filter(countsAsActive);
   const partners = members.filter(m => m.role === "Partner").length;
   const managers = members.filter(m => m.role === "Manager").length;
   const articlesStaff = members.filter(m => m.role === "Executive" || m.role === "Reviewer").length;
@@ -981,7 +998,8 @@ export default function TeamPage() {
                       .map(n => n[0])
                       .join("")
                       .toUpperCase();
-                    const joinedDate = formatDate(member.created_at);
+                    const joinedDate = hasJoined(member) ? formatDate(member.created_at) : "—";
+                    const badge = memberBadge(member, formatDate);
 
                     return (
                       <tr key={member.id} className={`hover:bg-ps-bg/50 ${!isActive ? "opacity-60" : ""}`}>
@@ -1012,8 +1030,8 @@ export default function TeamPage() {
                           </span>
                         </td>
                         <td className="px-3 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-state-ready-surface text-state-ready" : "bg-ps-muted text-ps-label"}`}>
-                            {isActive ? "Active" : "Inactive"}
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${BADGE_TONE[badge.tone]}`}>
+                            {badge.label}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-xs text-ps-label">{joinedDate}</td>

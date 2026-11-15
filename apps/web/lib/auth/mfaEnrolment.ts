@@ -27,6 +27,12 @@ export interface MfaPolicy {
   roles: string[];
   /** mfa_guard would refuse THIS caller at aal1. */
   appliesToCaller: boolean;
+  /**
+   * What the guard locks for THIS caller, in one sentence the server built from their own permissions
+   * (PRE-A-021: a fixed sentence told a Manager that Billing, which their role never reaches, opens once they set
+   * up an authenticator). Null when the server sent none: an older backend, or a caller it locks nothing for.
+   */
+  lockedSentence: string | null;
 }
 
 /** The served payload, or null when it is not one. */
@@ -35,7 +41,8 @@ export function parseMfaPolicy(raw: unknown): MfaPolicy | null {
   const o = raw as Record<string, unknown>;
   if (typeof o.required !== "boolean" || typeof o.applies_to_caller !== "boolean") return null;
   const roles = Array.isArray(o.roles) ? o.roles.filter((r): r is string => typeof r === "string") : [];
-  return { required: o.required, roles, appliesToCaller: o.applies_to_caller };
+  const lockedSentence = typeof o.locked_sentence === "string" && o.locked_sentence.trim() ? o.locked_sentence : null;
+  return { required: o.required, roles, appliesToCaller: o.applies_to_caller, lockedSentence };
 }
 
 export interface EnrolmentState {

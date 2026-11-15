@@ -34,6 +34,7 @@
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 import { openOverlay } from "@/lib/ui/overlayStack";
+import { inBody } from "@/lib/ui/inBody";
 
 export type ConfirmOptions = {
   title?: string;
@@ -204,7 +205,8 @@ export function ConfirmDialogHost() {
 
   if (!state) return null;
 
-  return (
+  // PRE-A-022: drawn in the body, so no parent's spacing, transform or filter can move the window-covering layer.
+  return inBody(
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-brand-dark/60 p-4 print:hidden">
       <div
         role="alertdialog"

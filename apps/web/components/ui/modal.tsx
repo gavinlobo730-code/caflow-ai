@@ -21,6 +21,7 @@ import { firstFormField, trapTabKey } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
 import { escapeBelongsToAnOpenPicker, openOverlay } from "@/lib/ui/overlayStack";
+import { inBody } from "@/lib/ui/inBody";
 
 export function Modal({
   title,
@@ -83,7 +84,8 @@ export function Modal({
     };
   }, []);
 
-  return (
+  // PRE-A-022: drawn in the body, so no parent's spacing, transform or filter can move the window-covering layer.
+  return inBody(
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
       <div

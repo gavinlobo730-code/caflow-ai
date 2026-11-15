@@ -103,8 +103,8 @@ the product's source. Cut from the bottom if time is short: first the Schedule I
 ## 5. Questions that will come
 
 - "Does it file?" and "Can I use this for my practice tomorrow?" Section 2, word for word.
-- "Where is our data?" The database is in Supabase's Mumbai region (the owner confirms the region in the
-  dashboard: PRE-C-006). The server that does the computing runs in Singapore. The AI features send content
+- "Where is our data?" The database is in Supabase's Mumbai region (the owner read the region in the
+  Supabase dashboard on 16 November 2026; read it again before each pricing or security review). The server that does the computing runs in Singapore. The AI features send content
   to AI providers outside India: Groq for text and for PDFs with a text layer, Google Gemini for photographs
   and scanned pages. In a chat, anything shaped like a PAN or a GSTIN is replaced before the request leaves;
   names typed into a chat, and documents sent for reading, go as they are.

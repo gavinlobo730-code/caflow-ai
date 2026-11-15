@@ -65,7 +65,13 @@ def test_with_mfa_off_nobody_is_covered(monkeypatch):
 def test_with_mfa_on_the_default_roles_are_partner_and_manager(monkeypatch):
     monkeypatch.setenv("REQUIRE_MFA", "true")
     monkeypatch.delenv("MFA_REQUIRED_ROLES", raising=False)
-    assert _ask("Partner") == {"required": True, "roles": ["Manager", "Partner"], "applies_to_caller": True}
+    answer = _ask("Partner")
+    # Since PRE-A-021 the answer also carries what the guard locks for THIS caller (`locked_areas`,
+    # `locked_sentence`), held by test_the_mfa_banner_names_only_what_the_caller_reaches.py; the policy's own
+    # three keys are compared exactly, as before.
+    assert {k: answer[k] for k in ("required", "roles", "applies_to_caller")} == {
+        "required": True, "roles": ["Manager", "Partner"], "applies_to_caller": True}
+    assert set(answer) == {"required", "roles", "applies_to_caller", "locked_areas", "locked_sentence"}
     assert _ask("Manager")["applies_to_caller"] is True
     for role in ("Executive", "Reviewer"):
         assert _ask(role)["applies_to_caller"] is False, role

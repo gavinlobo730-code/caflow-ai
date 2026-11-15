@@ -140,9 +140,13 @@ export default function PrivacyPage() {
             </li>
           ))}
         </ul>
+        {/* There is no public contact yet (PRE-A-026), so this says so rather than
+            sending a person with a question about their data to a page with no
+            address on it; the Support page lists the address once there is one. */}
         <p className="mt-10 max-w-[60ch] text-[15px] leading-relaxed">
+          There is no public email address or phone line yet.{" "}
           <Link href="/support" className="font-semibold text-brand underline underline-offset-2 hover:text-brand-dark">
-            For a question about your data, see how to reach us on the Support page.
+            When there is one, the Support page lists it.
           </Link>
         </p>
       </Panel>

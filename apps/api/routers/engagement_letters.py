@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 from datetime import datetime, timezone, date
+import re
 import logging
 import os
 import secrets
@@ -441,8 +442,21 @@ class RejectIn(BaseModel):
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+#: A rupee sign written immediately before the fee placeholder, in any of the spellings a template may carry
+#: (the glyph, its two HTML entities, "Rs", "Rs." or "INR", with or without a space). `_format_fee` already
+#: writes the sign, so one written beside the placeholder prints twice (PRE-A-025).
+_SIGN_BEFORE_FEE = re.compile(r"(?:₹|&#8377;|&#x20b9;|\bRs\.?|\bINR)\s*(?=\{\{engagement_fee\}\})", re.IGNORECASE)
+
+
 def _render_merge_fields(content: str, fields: dict) -> str:
-    """Replace {{key}} placeholders with their values. Unknown keys are left blank."""
+    """Replace {{key}} placeholders with their values. Unknown keys are left blank.
+
+    PRE-A-025: the fee field already carries its rupee sign, and a template stored before that was so (every
+    firm's library made before the fix still reads '₹{{engagement_fee}}'), or one a CA writes with a sign of
+    their own, printed '₹₹4,000' on the letter a client signs. A sign immediately before the placeholder is
+    dropped here, so no stored or typed template can double it; nothing else in the template is touched.
+    """
+    content = _SIGN_BEFORE_FEE.sub("", content)
     for key, value in fields.items():
         content = content.replace("{{" + key + "}}", str(value or ""))
     return content

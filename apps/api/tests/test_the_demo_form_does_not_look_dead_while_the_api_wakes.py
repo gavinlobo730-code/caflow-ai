@@ -41,6 +41,8 @@ REPO = Path(__file__).resolve().parents[3]
 MARKETING = REPO / "apps" / "marketing"
 FORM = MARKETING / "components" / "DemoForm.tsx"
 WAIT = MARKETING / "lib" / "demoRequestWait.ts"
+SITE = MARKETING / "lib" / "site.ts"
+DEMO_PAGE = MARKETING / "app" / "(site)" / "demo" / "page.tsx"
 ROUTER = REPO / "apps" / "api" / "routers" / "demo_request.py"
 
 #: The cold start the finding measured on Render's free tier, in milliseconds.
@@ -130,7 +132,7 @@ def test_the_wait_is_announced_in_a_live_region_below_the_button():
 
 def test_the_email_fallback_carries_what_was_typed():
     form = _code(FORM)
-    assert "buildDemoMailto(CONTACT.email, payload)" in form, "the link must be built from the typed payload"
+    assert "buildDemoMailto(contactEmail, payload)" in form, "the link must be built from the typed payload"
     # Both places the address is offered use the prefilled link, not a bare address.
     assert form.count("href={mailto}") == 2, "the slow notice and the failure notice must both use the prefilled link"
 
@@ -290,3 +292,39 @@ def test_a_very_long_message_is_shortened_so_the_link_survives_and_says_so(ran):
     assert "shortened" in long["body"]
     assert long["body"].count("word") > 50, "it is shortened, not discarded"
     assert "CA Priya Raghavan" in long["body"], "the identifying fields are never the ones dropped"
+
+
+# ── PRE-A-026: the form is shown only when there is an address to fall back to ─────────────────
+
+def test_the_form_needs_an_address_and_the_page_shows_it_only_when_bookings_are_open():
+    """Every failure path in the form hands the visitor an email address, and until 16-11-2026 that address
+    (hello@practicesync.com) did not exist while the form mailed requests to an inbox nobody read. So the
+    form takes the address as a required prop, the Demo page renders it only when `DEMO_BOOKINGS_OPEN`, and
+    `DEMO_BOOKINGS_OPEN` is derived from the one contact setting, so the form cannot open without a mailbox."""
+    form, page, site = _code(FORM), _code(DEMO_PAGE), _code(SITE)
+    assert re.search(r"export function DemoForm\(\{\s*contactEmail\s*\}:\s*\{\s*contactEmail:\s*string\s*\}\)", form), (
+        "the form must take the fallback address as a required string")
+    assert "CONTACT" not in form, "the form reads the site's contact setting itself instead of being handed an address"
+    assert re.search(r"export const DEMO_BOOKINGS_OPEN\s*=\s*CONTACT\.email\s*!==\s*null", site), (
+        "bookings must open with the mailbox and not separately from it")
+    assert re.search(r"DEMO_BOOKINGS_OPEN\s*&&\s*CONTACT\.email\s*\?\s*\(\s*<DemoForm contactEmail=\{CONTACT\.email\}", page), (
+        "the Demo page renders the form only while bookings are open")
+    assert "Demo bookings are not open yet." in page, "the closed state says so in words"
+
+
+def test_no_page_offers_an_address_or_a_number_that_does_not_exist():
+    """The address and the number the site used to print were nobody's. While `CONTACT.email` is null no
+    marketing file may carry a literal mailbox or a phone number, and nothing reads a phone setting."""
+    site = _code(SITE)
+    assert re.search(r"export const CONTACT:\s*\{\s*email:\s*string \| null\s*\}\s*=\s*\{\s*email:\s*(null|\"[^\"]+\")\s*\}", site), (
+        "CONTACT must hold one optional mailbox and no phone")
+    if not re.search(r"email:\s*null", site):
+        pytest.skip("a mailbox is set: the pages may print it")
+    offenders = []
+    for path in sorted((MARKETING / "app").rglob("*.tsx")) + sorted((MARKETING / "components").rglob("*.tsx")):
+        code = _code(path)
+        # The two that were printed, any tel: link, and the phone setting that held one. Not any +91 number: the
+        # demo form's own phone box shows an example the visitor overwrites.
+        if re.search(r"[\w.+-]+@practicesync\.com|4718\s*2200|tel:|CONTACT\.phone", code):
+            offenders.append(str(path.relative_to(MARKETING)))
+    assert not offenders, f"these files print an address or a number nobody answers: {offenders}"

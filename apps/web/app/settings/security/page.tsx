@@ -54,7 +54,7 @@ export default function SecuritySettingsPage() {
   useEffect(() => {
     setSetup(new URLSearchParams(window.location.search).get("setup") === "1");
   }, []);
-  const { mustEnrolMfa } = useAuth();
+  const { mustEnrolMfa, mfaLockedSentence } = useAuth();
   const lead = setupPageLead(setup, mustEnrolMfa);
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-5">
@@ -80,10 +80,11 @@ export default function SecuritySettingsPage() {
           {lead === "welcome" && (
           <Callout tone="note" title="Welcome — one last step">
             <p className="text-sm">
-              Your practice holds clients&apos; financial records, so Team, Payroll, Billing and firm
-              settings open only after you add an authenticator app (Google Authenticator, Authy,
-              1Password or similar). It takes about a minute: scan the code below, then enter the
-              6-digit number the app shows.
+              Your practice holds clients&apos; financial records, so some screens open only after you
+              add an authenticator app (Google Authenticator, Authy, 1Password or similar).
+              {/* What they are for THIS person is the server's sentence (PRE-A-021), never a fixed list. */}
+              {mfaLockedSentence ? <> {mfaLockedSentence}</> : null} It takes about a minute: scan the code
+              below, then enter the 6-digit number the app shows.
             </p>
           </Callout>
           )}

@@ -93,3 +93,15 @@ test("the setup page welcomes while enrolment is owed and offers a way on once i
   assert.equal(setupPageLead(false, false), null);
   assert.equal(SETUP_CONTINUE_HREF, onboardingCompletionTarget(false));
 });
+
+// PRE-A-021: the banner says what the guard locks for THIS caller, in the server's words, and nothing specific
+// when the server said nothing.
+test("the locked sentence arrives as served, and its absence is null rather than a fixed list", () => {
+  const p = parseMfaPolicy({ required: true, roles: ["Manager"], applies_to_caller: true,
+    locked_sentence: "Team, client assignments, Payroll, firm settings and your own profile stay locked until you set up an authenticator app." });
+  assert.equal(p?.lockedSentence?.startsWith("Team, client assignments"), true);
+  assert.equal(p?.lockedSentence?.includes("Billing"), false);
+  assert.equal(parseMfaPolicy({ required: true, applies_to_caller: true })?.lockedSentence, null);
+  assert.equal(parseMfaPolicy({ required: true, applies_to_caller: true, locked_sentence: "  " })?.lockedSentence, null);
+  assert.equal(parseMfaPolicy({ required: true, applies_to_caller: true, locked_sentence: 7 })?.lockedSentence, null);
+});

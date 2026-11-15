@@ -17,6 +17,7 @@
  */
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { inBody } from "@/lib/ui/inBody";
 import { trapTabKey } from "@/lib/ui/focusTrap";
 import { lockBodyScroll } from "@/lib/ui/scrollLock";
 import { closeAfterTheFocusedDateCommits } from "@/lib/dates/closeAfterDateCommit";
@@ -84,7 +85,8 @@ export function Drawer({
 
   if (!open) return null;
 
-  return (
+  // PRE-A-022: drawn in the body, so no parent's spacing, transform or filter can move the window-covering layer.
+  return inBody(
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} aria-hidden="true" />
       <div

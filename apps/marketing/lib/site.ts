@@ -118,7 +118,25 @@ export const NAV = [
   { label: "Resources", href: "/resources" },
 ];
 
-export const CONTACT = {
-  email: "hello@practicesync.com",
-  phone: "+91 80 4718 2200",
-};
+/**
+ * HOW A VISITOR REACHES US: nothing yet, on purpose (PRE-A-026, the owner's decision of 16-11-2026).
+ *
+ * This held `hello@practicesync.com` and `+91 80 4718 2200`. Neither existed: the domain is not owned and the
+ * number is nobody's, and both were printed in the footer, on the Support and Demo pages and in the demo
+ * form's thank-you panel. So there is no public email and no phone until a business mailbox exists
+ * (POST-B-346), and the site says so in words instead of offering an address that bounces.
+ *
+ * `email` is the ONE switch: when it is set, the footer's Contact link and the Demo page's "would rather
+ * write?" line come back, and the demo form opens (`DEMO_BOOKINGS_OPEN`), because the form's failure path
+ * hands the visitor this address and a form with nowhere to fall back to would lose the request silently.
+ * There is no phone field: a number goes here only when somebody answers it.
+ */
+export const CONTACT: { email: string | null } = { email: null };
+
+/**
+ * Whether the Book a demo form takes requests. It opens with the mailbox and not before: the owner decided on
+ * 16-11-2026 that until a business mailbox exists the form says bookings are not open and promises no reply,
+ * because a request mailed to an address nobody reads is a lead lost without anybody knowing (PRE-A-026).
+ * When the mailbox exists, `DEMO_REQUEST_TO` on the API is set to it as well (POST-B-346).
+ */
+export const DEMO_BOOKINGS_OPEN = CONTACT.email !== null;

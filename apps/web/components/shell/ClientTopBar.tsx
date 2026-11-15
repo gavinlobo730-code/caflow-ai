@@ -136,10 +136,12 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
       {/* DESIGN FIX (audit finding §1): with the firm rail gone inside a
           client, this bar was the only chrome a CA sees all day and it read
           as a different, thinner product — plain white, no brand colour,
-          against the navy rail everywhere else. A 3px brand-navy top edge
-          keeps this bar visually part of the same product without bringing
-          the clutter the rail's removal was meant to cut. */}
-      <header className="flex items-center gap-2 md:gap-3 h-12 px-2 md:px-4 bg-white border-b border-gray-200 border-t-[3px] border-t-brand">
+          against the navy rail everywhere else. A 3px brand-navy top edge was
+          added to tie it to the product; on the live site it read as a stray
+          line across the top of the window, and the owner decided on
+          16-11-2026 to remove it (PRE-A-022): the client's name and the All
+          clients button already say where the person is. */}
+      <header className="flex items-center gap-2 md:gap-3 h-12 px-2 md:px-4 bg-white border-b border-gray-200">
         {/* The way out. First control on the bar, because with the rail gone it
             is the only one, and a CA must never have to hunt for it.
             Bordered as its own pill (not just text) so it reads as clearly

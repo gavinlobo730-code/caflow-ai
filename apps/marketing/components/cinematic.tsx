@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Reveal, WordReveal, useInView } from "./motion";
 import { Button } from "./ui";
 import { ArrowRight, Check } from "./icons";
+import { DEMO_BOOKINGS_OPEN } from "@/lib/site";
 
 /**
  * The section primitives every marketing page is built from.
@@ -316,13 +317,19 @@ export function Checklist({ points, theme }: { points: string[]; theme: "dark" |
  * the product starts, meters or ends one, so the outlined button beside it points
  * at the products page (POST-B-264). This component is the single place that
  * pair is set, which is why changing the funnel was one edit rather than five.
+ *
+ * Until demo bookings open (`DEMO_BOOKINGS_OPEN`, PRE-A-026) the default
+ * subtitle says they are not open rather than promising a walkthrough nobody can
+ * book; the button still leads to the Demo page, which says the same.
  */
 export function CineCTA({
   titleLines = [
     { text: "Bring your whole practice" },
     { text: "into one place.", italic: true },
   ],
-  subtitle = "Book a demo and we'll walk a real client's month end to end.",
+  subtitle = DEMO_BOOKINGS_OPEN
+    ? "Book a demo and we'll walk a real client's month end to end."
+    : "Demo bookings are not open yet. The Demo page shows what one covers.",
   primary = { href: "/demo", label: "Book a demo" },
   secondary = { href: "/products", label: "See what it does" },
 }: {

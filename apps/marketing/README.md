@@ -28,7 +28,7 @@ Later (once a custom domain is attached):
 | `/`          | Home — hero, why, product overview, trust, testimonial, CTA       |
 | `/products`  | The six modules in detail + security                              |
 | `/pricing`   | Plans + FAQ                                                        |
-| `/support`   | Help channels + contact                                           |
+| `/support`   | Help channels, and how to reach us (no public contact yet)        |
 | `/resources` | Guides + Indian statutory compliance calendar                     |
 | `/privacy`   | "How we handle your data" — a factual summary, not the full notice |
 | `/access`    | **Login gateway** — two cards (Firm workspace / Client portal)    |
