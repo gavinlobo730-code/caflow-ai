@@ -72,8 +72,13 @@ def reminders(monkeypatch):
     monkeypatch.setattr(rm.reminders_repo, "find_by_id",
                         lambda rid: REMINDERS.get(rid))
     written = []
-    monkeypatch.setattr(rm.reminders_repo, "update",
-                        lambda rid, u: written.append(rid) or {**REMINDERS[rid], **u})
+    def update(rid, u, *, firm_id):
+        # The repository names the firm on the write now (POST-A-008: it is the privileged client's), so the
+        # route must hand it the caller's.
+        assert firm_id == USER["firm_id"], firm_id
+        written.append(rid)
+        return {**REMINDERS[rid], **u}
+    monkeypatch.setattr(rm.reminders_repo, "update", update)
     return written
 
 

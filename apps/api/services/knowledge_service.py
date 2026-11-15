@@ -26,6 +26,7 @@ from fastapi import HTTPException
 from services.internal_client_service import is_internal_client
 from services.numbering import is_unique_violation
 from core import db_provider
+from core.db_provider import privileged_for
 from core.db_paging import fetch_all, fetch_all_in
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -123,7 +124,7 @@ def create_article(current_user: dict, scope: str, title: str, content: str,
         "title": title, "current_version": 1, "tags": tags or [],
         "is_archived": False, "created_by": current_user.get("id"),
     }).execute().data[0]
-    db.table("knowledge_article_versions").insert({
+    privileged_for(db).table("knowledge_article_versions").insert({
         "firm_id": firm_id, "article_id": art["id"], "version": 1,
         "content": content or "", "changed_by": current_user.get("id"),
     }).execute()
@@ -154,7 +155,7 @@ def edit_article(current_user: dict, article_id: str, content: str) -> dict:
                    .eq("article_id", article_id).order("version", desc=True).limit(1).execute().data) or []
         v = next_version(max([art.get("current_version", 1)] + [int(r["version"]) for r in written]))
         try:
-            db.table("knowledge_article_versions").insert({
+            privileged_for(db).table("knowledge_article_versions").insert({
                 "firm_id": art["firm_id"], "article_id": article_id, "version": v,
                 "content": content or "", "changed_by": current_user.get("id"),
             }).execute()

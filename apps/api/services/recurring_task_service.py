@@ -10,6 +10,7 @@ from dateutil.relativedelta import relativedelta
 from typing import Optional
 from core.ist_clock import ist_today, ist_date_of
 from core import db_provider
+from core.db_provider import privileged_for
 
 
 logger = logging.getLogger("caflow.services")
@@ -228,10 +229,10 @@ def generate_due_recurring_tasks(firm_id: Optional[str] = None,
             # Calculate next due date and update config
             try:
                 next_date = _advance_date(date.fromisoformat(config["next_due_date"]), config["frequency"])
-                db.table("task_recurring_configs").update({
+                privileged_for(db).table("task_recurring_configs").update({
                     "next_due_date": next_date.isoformat(),
                     "last_generated_at": now,
-                }).eq("id", config["id"]).execute()
+                }).eq("id", config["id"]).eq("firm_id", config["firm_id"]).execute()
                 logger.info(f"Updated config {config['id']}: next_due_date = {next_date.isoformat()}")
             except Exception as e:
                 logger.error(f"Failed to update config {config['id']}: {str(e)}")
