@@ -27,6 +27,7 @@ from typing import Mapping, Optional
 from core.rate_window import SlidingWindowLimiter
 from domain import email_events
 from services import email_outbox_service
+from core.db_provider import privileged_for
 
 _logger = logging.getLogger("caflow.email_events")
 
@@ -65,16 +66,27 @@ def _refuse(reason: str, client_ip: Optional[str]) -> dict:
 
 
 def _mark_deliveries_bounced(db, message_id: str) -> int:
-    """Set `bounced` on the delivery rows that carry this provider message id."""
+    """Set `bounced` on the delivery rows that carry this provider message id.
+
+    The mail service names a message, not a firm, so the rows that carry it are READ first and each is updated by its own id, firm and
+    client (POST-A-008, the deliveries tranche): the write is made with the privileged client, which carries no row security, and an update
+    that names the firm and the client cannot reach a row the read did not find."""
+    w = privileged_for(db)
     n = 0
-    res = (db.table("invoice_deliveries")
-           .update({"status": "bounced", "error_message": _BOUNCED_MESSAGE})
-           .eq("provider_message_id", message_id).eq("status", "sent").execute())
-    n += len(res.data or [])
-    res = (db.table("customer_statement_deliveries")
-           .update({"status": "bounced", "error_message": _BOUNCED_MESSAGE})
-           .eq("provider_message_id", message_id).eq("status", "sent").execute())
-    n += len(res.data or [])
+    for row in (w.table("invoice_deliveries").select("id, firm_id, client_id")
+                .eq("provider_message_id", message_id).eq("status", "sent").execute().data or []):
+        res = (w.table("invoice_deliveries")
+               .update({"status": "bounced", "error_message": _BOUNCED_MESSAGE})
+               .eq("id", row["id"]).eq("firm_id", row["firm_id"]).eq("client_id", row["client_id"])
+               .eq("provider_message_id", message_id).eq("status", "sent").execute())
+        n += len(res.data or [])
+    for row in (w.table("customer_statement_deliveries").select("id, firm_id, client_id")
+                .eq("provider_message_id", message_id).eq("status", "sent").execute().data or []):
+        res = (w.table("customer_statement_deliveries")
+               .update({"status": "bounced", "error_message": _BOUNCED_MESSAGE})
+               .eq("id", row["id"]).eq("firm_id", row["firm_id"]).eq("client_id", row["client_id"])
+               .eq("provider_message_id", message_id).eq("status", "sent").execute())
+        n += len(res.data or [])
     return n
 
 
