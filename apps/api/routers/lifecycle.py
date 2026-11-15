@@ -1195,7 +1195,7 @@ def convert_lead(
                 }
                 for i, t in enumerate(_DEFAULT_ONBOARDING_TASKS)
             ]
-            db.table("onboarding_tasks").insert(tasks).execute()
+            privileged_for(db).table("onboarding_tasks").insert(tasks).execute()
         except Exception as e:
             warnings.append(f"Client created, but the onboarding workflow could not be created: {e}")
 
@@ -1336,7 +1336,7 @@ def create_proposal(
         )
         return api_response(True, row)
 
-    db.table("proposals").insert(row).execute()
+    privileged_for(db).table("proposals").insert(row).execute()
     timeline_service.log(
         data.lead_id or data.client_id or row["id"],
         "lifecycle", "Proposal Created",
@@ -1381,7 +1381,7 @@ def update_proposal_status(
     if not existing:
         raise HTTPException(status_code=404, detail="Proposal not found")
 
-    res = db.table("proposals").update(update).eq("id", proposal_id).eq("firm_id", current_user["firm_id"]).execute()
+    res = privileged_for(db).table("proposals").update(update).eq("id", proposal_id).eq("firm_id", current_user["firm_id"]).execute()
     timeline_service.log(
         existing.get("lead_id") or existing.get("client_id") or proposal_id,
         "lifecycle", f"Proposal {data.status}",
@@ -1480,7 +1480,7 @@ def create_onboarding(
 
     db.table("onboarding_workflows").insert(workflow).execute()
     if tasks:
-        db.table("onboarding_tasks").insert(tasks).execute()
+        privileged_for(db).table("onboarding_tasks").insert(tasks).execute()
 
     timeline_service.log(
         data.client_id, "lifecycle", "Onboarding Started",
@@ -1543,7 +1543,7 @@ def update_onboarding_task(
         update["completed_by"] = current_user.get("auth_user_id")
     if data.notes:
         update["description"] = data.notes  # schema uses description, not notes
-    db.table("onboarding_tasks").update(update).eq("id", task_id).execute()
+    privileged_for(db).table("onboarding_tasks").update(update).eq("id", task_id).eq("workflow_id", workflow_id).eq("firm_id", current_user["firm_id"]).execute()
 
     all_tasks = db.table("onboarding_tasks").select("status").eq("workflow_id", workflow_id).execute().data or []
     all_done = all(t["status"] in ("done", "skipped") for t in all_tasks)
@@ -1742,9 +1742,9 @@ def start_onboarding_checklist(
         )
         return api_response(True, _enrich_workflow(workflow, steps))
 
-    db.table("onboarding_checklists").insert(workflow).execute()
+    privileged_for(db).table("onboarding_checklists").insert(workflow).execute()
     if steps:
-        db.table("onboarding_checklist_steps").insert(steps).execute()
+        privileged_for(db).table("onboarding_checklist_steps").insert(steps).execute()
 
     timeline_service.log(
         data.client_id, "lifecycle", "Checklist Onboarding Started",
@@ -1834,7 +1834,8 @@ def update_checklist_step(
 ):
     """Update a single step's status in an onboarding checklist."""
     db = _db()
-    _assert_via_parent(db, current_user, "onboarding_checklists", workflow_id, "Onboarding workflow", _MOCK_ONBOARDING_WORKFLOWS)
+    # The checklist's own client, which the scope check asserted: the progress update names it (POST-A-008, the onboarding tranche).
+    wf_client = _assert_via_parent(db, current_user, "onboarding_checklists", workflow_id, "Onboarding workflow", _MOCK_ONBOARDING_WORKFLOWS)
     now = datetime.now(timezone.utc).isoformat()
     db_status = _CHECKLIST_STATUS_MAP.get(data.status, data.status.lower().replace(" ", "_"))
 
@@ -1871,12 +1872,14 @@ def update_checklist_step(
         update["completed_at"] = now
     if data.notes is not None:
         update["notes"] = data.notes
-    db.table("onboarding_checklist_steps").update(update).eq("id", step["id"]).execute()
+    privileged_for(db).table("onboarding_checklist_steps").update(update).eq("id", step["id"]).eq("workflow_id", workflow_id).eq(
+        "firm_id", current_user["firm_id"]).execute()
 
     # Update progress on workflow
     all_steps = db.table("onboarding_checklist_steps").select("status").eq("workflow_id", workflow_id).execute().data or []
     pct = _calc_progress(all_steps)
-    db.table("onboarding_checklists").update({"progress_pct": pct, "updated_at": now}).eq("id", workflow_id).execute()
+    privileged_for(db).table("onboarding_checklists").update({"progress_pct": pct, "updated_at": now}).eq("id", workflow_id).eq(
+        "firm_id", current_user["firm_id"]).eq("client_id", wf_client).execute()
 
     return api_response(True, {**step, **update})
 
@@ -1931,9 +1934,9 @@ def complete_onboarding_checklist(
         missing = [step_titles.get(n, str(n)) for n in sorted(incomplete)]
         raise HTTPException(status_code=422, detail=f"Mandatory steps incomplete: {', '.join(missing)}")
 
-    db.table("onboarding_checklists").update({
+    privileged_for(db).table("onboarding_checklists").update({
         "status": "completed", "completed_at": now, "progress_pct": 100, "updated_at": now,
-    }).eq("id", workflow_id).execute()
+    }).eq("id", workflow_id).eq("firm_id", current_user["firm_id"]).eq("client_id", wf["client_id"]).execute()
 
     # Mark client as active
     try:
