@@ -31,6 +31,7 @@ from domain.reporting.party_advances import (
     AdvanceInput, aging_bucket as _aging_bucket, empty_buckets, unapplied_advances,
 )
 from core.db_paging import fetch_all
+from core.db_provider import privileged_for
 from core.list_window import probe
 
 _logger = logging.getLogger("caflow.customer_statement")
@@ -426,14 +427,14 @@ class CustomerStatementService:
     # ── email delivery tracking (mirrors invoice_deliveries) ───────────────────
     def record_delivery(self, db, firm_id, client_id, customer_id, start, end,
                         sent_to, actor_id, actor_email) -> str:
-        row = (db.table("customer_statement_deliveries").insert({
+        row = (privileged_for(db).table("customer_statement_deliveries").insert({
             "firm_id": firm_id, "client_id": client_id, "customer_id": customer_id,
             "period_start": _d(start), "period_end": _d(end), "sent_to": sent_to,
             "sent_by_id": actor_id, "sent_by_email": actor_email, "status": "sending",
         }).execute().data or [{}])[0]
         return row.get("id")
 
-    def finish_delivery(self, db, delivery_id, success, provider_id=None, error=None) -> None:
+    def finish_delivery(self, db, delivery_id, success, provider_id=None, error=None, *, firm_id, client_id) -> None:
         update: dict = {"status": "sent" if success else "failed"}
         if provider_id:
             update["provider_message_id"] = provider_id
@@ -441,7 +442,8 @@ class CustomerStatementService:
             update["sent_at"] = _now()
         elif error:
             update["error_message"] = error[:200]
-        db.table("customer_statement_deliveries").update(update).eq("id", delivery_id).execute()
+        privileged_for(db).table("customer_statement_deliveries").update(update).eq("id", delivery_id).eq("firm_id", firm_id).eq(
+            "client_id", client_id).execute()
 
     #: What a delivery row shows a person. `provider_message_id` is the mail service's own reference and `firm_id`,
     #: `client_id` and `customer_id` are what the read was keyed on; none is for the screen.
