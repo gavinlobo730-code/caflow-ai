@@ -480,7 +480,7 @@ def add_entity_role(
         "effective_to":      data.effective_to,
         "notes":             data.notes,
     }
-    res = db.table("entity_roles").insert(db_row).execute()
+    res = privileged_for(db).table("entity_roles").insert(db_row).execute()
     created = (res.data or [row])[0]
 
     timeline_service.log(
@@ -513,7 +513,10 @@ def remove_entity_role(
     existing = db.table("entity_roles").select("id, client_id").eq("id", role_id).eq("firm_id", firm_id).maybe_single().execute().data
     _assert_role_scope(current_user, existing)
 
-    db.table("entity_roles").delete().eq("id", role_id).eq("firm_id", firm_id).execute()
+    # The role's own client, which its scope check above resolved, so the delete
+    # acts only on a row of that client (POST-A-008).
+    privileged_for(db).table("entity_roles").delete().eq("id", role_id).eq("firm_id", firm_id).eq(
+        "client_id", existing["client_id"]).execute()
     return api_response(True, {"deleted": True, "role_id": role_id})
 
 
@@ -928,7 +931,7 @@ def create_loan(
             )
         return api_response(True, row)
 
-    res = db.table(LOANS_TABLE).insert(row).execute()
+    res = privileged_for(db).table(LOANS_TABLE).insert(row).execute()
     created = (res.data or [row])[0]
 
     if section_185_flagged:
@@ -1066,7 +1069,7 @@ def create_property(
         _MOCK_PROPERTIES.append(row)
         return api_response(True, row)
 
-    res = db.table("properties").insert(row).execute()
+    res = privileged_for(db).table("properties").insert(row).execute()
     return api_response(True, (res.data or [row])[0])
 
 

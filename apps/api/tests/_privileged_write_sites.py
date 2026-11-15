@@ -17,13 +17,37 @@ from tests.test_a_payroll_bank_or_document_table_is_queried_with_the_privileged_
 WRITE_VERBS = frozenset({"insert", "update", "upsert", "delete"})
 
 
-def _table_call_of(verb_call: ast.Call, tables: frozenset) -> ast.Call | None:
+def module_constants(tree: ast.Module) -> dict[str, str]:
+    """`NAME = "text"` at a module's top level: a table named through one (`db.table(LOANS_TABLE)`) is the same write as one named
+    in place, and a census reading only literals would not see it (the related-party loan was written that way)."""
+    out = {}
+    for stmt in tree.body:
+        target, value = None, None
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+            target, value = stmt.targets[0], stmt.value
+        elif isinstance(stmt, ast.AnnAssign):
+            target, value = stmt.target, stmt.value
+        if isinstance(target, ast.Name) and isinstance(value, ast.Constant) and isinstance(value.value, str):
+            out[target.id] = value.value
+    return out
+
+
+def _table_name(arg: ast.AST, consts: dict[str, str]) -> str | None:
+    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+        return arg.value
+    if isinstance(arg, ast.Name):
+        return consts.get(arg.id)
+    return None
+
+
+def _table_call_of(verb_call: ast.Call, tables: frozenset, consts: dict[str, str] | None = None) -> tuple[ast.Call, str] | None:
     if not (isinstance(verb_call.func, ast.Attribute) and verb_call.func.attr in WRITE_VERBS):
         return None
     recv = verb_call.func.value
-    if (isinstance(recv, ast.Call) and isinstance(recv.func, ast.Attribute) and recv.func.attr == "table" and recv.args
-            and isinstance(recv.args[0], ast.Constant) and recv.args[0].value in tables):
-        return recv
+    if isinstance(recv, ast.Call) and isinstance(recv.func, ast.Attribute) and recv.func.attr == "table" and recv.args:
+        name = _table_name(recv.args[0], consts or {})
+        if name in tables:
+            return recv, name
     return None
 
 
@@ -33,16 +57,18 @@ def write_sites(source: str, tables: frozenset) -> list[tuple[str, str, int, boo
     parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
     names = privileged_names(tree)
     scope = _Scope(tree, parents)
+    consts = module_constants(tree)
     out = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        table_call = _table_call_of(node, tables)
-        if table_call is None:
+        found = _table_call_of(node, tables, consts)
+        if found is None:
             continue
+        table_call, table = found
         fn = _enclosing_function(node, parents)
         recv = _chain_receiver(table_call)
-        out.append((table_call.args[0].value, fn.name if fn else "<module>", node.lineno, is_privileged(recv, names, scope, node),
+        out.append((table, fn.name if fn else "<module>", node.lineno, is_privileged(recv, names, scope, node),
                     ast.unparse(recv)[:60]))
     return out
 
@@ -66,15 +92,16 @@ def unscoped_updates_and_deletes(source: str, tables: frozenset, keys: dict | No
     or the ones `keys` names for that table)."""
     tree = ast.parse(source)
     parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+    consts = module_constants(tree)
     out = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        tc = _table_call_of(node, tables)
-        if tc is None or node.func.attr not in {"update", "delete"}:
+        found = _table_call_of(node, tables, consts)
+        if found is None or node.func.attr not in {"update", "delete"}:
             continue
         chain = ast.unparse(_outer_chain(node, parents))
-        table = tc.args[0].value
+        table = found[1]
         need = (keys or {}).get(table, SCOPE_KEYS)
         if not all(re.search(r"\.eq\(\s*['\"]" + re.escape(k) + r"['\"]", chain) for k in need):
             out.append(f"{table} at line {node.lineno}")
