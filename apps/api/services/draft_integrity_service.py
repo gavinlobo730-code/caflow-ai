@@ -27,14 +27,14 @@ _LINES = {
         lambda: db.table("purchase_bill_lines")
         .select(f"{_MONEY}, cess_paise, itc_eligible").eq("bill_id", doc), label="issue-check bill lines"),
     rule.CREDIT_NOTE: lambda db, doc: fetch_all(
-        lambda: db.table("credit_note_lines").select(_MONEY).eq("credit_note_id", doc), label="issue-check credit note lines"),
+        lambda: db.table("credit_note_lines").select(f"{_MONEY}, cess_paise").eq("credit_note_id", doc), label="issue-check credit note lines"),
     rule.DEBIT_NOTE: lambda db, doc: fetch_all(
-        lambda: db.table("debit_note_lines").select(_MONEY).eq("debit_note_id", doc), label="issue-check debit note lines"),
+        lambda: db.table("debit_note_lines").select(f"{_MONEY}, cess_paise").eq("debit_note_id", doc), label="issue-check debit note lines"),
     rule.PURCHASE_CREDIT_NOTE: lambda db, doc: fetch_all(
-        lambda: db.table("purchase_credit_note_lines").select(_MONEY).eq("credit_note_id", doc),
+        lambda: db.table("purchase_credit_note_lines").select(f"{_MONEY}, cess_paise").eq("credit_note_id", doc),
         label="issue-check purchase credit note lines"),
     rule.SALES_DEBIT_NOTE: lambda db, doc: fetch_all(
-        lambda: db.table("sales_debit_note_lines").select(_MONEY).eq("debit_note_id", doc),
+        lambda: db.table("sales_debit_note_lines").select(f"{_MONEY}, cess_paise").eq("debit_note_id", doc),
         label="issue-check sales debit note lines"),
 }
 

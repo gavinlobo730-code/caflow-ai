@@ -273,6 +273,8 @@ export function PurchaseCreditNoteViewDrawer({
                 <DetailRow label="SGST" value={fmt(pcn.sgst_paise ?? 0)} />
               </>
             )}
+            {/* Its own row, never folded into the GST heads (Compensation Act s.11(2) proviso; migration 615). */}
+            {Number(pcn.cess_paise ?? 0) > 0 && <DetailRow label="Compensation cess" value={fmt(Number(pcn.cess_paise))} />}
           </section>
 
           <section className="space-y-2">

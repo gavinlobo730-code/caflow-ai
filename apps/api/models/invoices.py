@@ -135,6 +135,33 @@ class InvoiceLineIn(BaseModel):
     # line as a stock movement for a specific product (migrations 184/188/189).
     service_catalogue_id: Optional[str] = None
 
+    # ── GST compensation cess ───────────────────────────────────────────────
+    # GST (Compensation to States) Act 2017 s.8(2): the cess is levied "on the
+    # basis of VALUE, QUANTITY or on such basis". Two limbs, because real
+    # Schedule entries use each and one uses both — aerated waters ad valorem,
+    # coal per tonne, cigarettes a percentage PLUS a figure per thousand. The
+    # AMOUNT is derived from these by domain/gst/compensation_cess.py and is
+    # never accepted from the caller, for the same reason cgst/sgst/igst are
+    # derived from gst_rate_percent.
+    #
+    # ON THE SHARED PARENT, so the four s.34 notes take it too (POST-A-058,
+    # migration 615). Until 615 the note tables had no cess column and the
+    # fields lived on the invoice's subclass alone, because a field the note
+    # path accepted and then dropped would have let a CA believe they had
+    # reversed a cess charge they had not. Now the note stores both limbs and
+    # the amount, and its journal and its return carry the cess.
+    cess_rate_bps: Optional[int] = None
+    cess_specific_paise_per_unit: Optional[int] = None
+
+    @field_validator("cess_rate_bps", "cess_specific_paise_per_unit")
+    @classmethod
+    def cess_non_negative(cls, v: Optional[int]) -> Optional[int]:
+        # No upper bound on the rate: Schedule column (4) carries entries above
+        # 100%, so a ceiling would be invented and would refuse a lawful charge.
+        if v is not None and v < 0:
+            raise ValueError("A compensation cess rate cannot be negative.")
+        return v
+
     @field_validator("quantity")
     @classmethod
     def quantity_positive(cls, v: float) -> float:
@@ -264,31 +291,9 @@ class SalesInvoiceLineIn(InvoiceLineIn):
                              "is money taken off.")
         return v
 
-    # ── GST compensation cess ───────────────────────────────────────────────
-    # GST (Compensation to States) Act 2017 s.8(2): the cess is levied "on the
-    # basis of VALUE, QUANTITY or on such basis". Two limbs, because real
-    # Schedule entries use each and one uses both — aerated waters ad valorem,
-    # coal per tonne, cigarettes a percentage PLUS a figure per thousand. The
-    # AMOUNT is derived from these by domain/gst/compensation_cess.py and is
-    # never accepted from the caller, for the same reason cgst/sgst/igst are
-    # derived from gst_rate_percent.
-    #
-    # ON THIS CLASS AND NOT ON InvoiceLineIn, deliberately, and for the same
-    # kind of reason as the discount above: the shared parent is what the s.34
-    # credit- and debit-note routes use, and the four note tables have no cess
-    # columns. A field the note path accepted and then dropped would let a CA
-    # believe they had reversed a cess charge they had not.
-    cess_rate_bps: Optional[int] = None
-    cess_specific_paise_per_unit: Optional[int] = None
-
-    @field_validator("cess_rate_bps", "cess_specific_paise_per_unit")
-    @classmethod
-    def cess_non_negative(cls, v: Optional[int]) -> Optional[int]:
-        # No upper bound on the rate: Schedule column (4) carries entries above
-        # 100%, so a ceiling would be invented and would refuse a lawful charge.
-        if v is not None and v < 0:
-            raise ValueError("A compensation cess rate cannot be negative.")
-        return v
+    # GST compensation cess: the two limbs are on the parent `InvoiceLineIn`,
+    # which the four s.34 notes share, since migration 615 gave the note tables
+    # the columns (POST-A-058). An invoice line takes them from there.
 
 
 class SalesInvoiceIn(BaseModel):
