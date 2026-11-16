@@ -413,7 +413,7 @@ test("a report written part-way is never ok, names what was not driven, and says
   assert.deepEqual(whole.not_driven, []);
   assert.equal(build({ ...base, complete: true, results: driven(["a", "b", "c"], false) }).ok, false, "a failed scenario leaves a complete report ok");
   assert.equal(build({ ...base, complete: true, escaped: ["example.com"], results: driven(["a", "b", "c"]) }).ok, false, "a blocked host leaves a complete report ok");
-  assert.deepEqual(whole.mode, { only: null, tz_matrix: true, zone: "Asia/Kolkata", shard: 1, stop_after_minutes: 24, chosen_at: "2026-11-07T00:00:00.000Z" }, "the report does not name what was driven, how long it was given and when the part was chosen");
+  assert.deepEqual(whole.mode, { only: null, browser: "chromium", width: 1440, tz_matrix: true, zone: "Asia/Kolkata", shard: 1, stop_after_minutes: 24, chosen_at: "2026-11-07T00:00:00.000Z" }, "the report does not name what was driven, how long it was given and when the part was chosen");
 });
 
 test("the runner stops itself at its deadline, and what it leaves is a final report and a red exit", () => {
