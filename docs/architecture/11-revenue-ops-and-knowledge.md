@@ -112,10 +112,12 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
 - **The id-keyed routes** are therefore outside that guard and carry their own check.
   `POST /api/sales-invoices/{invoice_id}/issue` resolves the invoice's client and calls
   `assert_client_access`; the internal client cannot be assigned, so a non-Partner is
-  refused there (a Manager by the 404 of that scope check). That is the whole gate: the
-  route holds no explicit Partner assertion, unlike
-  `POST /api/sales-invoices/{invoice_id}/repost-journal`, which does. The database layer
-  below holds either way.
+  refused there (a Manager by the 404 of that scope check). The route holds no explicit
+  Partner assertion, unlike `POST /api/sales-invoices/{invoice_id}/repost-journal`, which
+  does. Since POST-A-433 the scope check asks G1 itself: `core/authz.assigned_client_ids`
+  and `is_client_assigned` drop an assignment that names the practice, so even a row the
+  service role wrote grants a non-Partner nothing, on every route that asks
+  `can_access_client` or `effective_client_ids`. The database layer below holds either way.
 - **Resources.** `practice` and `billing` are Partner-only in
   `apps/api/core/permissions.py`. `rbac("billing", "read")` or `rbac("billing", "write")`
   guards every `/api/billing` route, and `rbac("practice", "read")` or

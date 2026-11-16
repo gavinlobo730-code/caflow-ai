@@ -31,6 +31,7 @@ from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_now, ist_today
 from services import delivery_challan_writes as challan_writes
 from services import named_row_ownership
+from services.line_item_ownership import items_are_the_clients
 from domain.gst import compensation_cess
 from domain.gst import delivery_challan as dc
 from domain.gst import discount as gst_discount
@@ -677,6 +678,7 @@ def create_quotation(db, firm_id: str, payload: dict,
     client_id = str(payload["client_id"])
     # THE CUSTOMER IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
     named_row_ownership.customer_is_the_clients(db, firm_id, client_id, payload.get("customer_id"))
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))
     _refuse_duplicate(db, "sales_quotations", firm_id, client_id,
                       payload["document_no"], payload.get("kind"), None)
     priced, totals = compute_lines(
@@ -754,6 +756,7 @@ def create_order(db, firm_id: str, payload: dict,
                  actor_id: Optional[str] = None) -> dict:
     client_id = str(payload["client_id"])
     named_row_ownership.customer_is_the_clients(db, firm_id, client_id, payload.get("customer_id"))
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))
     if payload.get("quotation_id"):
         # THE QUOTATION THIS ORDER CONVERTS IS THIS CLIENT'S (POST-A-338): it is marked converted below, by firm and id.
         row_of_client(db, "sales_quotations", firm_id, str(payload["quotation_id"]), client_id, "quotation")
@@ -874,6 +877,7 @@ def create_challan(db, firm_id: str, payload: dict,
     named_row_ownership.sales_invoice_is_the_clients(db, firm_id, client_id, payload.get("sales_invoice_id"))
     if payload.get("order_id"):
         row_of_client(db, "sales_orders", firm_id, str(payload["order_id"]), client_id, "sales order")
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))
     _refuse_duplicate(db, "delivery_challans", firm_id, client_id,
                       payload["document_no"], None, None)
 
@@ -1024,11 +1028,18 @@ def update_quotation(db, firm_id: str, quotation_id: str, patch: dict) -> dict:
     fields = {k: v for k, v in patch.items()
               if v is not None and k != "lines"}
     lines = patch.get("lines")
+    # A taken number is refused BEFORE the lines are replaced: refused after, the lines were already new while the header
+    # kept its old totals, a document that no longer added up to its own lines (the independent review of 16-11-2026).
+    if fields.get("document_no"):
+        _refuse_duplicate(db, "sales_quotations", firm_id,
+                          str(row["client_id"]), fields["document_no"],
+                          str(row.get("kind")), quotation_id)
     if lines is not None:
         if not lines:
             raise HTTPException(
                 status_code=422,
                 detail="A quotation needs at least one line.")
+        items_are_the_clients(db, firm_id, str(row["client_id"]), lines)
         # THE DOCUMENT-LEVEL DISCOUNT FALLS BACK TO THE STORED ONE. A CA who
         # amends a line and does not re-send the header discount has not
         # withdrawn it — and re-pricing without it would silently raise every
@@ -1051,10 +1062,6 @@ def update_quotation(db, firm_id: str, quotation_id: str, patch: dict) -> dict:
              .eq("firm_id", firm_id).eq("id", str(old.get("id"))).execute())
         _write_quotation_lines(db, firm_id, str(row["client_id"]),
                                quotation_id, priced)
-    if fields.get("document_no"):
-        _refuse_duplicate(db, "sales_quotations", firm_id,
-                          str(row["client_id"]), fields["document_no"],
-                          str(row.get("kind")), quotation_id)
     fields["updated_at"] = ist_now().isoformat()
     (db.table("sales_quotations").update(fields)
      .eq("firm_id", firm_id).eq("id", quotation_id).execute())
@@ -1078,6 +1085,11 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
     fields = {k: v for k, v in patch.items()
               if v is not None and k != "lines"}
     lines = patch.get("lines")
+    # A taken number is refused BEFORE the lines are replaced: refused after, the lines were already new while the header
+    # kept its old totals, a document that no longer added up to its own lines (the independent review of 16-11-2026).
+    if fields.get("document_no"):
+        _refuse_duplicate(db, "sales_orders", firm_id, str(row["client_id"]),
+                          fields["document_no"], None, order_id)
     if lines is not None:
         position = order_open_position(db, firm_id, order_id, with_drafts=True)
         if invoice_lines_naming(db, [ln["order_line_id"] for ln in position["lines"]]):
@@ -1095,6 +1107,7 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
         if not lines:
             raise HTTPException(status_code=422,
                                 detail="A sales order needs at least one line.")
+        items_are_the_clients(db, firm_id, str(row["client_id"]), lines)
         # The stored document discount stands unless the patch replaces it —
         # see `update_quotation`.
         priced, totals = compute_lines(
@@ -1135,9 +1148,6 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
                 "line_cess_paise": ln["line_cess_paise"],
                 "created_at": now,
             }).execute()
-    if fields.get("document_no"):
-        _refuse_duplicate(db, "sales_orders", firm_id, str(row["client_id"]),
-                          fields["document_no"], None, order_id)
     fields["updated_at"] = ist_now().isoformat()
     (db.table("sales_orders").update(fields)
      .eq("firm_id", firm_id).eq("id", order_id).execute())

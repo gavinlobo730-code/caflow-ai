@@ -32,6 +32,7 @@ from fastapi import HTTPException
 from core.db_paging import fetch_all
 from core.ist_clock import ist_now
 from services import named_row_ownership
+from services.line_item_ownership import items_are_the_clients
 from domain.gst import compensation_cess
 from domain.gst import discount as gst_discount
 from domain.purchases import order_cycle as oc
@@ -458,6 +459,8 @@ def create_order(db, firm_id: str, payload: dict,
     client_id = str(payload["client_id"])
     # THE VENDOR IS THIS CLIENT'S (POST-A-338): the foreign key is not client-aware.
     named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, payload.get("vendor_id"))
+    # EVERY LINE'S ITEM IS THIS CLIENT'S (POST-A-441), the rule every bill and note door asks.
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))
     _refuse_duplicate(db, "purchase_orders", firm_id, client_id,
                       payload["document_no"], None)
     priced, totals = compute_lines(
@@ -532,6 +535,7 @@ def create_receipt(db, firm_id: str, payload: dict,
     named_row_ownership.vendor_is_the_clients(db, firm_id, client_id, payload.get("vendor_id"))
     if payload.get("order_id"):
         order_of_client(db, firm_id, str(payload["order_id"]), client_id)
+    items_are_the_clients(db, firm_id, client_id, payload.get("lines"))   # POST-A-441
     _refuse_duplicate(db, "goods_receipt_notes", firm_id, client_id,
                       payload["document_no"], None)
     lines = list(payload.get("lines") or [])
@@ -641,6 +645,12 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
             detail="A cancelled purchase order cannot be amended.")
     fields = {k: v for k, v in patch.items() if v is not None and k != "lines"}
     lines = patch.get("lines")
+    # A taken number is refused BEFORE the lines are replaced: refused after, the lines were already new while the header
+    # kept its old totals, a document that no longer added up to its own lines (the independent review of 16-11-2026).
+    if fields.get("document_no"):
+        _refuse_duplicate(db, "purchase_orders", firm_id,
+                          str(row["client_id"]), fields["document_no"],
+                          order_id)
     if lines is not None:
         position = order_open_position(db, firm_id, order_id)
         if any(ln["received_qty"] != "0.000" for ln in position["lines"]):
@@ -652,6 +662,7 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
         if not lines:
             raise HTTPException(status_code=422,
                                 detail="A purchase order needs at least one line.")
+        items_are_the_clients(db, firm_id, str(row["client_id"]), lines)   # POST-A-441
         priced, totals = compute_lines(
             lines,
             is_inter_state=bool(fields.get("is_inter_state",
@@ -688,10 +699,6 @@ def update_order(db, firm_id: str, order_id: str, patch: dict) -> dict:
                 "line_cess_paise": ln["line_cess_paise"],
                 "created_at": now,
             }).execute()
-    if fields.get("document_no"):
-        _refuse_duplicate(db, "purchase_orders", firm_id,
-                          str(row["client_id"]), fields["document_no"],
-                          order_id)
     fields["updated_at"] = ist_now().isoformat()
     (db.table("purchase_orders").update(fields)
      .eq("firm_id", firm_id).eq("id", order_id).execute())
