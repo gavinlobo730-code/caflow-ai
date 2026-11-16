@@ -14,16 +14,20 @@ Runs only when HARNESS_PG is set + psql on PATH.
 from __future__ import annotations
 
 import pathlib
-import subprocess
 import uuid
 
 import pytest
 
-from tests.test_585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_pg import (  # noqa: F401
-    CLIENT, FIRM, LOT, OTHER_CLIENT, _ADMIN, _answer, _call, _challan, _lot, _lot_call, _psql, _rows, _run_file, db,
+from tests.test_585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_pg import (  # noqa: F401 — `_challan_world` is a fixture
+    CLIENT, FIRM, LOT, OTHER_CLIENT, _ADMIN, _answer, _call, _challan, _lot, _lot_call, _psql, _rows, _run_file, db as _challan_world,
 )
 
 pytestmark = pytest.mark.skipif(not _ADMIN, reason="needs HARNESS_PG")
+
+
+@pytest.fixture
+def db(_challan_world):  # noqa: F811 — the fixture is the imported one, under another name
+    return _challan_world
 
 _M = pathlib.Path(__file__).resolve().parent.parent / "migrations"
 _UP = next(_M.glob("651_a_lot_recorded_on_itc_04_can_be_retracted.sql"))

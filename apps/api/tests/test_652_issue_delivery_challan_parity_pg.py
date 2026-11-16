@@ -19,11 +19,16 @@ from decimal import Decimal
 import pytest
 
 from domain.sales import order_cycle as oc
-from tests.test_585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_pg import (  # noqa: F401
-    CLIENT, FIRM, OTHER_CLIENT, _ADMIN, _call, _psql, _rows, _run_file, _wait_until_a_session_sleeps, db,
+from tests.test_585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_pg import (  # noqa: F401 — `_challan_world` is a fixture
+    CLIENT, FIRM, OTHER_CLIENT, _ADMIN, _call, _psql, _rows, _run_file, _wait_until_a_session_sleeps, db as _challan_world,
 )
 
 pytestmark = pytest.mark.skipif(not _ADMIN, reason="needs HARNESS_PG")
+
+
+@pytest.fixture
+def db(_challan_world):  # noqa: F811 — the fixture is the imported one, under another name
+    return _challan_world
 
 _M = pathlib.Path(__file__).resolve().parent.parent / "migrations"
 _UP = next(_M.glob("652_issuing_a_delivery_challan_locks_its_order_and_holds_the_over_delivery_rule.sql"))
