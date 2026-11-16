@@ -1161,7 +1161,7 @@ def _latest_returned_on(db, firm_id: str, client_id: str, challan_id: str) -> Op
     the day its last goods did, so it cannot be before this one. A row that records only quantity lost or wasted (migration 462 allows one) is not goods returned and is not counted:
     whether scrap counts as received back for s.143 is not a judgement this product takes."""
     rows = (db.table("delivery_challan_returns").select("returned_on, quantity_returned")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id).is_("retracted_at", "null")
             .order("returned_on", desc=True).execute().data) or []
     for r in rows:
         raw = str(r.get("quantity_returned") or "0").strip()
@@ -1176,7 +1176,7 @@ def _latest_lot_recorded_on(db, firm_id: str, client_id: str, challan_id: str) -
     `_latest_returned_on`: a lot of waste alone leaves the challan's balance larger (waste is never subtracted from it), and a cancelled challan's balance is not listed, so cancelling one with
     such a lot would drop a deemed supply out of the statement."""
     rows = (db.table("delivery_challan_returns").select("returned_on")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id)
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id).is_("retracted_at", "null")
             .order("returned_on", desc=True).limit(1).execute().data) or []
     return date.fromisoformat(str(rows[0]["returned_on"])[:10]) if rows else None
 

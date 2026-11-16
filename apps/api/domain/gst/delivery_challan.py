@@ -433,7 +433,8 @@ def cancel_after_goods_came_back_sentence(document_no: object, recorded_on: obje
     goods returned OR goods lost or wasted: a lot of waste alone is a lot too (the balance of a cancelled challan is not listed, and the waste is never subtracted from it)."""
     on = f" on {recorded_on}" if recorded_on else ""
     return (f"Challan {document_no} has a lot recorded against it{on} on FORM GST ITC-04 (goods returned, or lost or wasted), so it cannot be cancelled. "
-            "Cancel a challan whose goods did not leave; one whose goods are coming back is finished by recording the rest.")
+            "If a lot was recorded on it by mistake, retract the lot first on the ITC-04 statement (its reason is kept) and then cancel the challan; "
+            "otherwise one whose goods are coming back is finished by recording the rest.")
 
 
 def issued_challan_problem(document_no: object, *, row: dict, touched) -> Optional[str]:

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.ist_clock import ist_today
 from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate, a_real_date
@@ -550,3 +550,10 @@ class ChallanReturnIn(BaseModel):
                 "A return that returns nothing and wastes nothing records nothing — "
                 "give the quantity that came back, or the quantity lost or wasted.")
         return self
+
+
+class ChallanLotRetractIn(BaseModel):
+    """A lot recorded on FORM GST ITC-04 by mistake is taken back (POST-A-418, migration 651). The client is asserted for access and is what the lot is looked up under; the reason is kept with the
+    retracted row and may not be blank."""
+    client_id: str
+    reason: str = Field(..., min_length=1, max_length=500)
