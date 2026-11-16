@@ -230,7 +230,7 @@ function StartCount({ clientId, onStarted, onCancel }: { clientId: string; onSta
 
   async function start() {
     if (savingRef.current) return;
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!form.verified_on) { setError("Counted on: enter the day the assets were counted."); return; }
     if (!form.counted_by.trim()) { setError("Counted by: name who counted the assets."); return; }
     savingRef.current = true;

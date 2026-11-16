@@ -254,7 +254,7 @@ export default function PurchaseCycleTab({ clientId }: { clientId: string }) {
   }
 
   async function save() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     const body = buildLines();
     if (!body.length) {
       setMsg({ type: "err", text: "Add at least one line." });

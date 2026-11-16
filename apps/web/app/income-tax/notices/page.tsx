@@ -124,7 +124,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
   const lbl = "text-xs font-medium text-ps-body block mb-1";
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!form.clientId || !form.dateReceived) { setError("Client and date received are required"); return; }
     // All money in integer paise — no floating point
     const amountPaise = form.amountDemandedRs

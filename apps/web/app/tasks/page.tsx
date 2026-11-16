@@ -228,7 +228,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
 
   async function handleSave() {
     if (!task) return;
-    if (dates.first) { setSaveError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setSaveError); return; }
     setSaving(true);
     setSaveError(null);
     try {

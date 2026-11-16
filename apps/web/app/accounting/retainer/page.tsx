@@ -84,7 +84,7 @@ function SetRetainerModal({
   const dates = useDateProblems();
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // Through the one parser. parseFloat("1,25,000") is 1, and a retainer is
     // billed unattended every month, so a fee read wrong is wrong twelve times.
     const feePaise = paiseFromRupeeInput(feeRupees);

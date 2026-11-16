@@ -16,7 +16,8 @@
  *   3. `31/02/2026` is refused, in words, at the field (`aria-invalid` and a `role=alert` sentence);
  *   4. pressing Save over unreadable text sends NOTHING and says so in the form's own sentence, naming the
  *      field (`Payment date: Feb 2026 has only 28 days.`), which is a different sentence from the field's own;
- *   5. a date typed in full reaches the request body as the ISO date typed, whatever the locale or zone.
+ *   5. a date typed in full reaches the request body as the ISO date typed, whatever the locale or zone;
+ *   (4a) the form's own sentence is withdrawn the moment the date is put right, before any Save (POST-A-381).
  *
  * The second slice (4-11-2026) added Mark as Filed (the one prompt Deadlines, a client's Compliance tab and Practice Compliance
  * share), the fee engagement and fee receipt forms, a customer receipt, the retainer, the payroll disbursement prompt, an asset's
@@ -2542,6 +2543,14 @@ async function driveEditor(env, spec) {
   await stub.quiet();
   assert.equal(stub.writesTo(spec.write).length, 0, `${spec.title}: Save over an unreadable date SENT A WRITE`);
 
+  // 4a. The form's sentence goes the moment the date is put right, before any Save (POST-A-381): a sentence that stayed said the date was
+  //     wrong about a date that was right, and the person pressed Save again for nothing.
+  if (!spec.heldWhileUnreadable) {
+    await typeAndLeave(primary, "15/03/2026");
+    await until(async () => (await page.getByText(`${first.label}: ${FEB_SENTENCE}`).count()) === 0,
+      `${spec.title}: the form to stop saying "${first.label}: ${FEB_SENTENCE}" once the date was put right`, 4000);
+  }
+
   // 4b. A CLEARED box is not an unreadable one and reports no problem; what it does is the row's `cleared` sentence (or, `cleared: "held"`, a held
   //     button) and sends nothing. A row whose date is optional leaves `cleared` out; the rows of earlier slices have not been given this step.
   if (spec.cleared) {
@@ -3338,9 +3347,9 @@ export const scenarios = [
   // The end box of both templates only HINTS when it is before the start. The bill form refused it in its own words; the journal form let it reach the server.
   ...[
     { id: "recurring-journal", name: "Accounting > Recurring journals > New template", open: openRecurringJournalTemplate, start: "#rj-start", end: "#rj-end",
-      sentence: "End date: it is before the start date.", write: /api\/recurring-journals$/, save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
+      sentence: "End date: it is before the start date.", goesWhenRight: "31/12/2026", write: /api\/recurring-journals$/, save: (p) => p.getByRole("button", { name: "Save template", exact: true }) },
     { id: "recurring-bill", name: "Purchases > Recurring bills > New Template", open: openRecurringBillTemplate, start: "#rec-bill-start", end: "#rec-bill-end",
-      sentence: "The end date cannot be before the start date.", write: /api\/recurring-purchase-bills$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
+      sentence: "The end date cannot be before the start date.", goesWhenRight: "31/12/2026", write: /api\/recurring-purchase-bills$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
     { id: "recurring-invoice", name: "Sales > Recurring > New Template", open: openRecurringInvoiceTemplate, start: "#rec-inv-start", end: "#rec-inv-end",
       sentence: "End date cannot be before start date", goesWhenRight: "31/12/2026", write: /api\/recurring-invoices$/, save: (p) => p.getByRole("button", { name: "Create template", exact: true }) },
   ].map((f) => ({
@@ -3358,8 +3367,8 @@ export const scenarios = [
       });
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a reversed window SENT A WRITE`);
-      // A sentence about what two boxes hold is derived from them, so it goes when they are put in order (copied into the form's own error it stayed until the next press). Said only by the
-      // editors that derive it: the other two still copy theirs (a ledger item).
+      // A sentence about what two boxes hold goes when they are put in order (copied into the form's own error it stayed until the next press). The invoice
+      // template derives it and latches it; the journal and bill templates take theirs back with `useTakenBackWhenFixed` (POST-A-381).
       if (f.goesWhenRight) {
         await typeAndLeave(page.locator(f.end), f.goesWhenRight);
         await until(async () => (await page.getByText(f.sentence).count()) === 0, `${f.name}: the order sentence stayed on the form after the window was put in order`, 5000);

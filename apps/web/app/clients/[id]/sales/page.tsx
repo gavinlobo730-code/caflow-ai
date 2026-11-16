@@ -4001,7 +4001,7 @@ function ReceiptForm({
     .reduce<number>((s, v) => s + (v ?? 0), 0);
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!customerId) { setError("Select a customer"); return; }
     if (amountPaise === null) {
       setError("Amount must be a number of rupees, e.g. 125000 or 125000.50 — without commas.");

@@ -131,7 +131,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // Integer paise through the one parser — never Math.round(parseFloat(x)*100),
     // which reads a fee typed "1,25,000" as ₹1 and a blank field as NaN.
     const feePaise = paiseFromRupeeInput(feeRs);
@@ -252,7 +252,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function handleSave() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     const amtPaise = paiseFromRupeeInput(amountRs || "0");
     if (amtPaise === null) { setError("Enter the amount in rupees, e.g. 125000 or 125000.50 — without commas."); return; }
     if (!invoiceId || amtPaise <= 0) { setError("Select invoice and enter valid amount"); return; }

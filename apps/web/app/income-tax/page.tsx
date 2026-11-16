@@ -235,7 +235,7 @@ function BulkMarkFiledModal({
   const submitDisabled = loading || !filedDate || !allArnsFilled;
 
   async function handleSubmit() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (submitDisabled || remaining.length === 0) return;
     setLoading(true);
     setError(null);
@@ -621,7 +621,7 @@ export default function IncomeTaxPage() {
   }
 
   async function handleAddSubmit() {
-    if (addDates.first) { setAddError(addDates.first); return; }
+    if (addDates.first) { addDates.refuseWith(setAddError); return; }
     if (!addForm.client_id) {
       setAddError("Please select a client");
       return;
@@ -673,7 +673,7 @@ export default function IncomeTaxPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
-    if (filedDates.first) { setFiledError(filedDates.first); return; }
+    if (filedDates.first) { filedDates.refuseWith(setFiledError); return; }
     if (!filedForm.arn.trim()) {
       setFiledError("Acknowledgement number is required");
       return;

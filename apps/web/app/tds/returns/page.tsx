@@ -243,7 +243,7 @@ export default function TDSReturnsPage() {
 
   async function markFiled(recordAnyway: boolean) {
     if (!returnId || !prn || !filingDate) return;
-    if (dates.first) { setFiledError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setFiledError); return; }
     const asked = returnId;
     setFiledError(null);
     setHeldBack(null);

@@ -1206,7 +1206,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
   async function computeFromBooks() {
     // Refused before the request, never defaulted to the primary (GST-17).
     if (reg.choice.refused) { setComputeError(reg.choice.refused); return; }
-    if (dates.first) { setComputeError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setComputeError); return; }
     setComputing(true);
     setComputeError(null);
     setComputeResult(null);

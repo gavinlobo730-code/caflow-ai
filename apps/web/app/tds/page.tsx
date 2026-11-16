@@ -343,7 +343,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   }, [clientId, vendorId, section, grossPaise, paymentDate, partyPan, partyName]);
 
   async function handleSubmit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!partyName.trim() || !paymentDate) {
       setErr("Party name and payment date are required.");
       return;

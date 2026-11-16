@@ -392,7 +392,7 @@ function ProjectModal({ clientId, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     // A cleared box reports "empty", and the server's date column is NOT NULL.
     if (!started) { setError("Started on: enter the date the project started."); return; }
     setSaving(true); setError("");
@@ -460,7 +460,7 @@ function CostModal({ clientId, project, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     const paise = paiseFromRupeeInput(amount);
     if (!description.trim() || paise === null || paise <= 0) {
       setError("Say what the cost is and what it came to.");
@@ -515,7 +515,7 @@ function CapitaliseModal({ clientId, project, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     setSaving(true); setError("");
     try {
       await request(`/api/cwip/${project.id}/capitalise`, {

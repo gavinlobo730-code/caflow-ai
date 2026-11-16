@@ -452,7 +452,7 @@ export default function CapitalGainsPage() {
 
   async function handleSaveRecord() {
     if (!selectedClientId) return;
-    if (regDates.first) { setRegError(regDates.first); return; }
+    if (regDates.first) { regDates.refuseWith(setRegError); return; }
     if (!regForm.asset_description.trim() || !regForm.purchase_date || !regForm.sale_date) {
       setRegError("Asset description, purchase date, and sale date are required");
       return;

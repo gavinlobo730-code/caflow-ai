@@ -702,7 +702,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
 
   async function confirmMarkFiled() {
     if (!confirmFiling) return;
-    if (filingDates.first) { setConfirmError(filingDates.first); return; }
+    if (filingDates.first) { filingDates.refuseWith(setConfirmError); return; }
     if (!srn.trim()) {
       setConfirmError("SRN is required");
       return;

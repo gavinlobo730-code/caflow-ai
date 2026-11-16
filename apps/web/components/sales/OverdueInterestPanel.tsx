@@ -180,7 +180,7 @@ export default function OverdueInterestPanel({
     : null;
 
   async function prepare(party: LateInterestParty) {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) { setMsg({ type: "err", text: "As at: enter the date the interest is worked out to." }); return; }
     if (heldReason) { setMsg({ type: "err", text: heldReason }); return; }
     setBusy(`draft:${party.customer_id}`);

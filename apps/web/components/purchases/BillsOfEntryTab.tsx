@@ -134,7 +134,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
   function closeForm() { setMsg(null); setShowForm(false); }
 
   async function handleSave() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     if (!form.be_number.trim()) {
       setMsg({ type: "err", text: "The Bill of Entry number is required." });
       return;

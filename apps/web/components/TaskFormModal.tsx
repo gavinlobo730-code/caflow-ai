@@ -82,7 +82,7 @@ export function TaskFormModal({ open, onClose, onSaved, clients, teamMembers = [
     e.preventDefault();
     if (!form.client_id) { setError("Please select a client"); return; }
     if (!form.title.trim()) { setError("Please enter a task title"); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
 
     setSaving(true);
     setError(null);

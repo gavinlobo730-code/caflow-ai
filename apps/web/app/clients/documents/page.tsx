@@ -90,7 +90,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
 
   async function handleUpload() {
     if (!file || !docName) { setError("Enter document name and select a file"); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     setUploading(true);
     try {
       // The server bounds the file, checks its bytes against its type, names and stores it under the firm and client,

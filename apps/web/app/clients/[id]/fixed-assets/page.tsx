@@ -922,7 +922,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
 
   async function save() {
     if (submittingRef.current) return;
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     if (!form.asset_name || !form.purchase_cost_paise) { setError("Asset name and cost are required."); return; }
     if (!form.asset_category) { setError("Pick a category."); return; }
     // The field names still say _paise (they are the payload keys); what the CA
@@ -1915,7 +1915,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
 
   async function dispose() {
     if (!selected) return;
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError, undefined, ""); return; }
     if (proceedsPaise === null) {
       setError("Sale proceeds must be an amount in rupees, e.g. 125000 or "
                + "125000.50 — without commas.");

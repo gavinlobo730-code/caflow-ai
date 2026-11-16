@@ -66,7 +66,7 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
   }
 
   async function save() {
-    if (dates.first) { setRefusal(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setRefusal); return; }
     setSaving(true);
     setRefusal(null);
     try {

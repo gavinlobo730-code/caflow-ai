@@ -196,7 +196,7 @@ export default function PostDatedChequesPanel({
   }, [form.alloc]);
 
   async function submit() {
-    if (chequeDates.first) { setMsg({ type: "err", text: chequeDates.first }); return; }
+    if (chequeDates.first) { chequeDates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     // A cleared box reports no problem, and "" went to the server as the cheque's date, which refuses it in the model's own words (the date
     // is what decides when the cheque falls due and may be converted).
     if (!form.chequeDate) { setMsg({ type: "err", text: "Cheque date: enter the date written on the cheque." }); return; }
@@ -244,7 +244,7 @@ export default function PostDatedChequesPanel({
   }
 
   async function convert(c: PostDatedCheque) {
-    if (presentDates.first) { setMsg({ type: "err", text: presentDates.first }); return; }
+    if (presentDates.first) { presentDates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     const ok = await confirmDialog({
       title: words.convert,
       message:

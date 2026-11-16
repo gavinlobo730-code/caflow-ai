@@ -931,7 +931,7 @@ export function PurchaseBillEditor({
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (form15caCleared) { setError(null); form15caRefusal.refuse(); return; }
     if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }

@@ -202,8 +202,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
   }, [returnType, period]);
 
   async function handleSave() {
-    if (dates.first) { setErr(dates.first); return; }
-    if (status === "Filed" && filedDates.first) { setErr(filedDates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
+    if (status === "Filed" && filedDates.first) { filedDates.refuseWith(setErr); return; }
     if (!clientId || !period) {
       setErr("Please fill all required fields.");
       return;
@@ -481,7 +481,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
   const canSubmit = allArnsFilled && !!filedDate && !submitting;
 
   async function handleSubmit() {
-    if (dates.first) { setFormError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setFormError); return; }
     if (!canSubmit) return;
     setSubmitting(true);
     setFormError(null);
@@ -745,7 +745,7 @@ export default function GSTPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
-    if (filedDates.first) { setFiledError(filedDates.first); return; }
+    if (filedDates.first) { filedDates.refuseWith(setFiledError); return; }
     if (!filedForm.arn.trim()) {
       setFiledError("Acknowledgement number is required");
       return;

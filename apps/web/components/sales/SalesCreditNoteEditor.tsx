@@ -289,7 +289,7 @@ export function SalesCreditNoteEditor({
     // ₹1,486 credit notes from what looked like one click.
     if (saving) return;
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.creditNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
       return;

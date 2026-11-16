@@ -951,8 +951,7 @@ export default function TaxComputationPage() {
       return;
     }
     // The box is hidden where the server does not offer the relief, and a hidden box is not asked.
-    const sanctionProblem = offers("s80ee") ? sanctionDates.first : null;
-    if (sanctionProblem) { setComputeError(sanctionProblem); return; }
+    if (offers("s80ee") && sanctionDates.first) { sanctionDates.refuseWith(setComputeError); return; }
     setComputing(true);
     setComputeError(null);
     setSnapshotError(null);

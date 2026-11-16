@@ -166,7 +166,7 @@ export default function TaskTemplatesPage() {
       return;
     }
     if (instDates.first) {
-      setInstError(instDates.first);
+      instDates.refuseWith(setInstError);
       return;
     }
     setInstantiating(true);

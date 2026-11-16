@@ -29,7 +29,10 @@ import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useTakenBackWhenFixed } from "@/lib/dates/useDateProblems";
+
+/** Said by Save over a window that ends before it starts, and taken back once it does not. */
+const END_BEFORE_START = "End date: it is before the start date.";
 
 // ─── What changed here, and why (ACC-06) ────────────────────────────────────
 //
@@ -110,6 +113,7 @@ export default function RecurringPage() {
   const [editing, setEditing] = useState<RecurringJournalTemplate | null>(null);
   const [form, setForm] = useState<TemplateForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  useTakenBackWhenFixed(setFormError, END_BEFORE_START, !!form.end_date && form.end_date < form.start_date);
   // The end date is OPTIONAL: text that is not a date reads as blank, and a template meant to stop would run on for ever, posting
   // unattended, with nothing said (frontend_ux-19).
   const dates = useDateProblems();
@@ -198,7 +202,7 @@ export default function RecurringPage() {
   }
 
   async function handleSave() {
-    if (dates.first) { setFormError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setFormError); return; }
     if (!form.client_id) { setFormError("Client is required"); return; }
     if (!form.name.trim()) { setFormError("Name is required"); return; }
     if (!form.debit_account_id) { setFormError("Debit account is required"); return; }
@@ -218,7 +222,7 @@ export default function RecurringPage() {
     if (!form.start_date) { setFormError("Start date is required"); return; }
     // The end box only hints at the start (a hint is not a refusal), so an end before the start reached the server and was refused in
     // schema words.
-    if (form.end_date && form.end_date < form.start_date) { setFormError("End date: it is before the start date."); return; }
+    if (form.end_date && form.end_date < form.start_date) { setFormError(END_BEFORE_START); return; }
 
     // The screen writes two lines; the model holds N (migration 377), so a
     // rent journal with its GST needs no schema change when the form grows.

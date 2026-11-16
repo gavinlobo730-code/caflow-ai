@@ -1471,7 +1471,7 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
       setSaveError("Rule 28AA(4) issues a certificate for a specified AMOUNT. Enter the amount it applies up to.");
       return;
     }
-    if (certDates.first) { setSaveError(certDates.first); return; }
+    if (certDates.first) { certDates.refuseWith(setSaveError); return; }
     if (!form.valid_from || !form.valid_to || form.valid_to < form.valid_from) {
       setSaveError("Enter the validity period. Rule 28AA(4) caps it at the financial year.");
       return;

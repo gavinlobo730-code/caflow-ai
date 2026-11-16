@@ -475,7 +475,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   async function save() {
     if (!bankName.trim()) { setError("Bank name is required."); return; }
     if (!editing && !accountNo.trim()) { setError("Account number is required."); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // An opening balance read wrong is wrong for the life of the account: every
     // reconciliation after it starts from this number.
     const openingPaise = paiseFromRupeeInput(openingBal || "0");

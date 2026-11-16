@@ -752,7 +752,7 @@ export function InvoiceEditor({
   // ── Save flow: create/PATCH → (issue) → (send), reusing existing endpoints ─────
   async function save(action: SaveAction) {
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (shippingBillCleared) { setError(null); shippingBillRefusal.refuse(); return; }
     if (dueDateCleared) { setError(null); dueDateRefusal.refuse(); return; }

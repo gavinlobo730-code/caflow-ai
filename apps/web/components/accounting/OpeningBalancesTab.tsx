@@ -154,7 +154,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
   function closeForm() { setMsg(null); setShowForm(false); }
 
   async function handleSave() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     const paise = paiseFromRupeeInput(form.amount);
     if (paise === null || paise <= 0) {
       setMsg({ type: "err", text: "Enter the amount still outstanding at the opening date." });

@@ -100,7 +100,7 @@ export function ProductServiceFormModal({
   async function submit() {
     setAttempted(true);
     if (!v.ok) return;
-    if (dates.first) { setSaveError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setSaveError); return; }
     setSaving(true);
     setSaveError(null);
     try {

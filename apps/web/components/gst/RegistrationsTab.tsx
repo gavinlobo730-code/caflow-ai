@@ -191,7 +191,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
 
   async function handleClose(r: ClientGstRegistration, on: string) {
     if (closeDates.first) {
-      setMsg({ type: "err", text: closeDates.first });
+      closeDates.refuseWith(setMsg, (text) => ({ type: "err" as const, text }));
       return;
     }
     if (!on) {

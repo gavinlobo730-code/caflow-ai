@@ -178,7 +178,7 @@ export function HousePropertyWorksheet({
   }, [clientId, fy, useNewRegime, take]);
 
   async function workOut() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     const built = payloadFrom(rows);
     if (built.error || !built.payload) { setErr(built.error ?? "Check the figures."); return; }
     setBusy(true); setErr(null);

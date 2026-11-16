@@ -458,7 +458,7 @@ export default function ITRFilingPage() {
   }
 
   async function handleCreate() {
-    if (createDates.first) { setCreateError(createDates.first); return; }
+    if (createDates.first) { createDates.refuseWith(setCreateError); return; }
     // Whether a kind needs the earlier return's receipt is the server's word (`needs_the_earlier_receipt`). Left empty, the receipt's number and
     // date went as null and the server's refusal ended "...or name the original filing prepared here": a way out this form does not have.
     if (selectedKind?.needs_the_earlier_receipt) {
