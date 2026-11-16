@@ -124,6 +124,7 @@ ledger_balances	write
 login_events	read
 msme_payments	write
 msme_vendors	write
+nightly_exception_results	read
 notes_to_accounts	write
 notifications	write
 onboarding_checklist_steps	write

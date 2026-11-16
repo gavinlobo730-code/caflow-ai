@@ -450,8 +450,11 @@ def test_a_role_without_task_read_gets_no_task_section_and_is_told(world, model,
 def test_the_engines_not_included_are_named_on_every_answer(world, model):
     out = run(_digest(PARTNER))
     text = " ".join(out["gaps"])
-    for needle in ("GSTR-2B", "Rule 37A", "duplicate bills", "Recurring journal"):
-        assert needle in text, needle
+    # Only Rule 37A is still not covered: the other three are stored nightly (POST-A-050).
+    assert "Rule 37A" in text
+    for gone in ("GSTR-2B (bills missing in 2B) is not in this digest", "duplicate bills are not in this digest",
+                 "Recurring journal entries missing this month are not in this digest"):
+        assert gone not in text, gone
 
 
 def test_the_items_use_exactly_the_keys_the_browser_routes_on(world, model):
@@ -610,10 +613,13 @@ def test_every_key_the_server_can_emit_is_routed_by_the_browser():
 def test_each_route_names_a_screen_that_exists():
     app = _WEB / "app"
     assert (app / "deadlines/page.tsx").exists() and (app / "tasks/page.tsx").exists()
-    for section in ("compliance", "tasks", "accounting"):
+    for section in ("compliance", "tasks", "accounting", "purchases"):
         assert (app / "clients/[id]" / section / "page.tsx").exists(), section
     accounting = (app / "clients/[id]/accounting/page.tsx").read_text(encoding="utf-8")
     assert 'id: "verify-books"' in accounting, "the books-findings link opens a tab that exists"
+    assert 'id: "journal"' in accounting, "the recurring-journals link opens a tab that exists"
+    purchases = (app / "clients/[id]/purchases/page.tsx").read_text(encoding="utf-8")
+    assert 'id: "bills"' in purchases, "the 2B and duplicate-bill links open a tab that exists"
 
 
 def test_the_digest_panel_is_mounted_on_the_insights_page():

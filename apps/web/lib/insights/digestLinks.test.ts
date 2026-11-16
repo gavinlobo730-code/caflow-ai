@@ -46,7 +46,7 @@ test("a key the map does not know falls back to the client's overview and no sec
 test("no client route adds a dynamic segment under /clients/[id]", () => {
   for (const [key, r] of Object.entries(DIGEST_ROUTES)) {
     // Decision D10: a new section there is a query parameter on an existing route.
-    assert.match(r.client("x"), /^\/clients\/x\/(compliance|tasks|accounting|overview)(\?tab=[a-z-]+)?$/, key);
+    assert.match(r.client("x"), /^\/clients\/x\/(compliance|tasks|accounting|purchases|overview)(\?tab=[a-z-]+)?$/, key);
   }
 });
 
