@@ -79,6 +79,15 @@ def assert_items_are_the_clients(db, firm_id: str, client_id: str, lines: Iterab
             db, firm_id, client_id, customer_id, billing, exclude_invoice_id=exclude_invoice_id)
 
 
+def items_are_the_clients(db, firm_id: str, client_id: str, lines: Iterable) -> None:
+    """The item half of `assert_items_are_the_clients` alone, for a document whose lines bill no invoice's order line: a
+    quotation, a sales order, a delivery challan, a purchase order and a goods receipt (POST-A-441). Only each line's
+    `service_catalogue_id` is handed on, so a stray `sales_order_line_id` on one of these lines cannot reach the order-billing
+    rule, which is about an INVOICE's lines. Refuses (422, naming the lines) before anything is written."""
+    assert_items_are_the_clients(db, firm_id, client_id,
+                                 [{"service_catalogue_id": _field(line, "service_catalogue_id")} for line in (lines or [])])
+
+
 def _field(line, name: str):
     """A field of a request line, whether it arrived as a dict or as a model."""
     return line.get(name) if isinstance(line, Mapping) else getattr(line, name, None)

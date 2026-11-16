@@ -100,14 +100,28 @@ def assigned_client_ids(user: dict) -> set[str]:
         return set()
     # Only a row WRITTEN IN THE MEMBER'S OWN FIRM counts (migration 530): `users.id` is a global key and this read bypasses
     # row security, so a row a Partner of another firm planted for this member must not grant a client of this one.
+    # G1 (POST-A-433): the firm's own practice is the Partner's alone, and an assignment row does not change that. A signed-in
+    # session cannot assign the practice to anybody (migration 537) and the assignments route refuses it, so a row naming it can
+    # only have been written by the service role; this is where a non-Partner (the only caller that reaches this set) is
+    # refused it anyway. Every check that asks the assignment (`can_access_client`, `effective_client_ids`, and through them
+    # the routes that resolve a row by its own id and are outside the router guard) inherits it, in the guard's own 404.
+    # The client's own `is_internal` is read IN THE SAME STATEMENT (the assignment's foreign key to `clients`), so the rule
+    # costs no extra round trip: this set is asked once per row by the bulk imports and the knowledge search.
     res = (
         _db().table("user_client_assignments")
-        .select("client_id")
+        .select("client_id, clients(is_internal)")
         .eq("user_id", uid)
         .eq("firm_id", firm_id)
         .execute()
     )
-    return {str(r["client_id"]) for r in (res.data or []) if r.get("client_id")}
+    return {str(r["client_id"]) for r in (res.data or []) if r.get("client_id") and not _names_the_practice(r)}
+
+
+def _names_the_practice(row: dict) -> bool:
+    """Whether an assignment row's embedded client is the firm's own practice (`clients.is_internal`, migration 073). A row
+    read without the embed (a stand-in that predates it) is an ordinary client: the embed is what says otherwise."""
+    client = row.get("clients")
+    return isinstance(client, dict) and client.get("is_internal") is True
 
 
 def is_client_assigned(user_id: Optional[str], client_id: Optional[str], firm_id: Optional[str]) -> bool:
@@ -123,14 +137,15 @@ def is_client_assigned(user_id: Optional[str], client_id: Optional[str], firm_id
         return True
     res = (
         _db().table("user_client_assignments")
-        .select("id")
+        .select("id, clients(is_internal)")
         .eq("user_id", user_id)
         .eq("client_id", client_id)
         .eq("firm_id", firm_id)
         .limit(1)
         .execute()
     )
-    return bool(res.data)
+    # G1, as in `assigned_client_ids` and read in the same statement: an assignment to the practice assigns nothing (POST-A-433).
+    return any(not _names_the_practice(r) for r in (res.data or []))
 
 
 def effective_client_ids(user: dict) -> Optional[set[str]]:
