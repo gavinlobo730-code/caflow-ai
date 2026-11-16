@@ -10,7 +10,7 @@
  * and what is not verified (whether Cloudflare applies `_headers` to a response it serves through a
  * `_redirects` rewrite — this site has none that matter, two 301s). `apps/api/tests/
  * test_the_two_sites_send_the_same_security_posture.py` holds the two scripts to the same header values from
- * the Python side, because this app has no test runner of its own.
+ * the Python side, which runs on a change to either app (this app's own `pnpm test` runs only in Marketing CI).
  *
  * WHAT IS DIFFERENT HERE, and each is read off the code:
  *     connect-src   'self' and the API origin only. The site makes ONE cross-origin request, the demo form's

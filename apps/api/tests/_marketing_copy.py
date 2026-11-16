@@ -1,8 +1,10 @@
 """The marketing site's COPY, as sentences — shared by the claims ledger's guard.
 
-`apps/marketing` has no test runner, so what the public site says is checked from
-here (the Schedule III caption lesson: a guard inside the thing it guards passes
-whenever the thing and its copy drift together).
+What the public site says is checked from here, on the Python side, because the
+facts it is held to are the backend's (the Schedule III caption lesson: a guard
+inside the thing it guards passes whenever the thing and its copy drift together).
+`apps/marketing` has a runner of its own since 16-11-2026 and it cannot import the
+backend; `_marketing_claims.py` says which guards live where and what neither sees.
 
 WHAT COUNTS AS COPY. Every string literal and every run of JSX text in the site's
 `.ts`/`.tsx` under `app/`, `components/` and `lib/`, comments blanked first (a

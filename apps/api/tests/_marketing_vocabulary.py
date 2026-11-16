@@ -30,10 +30,13 @@ from __future__ import annotations
 import re
 
 # A rendered picture of the product's own screens: its text is sample data and UI
-# labels ("146 transactions imported from HDFC Bank"), not a statement the site makes.
+# labels ("173 to do — 128 ready"), not a statement the site makes.
 # What the page around it SAYS is where a claim is made. The filing and
 # social-proof patterns in `test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`
-# and `test_the_marketing_site_says_what_the_product_does.py` still read these files.
+# and `test_the_marketing_site_says_what_the_product_does.py` still read these files,
+# and since 16-11-2026 the product wording on them is held to the product files it was
+# copied from by apps/marketing/scripts/the-redrawn-screens-match-the-product.test.ts
+# (POST-A-121). What that leaves unseen is item 3 of the blind spots in `_marketing_claims.py`.
 EXEMPT_PREFIXES: tuple[tuple[str, str], ...] = (
     ("components/home/screens/",
      "rendered product screens: sample data and UI labels, not statements the site makes"),

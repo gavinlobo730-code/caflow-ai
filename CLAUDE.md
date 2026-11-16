@@ -2519,8 +2519,7 @@ than the code does.**
   year (a human step, `docs/compliance/`) turns it off, and the gap is recomputed at
   release so the draft need not be rebuilt.
 - **THE PUBLIC SITE IS HELD TO THE CODE FROM THE PYTHON SIDE**
-  (`tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`; the
-  marketing app has no test runner). MFA is required of Partner and Manager on the routers
+  (`tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py`). MFA is required of Partner and Manager on the routers
   that carry `mfa_guard`, not "every sign-in"; the audit log records changes, not views;
   the database is in Mumbai, the API in Singapore, and AI calls leave India; the Tally
   importer writes customer and vendor masters only (the Migration Center's copy is built

@@ -22,11 +22,14 @@ What the fix does, and what it deliberately does not:
     same shape CLAUDE.md records for a filing: a retry needs the reference
     recorded first, never a blind resend.
 
-THE GUARD IS ON THE PYTHON SIDE because apps/marketing has no test runner (it
-lints, typechecks and builds — the Schedule III caption lesson). The behavioural
-half drives `lib/demoRequestWait.ts` under Node with a fake clock and SKIPS,
-rather than passing silently, where Node cannot run TypeScript (`--experimental-
-strip-types`, Node 22.6+); the source-level half always runs.
+THE GUARD IS ON THE PYTHON SIDE because it was written before apps/marketing had
+a test runner (`pnpm test` arrived on 16-11-2026, in the path-filtered Marketing
+CI), and the source-level half reads the API's router beside the form. The
+behavioural half drives `lib/demoRequestWait.ts` under Node with a fake clock and
+SKIPS, rather than passing silently, where Node cannot run TypeScript (`--experimental-
+strip-types`, Node 22.6+); the source-level half always runs. The backend job sets
+up no Node of its own, so that skip is item 5 of the blind spots recorded in
+`_marketing_claims.py`.
 """
 import json
 import re

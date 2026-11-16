@@ -68,6 +68,27 @@ pnpm build       # static export to ./out
 
 Same toolchain as `apps/web`: `output: "export"`, `trailingSlash: true`.
 
+## Tests
+
+```bash
+pnpm test                          # node --experimental-strip-types --test (Node 22.6 or later)
+pnpm exec tsc -p tsconfig.test.json  # the tests' own type-check
+```
+
+`scripts/*.test.ts` hold the redrawn product screens on the home page to the
+product files they were copied from, and test the quality pass's scripts.
+Marketing CI runs both. The guards on what the site *claims* stay in the
+backend suite (`apps/api/tests/_marketing_claims.py` says why, and what no
+guard sees).
+
+## Quality pass (Lighthouse and axe)
+
+Started by hand: Actions > Marketing quality pass > Run workflow. It builds
+this site (or measures the deployed one), serves `out/` with
+`scripts/serve-out.mjs`, runs `scripts/quality-pass.mjs`, and keeps the
+reports as the run's artifact. It does not run in a container without a GPU,
+whose figures are not a visitor's.
+
 ## Deploy (Cloudflare Pages)
 
 A **second Cloudflare Pages project**, parallel to `apps/web` (`practicesync-ai`).
