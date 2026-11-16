@@ -32,6 +32,20 @@ export const DIGEST_ROUTES: Record<string, DigestRoute> = {
     section: null,
     client: (id) => `/clients/${id}/accounting?tab=verify-books`,
   },
+  // The three results the nightly check stores (POST-A-050). There is no firm-wide screen
+  // for any of them, so no section link; each client link opens the tab where a CA acts.
+  itc_not_furnished: {
+    section: null,
+    client: (id) => `/clients/${id}/purchases?tab=bills`,
+  },
+  duplicate_bills: {
+    section: null,
+    client: (id) => `/clients/${id}/purchases?tab=bills`,
+  },
+  recurring_journals_missing: {
+    section: null,
+    client: (id) => `/clients/${id}/accounting?tab=journal`,
+  },
 };
 
 export function digestClientHref(key: string, clientId: string): string {

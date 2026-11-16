@@ -1076,6 +1076,14 @@ def run_reconciliation(db, firm_id: str, client_id: str, *, trigger: str, trigge
         "completed_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", run_id).execute()
 
+    # POST-A-050: the three results the digest could not compute per page load
+    # (GSTR-2B/ITC, near-duplicate bills, recurring journals) are stored here,
+    # from the ledger this run already holds. After the run is marked complete
+    # and never raising, so a failure in a stage the books check did not have
+    # yesterday cannot turn a finished check into a failed one.
+    from services import nightly_exception_results_service
+    nightly_exception_results_service.refresh_client(db, firm_id, client_id, entries)
+
     return {
         "run_id": run_id, "status": "completed", "checks_run": checks_run,
         "findings_count": len(all_findings), "findings": all_findings,
