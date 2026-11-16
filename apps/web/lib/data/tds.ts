@@ -69,6 +69,9 @@ export interface TDSDeductee {
   challan_date: string;
   is_lower_deduction?: boolean;
   lower_deduction_cert?: string;
+  /** What recorded the deduction, as the server says (a from-books 26Q only): a purchase bill, an advance, or the TDS register (a deduction typed on the TDS
+   *  screen, with no journal behind it; POST-A-078). A statement saved before the field existed has none. */
+  recorded_by?: "purchase_bill" | "advance" | "tds_register";
 }
 
 export interface TDSChallan {
@@ -185,15 +188,21 @@ export interface TDSReturnPayload {
     difference_paise: number;
     matched: boolean;
     account_found: boolean;
+    /** POST-A-078. The tax of the deductions typed on the TDS screen that the statement carries: no journal stands behind them, so the tie-out above does not
+     *  compare it. Absent from a statement built before the field existed. */
+    typed_paise?: number;
   };
   excluded_non_resident?: {
     bill_count: number;
     tds_paise: number;
     reason: string;
   };
-  /** POST-A-078. The deductions typed on the TDS screen for the quarter that a 26Q built from the books leaves out. Present on a 26Q only, and read through
-   *  `readExcludedTyped` (`lib/tds/excludedTyped.ts`), which draws nothing it cannot read whole; a server that predates it sends no key. */
+  /** POST-A-078. The deductions typed on the TDS screen for the quarter that a 26Q built from the books leaves out (a register row recorded for another statement).
+   *  Present on a 26Q only, and read through `readExcludedTyped` (`lib/tds/excludedTyped.ts`), which draws nothing it cannot read whole; a server that predates it sends
+   *  no key. */
   excluded_typed?: unknown;
+  /** POST-A-078. The deductions typed on the TDS screen that the 26Q carries as deductee rows, in the same shape and read the same way. */
+  typed_on_statement?: unknown;
   /** TDS-16. Present only on a from-books build — see TDSKeyingSheet above. */
   keying_sheet?: TDSKeyingSheet;
   period?: {

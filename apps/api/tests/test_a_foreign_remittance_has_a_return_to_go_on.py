@@ -124,7 +124,7 @@ def test_an_advance_appears_on_26q_and_reconciles(monkeypatch):
     assert row["section"] == "194C"
     assert "Advance" in row["nature_of_payment"]
     assert out["reconciliation"]["matched"] is True
-    assert out["source"] == "posted_purchase_bills_and_advances"
+    assert out["source"] == "posted_purchase_bills_and_advances_and_typed_deductions"
 
 
 def test_a_bill_and_an_advance_are_two_rows_not_one(monkeypatch):
