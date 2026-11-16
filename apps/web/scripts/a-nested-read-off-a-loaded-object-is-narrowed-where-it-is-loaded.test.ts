@@ -77,7 +77,7 @@ test("a duplicate seed read back from the session is a detail only if it has its
 test("the editors that read existing.lines and duplicateSeed.lines are the ones whose sources are pinned above", () => {
   // If an editor starts taking its detail from somewhere else, the reads below are no longer covered by the two tests above.
   const editors = walk(join(WEB, "components")).map((f) => relative(WEB, f).split("\\").join("/")).filter((rel) =>
-    /\bexisting && existing\.lines\.length\b/.test(read(rel)));
+    /\bexisting && \(existing\.lines \?\? \[\]\)\.length\b/.test(read(rel)));
   assert.deepEqual(editors.sort(), [
     "components/invoices/InvoiceEditor.tsx",
     "components/purchases/DebitNoteEditor.tsx",
@@ -136,7 +136,7 @@ test("the walk still sees the reads this is about", () => {
   for (const f of walk(WEB)) {
     const rel = relative(WEB, f).split("\\").join("/");
     if (rel.startsWith("scripts/")) continue;
-    n += [...read(rel).matchAll(/\b([A-Za-z_]\w*) && \1\.\w+\.\w+/g)].length;
+    n += [...read(rel).matchAll(/\b([A-Za-z_]\w*) && (?:\1\.\w+\.\w+|\(\1\.\w+ \?\? \[\]\)\.\w+)/g)].length;
   }
   assert.ok(n >= 20, `only ${n} root-guarded nested reads found: the walk has probably stopped matching`);
 });

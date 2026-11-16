@@ -685,7 +685,7 @@ export default function ClientPortalPage() {
                 <tab.icon size={14} />
                 {tab.label}
                 {tab.id === "messages" && (() => {
-                  const mine = unread?.clients.find((c) => c.client_id === selectedClientId)?.unread ?? 0;
+                  const mine = (unread?.clients ?? []).find((c) => c.client_id === selectedClientId)?.unread ?? 0;
                   return mine > 0 ? (
                     <span className="ml-1 rounded-full bg-brand px-1.5 text-3xs font-semibold text-white">{mine}</span>
                   ) : null;

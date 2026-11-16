@@ -202,7 +202,7 @@ export default function TimeTrackingPage() {
       setStartEngagementId("");
       // The server's own sentence about the rate (why no engagement was chosen,
       // that the time will be listed as "no rate") — shown, never reworded.
-      setRateNotice(rate && rate.notes.length ? rate.notes.join(" ") : null);
+      setRateNotice(rate && (rate.notes ?? []).length ? rate.notes.join(" ") : null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to start timer");
     } finally {
@@ -247,7 +247,7 @@ export default function TimeTrackingPage() {
         is_billable: manualBillable,
         hourly_rate_paise: hourlyRate,
       });
-      setRateNotice(rate && rate.notes.length ? rate.notes.join(" ") : null);
+      setRateNotice(rate && (rate.notes ?? []).length ? rate.notes.join(" ") : null);
       setShowManual(false);
       setManualClientId("");
       setManualEngagementId("");
