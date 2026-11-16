@@ -22,6 +22,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { failureSentence } from "@/lib/api/failureSentence";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
@@ -352,8 +353,18 @@ export default function ITNoticesPage() {
 
   async function updateStatus(id: string, status: NoticeStatus) {
     const sb = getSupabaseClient();
-    await sb.from("it_notices").update({ status }).eq("id", id);
-    loadData();
+    // The answer used to be ignored (POST-A-414): a refusal, or a request that got no answer, looked like a change. `.select("id")` because
+    // a policy that refuses an update finds nothing to change and raises no error, so "no error" is not "changed".
+    const { data: reached, error: err } = await sb.from("it_notices").update({ status }).eq("id", id).select("id");
+    const refusal = err
+      ? failureSentence(err, "The notice's status was not changed.", "write")
+      : !reached || reached.length === 0
+        ? "The notice's status was not changed: it may have been removed, or you may not change notices for this client."
+        : null;
+    // The list is read again either way (a request that got no answer may have changed the row), and the sentence is set after the read,
+    // which clears the page's message as it starts.
+    await loadData();
+    if (refusal) setError(refusal);
   }
 
   async function deleteNotice(id: string) {

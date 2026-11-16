@@ -8,6 +8,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
+import { browserFailureOf, failureSentence } from "@/lib/api/failureSentence";
 import { acceptedMappings, mappingProblem, type CaptionsPayload } from "@/lib/accounting/coaImportMapping";
 
 type AccountType = "Asset" | "Liability" | "Equity" | "Revenue" | "Expense";
@@ -25,7 +26,8 @@ interface ImportRow {
 }
 
 interface ImportError { row: number; message: string; }
-interface ImportResult { inserted: number; skipped: number; errors: ImportError[]; }
+/** `inserted` is null when it is not known: the import got no answer, and a request that got no answer may have gone through (POST-A-414). */
+interface ImportResult { inserted: number | null; attempted: number; skipped: number; errors: ImportError[]; }
 
 
 function parseCSV(text: string): string[][] {
@@ -180,6 +182,7 @@ export default function CoaImportPage() {
       const toInsert = preview.filter(r => !existingCodes.has(r.account_code.toUpperCase()));
       const skipped = preview.length - toInsert.length;
       const errors: ImportError[] = [];
+      let inserted: number | null = 0;
 
       if (toInsert.length > 0) {
         const { error: err } = await sb.from("chart_of_accounts").insert(
@@ -198,12 +201,16 @@ export default function CoaImportPage() {
           }))
         );
         if (err) errors.push({ row: 0, message: err.message });
+        // ONE insert statement for every row, so a refusal added nothing: the count was `rows - errors`, which said all but one were
+        // imported when none was (POST-A-414). A request that got no answer may have gone through, so its count is not known.
+        if (err) inserted = browserFailureOf(err) === "no_answer" ? null : 0;
+        else inserted = toInsert.length;
       }
 
-      setResult({ inserted: toInsert.length - errors.length, skipped, errors });
+      setResult({ inserted, attempted: toInsert.length, skipped, errors });
       setStep("done");
     } catch (e) {
-      setResult({ inserted: 0, skipped: 0, errors: [{ row: 0, message: e instanceof Error ? e.message : "Import failed" }] });
+      setResult({ inserted: 0, attempted: 0, skipped: 0, errors: [{ row: 0, message: failureSentence(e, "Import failed", "write") }] });
       setStep("done");
     } finally {
       setImporting(false);
@@ -304,10 +311,14 @@ export default function CoaImportPage() {
                 ? <CheckCircle size={18} className="text-green-600" />
                 : <AlertCircle size={18} className="text-amber-600" />
               }
-              <span className="text-sm font-semibold text-ps-body">Import Complete</span>
+              <span className="text-sm font-semibold text-ps-body">
+                {result.errors.length === 0 ? "Import Complete" : result.inserted === null ? "Import result not known" : "Import did not complete"}
+              </span>
             </div>
             <div className="text-xs space-y-1 text-ps-label">
-              <p>✅ {result.inserted} account{result.inserted !== 1 ? "s" : ""} imported</p>
+              {result.inserted === null
+                ? <p>⚠ Whether the {result.attempted} account{result.attempted !== 1 ? "s were" : " was"} imported is not known. Open the chart of accounts to see before you import again: a second import would skip the codes that are already there.</p>
+                : <p>✅ {result.inserted} account{result.inserted !== 1 ? "s" : ""} imported</p>}
               {result.skipped > 0 && <p>⏭ {result.skipped} skipped (duplicate codes already exist)</p>}
               {result.errors.length > 0 && <p>❌ {result.errors.length} error{result.errors.length !== 1 ? "s" : ""}</p>}
             </div>

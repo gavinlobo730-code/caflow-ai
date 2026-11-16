@@ -3021,7 +3021,8 @@ function Customers({
       .eq("id", deactivateTarget.id);
     setDeactivating(false);
     if (error) {
-      showToast("Failed to deactivate customer", "error");
+      // A request that got no answer may have gone through: it is said as that, not as a failure (POST-A-414).
+      showToast(failureSentence(error, "Failed to deactivate customer", "write"), "error");
       setDeactivateTarget(null);
       return;
     }
@@ -3035,7 +3036,7 @@ function Customers({
   async function reactivateCustomer(c: Customer) {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from("customers").update({ is_active: true }).eq("id", c.id);
-    if (error) { showToast("Failed to reactivate customer", "error"); return; }
+    if (error) { showToast(failureSentence(error, "Failed to reactivate customer", "write"), "error"); return; }
     showToast("Customer reactivated", "success");
     load();
   }
