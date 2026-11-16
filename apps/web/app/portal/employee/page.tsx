@@ -17,6 +17,7 @@ import { TaxDeclarationTab } from "@/components/portal/TaxDeclarationTab";
 import { TdsProjectionTab } from "@/components/portal/TdsProjectionTab";
 import { PortalShell } from "@/components/portal/PortalShell";
 import { formatMonthYear } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -237,10 +238,12 @@ export default function EmployeePortalPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-ps-bg flex items-center justify-center">
-        <div className="flex items-center gap-3 text-ps-label">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span className="text-sm">Loading your portal…</span>
-        </div>
+        <LoadingRegion label="Loading your portal" noticeClassName="justify-center text-center">
+          <div className="flex items-center gap-3 text-ps-label">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Loading your portal…</span>
+          </div>
+        </LoadingRegion>
       </div>
     );
   }
@@ -305,9 +308,11 @@ export default function EmployeePortalPage() {
         {activeTab === "payslips" && (
           <div className="space-y-3">
             {payslipsLoading ? (
-              <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Loading payslips…
-              </div>
+              <LoadingRegion label="Loading payslips" noticeClassName="justify-center text-center">
+                <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading payslips…
+                </div>
+              </LoadingRegion>
             ) : payslipsError ? (
               <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your payslips — the request failed or timed out.</p>
@@ -372,9 +377,11 @@ export default function EmployeePortalPage() {
         {activeTab === "leave" && (
           <div className="space-y-3">
             {leaveLoading ? (
-              <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Loading leave balances…
-              </div>
+              <LoadingRegion label="Loading leave balances" noticeClassName="justify-center text-center">
+                <div className="text-center py-10 text-sm text-ps-hint flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading leave balances…
+                </div>
+              </LoadingRegion>
             ) : leaveError ? (
               <div className="bg-white rounded-xl border border-ps-border px-5 py-12 text-center space-y-3">
                 <p className="text-sm text-state-problem font-medium">Couldn&apos;t load your leave balances — the request failed or timed out.</p>

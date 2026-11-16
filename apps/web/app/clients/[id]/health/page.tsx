@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Plus, X, Activity, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/dates/format";
@@ -290,7 +290,7 @@ export default function ClientHealthPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <LoadingRegion label="Loading the client's health" className="p-6 space-y-6">
         {/* Score hero */}
         <div className="rounded-xl border border-gray-200 bg-white p-6">
           <div className="flex items-center gap-6">
@@ -323,7 +323,7 @@ export default function ClientHealthPage() {
             </div>
           ))}
         </div>
-      </div>
+      </LoadingRegion>
     );
   }
 

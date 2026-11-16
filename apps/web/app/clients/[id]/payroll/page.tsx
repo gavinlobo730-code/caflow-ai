@@ -28,7 +28,7 @@ import RecordedSettlementDialog from "@/components/payroll/RecordedSettlement";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import ApplyStructureModal from "@/components/payroll/ApplyStructureModal";
 import { usePermissions } from "@/lib/auth/AuthContext";
-import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSkeleton, CardGridSkeleton, Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
@@ -284,13 +284,13 @@ function DashboardTab({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   if (loading) return (
-    <div className="p-6 space-y-3">
+    <LoadingRegion label="Loading payroll" className="p-6 space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => <MetricCardSkeleton key={i} />)}
       </div>
       <StatementSkeleton sections={1} rowsPerSection={3} />
       <TransactionListSkeleton rows={6} />
-    </div>
+    </LoadingRegion>
   );
 
   if (loadFailed) return (
@@ -822,7 +822,7 @@ function RunsTab({ clientId, firmId, openDoc }:
   }
 
   if (loading) return (
-    <div className="p-5 space-y-4">
+    <LoadingRegion label="Loading the payroll runs" className="p-5 space-y-4">
       <div className="bg-white rounded-xl border border-ps-border p-4">
         <Skeleton className="h-2.5 w-24 mb-3" />
         <div className="flex items-end gap-3">
@@ -831,7 +831,7 @@ function RunsTab({ clientId, firmId, openDoc }:
         </div>
       </div>
       <TransactionListSkeleton rows={3} />
-    </div>
+    </LoadingRegion>
   );
 
   return (

@@ -25,6 +25,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-sev-low-surface text-sev-low",
@@ -203,9 +204,11 @@ export default function TaskTemplatesPage() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={18} /> Loading templates…
-        </div>
+        <LoadingRegion label="Loading templates" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center py-20 text-ps-hint">
+            <Loader2 className="animate-spin mr-2" size={18} /> Loading templates…
+          </div>
+        </LoadingRegion>
       ) : templates.length === 0 ? (
         <Card>
           <EmptyState

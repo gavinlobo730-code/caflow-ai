@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, X, ChevronDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
@@ -244,7 +244,7 @@ function DimensionCard({ dimKey, value, clientId }: DimensionCardProps) {
         {expanded && (
           <div className="mt-3 pt-3 border-t border-ps-border">
             {loadingFactors ? (
-              <p className="text-xs text-gray-400 animate-pulse">Loading factors…</p>
+              <LoadingRegion label="Loading the factors"><p className="text-xs text-gray-400 animate-pulse">Loading factors…</p></LoadingRegion>
             ) : factorsFailed ? (
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs text-red-600">Couldn&apos;t load factors — the request failed or timed out.</p>
@@ -478,7 +478,7 @@ export default function ClientHealthDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <LoadingRegion label="Loading the client's health" className="p-6 space-y-6">
         <Skeleton className="h-5 w-24" />
         <div className="rounded-xl border border-gray-200 bg-white p-6">
           <div className="flex items-center gap-6">
@@ -509,7 +509,7 @@ export default function ClientHealthDetailPage() {
             </div>
           ))}
         </div>
-      </div>
+      </LoadingRegion>
     );
   }
 

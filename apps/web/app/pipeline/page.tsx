@@ -17,7 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -1093,18 +1093,20 @@ export default function PipelinePage() {
 
       {/* Kanban board — skeleton columns while loading, real board otherwise */}
       {loading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {STAGES.map((stage) => (
-            <div key={stage} className="min-w-[280px] flex-none">
-              <Skeleton className="h-11 w-full rounded-xl" />
-              <div className="mt-3 space-y-3">
-                {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} className="h-28 w-full rounded-xl" />
-                ))}
+        <LoadingRegion label="Loading the pipeline">
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {STAGES.map((stage) => (
+              <div key={stage} className="min-w-[280px] flex-none">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <div className="mt-3 space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <Skeleton key={i} className="h-28 w-full rounded-xl" />
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </LoadingRegion>
       ) : (
       <div role="region" aria-label="Sales pipeline by stage" tabIndex={0} className="flex gap-4 overflow-x-auto pb-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
         {STAGES.map((stage) => {

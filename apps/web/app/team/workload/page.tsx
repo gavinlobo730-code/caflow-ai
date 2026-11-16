@@ -20,6 +20,7 @@ import type { WorkloadInsight, CapacityRiskPayload } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 function UtilisationBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
@@ -462,9 +463,11 @@ export default function WorkloadPage() {
       <CapacityRiskPanel />
 
       {loading && !workload ? (
-        <div className="flex items-center justify-center py-20 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={18} /> Loading workload data…
-        </div>
+        <LoadingRegion label="Loading workload data" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center py-20 text-ps-hint">
+            <Loader2 className="animate-spin mr-2" size={18} /> Loading workload data…
+          </div>
+        </LoadingRegion>
       ) : workload ? (
         <>
           {/* Summary stats */}

@@ -21,7 +21,7 @@ import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
-import { Skeleton, TableSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, TableSkeleton, TransactionListSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import type { Column, FilterDef } from "@/lib/table/types";
 import { bulkStockNotMovedSentence, bulkStockSentence, issuedMessage, joinSentences, stockEffectProblem, stockEffectSummary, stockNotMovedSentence } from "@/lib/documents/stockEffect";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
@@ -245,14 +245,14 @@ function isOverdueForUi(inv: SalesInvoice): boolean {
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <LoadingRegion label="Loading sales" className="flex flex-col h-full overflow-hidden" noticeClassName="px-6">
       <div className="flex-shrink-0 px-6 pt-5 pb-0">
         <Skeleton className="h-8 w-96 rounded-lg" />
       </div>
       <div className="flex-1 px-6 pb-6 pt-4">
         <TableSkeleton cols={6} rows={5} />
       </div>
-    </div>
+    </LoadingRegion>
   );
 }
 
@@ -3344,9 +3344,11 @@ function Customers({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             {deleteDeps === null ? (
-              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
-                <Loader2 size={16} className="animate-spin" /> Checking for linked records…
-              </div>
+              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
+                <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
+                  <Loader2 size={16} className="animate-spin" /> Checking for linked records…
+                </div>
+              </LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
                 <div className="px-6 py-5 border-b border-ps-border">

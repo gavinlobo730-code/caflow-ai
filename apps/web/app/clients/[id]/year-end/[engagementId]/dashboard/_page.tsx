@@ -20,7 +20,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { yearEndApi, type ChecklistItem, type EngagementStatus, type YearEndEvent } from "@/lib/api/yearEnd";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
-import { Skeleton, DashboardSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, DashboardSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { formatDate } from "@/lib/dates/format";
 
@@ -285,10 +285,10 @@ export default function YearEndDashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5 max-w-4xl mx-auto">
+      <LoadingRegion label="Loading the year-end dashboard" className="p-6 space-y-5 max-w-4xl mx-auto">
         <Skeleton className="h-16 rounded-xl" />
         <DashboardSkeleton cards={3} className="grid-cols-1 sm:grid-cols-3" />
-      </div>
+      </LoadingRegion>
     );
   }
 

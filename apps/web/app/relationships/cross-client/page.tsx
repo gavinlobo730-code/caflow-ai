@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
 import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -154,9 +155,11 @@ export default function CrossClientMatchesPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
-        </div>
+        <LoadingRegion label="Loading the cross-client view" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center py-16">
+            <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+          </div>
+        </LoadingRegion>
       )}
 
       {error && (

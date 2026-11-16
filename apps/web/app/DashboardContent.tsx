@@ -20,6 +20,7 @@ import { Hub } from "@/components/hub/Hub";
 import { FirstRunChecklist } from "@/components/onboarding/FirstRunChecklist";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
+import { LoadingRegion } from "@/components/ui/skeleton";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -441,15 +442,19 @@ export default function DashboardContent() {
           </div>
           <div className="divide-y divide-ps-border">
             {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-5 py-3.5">
-                  <Skeleton className="h-8 w-8 rounded-full" />
-                  <div className="flex-1 space-y-1.5">
-                    <Skeleton className="h-3.5 w-36" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
+              <LoadingRegion label="Loading recent clients" noticeClassName="px-5">
+                <div className="divide-y divide-ps-border">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 px-5 py-3.5">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3.5 w-36" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))
+              </LoadingRegion>
             ) : recentClients && recentClients.length > 0 ? (
               recentClients.map((c) => (
                 <Link key={c.id} href={`/clients/${c.id}`}>
@@ -500,16 +505,20 @@ export default function DashboardContent() {
           </div>
           <div className="divide-y divide-ps-border">
             {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-5 py-3.5">
-                  <Skeleton className="h-4 w-4 rounded-full" />
-                  <div className="flex-1 space-y-1.5">
-                    <Skeleton className="h-3.5 w-48" />
-                    <Skeleton className="h-3 w-28" />
-                  </div>
-                  <Skeleton className="h-5 w-16 rounded-full" />
+              <LoadingRegion label="Loading pending tasks" noticeClassName="px-5">
+                <div className="divide-y divide-ps-border">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 px-5 py-3.5">
+                      <Skeleton className="h-4 w-4 rounded-full" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-3.5 w-48" />
+                        <Skeleton className="h-3 w-28" />
+                      </div>
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                    </div>
+                  ))}
                 </div>
-              ))
+              </LoadingRegion>
             ) : recentTasks && recentTasks.length > 0 ? (
               recentTasks.filter(t => t.status !== "completed").map((t) => (
                 <div key={t.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-ps-bg transition-colors">

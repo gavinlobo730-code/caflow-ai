@@ -37,6 +37,7 @@ import { errorMessage } from "@/lib/api/index";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -1595,10 +1596,12 @@ function EngagementsPageInner() {
 
       {/* Loading (templates tab only — the letters DataTable manages its own loading state) */}
       {loading && activeTab === "templates" && (
-        <div className="flex items-center justify-center py-12 text-sm text-ps-hint gap-2">
-          <Loader2 size={16} className="animate-spin" />
-          Loading…
-        </div>
+        <LoadingRegion label="Loading templates" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center py-12 text-sm text-ps-hint gap-2">
+            <Loader2 size={16} className="animate-spin" />
+            Loading…
+          </div>
+        </LoadingRegion>
       )}
 
       {/* Templates tab */}

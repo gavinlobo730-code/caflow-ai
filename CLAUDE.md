@@ -257,7 +257,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (13 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (14 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -272,6 +272,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE WINDOW NEVER SCROLLS INSIDE THE SHELL: THE PAGE SCROLLS IN `<main>`, AND `<main>` IS WHERE AN ABSOLUTE DESCENDANT IS PLACED
 - A SCREEN BLOCKS WITH "LOADING…" FOR ITS FIRST READ ONLY
 - A WRITE THE BROWSER MAKES THROUGH THE SUPABASE CLIENT READS ITS ANSWER
+- A PLACEHOLDER A SCREEN DRAWS SAYS WHEN THE SERVER IS SLOW
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 

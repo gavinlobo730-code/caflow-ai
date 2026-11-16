@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, Camera, ChevronDown, ChevronRight } from "lucide-react";
 import { yearEndApi, type FinancialStatementVersion, type FinancialStatementSnapshotData, type RoundedPeriod } from "@/lib/api/yearEnd";
-import { StatementSkeleton } from "@/components/ui/skeleton";
+import { StatementSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { useClientEntityType } from "@/lib/clients/useClientEntityType";
@@ -446,9 +446,11 @@ export default function FinancialStatementsPage() {
         </span>
 
         {loadingVersion && (
-          <span className="flex items-center gap-1.5 text-xs text-ps-hint">
-            <RefreshCw size={11} className="animate-spin" /> Loading version…
-          </span>
+          <LoadingRegion label="Loading the version" className="basis-full">
+            <span className="flex items-center gap-1.5 text-xs text-ps-hint">
+              <RefreshCw size={11} className="animate-spin" /> Loading version…
+            </span>
+          </LoadingRegion>
         )}
       </div>
 

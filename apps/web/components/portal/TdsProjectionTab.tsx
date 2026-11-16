@@ -28,6 +28,7 @@ import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { formatMonthYear } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface MonthRow {
   month: string;
@@ -92,9 +93,11 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
       </div>
 
       {loading && (
-        <div className="px-5 py-8 flex justify-center text-ps-hint">
-          <Loader2 size={18} className="animate-spin" />
-        </div>
+        <LoadingRegion label="Loading the projection" noticeClassName="justify-center text-center px-5">
+          <div className="px-5 py-8 flex justify-center text-ps-hint">
+            <Loader2 size={18} className="animate-spin" />
+          </div>
+        </LoadingRegion>
       )}
 
       {!loading && data && (

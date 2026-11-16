@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Sparkles, AlertTriangle, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SkeletonText } from "@/components/ui/skeleton";
+import { SkeletonText, LoadingRegion } from "@/components/ui/skeleton";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { api } from "@/lib/api";
@@ -138,13 +138,13 @@ export default function AiInsightsPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="space-y-3" role="status" aria-label="Loading insights">
+            <LoadingRegion label="Loading insights" className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="rounded-lg border border-ps-border px-4 py-3">
                   <SkeletonText lines={2} />
                 </div>
               ))}
-            </div>
+            </LoadingRegion>
           ) : loadFailed ? (
             <div className="text-center py-12 space-y-2">
               <p className="text-sm text-red-600 font-medium">Couldn&apos;t load insights — the request failed or timed out.</p>

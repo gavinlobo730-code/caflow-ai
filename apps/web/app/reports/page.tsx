@@ -33,6 +33,7 @@ import { isOverdue } from "@/lib/compliance/overdue";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
@@ -848,10 +849,12 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
         )}
 
         {loading && (
-          <div className="flex items-center justify-center py-12 gap-3 text-ps-hint">
-            <Loader2 size={20} className="animate-spin" />
-            <span className="text-sm">Loading report data…</span>
-          </div>
+          <LoadingRegion label="Loading report data" noticeClassName="justify-center text-center">
+            <div className="flex items-center justify-center py-12 gap-3 text-ps-hint">
+              <Loader2 size={20} className="animate-spin" />
+              <span className="text-sm">Loading report data…</span>
+            </div>
+          </LoadingRegion>
         )}
 
         {data && reportId === "gst_summary" && (

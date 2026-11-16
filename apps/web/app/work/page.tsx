@@ -20,6 +20,7 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-ps-muted text-ps-label",
@@ -182,9 +183,11 @@ export default function WorkPage() {
       {error && <Callout tone="problem">{error}</Callout>}
 
       {loadingTasks ? (
-        <div className="flex items-center justify-center py-20 text-ps-hint">
-          <Loader2 className="animate-spin mr-2" size={18} /> Loading your work…
-        </div>
+        <LoadingRegion label="Loading your work" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center py-20 text-ps-hint">
+            <Loader2 className="animate-spin mr-2" size={18} /> Loading your work…
+          </div>
+        </LoadingRegion>
       ) : isEmpty ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
           <div className="w-12 h-12 rounded-full bg-ps-muted flex items-center justify-center">

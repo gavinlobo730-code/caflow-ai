@@ -40,10 +40,10 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [pre-demo-A-mine.md](pre-demo-A-mine.md) | 2 | before the demo: Claude can do alone |
 | [pre-demo-B-ours.md](pre-demo-B-ours.md) | 10 | before the demo: owner decides, or a live session |
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 3 | before the demo: only the owner can do |
-| [post-demo-A-mine.md](post-demo-A-mine.md) | 78 | after the demo: Claude can do alone |
+| [post-demo-A-mine.md](post-demo-A-mine.md) | 77 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 166 | after the demo: owner decides first, then Claude builds |
 | [post-demo-C-yours.md](post-demo-C-yours.md) | 197 | after the demo: only the owner or outsiders can do |
-| [new-findings.md](new-findings.md) | 28 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
+| [new-findings.md](new-findings.md) | 29 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
 | [post-demo-parked.md](post-demo-parked.md) | 150 | after the demo: parked until someone asks or the work is sized down; NOT counted as open |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
@@ -51,11 +51,11 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [progress.md](progress.md) | — | the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days) |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**THE BACKLOG: 456 open items** (15 before the demo, 441 after); 11 after-demo items are `high` priority; 23 are UNSURE. A further **150 items are parked** (not counted above).
+**THE BACKLOG: 455 open items** (15 before the demo, 440 after); 11 after-demo items are `high` priority; 23 are UNSURE. A further **150 items are parked** (not counted above).
 
-**Who must act (backlog).** 80 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 67 can be built now. 176 need the owner to decide first and 200 only the owner or someone outside this container can do. In all **389 of the 456 wait on the owner.**
+**Who must act (backlog).** 79 items are Claude's alone to build, but 13 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 66 can be built now. 176 need the owner to decide first and 200 only the owner or someone outside this container can do. In all **389 of the 455 wait on the owner.**
 
-**NEW FINDINGS: 28 open** (0 before the demo, 28 after; 2 `high` priority; 0 UNSURE), counted apart from the backlog. 22 are Claude's alone to build (5 of them `waits on owner`, so 17 can be built now), 5 need the owner to decide first and 1 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+**NEW FINDINGS: 29 open** (0 before the demo, 29 after; 2 `high` priority; 0 UNSURE), counted apart from the backlog. 23 are Claude's alone to build (5 of them `waits on owner`, so 18 can be built now), 5 need the owner to decide first and 1 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
 
 <!-- counts:end -->
 

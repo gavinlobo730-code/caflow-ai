@@ -24,7 +24,7 @@ import { pdfPasswordAsk, type PdfPasswordAsk } from "@/lib/banking/pdfPassword";
 //: a guard holds this in step with it.
 const FALLBACK_ACCOUNT_TYPES = ["Current", "Savings", "Cash Credit",
                                 "Overdraft", "Credit Card"];
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 import { getBankStatements, getBankTransactions, BankStatement, BankTransaction } from "@/lib/data/bankStatements";
 import { fmt, BankAccount } from "@/components/banking/shared";
@@ -348,6 +348,7 @@ export function BankAccounts({ clientId, onChanged }: { clientId: string; onChan
             <p className="text-xs font-semibold text-ps-body">Transactions</p>
             {txnsLoading && <RefreshCw size={13} className="animate-spin text-ps-hint" />}
           </div>
+          {txnsLoading && <LoadingRegion label="Loading the transactions" noticeClassName="px-4" />}
           {!txnsLoading && stmtTxns.length > 0 && (
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
               <table className="w-full text-xs">

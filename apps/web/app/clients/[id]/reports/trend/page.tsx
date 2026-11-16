@@ -18,6 +18,7 @@ import { objectOrNull } from "@/lib/api/shape";
 import { Callout } from "@/components/ui/callout";
 import { buildWorkbook, moneyCell } from "@/lib/export/xlsx";
 import { istToday } from "@/lib/dateMath";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /**
  * The multi-year trend — Schedule III captions and the clause (Q) ratios across
@@ -210,9 +211,11 @@ export default function ClientTrendPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
-          <Loader2 size={14} className="animate-spin" /> Building the window…
-        </div>
+        <LoadingRegion label="Building the window">
+          <div className="flex items-center gap-2 text-2xs text-ps-hint py-8">
+            <Loader2 size={14} className="animate-spin" /> Building the window…
+          </div>
+        </LoadingRegion>
       )}
 
       {error && <Callout tone="problem">{error}</Callout>}

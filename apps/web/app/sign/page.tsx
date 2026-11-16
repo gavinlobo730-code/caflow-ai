@@ -15,6 +15,7 @@ import { CheckCircle2, Loader2, AlertCircle, FileText, XCircle } from "lucide-re
 import { formatDateTime } from "@/lib/dates/format";
 import { FrontDoor } from "@/components/FrontDoor";
 import { PlainFailure, failureSentence, fetchPlain, notOursSentence } from "@/lib/api/failureSentence";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -122,9 +123,11 @@ export default function SignPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-10 text-slate-500">
-          <Loader2 size={18} className="animate-spin" /> Loading…
-        </div>
+        <LoadingRegion label="Loading the letter" className="rounded-xl border border-slate-200 bg-white p-10 text-slate-500" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center gap-2">
+            <Loader2 size={18} className="animate-spin" /> Loading…
+          </div>
+        </LoadingRegion>
       )}
 
       {!loading && error && (

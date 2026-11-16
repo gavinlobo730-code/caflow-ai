@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { CheckCircle2, Circle, User, Loader2 } from "lucide-react";
 import { yearEndApi, type ReviewStep, type ReviewHistory, type ReviewStatus } from "@/lib/api/yearEnd";
-import { Skeleton, FormSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, FormSkeleton, TimelineSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { useRefreshEngagement } from "../_engagementRefresh";
 import { formatDate } from "@/lib/dates/format";
@@ -106,7 +106,7 @@ export default function ReviewPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5 max-w-2xl mx-auto">
+      <LoadingRegion label="Loading the review" className="p-6 space-y-5 max-w-2xl mx-auto">
         {/* Three-step timeline placeholder */}
         <div className="bg-white rounded-xl border border-ps-border p-5">
           <Skeleton className="h-3 w-32 mb-4" />
@@ -123,7 +123,7 @@ export default function ReviewPage() {
         <FormSkeleton fields={1} className="bg-white rounded-xl border border-ps-border p-5" />
         {/* Review history placeholder */}
         <TimelineSkeleton rows={3} className="bg-white rounded-xl border border-ps-border p-5" />
-      </div>
+      </LoadingRegion>
     );
   }
 

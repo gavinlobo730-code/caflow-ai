@@ -21,6 +21,7 @@ import { formatDate } from "@/lib/services/formatting";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface FirmRow { id: string; name: string; created_at: string; users: number; clients: number; status: string }
 interface Stats { total_firms: number; active_firms: number; suspended_firms: number; total_users: number; total_clients: number }
@@ -287,7 +288,11 @@ export default function PlatformAdminPage() {
     }
     return (
       <div className="flex h-screen items-center justify-center text-ps-label">
-        {gate === "checking" ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Verifying access…</span> : "Redirecting…"}
+        {gate === "checking" ? (
+          <LoadingRegion label="Verifying access" noticeClassName="justify-center text-center">
+            <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Verifying access…</span>
+          </LoadingRegion>
+        ) : "Redirecting…"}
       </div>
     );
   }

@@ -26,6 +26,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 export function CostFormulaPanel({ clientId }: { clientId: string }) {
   const [policy, setPolicy] = useState<InventoryCostingPolicy | null>(null);
@@ -87,9 +88,11 @@ export function CostFormulaPanel({ clientId }: { clientId: string }) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-xs text-ps-hint">
-        <Loader2 size={12} className="animate-spin" /> Cost formula…
-      </div>
+      <LoadingRegion label="Loading the cost formula">
+        <div className="flex items-center gap-2 text-xs text-ps-hint">
+          <Loader2 size={12} className="animate-spin" /> Cost formula…
+        </div>
+      </LoadingRegion>
     );
   }
   if (!policy) return null;
