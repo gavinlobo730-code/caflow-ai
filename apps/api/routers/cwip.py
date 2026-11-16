@@ -27,6 +27,7 @@ from core.authz import assert_client_access
 from core.permissions import rbac
 from domain.fixed_assets import cwip as cwip_domain
 from models.common import api_response
+from services.audit_service import log_event
 from services import cwip_service as svc
 from core import db_provider
 from core.query_day import query_day
@@ -227,6 +228,14 @@ def get_schedules(
         client_id=client_id, as_of=when))
 
 
+def _audit(current_user: dict, cwip_id: str, action: str, client_id: str, data: dict) -> None:
+    """Who changed this project of capital work in progress, and what (POST-A-167): `capital_work_in_progress` and `cwip_additions` carry
+    no row-level audit trigger, and the journals a cost or a capitalisation posts are audited by the ledger's, not the project."""
+    log_event(current_user.get("firm_id") or "", "cwip_project", cwip_id, action,
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"client_id": client_id, **data})
+
+
 @router.post("")
 def create_project(
     data: ProjectIn,
@@ -235,7 +244,7 @@ def create_project(
     assert_client_access(current_user, data.client_id)
     if _mock_enabled():
         return api_response(True, {"id": "mock-cwip", **data.model_dump()})
-    return api_response(True, svc.create_project(
+    created = svc.create_project(
         _db(), firm_id=current_user.get("firm_id") or "",
         client_id=data.client_id, project_name=data.project_name,
         started_on=data.started_on, project_code=data.project_code,
@@ -243,7 +252,10 @@ def create_project(
         approved_completion_date=data.approved_completion_date,
         approved_cost_paise=data.approved_cost_paise,
         expected_completion_date=data.expected_completion_date,
-        notes=data.notes, actor_id=current_user.get("id")))
+        notes=data.notes, actor_id=current_user.get("id"))
+    _audit(current_user, str((created or {}).get("id") or ""), "create", data.client_id,
+           {"project_name": data.project_name, "asset_category": data.asset_category})
+    return api_response(True, created)
 
 
 @router.post("/{cwip_id}/costs")
@@ -284,6 +296,10 @@ def add_cost(
         notes=data.notes, actor_id=current_user.get("id"), journal=_journal())
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result.get("refusal"))
+    _audit(current_user, cwip_id, "add_cost", data.client_id,
+           {"incurred_on": data.incurred_on, "amount_paise": data.amount_paise, "igst_paise": data.igst_paise,
+            "cgst_paise": data.cgst_paise, "sgst_paise": data.sgst_paise, "itc_eligible": data.itc_eligible,
+            "acquisition_mode": data.acquisition_mode, "purchase_bill_id": data.purchase_bill_id})
     return api_response(True, result)
 
 
@@ -304,6 +320,7 @@ def set_status(
         on_date=data.on_date)
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result.get("refusal"))
+    _audit(current_user, cwip_id, "set_status", data.client_id, {"status": data.status, "on_date": data.on_date})
     return api_response(True, result)
 
 
@@ -331,4 +348,7 @@ def capitalise(
         actor_id=current_user.get("id"), journal=_journal())
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result.get("refusal"))
+    _audit(current_user, cwip_id, "capitalise", data.client_id,
+           {"put_to_use_date": data.put_to_use_date, "asset_name": data.asset_name, "asset_category": data.asset_category,
+            "cost_paise": result.get("cost_paise"), "asset_id": (result.get("asset") or {}).get("id")})
     return api_response(True, result)

@@ -407,3 +407,41 @@ def test_nothing_schedules_this():
     for path in (API / "jobs").rglob("*.py"):
         assert "fx_revaluation" not in path.read_text(), \
             f"{path.name} schedules the revaluation; it is a CA action"
+
+
+# ── the run says who ran it (POST-A-167) ────────────────────────────────────
+
+def test_a_run_records_who_revalued_at_which_rates_and_what_was_posted(monkeypatch):
+    import routers.fx_revaluation as fxr
+    fx, db = _exposed(monkeypatch)
+    seen = []
+    monkeypatch.setattr(fxr, "log_event", lambda *a, **k: seen.append((a, k)))
+    out = fx.run_revaluation(client_id="CLI", payload={"period_end": "2026-03-31", "closing_rates": {"usd": "84.00"}},
+                             current_user=CALLER)["data"]
+    [(args, kw)] = seen
+    assert args[:4] == (FIRM, "fx_revaluation", "CLI:2026-03-31", "revalue")
+    assert kw["actor_id"] == "u1" and kw["actor_email"] == "ca@f.test"
+    data = kw["new_data"]
+    assert data["closing_rates"] == {"USD": "84.00"} and data["entries_posted"] >= 1
+    assert data["journal_entry_ids"] == [a["journal_entry_id"] for a in out["adjustments"] if a["delta_paise"]]
+    assert data["net_delta_paise"] == sum(a["delta_paise"] for a in out["adjustments"])
+
+
+def test_a_run_that_posts_nothing_is_still_recorded_with_a_count_of_zero(monkeypatch):
+    import routers.fx_revaluation as fxr
+    fx, db = _exposed(monkeypatch)
+    body = {"period_end": "2026-03-31", "closing_rates": {"USD": "84.00"}}
+    fx.run_revaluation(client_id="CLI", payload=body, current_user=CALLER)
+    seen = []
+    monkeypatch.setattr(fxr, "log_event", lambda *a, **k: seen.append(k["new_data"]))
+    fx.run_revaluation(client_id="CLI", payload=body, current_user=CALLER)
+    assert seen and seen[0]["entries_posted"] == 0 and seen[0]["journal_entry_ids"] == []
+
+
+def test_a_refused_run_records_nothing(monkeypatch):
+    import routers.fx_revaluation as fxr
+    fx, db = _exposed(monkeypatch, entitled=False)
+    seen = []
+    monkeypatch.setattr(fxr, "log_event", lambda *a, **k: seen.append(a))
+    fx.run_revaluation(client_id="CLI", payload={"period_end": "2026-03-31", "closing_rates": {"USD": "84.00"}}, current_user=CALLER)
+    assert seen == []
