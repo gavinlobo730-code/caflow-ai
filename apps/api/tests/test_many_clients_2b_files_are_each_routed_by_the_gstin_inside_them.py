@@ -492,7 +492,7 @@ def test_replacing_an_earlier_reconciliation_is_always_said():
 @pytest.mark.parametrize("first_gendt,second_gendt,relation,asks_for_a_look", [
     ("14-05-2025", "14-05-2025", "same", False),      # the file dropped twice
     ("14-05-2025", "20-05-2025", "newer", False),     # the ordinary replacement
-    ("20-05-2025", "14-05-2025", "older", True),      # a stale download over a newer one
+    # a stale download over a newer one is REFUSED in the bulk door since POST-A-057: see the next test
     ("14-05-2025", "", "unknown", True),              # nobody can tell
     ("", "14-05-2025", "unknown", True),
 ])
@@ -508,6 +508,34 @@ def test_a_replacement_asks_for_a_look_only_when_the_new_download_might_be_the_o
     assert out["needs_attention"] == (1 if asks_for_a_look else 0)
     # the server's sentence for the relation travels with it, and says which
     assert r["replaced_earlier"]["note"] == gstr2b_intake.DOWNLOAD_NOTES[relation]
+
+
+def test_an_older_download_dropped_in_a_later_request_is_refused_and_replaces_nothing():
+    """POST-A-057. The screen sends one file per request, so the batch's own collision check never sees a stale download meet the
+    newer reconciliation an earlier request wrote. Asked before the replace, by the dates the portal generated each."""
+    store = _world()
+    g = CLIENTS["c1"][1]
+    _run(store, [_file("newer.json", g, gendt="20-05-2025", number="INV-NEW")])
+    held = [dict(r) for r in store["gstr2a_records"]]
+    db, out = _run(store, [_file("stale.json", g, gendt="14-05-2025", number="INV-OLD")])
+    (r,) = out["results"]
+    assert r["status"] == "refused" and r["replaced_earlier"] is None and r["summary"] is None
+    assert "14-05-2025" in r["reason"] and "20-05-2025" in r["reason"] and "Nothing was replaced" in r["reason"]
+    assert "GSTR-2B tab" in r["reason"] and r["client_id"] == "c1" and r["period"] == "042025"
+    assert out["totals"]["refused"] == 1 and out["totals"]["reconciled"] == 0
+    assert [x["invoice_number"] for x in store["gstr2a_records"]] == [x["invoice_number"] for x in held] == ["INV-NEW"]
+    assert len(store["gstr2b_uploads"]) == 1, "the refused file is not kept as an upload either"
+
+
+@pytest.mark.parametrize("second_gendt", ["20-05-2025", "21-05-2025", ""])
+def test_the_same_a_newer_or_an_undated_download_still_replaces(second_gendt):
+    """The premise of the refusal: only a download that is provably OLDER is refused."""
+    store = _world()
+    g = CLIENTS["c1"][1]
+    _run(store, [_file("first.json", g, gendt="20-05-2025", number="INV-1")])
+    _db, out = _run(store, [_file("second.json", g, gendt=second_gendt, number="INV-2")])
+    assert out["results"][0]["status"] == "reconciled"
+    assert [x["invoice_number"] for x in store["gstr2a_records"]] == ["INV-2"]
 
 
 def test_the_notes_say_which_download_is_which():

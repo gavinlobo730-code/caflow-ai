@@ -26,8 +26,9 @@
  *
  * AN ABSENT ROW IS NOT A CLEAN ONE. A file that was not reconciled is listed
  * with why, and nothing about it was stored; a reconciliation that replaced an
- * earlier one says so, so an older download dropped among sixty cannot
- * overwrite a newer one without a word.
+ * earlier one says so. A download OLDER than the reconciliation it would
+ * replace is refused by the server (POST-A-057) and is listed here as not
+ * reconciled, in the server's own sentence.
  *
  * Nothing is sent to any portal.
  */

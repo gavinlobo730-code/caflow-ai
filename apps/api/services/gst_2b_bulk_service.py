@@ -31,11 +31,23 @@ A BATCH FACT THAT NO SINGLE FILE CAN SEE
     Two files for the same client and month in one upload would each replace the
     other, and which one survived would be the order they were dropped in. The
     first is reconciled; the second is REFUSED, naming the first, and replaces
-    nothing. Across separate requests that is not knowable here — a re-upload
-    replaces, as it always has — so every result says whether it REPLACED an
-    earlier reconciliation (`replaced_earlier`, with when and which download), and
-    the screen shows it: an older download dropped into a folder of sixty must
-    not overwrite a newer one without a word.
+    nothing.
+
+AN OLDER DOWNLOAD IS REFUSED, ACROSS REQUESTS TOO (POST-A-057)
+    The screen sends a drop one file per request, so the batch check above never
+    sees a stale download meet the newer reconciliation an earlier request (or an
+    earlier day) wrote. Before replacing, the earlier reconciliation is read and
+    the two downloads are compared by the date the portal generated each
+    (`gstr2b_intake.download_relation`): a file generated BEFORE the one already
+    reconciled is REFUSED, naming both dates, and replaces nothing. An older
+    download dropped into a folder of sixty no longer overwrites a newer one at
+    all; a CA who does mean the older file uploads it from the client's own
+    GSTR-2B tab, which is a deliberate act for one client and says OLDER on its
+    answer. The same download, a newer one and one whose date cannot be read
+    still replace, and every result says whether it REPLACED an earlier
+    reconciliation (`replaced_earlier`, with when, which download and how the two
+    stand). Two requests for one client and month arriving at the same moment
+    are not serialised here; each reads the reconciliation before it writes.
 
 WHAT COMES BACK IS A SUMMARY, NOT THE MATCHES
     Sixty clients' per-document match lists are a response proportional to the
@@ -259,6 +271,18 @@ def _one(db, *, firm_id, name, raw, parsed, holders, names, visible, can_access,
 
     previous = recon.previous_reconciliation(
         db, firm_id=firm_id, client_id=client_id, period=period)
+    relation = (gstr2b_intake.download_relation(previous.get("generated_on"), parsed.generated_on)
+                if previous else None)
+    if relation == gstr2b_intake.OLDER_DOWNLOAD:
+        # A stale download never replaces a newer reconciliation through the bulk door (see the module docstring).
+        return _result(
+            name, REFUSED, gstin=routing.gstin, period=period,
+            client_id=client_id, client_name=client_name,
+            reason=(f"This GSTR-2B was generated on {parsed.generated_on}, before the one already "
+                    f"reconciled for this client and {gstr2b_intake.label_of(period)} (generated on "
+                    f"{previous.get('generated_on')}). Nothing was replaced: a bulk drop never puts an "
+                    f"older download over a newer one. If this older file is the one you mean, upload "
+                    f"it from the client's GSTR-2B tab."))
 
     try:
         out = recon.reconcile_2b(db, firm_id=firm_id, client_id=client_id,
@@ -285,8 +309,6 @@ def _one(db, *, firm_id, name, raw, parsed, holders, names, visible, can_access,
 
     replaced = None
     if previous:
-        relation = gstr2b_intake.download_relation(
-            previous.get("generated_on"), parsed.generated_on)
         replaced = {"reconciled_at": previous.get("reconciled_at"),
                     "generated_on": previous.get("generated_on"),
                     # How the new download stands to that one, and the sentence
