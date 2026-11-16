@@ -95,30 +95,13 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
            .or_(f"client_id.eq.{client_id},client_id.is.null"))
     key_by_id = {c["id"]: c.get("system_account_key") for c in coa}
     name_by_id = {c["id"]: (c.get("account_name") or "") for c in coa}
-    out_ids = {c["id"] for c in coa if c.get("system_account_key") in ("gst_cgst", "gst_sgst", "gst_igst")}
-    in_ids = {c["id"] for c in coa if c.get("system_account_key") == "gst_input"}
-
-    # AND THE KEY IS NOT ALWAYS THERE. system_account_key is stamped by
-    # migrations 092/098 on the accounts THEY seeded; a chart built by
-    # coa_seed_service carries the same accounts with the key left NULL. Same
-    # live firm: `1301 GST Input Tax Credit` and `2002 GST Output Tax Payable`,
-    # both NULL-keyed, 1,045 and 6,220 lines posted respectively — invisible to
-    # a key-only lookup.
-    #
-    # Fall back to the name, and ONLY for the side the key found nothing on, so
-    # a firm whose keys are stamped is completely unaffected. account_type is
-    # what keeps the two sides apart: an input credit is an Asset and output tax
-    # is a Liability, which is the same separation migration 098 enforces by
-    # keying output heads on Liability accounts only. Without it a chart naming
-    # both "%GST%" could book input credit as output tax owed.
-    if not out_ids:
-        out_ids = {c["id"] for c in coa
-                   if c.get("account_type") == "Liability"
-                   and "gst output" in (c.get("account_name") or "").lower()}
-    if not in_ids:
-        in_ids = {c["id"] for c in coa
-                  if c.get("account_type") == "Asset"
-                  and "gst input" in (c.get("account_name") or "").lower()}
+    # WHICH ACCOUNTS hold output tax and input credit is one rule, moved to
+    # `domain/gst/tax_control_accounts` (POST-A-090) so the nightly books check
+    # asks the same question the return does: by `system_account_key` first,
+    # and by the name (kept apart by account_type) only for a side the key
+    # found nothing on, because a chart built by coa_seed_service leaves the
+    # key NULL (observed live: `2002 GST Output Tax Payable`, 6,220 lines).
+    out_ids, in_ids = _tax_control_accounts.output_and_input_ids(coa)
 
     def _head_of(acc: str) -> str:
         """Which tax head a control account reports under.
@@ -171,6 +154,7 @@ def _gl_gst_movements(db, firm_id: str, client_id: str, start: str, end: str) ->
 
 
 from domain.accounting import opening_documents as _opening
+from domain.gst import tax_control_accounts as _tax_control_accounts
 from core import db_provider
 from core.db_paging import fetch_all
 
