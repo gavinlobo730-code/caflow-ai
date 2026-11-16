@@ -111,13 +111,55 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   signed sum whose signs the VBA does not carry), the 26 expense heads or a
   multi-GSTIN apportionment; its two bindings to GSTR-9 (12E to Table 6O,
   Table 9 to row 9d) are `[S]`, and `THRESHOLD_TABLE` is display data that never
-  places a client in a band. **Not built**: GSTR-6 and GSTR-7, GSTR-8 Tables
-  4/4.1, GSTR-4 Table 7 and the outward summary, the GSTR-9C Part B
-  certification, and a due date for any of the four
+  places a client in a band. **Not built**: GSTR-6 and GSTR-7 (GSTR-8
+  Tables 4/4.1 are built, in the next entry), GSTR-4 Table 7 and the outward
+  summary, the GSTR-9C Part B certification, and a due date for any of the four
   (`compliance_obligation_service._gst_obligations` takes no registration type,
   so a composition client still sees GSTR-1/3B/9 and none of these);
   `late_filing.late_fee` refuses all four forms. What is left is in
   `docs/open-items/`.
+
+- **A GSTR-8 AMENDMENT IS RECORDED AGAINST THE EARLIER MONTH IT AMENDS AND
+  CHECKED AS THE UTILITY CHECKS IT, AND IS NEVER NETTED AGAINST THAT MONTH'S
+  ROW** (POST-A-056, migration 617). What was missing: 421 recorded Table 3
+  and 3.1 for one month and named Tables 4 and 4.1, which revise a row an
+  EARLIER month's statement declared, as not built, so a correction could only
+  go in as a fresh row of the current month and declare a second supply.
+  What the change does: two tables, `ecommerce_operator_supply_amendments`
+  (Table 4, the utility's `tcsa`) and
+  `ecommerce_operator_unregistered_supply_amendments` (4.1, `urda`), shaped
+  from `ExportMod.bas.txt` (`ofp`, `ostin`, `opos`, `oeid`, then the revised
+  figures in Table 3's own shape, `eid`, `grsval`, `supret`, and the filer's
+  `flag`, kept as `add` / `delete`) and checked by what `ValidateMod.bas.txt`'s
+  `validateAmend` and `validateUNRDA` say: the original month must be EARLIER
+  than the statement's (a table CHECK and a 422, by return-period order and not
+  by the raw string, which calls `062025` later than `012026`); Table 3's tax
+  rules (CGST equals SGST, tax exactly when the net is positive, the exact-1% /
+  band fork) are read against the ORIGINAL month, because the utility keys them
+  on the amended row's own year and month; the place of supply, original and
+  revised, is asked from FY 2025-26 on and is an error before it; amounts are
+  not negative; and the unique index is the utility's duplicate key (original
+  month + original supplier, with the original place of supply from FY 2025-26,
+  read as a value when it is NULL). They are recorded through the API's
+  privileged client alone: no signed-in role holds any privilege on either
+  table, so neither joins the list of tables a signed-in session reaches
+  outside the matrix, and each carries the two row guards every new client
+  table carries. `compute_gstr8` returns counts, a finding list naming the
+  original supplier, and a server sentence, and NEVER a total: the figures an
+  amended month filed live on the portal, so the change an amendment makes to
+  the tax payable is the portal's to work out and the statement says so beside
+  the rows. NOT modelled, each named in the module header: how far back an
+  amendment may go (the utility restricts the original year to a list read from
+  a worksheet range its VBA text does not carry, so no limit is asserted); what
+  "Add" and "Delete" do at the portal; the utility's supplier-is-not-the-collector
+  and same-State checks and its Enrolment ID shape (`ES_ID_REGEX`), none of
+  which Table 3 or 3.1 applies either; and a JSON file for the portal, which no
+  GSTR-8 table has. Verified by
+  `tests/test_a_gstr_8_amendment_is_recorded_against_the_month_it_amends.py` (a
+  source pin to the committed utility, the rule over return-period order, each
+  check against the original month, the doors, the statement) and
+  `tests/test_617_..._pg.py` (the CHECKs, the unique index with its NULL, the
+  absence of any signed-in privilege, the policies and the rollback).
 
 - **A PLACE OF SUPPLY HAS FOUR SOURCES AND ONE RESOLVER**, and the invoice
   declares the field TWICE. `domain/gst/place_of_supply.recipient_place_of_supply`

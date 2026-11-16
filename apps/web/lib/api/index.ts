@@ -2947,6 +2947,45 @@ export type Gstr8UnregisteredSupply = {
   notes: string | null;
 };
 
+/** One row of GSTR-8 Table 4 (POST-A-056): the figures a registered seller's row of an EARLIER month is revised to. `period` is the
+ *  statement it is declared in, `original_period` (MMYYYY) the month it amends; `net_liable_paise` is the server's. `action` is the
+ *  offline utility's own Add / Delete choice, kept as chosen. Recorded and checked, never netted against the row it amends. */
+export type Gstr8Amendment = {
+  id: string;
+  gstin: string;
+  period: string;
+  original_period: string;
+  original_supplier_gstin: string;
+  original_place_of_supply: string | null;
+  supplier_gstin: string;
+  place_of_supply: string | null;
+  gross_registered_paise: number;
+  returns_registered_paise: number;
+  gross_unregistered_paise: number;
+  returns_unregistered_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  net_liable_paise: number;
+  action: "add" | "delete";
+  notes: string | null;
+};
+
+/** One row of GSTR-8 Table 4.1: an Enrolment-ID seller's row of an EARLIER month, revised. */
+export type Gstr8UnregisteredAmendment = {
+  id: string;
+  gstin: string;
+  period: string;
+  original_period: string;
+  original_enrolment_id: string;
+  enrolment_id: string;
+  gross_value_paise: number;
+  returns_paise: number;
+  net_liable_paise: number;
+  action: "add" | "delete";
+  notes: string | null;
+};
+
 export type Gstr8Finding = {
   supplier_gstin: string;
   problems: string[];
@@ -2972,6 +3011,14 @@ export type Gstr8Working = {
   findings: Gstr8Finding[];
   supplies: Gstr8Supply[];
   unregistered_supplies: Gstr8UnregisteredSupply[];
+  /** Table 4 / 4.1 (POST-A-056): counts and findings only, never a total, and the server's sentence saying they are not netted against
+   *  the rows they amend. `amendment_note` is null when the month has none. */
+  amendment_count?: number;
+  unregistered_amendment_count?: number;
+  amendment_findings?: Gstr8Finding[];
+  amendment_note?: string | null;
+  amendments?: Gstr8Amendment[];
+  unregistered_amendments?: Gstr8UnregisteredAmendment[];
   gstr8_rates_verified: boolean;
 };
 
@@ -7757,8 +7804,10 @@ export const api = {
     listSupplies: (clientId: string, period: string, gstin?: string) => {
       const q = new URLSearchParams({ client_id: clientId, period });
       if (gstin) q.set("gstin", gstin);
-      return request<ApiResp<{ registered: Gstr8Supply[]; unregistered: Gstr8UnregisteredSupply[] }>>(
-        `/api/ecommerce-operator/supplies?${q}`);
+      return request<ApiResp<{
+        registered: Gstr8Supply[]; unregistered: Gstr8UnregisteredSupply[];
+        amendments?: Gstr8Amendment[]; unregistered_amendments?: Gstr8UnregisteredAmendment[];
+      }>>(`/api/ecommerce-operator/supplies?${q}`);
     },
     recordSupply: (body: {
       client_id: string; gstin?: string; period: string; supplier_gstin: string;
@@ -7782,6 +7831,35 @@ export const api = {
     deleteUnregisteredSupply: (supplyId: string, clientId: string) =>
       request<ApiResp<{ id: string; deleted: boolean }>>(
         `/api/ecommerce-operator/unregistered-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    /** GSTR-8 Table 4 — an amendment of a registered seller's row of an EARLIER month (POST-A-056). */
+    recordAmendment: (body: {
+      client_id: string; gstin?: string; period: string; original_period: string;
+      original_supplier_gstin: string; original_place_of_supply?: string | null;
+      supplier_gstin: string; place_of_supply?: string | null;
+      gross_registered_paise?: number; returns_registered_paise?: number;
+      gross_unregistered_paise?: number; returns_unregistered_paise?: number;
+      igst_paise?: number; cgst_paise?: number; sgst_paise?: number;
+      action: "add" | "delete"; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8Amendment>>("/api/ecommerce-operator/amendments",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteAmendment: (amendmentId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/amendments/${amendmentId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    /** GSTR-8 Table 4.1 — an amendment of an Enrolment-ID seller's row of an EARLIER month. */
+    recordUnregisteredAmendment: (body: {
+      client_id: string; gstin?: string; period: string; original_period: string;
+      original_enrolment_id: string; enrolment_id: string;
+      gross_value_paise?: number; returns_paise?: number;
+      action: "add" | "delete"; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8UnregisteredAmendment>>("/api/ecommerce-operator/unregistered-amendments",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteUnregisteredAmendment: (amendmentId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/unregistered-amendments/${amendmentId}?client_id=${encodeURIComponent(clientId)}`,
         { method: "DELETE" }),
   },
 

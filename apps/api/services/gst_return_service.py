@@ -1556,6 +1556,10 @@ def gstr8_statement(db, firm_id: str, client_id: str, period: str,
                                         registration.gstin, window.key)
     unregistered_rows = eco_svc.list_unregistered_supplies(
         db, firm_id, client_id, registration.gstin, window.key)
+    # Table 4 / 4.1: the rows THIS month's statement declares against earlier months (POST-A-056, migration 617).
+    amendment_rows = eco_svc.list_amendments(db, firm_id, client_id, registration.gstin, window.key)
+    unregistered_amendment_rows = eco_svc.list_unregistered_amendments(
+        db, firm_id, client_id, registration.gstin, window.key)
 
     stmt = gstr8.compute_gstr8(
         period=window.key,
@@ -1575,6 +1579,8 @@ def gstr8_statement(db, firm_id: str, client_id: str, period: str,
             gross_value_paise=int(r.get("gross_value_paise") or 0),
             returns_paise=int(r.get("returns_paise") or 0),
         ) for r in unregistered_rows],
+        amendment_rows=[gstr8.AmendmentRow.from_record(r) for r in amendment_rows],
+        unregistered_amendment_rows=[gstr8.UnregisteredAmendmentRow.from_record(r) for r in unregistered_amendment_rows],
     )
 
     return {
@@ -1595,6 +1601,13 @@ def gstr8_statement(db, firm_id: str, client_id: str, period: str,
         "findings": [_gstr8_finding_dict(f) for f in stmt.findings],
         "supplies": supply_rows,
         "unregistered_supplies": unregistered_rows,
+        # Table 4 / 4.1 — counts, findings and the sentence saying they are not netted against the rows they amend; never a total.
+        "amendment_count": stmt.amendment_count,
+        "unregistered_amendment_count": stmt.unregistered_amendment_count,
+        "amendment_findings": [_gstr8_finding_dict(f) for f in stmt.amendment_findings],
+        "amendment_note": stmt.amendment_note,
+        "amendments": amendment_rows,
+        "unregistered_amendments": unregistered_amendment_rows,
         "gstr8_rates_verified": gstr8.VERIFIED,
     }
 

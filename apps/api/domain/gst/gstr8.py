@@ -51,12 +51,43 @@ SAME WAY
       the notification before this is relied on to compute money a client
       pays over.
 
-WHAT IS DELIBERATELY NOT MODELLED YET
-    Table 4 / 4.1 (amending an EARLIER period's row) — the same staging
-    GSTR-1's own amendment tables went through: the base builder first. A
-    correction today is a fresh row for the CURRENT period, which is not an
-    append-only violation because nothing here posts to the GL or feeds
-    another return that would double-count it.
+TABLE 4 / 4.1 — AN AMENDMENT OF AN EARLIER MONTH'S ROW (POST-A-056)
+    The same utility's `tcsa` (Table 4) and `urda` (Table 4.1) arrays carry a
+    row that amends a row of an EARLIER month: `ofp` (the original month),
+    `ostin` / `opos` (the original supplier and, from FY 2025-26, place of
+    supply) or `oeid` (the original Enrolment ID), then the REVISED figures in
+    Table 3's own shape (`stin`, `pos`, `supR`, `retsupR`, `supU`, `retsupU`,
+    `iamt`, `camt`, `samt`; for 4.1 `eid`, `grsval`, `supret`), the derived
+    `amt`, and a `flag` the filer chooses ("Add" is `A`, "Delete" is `D`).
+    `AmendmentRow` / `UnregisteredAmendmentRow` hold one such row and
+    `compute_gstr8` checks them with the utility's own rules for them, no more:
+
+      * the original month is EARLIER than the statement's month (the utility
+        refuses an amendment dated in or after the Home period);
+      * the tax rules Table 3 has, applied to the ORIGINAL month (the utility
+        reads the exact-1% / band fork and the place-of-supply boundary off the
+        amended row's own year and month, not the statement's);
+      * the place of supply, original and revised, is asked from FY 2025-26 on
+        and is an error before it (the utility's own comment: "POS is not
+        applicable for return periods prior to April 2025");
+      * the duplicate key is the original month + original supplier (+ original
+        place of supply from FY 2025-26), which migration 617's unique index is.
+
+    WHAT TABLE 4 DOES NOT DO, and the statement says so beside the rows: it
+    does NOT net an amendment against the row it amends. The utility carries
+    only the revised figures and the original's identifiers, and the figures the
+    original month filed live on the portal, not here, so the change in tax
+    payable is the portal's to work out. It applies NO limit on how far back an
+    amendment may go: the utility restricts the original year to a list read
+    from a worksheet range its VBA text does not carry. It does not interpret
+    "Add" or "Delete": the filer's choice is kept as chosen. And it checks no
+    more of the utility's Table 4 rules than Table 3 checks of its own (the
+    supplier-is-not-the-collector and same-State checks, and the Enrolment ID
+    shape, are the utility's and are not applied to either table).
+
+WHAT IS DELIBERATELY NOT MODELLED
+    A JSON file for the portal: this module checks what a CA recorded and the
+    CA files on the portal, as for Table 3.
 
     Which HEAD (IGST vs CGST+SGST) a supply should carry is the CA's own
     entry, never derived here: unlike an ordinary sales invoice, the state
@@ -70,7 +101,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Optional
+from typing import Optional, Sequence
 from domain.money_sentence import rupee_text
 
 VERIFIED = False
@@ -174,6 +205,103 @@ class UnregisteredSupplyRow:
         return self.gross_value_paise - self.returns_paise
 
 
+#: The utility's own two answers for an amendment row ("Add" / "Delete" in the sheet, `A` / `D` in the file). Kept as the filer chose; what
+#: the portal does with each is not recorded here.
+ACTIONS = ("add", "delete")
+
+
+def _month_key(period: str) -> tuple[int, int]:
+    """MMYYYY -> (year, month), the order a return period sorts in (the raw string does not: '012026' < '062025')."""
+    return int(period[2:]), int(period[:2])
+
+
+def original_period_problem(original_period: str, period: str) -> Optional[str]:
+    """The sentence for an amendment whose original month is not EARLIER than the statement's, or None.
+
+    The offline utility refuses it ("Month and Year in Amend Sheet should be lesser than in Home Sheet"): an amendment declared in a
+    month corrects a row some earlier month already declared, never its own month or a later one.
+    """
+    if _month_key(original_period) >= _month_key(period):
+        return (f"The month being amended ({original_period[:2]}/{original_period[2:]}) is not earlier than this statement's month "
+                f"({period[:2]}/{period[2:]}). An amendment corrects a row an earlier month declared.")
+    return None
+
+
+@dataclass(frozen=True)
+class AmendmentRow:
+    """One Table 4 row: the figures a registered seller's row of an EARLIER month is revised to, and which row that was.
+
+    `original_*` identify the amended row (`ofp`, `ostin`, `opos`); the rest are the revised figures in Table 3's own shape.
+    """
+    original_period: str
+    original_supplier_gstin: str
+    original_place_of_supply: Optional[str]
+    supplier_gstin: str
+    place_of_supply: Optional[str]
+    gross_registered_paise: int
+    returns_registered_paise: int
+    gross_unregistered_paise: int
+    returns_unregistered_paise: int
+    igst_paise: int
+    cgst_paise: int
+    sgst_paise: int
+    action: str
+
+    @classmethod
+    def from_record(cls, r: dict) -> "AmendmentRow":
+        """A stored `ecommerce_operator_supply_amendments` row, an absent amount read as nil."""
+        return cls(
+            original_period=r["original_period"],
+            original_supplier_gstin=r["original_supplier_gstin"],
+            original_place_of_supply=r.get("original_place_of_supply"),
+            supplier_gstin=r["supplier_gstin"],
+            place_of_supply=r.get("place_of_supply"),
+            gross_registered_paise=int(r.get("gross_registered_paise") or 0),
+            returns_registered_paise=int(r.get("returns_registered_paise") or 0),
+            gross_unregistered_paise=int(r.get("gross_unregistered_paise") or 0),
+            returns_unregistered_paise=int(r.get("returns_unregistered_paise") or 0),
+            igst_paise=int(r.get("igst_paise") or 0),
+            cgst_paise=int(r.get("cgst_paise") or 0),
+            sgst_paise=int(r.get("sgst_paise") or 0),
+            action=str(r.get("action") or ""))
+
+    @property
+    def net_liable_paise(self) -> int:
+        """"amt" — the revised figures' net, derived as in Table 3 (the one figure the utility computes)."""
+        return (self.gross_registered_paise + self.gross_unregistered_paise
+                - self.returns_registered_paise - self.returns_unregistered_paise)
+
+    @property
+    def tax_collected_paise(self) -> int:
+        return self.igst_paise + self.cgst_paise + self.sgst_paise
+
+
+@dataclass(frozen=True)
+class UnregisteredAmendmentRow:
+    """One Table 4.1 row: an Enrolment-ID seller's row of an EARLIER month, revised. No TCS heads, as in Table 3.1."""
+    original_period: str
+    original_enrolment_id: str
+    enrolment_id: str
+    gross_value_paise: int
+    returns_paise: int
+    action: str
+
+    @classmethod
+    def from_record(cls, r: dict) -> "UnregisteredAmendmentRow":
+        """A stored `ecommerce_operator_unregistered_supply_amendments` row."""
+        return cls(
+            original_period=r["original_period"],
+            original_enrolment_id=r["original_enrolment_id"],
+            enrolment_id=r["enrolment_id"],
+            gross_value_paise=int(r.get("gross_value_paise") or 0),
+            returns_paise=int(r.get("returns_paise") or 0),
+            action=str(r.get("action") or ""))
+
+    @property
+    def net_liable_paise(self) -> int:
+        return self.gross_value_paise - self.returns_paise
+
+
 @dataclass(frozen=True)
 class RowFinding:
     """What is wrong with one supplier's row, named rather than silently
@@ -198,6 +326,13 @@ class Gstr8Statement:
     unregistered_supplier_count: int
     findings: list[RowFinding]
     rate_band_bps: tuple[int, int]
+    #: Table 4 / 4.1 (POST-A-056): how many amendment rows are recorded for the statement's month, what is wrong with each, and the
+    #: sentence saying what this statement does not do with them. Counts only, never a total: a total of revised figures would read as
+    #: an amount to add to Table 3's, and the net effect on tax payable is the portal's (see the module docstring).
+    amendment_count: int = 0
+    unregistered_amendment_count: int = 0
+    amendment_findings: list[RowFinding] = field(default_factory=list)
+    amendment_note: Optional[str] = None
 
 
 def _row_problems(row: SupplyRow, period: str, pos_required: bool) -> list[str]:
@@ -240,9 +375,52 @@ def _row_problems(row: SupplyRow, period: str, pos_required: bool) -> list[str]:
     return problems
 
 
+#: Said beside the amendment rows whenever there are any. The product records and checks them and does not net them against the rows
+#: they amend: those figures are what the original month FILED, which lives on the portal.
+AMENDMENT_NOT_NETTED_NOTE = (
+    "This month's statement amends rows of earlier months (Table 4 / 4.1). The revised figures are recorded and checked as the "
+    "offline utility checks them; they are NOT netted against what each earlier month filed, which is held on the portal and not "
+    "here, so the change they make to the tax payable is not in the totals above.")
+
+
+def _amendment_problems(row: AmendmentRow, statement_period: str) -> list[str]:
+    problems: list[str] = []
+    ordering = original_period_problem(row.original_period, statement_period)
+    if ordering:
+        problems.append(ordering)
+    if row.action not in ACTIONS:
+        problems.append("The action is neither Add nor Delete.")
+    # Table 3's own tax checks, read against the ORIGINAL month (the utility keys the exact-1% / band fork on the amended row's year and
+    # month). The place of supply is asked below, with this table's own wording: it concerns the original month, not the statement's.
+    problems.extend(_row_problems(row, row.original_period, False))        # type: ignore[arg-type]  # same attributes as SupplyRow
+    pos_required = pos_field_required(row.original_period)
+    if pos_required:
+        if not row.original_place_of_supply:
+            problems.append("The original place of supply is not recorded, and the original month's return schema requires it "
+                            "(FY 2025-26 onward).")
+        if not row.place_of_supply:
+            problems.append("The revised place of supply is not recorded, and the original month's return schema requires it "
+                            "(FY 2025-26 onward).")
+    elif row.original_place_of_supply or row.place_of_supply:
+        problems.append("A place of supply is recorded, and the offline utility refuses one for a return period before April 2025.")
+    return problems
+
+
+def _unregistered_amendment_problems(row: UnregisteredAmendmentRow, statement_period: str) -> list[str]:
+    problems: list[str] = []
+    ordering = original_period_problem(row.original_period, statement_period)
+    if ordering:
+        problems.append(ordering)
+    if row.action not in ACTIONS:
+        problems.append("The action is neither Add nor Delete.")
+    return problems
+
+
 def compute_gstr8(*, period: str,
                   supply_rows: list[SupplyRow],
-                  unregistered_rows: list[UnregisteredSupplyRow]) -> Gstr8Statement:
+                  unregistered_rows: list[UnregisteredSupplyRow],
+                  amendment_rows: Sequence[AmendmentRow] = (),
+                  unregistered_amendment_rows: Sequence[UnregisteredAmendmentRow] = ()) -> Gstr8Statement:
     """The statement for one operator registration, one month.
 
     Reads what a CA has already recorded (`ecommerce_operator_supplies` /
@@ -267,6 +445,16 @@ def compute_gstr8(*, period: str,
 
     total_unregistered_net = sum(r.net_liable_paise for r in unregistered_rows)
 
+    amendment_findings: list[RowFinding] = []
+    for amend in amendment_rows:
+        problems = _amendment_problems(amend, period)
+        if problems:
+            amendment_findings.append(RowFinding(supplier_gstin=amend.original_supplier_gstin, problems=problems))
+    for amend_u in unregistered_amendment_rows:
+        problems = _unregistered_amendment_problems(amend_u, period)
+        if problems:
+            amendment_findings.append(RowFinding(supplier_gstin=amend_u.original_enrolment_id, problems=problems))
+
     return Gstr8Statement(
         period=period,
         financial_year=financial_year_label(period),
@@ -280,4 +468,8 @@ def compute_gstr8(*, period: str,
         unregistered_supplier_count=len(unregistered_rows),
         findings=findings,
         rate_band_bps=rate_band,
+        amendment_count=len(amendment_rows),
+        unregistered_amendment_count=len(unregistered_amendment_rows),
+        amendment_findings=amendment_findings,
+        amendment_note=(AMENDMENT_NOT_NETTED_NOTE if (amendment_rows or unregistered_amendment_rows) else None),
     )

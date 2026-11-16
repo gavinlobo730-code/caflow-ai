@@ -24,6 +24,7 @@ TABLES = (
     "gstr4_annual_b2b_supplies", "gstr4_annual_b2b_rc_supplies", "gstr4_annual_urp_supplies", "gstr4_annual_import_of_services",
     "gstr9c_reconciliations", "gstr9c_rate_wise_lines", "gstr9c_expense_lines",
     "ecommerce_operator_supplies", "ecommerce_operator_unregistered_supplies",
+    "ecommerce_operator_supply_amendments", "ecommerce_operator_unregistered_supply_amendments",
     "rcm_documents", "stock_count_sessions", "stock_count_lines",
 )
 SIGNED_IN = ("authenticated", "anon")
