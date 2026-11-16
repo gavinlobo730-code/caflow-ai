@@ -5,7 +5,7 @@ import { objectOrNull } from "@/lib/api/shape";
 import { Sparkles, Lock, Unlock, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { yearEndApi, type NoteToAccount, type NoteData } from "@/lib/api/yearEnd";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { useEngagementId } from "../_engagementId";
 import { GapList } from "@/components/ui/callout";
 import { formatDate } from "@/lib/dates/format";
@@ -137,7 +137,7 @@ export default function NotesPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-2 max-w-3xl mx-auto">
+      <LoadingRegion label="Loading the notes" className="p-6 space-y-2 max-w-3xl mx-auto">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="bg-white rounded-xl border border-ps-border px-4 py-3 flex items-center gap-3">
             <Skeleton className="h-3.5 w-3.5 rounded-sm shrink-0" />
@@ -146,7 +146,7 @@ export default function NotesPage() {
             <Skeleton className="h-3 flex-1" />
           </div>
         ))}
-      </div>
+      </LoadingRegion>
     );
   }
 

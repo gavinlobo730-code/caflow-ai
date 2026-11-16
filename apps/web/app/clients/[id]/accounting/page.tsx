@@ -37,7 +37,7 @@ import { useLedgerSpan } from "@/lib/accounting/useLedgerSpan";
 import { documentTarget, noRouteReason, sourceLabel, journalEntryHref }
   from "@/lib/accounting/sourceDocument";
 import { cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
-import { TableSkeleton, StatementSkeleton, MetricCardSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, StatementSkeleton, MetricCardSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
 
 
@@ -566,14 +566,14 @@ function AccountingDashboard({
   const unknownIfFailed = (value: string) => (loadFailed ? "—" : value);
 
   if (loading) return (
-    <div className="space-y-3 max-w-ps-data mx-auto">
+    <LoadingRegion label="Loading the accounting dashboard" className="space-y-3 max-w-ps-data mx-auto">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[...Array(4)].map((_, i) => <MetricCardSkeleton key={i} />)}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {[...Array(3)].map((_, i) => <MetricCardSkeleton key={i} />)}
       </div>
-    </div>
+    </LoadingRegion>
   );
 
   return (

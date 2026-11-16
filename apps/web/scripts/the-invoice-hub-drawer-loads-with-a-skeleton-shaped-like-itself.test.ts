@@ -29,7 +29,8 @@ test("the drawer's loading branch is the Hub skeleton, not a generic form and ta
 
 test("the Hub skeleton announces itself to assistive technology", () => {
   const body = SKELETON.slice(SKELETON.indexOf("export function InvoiceHubSkeleton"));
-  assert.match(body, /role="status"\s+aria-label="Loading invoice"/);
+  // A LoadingRegion is a role="status" region with this label, and it says when the server is slow (POST-A-147).
+  assert.match(body, /<LoadingRegion label="Loading invoice"/);
 });
 
 test("the skeleton has a stand-in for every section the loaded drawer opens with", () => {

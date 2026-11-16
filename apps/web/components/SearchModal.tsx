@@ -5,7 +5,7 @@ import { Search, Users, UserPlus, CheckSquare, FileText, Shield, ShieldCheck, X,
 import { api } from "@/lib/api";
 import { useRouter, usePathname } from "next/navigation";
 import { matchScreens, screenHref, isScreensOnly, SCREENS_ONLY_PREFIX } from "@/lib/navigation/screens";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { arrayOrEmpty } from "@/lib/api/shape";
 
 // THE ONE CLIENT FOR /api/search. The palette and the /search page both read
@@ -245,14 +245,14 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
         {/* Results */}
         <div className="max-h-96 overflow-y-auto">
           {loading && (
-            <div className="py-2" role="status" aria-label="Loading results">
+            <LoadingRegion label="Loading results" className="py-2" noticeClassName="px-4">
               {[1, 2, 3].map(i => (
                 <div key={i} className="px-4 py-2.5 space-y-1.5">
                   <Skeleton className="h-3.5 w-40" />
                   <Skeleton className="h-2.5 w-24" />
                 </div>
               ))}
-            </div>
+            </LoadingRegion>
           )}
 
           {!loading && query && searchError && (

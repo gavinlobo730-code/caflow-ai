@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Search, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 // The palette's own client for /api/search — one request, one result shape,
@@ -112,14 +112,14 @@ function SearchContent() {
         </form>
 
         {pending && (
-          <div className="space-y-3" role="status" aria-label="Searching">
+          <LoadingRegion label="Searching" className="space-y-3">
             {[1, 2, 3].map(i => (
               <div key={i} className="bg-white border rounded-lg px-4 py-3 space-y-1.5">
                 <Skeleton className="h-3 w-2/3" />
                 <Skeleton className="h-2.5 w-1/3" />
               </div>
             ))}
-          </div>
+          </LoadingRegion>
         )}
 
         {answered && searchError && (

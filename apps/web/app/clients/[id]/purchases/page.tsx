@@ -53,7 +53,7 @@ import {
 import PeriodPicker from "@/components/PeriodPicker";
 import { resolvePeriodRange, periodOptionLabel, type PeriodMode } from "@/lib/dates/periods";
 import { mapWithConcurrency } from "@/lib/table/concurrency";
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { RecurringBills } from "@/components/purchases/RecurringBills";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
@@ -1958,9 +1958,11 @@ function Vendors({ clientId }: { clientId: string }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/60 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
             {deleteDeps === null ? (
-              <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
-                <Loader2 size={16} className="animate-spin" /> Checking for linked records…
-              </div>
+              <LoadingRegion label="Checking for linked records" noticeClassName="px-6 justify-center text-center">
+                <div className="px-6 py-10 flex items-center justify-center gap-2 text-sm text-ps-label">
+                  <Loader2 size={16} className="animate-spin" /> Checking for linked records…
+                </div>
+              </LoadingRegion>
             ) : deleteDeps.can_delete ? (
               <>
                 <div className="px-6 py-5 border-b border-ps-border">

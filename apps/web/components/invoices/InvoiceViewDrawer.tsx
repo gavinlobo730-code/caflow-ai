@@ -53,6 +53,7 @@ import {
   type ActivityStatus,
 } from "@/lib/documents/activity";
 import { ActivityNote } from "@/components/documents/ActivityNote";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const fmtDateTime = formatDateTime;
 
@@ -358,7 +359,7 @@ export function InvoiceViewDrawer({
             {showJournal && (
               <div className="border border-ps-border rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
-                  <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+                  <LoadingRegion label="Loading the journal"><div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div></LoadingRegion>
                 ) : journal?.lines?.length ? (
                   <table className="w-full text-2xs">
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>

@@ -34,6 +34,7 @@ import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Button } from "@/components/ui/button";
 import { istToday } from "@/lib/dateMath";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 function todayPeriod(): string {
   const d = istToday();
@@ -236,7 +237,9 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
       <div className="space-y-2">
         <h6 className="text-2xs font-semibold text-ps-body">Registered sellers (Table 3)</h6>
         {loadingRows ? (
-          <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+          <LoadingRegion label="Loading the sellers">
+            <p className="text-2xs text-ps-hint inline-flex items-center gap-1"><Loader2 size={11} className="animate-spin" /> Loading…</p>
+          </LoadingRegion>
         ) : registered.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-2xs">

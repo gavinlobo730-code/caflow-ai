@@ -7,7 +7,7 @@ import { api, type AuditEntry } from "@/lib/api";
 import { RoleGuard } from "@/components/RoleGuard";
 import { formatDate } from "@/lib/services/formatting";
 import { todayIstISO } from "@/lib/dates/format";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
@@ -384,15 +384,17 @@ function AuditLogContent() {
         </div>
 
         {loading && (
-          <div className="divide-y divide-ps-border">
-            {Array.from({ length: 6 }).map((_, r) => (
-              <div key={r} className="grid grid-cols-12 gap-2 px-5 py-3 items-center">
-                {Array.from({ length: 6 }).map((_, c) => (
-                  <Skeleton key={c} className="col-span-2 h-3 w-3/4" />
-                ))}
-              </div>
-            ))}
-          </div>
+          <LoadingRegion label="Loading the audit log" noticeClassName="px-5">
+            <div className="divide-y divide-ps-border">
+              {Array.from({ length: 6 }).map((_, r) => (
+                <div key={r} className="grid grid-cols-12 gap-2 px-5 py-3 items-center">
+                  {Array.from({ length: 6 }).map((_, c) => (
+                    <Skeleton key={c} className="col-span-2 h-3 w-3/4" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </LoadingRegion>
         )}
         {!loading && error && (
           <div className="px-5 py-8 text-center space-y-3">

@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ReportType = "pl" | "balance_sheet" | "gst_summary" | "tds_summary" | "payroll_summary";
@@ -258,10 +259,12 @@ export default function ScheduledReportsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="text-center py-12 flex items-center justify-center gap-2 text-ps-hint">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Loading schedules…</span>
-        </div>
+        <LoadingRegion label="Loading schedules" noticeClassName="justify-center text-center">
+          <div className="text-center py-12 flex items-center justify-center gap-2 text-ps-hint">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Loading schedules…</span>
+          </div>
+        </LoadingRegion>
       ) : loadError ? (
         <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
           <AlertCircle className="w-8 h-8 text-red-300 mx-auto mb-2" />

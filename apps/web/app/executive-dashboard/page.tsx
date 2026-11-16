@@ -17,6 +17,7 @@ import { formatDateTime, formatTime } from "@/lib/dates/format";
 import { ATTENTION, BRAND, GOLD, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatCroreLakh } from "@/lib/money/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -227,10 +228,12 @@ export default function ExecutiveDashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-ps-bg flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 rounded-full border-2 border-brand-light border-t-brand animate-spin mx-auto mb-4" />
-          <p className="text-ps-label text-sm">Reading your practice records...</p>
-        </div>
+        <LoadingRegion label="Reading your practice records" noticeClassName="justify-center text-center">
+          <div className="text-center">
+            <div className="w-12 h-12 rounded-full border-2 border-brand-light border-t-brand animate-spin mx-auto mb-4" />
+            <p className="text-ps-label text-sm">Reading your practice records...</p>
+          </div>
+        </LoadingRegion>
       </div>
     );
   }

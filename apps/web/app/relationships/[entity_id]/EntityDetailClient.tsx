@@ -7,7 +7,7 @@ import { ChevronLeft, CheckCircle, XCircle, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -463,7 +463,7 @@ export default function EntityDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-5">
+      <LoadingRegion label="Loading the entity" className="p-6 space-y-5">
         <Skeleton className="h-3 w-32 bg-gray-700" />
         <div className="space-y-2">
           <Skeleton className="h-5 w-56 bg-gray-700" />
@@ -484,7 +484,7 @@ export default function EntityDetailPage() {
             ))}
           </div>
         </div>
-      </div>
+      </LoadingRegion>
     );
   }
 

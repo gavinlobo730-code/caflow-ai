@@ -31,6 +31,7 @@ import { panProblem } from "@/lib/identifiers/pan";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 const CLIENT_IMPORT_COLUMNS = [
   { key: "client_name",  label: "Client Name",    required: true,  hint: "e.g. ABC Pvt Ltd" },
   { key: "entity_type",  label: "Entity Type",    required: true,  hint: "Proprietorship | Partnership | LLP | Private Limited | Public Limited | Trust | Society | Individual | HUF | AOP | BOI" },
@@ -598,17 +599,19 @@ export default function ClientsPage() {
       {/* Loading skeleton */}
       {loading && (
         <Card>
-          <CardContent className="p-0 divide-y divide-ps-border">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-6 py-4">
-                <div className="w-10 h-10 rounded-full bg-ps-muted animate-pulse shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-ps-muted rounded animate-pulse w-48" />
-                  <div className="h-2.5 bg-ps-muted rounded animate-pulse w-32" />
+          <LoadingRegion label="Loading clients" noticeClassName="px-6">
+            <div className="divide-y divide-ps-border">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 px-6 py-4">
+                  <div className="w-10 h-10 rounded-full bg-ps-muted animate-pulse shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-ps-muted rounded animate-pulse w-48" />
+                    <div className="h-2.5 bg-ps-muted rounded animate-pulse w-32" />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </CardContent>
+              ))}
+            </div>
+          </LoadingRegion>
         </Card>
       )}
 

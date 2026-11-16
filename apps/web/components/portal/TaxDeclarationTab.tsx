@@ -39,6 +39,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput";
 import { Callout } from "@/components/ui/callout";
 import { istToday } from "@/lib/dateMath";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 
 /** The declaration as the form holds it: the server's row without its id (the server owns the employee, client and firm). */
@@ -214,9 +215,11 @@ export function TaxDeclarationTab({ onToast }: {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-ps-label py-10 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading your declaration…
-      </div>
+      <LoadingRegion label="Loading your declaration" noticeClassName="justify-center text-center">
+        <div className="flex items-center gap-2 text-sm text-ps-label py-10 justify-center">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading your declaration…
+        </div>
+      </LoadingRegion>
     );
   }
   if (loadFailed || !decl) {

@@ -14,7 +14,7 @@ import { Printer, AlertTriangle, Download } from "lucide-react";
 // (scripts/a-dynamic-xlsx-import-has-no-default.test.ts); the rule that no file
 // imports it statically is scripts/the-spreadsheet-library-is-not-in-the-first-load.test.ts.
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatementSkeleton } from "@/components/ui/skeleton";
+import { StatementSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -291,7 +291,7 @@ function GrandTotal({ label, paise, prior, showPrior }: {
  */
 function LoadingSpinner({ allClients }: { allClients: boolean }) {
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <LoadingRegion label="Loading the statements" className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="h-6 bg-white/[0.08] rounded w-64 animate-pulse" />
       <div className="h-10 bg-ps-muted rounded w-64 animate-pulse" />
       {allClients && (
@@ -308,7 +308,7 @@ function LoadingSpinner({ allClients }: { allClients: boolean }) {
         <StatementSkeleton sections={2} rowsPerSection={3} />
         <StatementSkeleton sections={2} rowsPerSection={3} />
       </div>
-    </div>
+    </LoadingRegion>
   );
 }
 

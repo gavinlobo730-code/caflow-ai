@@ -36,6 +36,7 @@ import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Tab = "mine" | "unbilled" | "rates";
 
@@ -518,9 +519,11 @@ export default function TimeTrackingPage() {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-10 text-ps-hint">
-              <Loader2 className="animate-spin mr-2" size={16} /> Loading…
-            </div>
+            <LoadingRegion label="Loading time entries" noticeClassName="justify-center text-center">
+              <div className="flex items-center justify-center py-10 text-ps-hint">
+                <Loader2 className="animate-spin mr-2" size={16} /> Loading…
+              </div>
+            </LoadingRegion>
           ) : entries.length === 0 ? (
             <div className="py-12 text-center text-ps-hint">
               <Clock size={28} className="mx-auto mb-2 opacity-30" />

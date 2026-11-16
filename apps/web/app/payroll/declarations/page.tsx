@@ -29,6 +29,7 @@ import { api, type DeclarationRow, type DeclarationItemRow } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { istToday } from "@/lib/dateMath";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Client = { id: string; client_name: string };
 type Employee = { id: string; name: string };
@@ -181,9 +182,11 @@ export default function DeclarationsPage() {
       )}
 
       {loading && (
-        <div className="flex items-center gap-2 text-sm text-ps-label py-8 justify-center">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading declarations…
-        </div>
+        <LoadingRegion label="Loading declarations" noticeClassName="justify-center text-center">
+          <div className="flex items-center gap-2 text-sm text-ps-label py-8 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading declarations…
+          </div>
+        </LoadingRegion>
       )}
 
       {!loading && loadFailed && (

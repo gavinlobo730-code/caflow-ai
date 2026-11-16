@@ -5,7 +5,7 @@ import { Search, Network, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
@@ -121,14 +121,14 @@ export default function RelationshipExplorerPage() {
             />
           </div>
           {loading ? (
-            <div className="space-y-1.5">
+            <LoadingRegion label="Loading entities" className="space-y-1.5">
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="px-4 py-3 rounded-lg border border-gray-200 bg-white space-y-1.5">
                   <Skeleton className="h-3 w-32" />
                   <Skeleton className="h-4 w-16 rounded-full" />
                 </div>
               ))}
-            </div>
+            </LoadingRegion>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-gray-500 py-4 text-center">
               {register.window?.hasMore && entities.length > 0

@@ -28,7 +28,7 @@ import type { Client } from "@/lib/types";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import type { BulkAction, Column, FilterDef } from "@/lib/table/types";
 import { useToast } from "@/components/ui/use-toast";
-import { Skeleton, DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { ExpiringEwayBills } from "@/components/gst/ExpiringEwayBills";
 import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
 import { PageHeader } from "@/components/ui/page-header";
@@ -105,7 +105,7 @@ const ALL_STATUSES = ["pending", "in_progress", "filed", "na"];
 
 function LoadingSpinner() {
   return (
-    <div className="p-6 max-w-ps-data mx-auto space-y-6">
+    <LoadingRegion label="Loading deadlines" className="p-6 max-w-ps-data mx-auto space-y-6">
       <div className="space-y-2">
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-3 w-72" />
@@ -114,7 +114,7 @@ function LoadingSpinner() {
       <DashboardSkeleton cards={6} className="grid-cols-2 md:grid-cols-6" />
       {/* Compliance table (Client, Type, Period, Due Date, Status, ARN) */}
       <TableSkeleton cols={6} rows={5} />
-    </div>
+    </LoadingRegion>
   );
 }
 

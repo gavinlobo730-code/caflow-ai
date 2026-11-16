@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { readWindow } from "@/lib/lists/readWindow";
 import { windowDescription } from "@/lib/lists/window";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -154,9 +155,11 @@ function TriggersTab() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-brand" />
-    </div>
+    <LoadingRegion label="Loading triggers" noticeClassName="justify-center text-center">
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={24} className="animate-spin text-brand" />
+      </div>
+    </LoadingRegion>
   );
 
   if (loadError) return (
@@ -279,9 +282,11 @@ function ProfilesTab() {
   useEffect(() => { load(); }, []);
 
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-brand" />
-    </div>
+    <LoadingRegion label="Loading client profiles" noticeClassName="justify-center text-center">
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={24} className="animate-spin text-brand" />
+      </div>
+    </LoadingRegion>
   );
 
   if (loadError) return (
@@ -423,9 +428,11 @@ function AnomaliesTab() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 size={24} className="animate-spin text-brand" />
-    </div>
+    <LoadingRegion label="Loading anomalies" noticeClassName="justify-center text-center">
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={24} className="animate-spin text-brand" />
+      </div>
+    </LoadingRegion>
   );
 
   if (loadError) return (

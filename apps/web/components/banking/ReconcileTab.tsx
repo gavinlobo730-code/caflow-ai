@@ -10,7 +10,7 @@ import { useEffect, useState, useCallback } from "react";
 import { CheckCircle, FileText, Download } from "lucide-react";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { api } from "@/lib/api";
-import { StatementSkeleton } from "@/components/ui/skeleton";
+import { StatementSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 import { fmt } from "@/components/banking/shared";
 import { objectWithLists } from "@/lib/api/shape";
@@ -403,7 +403,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
       <div className="bg-white rounded-xl border border-ps-border p-4 flex items-end gap-3 flex-wrap">
         <div className="flex-1 min-w-[240px]">
           <label className="block text-xs font-medium text-ps-label mb-1.5">Reconciliation session</label>
-          {loading ? <div className="h-9 bg-ps-bg rounded animate-pulse" /> : (
+          {loading ? (
+            <LoadingRegion label="Loading reconciliation sessions">
+              <div className="h-9 bg-ps-bg rounded animate-pulse" />
+            </LoadingRegion>
+          ) : (
             <select aria-label="Reconciliation session" value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand">
               <option value="">— Select a reconciliation —</option>
               {sessions.map((s) => <option key={s.id} value={s.id}>{formatDate(s.statement_start_date)} → {formatDate(s.statement_end_date)} · {s.account_no ?? "account"} · {s.status}</option>)}

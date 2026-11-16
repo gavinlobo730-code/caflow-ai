@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { apiGet, getAuthToken, fmt } from "@/lib/invoices/shared";
 import { formatDateTime } from "@/lib/services/formatting";
 import type { PurchaseCreditNoteDetail } from "@/components/purchases/PurchaseCreditNoteEditor";
-import { Skeleton, TableSkeleton, TimelineSkeleton } from "@/components/ui/skeleton";
+import { Skeleton, TableSkeleton, TimelineSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import {
   ACTIVITY_NOT_YET_ASKED, activityItems, activityStatusOf, documentActivityUrl, emptyActivityLine, readDocumentActivity,
@@ -158,7 +158,7 @@ export function PurchaseCreditNoteViewDrawer({
   return (
     <Drawer open onClose={onClose} title={pcn ? (pcn.credit_note_no || "Credit Note") : "Credit Note"} widthClass="sm:max-w-lg">
       {loading ? (
-        <div className="p-5 space-y-5">
+        <LoadingRegion label="Loading the credit note" className="p-5 space-y-5">
           <div className="flex items-start justify-between gap-2">
             <div className="space-y-2">
               <Skeleton className="h-4 w-32" />
@@ -171,7 +171,7 @@ export function PurchaseCreditNoteViewDrawer({
           </div>
           <TableSkeleton cols={6} rows={3} bare className="rounded-lg border border-ps-border" />
           <TimelineSkeleton rows={3} />
-        </div>
+        </LoadingRegion>
       ) : error || !pcn ? (
         <div className="p-8 text-center">
           <AlertCircle size={28} className="mx-auto mb-3 text-state-problem" />
@@ -289,7 +289,7 @@ export function PurchaseCreditNoteViewDrawer({
             {showJournal && (
               <div className="border border-ps-border rounded-lg p-2 bg-ps-bg">
                 {journalLoading ? (
-                  <div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+                  <LoadingRegion label="Loading the journal"><div className="flex items-center gap-2 text-2xs text-ps-hint py-2"><Loader2 size={12} className="animate-spin" /> Loading…</div></LoadingRegion>
                 ) : journal?.lines?.length ? (
                   <table className="w-full text-2xs">
                     <thead><tr className="text-ps-hint"><th className="text-left font-semibold py-1">Account</th><th className="text-right font-semibold">Debit</th><th className="text-right font-semibold">Credit</th></tr></thead>

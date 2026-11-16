@@ -50,6 +50,7 @@ import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { api } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ─── The server's shape ───────────────────────────────────────────────────────
 
@@ -384,7 +385,9 @@ export default function RisksPage() {
       />
 
       {loading ? (
-        <div className="flex items-center justify-center py-24"><Loader2 className="h-7 w-7 animate-spin text-blue-500" /></div>
+        <LoadingRegion label="Loading risks" noticeClassName="justify-center text-center">
+          <div className="flex items-center justify-center py-24"><Loader2 className="h-7 w-7 animate-spin text-blue-500" /></div>
+        </LoadingRegion>
       ) : pageError ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <AlertCircle className="h-10 w-10 text-red-600 mb-3" />

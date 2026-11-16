@@ -11,7 +11,7 @@
  * exactly as the Blueprint specifies ("skeleton for header + grid rows;
  * summary → shimmer").
  */
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 const CARD = "bg-white rounded-xl border border-ps-border p-4";
 
@@ -40,7 +40,7 @@ function LineRowSkeleton() {
 
 export function InvoiceEditorSkeleton() {
   return (
-    <div className="space-y-5" role="status" aria-label="Loading invoice editor">
+    <LoadingRegion label="Loading invoice editor" className="space-y-5">
       {/* Party + metadata card */}
       <section className={CARD}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -81,13 +81,13 @@ export function InvoiceEditorSkeleton() {
         <Skeleton className="h-2.5 w-14 mb-1.5" />
         <Skeleton className="h-14 w-full rounded-lg" />
       </section>
-    </div>
+    </LoadingRegion>
   );
 }
 
 export function SummaryPanelSkeleton() {
   return (
-    <div className={`${CARD} space-y-3`} role="status" aria-label="Loading summary">
+    <LoadingRegion label="Loading summary" className={`${CARD} space-y-3`}>
       <Skeleton className="h-3 w-20" />
       <div className="space-y-2">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -108,7 +108,7 @@ export function SummaryPanelSkeleton() {
         </div>
       </div>
       <Skeleton className="h-2.5 w-4/5" />
-    </div>
+    </LoadingRegion>
   );
 }
 
@@ -132,7 +132,7 @@ export function InvoiceToolbarSkeleton() {
  */
 export function InvoiceHubSkeleton() {
   return (
-    <div className="p-5 space-y-5" role="status" aria-label="Loading invoice">
+    <LoadingRegion label="Loading invoice" className="p-5 space-y-5">
       {/* Customer and grand total */}
       <section className="space-y-2.5">
         <div className="flex items-start justify-between gap-2">
@@ -194,6 +194,6 @@ export function InvoiceHubSkeleton() {
           </div>
         ))}
       </section>
-    </div>
+    </LoadingRegion>
   );
 }

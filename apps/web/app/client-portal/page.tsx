@@ -20,7 +20,7 @@ import type { Client } from "@/lib/types";
 import type { ComplianceEntry } from "@/lib/data/compliance";
 import { formatDate } from "@/lib/services/formatting";
 import { formatPaise } from "@/lib/services/formatting";
-import { ListSkeleton, TransactionListSkeleton } from "@/components/ui/skeleton";
+import { ListSkeleton, TransactionListSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
@@ -695,9 +695,11 @@ export default function ClientPortalPage() {
           </div>
 
           {loading && (
-            <div className="text-center py-8 text-sm text-ps-hint animate-pulse">
-              Loading client data…
-            </div>
+            <LoadingRegion label="Loading client data" noticeClassName="justify-center text-center">
+              <div className="text-center py-8 text-sm text-ps-hint animate-pulse">
+                Loading client data…
+              </div>
+            </LoadingRegion>
           )}
 
           {!loading && (
