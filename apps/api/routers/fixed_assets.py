@@ -1174,20 +1174,23 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
     # The caller's copy moves with `changed` below, so a dead marker taken off here is off the copy too, and the next month of a run
     # does not write against a marker this one already cleared.
     changed = _adopting_a_dead_marker(changed, asset)
-    update = _with_marker_as_read(db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id), asset)
+    update = _with_version_as_read(
+        _with_marker_as_read(db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id), asset), asset)
     if "accumulated_account_id" in asset:
         # POST-A-345: the journal above credited the ledger THIS COPY of the asset names. If a reclassification has moved the asset to
         # (or back from) another ledger since the row was read, a month credited to the old one would leave the asset half in each,
         # so the register moves only if the pointer is still the one the journal used.
         pointer = accumulated_account_pointer(asset)
         update = update.eq("accumulated_account_id", pointer) if pointer else update.is_("accumulated_account_id", "null")
-    if not (update.execute().data or []) and ("accumulated_account_id" in asset or "depreciation_reversal_month" in asset):
+    written = update.execute().data or []
+    if not written and ("accumulated_account_id" in asset or "depreciation_reversal_month" in asset
+                        or asset.get("register_version") is not None):
         _refuse_if_a_sibling_kept_the_month(db, asset, period, firm_id)
         try:
             _reverse_tolerating_already_reversed(
                 db, firm_id, journal_id, entry_date,
                 f"Reversal of depreciation on {asset.get('asset_code')} for {period}: the asset changed while it was being posted (a "
-                "reversal was claimed or its accumulated-depreciation ledger moved)", created_by)
+                "reversal was claimed or finished, or its accumulated-depreciation ledger moved)", created_by)
         except Exception as exc:
             from core.observability import capture_posting_failure
             capture_posting_failure(exc, operation="fixed_assets.post_depreciation.lost_race_reversal", firm_id=firm_id,
@@ -1202,6 +1205,7 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
     # The caller's copy moves with the row, so a month-by-month loop reads the
     # opening accumulated depreciation each iteration without re-fetching.
     asset.update(changed)
+    _carry_the_version(asset, written)
 
     timeline_service.log(asset["client_id"], "accounting", "Depreciation Posted",
         f"{asset.get('asset_code')}: {rupee_whole_text(monthly)} depreciation for {period}", "info")
@@ -1247,12 +1251,14 @@ def _pass_a_nil_month(db, asset: dict, period: str, firm_id: str, fy: str, fy_st
               .eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0)))
     read = asset.get("depreciation_posted_through")
     update = update.eq("depreciation_posted_through", str(read)[:10]) if read else update.is_("depreciation_posted_through", "null")
-    update = _with_marker_as_read(update, asset)
-    if not (update.execute().data or []):
+    update = _with_version_as_read(_with_marker_as_read(update, asset), asset)
+    written = update.execute().data or []
+    if not written:
         raise HTTPException(status_code=409, detail=(
             f"This asset changed while {period} was being passed (a month was posted or reversed in between). Nothing was "
             "posted; try again."))
     asset.update(changed)
+    _carry_the_version(asset, written)
     return {"message": (f"{_month_words(period)}'s share of this year's depreciation is nil, so nothing is charged for it and the "
                         "asset is marked as depreciated through it."),
             "depreciation_paise": 0, "asset_id": asset["id"], "period": period,
@@ -2374,6 +2380,26 @@ def _with_marker_as_read(query, asset: dict):
         return query.is_("depreciation_reversal_month", "null")
     return (query.eq("depreciation_reversal_month", asset.get("depreciation_reversal_month"))
             .eq("depreciation_reversal_claimed_at", asset.get("depreciation_reversal_claimed_at")))
+
+
+def _with_version_as_read(query, asset: dict):
+    """Condition a register write on the asset's register version still being the one this request read (POST-A-434, migration 635).
+    The marker is back to NULL once a reversal has finished, so a post that read the row before a whole reversal ran found the row as
+    it had read it; the version, which a trigger adds to on every change to the register, is what has moved. A row read before the
+    migration has no version and is written as before."""
+    if asset.get("register_version") is None:
+        return query
+    return query.eq("register_version", int(asset["register_version"]))
+
+
+def _carry_the_version(asset: dict, written) -> None:
+    """The caller's copy of the asset moves with the row, so the version a trigger set on the write is read back from the write's own
+    answer; a month-by-month loop then writes its next month against the version this one left."""
+    row = (written or [None])[0] if isinstance(written, list) else None
+    if row and row.get("register_version") is not None:
+        asset["register_version"] = row["register_version"]
+    elif asset.get("register_version") is not None:
+        asset.pop("register_version", None)        # unknown: the next write is not conditioned rather than wrongly refused
 
 
 def _reverse_month_claiming_the_register(db, asset: dict, update: dict, new_accum: int, entry: dict, entry_date: str, period: str,
