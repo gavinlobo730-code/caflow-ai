@@ -204,7 +204,7 @@ interface RemainingLife {
   start_note: string | null;
   years: RemainingLifeYear[];
   total_paise: number;
-  ends: "fully_depreciated" | "nil_charge" | "rounds_to_nil" | "limit" | "not_depreciable" | "no_basis" | null;
+  ends: "fully_depreciated" | "nil_charge" | "limit" | "not_depreciable" | "no_basis" | null;
   end_note: string | null;
 }
 

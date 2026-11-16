@@ -114,7 +114,7 @@ def test_a_purchase_month_that_charges_nothing_does_not_end_a_projection_with_no
     of December moves nothing, so January is still a first posting and charges 25 paise."""
     got = fa.project_remaining_life(_sl(purchase_cost_paise=30_00, useful_life_years=10, purchase_date="2026-12-31"), "2026-12")
     assert got["years"][0]["first_month"] == "2027-01" and got["years"][0]["charge_paise"] == 25 * 3
-    assert got["ends"] != "rounds_to_nil" or got["years"][-1]["financial_year"] > "2030-31"
+    assert got["ends"] == "fully_depreciated" and got["total_paise"] == 30_00
 
 
 def test_land_is_not_depreciated_and_an_asset_with_no_basis_says_why():
