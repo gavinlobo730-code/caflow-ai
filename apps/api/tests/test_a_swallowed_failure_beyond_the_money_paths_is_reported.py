@@ -46,6 +46,10 @@ API_ROOT = Path(__file__).resolve().parents[1]
 CLEARED_FILES = (
     "routers/engagement_letters.py",
     "routers/lifecycle.py",
+    "routers/search.py",
+    "routers/tasks.py",
+    "domain/ai_copilot_service.py",
+    "domain/memory_pipeline.py",
 )
 
 
@@ -71,7 +75,7 @@ def test_every_report_names_its_operation_literally_and_none_is_shared_with_anot
             assert operation not in seen, f"{operation!r} is used at {seen[operation]} and {relative}:{call.lineno}"
             seen[operation] = f"{relative}:{call.lineno}"
     cleared = [v for v in seen.values() if v.split(":")[0] in CLEARED_FILES]
-    assert len(cleared) >= 40, f"only {len(cleared)} reports in the cleared files: the wiring has regressed"
+    assert len(cleared) >= 60, f"only {len(cleared)} reports in the cleared files: the wiring has regressed"
 
 
 # ── driven for real ─────────────────────────────────────────────────────────────────────────────────
@@ -202,3 +206,91 @@ def test_the_report_reaches_the_error_log_without_sentry(monkeypatch, caplog):
         mod._log_engagement_event(_BrokenDb(), "eng-7", "firm-1", "signed", "u1", {})
     messages = [r.getMessage() for r in caplog.records]
     assert any("engagement.event_log" in m and "eng-7" in m for m in messages), messages
+
+
+# ── second batch: search, tasks, the AI copilot's context, the memory pipeline ──────────────────
+
+def test_a_search_facet_that_fails_is_reported_so_a_missing_result_is_not_silent(monkeypatch, spy):
+    import routers.search as mod
+    seen = spy(mod)
+    monkeypatch.setattr(mod, "_USE_MOCK", False)
+    monkeypatch.setattr(mod, "effective_client_ids", lambda *_a, **_k: None)
+    monkeypatch.setattr(mod, "_db", lambda: _BrokenDb())
+    monkeypatch.setattr(mod.client_repo, "find_all", lambda *_a, **_k: [], raising=False)
+    import repositories.task_repository as tr
+    import repositories.document_repository as dr
+    import repositories.dsc_repository as dsc
+    for module, name in ((tr, "task_repo"), (dr, "document_repo"), (dsc, "dsc_repo")):
+        monkeypatch.setattr(getattr(module, name), "find_all", _boom)
+    mod.global_search(q="acme", current_user={"firm_id": "firm-1", "id": "u1", "role": "Partner"})
+    operations = {op for op, _ in seen}
+    assert {"search.accounts", "search.journals", "search.leads", "search.engagements",
+            "search.tasks", "search.documents", "search.dsc"} <= operations, operations
+    assert all(ctx == {"firm_id": "firm-1"} for _, ctx in seen)
+
+
+def test_a_task_audit_entry_that_fails_is_reported_and_the_task_is_still_created(monkeypatch, spy):
+    import routers.tasks as mod
+    seen = spy(mod)
+    monkeypatch.setattr(mod, "log_event", _boom)
+    monkeypatch.setattr(mod, "task_repo", type("R", (), {"create": staticmethod(lambda row: {**row, "id": "t1"})}))
+    monkeypatch.setattr(mod, "log_activity", lambda **_k: None)
+    monkeypatch.setattr(mod, "task_extras_repo", type("E", (), {"log_event": staticmethod(lambda **_k: None)}), raising=False)
+    body = mod.TaskCreate(title="File GSTR-3B", client_id="c1")
+    monkeypatch.setattr(mod, "assert_client_access", lambda *_a, **_k: None)
+    monkeypatch.setattr(mod.client_repo, "find_by_id", lambda *_a, **_k: {"id": "c1"})
+    out = mod.create_task(body, {"firm_id": "firm-1", "auth_user_id": "u1", "email": "a@b.in", "id": "i1"})
+    assert out["success"] is True
+    assert ("tasks.create_audit", {"firm_id": "firm-1", "task_id": "t1"}) in seen
+
+
+def test_a_copilot_context_section_that_cannot_be_read_is_reported(monkeypatch, spy):
+    import asyncio
+    import domain.ai_copilot_service as mod
+    seen = spy(mod)
+
+    class Repo:
+        def find_all(self, **_k):
+            raise RuntimeError("compliance_records unreachable")
+
+    monkeypatch.setattr(mod, "_get_compliance_records_repo", lambda: Repo())
+    svc = mod.AICopilotService.__new__(mod.AICopilotService)
+
+    class Summaries:
+        def get_summary(self, *_a, **_k):
+            return None
+
+        def __getattr__(self, _n):
+            return lambda *_a, **_k: None
+
+    svc._repo = Summaries()
+    try:
+        asyncio.run(svc.get_compliance_intelligence("firm-1", None))
+    except Exception:
+        pass  # what happens after the read is not this test's business; the report is
+    assert ("ai_copilot.compliance_intelligence", {"firm_id": "firm-1"}) in seen
+
+
+def test_a_malformed_stamp_in_the_memory_pipeline_skips_one_data_point_and_is_a_narrow_handler():
+    tree = ast.parse(_read("domain/memory_pipeline.py"))
+    handlers = [n for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler)
+                and n.type is not None and "ValueError" in ast.unparse(n.type)]
+    assert len(handlers) >= 4, "the four per-row stamp parses must name the errors they expect"
+
+
+def test_the_deadline_trigger_parse_that_once_hid_a_type_error_now_reports_it(spy):
+    """That very `except` swallowed a TypeError for months and the detector never produced a trigger."""
+    import domain.memory_pipeline as mod
+    seen = spy(mod)
+
+    class Repo:
+        def find_all(self, **_k):
+            return [{"client_id": "c1", "status": "Pending", "due_date": object()}]
+
+    original = mod._get_compliance_records_repo
+    mod._get_compliance_records_repo = lambda: Repo()
+    try:
+        mod.MemoryPipeline().detect_deadline_at_risk("firm-1", "c1")
+    finally:
+        mod._get_compliance_records_repo = original
+    assert ("memory_pipeline.deadline_trigger_parse", {"firm_id": "firm-1", "client_id": "c1"}) in seen
