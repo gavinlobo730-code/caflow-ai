@@ -184,13 +184,35 @@ export interface InvoiceLine {
    * `cessPercent` is the ad valorem limb as typed, `cessPerUnit` the specific
    * limb in RUPEES PER UNIT of this line's own UQC.
    *
-   * Absent on a credit or debit note, which share this type: migration 374
-   * gave the invoice and the purchase bill a cess column and deliberately did
-   * not give the four s.34 note tables one, so a value typed on a note would
-   * be silently dropped by the server's own model.
+   * Carried by a credit or debit note too, which share this type, since
+   * migration 615 gave the four s.34 note tables the same columns (POST-A-058).
    */
   cessPercent?: string;
   cessPerUnit?: string;
+}
+
+/** The two cess limbs a STORED line carries, as the editor's two boxes show them: the ad valorem limb in basis points as a
+ *  percentage, the per-unit limb in paise as rupees. Absent (undefined) where the limb is nil, which is every line that bears no cess.
+ *
+ *  An editor that opens a stored line MUST carry these: a draft's save re-sends every line and the server derives the cess from what is
+ *  sent, so a limb the editor did not rehydrate is a cess silently taken off a document nobody meant to change. PostgREST returns a
+ *  bigint as a string, hence Number(). */
+export function cessInputsFromStored(line: {
+  cess_rate_bps?: number | string | null;
+  cess_specific_paise_per_unit?: number | string | null;
+}): Pick<InvoiceLine, "cessPercent" | "cessPerUnit"> {
+  const bps = Number(line.cess_rate_bps ?? 0);
+  const perUnit = Number(line.cess_specific_paise_per_unit ?? 0);
+  return {
+    cessPercent: Number.isFinite(bps) && bps > 0 ? String(bps / 100) : undefined,
+    cessPerUnit: Number.isFinite(perUnit) && perUnit > 0 ? String(perUnit / 100) : undefined,
+  };
+}
+
+/** Whether any line of a document carries a cess limb — the editors open their two cess columns for it, so the fields can never be
+ *  hidden from a document that has them. */
+export function linesCarryCess(lines: Pick<InvoiceLine, "cessPercent" | "cessPerUnit">[]): boolean {
+  return lines.some((l) => Boolean(l.cessPercent?.trim() || l.cessPerUnit?.trim()));
 }
 
 /** A document-level discount, already resolved to the units the server takes. */
@@ -432,7 +454,14 @@ export function computeGst(
  *  §15(3)(a). Delegates to lib/money/cessLine.ts, which is the mirror of
  *  apps/api/domain/gst/compensation_cess.py and is pinned to it by
  *  shared/gst-parity-vectors.json. */
-function cessOf(line: InvoiceLine, taxablePaiseValue: number): number {
+/** One line's compensation cess for a preview: the two limbs as typed, through the one parser each, on the taxable value the GST heads
+ *  are charged on. 0 when neither limb is typed. Exported for the editors whose own preview does not go through `computeGst` (the two
+ *  purchase-side notes), so every screen previews a line's cess the same way. */
+export function previewLineCess(line: Pick<InvoiceLine, "qty" | "cessPercent" | "cessPerUnit">, taxablePaiseValue: number): number {
+  return cessOf(line, taxablePaiseValue);
+}
+
+function cessOf(line: Pick<InvoiceLine, "qty" | "cessPercent" | "cessPerUnit">, taxablePaiseValue: number): number {
   const bps = percentBpsOf(line.cessPercent);
   const perUnitRupees = line.cessPerUnit?.trim();
   const perUnit = perUnitRupees ? paiseFromRupeeInput(perUnitRupees) : null;

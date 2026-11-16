@@ -816,10 +816,51 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   held**: which cess reaches which HSN is Schedule data that moves by Council
   notification, the same human step as the state PT slabs. Three things are
   named rather than modelled — a "whichever is HIGHER" Schedule entry (record
-  the limb that applies), the four §34 NOTE tables (they have no cess column,
-  so a note against a cess-bearing invoice is reported in the return's
-  `cess_gaps` rather than silently declaring nil), and no upper bound on the
-  rate, because Schedule column (4) carries entries above 100%.
+  the limb that applies), the four §34 NOTE tables (they had no cess column
+  until migration 615, the next entry), and no upper bound on the rate,
+  because Schedule column (4) carries entries above 100%.
+
+- **A §34 NOTE CARRIES THE COMPENSATION CESS OF THE DOCUMENT IT ADJUSTS, BY THE
+  SAME TWO LIMBS AND THE SAME DERIVATION, TO THE SAME TWO LEDGERS** (POST-A-058,
+  migration 615). What was wrong: 374 gave the invoice and the bill the cess and
+  left the four note tables (sales credit note, sales debit note, purchase debit
+  note, purchase credit note) without it, so a note against a cess-bearing
+  document reduced (or added to) the value and the three GST heads and left the
+  cess on the receivable or payable, on the cess ledgers and in both returns.
+  The GSTR-1 build named the sales-side case in `cess_gaps`; the purchase side
+  was named nowhere. What the fix does: 615 gives each note header `cess_paise`
+  and each note line `cess_rate_bps`, `cess_specific_paise_per_unit` and
+  `cess_paise` (374's names and meaning, NOT NULL DEFAULT 0, non-negative), and
+  re-defines `numbered_document_atomic__unguarded` from 576's text with the three
+  line columns added to its FIXED insert list, because a note's first save goes
+  through it and would otherwise have dropped them without an error (a draft's
+  later saves go through `replace_draft_document_lines`, which inserts the
+  columns it is given). The two limbs moved from the invoice's subclass to the
+  shared `InvoiceLineIn` the notes use; each note router derives a line's cess
+  through `compensation_cess.line_columns` (one derivation, so a note cannot
+  charge a limb differently from the document it clears) and adds the header's
+  into `total_paise` and never into `total_gst_paise`; each note journal posts
+  it to Compensation Cess Payable (sales side) or Compensation Cess Input Credit
+  (purchase side) on the side its GST goes, never to a GST ledger (s.11(2)
+  proviso); the issue check asks a note's cess against its lines as it asks the
+  invoice's; the GSTR-1 and GSTR-3B builders already read `cess_paise` off every
+  note header and line and now find one; and `cess_gaps` names only a note that
+  carries NO cess against a cess-bearing invoice (a note recorded before 615, or
+  one given no cess), because that note may be right (a price correction on a
+  per-unit cess) or short, and only the CA can say which. The four note editors
+  take the two limbs behind the same "Compensation cess" switch the invoice has,
+  open with it on when a note carries cess, and REHYDRATE both limbs, since a
+  draft's save re-sends every line and the server derives the cess from what is
+  sent. NOT done: a purchase note carries no s.17(5) blocked-credit split (the
+  bill does), so a note against a bill whose credit was blocked moves the cess
+  credit ledger exactly as it already moves GST Input for the three heads; and
+  the six note lines production held before 615 stay with no cess. Verified by
+  `tests/test_a_s34_note_carries_compensation_cess.py` (each note end to end:
+  stored limbs, header and total, issue, the cess leg on its own ledger and
+  side, an edit that takes the cess off, the issue check, the gap) and
+  `tests/test_615_..._pg.py` (each kind stores the limbs through the wrapper,
+  576's function loses them, the columns' defaults and checks, the function's
+  attributes, the rollback).
 
 - **A discount on the invoice reduces the value of supply; a discount after it
   does not, and the two are different sections.** §15(3)(a) excludes a discount

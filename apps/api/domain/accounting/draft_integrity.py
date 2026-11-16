@@ -25,7 +25,8 @@ WHAT IT CHECKS, AND WHAT IT DELIBERATELY DOES NOT
       * the carried-over flag is clear (an invoice and a bill: the four notes have no such column);
       * the total is the sum of its parts, in the way the document's own create path adds them (an invoice: taxable + the three
         tax heads + cess + round-off; a bill: the same without round-off, but the taxable value alone on a reverse-charge bill, where
-        the supplier charged no tax; a note: taxable + the three tax heads); `total_gst_paise` is the three heads;
+        the supplier charged no tax; a note: taxable + the three tax heads + cess, since migration 615); `total_gst_paise` is the three
+        heads;
       * an invoice's round-off is EXACTLY what rounding to the nearest rupee gives (half up), and nil unless the invoice is marked
         for rounding and is in rupees: round-off is the one term of the total the lines say nothing about, so without this a
         forged round-off with a matching total passed;
@@ -78,8 +79,9 @@ NAME_OF = {
     SALES_DEBIT_NOTE: "debit note",
 }
 
-#: The kinds whose header carries a compensation-cess column, a rupee round-off and a foreign-currency pair.
-_HAS_CESS = frozenset({SALES_INVOICE, PURCHASE_BILL})
+#: The kinds whose header carries a compensation-cess column, a rupee round-off and a foreign-currency pair. The four notes carry the
+#: cess since migration 615 (POST-A-058): their create and edit paths add it into the total, as the invoice's and the bill's do.
+_HAS_CESS = frozenset(KINDS)
 _HAS_ROUND_OFF = frozenset({SALES_INVOICE})
 _HAS_FOREIGN = frozenset({SALES_INVOICE, PURCHASE_BILL})
 #: `is_opening` exists on two tables only (migration 391: the invoice and the bill). The four notes have no such column, so there is

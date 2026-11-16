@@ -44,11 +44,9 @@ export interface InvoiceLineInput {
    * GST (Compensation to States) Act 2017 s.8(2) levies "on the basis of
    * VALUE, quantity or on such basis" — this is the value basis.
    *
-   * Sales invoices and purchase bills only. `SalesInvoiceLineIn` and
-   * `PurchaseBillLineIn` are the two models that have it; the s.34 note models
-   * deliberately do not, because the four note tables have no cess column and
-   * a field Pydantic silently drops is exactly the trap this module's header
-   * describes.
+   * Sales invoices, purchase bills and, since migration 615 (POST-A-058), the
+   * four s.34 notes: the shared `InvoiceLineIn` the notes use carries it, so a
+   * note that adjusts a cess-bearing document can adjust its cess too.
    */
   cessPercent?: string;
   /**
@@ -102,6 +100,14 @@ export function toInvoiceLinePayload(line: InvoiceLineInput): InvoiceLinePayload
     // same reason: `bpsFromPercentInput` and `paiseFromRupeeInput` REFUSE a
     // non-amount rather than coercing it to 0, and a cess silently read as
     // zero is an invoice under-charging a tax the client still owes.
+    ...cessPayload(line),
+  };
+}
+
+/** The two compensation-cess limbs of a line as the API takes them, each omitted when nothing was typed (the truth for a line that
+ *  bears no cess). Shared by every editor that sends a line, the two purchase-side notes included, so a limb is parsed one way. */
+export function cessPayload(line: Pick<InvoiceLineInput, "cessPercent" | "cessPerUnit">): Pick<InvoiceLinePayload, "cess_rate_bps" | "cess_specific_paise_per_unit"> {
+  return {
     ...(discountBps(line.cessPercent) === null
       ? {}
       : { cess_rate_bps: discountBps(line.cessPercent) as number }),

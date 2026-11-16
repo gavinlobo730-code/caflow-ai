@@ -284,6 +284,8 @@ export function DebitNoteViewDrawer({
                 <DetailRow label="SGST" value={fmt(dn.sgst_paise ?? 0)} />
               </>
             )}
+            {/* Its own row, never folded into the GST heads (Compensation Act s.11(2) proviso; migration 615). */}
+            {Number(dn.cess_paise ?? 0) > 0 && <DetailRow label="Compensation cess" value={fmt(Number(dn.cess_paise))} />}
           </section>
 
           {/* ── Accounting / View Journal drill-through ─────────────────── */}

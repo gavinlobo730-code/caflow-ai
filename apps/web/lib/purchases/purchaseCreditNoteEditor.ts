@@ -7,6 +7,7 @@
  */
 import { parseLineAmounts } from "../money/lineInput.ts";
 import { dnLineGst } from "./debitNoteGst.ts";
+import { previewLineCess } from "../invoices/gst.ts";
 
 export interface PurchaseCreditNoteEditorLine {
   description: string;
@@ -16,6 +17,10 @@ export interface PurchaseCreditNoteEditorLine {
   gst_rate: number; // percent, e.g. 18
   unit: string;
   service_catalogue_id: string;
+  /** GST compensation cess, ad valorem limb as a percentage and per-unit limb in rupees, as typed (migration 615: the note carries
+   *  the cess of the bill it adjusts). Absent on a line that bears none. */
+  cessPercent?: string;
+  cessPerUnit?: string;
 }
 
 export function isValidPurchaseCreditNoteLine(l: PurchaseCreditNoteEditorLine): boolean {
@@ -32,11 +37,13 @@ export interface PurchaseCreditNotePreviewTotals {
   sgst_paise: number;
   igst_paise: number;
   gst_paise: number;
+  /** Compensation cess: its own levy, never part of gst_paise, and part of the total. */
+  cess_paise: number;
   grand_total_paise: number;
 }
 
 export function previewPurchaseCreditNoteTotals(lines: PurchaseCreditNoteEditorLine[], isInterstate: boolean): PurchaseCreditNotePreviewTotals {
-  let taxable = 0, cgst = 0, sgst = 0, igst = 0;
+  let taxable = 0, cgst = 0, sgst = 0, igst = 0, cess = 0;
   for (const l of lines) {
     const parsed = parseLineAmounts(l.qty, l.rate);
     if (!parsed || !l.service_catalogue_id) continue;
@@ -53,9 +60,10 @@ export function previewPurchaseCreditNoteTotals(lines: PurchaseCreditNoteEditorL
       isInterstate,
     );
     taxable += g.taxable_paise; cgst += g.cgst_paise; sgst += g.sgst_paise; igst += g.igst_paise;
+    cess += previewLineCess(l, g.taxable_paise);
   }
   const gst_paise = cgst + sgst + igst;
-  return { taxable_paise: taxable, cgst_paise: cgst, sgst_paise: sgst, igst_paise: igst, gst_paise, grand_total_paise: taxable + gst_paise };
+  return { taxable_paise: taxable, cgst_paise: cgst, sgst_paise: sgst, igst_paise: igst, gst_paise, cess_paise: cess, grand_total_paise: taxable + gst_paise + cess };
 }
 
 export interface PurchaseCreditNoteEditorValidationInput {
