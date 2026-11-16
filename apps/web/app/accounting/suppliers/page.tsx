@@ -44,6 +44,7 @@
  */
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
+import { editedChoice, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, X, Users, IndianRupee } from "lucide-react";
 import { TableSkeleton } from "@/components/ui/skeleton";
@@ -252,7 +253,8 @@ export default function SuppliersPage() {
       interest_threshold_class:
         v.interest_threshold_class && v.interest_threshold_class !== "ordinary"
           ? v.interest_threshold_class : "",
-      credit_limit_rs: v.credit_limit_paise ? String(v.credit_limit_paise / 100) : "",
+      // A limit of 0 is "cash only" and is shown as 0: a blank here would be read on Save as "no limit", and the route now clears it (POST-A-399).
+      credit_limit_rs: v.credit_limit_paise != null ? String(v.credit_limit_paise / 100) : "",
       credit_days: v.credit_days !== null && v.credit_days !== undefined ? String(v.credit_days) : "",
       gst_registration_status: v.gst_registration_status ?? "",
       is_active: v.is_active,
@@ -316,12 +318,22 @@ export default function SuppliersPage() {
       creditDays = n;
     }
 
+    // POST-A-399. A tax identifier on file is corrected and not removed (the server refuses the same edit in the same words), and the payment terms,
+    // the credit limit and the registration status emptied over a value on file are cleared; the form opens with what is on file, so a blank is one
+    // the person emptied.
+    const was = editingId ? vendors.find(x => x.id === editingId) : undefined;
+    if (was) {
+      const removed = removedIdentifierProblem("GSTIN", was.gstin, form.gstin)
+        ?? removedIdentifierProblem("PAN", was.pan, form.pan);
+      if (removed) { setError(removed); return; }
+    }
+
     setSaving(true);
     setError(null);
     const body: VendorWrite = {
       name: form.name.trim(),
-      gstin: form.gstin.trim() || null,
-      pan: form.pan.trim() || null,
+      gstin: form.gstin.trim() || undefined,
+      pan: form.pan.trim() || undefined,
       // Section and applicability only. THE RATE IS THE ENGINE'S: it comes
       // from the FY-versioned registry for this section, so the two move
       // together when a Finance Act moves one — see this file's header.
@@ -339,10 +351,9 @@ export default function SuppliersPage() {
               ? "ordinary" : undefined),
       credit_limit_paise: creditLimit,
       credit_days: creditDays,
-      // Omitted rather than sent as null when unrecorded: the server drops
-      // nulls on a PATCH, so sending one would be inert and sending "" would
-      // fail the CHECK. Leaving it out leaves the column as it is.
-      gst_registration_status: form.gst_registration_status || undefined,
+      // Never "", which would fail the CHECK. On an edit, a status on file that the person set back to "not recorded" is sent as null and the
+      // route clears it (POST-A-399); an empty choice over nothing is left out.
+      gst_registration_status: editedChoice(form.gst_registration_status, was?.gst_registration_status),
       is_active: form.is_active,
     };
     try {

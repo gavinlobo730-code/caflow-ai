@@ -18,6 +18,7 @@ from fastapi import (APIRouter, Depends, HTTPException, Path, Query, UploadFile,
 from fastapi.responses import Response
 from typing import Annotated, Optional
 
+from models.clearable import patch_dict
 from models.common import api_response
 from services import bank_erasure
 from services.audit_service import log_event
@@ -620,7 +621,8 @@ def update_bank_account(
     current_user: dict = Depends(rbac("banking", "write")),
 ):
     db = _db()
-    update = data.model_dump(exclude_none=True)
+    # POST-A-399: an IFSC the request sent empty is a clear (written NULL); every other null still reads "not sent".
+    update = patch_dict(data)
     if not db:
         return api_response(True, update)
     firm_id = current_user["firm_id"]
@@ -661,9 +663,10 @@ def update_bank_account(
     # BANK-27, on the MERGED state. BankAccountUpdateIn cannot see it: a PATCH
     # carries only what changed, so "set a non-zero opening balance" on an
     # account whose stored date is null looks valid field by field and lands
-    # the very pair the model refuses at creation. (`exclude_none=True` means
-    # the date cannot be CLEARED through here at all, which is why only the
-    # balance side needs merging.)
+    # the very pair the model refuses at creation. (The date is not in the
+    # model's CLEARABLE set, so a null for it still reads "not sent" and it
+    # cannot be CLEARED through here at all, which is why only the balance
+    # side needs merging.)
     if opening_balance_gap(update.get("opening_balance_paise", prior.get("opening_balance_paise")),
                            update.get("opening_balance_date") or prior.get("opening_balance_date")):
         raise HTTPException(status_code=422, detail=OPENING_DATE_REQUIRED)

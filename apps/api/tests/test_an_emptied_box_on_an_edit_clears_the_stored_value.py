@@ -35,7 +35,9 @@ import routers.purchase_bills as pb
 import routers.purchase_credit_notes as pcn
 import routers.sales_debit_notes as sdn
 import routers.sales_invoices as si
+from models.banking import BankAccountUpdateIn
 from models.clearable import clearable_fields, patch_dict
+from models.parties import PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
 from models.invoices import (InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn, PurchaseBillUpdateIn, SalesInvoiceIn,
                              SalesInvoiceUpdateIn)
 from tests.e2e_harness import FakeDB, seed_standard_coa, wire_e2e
@@ -387,6 +389,19 @@ CLEARABLE_MODELS = [
     (pcn.PurchaseCreditNoteUpdateIn, "purchase_credit_notes"),
 ]
 
+#: The masters (POST-A-399, second slice): a party and a bank account. A figure may be clearable on a master only where its NULL is its own answer
+#: ("nobody has said", which every reader already reports), and the three that are are named here with the migration that made the column nullable.
+MASTER_MODELS = [
+    (CustomerUpdateIn, "customers"),
+    (VendorUpdateIn, "vendors"),
+    (BankAccountUpdateIn, "bank_accounts"),
+]
+MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER = {
+    "credit_limit_paise",  # "no limit recorded", against 0 which is cash only (migrations 378 and 414)
+    "credit_days",         # on a vendor: "no payment terms confirmed", against 0 which is due on receipt (migration 202); NOT NULL on a customer
+    "treaty_rate_bps",     # unset: the s.195 engine refuses rather than assume a rate
+}
+
 #: A model's field and its column are not always one name; none of the six differ today.
 _COLUMN_OF: dict[tuple[str, str], str] = {}
 
@@ -403,7 +418,7 @@ def _columns(table):
     return cols
 
 
-@pytest.mark.parametrize("model,table", CLEARABLE_MODELS, ids=[t for _, t in CLEARABLE_MODELS])
+@pytest.mark.parametrize("model,table", CLEARABLE_MODELS + MASTER_MODELS, ids=[t for _, t in CLEARABLE_MODELS + MASTER_MODELS])
 def test_every_clearable_name_is_an_optional_field_of_its_model_and_a_nullable_column(model, table):
     clearable = getattr(model, "CLEARABLE", frozenset())
     assert clearable, f"{model.__name__} names nothing it may clear"
@@ -430,7 +445,7 @@ def test_no_clearable_set_is_named_that_this_file_does_not_know_the_table_of():
                     target = stmt.target if isinstance(stmt, ast.AnnAssign) else (stmt.targets[0] if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 else None)
                     if isinstance(target, ast.Name) and target.id == "CLEARABLE":
                         named.add(node.name)
-    known = {m.__name__ for m, _ in CLEARABLE_MODELS}
+    known = {m.__name__ for m, _ in CLEARABLE_MODELS + MASTER_MODELS}
     assert named, "the scan found no CLEARABLE set at all"
     assert named == known, f"models with a CLEARABLE set this file does not know the table of: {sorted(named - known)}; known models that no longer have one: {sorted(known - named)}"
 
@@ -443,3 +458,17 @@ def test_the_clearable_names_are_free_text_and_never_a_date_an_amount_or_evidenc
         names = clearable_fields(model())
         assert not (names & forbidden), f"{model.__name__}.CLEARABLE names {sorted(names & forbidden)}: a date, a figure and the evidence of a document are corrected and not cleared"
         assert not any(n.endswith(("_date", "_paise", "_bps", "_on", "_at")) for n in names), f"{model.__name__}.CLEARABLE names a date or a figure: {sorted(names)}"
+
+
+def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_identifier_a_date_or_evidence():
+    """On a party or a bank account: a tax identifier is corrected and not removed (`PARTY_IDENTIFIERS`, refused by the route), a date and the evidence
+    of a declaration are not cleared, and the only figures are those whose NULL is its own answer."""
+    forbidden = set(PARTY_IDENTIFIERS) | {"name", "bank_name", "account_type", "coa_account_id", "opening_balance_paise", "opening_balance_date",
+                                           "no_pe_declaration_on", "no_pe_declaration_ref", "no_pe_declaration_on_file", "is_active", "tds_section"}
+    for model, _ in MASTER_MODELS:
+        names = clearable_fields(model())
+        assert names, f"{model.__name__} names nothing it may clear"
+        assert not (names & forbidden), f"{model.__name__}.CLEARABLE names {sorted(names & forbidden)}"
+        figures = {n for n in names if n.endswith(("_paise", "_bps", "_days"))}
+        assert figures <= MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER, f"{model.__name__}.CLEARABLE names a figure whose NULL is not an answer: {sorted(figures - MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER)}"
+        assert not any(n.endswith(("_date", "_on", "_at")) for n in names), f"{model.__name__}.CLEARABLE names a date: {sorted(names)}"
