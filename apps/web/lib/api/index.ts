@@ -3795,9 +3795,10 @@ export interface Gstr2bBulkAnswer {
 export type ItcTimeBarStatus = "open" | "closing_soon" | "closed";
 
 export interface ItcTimeBarItem {
-  /** A received bill whose credit §16(2)(aa) withholds, or a 2B document the
-   *  books have no bill for. */
-  kind: "withheld_bill" | "not_booked";
+  /** A received bill whose credit §16(2)(aa) withholds, a 2B document the
+   *  books have no bill for, or a withheld bill the supplier furnished in a
+   *  LATER month's 2B, shown as one row (POST-A-062). */
+  kind: "withheld_bill" | "not_booked" | "furnished_later";
   closes_on: string;
   days_left: number;
   status: ItcTimeBarStatus;
@@ -3812,6 +3813,8 @@ export interface ItcTimeBarItem {
   verdict: string;
   reason: string;
   credit_at_risk_paise: number;
+  /** On a `furnished_later` row: the tax the later month's GSTR-2B carries on the bill. */
+  furnished_credit_paise?: number;
 }
 
 export interface ItcTimeBar {

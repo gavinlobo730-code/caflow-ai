@@ -54,6 +54,7 @@ function left(status: ItcTimeBarStatus, days: number): string {
 const KIND_LABEL: Record<ItcTimeBarItem["kind"], string> = {
   withheld_bill: "Bill — credit withheld",
   not_booked: "On GSTR-2B — no bill",
+  furnished_later: "Bill — on a later month's GSTR-2B",
 };
 
 export function ItcTimeBarRadar({ clientId }: { clientId: string }) {
