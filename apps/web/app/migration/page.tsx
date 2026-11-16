@@ -1,5 +1,6 @@
 "use client";
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Loader2, AlertTriangle, Database, CheckCircle, XCircle } from "lucide-react";
 import { TransactionListSkeleton } from "@/components/ui/skeleton";
@@ -590,13 +591,13 @@ export default function MigrationPage() {
                   <label className="text-3xs text-ps-label mb-1 block">
                     Client — needed to import customers or vendors
                   </label>
-                  <select aria-label="Client — needed to import customers or vendors" value={clientId} onChange={e => setClientId(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg bg-white">
-                    <option value="">{noClientOptionLabel()}</option>
-                    {clients.map(c => (
-                      <option key={c.id} value={c.id}>{c.client_name ?? c.id}</option>
-                    ))}
-                  </select>
+                  <ClientLookup ariaLabel="Client — needed to import customers or vendors"
+                    clients={clients}
+                    value={clientId}
+                    onChange={setClientId}
+                    placeholder={noClientOptionLabel()}
+                    clearable
+                  />
                 </div>
               </div>
               <div>

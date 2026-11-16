@@ -37,6 +37,7 @@
  * named in the notice at the top rather than given a plausible one.
  */
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
@@ -322,15 +323,14 @@ export default function CalendarPage() {
         subtitle="Each client&apos;s own obligations, on the dates the compliance engine computed for them"
         actions={
           <div className="flex items-center gap-2 flex-wrap">
-            <select
-              aria-label="Client"
+            <ClientLookup
+              ariaLabel="Client"
+              clients={clients}
               value={clientId}
-              onChange={(e) => { setClientId(e.target.value); setSelectedDay(null); }}
-              className="border border-ps-border rounded-lg px-3 py-1.5 text-sm text-ps-body focus:outline-none focus:ring-2 focus:ring-brand/30"
-            >
-              <option value="">All my clients</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+              onChange={(id) => { setClientId(id); setSelectedDay(null); }}
+              placeholder="All my clients"
+              clearable
+            />
             <button onClick={goToday} className="px-3 py-1.5 text-sm border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">
               Today
             </button>

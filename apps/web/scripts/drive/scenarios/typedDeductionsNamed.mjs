@@ -356,7 +356,7 @@ const typedFormNamesItsSupplier = {
     assert.equal(await pan.inputValue(), KAPOOR.pan, "the supplier's own PAN is not in the PAN box");
     assert.equal(await name.getAttribute("readonly"), "", "the name box can be typed over while a supplier is picked");
     assert.equal(await pan.getAttribute("readonly"), "", "the PAN box can be typed over while a supplier is picked");
-    assert.equal(await form.getByLabel("TDS Section", { exact: true }).inputValue(), "194J", "the supplier's section was not offered");
+    assert.match(await form.getByRole("button", { name: "TDS Section", exact: true }).innerText(), /^\s*194J\b/, "the supplier's section was not offered");
 
     await form.getByText(COUNTED(KAPOOR.name, false), { exact: true }).waitFor({ timeout: 4000 });
     await form.getByText(WHY, { exact: true }).waitFor();
@@ -398,7 +398,7 @@ const typedFormSaysWhichSupplierItFound = {
     await form.getByText(COUNTED(TARA.name, false), { exact: true }).waitFor({ timeout: 4000 });
     assert.equal(await pan.inputValue(), "", "a supplier with no PAN kept the PAN typed before it was picked");
     assert.equal(await pan.getAttribute("placeholder"), "No PAN on the supplier's record");
-    assert.equal(await form.getByLabel("TDS Section", { exact: true }).inputValue(), "194C");
+    assert.match(await form.getByRole("button", { name: "TDS Section", exact: true }).innerText(), /^\s*194C\b/);
     await form.getByText("₹500.00 of the year's tax is not withheld on this payment, because it is more than the payment.", { exact: true }).waitFor();
 
     await form.getByRole("button", { name: "Supplier (optional)" }).getByLabel("Clear").click();

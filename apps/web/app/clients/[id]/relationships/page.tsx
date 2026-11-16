@@ -1,5 +1,6 @@
 "use client";
 
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, X, Network, Trash2, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -455,21 +456,19 @@ export default function ClientRelatedPartiesPage() {
             <div className="space-y-3">
               <div>
                 <label htmlFor="rp-entity" className="text-xs text-gray-600">Entity *</label>
-                <select
+                <EntityLookup
                   id="rp-entity"
+                  items={entities}
                   value={roleForm.entity_id}
-                  onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  <option value="">
-                    {register.loading ? "Loading the entity register…" : entities.length ? "Choose an entity…" : "No entity to choose"}
-                  </option>
-                  {entities.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.full_name}{e.pan ? ` · ${e.pan}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => setRoleForm({ ...roleForm, entity_id: id })}
+                  getId={(e) => e.id}
+                  getLabel={(e) => e.full_name}
+                  getSecondary={(e) => e.pan ?? undefined}
+                  getSearchFields={(e) => [e.full_name, e.pan ?? ""]}
+                  placeholder={register.loading ? "Loading the entity register…" : entities.length ? "Choose an entity…" : "No entity to choose"}
+                  searchPlaceholder="Search by name or PAN…"
+                  disabled={register.loading}
+                />
                 {register.error ? (
                   <p role="alert" className="mt-1 text-3xs text-state-problem">
                     The entity register could not be loaded: {register.error}

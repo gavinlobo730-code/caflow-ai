@@ -18,6 +18,7 @@
  * send (earliest due first), and a person with more open tasks than fit says how
  * many are not shown rather than implying the list is the whole of their work.
  */
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { useState } from "react";
 import { UserX } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -84,10 +85,15 @@ function ReassignModal({ task, members, onClose, onReassigned }: {
       {error && <Callout tone="problem">{error}</Callout>}
       <div>
         <label htmlFor="reassign-to" className="text-xs font-medium text-ps-body block mb-1">Reassign to:</label>
-        <select id="reassign-to" value={targetId} onChange={(e) => setTargetId(e.target.value)}
-          className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-          {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.user_name} ({m.role})</option>)}
-        </select>
+        <EntityLookup id="reassign-to"
+          items={members}
+          value={targetId}
+          onChange={setTargetId}
+          getId={(m) => m.user_id}
+          getLabel={(m) => `${m.user_name} (${m.role})`}
+          getSearchFields={(m) => [m.user_name, m.role]}
+          searchPlaceholder="Search team members…"
+        />
       </div>
       <div className="flex gap-2 justify-end">
         <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel</Button>
