@@ -12,8 +12,6 @@ import {
   knownAuthErrorMessage,
   AUTH_ERROR_SENTENCES,
   PASSWORD_BREACHED,
-  INVITE_EMAIL_REFUSED_NO_REASON,
-  inviteEmailProblem,
   inviteEmailNotSentMessage,
 } from "./authErrorMessage.ts";
 
@@ -179,26 +177,6 @@ test("the mail server refusing is not reported as the address being wrong", () =
   const bad = authApiError("Email address is invalid", 400, "email_address_invalid");
   assert.notEqual(authErrorMessage(smtp), authErrorMessage(bad));
   assert.match(authErrorMessage(smtp), /mail server/i);
-});
-
-test("an invite email that went is no problem; one that did not is always a sentence", () => {
-  assert.equal(inviteEmailProblem(null), null);
-  assert.equal(inviteEmailProblem(undefined), null);
-  assert.equal(inviteEmailProblem({}), INVITE_EMAIL_REFUSED_NO_REASON);
-});
-
-test("an address the default mailer will not reach tells the Partner what to set up", () => {
-  const e = authApiError("Email address not authorized", 400, "email_address_not_authorized");
-  assert.match(inviteEmailProblem(e)!, /SMTP/);
-  // The sign-up screen's reader cannot set up a mail server, so it is not told to.
-  assert.doesNotMatch(authErrorMessage(e), /SMTP/);
-});
-
-test("an invite refusal with an unknown code keeps the server's words inside a sentence", () => {
-  const e = authApiError("Something specific happened.", 500, "saml_idp_not_found");
-  assert.equal(inviteEmailProblem(e), "The email service refused it: Something specific happened.");
-  assert.equal(inviteEmailProblem(authApiError("email rate limit exceeded", 429, "over_email_send_rate_limit")),
-    AUTH_ERROR_SENTENCES.over_email_send_rate_limit);
 });
 
 test("the Team screen's sentence says the row exists and the email did not go", () => {

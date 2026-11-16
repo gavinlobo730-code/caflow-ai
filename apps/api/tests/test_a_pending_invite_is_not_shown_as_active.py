@@ -19,6 +19,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import routers.identity as idmod
+from domain.firm.invite_token import lookup_values
+from services import staff_invite_service
 from core.auth import get_current_user, get_jwt_user
 from domain.firm.member_state import MEMBER_STATES, member_state
 from routers.identity import invite_router, router as identity_router
@@ -87,8 +89,12 @@ class _Repo:
         return [u for u in self.users.values() if u.get("firm_id") == firm_id]
 
     def find_by_invite_token(self, token):
+        values = lookup_values(token)
         return next((u for u in self.users.values()
-                     if u.get("invite_token") == token and not u.get("auth_user_id")), None)
+                     if u.get("invite_token") in values and not u.get("auth_user_id")), None)
+
+    def find_linked_member(self, auth_user_id):
+        return next((u for u in self.users.values() if u.get("auth_user_id") == auth_user_id), None)
 
     def update(self, uid, data, *, firm_id):
         u = self.users.get(uid)
@@ -101,8 +107,18 @@ class _Repo:
 PARTNER = {"id": "a", "firm_id": "F1", "role": "Partner", "email": "a@f", "auth_user_id": "auth-a"}
 
 
+#: The tokens the invitations' mails carried: the store keeps only their hashes (POST-A-445).
+issued: list[str] = []
+
+
 @pytest.fixture()
 def repo(monkeypatch):
+    issued.clear()
+
+    def _issue():
+        issued.append(f"tok-{len(issued)}-" + "y" * 32)
+        return issued[-1]
+    monkeypatch.setattr(staff_invite_service, "_new_token", _issue)
     fake = _Repo()
     monkeypatch.setattr(idmod, "user_repo", fake)
     monkeypatch.setattr(idmod, "log_event", lambda *a, **k: None)
@@ -131,7 +147,8 @@ def test_a_fresh_invite_is_listed_as_invited_and_becomes_active_only_when_accept
     assert made.status_code == 200
     assert _states(client) == {"a@f": "active", "t@f": "invited"}
 
-    token = made.json()["data"]["invite_token"]
+    assert "invite_token" not in made.json()["data"], "the answer to the Partner no longer carries the token"
+    token = issued[-1]
     accepted = _client({"auth_user_id": "auth-t", "email": "t@f"}).post("/api/identity/accept-invite",
                                                                          json={"token": token})
     assert accepted.status_code == 200

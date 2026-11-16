@@ -157,10 +157,22 @@ def test_a_malformed_reply_to_does_not_reach_the_provider(wire):
 def test_internal_notifications_are_unchanged(wire):
     es.send_task_assigned("staff@f.test", "Sam", "Do the thing", "Acme", "2026-10-01")
     es.send_escalation_alert("m@f.test", "Mo", "T", "Sam", "Acme")
-    es.send_firm_invite("new@f.test", "Gupta", "Gita", "Manager", "https://x.test/i")
-    assert len(wire) == 3
+    assert len(wire) == 2
     for body in wire:
         assert body["from"] == DEFAULT_FROM and "reply_to" not in body
+
+
+def test_a_staff_invitation_is_the_practice_writing_and_a_reply_reaches_the_partner(wire):
+    """POST-A-445: the invitation names the practice and the Partner, goes under the practice's name, and a reply
+    reaches the Partner who sent it. A practice with no name on record keeps the product's own sender."""
+    es.send_firm_invite("new@f.test", practice_name="Gupta & Co", inviter_name="Gita", role="Manager",
+                        invite_link="https://x.test/join?token=t", valid_until="23 November 2026, 6:18 am IST",
+                        reply_to="gita@gupta-co.in")
+    es.send_firm_invite("new@f.test", practice_name=None, inviter_name=None, role="Manager",
+                        invite_link="https://x.test/join?token=t", valid_until="23 November 2026, 6:18 am IST")
+    named, unnamed = wire
+    assert named["from"] == "Gupta & Co <noreply@caflow.ai>" and named["reply_to"] == "gita@gupta-co.in"
+    assert unnamed["from"] == DEFAULT_FROM and "reply_to" not in unnamed
 
 
 # ── the engagement letter: the PRACTICE is the sender ────────────────────────

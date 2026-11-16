@@ -27,7 +27,9 @@ WHO IT DOES NOT TOUCH
     A signed-in user's own requests. Nothing here is on a route that needs a staff, portal or employee
     session, with four exceptions that are the calls a person makes BEFORE they have an account: the
     three accept-invite routes (a login plus a one-time invite token) and firm creation (a login, once
-    per person). Every other authenticated route is untouched, and
+    per person). The staff invitation's sign-in (`POST /api/identity/accept-invite/session`, POST-A-445)
+    needs no login at all, like the employee activation route, and is on the `invite` bucket beside them.
+    Every other authenticated route is untouched, and
     `tests/test_every_public_route_is_rate_limited.py` derives which routes are in scope from the route
     table, so a fifth cannot appear unlimited.
 

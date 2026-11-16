@@ -52,6 +52,9 @@ def member_state(row: Mapping[str, Any], now: Optional[datetime] = None) -> str:
         return "active"
     moment = now or datetime.now(timezone.utc)
     expires = _instant(row.get("invite_expires_at"))
-    if row.get("invite_token") and expires is not None and expires > moment:
+    # The token itself on a row read by `find_by_invite_token`; whether one is set (`invite_outstanding`) on every
+    # other row, because the repository returns no other row with its token (POST-A-445).
+    has_token = bool(row.get("invite_token") or row.get("invite_outstanding"))
+    if has_token and expires is not None and expires > moment:
         return "invited"
     return "invite_expired"
