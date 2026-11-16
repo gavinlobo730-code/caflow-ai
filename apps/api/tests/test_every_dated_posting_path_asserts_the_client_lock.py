@@ -118,6 +118,9 @@ NOT_YET: dict[str, str] = {
     "routers/inventory.py:writedown_stock_to_nrv":
         "DELIBERATE. A lower-of-cost-or-NRV write-down changes inventory VALUE and the P&L (AS 2); it carries no GST line "
         "and reverses no credit, so it cannot change what a return said.",
+    "routers/inventory.py:post_nrv_review":
+        "DELIBERATE, the single write-down's reason: the cross-item NRV review (POST-A-111) posts the same write-downs through "
+        "the same function, which change inventory VALUE and the P&L (AS 2), carry no GST line and reverse no credit.",
     "routers/purchase_payments.py:create_purchase_payment":
         "The payment side of the receipts argument, and it has NOT been taken: "
         "a payment moves Bank and Creditors, but it can also carry TDS, which "
