@@ -17,6 +17,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { ArrowRight, ArrowLeft, MailCheck } from "lucide-react";
+import { FrontDoor } from "@/components/FrontDoor";
 
 export default function ForgotPasswordPage() {
   const supabase = getSupabaseClient();
@@ -52,79 +53,72 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-ps-bg">
-      <div className="w-full max-w-[380px]">
-        <div className="flex items-center gap-2.5 justify-center mb-8">
-          <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center text-sm font-bold text-white">P</div>
-          <span className="text-base font-bold text-ps-ink">PracticeSync AI</span>
+    <FrontDoor>
+      {sent ? (
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
+            <MailCheck size={22} className="text-blue-600" />
+          </div>
+          <h2 className="text-xl font-bold text-ps-ink tracking-tight">Check your email</h2>
+          <p className="text-sm text-ps-label mt-2 leading-relaxed">
+            If an account exists for <span className="font-medium text-ps-body">{email.trim()}</span>,
+            we&apos;ve sent a link to reset your password. It expires shortly, so use it soon.
+          </p>
+          <Link
+            href={backHref}
+            className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium mt-6"
+          >
+            <ArrowLeft size={14} /> Back to sign in
+          </Link>
         </div>
-
-        {sent ? (
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
-              <MailCheck size={22} className="text-blue-600" />
-            </div>
-            <h2 className="text-xl font-bold text-ps-ink tracking-tight">Check your email</h2>
-            <p className="text-sm text-ps-label mt-2 leading-relaxed">
-              If an account exists for <span className="font-medium text-ps-body">{email.trim()}</span>,
-              we&apos;ve sent a link to reset your password. It expires shortly, so use it soon.
+      ) : (
+        <>
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Forgot your password?</h2>
+            <p className="text-sm text-ps-label mt-1">
+              Enter the email on your account and we&apos;ll send you a link to reset it.
             </p>
-            <Link
-              href={backHref}
-              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium mt-6"
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-1.5">
+              <label htmlFor="forgot-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
+              <input
+                id="forgot-email" name="email" autoComplete="email"
+                autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder={isPortal ? "you@company.com" : "ca@yourfirm.com"}
+                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+              />
+            </div>
+
+            {error && (
+              <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
+                <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-state-problem text-3xs font-bold leading-none">!</span>
+                </div>
+                <p className="text-sm text-red-600 leading-snug">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit" disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
             >
+              {loading ? (
+                <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
+              ) : (
+                <>Send reset link <ArrowRight size={15} /></>
+              )}
+            </button>
+          </form>
+
+          <p className="text-center text-sm text-ps-hint mt-6">
+            <Link href={backHref} className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors">
               <ArrowLeft size={14} /> Back to sign in
             </Link>
-          </div>
-        ) : (
-          <>
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-ps-ink tracking-tight">Forgot your password?</h2>
-              <p className="text-sm text-ps-label mt-1">
-                Enter the email on your account and we&apos;ll send you a link to reset it.
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-1.5">
-                <label htmlFor="forgot-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
-                <input
-                  id="forgot-email" name="email" autoComplete="email"
-                  autoFocus type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder={isPortal ? "you@company.com" : "ca@yourfirm.com"}
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-                />
-              </div>
-
-              {error && (
-                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
-                  <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-state-problem text-3xs font-bold leading-none">!</span>
-                  </div>
-                  <p className="text-sm text-red-600 leading-snug">{error}</p>
-                </div>
-              )}
-
-              <button
-                type="submit" disabled={loading}
-                className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
-              >
-                {loading ? (
-                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Sending…</>
-                ) : (
-                  <>Send reset link <ArrowRight size={15} /></>
-                )}
-              </button>
-            </form>
-
-            <p className="text-center text-sm text-ps-hint mt-6">
-              <Link href={backHref} className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-700 font-medium transition-colors">
-                <ArrowLeft size={14} /> Back to sign in
-              </Link>
-            </p>
-          </>
-        )}
-      </div>
-    </div>
+          </p>
+        </>
+      )}
+    </FrontDoor>
   );
 }

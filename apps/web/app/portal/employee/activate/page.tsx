@@ -51,6 +51,7 @@ import { api } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 import { Eye, EyeOff, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
+import { FrontDoor } from "@/components/FrontDoor";
 
 const MIN_LENGTH = 10;
 const SESSION_WAIT_ATTEMPTS = 10;
@@ -194,11 +195,7 @@ export default function EmployeeActivatePage() {
   }
 
   const shell = (children: React.ReactNode) => (
-    <div className="min-h-screen bg-ps-bg flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-xl border border-ps-border p-6 shadow-sm">
-        {children}
-      </div>
-    </div>
+    <FrontDoor name="PracticeSync" width="wide">{children}</FrontDoor>
   );
 
   if (stage === "verifying") {
