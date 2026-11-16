@@ -111,29 +111,30 @@ test("the committed file yields real probes, and no rule is silently left unexer
   assert.deepEqual(uncovered, [], "a splat with no real page it is first to claim is one nothing exercises");
 });
 
-test("a dead rule is a bare .txt rule its own bare sibling claims first — and no other kind appears", () => {
-  // Structure, not a list of four names: a NEW dead rule of any other shape is a
-  // rule the generator is spending budget on that can never fire, and fails here.
-  const { dead } = deriveProbes(committed);
-  assert.ok(dead.length > 0, "the committed file has bare-.txt rules shadowed by `:id` — none found means the model changed");
-  for (const d of dead) {
-    assert.ok(d.rule.endsWith(".txt"), `${d.rule} is dead for a reason other than .txt`);
-    assert.equal(d.shadowedBy, d.rule.slice(0, -".txt".length), `${d.rule} is shadowed by something unexpected`);
-  }
+test("no rule of the committed file is dead, and the check still names one when a bare rule is listed ahead of its .txt sibling", () => {
+  // POST-A-148: the four bare-.txt rules of the pages whose last segment is a placeholder were dead
+  // because the plain rule above each claimed their URLs. The generator lists the .txt rule first now.
+  assert.deepEqual(deriveProbes(committed).dead, [], "a rule the file spends budget on can never fire");
+  // The negative control: the order the generator used to write.
+  const swapped = [...committed];
+  const i = swapped.findIndex((r) => r.from === "/health/:client_id.txt");
+  const j = swapped.findIndex((r) => r.from === "/health/:client_id");
+  assert.ok(i >= 0 && j >= 0 && i < j, "the .txt rule is listed before its plain sibling");
+  [swapped[i], swapped[j]] = [swapped[j], swapped[i]];
+  const { dead } = deriveProbes(swapped);
+  assert.deepEqual(dead.map((d) => [d.rule, d.shadowedBy]), [["/health/:client_id.txt", "/health/:client_id"]]);
 });
 
-test("the ONE known file defect is held exactly, so a second one fails and a fix must delete this entry", () => {
-  // `/clients/:id/year-end/index.txt` — the RSC payload of the year-end landing
-  // page — is claimed by `/clients/:id/year-end/:engagementId`, which matches
-  // "index.txt" as an engagement id. Measured live: the URL answers text/html (the
-  // engagement page), not the payload, so client-side navigation to year-end falls
-  // back to a full page load. Not a 404, not this finding's to fix (it changes the
-  // generator and the 98-rule budget), and NAMED here rather than left to a red run.
-  const { misrouted } = deriveProbes(committed);
-  assert.deepEqual(
-    misrouted.map((m) => ({ url: m.url, rule: m.rule })),
-    [{ url: "/clients/probe/year-end/index.txt", rule: "/clients/:id/year-end/:engagementId" }],
-  );
+test("the year-end landing page's payload is answered by its own rule and not by an engagement's", () => {
+  // It was this file's one named defect: `/clients/:id/year-end/index.txt` was claimed by
+  // `/clients/:id/year-end/:engagementId`, which matches "index.txt" as an engagement id, so
+  // the URL answered the engagement page's HTML. Listing the `.txt` rule first would have made it
+  // worse, so the landing payload has a rule ahead of both (POST-A-148).
+  assert.deepEqual(deriveProbes(committed).misrouted, []);
+  assert.equal(resolve(committed, "/clients/abc/year-end/index.txt")?.target, "/clients/_placeholder/year-end/index.txt");
+  assert.equal(resolve(committed, "/clients/abc/year-end/e1.txt")?.target, "/clients/_placeholder/year-end/_placeholder/index.txt");
+  assert.equal(resolve(committed, "/clients/abc.txt")?.target, "/clients/_placeholder/index.txt");
+  assert.equal(resolve(committed, "/clients/abc")?.target, "/clients/_placeholder/");
 });
 
 test("a file the generator writes for a tree with static siblings has nothing misrouted or uncovered", () => {
@@ -223,28 +224,27 @@ test("a site that serves the committed file faithfully is green, control include
   }
 });
 
-test("the year-end .txt rule is not failed for a target another rule claims — its baseline is not fair", async () => {
-  // `/clients/:id/year-end.txt` rewrites to `.../year-end/index.txt`, which a
-  // DIRECT fetch returns as a different page (the engagement one) because another
-  // rule claims that path. Comparing the two would fail a rule that works; the
-  // content type still has to be right.
+test("the year-end .txt rule has a fair baseline now that the landing payload is not claimed by an engagement", async () => {
+  // `/clients/:id/year-end.txt` rewrites to `.../year-end/index.txt`. A direct fetch of that path used to
+  // return the engagement page, so comparing the two would fail a rule that works and the probe carried no
+  // baseline. The landing payload has a rule of its own (POST-A-148), so the comparison is fair.
   const { probes } = deriveProbes(committed);
   const yearEnd = probes.find((p: { url: string }) => p.url === "/clients/probe/year-end.txt");
   assert.ok(yearEnd, "the year-end.txt rule is probed");
-  assert.equal(yearEnd.baseline, false);
+  assert.equal(yearEnd.baseline, true);
   const fair = probes.filter((p: { baseline: boolean }) => p.baseline).length;
   assert.ok(fair > probes.length * 0.9, "almost every probe has a fair baseline; losing it widely would hollow the check out");
 });
 
 test("THE 30-09-2026 INCIDENT: a file over the cap comes back red, every failure past the cap, none before it", async () => {
-  // 32 literal rules interleaved among the dynamic ones: Cloudflare counts 98+32
-  // = 130 against a cap of 100 and drops the last 30 — the splats among them.
+  // 32 literal rules interleaved among the dynamic ones: Cloudflare counts 99+32
+  // = 131 against a cap of 100 and drops the last 31 (it was 98+32 and 30 before POST-A-148) — the splats among them.
   const first = committed.findIndex((r) => r.from.includes(":") || r.from.includes("*"));
   const extras = Array.from({ length: 32 }, (_, i) => rule(`/extra/leaf${i}`, `/extra/leaf${i}/`));
   const overBudget = [...committed.slice(0, first + 1), ...extras, ...committed.slice(first + 1)];
-  assert.equal(cloudflareDynamicCount(overBudget), 98 + 32);
+  assert.equal(cloudflareDynamicCount(overBudget), 99 + 32);
   const kept = rulesCloudflareKeeps(overBudget);
-  assert.equal(overBudget.length - kept.length, 30);
+  assert.equal(overBudget.length - kept.length, 31);
 
   const site = await emulate(kept, filesFor(overBudget));
   try {

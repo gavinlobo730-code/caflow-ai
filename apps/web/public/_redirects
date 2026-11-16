@@ -55,6 +55,7 @@
 /relationships/ownership-map/index.txt               /relationships/ownership-map/index.txt  200
 /relationships/ownership-map.txt                     /relationships/ownership-map/index.txt  200
 
+/clients/:id.txt                                     /clients/_placeholder/index.txt  200
 /clients/:id                                         /clients/_placeholder/  200
 /clients/:id/accounting                              /clients/_placeholder/accounting/  200
 /clients/:id/accounting/journal/:entryId/edit        /clients/_placeholder/accounting/journal/_placeholder/edit/  200
@@ -131,16 +132,16 @@
 /clients/:id/tax/filing.txt                          /clients/_placeholder/tax/filing/index.txt  200
 /clients/:id/tax.txt                                 /clients/_placeholder/tax/index.txt  200
 /clients/:id/year-end                                /clients/_placeholder/year-end/  200
+/clients/:id/year-end/index.txt                      /clients/_placeholder/year-end/index.txt  200
 /clients/:id/year-end/xbrl                           /clients/_placeholder/year-end/xbrl/  200
 /clients/:id/year-end/xbrl.txt                       /clients/_placeholder/year-end/xbrl/index.txt  200
-/clients/:id/year-end/:engagementId                  /clients/_placeholder/year-end/_placeholder/  200
 /clients/:id/year-end/:engagementId.txt              /clients/_placeholder/year-end/_placeholder/index.txt  200
+/clients/:id/year-end/:engagementId                  /clients/_placeholder/year-end/_placeholder/  200
 /clients/:id/year-end.txt                            /clients/_placeholder/year-end/index.txt  200
-/clients/:id.txt                                     /clients/_placeholder/index.txt  200
-/health/:client_id                                   /health/_placeholder/  200
 /health/:client_id.txt                               /health/_placeholder/index.txt  200
-/relationships/:entity_id                            /relationships/_placeholder/  200
+/health/:client_id                                   /health/_placeholder/  200
 /relationships/:entity_id.txt                        /relationships/_placeholder/index.txt  200
+/relationships/:entity_id                            /relationships/_placeholder/  200
 
 /clients/:id/accounting/journal/:entryId/*           /clients/_placeholder/accounting/journal/_placeholder/:splat  200
 /clients/:id/purchases/bills/:billId/*               /clients/_placeholder/purchases/bills/_placeholder/:splat  200

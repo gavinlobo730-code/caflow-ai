@@ -250,11 +250,25 @@ function compareEnumeratedPaths(fromA, fromB) {
   const a = fromA.split("/");
   const b = fromB.split("/");
   const len = Math.min(a.length, b.length);
+  // A placeholder's own ".txt" rule ("/health/:client_id.txt") orders as the placeholder
+  // ("/health/:client_id") and then breaks that tie, so the comparison stays a real
+  // lexicographic order: comparing the two raw strings put ":id.txt" after ":id/x" and
+  // ":id" before ":id.txt", a cycle (POST-A-148).
+  const base = (seg) => (isDynamicSeg(seg) && seg.endsWith(".txt") ? seg.slice(0, -4) : seg);
   for (let i = 0; i < len; i++) {
     if (a[i] === b[i]) continue;
     const dynA = isDynamicSeg(a[i]);
     const dynB = isDynamicSeg(b[i]);
     if (dynA !== dynB) return dynA ? 1 : -1;
+    if (dynA && base(a[i]) === base(b[i])) {
+      // The same placeholder, one of them with ".txt": whichever ENDS here goes first, and
+      // when both end here the ".txt" rule goes first because the plain one claims its URLs.
+      const endA = a.length === i + 1;
+      const endB = b.length === i + 1;
+      if (endA && endB) return a[i].endsWith(".txt") ? -1 : 1;
+      if (endA !== endB) return endA ? -1 : 1;
+      continue;
+    }
     return a[i] < b[i] ? -1 : 1;
   }
   return a.length - b.length;
@@ -290,6 +304,32 @@ function staticLeafShadowRules(segments) {
     { from: slash, to: slash },
     { from: `${slash}index.txt`, to: `${slash}index.txt` },
   ];
+}
+
+/** The landing page of a DYNAMIC parent, when a child of it is a single placeholder.
+ *
+ * Putting "/clients/:id/year-end/:engagementId.txt" ahead of its plain sibling (see
+ * compareEnumeratedPaths) lets it claim every ".txt" request under year-end, and a
+ * placeholder matches "index.txt" as readily as an engagement id: the year-end
+ * landing page's own payload, "/clients/<real id>/year-end/index.txt", would be
+ * answered with the engagement page's. So that one URL gets a rule of its own, listed
+ * before it. Only a DYNAMIC parent needs one: a literal parent's "index.txt" is a file
+ * the export holds, and a rewrite never overrides a file; a dynamic parent's file exists
+ * only under "_placeholder", never under a real id. Each costs one dynamic rule. */
+function landingPayloadRules(allRoutes, dynamicRoutes) {
+  const have = new Set(allRoutes.map((r) => r.join("/")));
+  const seen = new Set();
+  const rules = [];
+  for (const segments of dynamicRoutes) {
+    if (!isDynamicSeg(segments[segments.length - 1])) continue;
+    const parent = segments.slice(0, -1);
+    if (!parent.some(isDynamicSeg) || !have.has(parent.join("/"))) continue;
+    const from = "/" + parent.join("/") + "/index.txt";
+    if (seen.has(from)) continue;
+    seen.add(from);
+    rules.push({ from, to: "/" + replaceDynamic(parent).join("/") + "/index.txt" });
+  }
+  return rules;
 }
 
 /** Pure — returns the generated file content without touching disk. */
@@ -349,7 +389,8 @@ export function buildRedirectsFile(appDir) {
   );
 
   const enumerated = [...dynamicRoutes.flatMap((segments) => bareRules(segments)),
-    ...shadowedStaticRoutes.flatMap((segments) => staticLeafShadowRules(segments))]
+    ...shadowedStaticRoutes.flatMap((segments) => staticLeafShadowRules(segments)),
+    ...landingPayloadRules(allRoutes, dynamicRoutes)]
     // See compareEnumeratedPaths' doc for why this can't be segment-count-tie
     // plus a raw alphabetical fallback: that version is not transitive once a
     // third, unrelated rule's path sorts (by plain string comparison) between
