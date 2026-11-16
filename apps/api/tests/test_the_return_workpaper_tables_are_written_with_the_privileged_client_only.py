@@ -38,6 +38,7 @@ TABLES = (
     "gstr4_annual_b2b_supplies", "gstr4_annual_b2b_rc_supplies", "gstr4_annual_urp_supplies", "gstr4_annual_import_of_services",
     "gstr9c_reconciliations", "gstr9c_rate_wise_lines", "gstr9c_expense_lines",
     "ecommerce_operator_supplies", "ecommerce_operator_unregistered_supplies",
+    "ecommerce_operator_supply_amendments", "ecommerce_operator_unregistered_supply_amendments",
     "rcm_documents", "stock_count_sessions", "stock_count_lines",
 )
 WRITER_FILES = {
@@ -241,6 +242,29 @@ def test_an_ecommerce_operator_entry_is_written_on_the_privileged_client(world):
     svc.delete_supply(request, FIRM, CLIENT, supply["id"])
     svc.delete_unregistered_supply(request, FIRM, CLIENT, unreg["id"])
     assert _only(privileged, "ecommerce_operator_supplies") == [] and _only(privileged, "ecommerce_operator_unregistered_supplies") == []
+    assert request.refused == []
+
+
+def test_a_gstr_8_amendment_is_written_on_the_privileged_client(world):
+    """POST-A-056, migration 617: the two amendment tables hold no signed-in privilege at all, so the one writer is the privileged client."""
+    from services import ecommerce_operator_service as svc
+    privileged, request = world
+    keys = dict(gstin=GSTIN, period="062026", original_period="042026", original_supplier_gstin="29ABCDE1234F1Z5",
+                original_place_of_supply="29", supplier_gstin="29ABCDE1234F1Z5", place_of_supply="29", action="add")
+    amend = svc.record_amendment(request, FIRM, CLIENT, gross_registered_paise=100, **keys)
+    svc.record_amendment(request, FIRM, CLIENT, gross_registered_paise=300, **keys)
+    assert [r["gross_registered_paise"] for r in _only(privileged, "ecommerce_operator_supply_amendments")] == [300], "same key updates"
+    other = svc.record_amendment(request, FIRM, CLIENT, gross_registered_paise=7, **{**keys, "original_supplier_gstin": "27AAAAA0000A1Z5"})
+    assert len(_only(privileged, "ecommerce_operator_supply_amendments")) == 2 and other["id"] != amend["id"]
+    ukeys = dict(gstin=GSTIN, period="062026", original_period="042026", original_enrolment_id="E1", enrolment_id="E1", action="delete")
+    unreg = svc.record_unregistered_amendment(request, FIRM, CLIENT, gross_value_paise=10, **ukeys)
+    svc.record_unregistered_amendment(request, FIRM, CLIENT, gross_value_paise=30, **ukeys)
+    assert [r["gross_value_paise"] for r in _only(privileged, "ecommerce_operator_unregistered_supply_amendments")] == [30]
+    svc.delete_amendment(request, FIRM, CLIENT, amend["id"])
+    svc.delete_amendment(request, FIRM, CLIENT, other["id"])
+    svc.delete_unregistered_amendment(request, FIRM, CLIENT, unreg["id"])
+    assert _only(privileged, "ecommerce_operator_supply_amendments") == []
+    assert _only(privileged, "ecommerce_operator_unregistered_supply_amendments") == []
     assert request.refused == []
 
 
