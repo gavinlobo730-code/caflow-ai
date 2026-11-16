@@ -32,6 +32,7 @@
  * All filing actions require explicit CA confirmation. Never auto-submit to Income Tax Portal.
  */
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
@@ -1257,18 +1258,12 @@ export default function IncomeTaxPage() {
                 <label className="block text-xs font-medium text-ps-body mb-1.5">
                   Client <span className="text-state-problem">*</span>
                 </label>
-                <select aria-label="Client"
+                <ClientLookup ariaLabel="Client"
+                  clients={clients}
                   value={addForm.client_id}
-                  onChange={(e) => handleAddFormChange("client_id", e.target.value)}
-                  className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  <option value="">Select client…</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.client_name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => handleAddFormChange("client_id", id)}
+                  placeholder="Select client…"
+                />
               </div>
 
               {/* ITR Form */}

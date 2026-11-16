@@ -430,7 +430,7 @@ def test_the_tds_deduction_picker_is_the_servers_list_which_excludes_section_192
     choices = (_WEB / "lib" / "tds" / "sectionChoices.ts").read_text(encoding="utf-8")
     assert "const deductible = answer.sections.filter((s) => s.vendor_eligible !== false).map((s) => s.section);" in choices, (
         "the deduction picker's list must be the server's, not a list the browser keeps")
-    assert "choices.deductible.map(" in page, "and the deduction form must be offered it"
+    assert "choices.deductible" in page and "items={choices.deductible.length === 0" in page, "and the deduction form must be offered it"
     assert "SECTION_LABELS" not in page and "DEDUCTIBLE_SECTIONS" not in page, "the TDS screen keeps a list of sections of its own again"
     assert deduction_section_refusal(SECTION_192_SALARY) is not None
     served = tds_router.list_tds_sections(fy="2026-27", user={"firm_id": "f", "role": "Partner"})["data"]["sections"]
