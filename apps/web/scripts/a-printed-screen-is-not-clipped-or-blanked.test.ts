@@ -33,8 +33,10 @@
 //      the control sits inside something `print:hidden` (or is itself); none
 //      sits inside a `.map` callback (every row would print the same page, the
 //      three "Print as PDF" rows on Financial Reports did); a screen that prints
-//      one region marks it `data-print-scope`; the one in a modal nothing opens
-//      is checked to still be unreachable.
+//      one region marks it `data-print-scope`; the payslip modal nothing opened
+//      is deleted with its Print (POST-A-217).
+//   E. A SCROLL BOX IS DRAWN IN FULL ON PAPER: a list held to a height prints
+//      every row, not its first screenful (POST-A-217).
 //   D. A PRINTOUT NAMES WHOSE BOOKS IT IS: the client workspace draws
 //      `PrintHeader` (print-only) in <main>, and the scoped-print rule keeps it.
 //
@@ -339,8 +341,6 @@ const PRINT_SITES: Record<string, { count: number; how: How; reason: string }> =
     reason: "prints Part A from the books only (data-print-scope), under the client's name; the filing screen opens it or the keying sheet, never both" },
   "app/clients/[id]/accounting/page.tsx": { count: 3, how: "statement",
     reason: "P&L, Balance Sheet and Cash Flow each print their own statement; the sub-tab bar and the controls are print:hidden" },
-  "app/payroll/page.tsx": { count: 1, how: "unreachable",
-    reason: "inside PayslipModal, which nothing opens (setViewSlip is only ever called with null); the live payslip is the server PDF" },
 };
 
 function printSites(): Record<string, number> {
@@ -400,13 +400,25 @@ test("a screen that prints one region marks the region, and the stylesheet knows
   assert.deepEqual(marking.sort(), regions.sort());
 });
 
-test("the payslip modal's Print is still unreachable (or its row must be re-judged)", () => {
+test("the payslip modal nothing opened is gone, and so is its Print (POST-A-217)", () => {
+  // It sat in a fixed overlay inside the shell, so its Print printed the payroll page behind it, and nothing ever set the slip it
+  // showed: setViewSlip was only ever called with null. The payslip a person prints is the server's PDF.
   const src = code("app/payroll/page.tsx");
-  const calls = [...src.matchAll(/setViewSlip\(\s*([^)]*)\)/g)].map((m) => m[1].trim());
-  assert.ok(calls.length >= 1, "the onClose call is the floor: the premise moved");
-  assert.deepEqual(calls.filter((a) => a !== "null"), [],
-    "something now opens PayslipModal: its Print sits in a fixed overlay inside the shell and must be made to print " +
-    "(or deleted) before the 'unreachable' row can go");
+  assert.doesNotMatch(src, /PayslipModal|setViewSlip|window\.print/);
+});
+
+test("a scroll box inside a page is drawn in full on paper (POST-A-217)", () => {
+  // 44 files hold a list to a height with its own scroll bar. On paper there is nothing to scroll, so a box that kept its height
+  // printed its first screenful and cut the rest off with no sign. The rule is in the print block, so the screen is untouched.
+  const css = read("app/globals.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const blocks = printBlocks(css).join("\n");
+  const rule = /\.overflow-y-auto\s*,\s*\.overflow-auto\s*\{([^}]*)\}/.exec(blocks)?.[1] ?? "";
+  assert.ok(rule, "the scroll-box rule is not in the print block");
+  assert.match(rule, /max-height:\s*none\s*!important/);
+  assert.match(rule, /height:\s*auto\s*!important/);
+  assert.match(rule, /overflow:\s*visible\s*!important/);
+  assert.doesNotMatch(css.replace(/@media\s+print\s*\{[\s\S]*$/, ""), /\.overflow-y-auto\s*,\s*\.overflow-auto\s*\{/,
+    "the rule must not be outside @media print, where it would stop every list scrolling on screen");
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

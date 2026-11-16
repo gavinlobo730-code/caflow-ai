@@ -142,7 +142,6 @@ const FROZEN: Record<string, number> = {
   "app/income-tax/section-32/page.tsx": 1,
   "app/income-tax/tax-audit/page.tsx": 1,
   "app/mca/page.tsx": 3,
-  "app/payroll/page.tsx": 1,
   "app/pipeline/page.tsx": 2,
   "app/platform/page.tsx": 2,
   "app/relationships/[entity_id]/EntityDetailClient.tsx": 1,

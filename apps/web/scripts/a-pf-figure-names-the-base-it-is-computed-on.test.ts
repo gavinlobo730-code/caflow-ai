@@ -61,13 +61,43 @@ test("no screen labels a PF figure as a percentage of basic", () => {
     "basic whenever the excluded allowances are more than half of pay");
 });
 
-test("the two screens that had it still say what the base is", () => {
+/** The PF deduction or PF choice a screen LABELS in its text (JSX text, not a column key or a CSV header), and whether it names the base. */
+function pfLabels(text: string): { line: string; named: boolean }[] {
+  return text.split("\n")
+    .filter((line) => /(^|>)\s*PF (Deduction|Applicable)\b/.test(line))
+    .map((line) => ({ line: line.trim(), named: /12% of PF wages/.test(line) }));
+}
+
+test("the screen that had it still says what the base is, and so does every PF deduction or choice a screen labels", () => {
   // Not a bare absence check: deleting the parenthetical would also pass the
   // test above, and a PF figure with no base named is worse than one with the
   // wrong base named — the CA cannot tell there is a question.
-  for (const rel of ["app/payroll/page.tsx",
-                     "components/payroll/AddEmployeeModal.tsx"]) {
-    assert.match(rendered(path.join(ROOT, rel)), /12% of PF wages/,
-      `${rel} must name the base the figure is actually computed on`);
+  //
+  // The second screen that had it, the payslip panel on the payroll page, was
+  // deleted on 16-11-2026 with its Print button (POST-A-217): nothing opened
+  // it. So the rule is now said of every label, not of a list of files: a
+  // screen that labels the PF deduction or the PF choice names the base.
+  assert.match(rendered(path.join(ROOT, "components/payroll/AddEmployeeModal.tsx")), /12% of PF wages/,
+    "components/payroll/AddEmployeeModal.tsx must name the base the figure is actually computed on");
+  const unnamed: string[] = [];
+  let labels = 0;
+  for (const f of sources(ROOT)) {
+    for (const l of pfLabels(rendered(f))) {
+      labels += 1;
+      if (!l.named) unnamed.push(`${path.relative(ROOT, f)}: ${l.line.slice(0, 110)}`);
+    }
   }
+  assert.ok(labels >= 1, "found no PF deduction or PF choice label at all: the rule reads nothing");
+  assert.deepEqual(unnamed, [], "a PF deduction or PF choice label must name the base it is computed on (12% of PF wages)");
+});
+
+test("self-test: a label with no base is named, a label with the base and a column key are not", () => {
+  const sample = [
+    "<td>PF Deduction</td>",
+    "                PF Deduction (12% of PF wages)",
+    '<label htmlFor="pf">PF Applicable (12% of PF wages)</label>',
+    '{ key: "pf_applicable", header: "PF Applicable", accessor: (e) => e.pf_applicable }',
+  ].join("\n");
+  assert.deepEqual(pfLabels(sample).map((l) => [l.line.slice(0, 20), l.named]),
+    [["<td>PF Deduction</td", false], ["PF Deduction (12% of", true], ["<label htmlFor=\"pf\">", true]]);
 });

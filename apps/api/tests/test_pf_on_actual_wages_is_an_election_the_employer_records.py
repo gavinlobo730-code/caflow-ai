@@ -984,8 +984,11 @@ def test_the_form_sends_the_election_the_way_the_server_reads_it():
 
 
 def test_the_payslip_and_the_statutory_screen_label_what_the_server_stored():
-    page = _tsx("app/payroll/page.tsx")
-    assert "slip.pf_on_actual_wages" in page
+    # The slips a CA reads are the client payroll tab's. The firm payroll
+    # page's payslip panel carried the same label until 16-11-2026, when it was
+    # deleted with its Print button because nothing opened it (POST-A-217).
+    page = _tsx("app/clients/[id]/payroll/page.tsx")
+    assert "s.pf_on_actual_wages" in page
     assert "PF on actual wages (elected)" in page
     statutory = _tsx("app/payroll/statutory/page.tsx")
     assert "r.pf_on_actual_wages" in statutory
