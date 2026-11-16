@@ -1729,8 +1729,19 @@ export default function TDSPage() {
                   <tr><td colSpan={7}><ListNotRead loading={loading} error={listErrors.certificates} what="certificates" /></td></tr>
                 )}
                 {certificates.length === 0 && !loading && !listErrors.certificates && (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-ps-hint">
-                    No certificates for this client yet. Generate a draft from the client&apos;s Compliance → TDS tab.
+                  <tr><td colSpan={7}>
+                    <EmptyState
+                      className="py-10"
+                      title={selectedClientId ? "No certificates for this client yet" : "No client chosen"}
+                      description={selectedClientId
+                        ? "The Form 16 or 16A itself is generated on TRACES. Record that it was issued on the client's Compliance → TDS tab and it is listed here."
+                        : "Choose a client above to see the certificates recorded for them."}
+                      action={selectedClientId && (
+                        <EmptyStateActions>
+                          <EmptyStateAction requires={["tds", "compute"]} label="Open the client's TDS tab" href={`/clients/${selectedClientId}/compliance/tds`} variant="secondary" />
+                        </EmptyStateActions>
+                      )}
+                    />
                   </td></tr>
                 )}
               </tbody>

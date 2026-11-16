@@ -21,6 +21,7 @@
  * `domain/gst/registrations.py`'s answers, served by
  * /api/client-gst-registrations.
  */
+import { EmptyState } from "@/components/ui/states";
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Plus, AlertTriangle, X, Info } from "lucide-react";
@@ -373,10 +374,11 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
       {loading ? (
         <LoadingRegion label="Loading the registrations" className="text-xs text-ps-hint">Loading…</LoadingRegion>
       ) : loadFailed ? null : rows.length === 0 ? (
-        <p className="text-xs text-ps-hint">
-          No GSTIN is recorded for this client. Record it on the client record first —
-          a GST return cannot be prepared without one.
-        </p>
+        <EmptyState
+          className="py-6"
+          title="No GSTIN is recorded for this client"
+          description="A GST return cannot be prepared without one. Record it by editing the client from the Clients list."
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">

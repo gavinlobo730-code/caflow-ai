@@ -16,6 +16,7 @@
  * to — so the server's caveat is shown beside the choice, in words, rather than
  * left for the compute result to mention afterwards.
  */
+import { EmptyState } from "@/components/ui/states";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { api, type ClientGstRegistration } from "@/lib/api";
@@ -104,10 +105,11 @@ export function RegistrationPicker({
   }
   if (list.length === 0) {
     return (
-      <p className="text-xs text-ps-label">
-        No GSTIN is recorded for this client, so there is no registration to
-        prepare a return for.
-      </p>
+      <EmptyState
+        className="py-4"
+        title="No GSTIN is recorded for this client"
+        description="There is no registration to prepare a return for. Record the GSTIN by editing the client from the Clients list."
+      />
     );
   }
 

@@ -26,6 +26,7 @@ import { toast } from "@/components/ui/use-toast";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
@@ -727,12 +728,12 @@ export default function ClientPortalPage() {
                         <button onClick={() => loadDocRequests(selectedClientId)} disabled={requestsLoading} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body disabled:opacity-50">Retry</button>
                       </div>
                     ) : docRequests.length === 0 ? (
-                      <div className="text-center py-10 space-y-2">
-                        <FileText size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-ps-hint">
-                          No document requests yet — click New Request to ask your client for files
-                        </p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<FileText size={32} />}
+                        title="No document requests yet"
+                        description="Press New Request at the top of this card to ask your client for files."
+                      />
                     ) : (
                       <div className="space-y-2">
                         {docRequests.map((req) => (
@@ -830,12 +831,12 @@ export default function ClientPortalPage() {
                         <button onClick={() => loadSharedDocs(selectedClientId)} disabled={sharedLoading} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body disabled:opacity-50">Retry</button>
                       </div>
                     ) : sharedDocs.length === 0 ? (
-                      <div className="text-center py-10 space-y-2">
-                        <FolderOpen size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-ps-hint">
-                          No documents shared yet — upload returns, notices, and certificates for this client
-                        </p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<FolderOpen size={32} />}
+                        title="No documents shared yet"
+                        description="Press Upload at the top of this card to share a return, notice or certificate with this client."
+                      />
                     ) : (
                       <div className="space-y-2">
                         {sharedDocs.map((doc) => (
@@ -893,11 +894,12 @@ export default function ClientPortalPage() {
                   </CardHeader>
                   <CardContent className="p-0">
                     {sharedReports.length === 0 ? (
-                      <div className="px-6 py-10 text-center text-sm text-ps-hint">
-                        <BarChart3 size={28} className="mx-auto mb-2 opacity-20" />
-                        <p>No reports shared yet.</p>
-                        <p className="text-xs mt-1 text-ps-hint">Go to Reports → Financial Statements → Generate → Share with Client</p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<BarChart3 size={28} />}
+                        title="No reports shared yet"
+                        description="Go to Reports → Financial Statements → Generate → Share with Client."
+                      />
                     ) : (
                       <div className="divide-y divide-ps-border">
                         {sharedReports.map((r) => (
@@ -1096,10 +1098,12 @@ export default function ClientPortalPage() {
                         <button disabled={messagesLoading} onClick={() => loadPortalMessages(selectedClientId)} className="disabled:opacity-40 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
                       </div>
                     ) : portalMessages.length === 0 ? (
-                      <div className="text-center py-10 space-y-2">
-                        <MessageSquare size={32} className="text-gray-200 mx-auto" />
-                        <p className="text-sm text-ps-hint">No messages yet — send a message to your client below</p>
-                      </div>
+                      <EmptyState
+                        className="py-10"
+                        icon={<MessageSquare size={32} />}
+                        title="No messages yet"
+                        description="Send a message to your client with the box below."
+                      />
                     ) : (
                       portalMessages.map((msg) => (
                         <div key={msg.id} className="flex gap-3">
