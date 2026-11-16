@@ -309,7 +309,7 @@ _WRITERS = {("services/sales_cycle_service.py", "_write_an_amendment"): {"update
 #: challan's header and lines, a job-work lot with its stamp, and a draft's corrections, each in one transaction, and none of them writes the status `issued` (the migration's own tests say so), so the
 #: service holds no insert of the table and no stamp of the lot door's own. Any other module naming a function with "challan" in it is a second door.
 _CHALLAN_FUNCTIONS = {"services/delivery_challan_writes.py": {"create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic",
-                                                                    "retract_challan_lot_atomic"}}
+                                                                    "retract_challan_lot_atomic", "issue_delivery_challan_atomic"}}
 #: Helpers that take the table's name to READ it.
 _READ_HELPERS = {"_one", "_refuse_duplicate", "row_of_client"}
 #: Modules that list the table's name as data (the tables a delete counts), never as a client.
@@ -477,7 +477,8 @@ def test_no_migration_other_than_the_three_that_made_or_wrote_the_table_touches_
                "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return.sql", "462_job_work_comes_back_in_lots_and_itc_04_reports_each_return_rollback.sql",
                "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued.sql",
                "585_a_delivery_challan_is_written_in_one_transaction_and_says_when_it_was_issued_rollback.sql",
-               "651_a_lot_recorded_on_itc_04_can_be_retracted.sql", "651_a_lot_recorded_on_itc_04_can_be_retracted_rollback.sql"}
+               "651_a_lot_recorded_on_itc_04_can_be_retracted.sql", "651_a_lot_recorded_on_itc_04_can_be_retracted_rollback.sql",
+               "652_issuing_a_delivery_challan_locks_its_order_and_holds_the_over_delivery_rule.sql"}
     assert named <= allowed, f"a migration touches delivery_challans: {sorted(named - allowed)}. Read it: if it issues a challan, a draft is no longer the state the product makes."
 
 

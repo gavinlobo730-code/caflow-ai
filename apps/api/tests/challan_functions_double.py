@@ -17,7 +17,7 @@ from typing import Callable
 from core.ist_clock import ist_now
 from tests.production_types import assert_write_fits_production_types
 
-_TABLES = ("delivery_challans", "delivery_challan_lines", "delivery_challan_returns")
+_TABLES = ("delivery_challans", "delivery_challan_lines", "delivery_challan_returns", "sales_orders", "sales_order_lines")
 
 
 class Refusal(Exception):
@@ -172,6 +172,37 @@ def retract_lot(tables: dict, firm_id, client_id, challan_id, lot_id, reason, by
     return _atomic(tables, body)
 
 
+def issue(tables: dict, firm_id, client_id, challan_id, issued_at) -> dict:
+    """`issue_delivery_challan_atomic` (migration 652): a draft is issued once the order's over-delivery rule holds, in one step."""
+    def body():
+        challan = next((c for c in _rows(tables, "delivery_challans")
+                        if _same(c.get("id"), challan_id) and _same(c.get("firm_id"), firm_id) and _same(c.get("client_id"), client_id)), None)
+        if challan is None:
+            raise Refusal("challan_not_found", "P0002")
+        if challan.get("status") != "draft":
+            raise Refusal("challan_not_draft", detail=f"status is {challan.get('status')}")
+        order_id = challan.get("order_id")
+        if order_id is not None and not any(_same(o.get("id"), order_id) and _same(o.get("firm_id"), firm_id) and _same(o.get("client_id"), client_id)
+                                            for o in _rows(tables, "sales_orders")):
+            raise Refusal("order_line_not_of_order")
+        mine = [ln for ln in _rows(tables, "delivery_challan_lines") if _same(ln.get("challan_id"), challan_id) and ln.get("order_line_id")]
+        order_lines = {str(ol["id"]): ol for ol in _rows(tables, "sales_order_lines") if order_id is not None and _same(ol.get("order_id"), order_id)}
+        if any(str(ln["order_line_id"]) not in order_lines for ln in mine):
+            raise Refusal("order_line_not_of_order")
+        issued = {str(c["id"]) for c in _rows(tables, "delivery_challans") if c.get("status") == "issued" and not _same(c.get("id"), challan_id)}
+        for ln in mine:
+            ol = order_lines[str(ln["order_line_id"])]
+            quantity = Decimal(str(ln.get("quantity") or 0))
+            delivered = sum((Decimal(str(d.get("quantity") or 0)) for d in _rows(tables, "delivery_challan_lines")
+                             if _same(d.get("order_line_id"), ol["id"]) and str(d.get("challan_id")) in issued), Decimal(0))
+            if quantity <= 0 or quantity > max(Decimal(0), Decimal(str(ol.get("quantity") or 0)) - delivered):
+                raise Refusal("order_over_delivered")
+        challan.update({"status": "issued", "issued_at": issued_at, "updated_at": issued_at})
+        return dict(challan)
+
+    return _atomic(tables, body)
+
+
 def correct_draft(tables: dict, firm_id, client_id, challan_id, header: dict, fixes: list) -> int:
     if not isinstance(header, dict):
         raise Refusal("correct_draft_challan_lines_atomic: the header patch must be a JSON object", "22023")
@@ -217,6 +248,8 @@ def call(tables: dict, new_id: Callable[[str], str], fn: str, params: dict):
         return create(tables, new_id, params["p_header"], params["p_lines"])
     if fn == "record_challan_lot_atomic":
         return record_lot(tables, new_id, params["p_firm_id"], params["p_client_id"], params["p_challan_id"], params["p_lot"])
+    if fn == "issue_delivery_challan_atomic":
+        return issue(tables, params["p_firm_id"], params["p_client_id"], params["p_challan_id"], params["p_issued_at"])
     if fn == "retract_challan_lot_atomic":
         return retract_lot(tables, params["p_firm_id"], params["p_client_id"], params["p_challan_id"], params["p_lot_id"], params["p_reason"], params["p_by"])
     if fn == "correct_draft_challan_lines_atomic":
@@ -224,4 +257,5 @@ def call(tables: dict, new_id: Callable[[str], str], fn: str, params: dict):
     raise Exception(f"FakeDB: unsupported rpc {fn!r}")
 
 
-FUNCTIONS = ("create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic", "retract_challan_lot_atomic")
+FUNCTIONS = ("create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic", "retract_challan_lot_atomic",
+             "issue_delivery_challan_atomic")
