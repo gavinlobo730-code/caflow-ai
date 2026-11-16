@@ -291,7 +291,7 @@ export default function LoansAndFDPage() {
     if (principal <= 0) { setLoanError("Enter a valid principal amount"); return; }
     if (outstanding < 0) { setLoanError("Enter a valid outstanding amount"); return; }
     if (rate === null || rate <= 0) { setLoanError("Enter a valid interest rate"); return; }
-    if (loanDates.first) { setLoanError(loanDates.first); return; }
+    if (loanDates.first) { loanDates.refuseWith(setLoanError); return; }
     if (!loanForm.disbursement_date) { setLoanError("Disbursement date is required"); return; }
 
     setLoanSaving(true);
@@ -359,7 +359,7 @@ export default function LoansAndFDPage() {
     }
     if (principal <= 0) { setFDError("Enter a valid principal amount"); return; }
     if (rate === null || rate <= 0) { setFDError("Enter a valid interest rate"); return; }
-    if (fdDates.first) { setFDError(fdDates.first); return; }
+    if (fdDates.first) { fdDates.refuseWith(setFDError); return; }
     if (!fdForm.start_date) { setFDError("Start date is required"); return; }
     if (!fdForm.maturity_date) { setFDError("Maturity date is required"); return; }
     if (fdForm.maturity_date <= fdForm.start_date) { setFDError("Maturity date must be after start date"); return; }

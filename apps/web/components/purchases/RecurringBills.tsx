@@ -36,7 +36,10 @@ import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useTakenBackWhenFixed } from "@/lib/dates/useDateProblems";
+
+/** Said by Save over a window that ends before it starts, and taken back once it does not. */
+const END_BEFORE_START = "The end date cannot be before the start date.";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;
 type Frequency = (typeof FREQUENCIES)[number];
@@ -485,6 +488,7 @@ function RecurringBillEditor({
   );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  useTakenBackWhenFixed(setErr, END_BEFORE_START, !!endDate && endDate < startDate);
 
   function setLine(i: number, patch: Partial<DraftLine>) {
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -492,13 +496,13 @@ function RecurringBillEditor({
 
   async function save() {
     setErr(null);
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     // "First bill on *" is marked required and a cleared box reports no problem, so "" went to the server as the template's start date and
     // came back as a 500 (the date parser cannot read it).
     if (!startDate) { setErr("First bill on: enter the date of the first bill."); return; }
     if (!vendorId) { setErr("Choose the vendor this bill comes from."); return; }
     if (!title.trim()) { setErr("Give the template a name — you will pick it out of a list."); return; }
-    if (endDate && endDate < startDate) { setErr("The end date cannot be before the start date."); return; }
+    if (endDate && endDate < startDate) { setErr(END_BEFORE_START); return; }
 
     const payloadLines = [];
     // Indexed loop rather than `.entries()`: the tsconfig target predates

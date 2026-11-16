@@ -125,7 +125,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
   const dates = useDateProblems();
 
   async function submit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!newExpiry) { setErr("The new expiry date is required."); return; }
     setSaving(true); setErr(null);
     try {
@@ -246,7 +246,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
   const dates = useDateProblems();
 
   async function submit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!holderName.trim() || !expiryDate) {
       setErr("A holder name and an expiry date are required.");
       return;
@@ -351,7 +351,7 @@ function AddDSCModal({ onClose, onAdded }: {
   const dates = useDateProblems();
 
   async function handleSubmit() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     if (!holderName.trim() || !issueDate || !expiryDate) {
       setErr("Name, issue date and expiry date are required.");
       return;

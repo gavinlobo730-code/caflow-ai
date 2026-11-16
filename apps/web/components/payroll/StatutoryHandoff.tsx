@@ -50,7 +50,7 @@ import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { formatMonthYear, formatDate, todayIstISO } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -136,6 +136,11 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   // The date is what a payment record is dated by: text that is not a date reads as blank and the record would go in without it, or be
   // refused with a word about a date that is in the box (frontend_ux-19).
   const dates = useDateProblems();
+  // Said here, beside Record it, and withdrawn the moment the date is right (POST-A-381): handed to the page's note, the sentence stayed
+  // after the date was put right, because the note is cleared by the next answer and nothing else.
+  // A blank box is said the same way: derived from the box, so it goes once a date is typed.
+  const missing = on ? null : "Date: enter the date of the payment or filing.";
+  const refusal = useDateRefusal(dates.first ?? missing);
 
   const isEpf = obligation.scheme === "epf";
   // WHICH RETURN EPFO IS ACTUALLY EXPECTING. The server decides this
@@ -148,10 +153,9 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
   const [returnType, setReturnType] = useState(options[0]);
 
   async function submit() {
-    if (dates.first) { onError(dates.first); return; }
     // A cleared box is not an unreadable one and reports no problem, but "" goes to the server as no date at all and the server dates the record
     // today (the filing and the payment alike): a payment date this screen invented, said as "Recorded." Ask for it instead.
-    if (!on) { onError("Date: enter the date of the payment or filing."); return; }
+    if (dates.first ?? missing) { refusal.refuse(); return; }
     const paise = amount.trim() ? paiseFromRupeeInput(amount) : 0;
     if (paise === null) {
       onError("That amount is not an amount. Type it as ₹ and paise — "
@@ -287,6 +291,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           month at EPFO. Come back and mark it approved once the portal does.
         </p>
       )}
+      {refusal.shown && <p role="alert" className="text-xs text-state-problem">{refusal.shown}</p>}
       <Button variant="plain" size="none" onClick={submit} disabled={busy}
         className="px-3 py-1.5 text-xs bg-brand text-white rounded-lg
                    hover:bg-brand-dark disabled:opacity-40">

@@ -284,7 +284,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
 
   async function createSession() {
     setError(null);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!form.bank_account_id || !form.start || !form.end) { setError("Bank account and statement dates are required."); return; }
     // The end box only HINTS when it is before the start (a hint is not a problem), so the window came to the server reversed and was refused
     // there as "Value error, statement_end_date must not precede statement_start_date."

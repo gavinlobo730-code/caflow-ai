@@ -128,7 +128,7 @@ export function AddEmployeeModal({
   const dates = useDateProblems();
 
   async function save() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr, undefined, ""); return; }
     if (!form.name || !form.basic_rs) { setErr("Name and Basic Salary are required."); return; }
 
     // The exact parsers, and they REFUSE rather than coerce.

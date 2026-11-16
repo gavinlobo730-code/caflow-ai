@@ -90,7 +90,7 @@ export function FxRatesPanel() {
 
   async function save() {
     if (dates.first) {
-      setMsg({ ok: false, text: dates.first });
+      dates.refuseWith(setMsg, (text) => ({ ok: false, text }));
       return;
     }
     if (!looksLikeARate(rate)) {

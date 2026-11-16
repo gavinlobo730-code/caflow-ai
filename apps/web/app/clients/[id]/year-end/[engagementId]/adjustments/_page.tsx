@@ -408,7 +408,7 @@ function AdjustmentForm({
     const amount_paise = paiseFromRupeeInput(amountStr.replace(/[,\s₹]/g, ""));
     if (amount_paise === null) { setError("Amount isn't a rupee figure — enter it like 125000 or 125000.50"); return; }
     if (amount_paise <= 0) { setError("Amount must be greater than zero"); return; }
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!adjDate) { setError("Date is required"); return; }
 
     setSaving(true);

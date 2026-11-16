@@ -313,7 +313,7 @@ export function DebitNoteEditor({
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     // An issued note's save sends the note and the attached copy only (the lines are frozen), so the create-time check of its lines (a catalogue item on each) is not asked of it, as the sales note editors do not.
     if (!isLocked && !validation.ok) {
       setError(validation.errors.vendor ?? validation.errors.debitNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");

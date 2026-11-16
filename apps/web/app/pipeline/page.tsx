@@ -360,7 +360,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return; // guard against duplicate submissions (double-click / Enter)
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     const feePaise = rupeesToPaise(form.estimatedMonthlyFeeRupees);
     if (feePaise === null) {
       setErr("Estimated monthly fee isn't an amount — enter rupees, like 15000 or 15000.50.");

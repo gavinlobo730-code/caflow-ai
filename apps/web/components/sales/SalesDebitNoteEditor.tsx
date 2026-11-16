@@ -263,7 +263,7 @@ export function SalesDebitNoteEditor({
     // ₹7,080 debit notes from what looked like one click.
     if (saving) return;
     setAttempted(true);
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!isLocked && !validation.ok) {
       setError(validation.errors.customer ?? validation.errors.debitNoteDate ?? validation.errors.lines ?? "Fix the highlighted fields.");
       return;

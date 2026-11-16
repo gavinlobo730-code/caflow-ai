@@ -271,7 +271,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   const dueDates = useDateProblems();
 
   async function handleSubmit() {
-    if (dueDates.first) { setErr(dueDates.first); return; }
+    if (dueDates.first) { dueDates.refuseWith(setErr); return; }
     if (choices.kind === "read" && choices.choices.company_required && !company) {
       setErr("Choose the company this filing is for. The calendar's obligation closes only when each of this client's companies has filed.");
       return;
@@ -287,7 +287,7 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
       return;
     }
     // The date box is on the form only for a filed filing, so an unreadable one matters only then.
-    if (status === "Filed" && dates.first) { setErr(dates.first); return; }
+    if (status === "Filed" && dates.first) { dates.refuseWith(setErr); return; }
     if (status === "Filed" && (!srn.trim() || !filedOn)) {
       setErr("A filing marked Filed needs its SRN and the date it was filed on MCA21."); return;
     }
@@ -802,7 +802,7 @@ export default function MCAPage() {
 
   async function handleMarkFiled() {
     if (!filedModal) return;
-    if (filedDates.first) { setFiledError(filedDates.first); return; }
+    if (filedDates.first) { filedDates.refuseWith(setFiledError); return; }
     if (!filedForm.srn.trim()) {
       setFiledError("SRN is required");
       return;

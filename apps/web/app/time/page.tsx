@@ -416,7 +416,7 @@ export default function TimeTrackingPage() {
                     summarySeq.current += 1;
                     summaryAsk.current = { period: "range" };
                     setSummary(null);
-                    setSummaryProblem(rangeDates.first);
+                    rangeDates.refuseWith(setSummaryProblem);
                     return;
                   }
                   void loadSummary({ period: "range", date_from: rangeFrom, date_to: rangeTo });

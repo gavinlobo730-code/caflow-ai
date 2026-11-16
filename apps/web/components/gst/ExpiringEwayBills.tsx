@@ -69,7 +69,7 @@ function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () 
   const dates = useDateProblems();
 
   async function submit() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!validUpto) { setError("Enter the new valid-upto date."); return; }
     setSaving(true);
     setError(null);

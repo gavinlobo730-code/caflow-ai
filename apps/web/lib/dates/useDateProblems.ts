@@ -12,13 +12,19 @@
  *     <DateInput value={billDate} onChange={setBillDate}
  *                onStateChange={dates.watch("billDate", "Bill date")} />
  *     ...
- *     if (dates.first) { setError(dates.first); return; }
+ *     if (dates.first) { dates.refuseWith(setError); return; }
+ *
+ * `refuseWith` says the first problem through the form's own message and TAKES IT BACK the moment that problem is gone (POST-A-381):
+ * the form copied the sentence into its error, where it stayed after the date was put right, so a person who had fixed the date was
+ * still shown the red sentence and pressed Save again for nothing. What it said is compared by identity, so a later answer the form
+ * shows in the same place (the server's refusal) is never taken back. `scripts/a-date-sentence-is-taken-back-when-the-date-is-right.test.ts`
+ * fails a form that copies a date hook's sentence into a setter itself.
  *
  * It judges only whether text is a calendar date. A period lock, a filed
  * return, a date outside the financial year — those are the server's, and its
  * refusal is shown the way it always was.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { DateFieldState, DateStateListener } from "./typedDate.ts";
 
 /** What a box refuses beyond text that is not a date. */
@@ -47,8 +53,45 @@ export function reportDateState(
   return next === null ? rest : { ...rest, [key]: next };
 }
 
+/** What `refuseWith` said, and how to take it back. */
+interface Said {
+  sentence: string;
+  takeBack: () => void;
+}
+
+/** The entries of `said` whose sentence is no longer a problem are taken back and dropped; the rest are kept. Pure but for the calls,
+ *  so the rule is testable without a render. */
+export function takeBackFixed(said: readonly Said[], problems: Readonly<Record<string, string>>): Said[] {
+  const current = new Set(Object.values(problems));
+  return said.filter((s) => {
+    if (current.has(s.sentence)) return true;
+    s.takeBack();
+    return false;
+  });
+}
+
 export function useDateProblems() {
   const [problems, setProblems] = useState<Record<string, string>>({});
+  const first = Object.values(problems)[0] ?? null;
+  const firstRef = useRef<string | null>(first);
+  firstRef.current = first;
+  const said = useRef<Said[]>([]);
+  useEffect(() => {
+    if (said.current.length) said.current = takeBackFixed(said.current, problems);
+  }, [problems]);
+  /**
+   * Say the first problem through a form's own message, and take it back when that problem is gone. `wrap` builds the message from
+   * the sentence (`(text) => ({ type: "err", text })`) and `empty` is what the message holds when there is none (null unless given).
+   * It does nothing when no date is wrong.
+   */
+  const refuseWith = useCallback(<T,>(set: Dispatch<SetStateAction<T>>, wrap?: (sentence: string) => NoInfer<T>, empty?: NoInfer<T>) => {
+    const sentence = firstRef.current;
+    if (!sentence) return;
+    const value = wrap ? wrap(sentence) : (sentence as unknown as T);
+    const cleared = (empty === undefined ? null : empty) as T;
+    set(value);
+    said.current.push({ sentence, takeBack: () => set((prev) => (Object.is(prev, value) ? cleared : prev)) });
+  }, []);
   /** The `onStateChange` for one field. A field that refuses a later day says so on the listener (see `refusesAfterMax`). */
   const watch = useCallback(
     (key: string, label: string, refuse?: DateRefusals): DateStateListener => {
@@ -64,8 +107,23 @@ export function useDateProblems() {
     /** One sentence per unreadable date, `Bill date: Feb 2026 has only 28 days.` */
     problems,
     /** The first of them, or null when every date in the form is a date or blank. */
-    first: Object.values(problems)[0] ?? null,
+    first,
+    refuseWith,
   };
+}
+
+/**
+ * Take back a sentence a form said about its own dates (an end before its start) the moment it stops being true: the form's error is cleared
+ * by its next attempt and nothing else, so a window put right still said it was wrong (POST-A-381). `said` is compared by identity, so an
+ * answer the form showed afterwards is never taken back.
+ *
+ *     const ORDER = "The end date cannot be before the start date.";
+ *     useTakenBackWhenFixed(setErr, ORDER, !!endDate && endDate < startDate);
+ */
+export function useTakenBackWhenFixed<T>(set: Dispatch<SetStateAction<T>>, said: NoInfer<T>, stillTrue: boolean, empty: NoInfer<T> = null as NoInfer<T>) {
+  useEffect(() => {
+    if (!stillTrue) set((prev) => (Object.is(prev, said) ? empty : prev));
+  }, [set, said, stillTrue, empty]);
 }
 
 /**

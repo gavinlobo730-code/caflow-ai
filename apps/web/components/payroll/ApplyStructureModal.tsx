@@ -98,7 +98,7 @@ export default function ApplyStructureModal({
       })), [employees, picked, gross]);
 
   async function send(preview: boolean) {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy(preview ? "preview" : "apply");
     setErr(null); setProblems([]);
     try {

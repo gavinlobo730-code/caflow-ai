@@ -808,7 +808,7 @@ function AdjustStockModal({
   }
 
   async function submit() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     const qty = parseFloat(quantity);
     if (!(qty > 0)) { setError("Enter a quantity greater than 0."); return; }
     setSaving(true);
@@ -968,7 +968,7 @@ function NrvWritedownModal({
   }, [nrvPaise, item.id, clientId]);
 
   async function submit() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (nrvPaise === null || nrvPaise < 0) { setError("Enter a valid net realisable value per unit."); return; }
     setSaving(true);
     setError(null);

@@ -426,7 +426,7 @@ export default function ClientHealthDetailPage() {
 
   async function handleAddOverride() {
     if (!overrideForm.dimension || !overrideForm.reason.trim() || !overrideForm.override_score) return;
-    if (overrideDates.first) { setOverrideSaveError(overrideDates.first); return; }
+    if (overrideDates.first) { overrideDates.refuseWith(setOverrideSaveError); return; }
     setSavingOverride(true);
     setOverrideSaveError(null);
     try {

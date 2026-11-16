@@ -2736,7 +2736,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
   function closePaymentForm() { setMsg(null); setShowForm(false); }
 
   async function handleSave() {
-    if (dates.first) { setMsg({ type: "err", text: dates.first }); return; }
+    if (dates.first) { dates.refuseWith(setMsg, (text) => ({ type: "err" as const, text })); return; }
     // The box is marked "Date *" and a cleared box reports no problem, so "" went to the server as the payment's date, where the period
     // check raises on text that is not a date and the person got a failure with no sentence, for a payment that posts to the books.
     if (!payDate) { setMsg({ type: "err", text: "Date: enter the date the payment was made." }); return; }

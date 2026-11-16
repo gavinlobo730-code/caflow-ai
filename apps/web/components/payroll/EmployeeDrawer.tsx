@@ -306,7 +306,7 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
   useReportDirty(onDirtyChange, dirty);
 
   async function save() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy(true); setErr(null); setDone(false);
     try {
       // A typed value not a number REFUSES here rather than being silently
@@ -467,7 +467,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   }
 
   async function preview() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy("preview"); setErr(null); setDone(null); setConfirming(false);
     try {
       const res = await api.payroll.previewSettlement(employee.id, body());
@@ -480,7 +480,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   }
 
   async function record() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy("record"); setErr(null);
     try {
       const res = await api.payroll.recordSettlement(employee.id, {
@@ -715,7 +715,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
   useEffect(() => { load(); }, [load]);
 
   async function save() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy(true); setErr(null);
     try {
       const res = await api.payroll.addSalaryRevision(employee.id, {
@@ -848,7 +848,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
   useEffect(() => { load(); }, [load]);
 
   async function save() {
-    if (dates.first) { setErr(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setErr); return; }
     setBusy(true); setErr(null); setNotes([]);
     try {
       const res = await api.payroll.addEmployeeLoan(employee.id, {

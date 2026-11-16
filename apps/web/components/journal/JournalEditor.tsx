@@ -366,7 +366,7 @@ export function JournalEditor({
    *  guard until it settles. */
   function handleSave(mode: JournalSaveMode): Promise<void> | void {
     setLocalError(null);
-    if (dates.first) { setLocalError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setLocalError); return; }
     if (hasUnparseable) { setLocalError("One of the amounts isn't a number. Check the highlighted cells."); return; }
     if (!narration.trim()) { setLocalError("Narration is required."); return; }
     if (!isBalanced) { setLocalError("Debits must equal credits before saving."); return; }

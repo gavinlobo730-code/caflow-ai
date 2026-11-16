@@ -62,7 +62,7 @@ export function DisburseModal({ run, onClose, onDone }: {
   }, [run.client_id]);
 
   async function save() {
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!accountId) { setError("Select a bank account."); return; }
     setSaving(true); setError(null);
     try {

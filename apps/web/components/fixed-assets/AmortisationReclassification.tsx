@@ -110,7 +110,7 @@ export function AmortisationReclassification({ clientId, onChanged }: {
     setError(null);
     setResult(null);
     if (!keepPreview) setPreview(null);
-    if (dates.first) { setPreview(null); setError(dates.first); return; }
+    if (dates.first) { setPreview(null); dates.refuseWith(setError); return; }
     if (!asAt) { setPreview(null); setError("Say the date the reclassification is as at: a month end."); return; }
     const qs = new URLSearchParams({ client_id: clientId, as_at: asAt });
     if (carried) qs.set("carried_over_from_account_id", carried);

@@ -116,7 +116,7 @@ export function AssetMovements({ assetId, onMoved }: {
 
   async function record() {
     if (savingRef.current) return;
-    if (dates.first) { setError(dates.first); return; }
+    if (dates.first) { dates.refuseWith(setError); return; }
     if (!form.moved_on) { setError("Moved on: enter the date the asset moved."); return; }
     savingRef.current = true;
     setSaving(true);
