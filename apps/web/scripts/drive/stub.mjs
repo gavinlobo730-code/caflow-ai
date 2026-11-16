@@ -66,6 +66,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
   let tables = {};
   /** API routes, first match wins: { method, re, reply(req, body, url), delay, status }. */
   let routes = [];
+  /** table -> ms a PostgREST READ of it is held before it is answered (a slow server, for the cache's first-paint check). Cleared by `reset()`. */
+  let readDelays = {};
   /** Every write, in arrival order. */
   let writes = [];
   /** How long a write is held before it is answered. Long enough that a second click lands first. */
@@ -134,7 +136,8 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         });
         return;
       }
-      return sendJson(res, readTable(table, req, url));
+      const held = readDelays[table] ?? 0;
+      return held ? void setTimeout(() => { if (!res.destroyed) sendJson(res, readTable(table, req, url)); }, held) : sendJson(res, readTable(table, req, url));
     }
 
     if (pathname.startsWith("/__supabase/storage/")) return sendJson(res, []);
@@ -198,6 +201,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     reset(baseline) {
       tables = Object.fromEntries(Object.entries(baseline).map(([k, v]) => [k, structuredClone(v)]));
       routes = [];
+      readDelays = {};
       insertAnswers = {};
       writes = [];
       writeDelayMs = 700;
@@ -216,6 +220,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     /** Register an API route ahead of the defaults. */
     route(spec) { routes.unshift({ method: undefined, delay: undefined, status: undefined, ...spec }); },
     setWriteDelay(ms) { writeDelayMs = ms; },
+    setReadDelay(table, ms) { readDelays[table] = ms; },
 
     /** Every write whose path matches, optionally by method. */
     writesTo(re, method) {
