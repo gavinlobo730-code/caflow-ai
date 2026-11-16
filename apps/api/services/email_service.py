@@ -255,7 +255,8 @@ def _send(to: str, subject: str, html: str, *,
 
     `sender_name` and `reply_to` are optional and default to the configured
     sender with no Reply-To, which is what every internal notification (task
-    assigned, escalation, firm invite) still sends.
+    assigned, escalation) still sends. A staff invitation is the practice writing to
+    the person it invites, so it carries the practice's name and the inviting Partner's address.
 
     INSIDE `practice_mail_service.deliver` the message is QUEUED instead of posted
     (see the note on `_OUTBOX_SINK`): True then means "accepted for delivery", and
@@ -541,15 +542,30 @@ def send_portal_message_notice(
     return _send(to, subject, html, sender_name=sender_name, reply_to=reply_to)
 
 
-def send_firm_invite(to: str, firm_name: str, inviter_name: str, role: str, invite_link: str) -> bool:
-    subject = f"You've been invited to {firm_name} on PracticeSync AI"
-    html = f"""
-    <p>Hi,</p>
-    <p><strong>{inviter_name}</strong> has invited you to join <strong>{firm_name}</strong> on PracticeSync AI as <strong>{role}</strong>.</p>
-    <p><a href="{invite_link}" style="background:#4f46e5;color:white;padding:10px 20px;text-decoration:none;border-radius:6px;">Accept Invitation</a></p>
-    <p>This link expires in 7 days.</p>
+def send_firm_invite(to: str, *, practice_name: Optional[str], inviter_name: Optional[str], role: str,
+                     invite_link: str, valid_until: str, reply_to: Optional[str] = None) -> bool:
+    """Invite somebody to join a practice's staff (POST-A-445).
+
+    The invitation used to go as Supabase's plain sign-in link, sent from the browser, so it said neither which
+    practice had invited the person nor who had. It names both now. The PRACTICE is the sender, so the mail goes
+    under the practice's name and a reply reaches the Partner who sent it (`reply_to`), the way an engagement letter
+    is the practice writing to its own client. `valid_until` is the expiry already worded for a person, in India's
+    time, so the mail states the instant the server stored. A practice or a Partner with no name on record is left
+    out of the sentence, never replaced with a made-up one. Every value is escaped: a practice name is typed text.
     """
-    return _send(to, subject, html)
+    practice = practice_name or "a practice"
+    who = f"<strong>{_esc(inviter_name)}</strong> has invited you" if inviter_name else "You have been invited"
+    subject = _oneline(f"{inviter_name} invited you to join {practice} on PracticeSync AI" if inviter_name
+                       else f"You are invited to join {practice} on PracticeSync AI")
+    ask = _esc(inviter_name) if inviter_name else "the practice"
+    html = (f"<p>Hello,</p>"
+            f"<p>{who} to join <strong>{_esc(practice)}</strong> on PracticeSync AI as {_esc(role)}.</p>"
+            f'<p><a href="{_esc(invite_link)}" style="background:#4f46e5;color:white;padding:10px 20px;'
+            f'text-decoration:none;border-radius:6px;">Accept the invitation</a></p>'
+            f"<p>The link signs you in, works once, and can be used until {_esc(valid_until)}. "
+            f"If it has expired, ask {ask} to send a new one.</p>"
+            f"<p>If you were not expecting this invitation, you can ignore this email.</p>")
+    return _send(to, subject, html, sender_name=practice_name, reply_to=reply_to)
 
 
 # ---------------------------------------------------------------------------

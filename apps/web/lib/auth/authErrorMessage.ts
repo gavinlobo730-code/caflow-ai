@@ -124,37 +124,6 @@ export function authErrorMessage(err: unknown, fallback: string = DEFAULT_FALLBA
   return message || fallback;
 }
 
-// On the Team screen the reader is the Partner who can fix the cause, not the
-// person the email was for, so a code whose remedy is theirs says so.
-const INVITE_EMAIL_SENTENCES: Readonly<Record<string, string>> = {
-  email_address_not_authorized:
-    "The email service is only allowed to send to pre-approved addresses. A custom mail server (SMTP) has to be set up before invites can reach anybody else.",
-};
-
-export const INVITE_EMAIL_REFUSED_NO_REASON = "The email service refused it and gave no reason.";
-
-/**
- * Why a staff invite email was not sent, as one sentence, or null when it
- * was. Reads both what `signInWithOtp` RESOLVES with as `error` and what a
- * failed fetch THROWS, so an error object with nothing in it is still an
- * error and never success.
- */
-export function inviteEmailProblem(error: unknown): string | null {
-  if (error === null || error === undefined) return null;
-  const e = asErrorLike(error);
-  const code = e && typeof e.code === "string" ? e.code : "";
-  if (code && Object.prototype.hasOwnProperty.call(INVITE_EMAIL_SENTENCES, code)) {
-    return INVITE_EMAIL_SENTENCES[code];
-  }
-  const known = knownAuthErrorMessage(error);
-  if (known) return known;
-  const raw = authErrorMessage(error, "");
-  if (!raw) return INVITE_EMAIL_REFUSED_NO_REASON;
-  // The server's own words, kept rather than hidden, inside a sentence that
-  // says whose words they are.
-  return `The email service refused it: ${raw.replace(/[.\s]+$/, "")}.`;
-}
-
 /** What the Team screen shows when the member row was created and the email did not go. */
 export function inviteEmailNotSentMessage(name: string, email: string, reason: string): string {
   return `The invite for ${name} was created, but the email to ${email} could not be sent. ${reason} Until an email reaches them they have no link to join with.`;

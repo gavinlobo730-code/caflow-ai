@@ -8414,14 +8414,30 @@ export const api = {
         member_state?: string; invite_expires_at?: string | null;
       }>;
     }>>("/api/identity/users"),
+    /** Invite a member. The SERVER mails the invitation, naming the practice and the Partner, and the answer says
+     *  what the mail service did with it; it never carries the invitation's token (POST-A-445). */
     createUser: (full_name: string, email: string, role: string) =>
-      request<ApiResp<{ id: string; invite_token: string }>>(
+      request<ApiResp<InvitedMember>>(
         "/api/identity/users", { method: "POST", body: JSON.stringify({ full_name, email, role }) }),
-    // F21 fix: the only way a users row's auth_user_id can be set — token comes
-    // from createUser's response, never from URL params.
+    /** Send a member's invitation again: a fresh link replaces the old one, which stops working (POST-A-445). */
+    resendInvite: (userId: string) =>
+      request<ApiResp<InvitedMember>>(`/api/identity/users/${userId}/resend-invite`, { method: "POST" }),
+    // F21 fix: the only way a users row's auth_user_id can be set. The token comes
+    // from the invitation's own link, never from anything else in the URL.
     acceptInvite: (token: string) =>
       request<ApiResp<{ firm_id: string; role: string; full_name?: string }>>(
         "/api/identity/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
+    /** A sign-in for the invitation's own address, opened from its link with no session (POST-A-445). Redeemed with
+     *  `supabase.auth.verifyOtp({ token_hash, type })`; nothing is used up until acceptInvite. */
+    inviteSession: (token: string) =>
+      request<ApiResp<{ token_hash: string; verification_type: string; email: string }>>(
+        "/api/identity/accept-invite/session", { method: "POST", body: JSON.stringify({ token }) }),
+    /** Whose invitation this is (its address), opening NO sign-in: asked when the browser is signed in as somebody
+     *  else, so merely looking creates nothing (POST-A-445). */
+    inviteAddress: (token: string) =>
+      request<ApiResp<{ email: string }>>(
+        "/api/identity/accept-invite/session",
+        { method: "POST", body: JSON.stringify({ token, open_sign_in: false }) }),
     changeRole: (userId: string, role: string) =>
       request(`/api/identity/users/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
     suspend: (userId: string) => request(`/api/identity/users/${userId}/suspend`, { method: "POST" }),
@@ -8948,6 +8964,15 @@ export type ReconciliationRunResult = {
   findings_count?: number;
   findings?: ReconciliationFinding[];
   error?: string;
+};
+
+/** A member as the server answers an invitation or a resend (POST-A-445): its state, the instant the invitation stops
+ *  working, and what the mail service did with the email. `invite_mail.problem` is the sentence to show when it did
+ *  not go. The invitation's token is never in it. */
+export type InvitedMember = {
+  id: string; full_name?: string; email?: string; role?: string;
+  member_state?: string; invite_expires_at?: string | null;
+  invite_mail: { sent: boolean; problem: string | null };
 };
 
 export type LoginEvent = {

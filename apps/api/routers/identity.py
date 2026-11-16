@@ -9,8 +9,7 @@ role, force-logout (single + firm-wide), login history. Every mutation is writte
 to audit_log; session-affecting actions also record a login_events row and bump
 users.sessions_revoked_at so existing JWTs are rejected immediately.
 """
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,24 +20,30 @@ from models.common import api_response
 from core.auth import get_current_user, get_jwt_user
 from core.list_window import probe, split
 from core.permissions import rbac, Role, canonical_role, get_accessible_resources
+from domain.firm.invite_token import is_stored_form, opens_a_sign_in
 from domain.firm.member_state import member_state
 from repositories.user_repository import user_repo
 from repositories.login_events_repository import login_events_repo
+from services import staff_invite_service
 from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/identity", tags=["identity"])
 
 # Mounted in main.py WITHOUT _MFA_GUARD: the invitee has no users row yet, and
 # mfa_guard's get_current_user refuses exactly that caller, so on the guarded
-# router no invite could ever be accepted. Nothing else belongs on it.
+# router no invite could ever be accepted. Two routes belong on it and nothing
+# else: accept-invite, and the sign-in the join page opens from the invitation's
+# own link before it accepts (POST-A-445).
 invite_router = APIRouter(prefix="/api/identity", tags=["identity"])
 
 _CANONICAL = {r.value for r in Role}
 
-# F21 fix: an invite must be accepted within this window. Chosen to match the
-# window already advertised in the (previously non-functional) invite email
-# copy — "This link expires in 7 days" (services/email_service.send_firm_invite).
-_INVITE_TTL = timedelta(days=7)
+_INVALID_INVITE = "Invalid or expired invite."
+
+#: Why a sign-in that already belongs to a practice cannot accept another invitation (POST-A-445).
+ALREADY_A_MEMBER = ("This sign-in already belongs to a member of a practice on PracticeSync, and one sign-in can "
+                    "belong to one practice. Ask the practice that invited you to send the invitation to another "
+                    "email address.")
 
 
 def _now() -> str:
@@ -66,15 +71,21 @@ def _get_member(user_id: str, firm_id: str) -> dict:
 
 @router.get("/users")
 def list_users(current_user: dict = Depends(rbac("team", "read"))):
-    # The list now carries every member of the firm (the repository reads as
-    # the service role), so a pending invitee's bearer secret is stripped: it
-    # is returned once, to the Partner who created it, by POST /users.
-    # Each row also carries `member_state` (PRE-A-020), asked of the row BEFORE the token is stripped, so the
-    # Team screen shows Invited or Invite expired for someone who has not accepted, never Active.
+    # The list carries every member of the firm (the repository reads as the service role). No row carries an
+    # invitation's token: the repository returns none but through `find_by_invite_token` (POST-A-445), and the
+    # strip below is the second lock. Each row carries `member_state` (PRE-A-020), so the Team screen shows
+    # Invited or Invite expired for someone who has not accepted, never Active.
     now = datetime.now(timezone.utc)
     users = [{**{k: v for k, v in u.items() if k != "invite_token"}, "member_state": member_state(u, now)}
              for u in user_repo.find_all(firm_id=current_user["firm_id"])]
     return api_response(True, {"users": users})
+
+
+def _invite_answer(row: dict, mail: "staff_invite_service.MailResult", now: datetime) -> dict:
+    """A member row as the Team screen is sent it after an invitation: its state, what became of the mail, and
+    never the token (POST-A-445). The token reaches the invitee's mailbox and nobody else."""
+    return {**{k: v for k, v in row.items() if k != "invite_token"},
+            "member_state": member_state(row, now), "invite_mail": mail.as_dict()}
 
 
 @router.post("/users")
@@ -82,25 +93,106 @@ def create_user(body: CreateUserBody, current_user: dict = Depends(rbac("team", 
     if body.role not in _CANONICAL:
         raise HTTPException(400, f"Invalid role. Must be one of: {', '.join(sorted(_CANONICAL))}")
     firm_id = current_user["firm_id"]
-    # F21 fix: the invite link now carries a single-use, expiring, server-issued
-    # token (not the firm_id/role themselves) — /join exchanges the token for a
-    # link via POST /api/identity/accept-invite; it can no longer insert a users
-    # row with client-supplied firm_id/role.
-    invite_token = secrets.token_urlsafe(32)
+    # F21 fix: the invite link carries a single-use, expiring, server-issued token (never the firm_id or role
+    # themselves); /join exchanges it through POST /api/identity/accept-invite. POST-A-445: the server mails it,
+    # naming the practice and the Partner, and the answer no longer carries it.
+    now = datetime.now(timezone.utc)
+    invitation = staff_invite_service.fresh_invitation(now)
     created = user_repo.create({
         "firm_id": firm_id, "full_name": body.full_name, "email": body.email,
-        "role": body.role, "is_active": True, "status": "invited",
-        "invite_token": invite_token,
-        "invite_expires_at": (datetime.now(timezone.utc) + _INVITE_TTL).isoformat(),
+        "role": body.role, "is_active": True, "status": "invited", **invitation.columns,
     })
     log_event(firm_id, "user", str(created.get("id", "")), "create",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"email": body.email, "role": body.role})
-    return api_response(True, {**created, "invite_token": invite_token})
+    mail = staff_invite_service.send({**created, "firm_id": firm_id}, invitation, current_user)
+    return api_response(True, _invite_answer({**created, **invitation.columns}, mail, now))
+
+
+@router.post("/users/{user_id}/resend-invite")
+def resend_invite(user_id: str, current_user: dict = Depends(rbac("team", "write"))):
+    """Send a member's invitation again, with a fresh token and expiry (POST-A-445).
+
+    The fresh token REPLACES the old one, so the link in an earlier mail stops working: a mail sent to a wrong or
+    lost address is withdrawn by sending the right one. If the new mail does not go, the old token and expiry are
+    put back, so a link that still worked keeps working, and the answer says so (`invite_mail.kept_previous`). Only
+    somebody still waiting to join is sent one: a member who has joined has nothing to accept, and a withdrawn
+    invitation is switched back on first (Activate), because a Partner who withdrew it decided once already and a
+    resend is not the place to undo that silently."""
+    firm_id = current_user["firm_id"]
+    member = _get_member(user_id, firm_id)
+    name = member.get("full_name") or member.get("email") or "This member"
+    now = datetime.now(timezone.utc)
+    state = member_state(member, now)
+    if member.get("auth_user_id"):
+        raise HTTPException(409, f"{name} has already joined, so there is no invitation to send.")
+    if state == "inactive":
+        raise HTTPException(409, f"The invitation to {name} was withdrawn. Activate them first, "
+                                 "then send the invitation again.")
+    if state not in ("invited", "invite_expired"):
+        raise HTTPException(409, f"{name} is not waiting on an invitation, so there is none to send.")
+    previous = user_repo.invite_columns(user_id, firm_id=firm_id)
+    # Only an earlier invitation whose link still WORKS is worth putting back if the new mail fails: one that is
+    # live (`invited`) and kept hashed, i.e. one the server mailed and whose link can still sign its owner in.
+    previous_works = bool(previous) and state == "invited" and is_stored_form(previous.get("invite_token"))
+    invitation = staff_invite_service.fresh_invitation(now)
+    updated = user_repo.update(user_id, invitation.columns, firm_id=firm_id)
+    if not updated:
+        raise HTTPException(404, "User not found in firm")
+    mail = staff_invite_service.send({**member, **updated, "firm_id": firm_id}, invitation, current_user)
+    restored = None
+    if not mail.sent and previous_works:
+        # The new mail did not go: put the earlier invitation back, so its link keeps working, but only while the row
+        # still holds the invitation this request wrote (a withdraw, an acceptance or another resend that landed
+        # while the mail was being sent is never undone).
+        restored = user_repo.restore_invitation(user_id, previous, replacing=invitation.columns["invite_token"],
+                                                firm_id=firm_id)
+    if not mail.sent:
+        mail = staff_invite_service.MailResult(False, mail.problem, kept_previous=bool(restored))
+    answer = _invite_answer({**member, **(restored or updated)}, mail, now)
+    log_event(firm_id, "user", user_id, "invite_resent" if mail.sent else "invite_resend_not_sent",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"email": member.get("email"), "invite_expires_at": answer.get("invite_expires_at")})
+    return api_response(True, answer)
 
 
 class AcceptInviteBody(BaseModel):
     token: str
+
+
+class InviteSessionBody(BaseModel):
+    token: str
+    #: False asks only whose invitation this is (its address), opening no sign-in: the join page asks that when the
+    #: browser is signed in as somebody else, so merely looking creates nothing at Supabase (POST-A-445).
+    open_sign_in: bool = True
+
+
+def _live_invitation(token: str) -> dict:
+    """The member row `token` invites, while the invitation can still be accepted, or the one 404 every refusal
+    shares (no such token, already used, withdrawn, past its expiry): telling them apart would let somebody probe
+    which tokens exist."""
+    invite = user_repo.find_by_invite_token(token)
+    if not invite or member_state(invite) != "invited":
+        raise HTTPException(status_code=404, detail=_INVALID_INVITE)
+    return invite
+
+
+@invite_router.post("/accept-invite/session", dependencies=[Depends(public_limit("invite"))])
+def invite_session(body: InviteSessionBody):
+    """Open a sign-in from the invitation's own link (POST-A-445). No login: before this there is no session to
+    require one from, and the invitation's token is what authorises the call, exactly as it authorises
+    accept-invite. The join page redeems the answer with `supabase.auth.verifyOtp({token_hash, type})` and then
+    calls accept-invite with the session it produces. Nothing is consumed here; accept-invite is what uses the
+    token. The sign-in is for the invitation's OWN address, never one the request names, only for an invitation the
+    server mailed (kept hashed; one issued before POST-A-445 is accepted from the sign-in its own mail carried), and
+    never for an address that already has a sign-in (409 in words: that person signs in as usual and opens the link
+    again)."""
+    invite = _live_invitation(body.token)
+    if not opens_a_sign_in(invite):
+        raise HTTPException(status_code=404, detail=_INVALID_INVITE)
+    if not body.open_sign_in:
+        return api_response(True, {"email": str(invite.get("email") or "").strip()})
+    return api_response(True, staff_invite_service.sign_in_for(invite, body.token))
 
 
 @invite_router.post("/accept-invite", dependencies=[Depends(public_limit("invite"))])
@@ -114,23 +206,20 @@ def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)
     ever be set; there is no client-side insert/update path left (see migration
     153, which also removed the RLS/grant paths that made the old raw insert
     possible)."""
-    invite = user_repo.find_by_invite_token(body.token)
-    if not invite:
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
-    expires_at = invite.get("invite_expires_at")
-    if not expires_at or datetime.fromisoformat(expires_at.replace("Z", "+00:00")) < datetime.now(timezone.utc):
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+    # The invitation must be live: found, switched on (a Partner who deactivated a pending invitee has withdrawn
+    # it, and accepting must not reactivate them; that is POST /users/{id}/reactivate, a Partner's act), and not
+    # past its expiry. One rule, `member_state`, which the Team screen and the sign-in below also read.
+    invite = _live_invitation(body.token)
     if (invite.get("email") or "").strip().lower() != (jwt_user.get("email") or "").strip().lower():
         # Defense in depth: the token alone (a 256-bit random secret only ever
         # transmitted to the invited email) is already unforgeable, but a mismatch
         # here means the wrong mailbox somehow held the link — refuse rather than
         # silently link the wrong identity.
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
-    if invite.get("is_active") is False:
-        # A Partner who deactivated a pending invitee has withdrawn the invite;
-        # accepting it must not reactivate them. Reactivation is
-        # POST /users/{id}/reactivate, a Partner's act, never the invitee's.
-        raise HTTPException(status_code=404, detail="Invalid or expired invite.")
+        raise HTTPException(status_code=404, detail=_INVALID_INVITE)
+    if user_repo.find_linked_member(jwt_user["auth_user_id"]):
+        # One sign-in, one practice: `core/auth` reads a sign-in's member row with `maybe_single`, so a second row
+        # linked to the same sign-in would lock its owner out of both practices (POST-A-445).
+        raise HTTPException(status_code=409, detail=ALREADY_A_MEMBER)
 
     updated = user_repo.update(invite["id"], {
         "auth_user_id": jwt_user["auth_user_id"],

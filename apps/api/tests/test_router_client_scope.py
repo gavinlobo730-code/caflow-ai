@@ -1421,6 +1421,12 @@ EXEMPT: dict[str, str] = {
         "completes a staff invite from a server-issued token — identity is "
         "established from the verified JWT and the pre-created invite row, "
         "never a client_id.",
+    "/api/identity/accept-invite/session":
+        "opens a sign-in for a staff invitation's own address from its "
+        "server-issued token (POST-A-445). `users` has no client_id column.",
+    "/api/identity/users/{user_id}/resend-invite":
+        "same table, addressed by a staff user_id: a fresh invitation token "
+        "for a member who has not joined (POST-A-445).",
     "/api/identity/login-event":
         "records the CALLER's own sign-in/sign-out event. No client_id.",
     "/api/identity/me":

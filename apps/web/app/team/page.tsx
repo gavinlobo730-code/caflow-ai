@@ -2,15 +2,18 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { arrayOrEmpty, objectOrNull } from "@/lib/api/shape";
-import { Users, UserPlus, Shield, Mail, MoreVertical, AlertCircle, Lock, SlidersHorizontal, Smartphone } from "lucide-react";
+import { Users, UserPlus, Shield, Mail, MoreVertical, AlertCircle, Lock, SlidersHorizontal, Smartphone, Send } from "lucide-react";
 import MemberAccessDrawer from "@/components/team/MemberAccessDrawer";
 import ResetAuthenticatorModal from "@/components/team/ResetAuthenticatorModal";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/dates/format";
-import { countsAsActive, hasJoined, memberBadge, switchActionLabel, type MemberBadge } from "@/lib/team/memberState";
-import { inviteEmailNotSentMessage, inviteEmailProblem } from "@/lib/auth/authErrorMessage";
+import { formatDate, formatDateTime } from "@/lib/dates/format";
+import {
+  countsAsActive, hasJoined, memberBadge, offersResend, resendNotice, switchActionLabel,
+  type MemberBadge, type TeamNotice,
+} from "@/lib/team/memberState";
+import { inviteEmailNotSentMessage } from "@/lib/auth/authErrorMessage";
 import { PageHeader } from "@/components/ui/page-header";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/states";
@@ -116,10 +119,16 @@ const ROLE_COLORS: Record<Role, string> = {
 };
 
 // ---- Invite Modal ----
+/** What became of an invitation's email, from the SERVER's answer (POST-A-445): `problem` is null when it went. */
+interface InviteOutcome {
+  problem: string | null;
+  /** When the invitation's link stops working, as stored. */
+  expiresAt: string | null;
+}
+
 interface InviteModalProps {
   onClose: () => void;
-  // Resolves to why the invite EMAIL did not go, or null when it did.
-  onInvite: (name: string, email: string, role: Role) => Promise<string | null>;
+  onInvite: (name: string, email: string, role: Role) => Promise<InviteOutcome>;
 }
 
 function InviteModal({ onClose, onInvite }: InviteModalProps) {
@@ -129,6 +138,7 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [emailProblem, setEmailProblem] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -137,7 +147,9 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
     setSaving(true);
     setError(null);
     try {
-      setEmailProblem(await onInvite(name.trim(), email.trim(), role));
+      const outcome = await onInvite(name.trim(), email.trim(), role);
+      setEmailProblem(outcome.problem);
+      setExpiresAt(outcome.expiresAt);
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send invitation");
@@ -174,7 +186,9 @@ function InviteModal({ onClose, onInvite }: InviteModalProps) {
             <Mail className="w-6 h-6 text-green-600" />
           </div>
           <p className="text-xs text-ps-label">
-            Invite sent! {name} will receive a magic link at {email}. They&apos;ll be added as {role}.
+            The invitation went to {email}. Its link signs {name} in
+            {expiresAt ? ` until ${formatDateTime(expiresAt)}` : ""}. They will be added as {role} once they accept.
+            If it does not arrive, use Resend invite on their row.
           </p>
           <button onClick={onClose} autoFocus className="w-full bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark">
             Done
@@ -307,11 +321,13 @@ interface ActionsMenuProps {
   member: TeamMember;
   onEdit: () => void;
   onDeactivate: () => void;
+  /** Present only for somebody still waiting to join (`offersResend`). */
+  onResend?: () => void;
   /** Present only for a Partner and a member who has signed in: someone who never has no authenticator to reset. */
   onResetAuthenticator?: () => void;
 }
 
-function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: ActionsMenuProps) {
+function ActionsMenu({ member, onEdit, onDeactivate, onResend, onResetAuthenticator }: ActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const isActive = member.is_active !== false;
   const switchLabel = switchActionLabel(member);
@@ -335,6 +351,15 @@ function ActionsMenu({ member, onEdit, onDeactivate, onResetAuthenticator }: Act
               <Shield className="w-3.5 h-3.5" />
               Edit Role
             </button>
+            {onResend && (
+              <button
+                onClick={() => { setOpen(false); onResend(); }}
+                className="w-full text-left px-3 py-2 text-xs text-ps-body hover:bg-ps-bg flex items-center gap-2"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Resend invite
+              </button>
+            )}
             {onResetAuthenticator && (
               <button
                 onClick={() => { setOpen(false); onResetAuthenticator(); }}
@@ -718,6 +743,10 @@ export default function TeamPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
   const [resetMember, setResetMember] = useState<TeamMember | null>(null);
+  /** What the last resend came to, in the server's words (POST-A-445). */
+  const [notice, setNotice] = useState<TeamNotice | null>(null);
+  /** The member whose invitation is being sent again: a second press while it is in flight sends nothing. */
+  const [resending, setResending] = useState<string | null>(null);
   // Asking for another person's authenticator to be reset is a Partner's act; the server enforces it, this only
   // decides whether to offer it. approval:approve is held by Partners alone.
   const { can } = usePermissions();
@@ -809,27 +838,40 @@ export default function TeamPage() {
     loadTeam();
   }, [loadTeam]);
 
-  // M6: identity mutations now go through the audited, Partner-only backend
-  // (api.identity) instead of direct Supabase writes from the browser. The user
-  // row is created server-side; the magic link is still sent for self-onboarding.
-  // F21 fix: the join link now carries the server-issued, single-use invite
-  // token (never firm_id/role) — /join exchanges it via POST accept-invite.
-  async function handleInvite(name: string, email: string, role: Role): Promise<string | null> {
+  // M6: identity mutations go through the audited, Partner-only backend (api.identity), never a direct Supabase
+  // write from the browser. POST-A-445: the SERVER mails the invitation, naming the practice and the Partner, and
+  // answers what the mail service did with it; this screen never holds the invitation's token, so it sends nothing
+  // itself. A failed request throws and the modal shows why.
+  async function handleInvite(name: string, email: string, role: Role): Promise<InviteOutcome> {
     const created = await api.identity.createUser(name, email, role);
-    const joinUrl =
-      (typeof window !== "undefined" ? window.location.origin : "") +
-      "/join?token=" + encodeURIComponent(created.data.invite_token);
-    const supabase = getSupabaseClient();
-    // signInWithOtp RETURNS its error rather than throwing it, so both are read.
-    let emailProblem: string | null;
-    try {
-      const { error: sendError } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: joinUrl } });
-      emailProblem = inviteEmailProblem(sendError);
-    } catch (thrown) {
-      emailProblem = inviteEmailProblem(thrown ?? {});
-    }
+    if (!created.success || !created.data) throw new Error(created.error ?? "The invitation could not be created.");
     await loadTeam();
-    return emailProblem;
+    const mail = created.data.invite_mail;
+    return {
+      problem: mail?.sent === true ? null : (mail?.problem ?? "The server did not say whether the email went."),
+      expiresAt: created.data.invite_expires_at ?? null,
+    };
+  }
+
+  // Send a member's invitation again (POST-A-445). The server replaces the token, so the earlier link stops
+  // working, and says whether the new email went. The list is read again so the badge shows the new expiry.
+  async function handleResend(member: TeamMember) {
+    if (resending) return;
+    setResending(member.id);
+    setNotice(null);
+    try {
+      const res = await api.identity.resendInvite(member.id);
+      if (!res.success || !res.data) {
+        setNotice({ tone: "problem", text: res.error ?? `The invitation to ${member.email} could not be sent again.` });
+        return;
+      }
+      setNotice(resendNotice(member.full_name, member.email, res.data, formatDate));
+      await loadTeam();
+    } catch (e) {
+      setNotice({ tone: "problem", text: e instanceof Error ? e.message : `The invitation to ${member.email} could not be sent again.` });
+    } finally {
+      setResending(null);
+    }
   }
 
   async function handleEditRole(id: string, role: Role) {
@@ -842,8 +884,9 @@ export default function TeamPage() {
     try {
       if (reactivating) await api.identity.reactivate(member.id);
       else await api.identity.suspend(member.id);   // also revokes the user's sessions
-      setMembers(ms => ms.map(m => m.id === member.id ? { ...m, is_active: reactivating } : m));
-      setError(null);
+      // Read the list again rather than patching `is_active` here: the badge is the server's `member_state`, and a
+      // withdrawn invitation patched locally kept saying Invited until the page was reloaded.
+      await loadTeam();
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to ${reactivating ? "reactivate" : "deactivate"} team member`);
     }
@@ -907,6 +950,16 @@ export default function TeamPage() {
         <div role="alert" className="bg-state-problem-surface border border-state-problem-border rounded-lg px-4 py-3 flex gap-2 text-sm text-state-problem">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {notice && (
+        <div role={notice.tone === "problem" ? "alert" : "status"} data-team-notice=""
+          className={`rounded-lg px-4 py-3 flex gap-2 text-sm border ${notice.tone === "problem"
+            ? "bg-state-problem-surface border-state-problem-border text-state-problem"
+            : "bg-state-ready-surface border-state-ready-border text-ps-body"}`}>
+          {notice.tone === "problem" ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : <Mail className="w-4 h-4 shrink-0 mt-0.5" />}
+          <span>{notice.text}</span>
         </div>
       )}
 
@@ -1041,6 +1094,7 @@ export default function TeamPage() {
                               member={member}
                               onEdit={() => setEditMember(member)}
                               onDeactivate={() => handleDeactivate(member)}
+                              onResend={offersResend(member) && resending !== member.id ? () => handleResend(member) : undefined}
                               onResetAuthenticator={canResetAuthenticators && member.auth_user_id
                                 ? () => setResetMember(member) : undefined}
                             />

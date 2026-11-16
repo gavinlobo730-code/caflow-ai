@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import routers.identity as idmod
+from domain.firm.invite_token import lookup_values, stored_form
+from services import staff_invite_service
 import repositories.login_events_repository as le
 from routers.identity import router as identity_router
 from core.auth import get_current_user, get_jwt_user
@@ -33,13 +35,30 @@ class _FakeUserRepo:
     def find_all(self, firm_id=None):
         return [u for u in self.users.values() if u.get("firm_id") == firm_id]
     def find_by_invite_token(self, token):
+        values = lookup_values(token)
         return next((u for u in self.users.values()
-                     if u.get("invite_token") == token and not u.get("auth_user_id")), None)
+                     if u.get("invite_token") in values and not u.get("auth_user_id")), None)
+    def find_linked_member(self, auth_user_id):
+        return next((u for u in self.users.values() if u.get("auth_user_id") == auth_user_id), None)
+    def invite_columns(self, uid, *, firm_id):
+        u = self.find_by_id(uid, firm_id=firm_id)
+        return {"invite_token": u.get("invite_token"), "invite_expires_at": u.get("invite_expires_at")} if u else None
+
+
+#: Every token an invitation was issued with, by its stored form: the store keeps only the hash (POST-A-445).
+ISSUED: dict[str, str] = {}
 
 
 @pytest.fixture(autouse=True)
 def _setup(monkeypatch):
     le._MOCK_EVENTS.clear()
+    ISSUED.clear()
+
+    def _issue():
+        token = f"test-token-{len(ISSUED) + 1:02d}-" + "x" * 30
+        ISSUED[stored_form(token)] = token
+        return token
+    monkeypatch.setattr(staff_invite_service, "_new_token", _issue)
     fake = _FakeUserRepo()
     monkeypatch.setattr(idmod, "user_repo", fake)
     audit = []
@@ -117,12 +136,22 @@ def _jwt_client(jwt_user):
     return TestClient(app, raise_server_exceptions=False)
 
 
+def _token(fake, created):
+    """The token the invitation's mail carried. The answer to the Partner no longer carries it and the store keeps
+    only its hash (POST-A-445), so it is read back from what was issued."""
+    return ISSUED[fake.users[created["id"]]["invite_token"]]
+
+
 def test_create_user_issues_an_invite_token(_setup):
+    fake, _ = _setup
     r = _client(PARTNER).post("/api/identity/users",
                               json={"full_name": "New Hire", "email": "new@f.test", "role": "Executive"})
     assert r.status_code == 200
     body = r.json()["data"]
-    assert body["invite_token"] and len(body["invite_token"]) > 20
+    assert "invite_token" not in body, "the token reaches the invitee's mailbox and nobody else"
+    stored = fake.users[body["id"]]
+    assert stored["invite_token"].startswith("sha256:"), "only the token's hash is stored"
+    assert len(_token(fake, body)) > 20
     assert body["status"] == "invited" and body.get("auth_user_id") is None
 
 
@@ -130,7 +159,7 @@ def test_accept_invite_links_the_verified_identity_using_the_invite_role_and_fir
     fake, _ = _setup
     created = _client(PARTNER).post("/api/identity/users",
         json={"full_name": "New Hire", "email": "new@f.test", "role": "Manager"}).json()["data"]
-    token = created["invite_token"]
+    token = _token(fake, created)
 
     r = _jwt_client({"auth_user_id": "real-auth-uid-123", "email": "new@f.test"}) \
         .post("/api/identity/accept-invite", json={"token": token})
@@ -152,10 +181,11 @@ def test_accept_invite_rejects_unknown_token(_setup):
 def test_accept_invite_rejects_email_mismatch(_setup):
     """F21 regression lock: an attacker who somehow obtains a real invite token
     cannot redeem it under a DIFFERENT verified identity/email."""
+    fake, _ = _setup
     created = _client(PARTNER).post("/api/identity/users",
         json={"full_name": "New Hire", "email": "new@f.test", "role": "Partner"}).json()["data"]
     r = _jwt_client({"auth_user_id": "attacker-uid", "email": "attacker@evil.test"}) \
-        .post("/api/identity/accept-invite", json={"token": created["invite_token"]})
+        .post("/api/identity/accept-invite", json={"token": _token(fake, created)})
     assert r.status_code == 404
 
 
@@ -166,28 +196,31 @@ def test_accept_invite_rejects_expired_token(_setup):
     from datetime import datetime, timedelta, timezone
     fake.users[created["id"]]["invite_expires_at"] = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     r = _jwt_client({"auth_user_id": "real-uid", "email": "new@f.test"}) \
-        .post("/api/identity/accept-invite", json={"token": created["invite_token"]})
+        .post("/api/identity/accept-invite", json={"token": _token(fake, created)})
     assert r.status_code == 404
 
 
 def test_accept_invite_is_single_use(_setup):
+    fake, _ = _setup
     created = _client(PARTNER).post("/api/identity/users",
         json={"full_name": "New Hire", "email": "new@f.test", "role": "Executive"}).json()["data"]
     jwt = {"auth_user_id": "real-uid", "email": "new@f.test"}
-    first = _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": created["invite_token"]})
+    token = _token(fake, created)
+    first = _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token})
     assert first.status_code == 200
-    replay = _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": created["invite_token"]})
+    replay = _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token})
     assert replay.status_code == 404
 
 
 def test_accept_invite_cannot_forge_firm_or_role_via_request_body(_setup):
     """F21 regression lock: the endpoint's body schema only accepts a token — there
     is no firm_id/role field an attacker could supply even if they tried."""
+    fake, _ = _setup
     created = _client(PARTNER).post("/api/identity/users",
         json={"full_name": "New Hire", "email": "new@f.test", "role": "Executive"}).json()["data"]
     r = _jwt_client({"auth_user_id": "real-uid", "email": "new@f.test"}).post(
         "/api/identity/accept-invite",
-        json={"token": created["invite_token"], "firm_id": "SOME-OTHER-FIRM", "role": "Partner"},
+        json={"token": _token(fake, created), "firm_id": "SOME-OTHER-FIRM", "role": "Partner"},
     )
     assert r.status_code == 200
     assert r.json()["data"]["role"] == "Executive" and r.json()["data"]["firm_id"] == "F1"

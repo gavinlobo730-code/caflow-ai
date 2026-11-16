@@ -45,6 +45,7 @@ from core.authz import assert_client_access
 from core.urls import frontend_base
 from core import db_provider
 from core.db_provider import privileged_for
+from services import sign_in_link
 
 # Same window the client-portal invites use. Long enough for someone on leave to
 # act on it, short enough that a forgotten invite does not stay live for months.
@@ -322,21 +323,10 @@ def mint_activation_session(token: str, db=None) -> dict:
         return {"token_hash": f"mock-token-hash-{token_hash(token)[:16]}",
                 "verification_type": "magiclink", "email": email}
 
-    admin = db.auth.admin
-    try:
-        resp = admin.generate_link({"type": "invite", "email": email})
-    except Exception:
-        try:
-            resp = admin.generate_link({"type": "magiclink", "email": email})
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Could not start your sign-in session. Please try again "
-                       "in a moment, or ask your employer to resend the invitation.",
-            ) from exc
-
-    props = resp.properties
-    return {"token_hash": props.hashed_token, "verification_type": props.verification_type}
+    return sign_in_link.mint(
+        db.auth.admin, email,
+        refusal="Could not start your sign-in session. Please try again "
+                "in a moment, or ask your employer to resend the invitation.")
 
 
 def accept_employee_invite(token: str, auth_user_id: str, email: str, db=None) -> dict:

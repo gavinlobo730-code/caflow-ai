@@ -77,3 +77,44 @@ export function hasJoined(row: MemberStateRow): boolean {
   if (s === null || s === "active") return true;
   return s === "inactive" && !!row.auth_user_id;
 }
+
+/**
+ * Whether the row offers Resend invite (POST-A-445): somebody still waiting to join, whose invitation is live or has
+ * lapsed. A withdrawn invitation is switched back on first (Activate), and the server refuses a resend otherwise.
+ */
+export function offersResend(row: MemberStateRow): boolean {
+  const s = memberState(row);
+  return s === "invited" || s === "invite_expired";
+}
+
+/** What the server says it did with an invitation's email (POST-A-445). */
+export interface InviteMailAnswer {
+  invite_mail?: { sent?: boolean; problem?: string | null; kept_previous?: boolean } | null;
+  invite_expires_at?: string | null;
+}
+
+export interface TeamNotice {
+  tone: "ready" | "problem";
+  text: string;
+}
+
+/**
+ * The sentence after a resend, from the server's answer. A fresh link replaces the old one when the email went; when
+ * it did not, the server puts the earlier invitation back and says so (`kept_previous`), and only then does the
+ * sentence say the earlier link still works. An answer that does not say the mail went is never read as sent.
+ */
+export function resendNotice(name: string, email: string, answer: InviteMailAnswer,
+                             formatDay: (iso: string) => string): TeamNotice {
+  const until = answer.invite_expires_at ? ` It can be used until ${formatDay(answer.invite_expires_at)}.` : "";
+  if (answer.invite_mail?.sent === true) {
+    return { tone: "ready",
+             text: `A new invitation went to ${email}. The link in any earlier email no longer works.${until}` };
+  }
+  const problem = answer.invite_mail?.problem ?? "The server did not say whether the email went.";
+  if (answer.invite_mail?.kept_previous === true) {
+    return { tone: "problem",
+             text: `The new invitation's email to ${email} did not go, so ${name}'s earlier invitation was kept: the link in it still works until it expires. ${problem}` };
+  }
+  return { tone: "problem",
+           text: `A new invitation for ${name} was saved, but its email to ${email} did not go, and the link in any earlier email no longer works. ${problem}` };
+}
