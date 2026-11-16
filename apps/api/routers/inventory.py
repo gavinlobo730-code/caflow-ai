@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from models.common import api_response
 from models.inventory import (StockAdjustmentIn, NrvWritedownIn, NrvWritedownPreviewIn,
+                              NrvReviewSheetIn, NrvReviewPostIn,
                               StockCountOpenIn, StockCountSaveIn,
                               CostingPolicyIn, StockEffectRetryIn)
 from core.permissions import rbac
@@ -549,6 +550,88 @@ def preview_writedown_stock_to_nrv(
     except Exception as e:
         _logger.error("preview_writedown_stock_to_nrv: %s", e)
         return api_response(False, None, "Unable to work out the write-down. Please try again.")
+
+
+# ── The cross-item NRV review (POST-A-111, the rest of INV-10) ───────────────
+# A year-end valuation reviews the whole register, and the write-down above
+# takes ONE item per call. These two routes are the sheet and the batch: the
+# CA types an NRV for the items they judge to have fallen below cost, sees what
+# each would write down, and posts the lot under one reference.
+#
+# NOTHING HERE POSTS DIRECTLY, AND NOTHING HERE ESTIMATES AN NRV.
+# `services/nrv_review_service.post` calls `apply_nrv_writedown` once per line,
+# the function `writedown_stock_to_nrv` above calls; the rule is
+# `domain/inventory/nrv_review.py`. CA REVIEW REQUIRED — every NRV is the CA's.
+
+@router.post("/nrv-review/preview")
+def preview_nrv_review(
+    data: NrvReviewSheetIn,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The review sheet: every stock-tracked product that holds stock now, with its quantity and carrying value, and for each NRV the
+    CA has typed, what it would write down. The arithmetic is the posting's own (`_compute_nrv_writedown`) on the same ledger row.
+    Reads only: no movement, no journal, no audit entry. POST because the typed NRVs are a body, as for the single preview."""
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        from domain.inventory import nrv_review
+        return api_response(True, nrv_review.build_sheet([], {}, {}))
+    from core.supabase_client import get_supabase
+    from services import nrv_review_service
+    try:
+        return api_response(True, nrv_review_service.review_sheet(
+            get_supabase(), firm_id=current_user.get("firm_id") or "", client_id=data.client_id,
+            lines=[line.model_dump() for line in data.lines]))
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("preview_nrv_review: %s", e)
+        return api_response(False, None, "Unable to load the NRV review just now. Please try again.")
+
+
+@router.post("/nrv-review/post")
+def post_nrv_review(
+    data: NrvReviewPostIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Write each reviewed item down to the NRV the CA entered, under one reference, one line at a time through the single-item
+    door's function. A line whose NRV is not below the carrying value is left alone and said to be; a line that could not be
+    recorded is named; posting the same sheet again writes down only what is still above the value entered.
+
+    # CA REVIEW REQUIRED — the CA confirms the sheet before this runs.
+    """
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(False, None, "Write-downs cannot be posted in the demo without a database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.supabase_client import get_supabase
+    from services import nrv_review_service
+    db = get_supabase()
+    period_validation_service.validate_posting_date(firm_id, data.writedown_date)
+    reference_no = (data.reference_no or "").strip() or f"NRV-{data.writedown_date}"
+    try:
+        result = nrv_review_service.post_review(
+            db, firm_id=firm_id, client_id=data.client_id, writedown_date=data.writedown_date,
+            reference_no=reference_no, lines=[line.model_dump() for line in data.lines],
+            # journal_entries.created_by FK references users(id), not auth_user_id.
+            created_by=current_user.get("id"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("post_nrv_review: %s", e)
+        return api_response(False, None, "Unable to post the write-downs just now. The register shows what was recorded; posting "
+                                         "the same sheet again writes down only what is still above the value entered.")
+    # One audit entry per line, the single door's own event, so an item's trail reads the same whichever door wrote it, and the
+    # CA's judgement is kept for a line that wrote nothing down too.
+    for kind, rows in (("posted", result["posted"]), ("not_needed", result["not_needed"]), ("failed", result["failed"])):
+        for row in rows:
+            log_event(
+                firm_id, "inventory_nrv_writedown", row["service_catalogue_id"], "create",
+                actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                new_data={"nrv_per_unit_paise": row["nrv_per_unit_paise"], "notes": data.notes, "applied": kind == "posted",
+                          "outcome": kind, "reference_no": reference_no, "review": True},
+            )
+    return api_response(True, result)
 
 
 # ── The physical count (INV-08) ──────────────────────────────────────────────

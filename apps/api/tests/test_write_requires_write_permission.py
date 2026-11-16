@@ -192,6 +192,10 @@ def test_no_mutating_route_is_guarded_by_a_read_level_action():
         # ledger, journal and audit rows either side of three previews, so this claim is enforced, not asserted. It sits
         # at accounting:read deliberately, like the FX revaluation preview: whoever may see the stock may see the working.
         "/api/inventory/items/{service_catalogue_id}/writedown-preview",
+        # The cross-item NRV review's sheet (POST-A-111): the same question as the single preview for every typed line, from
+        # `nrv_writedown_answer` over the rows `stock_latest_rows` returns, and it writes nothing (the review's own test counts
+        # the ledger and journal rows either side of three previews). Read-level for the single preview's reason.
+        "/api/inventory/nrv-review/preview",
         "/api/gst/validate/gstr1",
         "/api/gst/validate/gstr3b",
         # Stateless Groq passthrough over a static prompt; loads nothing, writes

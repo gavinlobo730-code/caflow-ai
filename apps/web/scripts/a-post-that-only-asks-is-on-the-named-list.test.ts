@@ -26,6 +26,7 @@ const WEB = path.join(import.meta.dirname, "..");
 const ASKS_ONLY: Record<string, string> = {
   "/api/fx-revaluation/preview": "routers/fx_revaluation.py preview_revaluation: plans the AS 11 revaluation from reads; only revalue() writes",
   "/api/inventory/items/{}/writedown-preview": "routers/inventory.py preview_writedown_stock_to_nrv: domain.inventory_service.preview_nrv_writedown, reads the stock ledger",
+  "/api/inventory/nrv-review/preview": "routers/inventory.py preview_nrv_review: services/nrv_review_service.review_sheet reads the goods and their latest ledger rows",
   "/api/banking/transactions/{}/posting-preview": "routers/banking.py posting_preview: bank_posting_service.preview plans the journal; only post() writes",
   "/api/banking/reconciliations/{}/preview": "routers/banking.py preview_reconciliation: bank_reconciliation_service.preview classifies and ties out; reconcile() writes",
   "/api/payroll/runs/{}/esic/mapped-ips": "routers/payroll.py esic_mapped_ip_check: compares the pasted list with the run's return and stores nothing",

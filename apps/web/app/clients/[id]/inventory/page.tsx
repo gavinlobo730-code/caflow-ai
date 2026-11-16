@@ -29,6 +29,7 @@ import { LocationsAndBatches } from "@/components/inventory/LocationsAndBatches"
 import { StockAgeingPanel } from "@/components/inventory/StockAgeing";
 import { ReorderPanel } from "@/components/inventory/ReorderPanel";
 import { UnrecordedStockPanel } from "@/components/inventory/UnrecordedStockPanel";
+import { NrvReviewPanel } from "@/components/inventory/NrvReviewPanel";
 
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { Callout } from "@/components/ui/callout";
@@ -205,6 +206,7 @@ export default function InventoryPage() {
   // constraint rather than duplicating — but the CA would see a failure for a
   // click that worked.
   const [openingCount, setOpeningCount] = useState(false);
+  const [nrvReviewOpen, setNrvReviewOpen] = useState(false);
   // apex-bank-assets-inventory-06. `load` fires again on every `asAt` change
   // with no request-sequencing at all, so switching the as-at date quickly —
   // click, click, click — let an earlier, SLOWER response land after a later,
@@ -438,6 +440,14 @@ export default function InventoryPage() {
                   className="px-3 py-[7px] text-xs border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 whitespace-nowrap disabled:opacity-50">
             {openingCount ? "Opening…" : "Physical count"}
           </Button>}
+          {/* The review measures each item on the stock held now, so it is offered only on the current register, as the row actions are. */}
+          {/* POST-A-111: the review's Post is `rbac("accounting", "write")`, the pair `mayWriteBooks` asks. */}
+          {!asAt && mayWriteBooks && (
+            <Button variant="plain" size="none" onClick={() => setNrvReviewOpen(true)}
+                    className="px-3 py-[7px] text-xs border border-ps-border text-ps-body rounded-lg hover:bg-ps-bg whitespace-nowrap">
+              <TrendingDown size={12} className="inline mr-1" />NRV review
+            </Button>
+          )}
           <button onClick={load} className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
@@ -520,6 +530,10 @@ export default function InventoryPage() {
           onClose={() => setCountSessionId(null)}
           onPosted={load}
         />
+      )}
+
+      {nrvReviewOpen && (
+        <NrvReviewPanel clientId={clientId} onClose={() => setNrvReviewOpen(false)} onPosted={load} />
       )}
 
       {drillDown && (

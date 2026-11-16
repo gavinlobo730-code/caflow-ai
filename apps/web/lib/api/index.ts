@@ -223,6 +223,49 @@ export interface NrvWritedownPreview {
   write_down_paise: number;
 }
 
+/** One item of the cross-item NRV review (`POST /api/inventory/nrv-review/preview`, POST-A-111). Every figure is the server's.
+ *  `nrv_per_unit_paise` is the value the CA typed, echoed back, and null where they typed none: the sheet never suggests one.
+ *  `write_down_paise` and `new_value_paise` are null for an item with no value typed. */
+export interface NrvReviewItem {
+  service_catalogue_id: string;
+  name: string;
+  unit: string | null;
+  quantity_units: string;
+  carrying_value_paise: number;
+  average_cost_paise: number;
+  nrv_per_unit_paise: number | null;
+  write_down_paise: number | null;
+  new_value_paise: number | null;
+  status: "not_entered" | "write_down" | "not_below_carrying_value" | "no_stock";
+}
+
+/** The NRV review sheet: every stock-tracked product that holds stock now, with the server's two sentences about what it is. */
+export interface NrvReviewSheet {
+  items: NrvReviewItem[];
+  item_count: number;
+  entered_count: number;
+  write_down_count: number;
+  carrying_value_paise: number;
+  write_down_paise: number;
+  measured_now: string;
+  no_nrv_of_our_own: string;
+}
+
+/** What one posted part of the NRV review did (`POST /api/inventory/nrv-review/post`). `message` is the server's sentence. */
+export interface NrvReviewPostResult {
+  reference_no: string;
+  writedown_date: string;
+  posted: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; write_down_paise: number;
+            movement_id: string | null; journal_posted: boolean | null }[];
+  not_needed: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; why: string }[];
+  failed: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; why: string }[];
+  posted_count: number;
+  not_needed_count: number;
+  failed_count: number;
+  write_down_paise: number;
+  message: string;
+}
+
 /** One kind of practice mail a person can switch on or off
  *  (`GET /api/notifications/email-preferences`). The vocabulary and the
  *  defaults are the server's (`domain/practice_notices`) and this screen
@@ -5416,6 +5459,17 @@ export const api = {
       request<ApiResp<NrvWritedownPreview | null>>(
         `/api/inventory/items/${serviceCatalogueId}/writedown-preview`,
         { method: "POST", body: JSON.stringify(body), asked: "read" }),
+    // POST-A-111 — the cross-item NRV review. The sheet is a read (what each typed NRV would write down, from the function the
+    // posting runs) and the post writes each line down through the single-item door's function, under one reference.
+    nrvReview: (body: { client_id: string; lines: { service_catalogue_id: string; nrv_per_unit_paise: number }[] }) =>
+      request<ApiResp<NrvReviewSheet>>("/api/inventory/nrv-review/preview",
+        { method: "POST", body: JSON.stringify(body), asked: "read" }),
+    postNrvReview: (body: {
+      client_id: string; writedown_date: string; lines: { service_catalogue_id: string; nrv_per_unit_paise: number }[];
+      reference_no?: string; notes?: string;
+    }) =>
+      request<ApiResp<NrvReviewPostResult>>("/api/inventory/nrv-review/post",
+        { method: "POST", body: JSON.stringify(body) }),
     // INV-08 — the physical count. One sheet, not a hundred adjustments. The
     // VARIANCE is derived on the server against the position as at the count
     // date and is never sent up; so is which line may post and why.
