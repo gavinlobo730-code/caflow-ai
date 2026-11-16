@@ -15,6 +15,7 @@ import type { CalendarAnswer } from "@/lib/data/tds";
 import { Callout } from "@/components/ui/callout";
 import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
 import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
+import { TypedDeductionsOnStatementNote } from "@/components/tds/TypedDeductionsOnStatementNote";
 import { Badge } from "@/components/ui/badge";
 import { DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -821,8 +822,14 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                 <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                   {!accountFound
                     ? "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped."
-                    : matched ? "✓ Reconciled to the General Ledger"
+                    : matched ? (rec.typed_paise ? "✓ The purchase bills and advances reconcile to the General Ledger" : "✓ Reconciled to the General Ledger")
                     : "⚠ Does not reconcile to the General Ledger — review before saving"}
+                  {/* The server's own figure (POST-A-078): typed deductions are in the totals below and in no journal, so they are outside this check. */}
+                  {accountFound && Boolean(rec.typed_paise) && (
+                    <span className="block mt-1 text-xs">
+                      The {rupees(rec.typed_paise as number)} of tax on deductions typed on the TDS screen has no journal behind it and is outside this check.
+                    </span>
+                  )}
                   {accountFound && !matched && (
                     <span className="block mt-1 text-xs">
                       Books: {rupees((rec.books_paise as number) ?? 0)} vs Ledger: {rupees((rec.ledger_paise as number) ?? 0)}
@@ -882,8 +889,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                     </p>
                   );
                 })()}
-                {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries posted purchase bills and advances
-                    only, so a typed deduction is not on it. The server names them (a 26Q only; a 24Q or 27Q sends no key and gets no note). */}
+                {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries them as deductee rows beside the
+                    purchase bills' and advances', outside the ledger tie-out above (no journal stands behind them), and leaves out a typed row recorded
+                    for another statement. The server names both (a 26Q only; a 24Q or 27Q sends no key and gets no note). */}
+                <TypedDeductionsOnStatementNote raw={computeResult.typed_on_statement} />
                 <TypedDeductionsNote raw={computeResult.excluded_typed} />
                 {((computeResult.challan_gaps as ChallanGap[]) ?? []).length > 0 && (
                   <div className="space-y-1 bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">

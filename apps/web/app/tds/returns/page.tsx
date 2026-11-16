@@ -37,6 +37,7 @@ import { formatDate } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
 import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
 import { usePermissions } from "@/lib/auth/AuthContext";
+import { TypedDeductionsOnStatementNote } from "@/components/tds/TypedDeductionsOnStatementNote";
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 }
@@ -483,8 +484,10 @@ export default function TDSReturnsPage() {
                     </div>
                   )}
 
-                  {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries posted purchase bills and advances
-                      only, so a typed deduction is not on it. The server names them; this draws what it said and adds nothing to the totals above. */}
+                  {/* AND THE DEDUCTIONS TYPED ON THE TDS SCREEN (POST-A-078): a 26Q built from the books carries them as deductee rows beside the purchase
+                      bills' and advances', outside the ledger tie-up below (no journal stands behind them), and leaves out a typed row recorded for another
+                      statement. The server names both; this draws what it said and adds nothing to the totals above. */}
+                  <TypedDeductionsOnStatementNote raw={result.typed_on_statement} />
                   <TypedDeductionsNote raw={result.excluded_typed} />
 
                   <div className="text-xs text-ps-label space-y-1">
@@ -500,9 +503,13 @@ export default function TDSReturnsPage() {
                           {!result.reconciliation.account_found
                             ? "the TDS Payable control account was not found"
                             : result.reconciliation.matched
-                            ? "books agree with the general ledger"
+                            ? (result.reconciliation.typed_paise
+                              ? "the purchase bills and advances agree with the general ledger"
+                              : "books agree with the general ledger")
                             : `books and ledger differ by ${r(Math.abs(result.reconciliation.difference_paise))}`}
                         </strong>
+                        {/* The server's own figure (POST-A-078): the typed deductions' tax is in the totals and in no journal, so it is outside this check. */}
+                        {result.reconciliation.typed_paise ? <> · the {r(result.reconciliation.typed_paise)} of tax on typed deductions has no journal and is outside it</> : null}
                       </p>
                     )}
                   </div>
@@ -535,7 +542,13 @@ export default function TDSReturnsPage() {
                     <tbody className="divide-y divide-ps-border">
                       {result.deductees.map((d, i) => (
                         <tr key={i} className="bg-white hover:bg-ps-bg">
-                          <td className="px-3 py-2">{d.deductee_name}</td>
+                          <td className="px-3 py-2">
+                            {d.deductee_name}
+                            {d.recorded_by === "tds_register" && (
+                              <span className="ml-1.5 text-3xs text-ps-label border border-ps-border rounded px-1 py-0.5 whitespace-nowrap"
+                                title="Typed on the TDS screen: no journal stands behind this deduction.">typed on the TDS screen</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 font-mono">{d.deductee_pan}</td>
                           <td className="px-3 py-2">
                             <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-xs">{d.section}</span>
