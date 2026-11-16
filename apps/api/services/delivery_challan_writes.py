@@ -89,6 +89,27 @@ def record_lot(db, firm_id: str, client_id: str, challan_id: str, lot: dict, *, 
     return (got[0] if isinstance(got, list) and got else got) or {}
 
 
+def retract_lot(db, firm_id: str, client_id: str, challan_id: str, lot_id: str, reason: str, by: object, *, document_no: object) -> dict:
+    """Retract one lot of goods back from a job worker, in one transaction (migration 651, POST-A-418); `{"lot": <the row>, "challan_back_to_issued": bool}`.
+
+    The function takes the challan's lock first, so a retraction and a new lot, a cancel or another retraction of the same lot act one after the other; the second of two retractions of one lot
+    is the 404 a lot that is not there gets."""
+    try:
+        got = privileged_for(db).rpc("retract_challan_lot_atomic", {
+            "p_firm_id": firm_id, "p_client_id": client_id, "p_challan_id": challan_id, "p_lot_id": lot_id, "p_reason": reason, "p_by": by}).execute().data
+    except Exception as e:  # noqa: BLE001
+        text = _text(e)
+        if "challan_not_issued" in text:
+            raise HTTPException(status_code=409, detail=(
+                f"Challan {document_no} is not an issued challan (it is a draft or cancelled), so it has no lot to retract. Reload the challan and look at its status.")) from e
+        if "lot_not_found" in text or "challan_not_found" in text:
+            raise HTTPException(status_code=404, detail="That lot was not found on this client's challan, or it has already been retracted.") from e
+        if "retraction_needs_reason" in text:
+            raise HTTPException(status_code=422, detail="Say why the lot is being retracted: the reason is kept with it.") from e
+        raise
+    return (got[0] if isinstance(got, list) and got else got) or {}
+
+
 def correct_draft(db, firm_id: str, client_id: str, challan_id: str, header: dict, fixes: list, *, document_no: object) -> int:
     """Write a draft's header fields and the description and HSN code of its lines together, in one transaction, held to a draft; the number of lines corrected.
 

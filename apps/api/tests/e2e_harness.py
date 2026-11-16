@@ -761,6 +761,7 @@ class _Rpc:
 
     _fn_create_delivery_challan_atomic = _challan_function
     _fn_record_challan_lot_atomic = _challan_function
+    _fn_retract_challan_lot_atomic = _challan_function
     _fn_correct_draft_challan_lines_atomic = _challan_function
 
     def _fn_tds_deposit_position(self):
