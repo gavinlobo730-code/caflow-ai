@@ -416,7 +416,9 @@ def check_invoice_lines_against_orders(db, firm_id: str, client_id: str, custome
 
     WHAT IT DOES NOT HOLD: the read and the write are two requests, so two saves made at the same moment can each find the other absent.
     Such a draft is refused at ISSUE, where this is asked again (`check_invoice_still_bills_its_orders`) and the other draft is counted;
-    only two issues made at the same moment as well get past it (POST-A-440).
+    two issues made at the same moment as well can each pass it, and the DATABASE refuses the second (migration 650, POST-A-440: a
+    trigger takes the order line's lock and sums what the issued invoices bill, with this rule as its parity-tested twin), which the
+    issue route words.
     """
     wanted: dict = {}
     items: dict = {}
