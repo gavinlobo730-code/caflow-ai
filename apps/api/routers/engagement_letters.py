@@ -34,6 +34,7 @@ from domain.engagement import expiry
 from domain.money_sentence import rupee_text, rupee_whole_text
 from core import db_provider
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 
 _logger = logging.getLogger("caflow.engagement_letters")
 
@@ -118,8 +119,8 @@ def _advance_lead(lead_id, firm_id, target_stage, current_user) -> None:
             actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.lead_stage_advance", firm_id=firm_id, lead_id=lead_id)
 
 
 def _revert_lead(lead_id, firm_id, current_user) -> None:
@@ -139,8 +140,8 @@ def _revert_lead(lead_id, firm_id, current_user) -> None:
             actor_id=current_user.get("auth_user_id"),
             actor_email=current_user.get("email"),
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.lead_stage_revert", firm_id=firm_id, lead_id=lead_id)
 
 
 # ─── Default templates ────────────────────────────────────────────────────────
@@ -497,8 +498,8 @@ def _next_engagement_no(db, firm_id: str) -> str:
             parts = rows[0]["engagement_number"].split("-")
             last_no = int(parts[-1])
             return f"EL-{year}-{last_no + 1:04d}"
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="engagement.number_parse", firm_id=firm_id)
     return f"EL-{year}-0001"
 
 
@@ -563,8 +564,8 @@ def _seed_default_templates(db, firm_id: str, created_by: Optional[str]) -> list
     else:
         try:
             privileged_for(db).table("engagement_templates").insert(seeded).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="engagement.template_seed", firm_id=firm_id)
     return seeded
 
 
@@ -588,8 +589,8 @@ def _log_engagement_event(
     else:
         try:
             db.table("engagement_events").insert(event_row).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="engagement.event_log", firm_id=firm_id, engagement_id=engagement_id, event_type=event_type)
 
 
 # ─── Engagement letter email delivery ─────────────────────────────────────────
@@ -645,18 +646,18 @@ def _resolve_recipient_email(db, eng: dict, override: Optional[str]) -> Optional
         return eng["recipient_email"]
     if db and eng.get("lead_id"):
         try:
-            r = db.table("leads").select("email").eq("id", eng["lead_id"]).single().execute()
+            r = db.table("leads").select("email").eq("id", eng["lead_id"]).maybe_single().execute()
             if r.data and r.data.get("email"):
                 return r.data["email"]
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="engagement.recipient_lead_read", engagement_id=eng.get("id"), lead_id=eng.get("lead_id"))
     if db and eng.get("client_id"):
         try:
-            r = db.table("clients").select("email").eq("id", eng["client_id"]).single().execute()
+            r = db.table("clients").select("email").eq("id", eng["client_id"]).maybe_single().execute()
             if r.data and r.data.get("email"):
                 return r.data["email"]
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="engagement.recipient_client_read", engagement_id=eng.get("id"), client_id=eng.get("client_id"))
     return None
 
 
@@ -832,8 +833,8 @@ def _do_resend(db, eng: dict, firm_id: str, to_email: Optional[str], actor: dict
         log_event(firm_id, "engagement", engagement_id, "resend",
                   actor_id=actor.get("auth_user_id"), actor_email=actor.get("email"),
                   new_data={"emailed_to": delivery.get("to"), "resend_count": new_count})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_resend", firm_id=firm_id, engagement_id=engagement_id)
     return delivery
 
 
@@ -924,8 +925,8 @@ def create_template(
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
                   new_data={"name": body.name, "service_type": body.service_type})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement_template.audit_create", firm_id=firm_id, template_id=created.get("id"))
     return api_response(True, {"template": created})
 
 
@@ -1032,8 +1033,8 @@ def update_template(
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
                   new_data=updates)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement_template.audit_update", firm_id=firm_id, template_id=template_id)
     return api_response(True, {"template": updated})
 
 
@@ -1089,8 +1090,8 @@ def delete_template(
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
                   new_data={"is_deleted": True})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement_template.audit_delete", firm_id=firm_id, template_id=template_id)
     return api_response(True, {"message": "Template deleted", "template_id": template_id})
 
 
@@ -1261,8 +1262,8 @@ def create_engagement(
                   actor_email=current_user.get("email"),
                   new_data={"title": body.title, "engagement_number": engagement_number,
                              "fee_amount_paise": fee_paise})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_create", firm_id=firm_id, engagement_id=engagement_id)
     # Objective 1: creating a letter advances the linked lead to "Engagement Drafted".
     _advance_lead(created.get("lead_id") or body.lead_id, firm_id, "Engagement Drafted", current_user)
     return api_response(True, {"engagement": created})
@@ -1405,8 +1406,8 @@ def update_engagement(
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
                   new_data=updates)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_update", firm_id=firm_id, engagement_id=engagement_id)
     return api_response(True, {"engagement": updated})
 
 
@@ -1488,13 +1489,13 @@ def generate_engagement(
                 .select("company_name, contact_name")
                 .eq("id", eng["lead_id"])
                 .eq("firm_id", firm_id)
-                .single()
+                .maybe_single()
                 .execute()
             )
             if lead_res.data:
                 client_name = client_name or lead_res.data.get("company_name") or lead_res.data.get("contact_name") or ""
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="engagement.merge_lead_read", firm_id=firm_id, engagement_id=engagement_id)
 
     if eng.get("client_id"):
         try:
@@ -1503,15 +1504,15 @@ def generate_engagement(
                 .select("client_name, pan, gstin")
                 .eq("id", eng["client_id"])
                 .eq("firm_id", firm_id)
-                .single()
+                .maybe_single()
                 .execute()
             )
             if client_res.data:
                 client_name = client_name or client_res.data.get("client_name") or ""
                 client_pan = client_res.data.get("pan") or ""
                 client_gstin = client_res.data.get("gstin") or ""
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="engagement.merge_client_read", firm_id=firm_id, engagement_id=engagement_id)
 
     fields = {
         "client_name":      client_name or "Client",
@@ -1549,8 +1550,8 @@ def generate_engagement(
                   actor_email=current_user.get("email"),
                   old_data={"status": "Draft"},
                   new_data={"status": "Generated"})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_generate", firm_id=firm_id, engagement_id=engagement_id)
     return api_response(True, {"engagement": updated, "rendered_content": rendered})
 
 
@@ -1659,8 +1660,8 @@ def send_engagement(
                   old_data={"status": eng["status"]},
                   new_data={"status": "Sent", "sent_at": now,
                              "emailed_to": delivery.get("to")})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_send", firm_id=firm_id, engagement_id=engagement_id)
     # Objective 1: sending a letter advances the linked lead to "Engagement Sent".
     _advance_lead(eng.get("lead_id"), firm_id, "Engagement Sent", current_user)
     return api_response(True, {"engagement": expiry.present(updated), "delivery": delivery})
@@ -1821,8 +1822,8 @@ def change_recipient(
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
                   new_data={"recipient_email": new_email})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_recipient_change", firm_id=firm_id, engagement_id=engagement_id)
 
     # Optional immediate resend (only meaningful while awaiting signature).
     if body.resend and eng["status"] in _RESENDABLE:
@@ -1901,8 +1902,8 @@ def regenerate_link(
                   actor_id=current_user.get("auth_user_id"),
                   actor_email=current_user.get("email"),
                   new_data={"link_regenerated": True})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_link_regenerate", firm_id=firm_id, engagement_id=engagement_id)
 
     if do_resend:
         if _is_expired(eng) and not force:
@@ -2041,8 +2042,8 @@ def sign_engagement(
                   actor_email=current_user.get("email"),
                   old_data={"status": eng["status"]},
                   new_data={"status": "Signed", "signed_at": now})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_sign", firm_id=firm_id, engagement_id=engagement_id)
     # Objective 1: signing a letter advances the linked lead to "Engagement Signed".
     _advance_lead(eng.get("lead_id"), firm_id, "Engagement Signed", current_user)
     return api_response(True, {"engagement": updated})
@@ -2132,8 +2133,8 @@ def reject_engagement(
                   old_data={"status": eng["status"]},
                   new_data={"status": "Rejected", "rejected_at": now,
                              "rejection_notes": body.rejection_notes})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_reject", firm_id=firm_id, engagement_id=engagement_id)
     # A rejected letter must not orphan the lead — revert it to an active stage.
     _revert_lead(eng.get("lead_id"), firm_id, current_user)
     return api_response(True, {"engagement": updated})
@@ -2212,8 +2213,8 @@ def delete_engagement(
                   actor_email=current_user.get("email"),
                   old_data={"status": eng.get("status")},
                   new_data={"is_deleted": True})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement.audit_delete", firm_id=firm_id, engagement_id=engagement_id)
     # Discarding a letter must not orphan the lead — revert it to an active stage.
     _revert_lead(eng.get("lead_id"), firm_id, current_user)
     return api_response(True, {"message": "Engagement deleted", "engagement_id": engagement_id})
