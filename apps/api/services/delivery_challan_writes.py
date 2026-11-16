@@ -26,7 +26,7 @@ is raised and logged as it is). The words are read off the error's text, as `ser
 """
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Optional
 
 from fastapi import HTTPException
 
@@ -85,6 +85,34 @@ def record_lot(db, firm_id: str, client_id: str, challan_id: str, lot: dict, *, 
                 "Only goods sent for JOB WORK are returned on ITC-04. This challan was issued for another reason, whose own clock (if any) is stopped on the challan itself.")) from e
         if "challan_not_found" in text or "line_not_found" in text:
             raise HTTPException(status_code=404, detail="That challan line was not found for this client.") from e
+        raise
+    return (got[0] if isinstance(got, list) and got else got) or {}
+
+
+def issue(db, firm_id: str, client_id: str, challan_id: str, issued_at: str, *, document_no: object) -> Optional[dict]:
+    """Returns None when the database has no `issue_delivery_challan_atomic` (migration 652 is not applied yet: raised only for the missing-function signature, so the caller can issue with the
+    compare-and-set it had for the minutes between a deploy of the API and the migration, and for no other reason). Otherwise: issue a draft challan in one transaction that locks the challan and the order it names and asks the order's over-delivery rule (migration 652, POST-A-421); the challan as stored.
+
+    The caller has asked everything in words first; what is worded here is a request that lost a race: another challan of the order was issued between that read and this write, or this one was
+    changed. Nothing is written in either."""
+    try:
+        got = privileged_for(db).rpc("issue_delivery_challan_atomic", {
+            "p_firm_id": firm_id, "p_client_id": client_id, "p_challan_id": challan_id, "p_issued_at": issued_at}).execute().data
+    except Exception as e:  # noqa: BLE001
+        text = _text(e)
+        if "order_over_delivered" in text:
+            raise HTTPException(status_code=422, detail=(
+                f"Another challan against the same order was issued while challan {document_no} was being issued, so the order no longer has that much undelivered, and nothing was written. "
+                "Reload the order to see what is left to deliver.")) from e
+        if "order_line_not_of_order" in text:
+            raise HTTPException(status_code=422, detail=f"Challan {document_no} names an order line that is not on its order, so it was not issued.") from e
+        if "challan_not_draft" in text:
+            raise HTTPException(status_code=409, detail=f"Challan {document_no} was changed while it was being issued. Reload it and look at its status.") from e
+        if "challan_not_found" in text:
+            raise HTTPException(status_code=404, detail="Delivery challan not found") from e
+        low = text.lower()
+        if "pgrst202" in low or ("issue_delivery_challan_atomic" in low and ("does not exist" in low or "could not find the function" in low)):
+            return None
         raise
     return (got[0] if isinstance(got, list) and got else got) or {}
 

@@ -58,6 +58,8 @@ interface Customer { id: string; name?: string; customer_name?: string }
 type CycleLineDraft = {
   description: string; hsn_sac: string; quantity: string; unit: string; rate: string; gst_rate_percent: string;
   service_catalogue_id: string | null; is_service: boolean; product: ServiceCatalogueItem | null;
+  /** A challan line only: the line of the chosen sales order this delivery is against (POST-A-421). */
+  order_line_id?: string | null;
 };
 const BLANK_LINE: CycleLineDraft = { description: "", hsn_sac: "", quantity: "1", unit: "NOS",
                      rate: "", gst_rate_percent: "18", service_catalogue_id: null, is_service: false, product: null };
@@ -132,6 +134,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     customer_po_no: "",
     expected_delivery_date: "",
     reason: "job_work",
+    order_id: "",
     goods_kind: "",
     consignee_name: "",
     consignee_gstin: "",
@@ -143,6 +146,36 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
     notes: "",
   });
   const [lines, setLines] = useState<CycleLineDraft[]>([{ ...BLANK_LINE }]);
+  // POST-A-421 — a challan may name the sales order it delivers against, and each line the order line. The server lists the orders still open to delivery and says what each line has undelivered;
+  // the screen offers them and decides nothing (the server refuses a delivery of more than is left, when the challan is issued).
+  const [openOrders, setOpenOrders] = useState<SalesOrder[]>([]);
+  const [orderPick, setOrderPick] = useState<{ orderId: string; lines: OrderPosition["lines"] } | null>(null);
+  const [orderPickProblem, setOrderPickProblem] = useState<string | null>(null);
+  const orderPickRun = useRef(0);
+  useEffect(() => {
+    if (!showForm || tab !== "challans") return;
+    let current = true;
+    void api.salesCycle.orders(clientId, true).then((r) => {
+      if (current && r.success) setOpenOrders(arrayOrEmpty<SalesOrder>(r.data));
+    }).catch(() => { if (current) setOpenOrders([]); });
+    return () => { current = false; };
+  }, [showForm, tab, clientId]);
+  function pickOrder(orderId: string) {
+    const mine = ++orderPickRun.current;
+    setForm((f) => ({ ...f, order_id: orderId }));
+    setLines((ls) => ls.map((l) => ({ ...l, order_line_id: null })));
+    setOrderPick(null);
+    setOrderPickProblem(null);
+    if (!orderId) return;
+    void api.salesCycle.orderPosition(orderId, clientId).then((r) => {
+      if (mine !== orderPickRun.current) return;
+      const got = r.success ? objectWithLists<OrderPosition>(r.data, "lines") : null;
+      if (!got) { setOrderPickProblem(r.error || "What this order has left to deliver could not be read, so its lines cannot be chosen."); return; }
+      setOrderPick({ orderId, lines: got.lines });
+    }).catch((e: unknown) => {
+      if (mine === orderPickRun.current) setOrderPickProblem(e instanceof Error && e.message ? e.message : "What this order has left to deliver could not be read.");
+    });
+  }
 
   // The tab shows "Loading…" for the FIRST read of a client's lists and keeps itself drawn for every read after it (POST-A-385). A reload replaced the whole tab with "Loading…", which unmounted the
   // FORM GST ITC-04 panel inside it: recording a lot calls `onChanged` (this reload), so the panel's "Recorded. That was the last lot — … its s.143 clock has stopped." line, the year and window it had
@@ -211,6 +244,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       gst_rate_percent: Number(l.gst_rate_percent) || 0,
       service_catalogue_id: l.service_catalogue_id,
       is_service: l.is_service,
+      ...(tab === "challans" && form.order_id && l.order_line_id ? { order_line_id: l.order_line_id } : {}),
     }));
 
   async function save() {
@@ -248,6 +282,7 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
           customer_id: form.customer_id || null,
           document_no: form.document_no, document_date: form.document_date,
           reason: form.reason,
+          order_id: form.order_id || null,
           goods_kind: form.reason === "job_work" && form.goods_kind
             ? form.goods_kind : null,
           consignee_name: form.consignee_name || null,
@@ -266,6 +301,8 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
       }
       setShowForm(false);
       setLines([{ ...BLANK_LINE }]);
+      setForm((f) => ({ ...f, order_id: "" }));
+      setOrderPick(null);
       setMsg({ type: "ok", text: "Saved." });
       await load();
     } catch (e) {
@@ -549,6 +586,23 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
               </select>
             </label>
 
+            {tab === "challans" && (
+              <label className="text-sm">
+                <span className="mb-1 block text-ps-label">Against a sales order (optional)</span>
+                <select
+                  value={form.order_id}
+                  onChange={(e) => pickOrder(e.target.value)}
+                  className="w-full rounded border border-ps-border px-2 py-1.5"
+                >
+                  <option value="">Not against an order</option>
+                  {openOrders.map((o) => (
+                    <option key={o.id} value={o.id}>{o.document_no}</option>
+                  ))}
+                </select>
+                {orderPickProblem && <span role="alert" className="mt-1 block text-xs text-state-problem">{orderPickProblem}</span>}
+              </label>
+            )}
+
             <label className="text-sm">
               <span className="mb-1 block text-ps-label">Number</span>
               <input
@@ -745,6 +799,24 @@ export default function SalesCycleTab({ clientId }: { clientId: string }) {
                     }}
                     className="rounded border border-ps-border px-2 py-1.5 text-sm"
                   />
+                  {tab === "challans" && orderPick && (
+                    <select aria-label={`Line ${i + 1} order line`}
+                      value={l.order_line_id ?? ""}
+                      onChange={(e) => {
+                        const next = [...lines];
+                        next[i] = { ...l, order_line_id: e.target.value || null };
+                        setLines(next);
+                      }}
+                      className="rounded border border-ps-border px-2 py-1.5 text-sm sm:col-span-2"
+                    >
+                      <option value="">Not an order line</option>
+                      {orderPick.lines.map((ol) => (
+                        <option key={ol.order_line_id} value={ol.order_line_id}>
+                          {ol.description} — {ol.undelivered_qty} undelivered
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               ))}
             </div>
