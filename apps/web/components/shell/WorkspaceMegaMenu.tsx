@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useAuth, usePermissions } from "@/lib/auth/AuthContext";
 import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 import { WORKSPACE_CONFIGS, type WorkspaceId } from "@/lib/workspace/workspaceConfig";
+import { workspaceTileOffered } from "@/lib/workspace/tileOffered";
 import { canAccessWorkspace } from "@/lib/auth/permissions";
 import { ContextPanel } from "@/components/ContextPanel";
 
@@ -31,8 +32,9 @@ import { ContextPanel } from "@/components/ContextPanel";
  * a click.
  *
  * SAME VISIBILITY RULE AS THE RAIL IT REPLACES: `canAccessWorkspace` (product
- * role rule) AND, where a workspace's `requires` names one rbac pair, `can()`
- * — asked only once `resolved`, so a permission map still in flight does not
+ * role rule) AND, where a workspace's `requires` names one rbac pair or its
+ * `requiresAnyOf` several, `can()` (`workspaceTileOffered`) — asked only once
+ * `resolved`, so a permission map still in flight does not
  * flash the tile and then pull it (WorkspaceRail's own comment explains why
  * that one-frame delay is deliberate here, not a bug).
  *
@@ -50,9 +52,7 @@ export function WorkspaceMegaMenu({ onOpenSearch }: { onOpenSearch: () => void }
   const [hovered, setHovered] = useState<WorkspaceId | null>(null);
 
   const visibleWorkspaces = WORKSPACE_CONFIGS.filter(
-    (ws) =>
-      canAccessWorkspace(ws.id, userRole) &&
-      (!ws.requires || !resolved || can(ws.requires[0], ws.requires[1])),
+    (ws) => canAccessWorkspace(ws.id, userRole) && workspaceTileOffered(ws, can, resolved),
   );
 
   const shown = hovered ?? activeWorkspace ?? "home";

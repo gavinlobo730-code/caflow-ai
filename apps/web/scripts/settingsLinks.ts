@@ -23,7 +23,8 @@ export function whySettingsDoesNotLinkTo(href: string): string[] {
   const quoted = new RegExp(`href: "${href.replace(/[/.]/g, (c) => `\\${c}`)}(#[^"]*)?"`);
   if (!quoted.test(code("lib/settings/groups.ts"))) why.push(`lib/settings/groups.ts does not list ${href}`);
   const home = code("app/settings/page.tsx");
-  if (!/from "@\/lib\/settings\/groups"/.test(home) || !/visibleLinks\(group, isPartner\)/.test(home))
+  // The second argument is the person the links are filtered for (their role since POST-A-447; a Partner flag before).
+  if (!/from "@\/lib\/settings\/groups"/.test(home) || !/visibleLinks\(group, [A-Za-z]+\)/.test(home))
     why.push("the Settings home no longer renders the groups' links");
   const panel = code("components/panels/SettingsPanel.tsx");
   if (!/from "@\/lib\/settings\/groups"/.test(panel) || !/SETTINGS_GROUPS\.map\(/.test(panel))

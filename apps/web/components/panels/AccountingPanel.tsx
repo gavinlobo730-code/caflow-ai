@@ -51,10 +51,16 @@ import { usePermissions, useAuth } from "@/lib/auth/AuthContext";
  *
  * `requires` names the backend permission the page's own data calls need, READ
  * OFF THE ENDPOINT rather than guessed — each one below was checked against the
- * `rbac(...)` on the route it calls. An absent `requires` means "no FastAPI
- * permission governs this page", never "nobody checked": the four Chart-of-
- * Accounts screens and Loans and Receivables query Supabase directly, so RLS
- * governs them and no entry in the rbac matrix applies.
+ * `rbac(...)` on the route it calls. An absent `requires` means "nothing the
+ * page needs to load is refused to any staff role", never "nobody checked".
+ * A screen that reads over PostgREST is gated on the permission its ROW-LEVEL
+ * POLICY asks, which is the same tier: Fee Receivables reads `fee_invoices`,
+ * which only someone with billing access may read (migration 495), and Import
+ * COA's whole purpose is an insert into `chart_of_accounts`, whose write policy
+ * is Manager and above (migration 260), the `accounting` `write` tier. Both
+ * were offered to everyone until POST-A-447 and refused the people they were
+ * not for. Account Groups and Export COA read the chart, which every member of
+ * the firm may, and Loans & FD reads `loans`, so those three have none.
  *
  * `partnerOnly` mirrors a page's OWN `RoleGuard allowed={["Partner"]}` and is
  * used once, on Lock Financial Year. It is not a second permission system —
@@ -97,9 +103,14 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
   {
     heading: "Chart of accounts",
     items: [
-      { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch },
+      // accounting.py get_schedule_iii → rbac("accounting", "read"), the
+      // page's first call, so a Reviewer offered it was refused on arrival.
+      { label: "Schedule III Mapping", href: "/accounting/schedule-iii-mapping", icon: GitBranch,
+        requires: ["accounting", "read"] },
       { label: "Account Groups", href: "/accounting/account-groups", icon: Layers },
-      { label: "Import COA", href: "/accounting/coa-import", icon: Upload },
+      // An insert into chart_of_accounts (write policy: Manager and above, 260).
+      { label: "Import COA", href: "/accounting/coa-import", icon: Upload,
+        requires: ["accounting", "write"] },
       { label: "Export COA", href: "/accounting/coa-export", icon: Download },
     ],
   },
@@ -113,7 +124,9 @@ export const NAV_GROUPS: Array<{ heading: string | null; items: NavItem[] }> = [
       // the firm. Named so, because "Receivables Ageing" read as the clients'
       // own customer receivables, and the Sales hub tile linked here for them
       // (accounting-hub-2-05). Those are the Sales worklist below.
-      { label: "Fee Receivables", href: "/accounting/receivables", icon: Clock },
+      // fee_invoices is read by someone with billing access only (495).
+      { label: "Fee Receivables", href: "/accounting/receivables", icon: Clock,
+        requires: ["billing", "read"] },
       { label: "Loans & FD", href: "/accounting/loans", icon: Landmark },
       // income_tax.py msme_section_43bh → rbac("income_tax", "compute").
       { label: "MSME §43B(h)", href: "/accounting/msme-tracker", icon: FileText,
