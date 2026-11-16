@@ -269,7 +269,7 @@ export default function CopilotPage() {
               <Sparkles size={16} className="text-white" />
             </div>
           }
-          title="AI Copilot"
+          title="PracticeSync AI Copilot"
           subtitle="Intelligent assistant for your CA practice"
           actions={
             <>

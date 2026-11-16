@@ -178,8 +178,8 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
     links: [
       {
         href: "/settings/ai",
-        label: "AI status and allowance",
-        says: "Whether the assistant, the copilot and the invoice and notice readers can reach their AI providers, and the firm's monthly allowance.",
+        label: "PracticeSync AI status and allowance",
+        says: "Whether PracticeSync AI (the assistant, the copilot and the invoice and notice readers) can reach its two providers, and the firm's monthly allowance.",
         partnerOnly: true,
       },
     ],

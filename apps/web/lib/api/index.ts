@@ -349,6 +349,10 @@ export interface AiUsageByFeature extends AiUsageFigures {
   feature: string | null;
   provider: string | null;
   models: string[];
+  /** The feature's name on a screen (POST-A-448); absent or null for a feature the server has no name for. */
+  label?: string | null;
+  /** The company the calls went to, by the name the status page shows. */
+  provider_label?: string | null;
 }
 export interface AiUsageByDay extends AiUsageFigures {
   day: string;
