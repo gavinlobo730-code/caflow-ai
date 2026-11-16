@@ -36,14 +36,16 @@ A NIL IS OF THREE KINDS, AND THE DIGEST SAYS WHICH
     list is never read as a clean one.
 
 WHAT IS DELIBERATELY NOT HERE
-    GSTR-2B ("bills missing in 2B"), Rule 37A, near-duplicate bills and the
-    recurring-journal suggestions are the other exception engines, and none has
-    a STORED result to read. Computing them for every client on every page load
-    would read each client's purchase register or three months of every posted
-    entry — a read proportional to transaction volume, which the reporting rule
-    forbids — so they are named in `gaps` with their own reason rather than
-    approximated. A nightly job that stores them is the way to add them and is a
-    piece of work of its own.
+    Rule 37A: whether a supplier filed its GSTR-3B is held nowhere in this
+    product, so there is no result to store and no count to give; it is named in
+    `gaps` on every answer. GSTR-2B (credit the suppliers have not furnished),
+    near-duplicate bills and the recurring-journal suggestions WERE here as gaps
+    for the reason that computing them per page load reads each client's purchase
+    register or three months of every posted entry; the nightly books check now
+    stores each client's result (`nightly_exception_results`, migration 660,
+    `domain/practice/nightly_results`) and the digest reads the stored rows
+    (POST-A-050). A client whose result is missing or was not computed is NAMED
+    as not covered, never counted as clear.
 
 THE MODEL IS GIVEN COUNTS, NEVER NAMES
     The firm-level copilot's decision is that client names do not go to a
@@ -82,11 +84,15 @@ KEY_FILINGS_OVERDUE = "filings_overdue"
 KEY_FILINGS_DUE_SOON = "filings_due_soon"
 KEY_BOOKS_FINDINGS = "books_findings"
 KEY_TASKS_OVERDUE = "tasks_overdue"
+KEY_ITC_NOT_FURNISHED = "itc_not_furnished"
+KEY_DUPLICATE_BILLS = "duplicate_bills"
+KEY_RECURRING_JOURNALS = "recurring_journals_missing"
 
 #: The vocabulary the browser routes on. The ROUTE map is the browser's (a fact
 #: about Next.js paths the backend cannot hold) and is pinned to this tuple from
 #: the Python side, the way `journal_source.ALL_SOURCES` pins `sourceDocument.ts`.
-ITEM_KEYS = (KEY_FILINGS_OVERDUE, KEY_BOOKS_FINDINGS, KEY_FILINGS_DUE_SOON, KEY_TASKS_OVERDUE)
+ITEM_KEYS = (KEY_FILINGS_OVERDUE, KEY_BOOKS_FINDINGS, KEY_FILINGS_DUE_SOON, KEY_TASKS_OVERDUE,
+             KEY_ITC_NOT_FURNISHED, KEY_DUPLICATE_BILLS, KEY_RECURRING_JOURNALS)
 
 ATTENTION, CLEAR, UNKNOWN = "attention", "clear", "unknown"
 
@@ -242,23 +248,69 @@ def findings_item(latest_runs: dict[str, dict], open_findings: Iterable[dict],
         facts={"critical": critical, "other": other, "clients_checked": checked})
 
 
+# ── the stored nightly results (POST-A-050) ──────────────────────────────────
+
+#: engine -> (item key, section label, what one counted thing is, the plural noun
+#: used in the headline). The engine names are `domain/practice/nightly_results`'s.
+STORED_SECTIONS = {
+    "gstr_2b": (KEY_ITC_NOT_FURNISHED, "Credit suppliers have not furnished",
+                ("bill or document with credit at stake", "bills or documents with credit at stake"),
+                "GSTR-2B"),
+    "duplicate_bills": (KEY_DUPLICATE_BILLS, "Possible duplicate bills",
+                        ("possible duplicate pair", "possible duplicate pairs"), "bills"),
+    "recurring_journals": (KEY_RECURRING_JOURNALS, "Recurring journals missing this month",
+                           ("recurring entry not yet posted", "recurring entries not yet posted"),
+                           "journals"),
+}
+
+
+def stored_item(engine: str, rows: Iterable[dict], names: dict[str, str]) -> dict:
+    """One digest section from the stored nightly rows of the caller's clients.
+
+    `rows` are `nightly_exception_results` rows of the CALLER'S clients computed
+    inside the recent window. A row that is `not_computed` is not a zero: it is
+    left out of the count and out of "checked", and when no row at all was
+    computed the answer is UNKNOWN, the same discipline as the books section.
+    """
+    key, label, (one, many), noun = STORED_SECTIONS[engine]
+    source = f"the nightly check's stored result ({engine.replace('_', ' ')})"
+    computed = [r for r in rows if r.get("status") == "computed" and r.get("count") is not None]
+    if not computed:
+        return _item(key, label=label, status=UNKNOWN, count=None,
+                     headline=(f"No nightly {noun} result was computed in the last "
+                               f"{RUN_WINDOW_DAYS} days, so there is nothing to report"),
+                     source=source)
+    per = {str(r["client_id"]): int(r["count"]) for r in computed if r.get("client_id")}
+    total = sum(per.values())
+    amount = sum(int(r.get("amount_paise") or 0) for r in computed)
+    checked = len(per)
+    facts = {"clients_checked": checked}
+    if amount:
+        facts["amount_paise"] = amount
+    if not total:
+        return _item(key, label=label, status=CLEAR, count=0,
+                     headline=f"None found in the latest nightly check of {_n(checked, 'client')}",
+                     source=source, facts=facts)
+    listed, clients_total = _clients(per, names)
+    headline = (f"{_n(total, one, many)} across {_n(clients_total, 'client')} in the latest "
+                f"nightly check")
+    return _item(key, label=label, status=ATTENTION, count=total, headline=headline,
+                 source=source, clients=listed, clients_total=clients_total, facts=facts)
+
+
+def not_covered_by_stored(label: str, count: int) -> str:
+    """Clients in scope with no computed stored result for a section: reported
+    beside it, because the section's figure says nothing about them."""
+    return (f"{_n(count, 'client')} had no computed nightly result for {label.lower()}, so "
+            f"nothing is reported for {'it' if count == 1 else 'them'}.")
+
+
 # ── what is not here ─────────────────────────────────────────────────────────
 
 NOT_INCLUDED = (
-    ("gstr_2b",
-     "GSTR-2B (bills missing in 2B) is not in this digest: that answer is worked out "
-     "per client per return period when a reconciliation is opened and is not stored, "
-     "and running the matcher for every client on each page load would read every "
-     "client's purchase register."),
     ("rule_37a",
      "Rule 37A is not in this digest: whether a supplier has filed its GSTR-3B is not "
      "held anywhere in this product, so there is no count to give."),
-    ("duplicate_bills",
-     "Possible duplicate bills are not in this digest: they are checked as a bill is "
-     "typed and no result is stored."),
-    ("recurring_journals",
-     "Recurring journal entries missing this month are not in this digest: that engine "
-     "reads three months of every posted entry, which grows with the ledger."),
 )
 
 

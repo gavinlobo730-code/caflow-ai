@@ -452,7 +452,6 @@ services/gst_2b_reconciliation_service.py :: B023 :: holders_of :: 2
 services/gst_advance_service.py :: F401 :: <module> :: 1
 services/gstr9_service.py :: B904 :: build :: 1
 services/income_tax_worksheet_service.py :: F401 :: <module> :: 1
-services/intelligence_service.py :: B007 :: compute_journal_suggestions :: 1
 services/intelligence_service.py :: C901 :: compute_compliance_risk :: 17
 services/intelligence_service.py :: F401 :: <module> :: 1
 services/invoice_lifecycle_service.py :: F401 :: <module> :: 2

@@ -49,7 +49,7 @@ _ADMIN = os.environ.get("HARNESS_PG")
 
 #: Only ever lowered. Raising one is a decision a reviewer sees in the diff: a new table a signed-in session reaches that the matrix
 #: does not observe.
-CEILING = 193
+CEILING = 194  # 660 adds nightly_exception_results (a read-only table the matrix does not observe)
 WRITABLE_CEILING = 69
 
 _REACHABLE = """
