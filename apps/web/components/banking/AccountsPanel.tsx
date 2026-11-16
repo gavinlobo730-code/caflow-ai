@@ -10,6 +10,8 @@
 // "Accounts" link opens this. `onChanged` tells the caller an import or an
 // account change happened, so it can propose for the new lines at once.
 
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Pencil, Landmark } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -729,6 +731,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -912,7 +915,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       // is substantive — the server refuses a shorter one, and refuses it
       // outright when there is nothing to acknowledge.
       if (totalsRefusal && ackReady) form.append("acknowledge_totals_mismatch", ackReason.trim());
-      const res = (await api.banking.uploadStatement(form)) as {
+      const res = (await api.banking.uploadStatement(form, setSent)) as {
         success: boolean; data: ImportResult; error?: string;
       };
       if (!res.success) { setError(res.error ?? "Import failed."); setImporting(false); return; }
@@ -935,6 +938,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       if (!mapping && looksLikeAFormatProblem(message)) void startMapping();
     } finally {
       setImporting(false);
+      setSent(null);
     }
   }
 
@@ -1306,6 +1310,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                 {importing ? "Importing…" : totalsRefusal ? "Import anyway" : "Import"}
               </Button>
             </div>
+            <UploadProgress progress={sent} what="the statement" />
           </>
         )}
       </div>

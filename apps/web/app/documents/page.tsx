@@ -1,5 +1,7 @@
 "use client";
 
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useState, useEffect, useRef, useMemo, useCallback, ChangeEvent } from "react";
 import {
   FileText,
@@ -126,6 +128,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
   const [financialYear, setFinancialYear] = useState<FinancialYear>(FINANCIAL_YEARS[0]);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -149,7 +152,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
       form.append("client_id", clientId);
       form.append("document_type", docType);
       form.append("financial_year", financialYear);
-      await api.documents.upload(form);
+      await api.documents.upload(form, setSent);
 
       onUploaded();
       onClose();
@@ -157,6 +160,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      setSent(null);
     }
   }
 
@@ -263,6 +267,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         </div>
 
         {/* Modal footer */}
+        <div className="px-6 empty:hidden"><UploadProgress progress={sent} what="the document" /></div>
         <div className="flex items-center justify-end gap-3 border-t border-ps-border px-6 py-4">
           <button
             onClick={onClose}

@@ -7,6 +7,8 @@
  * Expiry alerts for certificates expiring within 60 days
  */
 
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Upload, Download, Trash2, AlertTriangle, X, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
@@ -82,6 +84,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
   const [expiryDate, setExpiryDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // The expiry date is optional and decides whether the document is flagged as expiring: text that is not a date read as blank, so a
@@ -101,12 +104,13 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
       form.append("description", docName);
       form.append("doc_type", category);
       if (expiryDate) form.append("expiry_date", expiryDate);
-      await api.clientDocuments.upload(form);
+      await api.clientDocuments.upload(form, setSent);
       onUploaded();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
+      setSent(null);
     }
   }
 
@@ -163,6 +167,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
             {uploading ? "Uploading…" : "Upload"}
           </button>
         </div>
+        <UploadProgress progress={sent} what="the document" />
       </div>
     </div>
   );
