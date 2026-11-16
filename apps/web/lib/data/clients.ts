@@ -9,6 +9,7 @@ import { getFirmId } from "./getFirmId";
 import { api } from "@/lib/api";
 import type { Client } from "@/lib/types";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { forgetReads, readKey, readStale } from "@/lib/cache/readCache";
 
 export type ClientFilter = "active" | "archived" | "all";
 
@@ -69,6 +70,15 @@ export async function getClients(filter: ClientFilter = "active"): Promise<Clien
   return (data ?? []) as Client[];
 }
 
+/**
+ * The client list for a screen a person RETURNS to, painted from the last answer at once and then read again (POST-A-124, lib/cache/readCache.ts). `onStale`
+ * is called with the last answer and when it was read, if there is one; the returned list is always the real read. Pick-lists and anything that feeds a
+ * write keep calling `getClients`, which is never cached.
+ */
+export function getClientsStale(filter: ClientFilter, onStale: (clients: Client[], readAt: number) => void): Promise<Client[]> {
+  return readStale(readKey(["clients", filter]), () => getClients(filter), onStale);
+}
+
 export async function createClient(input: CreateClientInput): Promise<Client> {
   const sb = getSupabaseClient();
 
@@ -89,6 +99,7 @@ export async function createClient(input: CreateClientInput): Promise<Client> {
     .single();
 
   if (error) throw new Error(error.message);
+  forgetReads("clients");
   return data as Client;
 }
 
@@ -102,6 +113,7 @@ export async function updateClient(id: string, input: Partial<CreateClientInput>
     .single();
 
   if (error) throw new Error(error.message);
+  forgetReads("clients");
   return data as Client;
 }
 
@@ -119,12 +131,12 @@ export async function getClient(id: string): Promise<Client> {
 
 /** Archive a client — goes through the backend for audit logging (Manager+). */
 export async function archiveClient(id: string): Promise<void> {
-  await api.clients.archive(id);
+  try { await api.clients.archive(id); } finally { forgetReads("clients"); }
 }
 
 /** Restore an archived client to active status (Manager+). */
 export async function restoreClient(id: string): Promise<void> {
-  await api.clients.restore(id);
+  try { await api.clients.restore(id); } finally { forgetReads("clients"); }
 }
 
 /**
@@ -135,7 +147,9 @@ export async function restoreClient(id: string): Promise<void> {
 export async function permanentDeleteClient(id: string): Promise<void> {
   try {
     await api.clients.permanentDelete(id);
+    forgetReads("clients");
   } catch (e) {
+    forgetReads("clients");
     if (e instanceof Error && e.message.startsWith("API error 409:")) {
       const jsonStr = e.message.slice("API error 409: ".length);
       try {
