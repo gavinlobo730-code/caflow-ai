@@ -54,8 +54,8 @@ export function IrnReturnCheck({ clientId, yearMonth, gstin }: { clientId: strin
   }
 
   const answer = state.state === "ok" ? state.answer : null;
-  const clean = answer !== null && answer.not_declared.length === 0 && answer.differs.length === 0
-    && answer.duplicates.length === 0;
+  const clean = answer !== null && (answer.not_declared ?? []).length === 0 && (answer.differs ?? []).length === 0
+    && (answer.duplicates ?? []).length === 0;
   return (
     <section className="rounded-lg border border-ps-border p-4 space-y-3" aria-labelledby="irn-return-check-title">
       <div className="flex items-center justify-between gap-3">
@@ -87,9 +87,9 @@ export function IrnReturnCheck({ clientId, yearMonth, gstin }: { clientId: strin
               description="There was nothing to compare. An IRN is recorded from an invoice's compliance panel once it has been obtained on the portal."
             />
           )}
-          <Rows rows={answer.not_declared} label="Live IRNs this return does not declare as a B2B supply or an export" />
-          <Rows rows={answer.differs} label="Records that no longer match their invoice" />
-          {answer.duplicates.length > 0 && (
+          <Rows rows={answer.not_declared ?? []} label="Live IRNs this return does not declare as a B2B supply or an export" />
+          <Rows rows={answer.differs ?? []} label="Records that no longer match their invoice" />
+          {(answer.duplicates ?? []).length > 0 && (
             <div>
               <p className="text-xs font-semibold text-ps-ink">More than one live record for one invoice ({answer.duplicates.length})</p>
               <ul className="mt-1 space-y-1">

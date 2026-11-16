@@ -229,7 +229,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
           </>
         ) : null}
 
-        {(variance?.notes.length ?? 0) > 0 && (
+        {(variance?.notes ?? []).length > 0 && (
           <div className="px-5 py-3 border-t border-ps-border bg-ps-bg space-y-1">
             {variance!.notes.map((n, i) => (
               <p key={i} className="text-xs text-ps-label flex gap-2">
@@ -242,7 +242,7 @@ export function MonthlyReview({ clientId, month }: { clientId: string; month: st
       </section>
 
       {/* ── What each department costs ─────────────────────────────────── */}
-      {departments && departments.rows.length > 0 && (
+      {departments && (departments.rows ?? []).length > 0 && (
         <section className="bg-ps-surface border border-ps-border rounded-xl overflow-hidden">
           <div className="px-5 py-3 bg-ps-bg border-b border-ps-border flex items-center gap-2">
             <Building2 size={14} className="text-ps-label" />

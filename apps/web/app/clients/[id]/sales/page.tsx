@@ -2595,7 +2595,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
 
         {/* Payment history / timeline */}
         <p className="text-2xs font-semibold text-ps-label uppercase tracking-wide mb-2">Payment History</p>
-        {!hist || hist.payments.length === 0 ? (
+        {!hist || (hist.payments ?? []).length === 0 ? (
           <p className="text-xs text-ps-hint">No payments recorded yet.</p>
         ) : (
           <div className="space-y-2">

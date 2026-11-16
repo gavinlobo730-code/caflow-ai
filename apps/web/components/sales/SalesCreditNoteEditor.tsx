@@ -158,8 +158,8 @@ export function SalesCreditNoteEditor({
   const today = todayISO();
   const isEdit = !!existing;
   const initialLines: EditorLine[] =
-    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
-    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
+    existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? duplicateSeed?.customer_id ?? "");
