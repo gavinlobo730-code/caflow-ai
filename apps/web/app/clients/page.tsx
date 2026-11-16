@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClientFormModal } from "@/components/ClientFormModal";
 import {
-  getClients, archiveClient, restoreClient, permanentDeleteClient,
+  getClientsStale, archiveClient, restoreClient, permanentDeleteClient,
   type ClientFilter, DeleteBlockedError,
 } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -22,6 +22,7 @@ import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
+import { forgetReads, readAtText } from "@/lib/cache/readCache";
 import { getLatestHealthScores } from "@/lib/services/health-score-compute";
 import { HealthBadgeLight } from "@/components/HealthBadge";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -144,6 +145,8 @@ export default function ClientsPage() {
    *  be noise. */
   const [payrollStates, setPayrollStates] = useState<Record<string, PayrollState>>({});
   const [loading, setLoading]     = useState(true);
+  /** When the list on screen was last read, while it is the PREVIOUS answer painted ahead of the real read (POST-A-124); null once the real read lands. */
+  const [paintedFrom, setPaintedFrom] = useState<number | null>(null);
   const [error, setError]         = useState<string | null>(null);
   const [search, setSearch]       = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -211,7 +214,11 @@ export default function ClientsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getClients(filter);
+      // The last answer is painted at once and the real read always follows; the line under the title says so while they differ.
+      const data = await getClientsStale(filter, (last, readAt) => {
+        setClients(last); setFiltered(last); setPaintedFrom(readAt); setLoading(false);
+      });
+      setPaintedFrom(null);
       setClients(data);
       setFiltered(data);
       getLatestHealthScores(data.map((c) => c.id)).then(setHealthScores).catch(() => {});
@@ -227,6 +234,7 @@ export default function ClientsPage() {
         .catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load clients");
+      // A list painted from the last read stays up and says it is not current; one that was never read stays empty.
     } finally {
       setLoading(false);
     }
@@ -505,7 +513,7 @@ export default function ClientsPage() {
       if (error) errors.push(`${row.client_name}: ${error.message}`);
       else imported++;
     }
-    if (imported > 0) load();
+    if (imported > 0) { forgetReads("clients"); load(); }
     return { imported, errors };
   }
 
@@ -594,6 +602,15 @@ export default function ClientsPage() {
           {error} —{" "}
           <button onClick={load} className="underline">retry</button>
         </div>
+      )}
+
+      {/* A list painted ahead of the real read says when it was read, and says so again if the real read failed (POST-A-124). */}
+      {paintedFrom !== null && (
+        <p role="status" className="text-xs text-ps-hint">
+          {error
+            ? `Showing the list as it was read at ${readAtText(paintedFrom)}. It could not be refreshed, so it may not be current.`
+            : `Showing the list as it was read at ${readAtText(paintedFrom)} while the current one loads…`}
+        </p>
       )}
 
       {/* Loading skeleton */}
