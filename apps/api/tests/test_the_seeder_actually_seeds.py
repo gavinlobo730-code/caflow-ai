@@ -96,6 +96,10 @@ def api(monkeypatch):
     # and invoice repositories have mock stores and the receipt service has a mock branch. The tasks, the fee invoices with their
     # receipts, and the leads are all written through the real doors here.
     monkeypatch.setattr(seeder, "_time", lambda *args, **kwargs: None)
+    # THE CAPITAL STAGE FOR A REASON OF ITS OWN: it debits the bank's own ledger, which the bank account's create
+    # response names (`coa_account_id`), and mock mode answers that door with the request echoed back, so there is no
+    # ledger to name and the stage refuses (as it must on a real run). Its bodies are checked in the recorder test.
+    monkeypatch.setattr(seeder, "_capital", lambda *args, **kwargs: None)
     from fastapi.testclient import TestClient
     from main import app
     return _TestClientApi(TestClient(app))

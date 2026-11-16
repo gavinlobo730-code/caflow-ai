@@ -298,8 +298,8 @@ def _post_the_document(api: Api, path: str, transition: str, doc_id: str,
     return True
 
 
-def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> list[str]:
-    """The client's bank accounts, primary first.
+def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> tuple[list[str], list[Optional[str]]]:
+    """The client's bank accounts, primary first, and the ledger each was given.
 
     No `coa_account_id` is sent: `POST /accounts` creates a ledger for an
     unlinked account rather than leaving it unlinked, which is the behaviour
@@ -308,9 +308,9 @@ def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> list[st
     without it (BANK-27) — a balance with no as-at date makes every
     pre-opening line count twice.
     """
-    ids = []
+    ids, ledgers = [], []
     for b in c.banks:
-        ids.append(_id(api.post("/api/banking/accounts", {
+        created = api.post("/api/banking/accounts", {
             "client_id": client_id,
             "bank_name": b.bank_name,
             "account_no": b.account_no,
@@ -322,9 +322,52 @@ def _banks(api: Api, c, client_id: str, fy_start: str, written: dict) -> list[st
             # statement states it, which is what the model requires.
             "opening_balance_paise": b.opening_balance_paise,
             "opening_balance_date": fy_start if b.opening_balance_paise else None,
-        })))
+        })
+        ids.append(_id(created))
+        # The ledger the account was given (`_ensure_bank_ledger`), which a journal into this bank has to name.
+        ledgers.append(((created.get("data") or {}) if isinstance(created, dict) else {}).get("coa_account_id"))
         written["bank_accounts"] += 1
-    return ids
+    return ids, ledgers
+
+
+def _capital(api: Api, c, client_id: str, bank_ledger_id: Optional[str], fy: str, written: dict) -> None:
+    """The owners' money that paid for what the client bought before its year, and for its projects (POST-A-269).
+
+    An asset held before the books open is registered through the `paid` door below, which credits the bank on the
+    purchase date, before the bank's opening balance: without this the bank's ledger stood below nothing from that
+    day (a real seed read Anand Textiles at minus Rs 6.5 crore on 31 March). Each introduction is a manual journal,
+    Dr the client's bank / Cr Capital Account, for the figures `fixture.capital_introductions` derives, so the
+    journal and the purchase it pays for cannot disagree. Posted before every document and return of the year, so
+    no filed return's lock stands in front of it.
+
+    It REFUSES rather than skipping when it cannot name both ledgers: a seed that left the bank below nothing in
+    silence is the defect this stage exists to end."""
+    introductions = fixture.capital_introductions(c, fy)
+    if not introductions:
+        return
+    chart = api.get(f"/api/accounting/accounts?client_id={client_id}").get("data") or []
+    capital_id = next((a.get("id") for a in chart if a.get("account_name") == "Capital Account" and a.get("id")), None)
+    if not (bank_ledger_id and capital_id):
+        raise SystemExit(
+            f"{c.name}: cannot record the capital that paid for its earlier assets -- "
+            + ("the bank account came back with no ledger" if not bank_ledger_id
+               else "the chart of accounts has no 'Capital Account'"))
+    for n, ci in enumerate(introductions, start=1):
+        api.post("/api/accounting/journal", {
+            "client_id": client_id,
+            "entry_date": ci.on,
+            "reference_no": f"SEED-CAPITAL-{n:02d}",
+            "narration": ci.narration,
+            "entry_type": "Journal",
+            "status": "posted",
+            "lines": [
+                {"account_id": bank_ledger_id, "debit_paise": ci.amount_paise, "credit_paise": 0,
+                 "narration": ci.narration},
+                {"account_id": capital_id, "debit_paise": 0, "credit_paise": ci.amount_paise,
+                 "narration": ci.narration},
+            ],
+        })
+        written["capital_introductions"] += 1
 
 
 def _fixed_assets(api: Api, c, client_id: str, bank_id: Optional[str],
@@ -1589,7 +1632,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
 
     written = {"hsn_library": 0, "clients": 0, "catalogue": 0,
                "customers": 0, "vendors": 0, "msmed_classifications": 0,
-               "bank_accounts": 0,
+               "bank_accounts": 0, "capital_introductions": 0,
                "sales_invoices": 0, "invoices_issued": 0, "receipts": 0,
                "purchase_bills": 0, "bills_received": 0, "payments": 0,
                "fixed_assets": 0, "depreciation_months": 0,
@@ -1725,8 +1768,9 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         # fallback. Creating it here is what makes that possible; creating it
         # later would mean a year of postings that all carry the fallback
         # disclosure.
-        bank_ids = _banks(api, c, client_id, fy_start, written)
+        bank_ids, bank_ledgers = _banks(api, c, client_id, fy_start, written)
         bank_id = bank_ids[0] if bank_ids else None
+        _capital(api, c, client_id, bank_ledgers[0] if bank_ledgers else None, firm.financial_year, written)
 
         customer_ids = []
         for p in c.customers:
