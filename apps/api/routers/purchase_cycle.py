@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Query
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
+from services.audit_service import log_event
 from models.purchase_cycle import (
     GoodsReceiptIn, GoodsReceiptUpdateIn, PurchaseOrderIn,
     PurchaseOrderUpdateIn,
@@ -109,6 +110,13 @@ def order_position(
         _db(), current_user.get("firm_id"), order_id))
 
 
+def _audit(current_user: dict, entity: str, entity_id: str, action: str, client_id: str, data: dict) -> None:
+    """Who made or amended a purchase order or goods receipt (POST-A-167): neither table nor their lines carries a row-level audit trigger."""
+    log_event(current_user.get("firm_id") or "", entity, entity_id, action,
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"client_id": client_id, **data})
+
+
 @router.post("/orders")
 def create_order(
     payload: PurchaseOrderIn,
@@ -118,9 +126,10 @@ def create_order(
     if _mock():
         return api_response(True, {"id": "mock-purchase-order",
                                    "document_no": payload.document_no})
-    return api_response(True, svc.create_order(
-        _db(), current_user.get("firm_id"), payload.model_dump(),
-        current_user.get("id")))
+    made = svc.create_order(_db(), current_user.get("firm_id"), payload.model_dump(), current_user.get("id"))
+    _audit(current_user, "purchase_order", str((made or {}).get("id") or ""), "create", payload.client_id,
+           {"document_no": payload.document_no})
+    return api_response(True, made)
 
 
 @router.patch("/orders/{order_id}")
@@ -136,8 +145,9 @@ def update_order(
     if _mock():
         return api_response(True, {"id": order_id})
     svc.order_of_client(_db(), current_user.get("firm_id"), order_id, client_id)
-    return api_response(True, svc.update_order(
-        _db(), current_user.get("firm_id"), order_id, payload.model_dump()))
+    amended = svc.update_order(_db(), current_user.get("firm_id"), order_id, payload.model_dump())
+    _audit(current_user, "purchase_order", order_id, "update", client_id, payload.model_dump(exclude_none=True))
+    return api_response(True, amended)
 
 
 # ── Goods receipts ──────────────────────────────────────────────────────────
@@ -178,9 +188,10 @@ def create_receipt(
         return api_response(True, {"id": "mock-goods-receipt",
                                    "document_no": payload.document_no,
                                    "received_on": payload.received_on})
-    return api_response(True, svc.create_receipt(
-        _db(), current_user.get("firm_id"), payload.model_dump(),
-        current_user.get("id")))
+    made = svc.create_receipt(_db(), current_user.get("firm_id"), payload.model_dump(), current_user.get("id"))
+    _audit(current_user, "goods_receipt", str((made or {}).get("id") or ""), "create", payload.client_id,
+           {"document_no": payload.document_no, "received_on": payload.received_on})
+    return api_response(True, made)
 
 
 @router.patch("/receipts/{receipt_id}")
@@ -200,8 +211,10 @@ def update_receipt(
     if _mock():
         return api_response(True, {"id": receipt_id})
     svc.receipt_of_client(_db(), current_user.get("firm_id"), receipt_id, client_id)
-    return api_response(True, svc.update_receipt(
-        _db(), current_user.get("firm_id"), receipt_id, payload.model_dump()))
+    amended = svc.update_receipt(_db(), current_user.get("firm_id"), receipt_id, payload.model_dump())
+    # The objection and its removal are the edit that moves a statutory date (MSMED s.2(b) Explanation), so the fields go in the event.
+    _audit(current_user, "goods_receipt", receipt_id, "update", client_id, payload.model_dump(exclude_none=True))
+    return api_response(True, amended)
 
 
 # ── The match ───────────────────────────────────────────────────────────────
