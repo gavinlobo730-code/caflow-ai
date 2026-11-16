@@ -326,7 +326,7 @@ def register(monkeypatch):
                               "purchase_cost_paise": 2_00_000_00, "sale_value_paise": 12_00_000_00})
     db.seed("capital_gains", {**base, "id": "G3", "asset_description": "A loss",
                               "purchase_date": "2021-01-10", "sale_date": "2025-11-10",
-                              "purchase_cost_paise": 12_00_000_00, "sale_value_paise": 2_00_000_00})
+                              "purchase_cost_paise": 12_00_000_00, "sale_value_paise": 10_00_000_00})
     return db
 
 
@@ -337,6 +337,9 @@ def test_the_register_offers_only_this_years_gains_with_tax_on_them(register):
     c = out["candidates"][0]
     assert c["arose_on"] == "2026-03-10" and c["kind"] == "capital_gain"
     assert c["tax_paise"] > 0 and c["is_estimate"] is True
+    # POST-A-075: the ₹2,00,000 loss earlier in the year nets against the ₹10,00,000 gain, and the ANNUAL §112A exemption is used
+    # once: (10,00,000 - 2,00,000 - 1,25,000) at 12.5%, with 4% cess.
+    assert c["tax_paise"] == 6_75_000_00 * 1250 // 10_000 * 104 // 100
     assert any("ESTIMATE" in cv for cv in out["caveats"])
 
 
