@@ -21,6 +21,7 @@
  *   the server's.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import { Plus, AlertCircle, Info, Warehouse, ArrowRightLeft, Trash2, Boxes, RotateCcw } from "lucide-react";
 import { request } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
@@ -104,12 +105,14 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
   const [expiry, setExpiry] = useState<Expiry | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [addingBatch, setAddingBatch] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // The skeleton for the first read of this client and day only (POST-A-400): Move stock records a transfer and asks for
+  // this read again (`onDone={load}`), and a read that replaced the section unmounted the panel mid-answer.
+  const { loading, reader: firstRead } = useFirstRead(`${clientId}|${asOf}`);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     try {
       const [g, d, e, b] = await Promise.all([
         request<{ success: boolean; data: { godowns: Godown[]; unallocated_means: string }; error: string | null }>(
@@ -121,6 +124,7 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
         request<{ success: boolean; data: Batch[]; error: string | null }>(
           `/api/inventory/batches?client_id=${encodeURIComponent(clientId)}`),
       ]);
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
       if (!g.success || !d.success || !e.success || !b.success) {
         throw new Error(g.error ?? d.error ?? e.error ?? b.error ?? "Couldn't load.");
       }
@@ -130,12 +134,15 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
       setExpiry(objectWithLists<Expiry>(e.data, "bucket_order", "notes", "rows"));
       setBatches(b.data ?? []);
       setError("");
+      firstRead.landed(read);
     } catch (err) {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setError(err instanceof Error ? err.message : "Couldn't load stock locations.");
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, [clientId, asOf]);
+  }, [clientId, asOf, firstRead]);
 
   useEffect(() => { load(); }, [load]);
 

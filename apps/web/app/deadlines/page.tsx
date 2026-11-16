@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -127,7 +128,9 @@ function DeadlinesContent() {
 
   const [records, setRecords] = useState<ComplianceEntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The spinner for the first read only (POST-A-400): the table's Refresh asks for this read again (`onRefresh={loadData}`),
+  // and a read that replaced the page unmounted the table, losing the search typed into it and the rows ticked.
+  const { loading, reader: firstRead } = useFirstRead("deadlines");
   const [error, setError] = useState<string | null>(null);
   const [markFiled, setMarkFiled] = useState<MarkFiledForm | null>(null);
   // Rows a bulk "Mark Filed" is waiting to ask ONE date for.
@@ -154,21 +157,25 @@ function DeadlinesContent() {
   }, [canReopen]);
 
   const loadData = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     setError(null);
     try {
       const [recs, cls] = await Promise.all([
         getComplianceCalendar(undefined),
         getClients().catch(() => [] as Client[]),
       ]);
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
       setRecords(recs);
       setClients(cls);
+      firstRead.landed(read);
     } catch (err) {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setError(err instanceof Error ? err.message : "Failed to load deadline data");
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, []);
+  }, [firstRead]);
 
   useEffect(() => { loadData(); }, [loadData]);
 

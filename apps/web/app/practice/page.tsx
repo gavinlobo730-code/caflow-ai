@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import Link from "next/link";
 import { Building2, RefreshCw, Loader2 } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
@@ -198,7 +199,9 @@ function PracticeOverview() {
   const [identity, setIdentity] = useState<PracticeIdentity | null>(null);
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
   const [dash, setDash] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  // "Loading Practice…" for the first read only (POST-A-400): the tax identity card saves and asks for this read
+  // again (`onSaved={load}`), and a read that replaced the page unmounted the card and lost its confirmation.
+  const { loading, reader: firstRead } = useFirstRead("practice");
   const [error, setError] = useState<string | null>(null);
   const [provisioning, setProvisioning] = useState(false);
   // What the server said about WHETHER the Practice can be set up now
@@ -213,13 +216,15 @@ function PracticeOverview() {
   const [provisionRefused, setProvisionRefused] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    const read = firstRead.begin();
+    setError(null);
     try {
       const p = await api.practice.get() as ApiResp<unknown>;
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
       // This router answers a refusal as HTTP 200 with {success: false}; an
       // unchecked read would fall through to the "Set up your Practice" screen
       // below for a request the server declined.
-      if (!p?.success) { setError(p?.error ?? "Failed to load Practice"); return; }
+      if (!p?.success) { firstRead.failed(read); setError(p?.error ?? "Failed to load Practice"); return; }
       const status = objectOrNull<{
         provisioned?: boolean; can_provision?: boolean; identity?: PracticeIdentity | null;
         entity_types?: unknown;
@@ -231,14 +236,18 @@ function PracticeOverview() {
         ? status.entity_types.filter((t): t is string => typeof t === "string") : []);
       if (status?.provisioned) {
         const d = await api.billing.dashboard() as ApiResp<DashboardData>;
+        if (!firstRead.isLatest(read)) return;
         setDash(d.data);
       }
+      firstRead.landed(read);
     } catch (e) {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setError(e instanceof Error ? e.message : "Failed to load Practice");
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, []);
+  }, [firstRead]);
 
   useEffect(() => { load(); }, [load]);
 

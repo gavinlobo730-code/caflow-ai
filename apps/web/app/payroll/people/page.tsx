@@ -22,6 +22,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import {
   Users, Plus, X, AlertCircle, Upload, Pencil, Ban, Trash2, RotateCcw,
   ShieldAlert, } from "lucide-react";
@@ -65,7 +66,9 @@ const PEOPLE_IMPORT_COLUMNS = [
 export default function PayrollPeoplePage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  // "Loading the roster…" for the first read only (POST-A-400): the portal access dialog changes an employee's access and
+  // asks for this read again (`onChanged={load}`), and a read that replaced the page unmounted the dialog and its answer.
+  const { loading, reader: firstRead } = useFirstRead("roster");
   // A failed read must not render as an empty roster — that is indistinguishable
   // from a firm with no employees, and it is the mistake M17 fixed across this
   // module.
@@ -74,14 +77,16 @@ export default function PayrollPeoplePage() {
   const [showImportEmp, setShowImportEmp] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     setLoadError(null);
     try {
       const [cRes, eRes] = await Promise.all([
         api.clients.list(),
         api.payroll.listEmployees() as Promise<ApiResp<Employee[]>>,
       ]);
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
       if (!cRes.success || !eRes.success) {
+        firstRead.failed(read);
         setLoadError(cRes.error ?? eRes.error ?? "Could not load the roster.");
         return;
       }
@@ -92,12 +97,15 @@ export default function PayrollPeoplePage() {
       // that and neither could tsc, because the cast asserted it away.
       setClients(arrayOrEmpty<Client>(cRes.data?.clients));
       setEmployees(eRes.data ?? []);
+      firstRead.landed(read);
     } catch (e) {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setLoadError(apiErr(e, "Could not load the roster."));
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, []);
+  }, [firstRead]);
 
   useEffect(() => { load(); }, [load]);
 
