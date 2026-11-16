@@ -23,6 +23,7 @@ import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { formatDate } from "@/lib/dates/format";
 import { describeMapping, readSavedMappings, type SavedColumnMapping } from "@/lib/banking/savedColumnMappings";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const INITIAL_LIMIT = 100;
 
@@ -101,7 +102,7 @@ export function SavedColumnMappings({
         When a bank&apos;s file is mapped by hand, the mapping is kept for that account and that exact set of column headings.
       </p>
       {msg && <Callout tone={msg.type === "ok" ? "note" : "problem"} className="mt-2">{msg.text}</Callout>}
-      {state.kind === "loading" && <p className="mt-2 text-xs text-ps-hint">Loading the saved layouts…</p>}
+      {state.kind === "loading" && <LoadingRegion label="Loading the saved layouts" className="mt-2 text-xs text-ps-hint">Loading the saved layouts…</LoadingRegion>}
       {state.kind === "unreadable" && (
         <Callout tone="problem" className="mt-2">The saved layouts could not be loaded. This is not the same as none having been saved.</Callout>
       )}

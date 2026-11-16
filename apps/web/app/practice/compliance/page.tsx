@@ -12,6 +12,7 @@ import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // Compliance lifecycle (mirrors the server-side VALID_TRANSITIONS — presentation
 // only; the backend is the source of truth and rejects invalid transitions).
 const NEXT_STATUS: Record<string, string[]> = {
@@ -152,7 +153,7 @@ function ComplianceDashboard() {
     [dash]
   );
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading compliance…</div>;
+  if (loading) return <LoadingRegion label="Loading compliance" className="p-8 text-sm text-gray-500">Loading compliance…</LoadingRegion>;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   const s = dash?.summary;

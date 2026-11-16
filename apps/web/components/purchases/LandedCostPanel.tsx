@@ -31,6 +31,7 @@ import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface Charge {
   id: string;
@@ -196,7 +197,7 @@ export function LandedCostPanel({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {error && <Callout tone="problem">{error}</Callout>}
 
-          {busy && !data && <p className="text-xs text-ps-hint">Loading…</p>}
+          {busy && !data && <LoadingRegion label="Loading the landed cost" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
 
           {data && (
             <>

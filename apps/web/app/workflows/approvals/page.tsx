@@ -12,6 +12,7 @@ import { windowDescription } from "@/lib/lists/window";
 import { formatDateTime } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface Approval {
   id: string;
@@ -171,7 +172,7 @@ export default function ApprovalsPage() {
 
         {/* Approvals list */}
         {loading ? (
-          <div className="text-center py-16 text-ps-hint">Loading approvals...</div>
+          <LoadingRegion label="Loading approvals" className="text-center py-16 text-ps-hint" noticeClassName="justify-center text-center">Loading approvals...</LoadingRegion>
         ) : loadError ? (
           <div className="text-center py-16">
             <AlertTriangle size={40} className="mx-auto text-red-300 mb-3" />

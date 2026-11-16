@@ -47,6 +47,7 @@ import { ExceptionIndexTab } from "@/components/payroll/ExceptionIndex";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /** The importable columns: the server-mirrored list, plus the one column only a
  *  FIRM-wide import needs.
@@ -298,7 +299,7 @@ export default function PayrollPeoplePage() {
   // ── Payslips table (shared DataTable) ──────────────────────────────────────
 
   if (loading) {
-    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading the roster…</p></div>;
+    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><LoadingRegion label="Loading the roster" className="text-center" noticeClassName="justify-center"><p className="text-ps-label">Loading the roster…</p></LoadingRegion></div>;
   }
 
   if (loadError) {

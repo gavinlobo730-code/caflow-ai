@@ -43,6 +43,7 @@ import { api, type ApiResp, type PayrollDepositDueDates_FY, type PayrollTdsProje
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -1359,7 +1360,7 @@ function SliceState({ loading, error }: { loading: boolean; error: string | null
     );
   }
   if (loading) {
-    return <p className="text-xs text-ps-hint px-1 py-2">Loading…</p>;
+    return <LoadingRegion label="Loading this report" className="text-xs text-ps-hint px-1 py-2">Loading…</LoadingRegion>;
   }
   return null;
 }
@@ -1426,7 +1427,9 @@ export default function PayrollReportsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-ps-bg flex items-center justify-center">
-        <p className="text-ps-label">Loading payroll reports...</p>
+        <LoadingRegion label="Loading payroll reports" className="text-center" noticeClassName="justify-center">
+          <p className="text-ps-label">Loading payroll reports...</p>
+        </LoadingRegion>
       </div>
     );
   }

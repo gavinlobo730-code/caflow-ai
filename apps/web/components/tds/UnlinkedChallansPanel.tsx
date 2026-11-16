@@ -16,6 +16,7 @@ import { Callout } from "@/components/ui/callout";
 import { listUnlinkedTdsChallans, type UnlinkedChallans } from "@/lib/data/tds";
 import { formatDate } from "@/lib/dates/format";
 import { formatPaise } from "@/lib/services/formatting";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const SHOWN = 25;
 
@@ -31,7 +32,7 @@ export function UnlinkedChallansPanel({ onOpenClient, reloadKey = 0 }: { onOpenC
     return () => { live = false; };
   }, [reloadKey]);
 
-  if (state.kind === "loading") return <p role="status" className="text-xs text-ps-hint">Checking which recorded challans are tied to a ledger entry…</p>;
+  if (state.kind === "loading") return <LoadingRegion label="Checking which recorded challans are tied to a ledger entry" className="text-xs text-ps-hint">Checking which recorded challans are tied to a ledger entry…</LoadingRegion>;
   if (state.kind === "failed") {
     return (
       <Callout tone="attention" title="Challans with no ledger entry could not be listed">

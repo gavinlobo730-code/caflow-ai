@@ -12,6 +12,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceTemplate {
@@ -337,7 +338,7 @@ export default function InvoiceTemplatesPage() {
         </div>
 
         {loading ? (
-          <div className="py-12 text-center text-sm text-ps-hint">Loading templates…</div>
+          <LoadingRegion label="Loading templates" className="py-12 text-center text-sm text-ps-hint" noticeClassName="justify-center text-center">Loading templates…</LoadingRegion>
         ) : loadError ? (
           <div className="py-12 text-center space-y-3">
             <p className="text-sm text-red-600 font-medium">{loadError}</p>

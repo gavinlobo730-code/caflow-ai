@@ -5,7 +5,7 @@ import { Plus, Loader2, FileText, ChevronRight, AlertTriangle, CheckCircle } fro
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { TransactionListSkeleton } from "@/components/ui/skeleton";
+import { TransactionListSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { assessmentYearFor, financialYearChoicesAround } from "@/lib/dates/periods";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -1025,6 +1025,19 @@ export default function ITRFilingPage() {
               Part A from the books
             </button>
           </div>
+
+          {/* Two reads the buttons above start (POST-A-449). Each button keeps its own spinner; the place the sheet will be drawn
+              says what is being read, and that the server may be waking up, while the read is out. */}
+          {sheetLoading && (
+            <LoadingRegion label="Building the keying sheet" className="text-xs text-ps-hint">
+              <p>Building the keying sheet…</p>
+            </LoadingRegion>
+          )}
+          {booksLoading && (
+            <LoadingRegion label="Laying out Part A from the books" className="text-xs text-ps-hint">
+              <p>Reading the books for Part A…</p>
+            </LoadingRegion>
+          )}
 
           {sheetError && (
             <p className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg p-3">

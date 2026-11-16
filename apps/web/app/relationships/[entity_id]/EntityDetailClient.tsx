@@ -682,9 +682,9 @@ export default function EntityDetailPage() {
               <div className="px-5 py-2.5 border-b border-gray-700 text-xs text-red-400">{matchActionError}</div>
             )}
             {matchesLoading ? (
-              <div className="text-center py-12">
+              <LoadingRegion label="Loading cross-client matches" className="text-center py-12" noticeClassName="justify-center text-center">
                 <p className="text-sm text-slate-500">Loading cross-client matches…</p>
-              </div>
+              </LoadingRegion>
             ) : matchesError ? (
               <div className="text-center py-12 space-y-2">
                 <p className="text-sm text-red-400 font-medium">{matchesError}</p>

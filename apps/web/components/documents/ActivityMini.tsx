@@ -24,6 +24,7 @@ import {
   ACTIVITY_MINI_COUNT, ACTIVITY_NOT_YET_ASKED, activityItems, activityStatusOf, documentActivityUrl, emptyActivityLine, miniActivity,
   readDocumentActivity, type ActivityItem, type ActivityStatus,
 } from "@/lib/documents/activity";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 export function ActivityMini({ clientId, entityType, entityId }: { clientId: string; entityType: string; entityId: string }) {
   const [items, setItems] = useState<ActivityItem[]>([]);
@@ -57,7 +58,7 @@ export function ActivityMini({ clientId, entityType, entityId }: { clientId: str
     <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2 text-xs mt-3" data-testid="activity-mini">
       <h4 className="font-semibold text-ps-body flex items-center gap-1"><Clock size={11} /> Recent activity</h4>
       {loading ? (
-        <p className="text-ps-hint">Loading…</p>
+        <LoadingRegion label="Loading recent activity" className="text-ps-hint">Loading…</LoadingRegion>
       ) : shown.length === 0 ? (
         <p className="text-ps-hint">{emptyActivityLine(status)}</p>
       ) : (

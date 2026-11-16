@@ -1,4 +1,4 @@
-// A PLACEHOLDER A SCREEN DRAWS ITSELF SAYS WHEN THE SERVER IS SLOW, AS THE SHARED SKELETONS DO (POST-A-147).
+// A PLACEHOLDER A SCREEN DRAWS ITSELF SAYS WHEN THE SERVER IS SLOW, AS THE SHARED SKELETONS DO (POST-A-147, POST-A-449).
 //   node --experimental-strip-types --test scripts/a-placeholder-a-screen-draws-says-when-the-server-is-slow.test.ts
 //
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,26 +12,46 @@
 // the client workspace's overview, health and year-end pages, every document drawer and the report screens among
 // them, which is most of what a demo opens first.
 //
+// AND A LINE OF WORDS ALONE SAID NOTHING EITHER (POST-A-449). A screen whose only sign of a read was "Loading…",
+// "Reading the register…" or "Checking the draft…", with no spinner beside it, was not a mark the first version of
+// this rule could see: on 16-11-2026 that was 95 lines in 82 files, among them every payroll page a demo opens
+// (runs, people, attendance, reports, statutory), the workflows list and its approvals, the practice pages, the
+// team screen and the drawers and modals that read before they show anything.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // THE RULE
 // ─────────────────────────────────────────────────────────────────────────────
 // Every placeholder mark drawn outside the two files that own the notice sits inside a `LoadingRegion` (the shared
 // region for a placeholder a screen composes itself, which carries the notice) or is named below with its reason.
 // A MARK is a `Skeleton` piece (`Skeleton`, `SkeletonText`, `MetricCardSkeleton`, `ClientHeaderSkeleton`), a spinner
-// (`Loader2`, `Spinner`, anything classed `animate-spin`) or a hand-made placeholder (classed `animate-pulse` or
-// `skeleton-shimmer`). It is judged by what the file draws and not by a list of today's screens:
-//   * a mark inside a `LoadingRegion`, or handed to `AsyncBoundary` as its `skeleton`, is covered;
+// (`Loader2`, `Spinner`, anything classed `animate-spin`), a hand-made placeholder (classed `animate-pulse` or
+// `skeleton-shimmer`), or WORDS: a JSX text, or a string literal a JSX expression draws (`{loading ? "Loading…" : x}`),
+// that begins with one of the product's waiting words (WAITING_WORDS). It is judged by what the file draws and not
+// by a list of today's screens:
+//   * a mark inside a `LoadingRegion`, or handed to `AsyncBoundary` as its `skeleton`, is covered; in a table the
+//     region goes INSIDE the cell (`<td><LoadingRegion>…`), since a div cannot sit in a row, and is covered the same;
 //   * a mark inside a component function of the same file is covered when every place that file draws that
 //     component is covered (the invoice editor's `FieldSkeleton` is drawn only inside its `LoadingRegion`);
 //   * a SPINNER inside a control (a button, a link, a menu item, a tab, or an `icon` handed to one) is that
 //     control's own work, very often a save, and the notice must never sit there: a Retry beside a save would
-//     send it twice. It is not counted, by rule;
+//     send it twice. It is not counted, by rule; nor are WORDS inside a control (a button's "Building…") or a field's
+//     own parts (an `option`, a `label`, a table heading, a badge), nor a string handed to an attribute (a
+//     `placeholder`, a `subtitle`), which is the component's to draw;
 //   * everything else is on NOT_A_READ_WAIT below, each mark named by the component it is drawn in and its kind, with
 //     why it waits on no read; the list is exact, so a new uncovered mark in a listed file fails too.
 //
 // WHAT IT DOES NOT PROVE: that the sentence is painted where it reads well on each screen (the drive does that for
 // the screens it opens: `scripts/drive/scenarios/slowServer.mjs`), or that a read listed as covered is a read and
 // not a write. A `LoadingRegion` offers no Retry, so a mistaken one says a true sentence and sends nothing.
+//
+// WHAT IT STILL CANNOT SEE: (1) a read a BUTTON starts whose only sign is that button's own label or spinner, because
+// whether a handler reads or writes is not something a parser can tell; the screens met by POST-A-449 draw a region
+// where the result will be drawn while the read is out (the cash-flow forecast, the filing screen's keying sheet and
+// Part A, the two GST builds and the client GST tab's two Computes, the salary register, the ITC register and the
+// practice's receivables ageing), and any other is found by reading the screen; (2) words held in a variable or made
+// by a function (`{label}`) rather than drawn as a literal; (3) a waiting word the list does not hold ("Preparing",
+// "Generating", "Verifying"), most of which are a button's own label and a change; (4) words a component of ANOTHER
+// file draws from a prop it was handed; and (5) a wait drawn as nothing at all.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -54,23 +74,29 @@ const NOT_A_READ_WAIT: Record<string, { marks: string[]; why: string }> = {
   "app/DashboardContent.tsx": { marks: Array(4).fill("DashboardContent:Skeleton"), why: "the four KPI tiles' figures load with the Recent Clients and Pending Tasks lists below (one `loading` flag), whose regions speak for the same read" },
   "app/auth/reset-password/page.tsx": { marks: ["ResetPasswordPage:spinner"], why: "waits on the sign-in service reading the reset link, not on this product's server" },
   "app/clients/[id]/accounting/page.tsx": { marks: ["LedgerDrillDown:spinner"], why: "a busy mark beside the ledger's date filters; the ledger below draws a TableSkeleton while it reads (the same `loading` flag)" },
+  "app/clients/[id]/compliance/gst/page.tsx": { marks: ["GSTR2BTab:words"], why: "\"Reading a GSTR-2B file and reconciling it needs permission…\": a sentence that tells a member without permission to compute why the button is not shown (POST-A-455); it begins with the step it names, not a wait, and nothing is read" },
+  "app/clients/[id]/fixed-assets/page.tsx": { marks: ["RegisterTab:words"], why: "the register's count line says \"Loading…\" while the table below draws a TableSkeleton, which speaks for the same read (the same `loading` flag)" },
   "app/clients/[id]/inventory/page.tsx": { marks: ["StockLedgerDrillDown:spinner"], why: "a busy mark beside the stock register's date filters; the register below draws a TableSkeleton while it reads (the same `loading` flag)" },
-  "app/clients/[id]/page.tsx": { marks: ["ClientRootPage:spinner"], why: "a redirect in the browser to the client's overview; nothing is read" },
+  "app/clients/[id]/page.tsx": { marks: ["ClientRootPage:spinner", "ClientRootPage:words"], why: "a redirect in the browser to the client's overview (a spinner and \"Loading workspace…\"); nothing is read" },
   "app/clients/[id]/reports/ageing/page.tsx": { marks: ["MsmeSelect:spinner"], why: "a supplier's MSME status being saved, shown inside its picker: a change" },
   "app/clients/[id]/tax/26as/page.tsx": { marks: ["Form26ASPage:spinner"], why: "an uploaded file's row status (still being read on the server), not a wait of this screen" },
   "app/clients/[id]/year-end/[engagementId]/_workspace.tsx": { marks: [...Array(5).fill("YearEndWorkspaceInner:Skeleton"), "YearEndWorkspace:Skeleton"], why: "three header chips that wait on the engagement read (the stage page drawn below them waits on the same server and its own region speaks); two blocks shown while the engagement is read from the address's own query string; and the Suspense fallback for that query string, which waits on no server" },
   "app/clients/[id]/year-end/[engagementId]/adjustments/_page.tsx": { marks: ["AdjustmentsPage:spinner"], why: "an adjustment row's action in progress, which is a change" },
   "app/engagements/page.tsx": { marks: ["EngagementsPage:spinner"], why: "the Suspense fallback for the address's query string; it waits on no server" },
+  "app/gst/gstr1/page.tsx": { marks: ["GSTR1Page:words"], why: "\"Building a return from the books needs permission…\": a sentence that tells a member without permission to compute why the button is not shown (POST-A-455); it begins with the step it names, not a wait, and nothing is read" },
   "app/migration/page.tsx": { marks: ["MigrationPage:spinner"], why: "an import running on the server, which is a change" },
-  "app/not-found.tsx": { marks: ["NotFound:spinner"], why: "a redirect in the browser to the client page the address names; nothing is read" },
+  "app/not-found.tsx": { marks: ["NotFound:spinner", "NotFound:words"], why: "a redirect in the browser to the client page the address names (a spinner and \"Loading workspace…\"); nothing is read" },
   "app/portal/activate/page.tsx": { marks: ["PortalActivatePage:spinner"], why: "the wait includes accepting the invitation, which is a change" },
-  "app/portal/employee/activate/page.tsx": { marks: ["EmployeeActivatePage:spinner"], why: "the wait includes accepting the invitation, which is a change" },
-  "app/settings/security/page.tsx": { marks: ["MfaCard:spinner"], why: "waits on the sign-in service listing the second factors, not on this product's server, so the sentence would not be true" },
+  "app/portal/employee/activate/page.tsx": { marks: ["EmployeeActivatePage:spinner", "EmployeeActivatePage:words"], why: "the wait (a spinner and \"Checking your invitation…\") includes accepting the invitation, which is a change" },
+  "app/settings/security/page.tsx": { marks: ["MfaCard:spinner", "MfaCard:words"], why: "waits on the sign-in service listing the second factors (a spinner and its \"Loading…\"), not on this product's server, so the sentence would not be true" },
+  "app/tds/returns/page.tsx": { marks: ["TDSReturnsPage:words"], why: "\"Computing a statement from the books needs permission…\": a sentence that tells a member without permission to compute why the button is not shown (POST-A-455); it begins with the step it names, not a wait, and nothing is read" },
   "app/time/page.tsx": { marks: ["TimeTrackingPage:placeholder"], why: "the running timer's pulsing dot; nothing is loading" },
   "components/banking/AccountsPanel.tsx": { marks: ["BankAccounts:spinner"], why: "a busy mark in the Transactions heading; the region under the heading speaks for the same read (the same `txnsLoading` flag)" },
   "components/banking/EntriesTab.tsx": { marks: ["EntriesTab:spinner"], why: "the progress of a bulk action on bank lines, which is a change" },
+  "components/banking/RulesTab.tsx": { marks: ["RulesTab:words"], why: "the rules' count line says \"Loading…\" while the table below draws a TableSkeleton, which speaks for the same read (the same `loading` flag)" },
   "components/invoices/InvoiceEditorSkeleton.tsx": { marks: Array(4).fill("InvoiceToolbarSkeleton:Skeleton"), why: "the toolbar's stand-in buttons, drawn beside the editor's own region, which speaks for the same read" },
-  "components/ui/combobox.tsx": { marks: Array(2).fill("ComboboxInner:spinner"), why: "a busy mark inside the field while its options load; the field is the control" },
+  "components/shell/ClientTopBar.tsx": { marks: ["ClientTopBar:words"], why: "the client's name in the workspace header while the client is resolved; the screen below renders at the same time and its own placeholder speaks for the server it waits on, as the year-end header chips do" },
+  "components/ui/combobox.tsx": { marks: [...Array(2).fill("ComboboxInner:spinner"), "ComboboxInner:words"], why: "a busy mark, and its \"Loading…\", inside the field while its options load; the field is the control" },
 };
 
 const PIECES = new Set(["Skeleton", "SkeletonText", "MetricCardSkeleton", "ClientHeaderSkeleton"]);
@@ -78,6 +104,13 @@ const SPINNERS = new Set(["Loader2", "Spinner"]);
 const CONTROLS = /^(button|Button|a|Link|DropdownMenuItem|Action|TabsTrigger|SelectTrigger)$/;
 const PLACEHOLDER_CLASS = /\banimate-pulse\b|\bskeleton-shimmer\b/;
 const SPIN_CLASS = /\banimate-spin\b/;
+/**
+ * A line of words that says the screen is waiting (POST-A-449): "Loading…", "Reading the register…", "Computing both
+ * years". The words are the product's waiting words at the start of a JSX text, or of a string a JSX expression draws.
+ */
+export const WAITING_WORDS = /^\s*(Loading|Reading|Fetching|Searching|Checking|Computing|Calculating|Building)\b/;
+/** Where words are a control's own label, or a field's own options, and not the screen's wait. */
+const WORD_CONTROLS = /^(button|Button|a|Link|DropdownMenuItem|Action|TabsTrigger|SelectTrigger|option|select|SelectItem|label|th|Badge)$/;
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -124,6 +157,16 @@ function ownerFunction(n: ts.Node): string | null {
   return name;
 }
 
+/** A string literal whose value a JSX expression draws (`{loading ? "Loading…" : x}`), not one passed to a call or an attribute. */
+function drawnInJsx(n: ts.Node): boolean {
+  for (let p = n.parent; p; p = p.parent) {
+    if (ts.isJsxExpression(p)) return !ts.isJsxAttribute(p.parent);
+    if (ts.isConditionalExpression(p) || ts.isBinaryExpression(p) || ts.isParenthesizedExpression(p)) continue;
+    return false;
+  }
+  return false;
+}
+
 type Mark = { line: number; kind: string; covered: boolean; inControl: boolean; owner: string | null; node: ts.Node };
 
 /** Every mark a file draws and whether it is covered, with one level of same-file indirection resolved to a fixed point. */
@@ -153,6 +196,12 @@ export function marksOf(rel: string, text: string): Mark[] {
         const inControl = kind === "spinner" && enclosingTags(n).some((e) => CONTROLS.test(e.tag) || e.via === "icon" || e.via === "leftIcon");
         marks.push({ line: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1, kind, covered: directlyCovered(n), inControl, owner: ownerFunction(n), node: n });
       }
+    }
+    const words = ts.isJsxText(n) ? n.text
+      : (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) && drawnInJsx(n) ? n.text : null;
+    if (words !== null && WAITING_WORDS.test(words)) {
+      const inControl = enclosingTags(n).some((e) => WORD_CONTROLS.test(e.tag) || e.via !== undefined);
+      marks.push({ line: sf.getLineAndCharacterOfPosition(n.getStart()).line + 1, kind: "words", covered: directlyCovered(n), inControl, owner: ownerFunction(n), node: n });
     }
     ts.forEachChild(n, visit);
   };
@@ -214,6 +263,20 @@ test("the walk is not vacuous: it finds the marks and the regions that cover the
   assert.ok(controls > 20, `found only ${controls} spinners inside a control`);
 });
 
+test("the walk is not vacuous for words either: it finds the lines of words, the regions that cover them and the controls", () => {
+  let words = 0, covered = 0, controls = 0;
+  for (const f of FILES) {
+    for (const m of marksOf(f, read(f))) {
+      if (m.kind !== "words") continue;
+      words++; if (m.covered) covered++; if (m.inControl) controls++;
+    }
+  }
+  // 185, 136 and 41 when POST-A-449 closed; a floor well under each, so a change to the walk that stops seeing words fails.
+  assert.ok(words > 150, `found only ${words} lines of waiting words`);
+  assert.ok(covered > 120, `found only ${covered} lines of waiting words inside a region`);
+  assert.ok(controls > 30, `found only ${controls} waiting words inside a control`);
+});
+
 test("every reason on the list says what the mark waits on", () => {
   for (const [f, { marks, why }] of Object.entries(NOT_A_READ_WAIT)) {
     assert.ok(marks.length > 0, `${f}: a list of nothing`);
@@ -259,6 +322,58 @@ test("self-test: a component that is exported, or handed on as a value, is not t
       return <LoadingRegion label="x"><Exported /><AsValue /><ExportedConst /><Suspense fallback={AsValue}>y</Suspense></LoadingRegion>;
     }`;
   assert.deepEqual(uncovered("Sample.tsx", sample).map((m) => m.line), [3, 4, 5]);
+});
+
+test("self-test: words in a region, in a button, in a table cell's region, in a conditional, and in an attribute", () => {
+  const sample = `
+    import { LoadingRegion } from "@/components/ui/skeleton";
+    export default function Page({ loading, saving, rows }: { loading: boolean; saving: boolean; rows: string[] }) {
+      if (loading) return <LoadingRegion label="Loading the roster"><p>Loading the roster…</p></LoadingRegion>;
+      return (
+        <div>
+          <button>{saving ? "Saving…" : "Save"}</button>
+          <Button>{loading ? "Building…" : "Build"}</Button>
+          <table><tbody>{loading ? (
+            <tr><td colSpan={3}><LoadingRegion label="Loading the rows">Loading…</LoadingRegion></td></tr>
+          ) : rows.map((r) => <tr key={r}><td>{r}</td></tr>)}</tbody></table>
+          <p>{loading ? "Reading the register…" : "Done"}</p>
+          <PageHeader subtitle={loading ? "Loading…" : "Ready"} />
+          <input placeholder="Searching is free" />
+          <p>Loading…</p>
+        </div>
+      );
+    }`;
+  const marks = marksOf("Sample.tsx", sample).filter((m) => m.kind === "words");
+  const at = (l: number) => marks.filter((m) => m.line === l);
+  assert.equal(at(4)[0]?.covered, true, "words inside a LoadingRegion are covered");
+  assert.equal(at(7).length, 0, "a save's label is not a waiting word at all");
+  assert.equal(at(8)[0]?.inControl, true, "a button's own waiting words are the button's");
+  assert.equal(at(10)[0]?.covered, true, "a region inside a table cell covers its words");
+  assert.equal(at(12)[0]?.covered, false, "a string a conditional JSX expression draws is found");
+  assert.equal(at(13).length, 0, "a string handed to an attribute is the component's to draw");
+  assert.equal(at(14).length, 0, "an attribute's own string is not found");
+  assert.deepEqual(uncovered("Sample.tsx", sample).map((m) => `${m.line}:${m.kind}`), ["12:words", "15:words"]);
+});
+
+test("negative control: the payroll roster with its region taken away names the words it left bare", () => {
+  const rel = "app/payroll/people/page.tsx";
+  const text = read(rel);
+  const open = '<LoadingRegion label="Loading the roster" className="text-center" noticeClassName="justify-center">';
+  const at = text.indexOf(open);
+  const close = text.indexOf("</LoadingRegion>", at);
+  assert.ok(at > 0 && close > at, "premise: the roster's region is where this test expects it");
+  const broken = text.slice(0, at) + "<div>" + text.slice(at + open.length, close) + "</div>" + text.slice(close + "</LoadingRegion>".length);
+  assert.deepEqual(uncovered(rel), [], "premise: the roster draws no uncovered mark today");
+  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["PayrollPeoplePage:words"]);
+});
+
+test("negative control: the recurring templates' cell with its region taken away names the words it left bare", () => {
+  const rel = "app/accounting/recurring/page.tsx";
+  const text = read(rel);
+  const inCell = '<LoadingRegion label="Loading the recurring templates" noticeClassName="justify-center text-center">Loading…</LoadingRegion>';
+  assert.equal(text.split(inCell).length, 2, "premise: the region sits inside the table cell once");
+  const broken = text.replace(inCell, "Loading…");
+  assert.deepEqual(uncovered(rel, broken).map((m) => `${m.owner}:${m.kind}`), ["RecurringPage:words"]);
 });
 
 test("negative control: a listed mark taken away does not make room for a new bare one elsewhere in the file", () => {

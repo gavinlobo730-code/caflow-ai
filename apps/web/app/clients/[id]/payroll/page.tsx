@@ -2256,7 +2256,7 @@ function PayrollEnablementLine({ clientId }: { clientId: string }) {
           </button>
         </>
       ) : enabled === null ? (
-        <span className="text-ps-hint">Checking whether payroll is switched on…</span>
+        <LoadingRegion label="Checking whether payroll is switched on" className="text-ps-hint">Checking whether payroll is switched on…</LoadingRegion>
       ) : enabled ? (
         <span className="text-ps-body">Payroll is <strong>on</strong> for this client.</span>
       ) : (
@@ -2638,6 +2638,13 @@ function ReportsTab({ clientId, initialMonth }: { clientId: string; initialMonth
         </button>
       </div>
       {downloadError && <p className="text-2xs text-red-600">{downloadError}</p>}
+      {/* A read the Load button starts (POST-A-449): the button keeps its own label, and the place the register will be drawn
+          says what is being read, and that the server may be waking up, while the read is out. */}
+      {loading && (
+        <LoadingRegion label="Loading the salary register" className="text-xs text-ps-hint">
+          <p>Loading the salary register for {formatMonthYear(month)}…</p>
+        </LoadingRegion>
+      )}
       {(data?.slips?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
           <div className="px-4 py-3 border-b border-ps-border flex items-center justify-between">

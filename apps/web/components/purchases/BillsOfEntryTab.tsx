@@ -35,6 +35,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -298,7 +299,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
       )}
 
       {loading ? (
-        <p className="text-xs text-ps-hint">Loading…</p>
+        <LoadingRegion label="Loading the bills of entry" className="text-xs text-ps-hint">Loading…</LoadingRegion>
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<Ship size={28} />}

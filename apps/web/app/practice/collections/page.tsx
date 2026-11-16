@@ -8,6 +8,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface DashboardData {
   total_receivable_paise: number; overdue_paise: number; overdue_count: number;
@@ -53,7 +54,7 @@ function Collections() {
     finally { setBusy(false); }
   }
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading collections…</div>;
+  if (loading) return <LoadingRegion label="Loading collections" className="p-8 text-sm text-gray-500">Loading collections…</LoadingRegion>;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   return (

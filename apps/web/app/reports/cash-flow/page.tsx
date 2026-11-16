@@ -30,6 +30,7 @@ import { formatWhole } from "@/lib/money/format";
 import { Callout, StatutoryNotes } from "@/components/ui/callout";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ─── The served shape ─────────────────────────────────────────────────────────
 
@@ -153,6 +154,15 @@ export default function CashFlowForecastPage() {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+
+      {/* A read the button starts (POST-A-449). The button keeps its own spinner;
+          the place the forecast will be drawn says what is happening, and that
+          the server may be waking up, while the read is out. */}
+      {loading && (
+        <LoadingRegion label="Building the forecast" className="bg-white rounded-xl border border-ps-border p-10 text-center" noticeClassName="justify-center text-center">
+          <p className="text-sm text-ps-hint">Building the forecast…</p>
+        </LoadingRegion>
+      )}
 
       {/* The four states are exhaustive. A 200 with nothing in it used to leave
           a heading over an empty page. */}

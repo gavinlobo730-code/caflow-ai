@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // Module 9.0 / M1 — canonical staff roles (single source of truth = backend Role enum).
 // Client is external (uses the portal) and is not a team member here.
@@ -429,7 +430,7 @@ function RolePermissionsCard() {
       </div>
 
       {error && <p className="text-xs text-state-problem">{error}</p>}
-      {!matrix && !error && <p className="text-xs text-ps-hint">Loading…</p>}
+      {!matrix && !error && <LoadingRegion label="Loading the role permissions" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
 
       {matrix && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -566,9 +567,9 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
   }
   if (!matrix) {
     return (
-      <div className="bg-white rounded-xl border border-ps-border p-6 text-center">
+      <LoadingRegion label="Loading the access matrix" className="bg-white rounded-xl border border-ps-border p-6 text-center" noticeClassName="justify-center text-center">
         <p className="text-sm text-ps-hint">Loading access matrix…</p>
-      </div>
+      </LoadingRegion>
     );
   }
 
@@ -1013,7 +1014,7 @@ export default function TeamPage() {
           </div>
 
           {loading ? (
-            <div className="px-5 py-10 text-center text-sm text-ps-hint">Loading…</div>
+            <LoadingRegion label="Loading team members" className="px-5 py-10 text-center text-sm text-ps-hint" noticeClassName="justify-center text-center">Loading…</LoadingRegion>
           ) : members.length === 0 ? (
             <EmptyState
               icon={<Users size={32} />}
@@ -1113,9 +1114,9 @@ export default function TeamPage() {
       {/* Tab: Permissions */}
       {activeTab === "permissions" && (
         loading ? (
-          <div className="bg-white rounded-xl border border-ps-border px-5 py-10 text-center text-sm text-ps-hint">
+          <LoadingRegion label="Loading team members" className="bg-white rounded-xl border border-ps-border px-5 py-10 text-center text-sm text-ps-hint" noticeClassName="justify-center text-center">
             Loading…
-          </div>
+          </LoadingRegion>
         ) : (
           <PermissionsMatrix
             members={members}

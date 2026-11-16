@@ -32,6 +32,7 @@ import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { api, type AuditEntry } from "@/lib/api";
 import { describeChanges } from "@/components/accounting/entryHistoryFields";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /** A line's audit row is keyed to its parent entry, so one request covers both. */
 export const JOURNAL_HISTORY_TYPES = "journal_entry,journal_line";
@@ -101,7 +102,7 @@ export default function EntryHistory({ entryId }: { entryId: string }) {
       {open && (
         <div className="border-t border-ps-border">
           {loading && entries.length === 0 && (
-            <p className="px-5 py-6 text-xs text-ps-hint">Reading the log…</p>
+            <LoadingRegion label="Reading the edit log" className="px-5 py-6 text-xs text-ps-hint">Reading the log…</LoadingRegion>
           )}
           {error && (
             <p className="px-5 py-6 text-xs text-red-600">{error}</p>

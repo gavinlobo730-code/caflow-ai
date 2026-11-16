@@ -46,7 +46,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import {
   computeCapitalGains, listCapitalGains, createCapitalGain, deleteCapitalGain, getCiiTable,
@@ -652,12 +652,17 @@ export default function CapitalGainsPage() {
               {computeError && <Callout tone="problem">{computeError}</Callout>}
               {!result ? (
                 <div className="bg-white rounded-xl border border-ps-border p-5 flex items-center justify-center h-full min-h-[200px]">
-                  <div className="text-center">
-                    <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
-                    <p className="text-sm text-ps-hint">
-                      {computing ? "Computing…" : "Enter asset details to compute capital gains"}
-                    </p>
-                  </div>
+                  {computing ? (
+                    <LoadingRegion label="Computing the capital gain" className="text-center" noticeClassName="justify-center text-center">
+                      <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
+                      <p className="text-sm text-ps-hint">Computing…</p>
+                    </LoadingRegion>
+                  ) : (
+                    <div className="text-center">
+                      <Calculator className="w-8 h-8 text-ps-disabled mx-auto mb-2" />
+                      <p className="text-sm text-ps-hint">Enter asset details to compute capital gains</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">

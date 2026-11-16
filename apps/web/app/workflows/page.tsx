@@ -10,6 +10,7 @@ import { formatDateTime } from "@/lib/services/formatting";
 import { ATTENTION, BRAND, BRAND_SURFACE, HINT, MUTED, PROBLEM, READY } from "@/lib/design/tokens";
 import { objectWithLists } from "@/lib/api/shape";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -275,7 +276,7 @@ export default function WorkflowsPage() {
         )}
         {tab === "templates" && (
           loading ? (
-            <div className="text-center py-16 text-ps-hint">Loading workflows...</div>
+            <LoadingRegion label="Loading workflows" className="text-center py-16 text-ps-hint" noticeClassName="justify-center text-center">Loading workflows...</LoadingRegion>
           ) : loadError ? (
             <div className="text-center py-16">
               <p className="text-sm text-red-600 font-medium">{loadError}</p>
@@ -451,7 +452,7 @@ function WorkflowInstancesTab() {
         </select>
       </div>
       {loading ? (
-        <div className="text-center py-12 text-ps-hint">Loading...</div>
+        <LoadingRegion label="Loading workflow runs" className="text-center py-12 text-ps-hint" noticeClassName="justify-center text-center">Loading...</LoadingRegion>
       ) : loadError ? (
         <div className="text-center py-12">
           <p className="text-sm text-red-600 font-medium">{loadError}</p>

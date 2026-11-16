@@ -5,6 +5,7 @@ import { StickyNote, Plus, Pin, Archive, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 export interface Instruction {
   id: string; client_id: string; title: string; body: string;
@@ -101,7 +102,7 @@ export function ClientInstructions({
   }
 
   const visible = pinnedOnly ? items.filter((i) => i.is_pinned) : items;
-  if (loading) return <div className="text-xs text-gray-400">Loading instructions…</div>;
+  if (loading) return <LoadingRegion label="Loading instructions" className="text-xs text-gray-400">Loading instructions…</LoadingRegion>;
   // A pinned-only card with nothing to show renders nothing — but a FAILED
   // read is not "nothing pinned", so the error still shows.
   if (pinnedOnly && visible.length === 0 && !error) return null;

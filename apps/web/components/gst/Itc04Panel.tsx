@@ -50,6 +50,7 @@ import { BLANK_LOT, clockText, clockTone, lotBody, type LotForm } from "@/lib/gs
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const TONE_CLASS = {
   problem: "text-state-problem",
@@ -208,7 +209,7 @@ export function Itc04Panel({ clientId, onChanged, refreshToken }: {
         </p>
       )}
 
-      {loading && !st && <p className="px-5 py-4 text-sm text-ps-hint">Loading…</p>}
+      {loading && !st && <LoadingRegion label="Loading ITC-04" className="px-5 py-4 text-sm text-ps-hint">Loading…</LoadingRegion>}
 
       {failed && (
         <p className="px-5 py-4 text-xs text-state-attention" role="alert">

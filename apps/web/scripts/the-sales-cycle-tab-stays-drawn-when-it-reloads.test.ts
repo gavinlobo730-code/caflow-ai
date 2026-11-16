@@ -55,7 +55,9 @@ test("a read counts as the first only when it came back, and a failed one makes 
 });
 
 test("the early return still blocks the first read, and nothing else keys the tab's mounting on a reload", () => {
-  assert.match(TAB, /if \(loading\) \{\s*return <div className="p-6 text-sm text-ps-hint">Loading…<\/div>;\s*\}/, "the first read no longer shows Loading…");
+  // The words sit in a LoadingRegion since POST-A-449, so the first read also says when the server is slow; it is still the early return.
+  assert.match(TAB, /if \(loading\) \{\s*return <LoadingRegion label="[^"]+" className="p-6 text-sm text-ps-hint">Loading…<\/LoadingRegion>;\s*\}/,
+    "the first read no longer shows Loading…, or no longer shows it in a region that says when the server is slow");
   assert.match(TAB, /<Itc04Panel clientId=\{clientId\} onChanged=\{\(\) => void load\(\)\} refreshToken=\{itc04Refresh\} \/>/, "the panel is not told a reload landed, or no longer asks the tab to reload after a lot");
   assert.doesNotMatch(TAB, /key=\{[^}]*(loading|reload|nonce|itc04Refresh)[^}]*\}/, "the tab or the panel is keyed on a reload: that remounts the panel as the early return did");
 });

@@ -54,6 +54,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { Button } from "@/components/ui/button";
 import { istToday } from "@/lib/dateMath";
 import { usePermissions } from "@/lib/auth/AuthContext";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function r(rupees: number): string {
@@ -354,6 +355,13 @@ export default function GSTR1Page() {
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
+      {/* A read the button starts (POST-A-449): the button keeps its own label, and the place the return will be drawn says
+          what is being read, and that the server may be waking up, while the read is out. */}
+      {loading && !result && (
+        <LoadingRegion label="Building GSTR-1 from the books" className="bg-white rounded-xl border border-ps-border p-8 text-center" noticeClassName="justify-center text-center">
+          <p className="text-sm text-ps-hint">Building GSTR-1 from the books…</p>
+        </LoadingRegion>
+      )}
       {filingNote && (
         <Callout tone="note" title="Recorded as filed. The compliance calendar was not marked filed.">
           <span>{filingNote}</span>{" "}

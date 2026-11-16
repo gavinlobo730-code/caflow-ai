@@ -40,6 +40,7 @@ import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatPaise } from "@/lib/money/format";
 import { istToday } from "@/lib/dateMath";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Client = { id: string; client_name: string };
 
@@ -207,7 +208,7 @@ export default function StatutoryPage() {
         <GapList gaps={summary?.gaps ?? []} tone="attention" className="mb-4" />
 
         {loading && (
-          <Card><CardContent className="py-12 text-center text-ps-label">Loading…</CardContent></Card>
+          <Card><CardContent className="py-12 text-center text-ps-label"><LoadingRegion label="Loading the statutory summary" noticeClassName="justify-center text-center">Loading…</LoadingRegion></CardContent></Card>
         )}
 
         {!loading && loadFailed && (

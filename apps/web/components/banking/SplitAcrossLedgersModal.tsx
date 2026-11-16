@@ -43,6 +43,7 @@ import {
   type SplitLeg, type SplitBlock,
 } from "@/lib/banking/splitLegs";
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface SplitsResponse {
   splits?: { account_id: string; amount_paise: number; narration: string | null }[];
@@ -218,7 +219,7 @@ export function SplitAcrossLedgersModal({
 
       <div className="space-y-2">
         {loading ? (
-          <p className="text-xs text-ps-hint py-6 text-center">Loading the current split…</p>
+          <LoadingRegion label="Loading the current split" className="text-xs text-ps-hint py-6 text-center" noticeClassName="justify-center text-center">Loading the current split…</LoadingRegion>
         ) : (
           <>
             {!editable && (

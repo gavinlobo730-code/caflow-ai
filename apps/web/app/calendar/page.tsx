@@ -62,6 +62,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { formatDate } from "@/lib/services/formatting";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ─── COLOUR SCHEME ────────────────────────────────────────────────────────────
 
@@ -364,7 +365,7 @@ export default function CalendarPage() {
             <span className="text-xs text-ps-label">{CATEGORY_LABELS[cat]}</span>
           </div>
         ))}
-        {loading && <span className="text-xs text-ps-hint ml-2">Loading…</span>}
+        {loading && <LoadingRegion label="Loading the calendar" className="text-xs text-ps-hint ml-2">Loading…</LoadingRegion>}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">

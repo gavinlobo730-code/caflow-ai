@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface Movement {
   id: string;
@@ -160,7 +161,7 @@ export function AssetMovements({ assetId, onMoved }: {
       </div>
       <p role="status" className="text-2xs text-state-ready">{done ?? ""}</p>
       {notice && <p role="alert" className="text-2xs text-state-problem">{notice}</p>}
-      {read.state === "loading" && <p className="text-2xs text-ps-hint">Reading the asset&rsquo;s movements…</p>}
+      {read.state === "loading" && <LoadingRegion label="Reading the asset's movements" className="text-2xs text-ps-hint">Reading the asset&rsquo;s movements…</LoadingRegion>}
       {read.state === "failed" && (
         <p role="alert" className="text-2xs text-state-problem">
           {read.message}{" "}

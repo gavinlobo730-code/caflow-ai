@@ -21,6 +21,7 @@ import {
   readStatementDeliveries,
   type StatementDelivery,
 } from "@/lib/sales/statementDeliveries";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const INITIAL_LIMIT = 50;
 
@@ -75,7 +76,7 @@ export function StatementDeliveryLog({
   return (
     <section className="bg-white rounded-xl border border-ps-border p-4" aria-label="Statement emails sent">
       <h3 className="text-sm font-semibold text-ps-ink">Emails sent for this customer</h3>
-      {state.kind === "loading" && <p className="mt-2 text-xs text-ps-hint">Loading the delivery log…</p>}
+      {state.kind === "loading" && <LoadingRegion label="Loading the delivery log" className="mt-2 text-xs text-ps-hint">Loading the delivery log…</LoadingRegion>}
       {state.kind === "unreadable" && (
         <Callout tone="problem" className="mt-2">The delivery log could not be loaded. This is not the same as nothing having been sent.</Callout>
       )}

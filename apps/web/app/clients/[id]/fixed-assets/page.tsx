@@ -14,7 +14,7 @@ import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
-import { TableSkeleton } from "@/components/ui/skeleton";
+import { TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 
 import { formatDate, formatDateTime, formatMonthYear, todayIstISO } from "@/lib/dates/format";
@@ -2530,7 +2530,7 @@ function RegisterIntegrity({ clientId }: { clientId: string }) {
       </div>
 
       {state.phase === "loading" && (
-        <p className="text-xs text-ps-hint">Checking…</p>
+        <LoadingRegion label="Checking the register against the ledger" className="text-xs text-ps-hint">Checking…</LoadingRegion>
       )}
 
       {state.phase === "error" && (

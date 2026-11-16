@@ -37,6 +37,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { formatDate } from "@/lib/dates/format";
 import { gstPeriodLabel } from "@/lib/gst/period";
 import { formatPaise } from "@/lib/money/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const TONE: Record<ItcTimeBarStatus, string> = {
   open: "text-ps-body",
@@ -96,7 +97,7 @@ export function ItcTimeBarRadar({ clientId }: { clientId: string }) {
         </p>
       </div>
 
-      {loading && <p className="text-xs text-ps-label">Reading the bills and GSTR-2B…</p>}
+      {loading && <LoadingRegion label="Reading the bills and GSTR-2B" className="text-xs text-ps-label">Reading the bills and GSTR-2B…</LoadingRegion>}
       {error && <p role="alert" className="text-xs text-state-problem">{error}</p>}
 
       {radar && (

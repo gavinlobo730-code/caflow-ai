@@ -42,6 +42,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { X, ShieldAlert, Lock, RotateCcw } from "lucide-react";
 import { api, type MemberAccessGrid } from "@/lib/api";
 import { denialNotice } from "@/lib/team/denialNotice";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Pair = {
   resource: string;
@@ -237,7 +238,7 @@ export default function MemberAccessDrawer({ userId, onClose, onSaved }: Props) 
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {!vocabulary || !grid ? (
-            <p className="text-sm text-ps-hint">Loading…</p>
+            <LoadingRegion label="Loading this member's access" className="text-sm text-ps-hint">Loading…</LoadingRegion>
           ) : (
             byResource.map(([resource, pairs]) => (
               <div key={resource}>

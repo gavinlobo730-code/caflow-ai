@@ -32,6 +32,7 @@ import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
 import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 const MIN_PASSWORD_LENGTH = 10;
 
 interface Factor {
@@ -161,7 +162,7 @@ function PostureCard() {
         {error && (
           <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
         )}
-        {!posture && !error && <p className="text-sm text-ps-label">Reading the live settings…</p>}
+        {!posture && !error && <LoadingRegion label="Reading the live settings" className="text-sm text-ps-label">Reading the live settings…</LoadingRegion>}
         {posture && (
           <>
             <ul className="divide-y divide-ps-border">

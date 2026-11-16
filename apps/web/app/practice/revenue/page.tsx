@@ -7,6 +7,7 @@ import { api, type ApiResp } from "@/lib/api";
 import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface DashboardData {
   total_receivable_paise: number; overdue_paise: number; overdue_count: number;
@@ -31,7 +32,7 @@ function Revenue() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading revenue…</div>;
+  if (loading) return <LoadingRegion label="Loading revenue" className="p-8 text-sm text-gray-500">Loading revenue…</LoadingRegion>;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   const cards = [
