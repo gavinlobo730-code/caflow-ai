@@ -41,6 +41,7 @@ import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
+import { editedText } from "@/lib/forms/editedValue";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -500,13 +501,20 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
     }
     // The date on file cannot be emptied (above). Said beside the button as a derived sentence; a server answer left over from an earlier press is not shown next to it.
     if (openingCleared) { setError(null); openingRefusal.refuse(); return; }
+    // POST-A-399. The ledger a linked account posts to is changed and not removed by an edit: every posting to this account reads it, and the route
+    // keeps a link the request sends empty, so "Not linked" over a link would leave the link and say the account was saved.
+    if (editing && account?.coa_account_id && !coaId) {
+      setError("The ledger account on file can be changed but not removed: choose the ledger this account posts to.");
+      return;
+    }
     setSaving(true); setError(null);
     try {
       const res = (editing
         ? await api.banking.updateBankAccount(account!.id, {
-            bank_name: bankName.trim(), ifsc: ifsc.trim() || null, account_type: accountType,
+            // An emptied IFSC that was on file is sent as null and the route clears it (POST-A-399); an empty box over nothing is not sent.
+            bank_name: bankName.trim(), ifsc: editedText(ifsc, account!.ifsc), account_type: accountType,
             opening_balance_paise: openingPaise, opening_balance_date: openingDate || null,
-            coa_account_id: coaId || null, is_active: isActive,
+            coa_account_id: coaId || undefined, is_active: isActive,
           })
         : await api.banking.createBankAccount({
             client_id: clientId, bank_name: bankName.trim(), account_no: accountNo.trim(),

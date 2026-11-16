@@ -32,6 +32,7 @@ import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
+import { editedChoice, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
 import { DataTable, exportSelectedAction } from "@/components/ui/data-table";
 import AllocatePaymentModal from "@/components/purchases/AllocatePaymentModal";
@@ -1619,6 +1620,16 @@ function Vendors({ clientId }: { clientId: string }) {
       return;
     }
     if (noPeDates.first ?? noPeCleared) { noPeRefusal.refuse(); return; }
+    // POST-A-399. A tax identifier on file is corrected and not removed: every return not yet filed reads it for the documents already issued to this
+    // supplier. The server refuses the same edit in the same words; this says it beside the button before anything is sent.
+    if (editingVendor) {
+      const removed = removedIdentifierProblem("GSTIN", editingVendor.gstin, gstin)
+        ?? removedIdentifierProblem("PAN", editingVendor.pan, pan)
+        ?? (residentialStatus === "non_resident"
+          ? removedIdentifierProblem("tax identification number", editingVendor.tax_identification_number, taxIdentificationNumber)
+          : null);
+      if (removed) { setFormError(removed); return; }
+    }
     if (residentialStatus === "non_resident" && natureOfIncome === "business_profits_no_pe" && !noPeDeclaration) {
       setFormError("Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income.");
       return;
@@ -1635,13 +1646,18 @@ function Vendors({ clientId }: { clientId: string }) {
       // accepted shape is models.parties.VendorUpdateIn, which is this same
       // set of optional fields). One payload shape means Edit can never drift
       // from what New Vendor already saves.
+      // POST-A-399. On an EDIT, a box that held a value and was emptied is sent as null and the route clears it (`edited`); an empty box over nothing
+      // is not sent. On a create there is nothing on file, so `edited` sends what a create always sent.
+      const was = editingVendor;
+      const edited = <T,>(now: T | null | undefined, onFile: T | null | undefined) => editedChoice(now, was ? onFile : null);
+      const nonResident = residentialStatus === "non_resident";
       const fields = {
         name: name.trim(),
         gstin: cleanGstin,
         state_code: stateCode,
         pan: pan.trim().toUpperCase() || undefined,
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
+        email: edited(email, was?.email),
+        phone: edited(phone, was?.phone),
         tds_applicable: tdsApplicable,
         tds_section: tdsApplicable ? tdsSection : undefined,
         // TDS-30. PATCH drops a null, so taking a recorded class back is done
@@ -1653,17 +1669,18 @@ function Vendors({ clientId }: { clientId: string }) {
           || (editingVendor?.interest_threshold_class
               && editingVendor.interest_threshold_class !== "ordinary"
               ? "ordinary" : undefined),
-        residential_status: residentialStatus || undefined,
-        gst_registration_status: gstRegistrationStatus || undefined,
-        // Only meaningful for a non-resident; 26Q has no field for either.
+        residential_status: edited(residentialStatus, was?.residential_status),
+        gst_registration_status: edited(gstRegistrationStatus, was?.gst_registration_status),
+        // Only meaningful for a non-resident; 26Q has no field for either. A box not drawn is not one the person emptied, so it is not sent.
         country_of_residence:
-          residentialStatus === "non_resident" ? countryOfResidence.trim().toUpperCase() || undefined : undefined,
+          nonResident ? edited(countryOfResidence.trim().toUpperCase(), was?.country_of_residence) : undefined,
+        // The foreign tax number is an identifier: corrected, never emptied (refused above), so an empty box is not sent.
         tax_identification_number:
-          residentialStatus === "non_resident" ? taxIdentificationNumber.trim() || undefined : undefined,
+          nonResident ? taxIdentificationNumber.trim() || undefined : undefined,
         section_195_nature_of_income:
-          residentialStatus === "non_resident" ? natureOfIncome || undefined : undefined,
+          nonResident ? edited(natureOfIncome, was?.section_195_nature_of_income) : undefined,
         non_resident_payee_class:
-          residentialStatus === "non_resident" ? payeeClass || undefined : undefined,
+          nonResident ? edited(payeeClass, was?.non_resident_payee_class) : undefined,
         trc_on_file: residentialStatus === "non_resident" ? trcOnFile : false,
         form_10f_on_file: residentialStatus === "non_resident" ? form10fOnFile : false,
         no_pe_declaration_on_file: residentialStatus === "non_resident" ? noPeDeclaration : false,
@@ -1675,8 +1692,8 @@ function Vendors({ clientId }: { clientId: string }) {
         // this form — "10" is 1000 bps and a blank field is genuinely unset,
         // which is what makes the backend refuse rather than assume zero.
         treaty_rate_bps:
-          residentialStatus === "non_resident" && treatyRate.trim()
-            ? bpsFromPercentInput(treatyRate) ?? undefined
+          nonResident
+            ? edited(treatyRate.trim() ? bpsFromPercentInput(treatyRate) : null, was?.treaty_rate_bps)
             : undefined,
         // tds_rate_bps is deliberately NOT written any more — see the form.
         // The column stays for now so the reads elsewhere keep type-checking;

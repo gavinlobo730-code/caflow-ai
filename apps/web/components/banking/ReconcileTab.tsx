@@ -791,7 +791,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                         <span className="text-ps-hint"> (now {fmt(Math.abs(projection.current.difference_paise))})</span></>}
                 </span>
               )}
-              {projection && projection.ineligible_ids.length > 0 && (
+              {projection && (projection.ineligible_ids ?? []).length > 0 && (
                 <span className="text-3xs text-state-attention">
                   {projection.ineligible_ids.length} selected line(s) can&apos;t be reconciled here.
                 </span>
