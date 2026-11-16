@@ -2,6 +2,7 @@
 
 import { bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useFirstRead } from "@/lib/loading/firstRead";
 import { useSearchParams } from "next/navigation";
 import {
   Users, Plus, Play, CheckCircle,
@@ -383,7 +384,9 @@ const EMPLOYEE_EXPORT_COLUMNS: { key: string; header: string; accessor: (row: Em
 // always a value the backend ignored.
 function EmployeesTab({ clientId }: { clientId: string }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  // The skeleton for the first read of this client only (POST-A-400): the employee drawer records a change (a settlement,
+  // a status) and asks for this read again (`onChanged={load}`), and a read that replaced the tab unmounted the drawer.
+  const { loading, reader: firstRead } = useFirstRead(clientId);
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
   // AddEmployeeModal shows the client as a fixed label when `lockedClientId`
@@ -404,18 +407,22 @@ function EmployeesTab({ clientId }: { clientId: string }) {
   const { can } = usePermissions();
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const read = firstRead.begin();
     setLoadFailed(false);
     try {
       const res = await apiFetch<Employee[]>(`/api/payroll/employees?client_id=${clientId}`);
-      if (!res || (res as { success?: boolean }).success === false) { setLoadFailed(true); return; }
+      if (!firstRead.isLatest(read)) return;   // a later read has been asked for: its answer is the one to show
+      if (!res || (res as { success?: boolean }).success === false) { firstRead.failed(read); setLoadFailed(true); return; }
       setEmployees(res.data || []);
+      firstRead.landed(read);
     } catch {
+      if (!firstRead.isLatest(read)) return;
+      firstRead.failed(read);
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      firstRead.settled(read);
     }
-  }, [clientId]);
+  }, [clientId, firstRead]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -572,7 +579,9 @@ function EmployeesTab({ clientId }: { clientId: string }) {
 
       {openEmployee && (
         <EmployeeDrawer
-          employee={openEmployee}
+          // The row as the latest read has it (POST-A-400): the drawer stays drawn through the reload it asks for, so the
+          // heading (name, status) follows a profile save or a settlement instead of keeping the row it was opened on.
+          employee={employees.find((e) => e.id === openEmployee.id) ?? openEmployee}
           clientId={clientId}
           // Recording a settlement posts an immutable journal and closes the
           // employee, so it needs payroll:finalize — the same tier that
