@@ -72,10 +72,10 @@ def test_naming_a_client_you_are_not_on_is_refused(fn, kw, deny):
 
 @pytest.mark.parametrize("fn,kw", NAMED, ids=[f[0] for f in NAMED])
 def test_the_refusal_is_not_swallowed_into_a_200(fn, kw, deny):
-    """Every handler here ends in a bare `except Exception: return
-    api_response(False, None, "Unable to complete MCA operation. Please try
-    again.")`. A guard inside that block would turn a 404 into a 200 — and into
-    a message telling the caller to RETRY something that can never succeed.
+    """Every handler here ends in a broad `except Exception: return
+    _could_not(e, <action>)` (a 200 with `success: false`). A guard inside that
+    block would turn a 404 into a 200, and into a message telling the caller to
+    RETRY something that can never succeed.
     This is why the guards sit before the `try`, and this fails if one moves
     back inside."""
     try:

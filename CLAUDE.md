@@ -330,7 +330,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 - A MEMBER'S HOURS FOR A PERIOD ARE SUMMED BY THE DATABASE
 
-### `docs/design-record/screens-and-site.md` (30 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (31 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -362,6 +362,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DATE BOX THAT A FORM REFUSES A LATER DAY IN SAYS SO ON THE BOX, RED AND `aria-invalid`, AND A HINT STAYS A HINT
 - THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH
 - THE PAGES A PERSON SEES BEFORE THEY ARE INSIDE WEAR ONE WASH, A WORD ON IT IS WHITE AND SITS WHERE WHITE READS, AND THE SIGN-IN
+- A REFUSAL SAYS WHAT TO CORRECT IN A PERSON'S WORDS: NO COLUMN NAME, NO ONE SENTENCE FOR EVERY FAILURE, NO BAND LEFT UNNAMED, AND A LIMIT
 
 ### `docs/design-record/tax-gst.md` (40 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 

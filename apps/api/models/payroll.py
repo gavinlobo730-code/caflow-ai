@@ -908,9 +908,11 @@ class PTSlabBandIn(BaseModel):
     without adding a rule engine, which is on this design's
     deliberately-not-built list.
     """
-    from_paise: int = Field(..., ge=0)
-    to_paise: Optional[int] = Field(None, ge=1)
-    amount_paise: int = Field(..., ge=0)
+    # The bounds are judged on the SET (`PTSlabSetIn._each_band_says_what_is_wrong_with_it`), which knows which band it is: a
+    # `Field(ge=...)` here answered in pydantic's words ("Input should be greater than or equal to 0") naming no band (POST-A-392).
+    from_paise: int
+    to_paise: Optional[int] = None
+    amount_paise: int
     basis: str = "monthly"
     months: Optional[list[int]] = None
 
@@ -961,6 +963,21 @@ class PTSlabSetIn(BaseModel):
             raise ValueError('State must be the two-letter code payroll_employees.pt_state '
                              'carries — "GJ", "TG", "KL".')
         return s
+
+    @field_validator("bands")
+    @classmethod
+    def _each_band_says_what_is_wrong_with_it(cls, bands):
+        """Each band's own bounds, refused in a sentence that names the band by its place in the set, as the screen numbers them
+        (POST-A-392). Whether the bands together cover every wage is the route's question (`bands_cover_every_wage`), asked after."""
+        for i, band in enumerate(bands, start=1):
+            if band.from_paise < 0:
+                raise ValueError(f"Band {i}: the wage it starts from cannot be below zero.")
+            if band.to_paise is not None and band.to_paise <= band.from_paise:
+                raise ValueError(f"Band {i}: the wage it runs up to must be more than the wage it starts from, or left blank "
+                                 f"for the top band.")
+            if band.amount_paise < 0:
+                raise ValueError(f"Band {i}: the tax cannot be negative.")
+        return bands
 
     @field_validator("effective_from", "notification_date")
     @classmethod

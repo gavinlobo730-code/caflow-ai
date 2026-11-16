@@ -72,8 +72,10 @@ def _unchanged(db, filing):
 def test_a_date_that_is_not_a_date_is_a_sentence_and_changes_nothing(world, day, words):
     filing = _filing(world)
     out = _file(filing, day)
-    assert out["success"] is False and words in out["error"] and "filing_date" in out["error"] and "Nothing was changed" in out["error"], out
-    assert "filed_date" not in out["error"], "the field the screen sent is the one named"
+    assert out["success"] is False and words in out["error"] and "Nothing was changed" in out["error"], out
+    # The date is named in words, never as a column (POST-A-392: it was "filing_date must be YYYY-MM-DD").
+    assert out["error"].startswith("The filing date is not a date"), out
+    assert "filed_date" not in out["error"] and "filing_date" not in out["error"], out
     _unchanged(world, filing)
 
 
@@ -81,7 +83,8 @@ def test_a_date_in_the_future_is_a_sentence_and_changes_nothing(world):
     filing = _filing(world, fy="2024-25")
     tomorrow = ist_today().replace(year=ist_today().year + 1).isoformat()
     out = _file(filing, tomorrow)
-    assert out["success"] is False and "cannot be in the future" in out["error"] and "filing_date" in out["error"], out
+    assert out["success"] is False and out["error"].startswith("The filing date, ") and "is after today's date in India" in out["error"], out
+    assert out["error"].endswith("Nothing was changed."), out
     _unchanged(world, filing)
 
 
