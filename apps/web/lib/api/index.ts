@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { withReference } from "@/lib/api/requestReference";
 import { doingOf, errorPageSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress } from "@/lib/api/uploadWithProgress";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 import { recordsUrl } from "@/lib/einvoice/invoiceRecords";
 
@@ -3263,6 +3264,13 @@ export type ReportGSTSummary = {
   ca_review_required: true;
 };
 
+/** A multipart POST. With a progress callback it goes through `XMLHttpRequest` (the only way to see bytes sent); without one it is `fetch`, as before. Never retried either way. */
+function uploadForm(url: string, token: string | undefined, form: FormData, onProgress?: (p: UploadProgress) => void): Promise<Response> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (onProgress) return fetchUpload(url, { headers, body: form }, "write", onProgress);
+  return fetchPlain(url, { method: "POST", headers, body: form }, "write");
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -4866,14 +4874,10 @@ export const api = {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),
     /** Put a file in the firm's store. Multipart, so the browser sets the
      *  boundary and Content-Type is not ours to send. */
-    upload: async (form: FormData) => {
+    upload: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/documents/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/documents/upload`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -4914,14 +4918,10 @@ export const api = {
       request<ApiResp<ClientDocumentList>>(
         `/api/client-documents?client_id=${encodeURIComponent(clientId)}${withLinks ? "&with_links=true" : ""}`),
     /** Multipart, so the browser sets the boundary and Content-Type is not ours to send. Throws the server's sentence. */
-    upload: async (form: FormData) => {
+    upload: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/client-documents/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/client-documents/upload`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<ApiResp<{ document: ClientDocumentRow }>>(res, "write");
     },
@@ -5543,15 +5543,11 @@ export const api = {
      *  expressly (the same statute services/bank_erasure.py names). */
     deleteStatement: (id: string) => request(`/api/banking/statements/${id}`, { method: "DELETE" }),
     /** Upload a CSV/XLSX statement — parsed, normalized & deduped SERVER-SIDE (B.1). */
-    uploadStatement: async (form: FormData) => {
+    uploadStatement: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/banking/statements/upload`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}/api/banking/statements/upload`, token, form, onProgress);
       // A 422 here is an answer written for the CA — the statement does not add
       // up, the format is unmappable — and it used to reach the screen as the
       // raw JSON body inside "API error 422: {...}". It now arrives as its

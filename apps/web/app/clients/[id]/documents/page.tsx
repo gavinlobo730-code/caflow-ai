@@ -1,5 +1,7 @@
 "use client";
 
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useEffect, useRef, useState } from "react";
 import { Upload, Download, Trash2, FolderOpen, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -66,6 +68,7 @@ export default function DocumentsPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadLabel, setUploadLabel] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -134,7 +137,7 @@ export default function DocumentsPage() {
       form.append("client_id", clientId);
       form.append("description", uploadLabel.trim());
       if (parentDoc) form.append("parent_document_id", parentDoc.id);
-      await api.clientDocuments.upload(form);
+      await api.clientDocuments.upload(form, setSent);
 
       setShowUploadModal(false);
       setUploadFile(null);
@@ -159,6 +162,7 @@ export default function DocumentsPage() {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      setSent(null);
     }
   }
 
@@ -371,6 +375,7 @@ export default function DocumentsPage() {
                 {uploading ? "Uploading…" : "Upload"}
               </button>
             </div>
+            <UploadProgress progress={sent} what="the document" />
           </div>
         </div>
       )}
