@@ -70,6 +70,11 @@ HELPERS = {
     # The one call graph of the API's own source (imports, singletons and methods resolved) that two rules read: the named-row rule and
     # the rule over the client a write of a closed table is made on. Imported by both, so neither carries its own resolver.
     "_call_graph.py",
+    # POST-A-166. What every write in the API puts in each column, read once: a payload built in one function and written by another (a
+    # repository's caller) is followed to where its dict is built, and a value held in a name is read as the literals bound to it. Imported
+    # by `test_users_fk_columns_take_the_internal_id_pg.py` (keyed columns, and the retired team_members keys) and
+    # `test_status_vocabularies_pg.py`, so both rules ask the same question of the same writes.
+    "_write_payloads.py",
     # What a test reads off a FastAPI body parameter, the same on the version in the lock and on the next (0.141 has no `ModelField.type_`).
     # Two test modules read the model a route takes, so the spelling is here once (POST-A-171).
     "_fastapi_compat.py",

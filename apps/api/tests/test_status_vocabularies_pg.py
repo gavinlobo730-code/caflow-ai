@@ -35,13 +35,28 @@ The vocabulary comes from the database, so it cannot drift from what is
 enforced; the literals come from the source, so a new status added in code
 fails here rather than in production.
 
-WHAT IT CANNOT SEE, AND WHY THAT IS ACCEPTABLE
+WHAT IT COULD NOT SEE, AND NOW DOES (POST-A-166, 16-11-2026)
 
 A write whose value is a variable, and a write whose payload is built in one
-file while the table is named in another (the repository pattern). Both are
-invisible to a textual scan. The check is therefore a floor, not a ceiling: it
-catches the shape that has actually bitten twice — a literal written a few
-lines from the table it is written to — and says nothing about the rest.
+file while the table is named in another (the repository pattern), were both
+invisible to the textual scan, and this file used to say so and stop. The
+second test below reads the same writes through `tests/_write_payloads.py`: a
+payload parameter is followed to every resolved caller and read where the dict
+is built (`document_repo.create({...})`, `approval_repo.update(id, {...})`),
+and a value held in a name, a conditional or an `or` is read as every literal
+the function binds it to. It saw 40-odd writes into a vocabulary column that
+the textual scan could not, all admitted today.
+
+THE VOCABULARY ITSELF WAS READ HALF (also 16-11-2026). The query took only
+values spelt `[a-z0-9_]+`, so a CHECK of capitalised or spaced words
+(`leads.stage`: 'Lead', 'Engagement Drafted', ... 'Active', and '_deleted')
+was read as admitting '_deleted' alone, and a write of 'Active' would have
+read as an offence once anything compared it; a vocabulary of nothing but
+such words was not read at all. It reads every quoted value now (296
+vocabularies against 251).
+
+What is still not seen: a payload returned by a call, a caller the call graph
+cannot resolve, a value computed at run time, and `.rpc()`. A floor, raised.
 """
 from __future__ import annotations
 
@@ -50,9 +65,12 @@ import os
 import re
 import shutil
 import subprocess
+import ast
 from pathlib import Path
 
 import pytest
+
+from tests._write_payloads import Reader, literal_strings
 
 _API = Path(__file__).resolve().parents[1]
 _HARNESS_PG = os.environ.get("HARNESS_PG")
@@ -70,7 +88,7 @@ SELECT json_agg(x) FROM (
   JOIN pg_class t ON t.oid = c.conrelid
   JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
   CROSS JOIN LATERAL regexp_matches(
-      pg_get_constraintdef(c.oid), '''([a-z0-9_]+)''::text', 'g') AS v(val)
+      pg_get_constraintdef(c.oid), '''((?:[^'']|'''')*)''::text', 'g') AS v(val)
   WHERE c.contype = 'c'
     AND t.relnamespace = 'public'::regnamespace
     AND array_length(c.conkey, 1) = 1
@@ -90,7 +108,7 @@ def vocabularies(pg_template):
     rows = json.loads(out.stdout.strip() or "null") or []
     vocab: dict[tuple[str, str], set[str]] = {}
     for r in rows:
-        vocab.setdefault((r["tbl"], r["col"]), set()).add(r["val"])
+        vocab.setdefault((r["tbl"], r["col"]), set()).add(r["val"].replace("''", "'"))
     return vocab
 
 
@@ -136,7 +154,7 @@ def _literal_writes():
             src = path.read_text(encoding="utf-8")
             for tbl, i, j in _payload_spans(src):
                 for w in re.finditer(
-                        r'["\'](?P<col>[a-z_0-9]+)["\']\s*:\s*["\'](?P<val>[a-z0-9_]+)["\']',
+                        r'["\'](?P<col>[a-z_0-9]+)["\']\s*:\s*(?P<q>["\'])(?P<val>[^"\'\n]*)(?P=q)',
                         src[i:j]):
                     yield (path.relative_to(_API),
                            src[:i + w.start()].count("\n") + 1,
@@ -197,3 +215,81 @@ def test_a_planted_offender_would_be_caught(vocabularies):
         "production admits ten statuses for a migration job and 'failed' is not "
         "one of them; if that changed, the negative control below is moot")
     assert "error" in allowed
+
+
+# ── Wherever the payload is built, and whatever name holds the value (POST-A-166) ──
+
+def vocabulary_offenders(reader: Reader, vocab: dict[tuple[str, str], set[str]]) -> list[str]:
+    """Every literal a write can put into a vocabulary column that the column does not admit, read through the payload reader."""
+    out = set()
+    for w in reader.writes:
+        allowed = vocab.get((w.table, w.column))
+        if not allowed:
+            continue
+        for val in sorted(literal_strings(w.value, w.scope) - allowed):
+            out.add(f"{w.module}:{w.line}  {w.table}.{w.column} = '{val}'"
+                    + (f" (written by {w.via})" if w.via else "") + "   admitted: " + ", ".join(sorted(allowed)))
+    return sorted(out)
+
+
+@_NEEDS_PG
+def test_every_literal_a_write_puts_in_a_vocabulary_column_is_admitted_wherever_it_is_held(vocabularies):
+    reader = Reader(_API)
+    offenders = vocabulary_offenders(reader, vocabularies)
+    assert not offenders, (
+        "These writes can put a value into a column whose CHECK constraint does not admit it, through a payload built in another "
+        "function (a repository's caller) or a value held in a name. Postgres rejects the statement.\n  " + "\n  ".join(offenders))
+    # Anchors: the two shapes this exists for are both in the tree, so a reader that stopped seeing them cannot pass.
+    seen = {(w.table, w.column, w.via) for w in reader.writes if (w.table, w.column) in vocabularies}
+    assert ("documents", "review_status", "repositories.document_repository:DocumentRepository.create") in seen
+    held = {v for w in reader.writes if (w.table, w.column) == ("gst_sync_jobs", "status")
+            and not isinstance(w.value, ast.Constant) for v in literal_strings(w.value, w.scope)}
+    assert "partial_failure" in held, (
+        "the reader no longer reads the portal sync's status out of the name that holds it, the write migration 318 was for")
+
+
+_SYNTHETIC = {
+    "repositories/job_repository.py": """
+class JobRepository:
+    def update(self, id, data):
+        return db().table("jobs").update({**data, "updated_at": "now"}).eq("id", id).execute()
+
+job_repo = JobRepository()
+""",
+    "routers/jobs.py": """
+from repositories.job_repository import job_repo
+
+def finish(job_id, ok):
+    job_repo.update(job_id, {"status": "REPO_STATUS"})
+
+def fail(db, job_id, partial):
+    status = "NAMED_STATUS" if partial else "error"
+    db.table("jobs").update({"status": status}).eq("id", job_id).execute()
+""",
+}
+
+
+def _synthetic(tmp_path: Path, **values: str) -> Reader:
+    for rel, src in _SYNTHETIC.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for name, value in values.items():
+            src = src.replace(name, value)
+        path.write_text(src)
+    return Reader(tmp_path)
+
+
+def test_a_status_built_in_a_router_and_written_by_a_repository_is_checked(tmp_path):
+    vocab = {("jobs", "status"): {"completed", "error", "partial_failure"}}
+    wrong = _synthetic(tmp_path, REPO_STATUS="done", NAMED_STATUS="partial_failure")
+    assert vocabulary_offenders(wrong, vocab) == [
+        "routers.jobs:5  jobs.status = 'done' (written by repositories.job_repository:JobRepository.update)"
+        "   admitted: completed, error, partial_failure"]
+
+
+def test_a_status_held_in_a_name_is_checked(tmp_path):
+    vocab = {("jobs", "status"): {"completed", "error"}}
+    wrong = _synthetic(tmp_path, REPO_STATUS="completed", NAMED_STATUS="partial_failure")
+    assert vocabulary_offenders(wrong, vocab) == ["routers.jobs:9  jobs.status = 'partial_failure'   admitted: completed, error"]
+    right = _synthetic(tmp_path, REPO_STATUS="completed", NAMED_STATUS="error")
+    assert vocabulary_offenders(right, vocab) == []
