@@ -43,6 +43,8 @@ import { api, type ApiResp, type PayrollDepositDueDates_FY, type PayrollTdsProje
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -460,10 +462,16 @@ function MonthlyReviewTab({ runs, clientNames }: {
       {run ? (
         <MonthlyReview clientId={run.client_id} month={run.month} />
       ) : (
-        <p className="text-xs text-ps-label">
-          No payroll runs yet. Create one to see how a month compares with the
-          one before it.
-        </p>
+        <EmptyState
+          className="py-10"
+          title="No payroll runs yet"
+          description="A run is computed in a client's own Payroll tab. Open the client from the Clients list and compute a month; this review then compares it with the month before."
+          action={
+            <EmptyStateActions>
+              <EmptyStateAction requires={["payroll", "write"]} label="Open the Clients list" href="/clients" variant="secondary" />
+            </EmptyStateActions>
+          }
+        />
       )}
     </div>
   );
@@ -567,7 +575,16 @@ function YtdTab({ employees, runs, fyOptions }: {
       </CardHeader>
       <CardContent className="p-0">
         {!emp ? (
-          <p className="text-center text-ps-hint py-12 text-sm">No employees found.</p>
+          <EmptyState
+            className="py-12"
+            title="No employees found"
+            description="Add the client's employees under People; their year-to-date pay is shown here once a run has paid them."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["payroll", "write"]} label="Go to People" href="/payroll/people" variant="secondary" />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

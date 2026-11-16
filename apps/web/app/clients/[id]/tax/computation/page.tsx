@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { toast } from "@/components/ui/use-toast";
+import { EmptyState } from "@/components/ui/states";
 import Link from "next/link";
 import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
@@ -2435,7 +2436,11 @@ export default function TaxComputationPage() {
             </p>
 
             {disallowances.length === 0 ? (
-              <p className="text-xs text-ps-hint py-4 text-center">No disallowances recorded</p>
+              <EmptyState
+                className="py-4"
+                title="No disallowances recorded"
+                description="Record a cash payment over the limit or an unpaid statutory liability with Add Disallowance below; it is added back to business income."
+              />
             ) : (
               <div className="space-y-2">
                 {disallowances.map(d => (
@@ -2680,7 +2685,11 @@ export default function TaxComputationPage() {
             )}
 
             {bfLosses.length === 0 ? (
-              <p className="text-xs text-ps-hint py-4 text-center">No carried-forward losses recorded</p>
+              <EmptyState
+                className="py-4"
+                title="No carried-forward losses recorded"
+                description="Record a loss brought forward from an earlier year with Record a loss above; it is then offered against this year's income."
+              />
             ) : (
               <div className="space-y-2">
                 {bfLosses.map(l => (

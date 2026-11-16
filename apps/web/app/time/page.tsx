@@ -32,6 +32,8 @@ import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
 import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { DateInput } from "@/components/ui/date-input";
@@ -525,10 +527,18 @@ export default function TimeTrackingPage() {
               </div>
             </LoadingRegion>
           ) : entries.length === 0 ? (
-            <div className="py-12 text-center text-ps-hint">
-              <Clock size={28} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No time entries yet</p>
-            </div>
+            <EmptyState
+              className="py-12"
+              icon={<Clock size={28} />}
+              title="No time entries yet"
+              description="Start a timer when you begin work for a client, or add the hours afterwards as a manual entry."
+              action={
+                <EmptyStateActions>
+                  {!isRunning && <EmptyStateAction requires={["time_entry", "write"]} icon={<Play size={14} />} label="Start Timer" onClick={() => setShowStart(true)} />}
+                  <EmptyStateAction requires={["time_entry", "write"]} icon={<Plus size={14} />} label="Manual Entry" variant="secondary" onClick={() => setShowManual(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="divide-y">
               {entries.map((e) => (

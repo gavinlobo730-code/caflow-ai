@@ -27,6 +27,7 @@
  * employee's §17(1) for the year. It is not a side effect of looking.
  */
 
+import { EmptyState } from "@/components/ui/states";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type {
@@ -788,7 +789,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
 
       {loading ? <p className="text-xs text-ps-hint">Loading…</p>
         : rows.length === 0
-          ? <p className="text-xs text-ps-hint">No revisions recorded. The employee master&apos;s own figures apply.</p>
+          ? <EmptyState className="py-4" title="No revisions recorded" description="The employee master's own figures apply. Record a revision with the form above when the pay changes from a date." />
           : (
             <table className="w-full text-2xs">
               <thead>
@@ -913,7 +914,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
 
       {loading ? <p className="text-xs text-ps-hint">Loading…</p>
         : rows.length === 0
-          ? <p className="text-xs text-ps-hint">No loans or advances recorded.</p>
+          ? <EmptyState className="py-4" title="No loans or advances recorded" description="Record a loan or salary advance with the form above; its recovery is then deducted from the payslips." />
           : (
             <table className="w-full text-2xs">
               <thead>

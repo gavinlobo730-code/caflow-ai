@@ -58,6 +58,7 @@ import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { NO_FILTER, accountCounts, filterNotice, filterRows, filterStatementRows, isFiltering, typeChoices, type TrialBalanceFilter } from "@/lib/accounting/trialBalanceFilter";
 import { StatementFilterBar } from "@/components/accounting/StatementFilterBar";
@@ -3064,7 +3065,11 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
               <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-body">Retry</button>
             </div>
           ) : unionAccounts.length === 0 && (
-            <div className="text-center py-8 text-ps-hint text-sm">No posted journal entries found for this client.</div>
+            <EmptyState
+              className="py-8"
+              title="No posted journal entries found for this client"
+              description="The balance sheet is built from posted entries. Record a sale, a purchase, a bank line or a journal for this client and it appears here once posted."
+            />
           )}
         </div>
       )}
@@ -3946,8 +3951,12 @@ function VerifyBooks({ clientId }: { clientId: string }) {
       {loadingRuns || loadingFindings ? (
         <TableSkeleton cols={3} rows={4} />
       ) : !activeRun ? (
-        <div className="bg-white rounded-xl border border-ps-border p-10 text-center text-sm text-ps-hint">
-          No verification has been run for this client yet. Click &ldquo;Verify Books&rdquo; to check it now.
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            className="py-10"
+            title="No verification has been run for this client yet"
+            description="Press Verify Books above to run the checks now. The nightly sweep also runs them."
+          />
         </div>
       ) : activeRun.status === "failed" ? (
         <div className="bg-state-problem-surface border border-state-problem-border rounded-xl p-5 text-sm text-state-problem">
@@ -4382,7 +4391,11 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
         {loadingShared ? (
           <TableSkeleton cols={5} rows={2} bare />
         ) : sharedReports.length === 0 ? (
-          <div className="text-center py-8 text-ps-hint text-sm">No reports shared yet.</div>
+          <EmptyState
+            className="py-8"
+            title="No reports shared yet"
+            description="Press Share beside a report above to send it to this client's portal; it is listed here once shared."
+          />
         ) : (
           <table className="w-full text-xs">
             <thead><tr className="border-b border-ps-border text-ps-hint"><th className="px-5 py-2 text-left font-semibold">Report</th><th className="px-3 py-2 text-left font-semibold">FY</th><th className="px-3 py-2 text-left font-semibold">File</th><th className="px-4 py-2 text-left font-semibold">Shared On</th><th className="px-3 py-2"></th></tr></thead>

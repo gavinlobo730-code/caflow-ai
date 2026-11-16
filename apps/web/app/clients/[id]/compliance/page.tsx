@@ -30,6 +30,8 @@ import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
 import { api, errorMessage } from "@/lib/api";
 import { browserFailureOf, doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -232,7 +234,16 @@ function NoticesSection({ clientId }: { clientId: string }) {
             <button onClick={loadNotices} className="text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
           </div>
         ) : notices.length === 0 ? (
-          <p className="text-sm text-ps-hint text-center py-4">No government notices extracted yet.</p>
+          <EmptyState
+            className="py-6"
+            title="No government notices extracted yet"
+            description="Paste the text of a notice the client received and the reading is held here for a CA to check before any task is created."
+            action={
+              <EmptyStateActions>
+                <EmptyStateAction requires={["compliance", "write"]} label="Extract Notice" onClick={() => setShowExtract(true)} />
+              </EmptyStateActions>
+            }
+          />
         ) : (
           <>
           {approveError && (

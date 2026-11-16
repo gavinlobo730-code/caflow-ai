@@ -10,6 +10,7 @@ import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { usesScheduleIII } from "@/lib/entityObligations";
 import { formatDate } from "@/lib/dates/format";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
 
 /** Format a figure already rounded to a Schedule III para 4 unit. Whole units,
  *  so no decimals and no division — dividing by 100 here would silently
@@ -571,8 +572,12 @@ function BalanceSheetView({
   const hasPrevious = previousTotalEL !== undefined;
   if (!equityLiabilities.length && !assets.length) {
     return (
-      <div className="bg-white rounded-xl border border-ps-border text-center py-12">
-        <p className="text-sm text-ps-label">No data available. Refresh from ledger.</p>
+      <div className="bg-white rounded-xl border border-ps-border">
+        <EmptyState
+          className="py-12"
+          title="No statement lines yet"
+          description="Press Refresh from Ledger above to build this statement from the client's posted balances for the year."
+        />
       </div>
     );
   }
@@ -689,8 +694,12 @@ function ProfitLossView({ lines, money, amountHeader, previousHeader }:
   const hasPrevious = lines.some((l) => l.previous_paise !== undefined);
   if (!lines.length) {
     return (
-      <div className="bg-white rounded-xl border border-ps-border text-center py-12">
-        <p className="text-sm text-ps-label">No data available. Refresh from ledger.</p>
+      <div className="bg-white rounded-xl border border-ps-border">
+        <EmptyState
+          className="py-12"
+          title="No statement lines yet"
+          description="Press Refresh from Ledger above to build this statement from the client's posted balances for the year."
+        />
       </div>
     );
   }
