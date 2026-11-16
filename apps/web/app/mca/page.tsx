@@ -95,6 +95,12 @@ const FORM_TYPES = [
   { value: "MSME-1",     label: "MSME-1 — Outstanding payments to MSME" },
 ];
 
+/** The forms this page lists and filters by stay FORM_TYPES (filings of all of them may exist). The forms a NEW filing may be made
+ *  on are the ones `POST /api/mca-workspace/filings` takes (POST-A-442): INC-20A, DIR-3 KYC and MSME-1 are not among them, because
+ *  which list each belongs on (the Annual or the Event tab) and what rule dates it is not settled, and the server does not guess. */
+const FORMS_NOT_CREATED_HERE = new Set(["INC-20A", "DIR-3 KYC", "MSME-1"]);
+const ADD_FORM_TYPES = FORM_TYPES.filter(f => !FORMS_NOT_CREATED_HERE.has(f.value));
+
 const TABS = ["Companies", "Filings", "Directors", "Deadlines"];
 
 const STATUS_STYLE: Record<FilingStatus, string> = {
@@ -208,15 +214,14 @@ function calendarSentence(note: string | null): string | undefined {
 /** The period list's last option: the CA types a year the calendar does not hold open. */
 const ANOTHER_YEAR = "__another__";
 
-function AddFilingModal({ clients, firmId, onClose, onAdded }: {
+function AddFilingModal({ clients, onClose, onAdded }: {
   clients: Client[];
-  firmId: string;
   onClose: () => void;
   onAdded: (f: MCAFiling) => void;
 }) {
   const { toast } = useToast();
-  // FORM_TYPES below are all Companies Act 2013 forms (AOC-4, MGT-7/7A, ADT-1,
-  // INC-20A, DIR-3 KYC, CHG-1, MSME-1), so the picker only offers clients
+  // ADD_FORM_TYPES below are all Companies Act 2013 forms (AOC-4, MGT-7/7A, ADT-1,
+  // CHG-1), so the picker only offers clients
   // actually incorporated under that Act — an LLP or a proprietorship has no
   // AOC-4/MGT-7 obligation to record here (see lib/entityObligations.ts).
   const companyClients = useMemo(() => clients.filter(c => isCompaniesActCompany(c.entity_type)), [clients]);
@@ -227,8 +232,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
   // period defaulted to the CURRENT financial year from the browser's clock, while an AOC-4 or MGT-7 filed in season is for the year that has
   // just ended, so the commonest first click filed it under a year the calendar does not hold open. Both now come from the server: the
   // client's active companies (the CIN is the chosen company's own) and the years the calendar holds this form's obligation open in.
-  // This form inserts the row from the browser (POST-A-442), so nothing on the server asks which company when the answer cannot be read: the
-  // sentence says what is done instead, which is that a typed CIN is matched to the client's companies when the filing is marked filed.
+  // When the answer cannot be read the CIN is typed: the server judges its shape when the filing is created, and matches it to the client's
+  // companies when the filing is marked filed. With several companies the server refuses a filing that names none, in its own words.
   const { state: choices, retry: readChoicesAgain } = useFilingChoices(clientId, formType, (c, f) => api.mca.filingChoices(c, f),
     "Type the CIN and the year; the CIN typed is matched to the client's companies when the filing is marked filed. Try again to choose "
     + "them instead.");
@@ -280,8 +285,8 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
     if (!clientId || !cinValue || !dueDate) { setErr("Client, CIN and Due Date are required."); return; }
     const fromList = offeredYears.length > 0 && !periodTyped;
     if (fromList && !year) { setErr("Choose the year this filing is for, or Another year to type it."); return; }
-    // A form that stands for an obligation needs a year, or the filing can never close it (the server refuses the same on its own door; this
-    // form's insert does not reach it). Asked only where the server said so.
+    // A form that stands for an obligation needs a year, or the filing can never close it (the server refuses the same on its own door).
+    // Asked here only where the server said so, so the sentence comes before the request.
     if (!fromList && !period.trim() && choices.kind === "read" && choices.choices.has_obligation) {
       setErr(`Period: type the financial year this ${formType} is for, for example FY 2025-26. Without a year it can never close its obligation on the compliance calendar.`);
       return;
@@ -293,31 +298,28 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
     }
     setSaving(true); setErr(null);
     try {
-      const sb = getSupabaseClient();
       const selectedClient = companyClients.find(c => c.id === clientId);
-      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA portal
-      const { data, error } = await sb.from("mca_filings").insert({
-        firm_id: firmId,
+      // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to MCA portal. Created through the API (POST-A-442), as the client tab's are: the route asks
+      // `mca:write` and the client, checks the company is the client's, stores the category the client's tabs list by and writes the audit
+      // event. A row is CREATED not started (or overdue) and never filed: recording it as filed goes through the status route below, which
+      // asks for Manager and above and the CA's confirmation (POST-A-225).
+      const res = await api.mca.createFiling({
         client_id: clientId,
-        client_name: selectedClient?.client_name ?? "",
-        cin: cinValue,           // DB column is 'cin'
-        company_cin: cinValue,    // alias column added in migration 038
         // The company chosen from the client's own (POST-A-291), which is how the calendar's closer places a filing among several.
         company_id: company?.id ?? null,
+        // Read by the server only where no company named holds a CIN of its own.
+        cin: company?.cin ? null : cinValue,
         form_type: formType,
         period: fromList ? `FY ${year}` : (period.trim() || null),
         financial_year: fromList ? year : null,
         due_date: dueDate,
-        // A row is CREATED not started (or overdue) and never filed: recording it as filed goes through the API
-        // below, which asks for Manager and above and the CA's confirmation. Writing `filed`, the SRN and a
-        // date taken from the clock here let an Executive record a statutory filing as done (POST-A-225).
-        filed_date: null,
-        srn: null,
-        status: status === "Overdue" ? "overdue" : "not_started",  // DB: not_started|in_progress|filed|overdue
-        notes: notes.trim() || null,
-      }).select().single();
-      if (error) throw new Error(error.message);
-      const filing = data as MCAFiling;
+        status: status === "Overdue" ? "overdue" : "not_started",
+        description: notes.trim() || null,
+      });
+      if (!res.success || !res.data) throw new Error(res.error ?? "The filing was not saved.");
+      const filing = { ...(res.data as unknown as MCAFiling) };
+      // The list shows the name the row carries; the server writes it, and the client chosen here is the fallback.
+      filing.client_name = filing.client_name || selectedClient?.client_name || "";
       filing.status = computeStatus(filing);
       let calendar: string | undefined;
       if (status === "Filed") {
@@ -409,8 +411,9 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: {
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Form Type</label>
             <select aria-label="Form Type" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={formType} onChange={e => setFormType(e.target.value)}>
-              {FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              {ADD_FORM_TYPES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
+            <p className="text-3xs text-ps-label mt-1">INC-20A, DIR-3 KYC and MSME-1 are not recorded here.</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -735,8 +738,12 @@ export default function MCAPage() {
           setLoadErrorMessage(e instanceof Error ? e.message : "Couldn't resolve your firm.");
         }
         setFirmId(fid);
+        // The clients' names, kept for the filings below: a filing made on a client's own MCA tab before POST-A-442 carries no name.
+        let names = new Map<string, string>();
         try {
-          setClients(await getClients());
+          const list = await getClients();
+          setClients(list);
+          names = new Map(list.map(c => [c.id, c.client_name]));
         } catch (e) {
           setClients([]);
           setLoadErrorMessage(prev => prev ?? (e instanceof Error ? e.message : "Couldn't load clients."));
@@ -748,7 +755,9 @@ export default function MCAPage() {
           setTableError(true);
           setLoadErrorMessage(prev => prev ?? error.message);
         } else {
-          const rows = ((data ?? []) as MCAFiling[]).map(r => ({ ...r, status: computeStatus(r) }));
+          const rows = ((data ?? []) as MCAFiling[]).map(r => ({
+            ...r, client_name: r.client_name || (r.client_id ? names.get(r.client_id) : undefined) || "", status: computeStatus(r),
+          }));
           setFilings(rows);   // real data only; empty firm shows the empty state
         }
         // Companies + directors from the firm's real data (migration 038). Empty
@@ -1185,7 +1194,7 @@ export default function MCAPage() {
       )}
 
       {showModal && (
-        <AddFilingModal clients={clients} firmId={firmId} onClose={() => setShowModal(false)} onAdded={f => setFilings(prev => [...prev, f])} />
+        <AddFilingModal clients={clients} onClose={() => setShowModal(false)} onAdded={f => setFilings(prev => [...prev, f])} />
       )}
 
       {/* ================================================================== */}
