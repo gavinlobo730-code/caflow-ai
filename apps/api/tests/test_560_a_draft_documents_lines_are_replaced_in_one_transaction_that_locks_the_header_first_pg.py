@@ -95,6 +95,18 @@ def _answer(done: subprocess.CompletedProcess) -> str:
     return done.stdout.strip().splitlines()[-1] if done.returncode == 0 and done.stdout.strip() else done.stderr
 
 
+def _count(done: subprocess.CompletedProcess) -> int:
+    """How many lines the call says it wrote. Migration 625 (POST-A-429) made the answer `{"count": n, "replaced": [...]}`; 560's was n."""
+    answer = _answer(done)
+    return int(json.loads(answer)["count"]) if answer.startswith("{") else int(answer)
+
+
+#: Migration 625 restates this function with a jsonb answer, so re-running 560 needs 625's rollback first (CREATE OR REPLACE cannot change
+#: a return type), and 625 is put back after so the module leaves the database as the migrations built it.
+LATER = MIGRATIONS / "625_a_draft_edit_records_the_lines_it_replaced_inside_the_lock.sql"
+LATER_ROLLBACK = MIGRATIONS / "625_a_draft_edit_records_the_lines_it_replaced_inside_the_lock_rollback.sql"
+
+
 # ── THE REPLACEMENT ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("kind", KINDS)
@@ -103,7 +115,7 @@ def test_the_old_lines_go_and_the_new_ones_are_there(world, kind):
     assert _lines(world.dsn, kind, doc) != [], "the seeded draft has a line to replace"
     done = _call(world.dsn, "service_role", kind, doc, [_el(kind, "1111"), _el(kind, "2222")])
     assert done.returncode == 0, done.stderr
-    assert _answer(done) == "2"
+    assert _count(done) == 2
     assert _lines(world.dsn, kind, doc) == ["1111", "2222"]
 
 
@@ -126,7 +138,7 @@ def test_an_empty_list_leaves_a_draft_with_no_lines_and_a_column_nobody_names_ta
     assert stored == [["t"]], "the id takes its default"
     done = _call(world.dsn, "service_role", kind, doc, [])
     assert done.returncode == 0, done.stderr
-    assert _answer(done) == "0"
+    assert _count(done) == 0
     assert _lines(world.dsn, kind, doc) == []
 
 
@@ -255,11 +267,14 @@ def test_the_function_runs_as_its_caller_and_is_executable_only_by_the_two_roles
 
 
 def test_the_migration_is_idempotent(world):
-    for _ in range(2):
-        done = subprocess.run(["psql", world.dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-1", "-f", str(MIGRATION)],
-                              capture_output=True, text=True)
+    def run(path):
+        done = subprocess.run(["psql", world.dsn, "-v", "ON_ERROR_STOP=1", "-X", "-q", "-1", "-f", str(path)], capture_output=True, text=True)
         assert done.returncode == 0, done.stderr
+    run(LATER_ROLLBACK)
+    for _ in range(2):
+        run(MIGRATION)
     assert _call(world.dsn, "service_role", "sales_invoice", _draft_of(world, "sales_invoice"), [_el("sales_invoice", "1")]).returncode == 0
+    run(LATER)
 
 
 def test_its_own_rollback_drops_the_function_and_the_call_then_fails_as_a_missing_function(world):

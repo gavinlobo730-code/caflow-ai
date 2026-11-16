@@ -589,7 +589,7 @@ class _Rpc:
         return _Result(handler())
 
     def _fn_replace_draft_document_lines(self):
-        """Mirror migration 560: the header is looked up for the firm and must be a draft, the old lines go and the new ones are
+        """Mirror migration 560, as migration 625 restated it: the header is looked up for the firm and must be a draft, the old lines go and the new ones are
         stored with the document's own id as their foreign key (trivially atomic in memory). The two refusals carry the words
         the real function raises, which `services/draft_document_lines` reads."""
         headers = {"sales_invoice": "client_sales_invoices", "purchase_bill": "purchase_bills", "credit_note": "credit_notes",
@@ -603,12 +603,14 @@ class _Rpc:
             raise Exception("document_not_draft")
         table, fk = _LINE_TABLE[kind]
         store = self.db._tables.setdefault(table, [])
+        # Migration 625: the answer names the lines this call removed, as its own DELETE returned them.
+        replaced = [dict(r) for r in store if r.get(fk) == doc_id]
         store[:] = [r for r in store if r.get(fk) != doc_id]
         for ln in self.params["p_lines"]:
             row = {**ln, fk: doc_id}
             row.setdefault("id", str(uuid.uuid4()))
             store.append(row)
-        return len(self.params["p_lines"])
+        return {"count": len(self.params["p_lines"]), "replaced": replaced}
 
     def _fn_record_fixed_asset_movement(self):
         """Mirror migration 591 (POST-A-112): the same refusals in the same words and SQLSTATEs, in the same order, then the movement
