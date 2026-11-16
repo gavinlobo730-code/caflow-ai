@@ -21,6 +21,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
+from core.observability import capture_soft_failure
 from domain.ai import gateway, groq_text, untrusted
 from domain.health import scoring
 from domain.practice import compliance_overdue
@@ -372,10 +373,10 @@ class AICopilotService:
                                 f"CLIENT OVERDUE COMPLIANCE TASKS: {len(overdue_ct)}",
                                 f"CLIENT PENDING COMPLIANCE TASKS: {len(pending_ct)}",
                             ]
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+                        except Exception as swallowed:
+                            capture_soft_failure(swallowed, operation="ai_copilot.context_client_compliance", firm_id=firm_id)
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.context_client", firm_id=firm_id)
 
         try:
             if context_type in ("global", "compliance"):
@@ -395,8 +396,8 @@ class AICopilotService:
                 due_soon = _due_soon_from_records(comp_records, 7)
                 lines.append(f"OVERDUE COMPLIANCE FILINGS: {len(comp_overdue)}")
                 lines.append(f"COMPLIANCE FILINGS DUE IN 7 DAYS: {len(due_soon)}")
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.context_compliance", firm_id=firm_id)
 
         try:
             if context_type in ("global", "workflow"):
@@ -423,8 +424,8 @@ class AICopilotService:
                     f"PENDING APPROVALS: {len(approvals)}",
                     f"OVERDUE APPROVALS: {len(overdue_approvals)}",
                 ]
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.context_workflow", firm_id=firm_id)
 
         return "\n".join(lines)
 
@@ -572,8 +573,8 @@ class AICopilotService:
                 client_name = client.get("client_name", client_id)
                 client_status = client.get("status", "unknown")
                 client_health = _health_words(_with_health(firm_id, [client])[0]["health_score"])
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.client_intelligence_profile", firm_id=firm_id, client_id=client_id)
 
         try:
             comp_records = _get_compliance_records_repo().find_all(
@@ -584,8 +585,8 @@ class AICopilotService:
             compliance_types = sorted({
                 _compliance_kind(t.get("compliance_type")) for t in comp_records if t.get("compliance_type")
             })
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.client_intelligence_compliance", firm_id=firm_id, client_id=client_id)
 
         prompt = f"""Generate a comprehensive practice intelligence report for the following client.
 
@@ -726,8 +727,8 @@ Format as a structured professional report. Cite relevant sections of IT Act / C
                 allowed_client_ids)
             overdue_tasks = compliance_overdue.overdue_records(all_tasks, ist_today())
             due_soon_tasks = _due_soon_from_records(all_tasks, 14)
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.compliance_intelligence", firm_id=firm_id)
 
         # Unique clients with overdue filings
         overdue_clients = list({t.get("client_id") for t in overdue_tasks if t.get("client_id")})
@@ -805,8 +806,8 @@ Cite CGST Act / IT Act sections where relevant."""
             # withheld. A scoped caller gets no template analytics rather than
             # counts that silently include clients they may not see.
             analytics = wf_repo.get_analytics(firm_id) if allowed_client_ids is None else []
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.workflow_intelligence", firm_id=firm_id)
 
         failing = [a for a in analytics if a.get("failed", 0) > 0]
         failing_names = [a["template_name"] for a in failing[:3]]
@@ -908,8 +909,8 @@ Provide:
                     if domain not in ("gmail.com", "yahoo.com", "hotmail.com", "outlook.com"):
                         domain_counts[domain] = domain_counts.get(domain, 0) + 1
             duplicate_email_domains = [d for d, count in domain_counts.items() if count > 1]
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="ai_copilot.relationship_intelligence_domains", firm_id=firm_id)
 
         prompt = f"""Analyse cross-client relationship structures and identify risks.
 
