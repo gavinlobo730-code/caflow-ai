@@ -26,6 +26,7 @@ from core import db_provider
 from core.db_paging import fetch_window
 from core.list_window import probe, split
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 from models.iso_date import OptionalIsoDate, PatchIsoDate
 
 _logger = logging.getLogger("caflow.lifecycle")
@@ -140,8 +141,8 @@ def _next_proposal_no(db, firm_id: str) -> str:
             parts = rows[0]["proposal_no"].split("-")
             last_no = int(parts[-1])
             return f"PROP-{year}-{last_no + 1:04d}"
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.proposal_number_parse", firm_id=firm_id)
     return f"PROP-{year}-0001"
 
 
@@ -328,8 +329,8 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
             "info",
             firm_id=firm_id, entity_type="lead", entity_id=lead_id, actor_id=actor_id,
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.auto_advance_timeline", firm_id=firm_id, lead_id=lead_id)
     try:
         log_event(
             firm_id, "lead", lead_id, "stage_change",
@@ -338,8 +339,8 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
             new_data={"stage": new_stage},
             metadata={"automatic": True, "source": "engagement_letter"},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.auto_advance_audit", firm_id=firm_id, lead_id=lead_id)
     if db:
         try:
             db.table("client_lifecycle_events").insert({
@@ -352,8 +353,8 @@ def _audit_auto_stage_change(db, lead_id, firm_id, old_stage, new_stage, actor_i
                 "to_stage":    new_stage,
                 "created_at":  now,
             }).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.auto_advance_event", firm_id=firm_id, lead_id=lead_id)
 
 
 def advance_lead_stage(
@@ -469,8 +470,8 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
             "warning",
             firm_id=firm_id, entity_type="lead", entity_id=lead_id, actor_id=actor_id,
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.revert_timeline", firm_id=firm_id, lead_id=lead_id)
     try:
         log_event(
             firm_id, "lead", lead_id, "stage_change",
@@ -479,8 +480,8 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
             new_data={"stage": new_stage},
             metadata={"automatic": True, "source": "engagement_closed"},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.revert_audit", firm_id=firm_id, lead_id=lead_id)
     if db:
         try:
             db.table("client_lifecycle_events").insert({
@@ -493,8 +494,8 @@ def _audit_lead_stage_revert(db, lead_id, firm_id, old_stage, new_stage, actor_i
                 "to_stage":    new_stage,
                 "created_at":  now,
             }).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.revert_event", firm_id=firm_id, lead_id=lead_id)
 
 
 def revert_lead_after_engagement_closed(
@@ -802,8 +803,8 @@ def create_lead(
             actor_email=current_user.get("email"),
             new_data={"company_name": data.company_name, "stage": data.stage},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.lead_create_audit_mock", firm_id=current_user.get("firm_id"), lead_id=mock_row["id"])
 
     if not db:
         _MOCK_LEADS.append(mock_row)
@@ -853,8 +854,8 @@ def create_lead(
             "description": f"Lead created for {data.company_name}",
             "created_at":  now,
         }).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.lead_create_event", firm_id=current_user.get("firm_id"), lead_id=db_row.get("id"))
     return api_response(True, db_row)
 
 
@@ -896,8 +897,8 @@ def update_lead(
                             old_data={"stage": old_stage},
                             new_data={"stage": data.stage},
                         )
-                except Exception:
-                    pass
+                except Exception as swallowed:
+                    capture_soft_failure(swallowed, operation="lifecycle.lead_update_audit_mock", firm_id=current_user.get("firm_id"), lead_id=lead_id)
                 return api_response(True, lead)
         raise HTTPException(status_code=404, detail="Lead not found")
 
@@ -929,8 +930,8 @@ def update_lead(
                 "to_stage":    data.stage,
                 "created_at":  now,
             }).execute()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.lead_update_event", firm_id=current_user.get("firm_id"), lead_id=lead_id)
 
     # H10: audit the edit (and stage move, if any).
     try:
@@ -948,8 +949,8 @@ def update_lead(
                 old_data={"stage": old_stage},
                 new_data={"stage": data.stage},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.lead_update_audit", firm_id=current_user.get("firm_id"), lead_id=lead_id)
 
     return api_response(True, result)
 
@@ -1005,8 +1006,8 @@ def convert_lead(
                 actor_email=current_user.get("email"),
                 new_data={"lead_id": lead_id, "converted_client_id": data.client_id},
             )
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.convert_audit_mock", firm_id=current_user.get("firm_id"), lead_id=lead_id)
         return api_response(True, lead)
 
     # Try to fetch lead from DB — if not found (e.g. localStorage lead), use request body data
@@ -1139,8 +1140,8 @@ def convert_lead(
             ) or []
             if tmpl and tmpl[0].get("service_type"):
                 service_type = tmpl[0]["service_type"]
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="lifecycle.convert_template_read", firm_id=firm_id, lead_id=lead_id)
     if not service_type:
         service_type = "General"
     fee_paise = int(chosen_engagement.get("fee_amount_paise") or 0)
@@ -1232,8 +1233,8 @@ def convert_lead(
             "description": f"Client created from lead",
             "created_at":  now,
         }).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.convert_event", firm_id=firm_id, client_id=client_id)
 
     # H10: audit the conversion (DB path).
     try:
@@ -1243,8 +1244,8 @@ def convert_lead(
             actor_email=current_user.get("email"),
             new_data={"lead_id": lead_id, "converted_client_id": client_id},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.convert_audit", firm_id=firm_id, client_id=client_id)
 
     return api_response(True, {
         "converted_client_id": client_id,
@@ -1938,8 +1939,8 @@ def complete_onboarding_checklist(
     # Mark client as active
     try:
         db.table("clients").update({"status": "active", "updated_at": now}).eq("id", wf["client_id"]).eq("firm_id", current_user["firm_id"]).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.onboarding_client_activate", firm_id=current_user.get("firm_id"), client_id=wf.get("client_id"))
 
     timeline_service.log(
         wf["client_id"], "lifecycle", "Client Activated",
@@ -1957,8 +1958,8 @@ def complete_onboarding_checklist(
             "description": "Client activated after completing onboarding checklist",
             "created_at":  now,
         }).execute()
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="lifecycle.onboarding_activate_event", firm_id=current_user.get("firm_id"), client_id=wf.get("client_id"))
 
     all_steps = db.table("onboarding_checklist_steps").select("*").eq("workflow_id", workflow_id).order("step_number").execute().data or []
     return api_response(True, _enrich_workflow({**wf, "status": "completed", "completed_at": now, "progress_pct": 100}, all_steps))
