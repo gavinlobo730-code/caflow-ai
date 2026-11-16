@@ -345,9 +345,131 @@ def _clause_44(db, firm_id: str, client_id: str,
         "this product does not track as separate facts about a vendor.")
 
 
+# ── Clause 33 — Chapter VI-A / Chapter III deductions claimed, section-wise (POST-A-069) ──────────────────────────────────────
+
+def _clause_33(db, firm_id: str, client_id: str, financial_year: str) -> tuple[Optional[object], str]:
+    """The deductions the CA has recorded for the year on the ITR computation workspace, grouped by the section each names.
+
+    Read from `tax_deduction_claims` (`computation_workspace.list_deduction_claims`), the CA's own entries, and nothing is added to
+    them: a section is whatever the CA typed, so a claim under §10A or §10AA (Chapter III) appears under that name and none is
+    inferred, and a year with NO claim recorded is NOT "no deduction claimed" (the table says nothing about what was never
+    entered), so it answers nothing rather than a nil. Clause 33 of Form 3CD is the form's own particulars; the columns the form
+    prints for it are not recorded in this repository, so this states what is held (claimed, allowed, status) and no more.
+    """
+    from domain.income_tax.computation_workspace import list_deduction_claims
+    try:
+        rows = list_deduction_claims(firm_id, client_id, financial_year)
+    except Exception as e:                                        # noqa: BLE001
+        _logger.warning("form 3CD clause 33 for %s %s: %s", client_id, financial_year, e)
+        return None, "The deduction claims could not be read for this client and year."
+    if not rows:
+        return None, ("No deduction claim is recorded on the computation workspace for this client and year. That is not the same "
+                      "as none claimed: record the claims there, or enter this clause directly.")
+    by_section: dict[str, dict] = {}
+    for r in rows:
+        sec = str(r.get("section") or "").strip() or "(no section named)"
+        row = by_section.setdefault(sec, {"section": sec, "claims": 0, "claimed_paise": 0, "allowed_paise": 0,
+                                          "pending_claims": 0})
+        row["claims"] += 1
+        row["claimed_paise"] += int(r.get("claimed_amount_paise") or 0)
+        row["allowed_paise"] += int(r.get("allowed_amount_paise") or 0)
+        if str(r.get("status") or "pending") == "pending":
+            row["pending_claims"] += 1
+    lines = sorted(by_section.values(), key=lambda x: x["section"])
+    value = {"by_section": lines,
+             "total_claimed_paise": sum(x["claimed_paise"] for x in lines),
+             "total_allowed_paise": sum(x["allowed_paise"] for x in lines),
+             "pending_claims": sum(x["pending_claims"] for x in lines)}
+    return value, (
+        "tax_deduction_claims — the CA's own entries on the ITR computation workspace, grouped by the section each names, with "
+        "the claimed and the allowed amounts as recorded. A claim still 'pending' has not been reviewed and is counted in "
+        "'pending_claims'. Nothing here checks a claim against the Act's limits, and a deduction nobody recorded is not listed.")
+
+
+# ── Clause 40 — the five ratios, this year and the preceding year (POST-A-069) ────────────────────────────────────────────────
+
+_NO_PRODUCTION_RECORD = (
+    "Material consumed and finished goods produced are not derivable: the books record purchases and sales but no consumption of "
+    "material into a product and no production, so no figure is offered for either (and no approximation is computed).")
+
+
+def _year_figures(db, firm_id: str, client_id: str, fy: str, current_user: dict) -> tuple[Optional[dict], Optional[str]]:
+    """One year's turnover, gross profit, net profit and closing stock from the Profit & Loss and the stock ledger, or (None, why)."""
+    from domain.reporting import ratios
+    start, end = _fy_window(fy)
+    try:
+        from routers.accounting import _reporting_service
+        pl = _reporting_service(current_user).profit_loss(firm_id, client_id, start, end, basis="accrual")
+    except Exception as e:                                        # noqa: BLE001
+        _logger.warning("form 3CD clause 40 P&L for %s %s: %s", client_id, fy, e)
+        return None, f"The Profit & Loss for {fy} could not be read from the ledger."
+    lines = [ln for sec in ("revenue", "cost_of_sales", "operating_expenses") for ln in ((pl.get(sec) or {}).get("lines") or [])]
+    if not lines:
+        return None, f"The ledger has no income or expense entry for {fy}, so there is nothing to compute the year's ratios from."
+    turnover = sum(int(ln.get("amount_paise") or 0) for ln in (pl.get("revenue") or {}).get("lines") or []
+                   if ln.get("schedule_iii_caption") == "Revenue from Operations")
+    cost_of_sales = int((pl.get("cost_of_sales") or {}).get("total_paise") or 0)
+    gross_profit = turnover - cost_of_sales
+    net_profit = pl.get("net_profit_paise")
+    stock = None
+    stock_why = None
+    try:
+        from services import stock_position_service
+        stock = int(stock_position_service.position(db, firm_id, client_id, end).get("total_value_paise") or 0)
+    except Exception as e:                                        # noqa: BLE001
+        _logger.warning("form 3CD clause 40 stock for %s %s: %s", client_id, fy, e)
+        stock_why = f"Closing stock as at {end} could not be read from the stock ledger."
+    figures = {
+        "financial_year": fy,
+        "turnover_paise": turnover,
+        "gross_profit_paise": gross_profit,
+        "net_profit_paise": None if net_profit is None else int(net_profit),
+        "closing_stock_paise": stock,
+        "gross_profit_to_turnover_bps": ratios.ratio_bps(gross_profit, turnover),
+        "net_profit_to_turnover_bps": None if net_profit is None else ratios.ratio_bps(int(net_profit), turnover),
+        "stock_to_turnover_bps": None if stock is None else ratios.ratio_bps(stock, turnover),
+    }
+    gaps = []
+    if turnover == 0:
+        gaps.append(f"No income is posted under 'Revenue from Operations' for {fy}, so no ratio to turnover exists for it.")
+    if stock_why:
+        gaps.append(stock_why)
+    figures["gaps"] = gaps
+    return figures, None
+
+
+def _clause_40(db, firm_id: str, client_id: str, financial_year: str,
+               current_user: Optional[dict]) -> tuple[Optional[object], str]:
+    """Clause 40's turnover, gross-profit, net-profit and stock-in-trade ratios for this year and the preceding one, composed from
+    two Profit & Loss calls and the stock ledger (POST-A-069).
+
+    Turnover is the P&L's income under the Schedule III caption 'Revenue from Operations' (other income is not turnover);
+    gross profit is that turnover less the P&L's cost of sales; net profit is the P&L's own figure; stock is the stock ledger's
+    closing value as at the year end. Ratios are in basis points and are absent where turnover is nil. Material consumed and
+    finished goods produced are named as a gap, not computed. A year with no ledger entry is named, never shown as nil."""
+    if current_user is None:
+        return None, "The caller's scope was not given, so the Profit & Loss could not be read for this clause."
+    first_year = int(financial_year[:4])
+    prior = "%d-%02d" % (first_year - 1, first_year % 100)          # the preceding year's label: 2025-26 -> 2024-25
+    this, why_this = _year_figures(db, firm_id, client_id, financial_year, current_user)
+    before, why_prior = _year_figures(db, firm_id, client_id, prior, current_user)
+    if this is None:
+        return None, why_this or ""
+    gaps = [_NO_PRODUCTION_RECORD]
+    if before is None:
+        gaps.append(why_prior or f"The preceding year, {prior}, could not be read.")
+    value = {"this_year": this, "preceding_year": before, "gaps": gaps}
+    return value, (
+        "The Profit & Loss for each year (accrual basis, through the reporting service so the caller's scope applies) and the stock "
+        "ledger's closing value. Turnover is the income under 'Revenue from Operations'; gross profit is turnover less cost of "
+        "sales; net profit is the P&L's own. Ratios are in basis points. Where a figure could not be derived the value names it "
+        "under 'gaps' and gives no number.")
+
+
 def build(db, firm_id: str, client_id: str, financial_year: str, *,
          nature: Optional[str] = None,
-         bank_rate_bps: Optional[int] = None) -> dict:
+         bank_rate_bps: Optional[int] = None,
+         current_user: Optional[dict] = None) -> dict:
     """The whole register: every derivable clause computed, every manual
     clause read from `tax_audit_checklists` if the CA has recorded one."""
     derived: dict[str, tuple[Optional[object], str]] = {}
@@ -357,7 +479,9 @@ def build(db, firm_id: str, client_id: str, financial_year: str, *,
     derived.update(_clause_22_and_26(db, firm_id, client_id, financial_year,
                                      bank_rate_bps))
     derived["32"] = _clause_32(db, firm_id, client_id)
+    derived["33"] = _clause_33(db, firm_id, client_id, financial_year)
     derived["34"] = _clause_34(db, firm_id, client_id, financial_year)
+    derived["40"] = _clause_40(db, firm_id, client_id, financial_year, current_user)
     derived["44"] = _clause_44(db, firm_id, client_id, financial_year)
 
     manual_rows = (db.table("tax_audit_checklists")
