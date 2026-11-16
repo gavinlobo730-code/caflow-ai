@@ -57,7 +57,7 @@ def _outer_chain(node: ast.AST, parents: dict) -> ast.AST:
 
 
 def unscoped_updates_and_deletes(source: str, tables: frozenset) -> list[str]:
-    """Every `.update(` or `.delete(` on one of `tables` whose chain does not filter both `firm_id` and `client_id`."""
+    """Every `.update(` or `.delete(` on one of `tables` whose chain does not filter both `firm_id` and `client_id` (`.eq`, or `.is_` for a null client)."""
     tree = ast.parse(source)
     parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
     out = []
@@ -68,7 +68,8 @@ def unscoped_updates_and_deletes(source: str, tables: frozenset) -> list[str]:
         if tc is None or node.func.attr not in {"update", "delete"}:
             continue
         chain = ast.unparse(_outer_chain(node, parents))
-        if not re.search(r"\.eq\(\s*['\"]client_id['\"]", chain) or not re.search(r"\.eq\(\s*['\"]firm_id['\"]", chain):
+        # A row with no client is named by `.is_("client_id", "null")`, which scopes it as exactly as `.eq` scopes one with a client.
+        if not re.search(r"\.(?:eq|is_)\(\s*['\"]client_id['\"]", chain) or not re.search(r"\.eq\(\s*['\"]firm_id['\"]", chain):
             out.append(f"{tc.args[0].value} at line {node.lineno}")
     return out
 

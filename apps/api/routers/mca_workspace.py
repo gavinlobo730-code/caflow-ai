@@ -28,7 +28,7 @@ import uuid
 import logging
 from datetime import datetime, date
 from core.ist_clock import ist_today
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -136,7 +136,13 @@ class UpdateDirectorRequest(BaseModel):
 class CreateFilingRequest(BaseModel):
     client_id: str
     company_id: Optional[str] = None
-    form_type: str = Field(..., description="AOC-4, MGT-7, ADT-1, DIR-12, INC-22, SH-7, CHG-1, CHG-4")
+    form_type: str = Field(..., description="AOC-4, MGT-7, MGT-7A, ADT-1, DIR-12, INC-22, SH-7, CHG-1, CHG-4")
+    #: The CIN as the CA typed it, read only where no company of the client's is named or the one named holds no CIN of its own
+    #: (POST-A-442: the firm-level form types one when the Company Master holds none). A named company's own CIN always wins.
+    cin: Optional[str] = Field(None, max_length=40)
+    #: A filing is CREATED not started, or overdue where the CA says so (the firm-level form offers both). Never filed: recording a
+    #: filing as filed is the status route's, which asks `mca:approve` and the CA's confirmation (POST-A-225).
+    status: Literal["not_started", "overdue"] = "not_started"
     financial_year: OptionalFYLabel = None  # e.g. 2025-26
     period: Optional[str] = None
     # REQUIRED: `mca_filings.due_date` is `DATE NOT NULL` (migration 012, unchanged since), so a filing without one can never be stored. It was an
@@ -161,8 +167,10 @@ class UpdateFilingStatusRequest(BaseModel):
     acknowledgement_url: Optional[str] = None
 
 
-# Annual filing forms
-_ANNUAL_FORMS = {"AOC-4", "MGT-7", "ADT-1"}
+# Annual filing forms. MGT-7A is the annual return the firm-level form has always offered and `mca_filing_closes_obligation`
+# already calls an annual form matched to NO obligation (`UNMATCHED_FORMS`, POST-C-209), so it is listed with them: it is created
+# and shown on the Annual tab, needs no year and closes nothing, which the status route already says (POST-A-442).
+_ANNUAL_FORMS = {"AOC-4", "MGT-7", "MGT-7A", "ADT-1"}
 # Event filing forms
 _EVENT_FORMS = {"DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"}
 
@@ -488,6 +496,16 @@ def list_filings(
         return _could_not(e, "read the MCA filings")
 
 
+def _client_name(firm_id: str, client_id: str) -> Optional[str]:
+    """The client's name as the firm-level list shows it, read under the firm; None in mock mode or when the row is not found."""
+    if _USE_MOCK:
+        return None
+    from core.supabase_client import get_supabase
+    rows = (get_supabase().table("clients").select("client_name").eq("id", client_id).eq("firm_id", firm_id).limit(1)
+            .execute().data) or []
+    return (rows[0].get("client_name") if rows else None) or None
+
+
 def _client_companies(firm_id: str, client_id: str) -> list[dict]:
     """The client's companies (`id`, `company_name`, `cin`, `is_active`), in name order; every one, active or not."""
     if _USE_MOCK:
@@ -562,7 +580,7 @@ def create_filing(
 ):
     """
     Create an MCA filing record.
-    Annual: AOC-4 (§137), MGT-7 (§92), ADT-1 (§139).
+    Annual: AOC-4 (§137), MGT-7 (§92), MGT-7A, ADT-1 (§139).
     Event: DIR-12 (§165), INC-22, SH-7, CHG-1, CHG-4.
     """
     try:
@@ -601,6 +619,15 @@ def create_filing(
             return api_response(False, None, f"{body.form_type}: say the financial year this filing is for. Without a year it "
                                              f"can never close its obligation on the compliance calendar.")
         cin = (str(company.get("cin") or "").strip().upper() or None) if company else None
+        if cin is None and (body.cin or "").strip():
+            # A CIN typed where the company named holds none, or no company is named (POST-A-442). Its shape is judged here, the
+            # Company Master's rule (`validate_cin`); which company it is, is matched when the filing is marked filed (`company_of`).
+            typed = body.cin.strip().upper()
+            problem = validate_cin(typed)
+            if problem:
+                return api_response(False, None, problem)
+            cin = typed
+        client_name = _client_name(firm_id, body.client_id)
 
         category = "annual" if body.form_type in _ANNUAL_FORMS else "event"
 
@@ -608,6 +635,8 @@ def create_filing(
             "id": str(uuid.uuid4()),
             "firm_id": firm_id,
             "client_id": body.client_id,
+            # The firm-level list shows the name this row carries (the browser's own insert wrote it, the API did not until POST-A-442).
+            "client_name": client_name,
             # The company's own id as its row holds it (the request may spell a uuid in another case).
             "company_id": company.get("id") if company else None,
             # The firm-level list shows `company_cin`, and the browser's own insert writes both columns.
@@ -622,7 +651,7 @@ def create_filing(
             # free-text "notes" column instead of adding a duplicate one
             # (task #219 schema-drift fix).
             "notes": body.description,
-            "status": "not_started",
+            "status": body.status,
             "srn": None,
             # Real column is filed_date (migration 012); request/response
             # keep "filing_date" as the API field name, mapped below.
@@ -634,8 +663,11 @@ def create_filing(
         if _USE_MOCK:
             _MOCK_FILINGS[record["id"]] = record
         else:
+            # The privileged client (POST-A-442): the signed-in role's write on `mca_filings` is taken away by the migration that
+            # follows, and every check its policies made is this route's, made above: `mca:write`, the client and the company.
             from core.supabase_client import get_supabase
-            get_supabase().table("mca_filings").insert(record).execute()
+            from core.db_provider import privileged_for
+            privileged_for(get_supabase()).table("mca_filings").insert(record).execute()
 
         log_event(firm_id, "mca_filing", record["id"], "create",
                   actor_id=current_user.get("auth_user_id"), new_data=record)
@@ -805,8 +837,18 @@ def update_filing_status(
             _MOCK_FILINGS[filing_id].update(updates)
             rec = _MOCK_FILINGS[filing_id]
         else:
+            # The privileged client (POST-A-442), naming the firm and the client: the route asked `mca:write`, `mca:approve` for a
+            # filed filing and the client (`_load_or_none`), which is what migration 493's policies asked of a signed-in write. A legacy
+            # row can carry no client (the base column is nullable), and `.eq("client_id", None)` is not a null test to PostgREST.
             from core.supabase_client import get_supabase
-            rows = get_supabase().table("mca_filings").update(updates).eq("id", filing_id).eq("firm_id", firm_id).execute().data
+            from core.db_provider import privileged_for
+            db = privileged_for(get_supabase())
+            if existing.get("client_id"):
+                rows = (db.table("mca_filings").update(updates).eq("id", filing_id).eq("firm_id", firm_id)
+                        .eq("client_id", existing["client_id"]).execute().data)
+            else:
+                rows = (db.table("mca_filings").update(updates).eq("id", filing_id).eq("firm_id", firm_id)
+                        .is_("client_id", "null").execute().data)
             if not rows:
                 # A refused UPDATE affects zero rows without an error; reading that as success would tell the CA a
                 # filing was recorded when the database declined to move it.

@@ -5105,6 +5105,24 @@ export const api = {
     filingChoices: (clientId: string, formType: string) => request<ApiResp<unknown>>(
       `/api/mca-workspace/filing-choices?client_id=${encodeURIComponent(clientId)}&form_type=${encodeURIComponent(formType)}`),
     /**
+     * Create an MCA filing through the route the client tab uses (POST-A-442), which asks `mca:write` and the client's access,
+     * checks the company is the client's, stores the category the Annual and Event tabs list by, and writes the audit event. The
+     * firm-level form used to insert the row straight into `mca_filings`. A filing is created Not started or Overdue, never
+     * Filed: that is `setFilingStatus`. The route answers a refusal as HTTP 200 with `{ success: false, error }`: check it.
+     */
+    createFiling: (body: {
+      client_id: string;
+      company_id?: string | null;
+      form_type: string;
+      financial_year?: string | null;
+      period?: string | null;
+      due_date: string;
+      /** The CIN as typed, read only where no company named holds one of its own. */
+      cin?: string | null;
+      status?: "not_started" | "overdue";
+      description?: string | null;
+    }) => request<ApiResp<Record<string, unknown>>>("/api/mca-workspace/filings", { method: "POST", body: JSON.stringify(body) }),
+    /**
      * Record an MCA filing's status through the route that asks `mca:approve` (Manager and above) for "filed" and
      * the CA's explicit confirmation (POST-A-225). The screen used to write `status: "filed"` with the SRN and date
      * straight into `mca_filings`, so an Executive could record a statutory filing as done, the confirmation and
