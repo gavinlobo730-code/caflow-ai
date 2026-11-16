@@ -28,6 +28,7 @@ from pydantic import BaseModel, ValidationError
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
+from services.audit_service import log_event
 from models.fy import FYLabel
 from models.income_tax_worksheets import PAYLOADS
 from services import income_tax_worksheet_service as svc
@@ -87,10 +88,17 @@ def save_worksheet(
     """Work the inputs out, and keep them only if the domain accepts them."""
     assert_client_access(current_user, req.client_id)
     try:
-        return api_response(True, svc.save(
+        saved = svc.save(
             firm_id=current_user["firm_id"], client_id=req.client_id,
             fy=req.financial_year, kind=kind, payload=req.payload,
-            use_new_regime=req.use_new_regime, user_id=current_user["id"]))
+            use_new_regime=req.use_new_regime, user_id=current_user["id"])
+        # Who kept which inputs for which year (POST-A-167): `income_tax_worksheets` carries no row-level audit trigger. The inputs are the
+        # CA's own working that feeds a box on the return, so they are recorded as saved (the payload is small and holds no identifier).
+        log_event(current_user["firm_id"], "income_tax_worksheet", f"{req.client_id}:{req.financial_year}:{kind}", "save",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data={"client_id": req.client_id, "financial_year": req.financial_year, "kind": kind,
+                            "use_new_regime": req.use_new_regime, "payload": req.payload})
+        return api_response(True, saved)
     except svc.UnknownKind as e:
         raise HTTPException(status_code=404, detail=str(e))
     except (ValidationError, *svc.Refused) as e:

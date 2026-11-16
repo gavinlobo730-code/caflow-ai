@@ -9,6 +9,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from models.common import api_response
+from services.audit_service import log_event
 from core.permissions import rbac
 from core.authz import assert_client_access
 from services.party_credit_service import party_credit_service
@@ -94,6 +95,12 @@ def apply_party_credit(
             data.amount_paise, data.applied_to_type, data.applied_to_id,
             created_by=current_user.get("id"), actor=current_user,
         )
+        # Who applied how much of whose credit to what (POST-A-167): `party_credit_balances` and `party_credit_ledger` carry no row-level audit trigger.
+        log_event(current_user["firm_id"], "party_credit", str((row or {}).get("id") or data.party_id), "apply",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data={"client_id": data.client_id, "party_type": data.party_type, "party_id": data.party_id,
+                            "amount_paise": data.amount_paise, "applied_to_type": data.applied_to_type,
+                            "applied_to_id": data.applied_to_id})
         return api_response(True, row)
     except HTTPException:
         raise

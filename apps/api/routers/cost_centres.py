@@ -24,6 +24,7 @@ from core.authz import assert_client_access
 from core.permissions import rbac
 from domain.accounting import cost_centre as rule
 from models.common import api_response
+from services.audit_service import log_event
 from models.fy import FYLabel
 from services import cost_centre_service as svc
 from core import db_provider
@@ -124,6 +125,9 @@ def create_cost_centre(
         row = svc.create_centre(_db(), firm_id, body.client_id, body.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    log_event(firm_id, "cost_centre", str((row or {}).get("id") or ""), "create",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"client_id": body.client_id, **{k: v for k, v in body.model_dump().items() if k != "client_id"}})
     return api_response(True, row)
 
 
@@ -141,6 +145,9 @@ def update_cost_centre(
         row = svc.update_centre(_db(), firm_id, client_id, centre_id, patch)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    log_event(firm_id, "cost_centre", centre_id, "update",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"client_id": client_id, **patch})
     return api_response(True, row)
 
 

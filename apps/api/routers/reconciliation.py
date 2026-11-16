@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
+from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/reconciliation", tags=["reconciliation"])
 
@@ -195,4 +196,9 @@ def resolve_finding(
     except Exception as e:
         return api_response(False, None, str(e))
 
+    if updated:
+        # Who reviewed which finding, and what they said (POST-A-167): `reconciliation_findings` carries no row-level audit trigger.
+        log_event(firm_id, "reconciliation_finding", finding_id, "resolve",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  new_data={"client_id": existing[0]["client_id"], "resolution_note": body.resolution_note})
     return api_response(True, {"finding": updated[0] if updated else None})
