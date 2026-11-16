@@ -3312,7 +3312,18 @@ async function sessionTokenWithTimeout(): Promise<string | undefined> {
   }
 }
 
-export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+/**
+ * What a caller may add to a request. `asked: "read"` says that a POST only ASKS (POST-A-414): it changes nothing, so a failure is said as a
+ * question that got no answer, and after a cold start it is sent once more, as a GET is. A POST is otherwise a change, said as "it is not known
+ * whether it went through" and never sent twice (POST-A-412). Only the POSTs on the named list in
+ * `scripts/a-post-that-only-asks-is-on-the-named-list.test.ts` may carry it: each was read on the server and writes nothing.
+ */
+export type RequestOptions = RequestInit & { asked?: "read" };
+
+export async function request<T>(path: string, requestOptions?: RequestOptions): Promise<T> {
+  // `asked` is ours, not fetch's: it is taken off before the request is made.
+  const { asked, ...rest } = requestOptions ?? {};
+  const options: RequestInit | undefined = requestOptions ? rest : undefined;
   // getSession() itself can fail on the FIRST call of a page's lifetime — not
   // only by hanging (the 10s bound above), but by rejecting outright: the auth
   // client's own one-time startup (reading the stored session, and racing a
@@ -3339,7 +3350,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     }
   }
 
-  const doing = doingOf(options?.method);
+  const doing = asked === "read" ? "read" : doingOf(options?.method);
   let res: Response;
   try {
     res = await fetchWithTimeout(path, options, token);
@@ -5297,7 +5308,7 @@ export const api = {
     fxRevaluation: {
       preview: (clientId: string, body: { period_end: string; closing_rates?: Record<string, string> }) =>
         request(`/api/fx-revaluation/preview?client_id=${encodeURIComponent(clientId)}`, {
-          method: "POST", body: JSON.stringify(body),
+          method: "POST", body: JSON.stringify(body), asked: "read",
         }),
       run: (clientId: string, body: { period_end: string; closing_rates: Record<string, string> }) =>
         request(`/api/fx-revaluation/run?client_id=${encodeURIComponent(clientId)}`, {
@@ -5404,7 +5415,7 @@ export const api = {
     writedownPreview: (serviceCatalogueId: string, body: { client_id: string; nrv_per_unit_paise: number }) =>
       request<ApiResp<NrvWritedownPreview | null>>(
         `/api/inventory/items/${serviceCatalogueId}/writedown-preview`,
-        { method: "POST", body: JSON.stringify(body) }),
+        { method: "POST", body: JSON.stringify(body), asked: "read" }),
     // INV-08 — the physical count. One sheet, not a hundred adjustments. The
     // VARIANCE is derived on the server against the position as at the count
     // date and is never sent up; so is which line may post and why.
@@ -5727,7 +5738,7 @@ export const api = {
           method: "PUT", body: JSON.stringify({ splits }),
         }),
     },
-    postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string; gst_rate_bps?: number; is_interstate?: boolean }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data) }),
+    postingPreview: (txnId: string, data: { bank_account_id?: string; account_id?: string; to_bank_account_id?: string; gst_rate_bps?: number; is_interstate?: boolean }) => request(`/api/banking/transactions/${txnId}/posting-preview`, { method: "POST", body: JSON.stringify(data), asked: "read" }),
     // B.4 — reconciliation engine (sessions, manual reconcile, tie-out, report)
     reconciliations: {
       list: (params?: Record<string, string>) => request(`/api/banking/reconciliations${params ? "?" + new URLSearchParams(params) : ""}`),
@@ -5765,7 +5776,7 @@ export const api = {
        *  computed by the same tie-out the real reconcile uses, so the preview
        *  can never disagree with the result. */
       preview: (id: string, transaction_ids: string[]) =>
-        request(`/api/banking/reconciliations/${id}/preview`, { method: "POST", body: JSON.stringify({ transaction_ids }) }),
+        request(`/api/banking/reconciliations/${id}/preview`, { method: "POST", body: JSON.stringify({ transaction_ids }), asked: "read" }),
       /** Every certification this session has carried, newest first. */
       history: (id: string) => request(`/api/banking/reconciliations/${id}/history`),
     },
@@ -6308,7 +6319,7 @@ export const api = {
       request<ApiResp<{ run_id: string; month: string;
                         reconciliation: EsicMappedIpCheck | null }>>(
         `/api/payroll/runs/${runId}/esic/mapped-ips`,
-        { method: "POST", body: JSON.stringify({ mapped_ips: mappedIps }) }),
+        { method: "POST", body: JSON.stringify({ mapped_ips: mappedIps }), asked: "read" }),
 
     /** THE MONTH-END LIST (Track F, phase F4). Every ESI / professional-tax
      *  remittance recorded as PAID with no journal entry tied to it, each with
@@ -6406,7 +6417,7 @@ export const api = {
     previewSettlement: (employeeId: string, body: SettlementInput) =>
       request<{ success: boolean; data: SettlementResult; error: string | null }>(
         `/api/payroll/employees/${employeeId}/settlement`,
-        { method: "POST", body: JSON.stringify(body) }),
+        { method: "POST", body: JSON.stringify(body), asked: "read" }),
 
     /** Record it: store, withhold under §192, post to the ledger, close the
      *  employee. `payroll:finalize`, not `write`. */
@@ -7066,7 +7077,7 @@ export const api = {
                   default_rate_paise: number | null; gst_rate_bps: number | null }[];
     }>>("/api/billing/service-options"),
     previewRun: (asOf?: string) =>
-      request(`/api/billing/preview-run${asOf ? `?as_of=${asOf}` : ""}`, { method: "POST" }),
+      request(`/api/billing/preview-run${asOf ? `?as_of=${asOf}` : ""}`, { method: "POST", asked: "read" }),
     generate: (scheduleId: string) =>
       request<ApiResp<BillingGenerateResult>>(
         `/api/billing/schedules/${scheduleId}/generate`, { method: "POST" }),

@@ -31,6 +31,7 @@ import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { YearPicker } from "@/components/ui/year-picker";
 import { Callout } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
+import { failureSentence } from "@/lib/api/failureSentence";
 import { auditDateRefusalMessage, duplicateAuditErrorMessage } from "@/lib/income-tax/taxAuditErrors";
 import { PageHeader } from "@/components/ui/page-header";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -400,7 +401,9 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
         : duplicateAuditErrorMessage(e as { code?: string } | null)
           // Migration 584's own sentence: the screen asks the same question first, so this is reached only by a browser whose clock is ahead of the server's (the bound is the browser's reading of India's day).
           ?? auditDateRefusalMessage(e as { code?: string; hint?: string; message?: string } | null)
-          ?? (e instanceof Error ? e.message : "Save failed"));
+          // The browser client hands back a plain object for a request that got no answer, which `instanceof Error` read as "Save failed"
+          // although the audit may have been saved (POST-A-414): the helper says it as not known.
+          ?? failureSentence(e, "Save failed", "write"));
     } finally {
       setSaving(false);
     }

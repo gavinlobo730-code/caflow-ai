@@ -257,7 +257,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (12 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (13 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -270,7 +270,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - TWELVE HAND-BUILT DIALOGS ARE THE SHARED MODAL, AND THE BANK'S NESTED ONES WAIT FOR A STACK AND A FOOTER
 - A CLEARED BOX IS SENT AS NULL ONLY FOR A SOFT FIELD THE SCREEN SHOWED
 - THE WINDOW NEVER SCROLLS INSIDE THE SHELL: THE PAGE SCROLLS IN `<main>`, AND `<main>` IS WHERE AN ABSOLUTE DESCENDANT IS PLACED
-- A SCREEN BLOCKS WITH "LOADING…" FOR ITS FIRST READ ONLY, SO A RELOAD A CHILD ASKED FOR DOES NOT UNMOUNT THE CHILD
+- A SCREEN BLOCKS WITH "LOADING…" FOR ITS FIRST READ ONLY
+- A WRITE THE BROWSER MAKES THROUGH THE SUPABASE CLIENT READS ITS ANSWER
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
@@ -362,7 +363,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A DATE BOX THAT A FORM REFUSES A LATER DAY IN SAYS SO ON THE BOX, RED AND `aria-invalid`, AND A HINT STAYS A HINT
 - THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH
 - THE PAGES A PERSON SEES BEFORE THEY ARE INSIDE WEAR ONE WASH, A WORD ON IT IS WHITE AND SITS WHERE WHITE READS, AND THE SIGN-IN
-- A REFUSAL SAYS WHAT TO CORRECT IN A PERSON'S WORDS: NO COLUMN NAME, NO ONE SENTENCE FOR EVERY FAILURE, NO BAND LEFT UNNAMED, AND A LIMIT
+- A REFUSAL SAYS WHAT TO CORRECT IN A PERSON'S WORDS
 
 ### `docs/design-record/tax-gst.md` (40 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
