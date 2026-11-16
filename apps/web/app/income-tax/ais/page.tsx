@@ -30,6 +30,7 @@
  * # incometax.gov.in, and feedback on a wrong line is submitted there.
  */
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // xlsx is fetched by the export click below and is NOT imported here: a static
 // `import * as XLSX from "xlsx"` put SheetJS (135 KB gzip) in this page's first
@@ -356,14 +357,12 @@ export default function AISPage() {
       <div className="bg-white rounded-xl border border-ps-border px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-ps-body mb-1.5">Client</label>
-          <select aria-label="Client"
+          <ClientLookup ariaLabel="Client"
+            clients={clients}
             value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm text-ps-ink focus:outline-none focus:ring-2 focus:ring-brand"
-          >
-            <option value="">Select a client…</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-          </select>
+            onChange={setClientId}
+            placeholder="Select a client…"
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-ps-body mb-1.5">
