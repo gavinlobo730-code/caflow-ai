@@ -2784,7 +2784,7 @@ def form_3cd_register(
     from services.form_3cd_service import build
     return api_response(True, build(
         db, current_user["firm_id"], client_id, fy,
-        nature=nature, bank_rate_bps=bank_rate_bps))
+        nature=nature, bank_rate_bps=bank_rate_bps, current_user=current_user))
 
 
 class Form3cdManualClauses(BaseModel):

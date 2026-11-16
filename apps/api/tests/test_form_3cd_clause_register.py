@@ -44,11 +44,11 @@ def test_derivable_codes_matches_the_clauses_flag():
         c.code for c in f3cd.CLAUSES if c.derivable)
 
 
-def test_the_eight_clauses_this_product_answers():
+def test_the_ten_clauses_this_product_answers():
     """Pinned so a change to which clauses are derivable is a deliberate
     edit, not a silent drift as modules are added or removed."""
     assert set(f3cd.DERIVABLE_CODES) == {
-        "8", "14", "18", "22", "26", "32", "34", "44",
+        "8", "14", "18", "22", "26", "32", "33", "34", "40", "44",
     }
 
 

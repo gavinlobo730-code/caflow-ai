@@ -242,13 +242,7 @@ CLAUSES: tuple[ClauseDefinition, ...] = (
                            "§79 shareholding-change bar; §73 speculation "
                            "loss; §73A specified-business loss", True),
     ClauseDefinition("33", "Chapter VIA / Chapter III (§10A, §10AA) "
-                           "deductions claimed, section-wise", False,
-                      "Chapter VI-A claims are the CA's own entries on the "
-                      "ITR computation workspace — reading them into this "
-                      "register would need a computation snapshot to exist "
-                      "for the year, which this register does not assume. "
-                      "See domain/income_tax/chapter_vi_a.py and the "
-                      "computation workspace for the figures."),
+                           "deductions claimed, section-wise", True),
     ClauseDefinition("34", "TDS/TCS compliance — TAN, section, nature of "
                            "payment, amounts, tax deducted/collected, "
                            "deposited, statements furnished, §201(1A)/"
@@ -287,10 +281,7 @@ CLAUSES: tuple[ClauseDefinition, ...] = (
     ClauseDefinition("40", "Turnover, gross profit/turnover, net profit/"
                            "turnover, stock-in-trade/turnover, material "
                            "consumed/finished goods produced — this year and "
-                           "the preceding year", False,
-                      "Every figure is available from the Profit & Loss for "
-                      "both years, but assembling the five named ratios into "
-                      "this clause's own row is not built yet."),
+                           "the preceding year", True),
     ClauseDefinition("41", "Demand raised or refund issued during the year "
                            "under any tax law other than the Income-tax Act "
                            "and the (repealed) Wealth-tax Act, with "
