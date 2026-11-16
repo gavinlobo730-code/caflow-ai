@@ -50,6 +50,7 @@ import { join } from "node:path";
 import { SCREENS, ALL_SCREENS } from "../lib/navigation/screens.ts";
 import { getActiveWorkspaceForPathname } from "../lib/workspace/routeOwnership.ts";
 import { stripComments } from "./stripComments.ts";
+import { settingsPanelAddresses } from "./settingsLinks.ts";
 
 const WEB = join(import.meta.dirname, "..");
 
@@ -109,7 +110,12 @@ const NO_BROWSE_SURFACE: Record<string, string> = {
 function panelSource(component: string): string {
   const p = join(WEB, "components/panels", `${component}.tsx`);
   assert.ok(existsSync(p), `ContextPanel names <${component}/> and there is no such file`);
-  return stripComments(readFileSync(p, "utf8"));
+  const own = stripComments(readFileSync(p, "utf8"));
+  // The Settings panel lists the groups in lib/settings/groups.ts, the one list the Settings tabs and the Settings
+  // home read too (PRE-A-023), keeping the links under /settings; those addresses are read with the panel.
+  if (component === "SettingsPanel" && own.includes('from "@/lib/settings/groups"'))
+    return own + "\n" + settingsPanelAddresses();
+  return own;
 }
 
 interface Unlisted { href: string; name: string; panel: string }

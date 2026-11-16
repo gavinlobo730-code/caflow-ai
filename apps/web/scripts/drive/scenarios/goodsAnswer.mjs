@@ -248,7 +248,8 @@ export const scenarios = [
     async run(env) {
       const { page, stub } = env;
       stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: {} }) });
-      await page.goto(`${env.base}/settings/`, { waitUntil: "networkidle" });
+      // The branding and template links sit on the Settings home's Invoices and documents tab (PRE-A-023).
+      await page.goto(`${env.base}/settings/?tab=documents`, { waitUntil: "networkidle" });
       await page.getByText("Logo, tagline and primary colour for your practice's own invoices; the other settings are kept on file.", { exact: false }).waitFor();
       await page.getByText("Where the logo and the signature sit on your practice's own invoices.", { exact: false }).waitFor();
       assert.equal(await page.getByText(/applied to all client documents|Layout styles: Classic/).count(), 0, "the hub promises what no document does");

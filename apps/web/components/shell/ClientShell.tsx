@@ -50,7 +50,12 @@ export function ClientShell({
     <div className="flex flex-col h-screen overflow-hidden bg-ps-bg print:block print:h-auto print:overflow-visible">
       <ClientTopBar onOpenSearch={onOpenSearch} />
       {/* The skip link's target — see SkipToContent. */}
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="flex-1 min-h-0 overflow-y-auto outline-none print:overflow-visible"><PrintHeader />{children}</main>
+      {/* `relative` (PRE-A-024): an absolutely positioned descendant with no positioned ancestor of its own (a
+          screen-reader-only table caption is one) is otherwise placed against the WINDOW, escapes this scrolling
+          area, and makes the window itself as tall as the content: on a long page the window then scrolled past
+          the end, the top bar went out of view and a screen of blank space showed below. Positioned here, every
+          such descendant is laid out and clipped inside the area that scrolls. */}
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="relative flex-1 min-h-0 overflow-y-auto outline-none print:overflow-visible"><PrintHeader />{children}</main>
     </div>
   );
 }

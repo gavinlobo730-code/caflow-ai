@@ -150,7 +150,9 @@ function PostureCard() {
   ] : [];
 
   return (
-    <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
+    // `id` is the Settings link's anchor (PRE-A-023: Security and access → How this deployment is set up), and
+    // the scroll margin keeps the heading clear of the sticky Settings tab row.
+    <div id="deployment" className="scroll-mt-16 bg-white rounded-xl border border-ps-border overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 py-4 border-b border-ps-border">
         <ShieldCheck size={15} className="text-blue-600" />
         <h2 className="text-sm font-semibold text-ps-ink">How this deployment is set up</h2>

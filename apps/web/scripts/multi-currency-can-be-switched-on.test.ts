@@ -23,10 +23,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { whySettingsDoesNotLinkTo } from "./settingsLinks.ts";
 
 const WEB = path.resolve(import.meta.dirname, "..");
 const SCREEN = "app/settings/multi-currency/page.tsx";
-const INDEX = "app/settings/page.tsx";
 
 function code(rel: string): string {
   return fs.readFileSync(path.join(WEB, rel), "utf8")
@@ -36,7 +36,8 @@ function code(rel: string): string {
 
 test("the screen exists and settings links to it", () => {
   assert.ok(fs.existsSync(path.join(WEB, SCREEN)), `${SCREEN} is missing`);
-  assert.match(code(INDEX), /href="\/settings\/multi-currency"/,
+  // Settings' links are one list since PRE-A-023 (lib/settings/groups.ts), rendered by the home and the panel.
+  assert.deepEqual(whySettingsDoesNotLinkTo("/settings/multi-currency"), [],
     "an unreachable settings page is the same as no page");
 });
 
