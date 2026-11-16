@@ -29,6 +29,7 @@
  * failure is said, in one line.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { AlertTriangle, Clock, Factory } from "lucide-react";
 import {
   api,
@@ -92,6 +93,12 @@ export function Itc04Panel({ clientId, onChanged, refreshToken }: {
   const [lotFor, setLotFor] = useState<string | null>(null);
   const [lot, setLot] = useState<LotForm>({ ...BLANK_LOT });
   const [saving, setSaving] = useState(false);
+  // A retraction takes back a lot recorded by mistake (POST-A-418). Offered only to someone the route admits (the route's own pair, invoice/write); the reason is required and kept with the lot.
+  const { can } = usePermissions();
+  const mayRetract = can("invoice", "write");
+  const [retractFor, setRetractFor] = useState<string | null>(null);
+  const [retractReason, setRetractReason] = useState("");
+  const [retractError, setRetractError] = useState<string | null>(null);
   // The date the goods came back is what a lot is recorded against: it reduces what is still with the job worker, and the last lot's date
   // marks the challan received back, which stops the s.143 clock that began on the day the goods were sent. The job worker's challan date is
   // optional: text that is not a date read as blank, so the first said the date was missing about a box that held one and the second
@@ -168,6 +175,31 @@ export function Itc04Panel({ clientId, onChanged, refreshToken }: {
     } catch (e) {
       // The API answers a refusal ("The goods cannot have come back on … before they were sent out on …") with an error status, which arrives as a thrown sentence.
       setLotError({ line: line.challan_line_id, text: e instanceof Error ? e.message : "Couldn't record that return. Nothing was saved." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function retract(challanId: string, lotId: string) {
+    setRetractError(null);
+    if (!retractReason.trim()) { setRetractError("Say why the lot is being retracted: the reason is kept with it."); return; }
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await api.salesCycle.retractChallanReturn(challanId, lotId, clientId, retractReason.trim());
+      if (!res.success) { setRetractError(res.error || "That lot was not retracted."); return; }
+      setMsg({
+        type: "ok",
+        text: res.data?.challan_back_to_issued
+          ? "Lot retracted. The challan is issued again, with goods still out, and its s.143 clock runs again."
+          : "Lot retracted. It no longer counts on this statement or against the challan.",
+      });
+      setRetractFor(null);
+      setRetractReason("");
+      await load();
+      onChanged?.();
+    } catch (e) {
+      setRetractError(e instanceof Error ? e.message : "Couldn't retract that lot. Nothing was changed.");
     } finally {
       setSaving(false);
     }
@@ -333,7 +365,8 @@ export function Itc04Panel({ clientId, onChanged, refreshToken }: {
                             <th className="text-left font-medium py-1 pr-3">Came back</th>
                             <th className="text-left font-medium py-1 pr-3">Description</th>
                             <th className="text-right font-medium py-1 pr-3">Quantity</th>
-                            <th className="text-right font-medium py-1">Lost / wasted</th>
+                            <th className="text-right font-medium py-1 pr-3">Lost / wasted</th>
+                            {mayRetract && <th className="py-1" />}
                           </tr>
                         </thead>
                         <tbody>
@@ -357,15 +390,50 @@ export function Itc04Panel({ clientId, onChanged, refreshToken }: {
                               <td className="py-1 pr-3 text-right font-mono tabular-nums text-ps-body">
                                 {r.quantity} {r.uqc ?? ""}
                               </td>
-                              <td className="py-1 text-right font-mono tabular-nums text-ps-body">
+                              <td className="py-1 pr-3 text-right font-mono tabular-nums text-ps-body">
                                 {r.lost_or_wasted_quantity}
                               </td>
+                              {mayRetract && (
+                                <td className="py-1 text-right">
+                                  {r.lot_id ? (
+                                    <button type="button" disabled={saving} className="text-brand hover:underline disabled:opacity-50"
+                                            onClick={() => { setRetractFor(retractFor === r.lot_id ? null : (r.lot_id ?? null)); setRetractReason(""); setRetractError(null); }}>
+                                      Retract
+                                    </button>
+                                  ) : null}
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
                   )}
+                {retractFor && (() => {
+                  const row = arrayOrEmpty<Itc04Table5aRow>(t5.rows).find((x) => x.lot_id === retractFor);
+                  if (!row) return null;
+                  return (
+                    <div className="mt-2 rounded border border-ps-border p-3 text-xs space-y-2" role="group" aria-label="Retract this lot">
+                      <p className="text-ps-body">
+                        Retract the lot of {row.quantity} {row.uqc ?? ""} of {row.description} that came back on {formatDate(row.returned_on)} on challan {row.original_challan_no}.
+                        The lot is kept, with your name, today&apos;s date and the reason, and stops counting here and against the challan. This statement is prepared here and furnished on the GST portal by the principal:
+                        if this period&apos;s ITC-04 has already been furnished, the correction has to be made on the portal as well, which the product does not do and does not know about.
+                      </p>
+                      <label className="block space-y-1">
+                        <span className="text-ps-label">Why is it being retracted?</span>
+                        <input value={retractReason} maxLength={500} onChange={(e) => setRetractReason(e.target.value)}
+                               className="block w-full rounded border border-ps-border px-2 py-1" />
+                      </label>
+                      {retractError && <p role="alert" className="text-state-problem">{retractError}</p>}
+                      <div className="flex gap-3">
+                        <Button type="button" size="sm" disabled={saving} onClick={() => void retract(row.challan_id, retractFor)}>
+                          {saving ? "Retracting…" : "Retract this lot"}
+                        </Button>
+                        <button type="button" className="text-ps-label hover:underline" onClick={() => setRetractFor(null)}>Keep it</button>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {arrayOrEmpty<Itc04Gap>(t5.gaps).map((g, i) => (
                   <p key={i} className="text-xs text-state-attention mt-1">
                     {g.challan_no ? `${g.challan_no}: ` : ""}{g.reason}

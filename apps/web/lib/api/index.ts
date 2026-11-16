@@ -4178,6 +4178,8 @@ export interface Itc04Table4Row {
 }
 
 export interface Itc04Table5aRow {
+  /** The lot's own id, which a retraction names; null for a row derived from a whole-challan return (POST-A-418). */
+  lot_id?: string | null;
   challan_id: string;
   challan_line_id: string;
   job_worker: Itc04JobWorker;
@@ -8085,6 +8087,11 @@ export const api = {
       request<ApiResp<{ id: string; challan_marked_received_back: boolean }>>(
         `/api/sales-cycle/challans/${challanId}/returns`,
         { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-418 — take back a lot recorded by mistake: a soft delete that keeps the day, the person and the reason. A write: not sent again after a dropped connection. */
+    retractChallanReturn: (challanId: string, lotId: string, clientId: string, reason: string) =>
+      request<ApiResp<{ id: string; challan_back_to_issued: boolean }>>(
+        `/api/sales-cycle/challans/${challanId}/returns/${lotId}/retract`,
+        { method: "POST", body: JSON.stringify({ client_id: clientId, reason }) }),
   },
 
   openingDocuments: {
