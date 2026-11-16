@@ -8,7 +8,7 @@ the number it quotes when IT deducts tax on what it pays the client, and Form
 the client is the deductor, and its 26Q return reports the vendor's PAN.
 """
 from pydantic import BaseModel, field_validator, model_validator
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 from core.validators import (validate_gstin, validate_pan, validate_tan,
                              validate_phone, validate_email, validate_pincode)
 from domain.tds.section_195_rates import ALL_PAYEE_CLASSES
@@ -321,6 +321,10 @@ class CustomerIn(BaseModel):
 
 
 class CustomerUpdateIn(BaseModel):
+    # POST-A-399. What an edit may take away: a contact particular, and the credit limit, whose NULL is its own answer ("no limit recorded",
+    # migration 414) and not a figure. Read through `models.clearable.patch_dict`. NOT the GSTIN, the PAN, the TAN or the state code: those are
+    # corrected and not removed (`PARTY_IDENTIFIERS`), and NOT the credit days, whose column is NOT NULL with a default of 30.
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"email", "phone", "address", "city", "state", "pincode", "credit_limit_paise"})
     name: Optional[str] = None
     gstin: Optional[str] = None
     pan: Optional[str] = None
@@ -400,6 +404,15 @@ class CustomerUpdateIn(BaseModel):
         if errors:
             raise ValueError("; ".join(errors))
         return self
+
+
+#: The identifiers on a party that an edit corrects and never empties (POST-A-399), with the words a person reads for each. Every GST return not
+#: yet filed reads a party's GSTIN and state code live for the documents already issued to it, so emptying one moves those documents between the
+#: tables of a return; the PAN, the TAN and a foreign tax number are the party's identity on a TDS statement and in the 26AS match. The edit
+#: routes refuse an empty one over a stored value through `models.clearable.removed_identifier_problem`, and the two forms say the same sentence.
+PARTY_IDENTIFIERS: dict[str, str] = {
+    "gstin": "GSTIN", "pan": "PAN", "tan": "TAN", "state_code": "state code", "tax_identification_number": "tax identification number",
+}
 
 
 def _reject_negative_credit_limit(value):
@@ -564,6 +577,15 @@ class VendorIn(BaseModel):
 
 
 class VendorUpdateIn(BaseModel):
+    # POST-A-399. What an edit may take away: a contact particular, and the answers whose NULL is "nobody has said" (the credit limit and the
+    # payment terms, migrations 378 and 202; the treaty rate, which the engine refuses rather than assume; the residential status, the GST
+    # registration status, the nature of income and the payee class, each a recorded third state). Read through `models.clearable.patch_dict`.
+    # NOT the GSTIN, the PAN, the state code or the foreign tax number (`PARTY_IDENTIFIERS`), and NOT the no-PE declaration's date and reference,
+    # which are evidence (POST-A-388, and the evidence texts are still POST-A-399's).
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({
+        "email", "phone", "address", "city", "state", "pincode", "credit_limit_paise", "credit_days", "treaty_rate_bps",
+        "country_of_residence", "residential_status", "gst_registration_status", "section_195_nature_of_income", "non_resident_payee_class",
+    })
     name: Optional[str] = None
     gstin: Optional[str] = None
     pan: Optional[str] = None

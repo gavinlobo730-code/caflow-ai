@@ -7,7 +7,7 @@ Phase B.0: models use the canonical bank_transactions field names
 that never existed as columns.
 """
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
-from typing import Optional
+from typing import ClassVar, FrozenSet, Optional
 
 from domain.banking import account_kind
 from domain.banking.register import OPENING_DATE_REQUIRED
@@ -89,6 +89,9 @@ class BankAccountIn(BaseModel):
 
 
 class BankAccountUpdateIn(BaseModel):
+    # POST-A-399. The IFSC is the one optional free-text particular of this edit: a branch code a CA may take away. NOT the opening-balance date
+    # (refused at the screen, POST-A-388) and NOT the ledger link, which every posting to the account reads (the screen refuses emptying one).
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"ifsc"})
     bank_name: Optional[str] = None
     ifsc: Optional[str] = None
     account_type: Optional[str] = None
