@@ -460,7 +460,6 @@ services/invoice_pdf_service.py :: PLR0915 :: _render_tax_invoice :: 137
 services/irn_worklist_service.py :: B904 :: _since :: 1
 services/irn_worklist_service.py :: C901 :: worklist :: 22
 services/itc_time_bar_service.py :: B023 :: _unbooked_documents :: 2
-services/itc_time_bar_service.py :: F401 :: <module> :: 1
 services/knowledge_service.py :: F401 :: <module> :: 1
 services/knowledge_service.py :: F841 :: archive_article :: 1
 services/knowledge_service.py :: F841 :: restore_version :: 1
