@@ -19,7 +19,6 @@ import routers.sales_cycle as route
 import services.itc_04_service as itc_service
 import services.sales_cycle_service as svc
 import test_itc_04_is_derived_from_the_challans_already_entered as itc
-from domain.gst import delivery_challan as dc
 from tests.e2e_harness import FakeDB
 
 TODAY = date(2026, 10, 9)
