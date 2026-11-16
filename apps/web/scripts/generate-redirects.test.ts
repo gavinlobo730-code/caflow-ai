@@ -139,7 +139,12 @@ test("the dynamic-rule count stays under Cloudflare Pages' 100-dynamic-redirect 
   // Cloudflare in production — a failure mode this repo's own local
   // verification harness didn't catch (it doesn't enforce the cap).
   //
-  // THE BUDGET IS 98, WHICH IS THE REAL COUNT — a ratchet, not a ceiling
+  // THE BUDGET IS 99 SINCE POST-A-148, WHICH IS THE REAL COUNT: the year-end landing page's payload needed a
+  // rule of its own once the four dead bare-.txt rules were listed ahead of their siblings (one rule, 98 to 99).
+  // Everything below that says 98 describes the count BEFORE that, and the arithmetic is worse by one: the
+  // next page under a dynamic prefix costs two, which is 101.
+  //
+  // (The paragraph that follows was written at 98.) THE BUDGET IS 98, WHICH IS THE REAL COUNT — a ratchet, not a ceiling
   // somebody picked. It was pinned at 90 once "for headroom", which meant
   // that by the time the tree reached 50 dynamic pages the file had crept
   // to 124 — OVER the real cap, with pages silently 404ing in production —
@@ -160,8 +165,8 @@ test("the dynamic-rule count stays under Cloudflare Pages' 100-dynamic-redirect 
   const dynamic = rulesIn(generated).filter((r) => isDynamicRule(r.from));
   assert.equal(
     dynamic.length,
-    98,
-    `_redirects has ${dynamic.length} dynamic rules against a budget of 98 and a ` +
+    99,
+    `_redirects has ${dynamic.length} dynamic rules against a budget of 99 and a ` +
       "hard Cloudflare cap of 100, which fails SILENTLY. If this went UP, a route " +
       "was added — read D10 in generate-redirects.js before touching this number. " +
       "If it went DOWN, a route was retired and the budget ratchets down with it."
@@ -235,7 +240,10 @@ test("the budget is spent in the shape D10 says it is", () => {
   const rules = rulesIn(buildRedirectsFile(APP_DIR)).filter((r) => isDynamicRule(r.from));
   const splats = rules.filter((r) => r.from.endsWith("/*"));
   const bare = rules.filter((r) => !r.from.endsWith("/*") && !r.from.endsWith(".txt"));
-  const bareRsc = rules.filter((r) => !r.from.endsWith("/*") && r.from.endsWith(".txt"));
+  // The one landing payload (/clients/:id/year-end/index.txt) is neither shape 1 nor 4: it is the
+  // guard that lets the year-end engagement's ".txt" rule go first (POST-A-148).
+  const landing = rules.filter((r) => r.from.endsWith("/index.txt"));
+  const bareRsc = rules.filter((r) => !r.from.endsWith("/*") && r.from.endsWith(".txt") && !r.from.endsWith("/index.txt"));
 
   assert.equal(bare.length, bareRsc.length,
     "shapes 1 and 4 are one rule per dynamic page each, so they move together");
@@ -244,13 +252,15 @@ test("the budget is spent in the shape D10 says it is", () => {
     { bare: 43, bareRsc: 43, splats: 12 }
   );
 
+  assert.deepEqual(landing.map((r) => r.from), ["/clients/:id/year-end/index.txt"]);
+
   const underClients = bare.filter((r) => r.from.startsWith("/clients/"));
   assert.equal(underClients.length, 41,
     "D10's consequence — no new dynamic route under /clients/[id] — is aimed at " +
       "this subset. If it is no longer the bulk of the budget, re-read the decision.");
 });
 
-test("one more page under a dynamic prefix costs two rules, which is why 98 is the last safe number", () => {
+test("one more page under a dynamic prefix costs two rules, which is why the budget has no room left", () => {
   // The arithmetic the budget rests on, proved on a synthetic tree rather
   // than asserted in prose — and deliberately NOT by copying app/, which
   // would make this test a second measurement of the same thing instead of
@@ -271,14 +281,14 @@ test("one more page under a dynamic prefix costs two rules, which is why 98 is t
 
     assert.equal(after.length - before.length, 2,
       "a page added under an EXISTING splat group costs exactly its two " +
-        "enumerated shapes — so 98 + 2 lands on 100, the cap itself");
+        "enumerated shapes — so the count and 2 more is the cap or past it");
 
     // And one that opens a NEW splat group costs three, which is past it.
     mk("clients", "[id]", "sections", "[sectionId]");
     const withNewGroup = rulesIn(buildRedirectsFile(tmp));
     assert.equal(withNewGroup.length - after.length, 3,
       "a page introducing a new dynamic segment also opens a splat group — " +
-        "three rules, which from 98 is 101 and past the cap");
+        "three rules, which is past the cap");
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -364,6 +374,33 @@ test("a catch-all route segment is rejected rather than silently mishandled", ()
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "page.tsx"), "export default function P() { return null; }");
     assert.throws(() => walkPages(tmp), /catch-all segment/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("a page whose last segment is a placeholder lists its .txt rule before its plain rule, and the order is a real order (POST-A-148)", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "redirects-txt-"));
+  try {
+    const page = "export default function P() { return null; }";
+    const mk = (...segs: string[]) => {
+      const dir = path.join(tmp, ...segs);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "page.tsx"), page);
+    };
+    mk("health"); mk("health", "[client_id]"); mk("health", "[client_id]", "history");
+    mk("things", "[id]", "sub", "[subId]"); mk("things", "[id]", "sub");
+    const froms = rulesIn(buildRedirectsFile(tmp)).map((r) => r.from);
+    const at = (f: string) => froms.indexOf(f);
+    for (const [txt, plain] of [["/health/:client_id.txt", "/health/:client_id"], ["/things/:id/sub/:subId.txt", "/things/:id/sub/:subId"]]) {
+      assert.ok(at(txt) >= 0 && at(plain) >= 0 && at(txt) < at(plain), `${txt} must precede ${plain}`);
+    }
+    // a dynamic parent that has its own page gets its landing payload ahead of the placeholder that would swallow it
+    assert.ok(at("/things/:id/sub/index.txt") >= 0 && at("/things/:id/sub/index.txt") < at("/things/:id/sub/:subId.txt"));
+    // a literal parent does not: its index.txt is a file the export holds
+    assert.equal(at("/health/index.txt"), -1);
+    // and it is a total order: sorting any permutation gives the same file
+    assert.equal(froms.length, new Set(froms).size);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
