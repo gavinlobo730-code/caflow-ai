@@ -107,7 +107,7 @@ function RecordExtension({ bill, onDone }: { bill: ExpiringEwayBill; onDone: () 
     <div className="space-y-1.5 min-w-[200px]">
       <label className="block">
         <span className="sr-only">New valid upto</span>
-        <DateInput anchor={bill.valid_upto || null} notBefore={bill.valid_upto || null} value={validUpto} onChange={setValidUpto}
+        <DateInput aria-label="New valid upto" anchor={bill.valid_upto || null} notBefore={bill.valid_upto || null} value={validUpto} onChange={setValidUpto}
           onStateChange={dates.watch("valid", "New valid upto")}
           className="w-full text-xs px-2 py-1 rounded-md border border-ps-border bg-ps-surface text-ps-ink" />
       </label>
