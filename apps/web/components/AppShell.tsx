@@ -76,6 +76,16 @@ function withoutTrailingSlash(path: string): string {
   return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
+/** Whether a page at `path` is drawn with no shell: a signed-out or non-staff page. The not-found page asks it too,
+ *  so an unknown address under one of these is drawn as a front door (POST-A-446) and one inside the product is
+ *  drawn inside the shell, beside the navigation. */
+export function isOutsideTheShell(path: string): boolean {
+  return (
+    NO_SHELL_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + "/")) ||
+    NO_SHELL_EXACT.includes(withoutTrailingSlash(path))
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   // usePathname() is only a re-run trigger below — the real path always
   // comes from window.location (see the comment on getRealPathname above).
@@ -84,10 +94,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { setRealPathname(getRealPathname()); }, [pathname]);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const showShell =
-    !NO_SHELL_PREFIXES.some(
-      (prefix) => realPathname === prefix || realPathname.startsWith(prefix + "/")
-    ) && !NO_SHELL_EXACT.includes(withoutTrailingSlash(realPathname));
+  const showShell = !isOutsideTheShell(realPathname);
   const isClientWorkspace = isClientWorkspacePath(realPathname);
 
   // Global ⌘K / Ctrl+K listener — opens the command palette from anywhere

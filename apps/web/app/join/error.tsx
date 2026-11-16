@@ -10,5 +10,5 @@ export default function Error(props: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ModuleErrorBoundary {...props} moduleName="Join" />;
+  return <ModuleErrorBoundary {...props} moduleName="Join" frontDoor />;
 }

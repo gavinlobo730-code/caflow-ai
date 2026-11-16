@@ -8,9 +8,18 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import AuthenticatorResetRequest from "@/components/auth/AuthenticatorResetRequest";
 import { Shield, Zap, TrendingUp, ArrowRight } from "lucide-react";
+import { LogoIcon } from "@/components/LogoIcon";
+import { FrontDoorWordmark } from "@/components/FrontDoor";
 
+// What the left half says the product does, and nothing it does not (POST-A-446). "All compliance in one place"
+// was the first line here and overstated it: the CA files every return on the portal, and the product does not hold
+// every levy (professional tax is four states, the Labour Welfare Fund none). Nor are all four returns "prepared": the
+// GST returns are built from the books as the portal's file, while income tax and TDS come out as figures laid out to
+// key in (no ITR JSON or FVU file is produced, the claim the marketing guard already refuses). The page also closed on
+// "Trusted by accounting firms across India", which no firm could yet say; the sign-in says nothing about who uses the
+// product (scripts/a-front-door-page-wears-the-front-door.test.ts).
 const FEATURES = [
-  { icon: Shield, label: "GST · ITR · TDS · MCA", desc: "All compliance in one place" },
+  { icon: Shield, label: "GST · ITR · TDS · MCA", desc: "GST built from the books, ITR and TDS laid out to key in; you file on the portal" },
   { icon: Zap,    label: "AI-powered automation",  desc: "Reminders, drafts, insights" },
   { icon: TrendingUp, label: "Practice analytics", desc: "Client health, deadlines, revenue" },
 ];
@@ -101,96 +110,167 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div data-front-door="" className="min-h-screen flex bg-front-door">
 
-      {/* Left dark navy brand panel */}
-      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0 relative overflow-hidden bg-brand-dark">
-        {/* Subtle grid pattern */}
-        <div className="absolute inset-0 opacity-[0.04]"
-          style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "28px 28px" }} />
-        {/* Blue glow accent bottom-right */}
-        <div className="absolute bottom-0 right-0 w-64 h-64 bg-brand/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex items-center gap-3 px-10 py-10">
-          <div className="w-9 h-9 rounded-xl bg-brand flex items-center justify-center text-sm font-bold text-white shadow-[0_0_20px_rgba(37,99,235,0.5)]">P</div>
+      {/* The left half, on the wash (POST-A-446). Every word here is white: the panel is at most 420px of a screen
+          at least 1024px wide, so it sits in the left half, where white reads at better than 5:1 (tailwind.config.ts,
+          `front-door`). The grey steps it used to carry (#64748B and #475569 on the old navy, 3.9:1 and 2.4:1) do not
+          read on the wash at all. */}
+      <div className="hidden lg:flex flex-col justify-between w-[420px] shrink-0">
+        <div className="flex items-center gap-3 px-10 py-10">
+          <LogoIcon size="md" />
           <span className="text-base font-bold text-white tracking-tight">PracticeSync AI</span>
         </div>
 
-        <div className="relative z-10 px-10 pb-4 space-y-8">
+        <div className="px-10 pb-4 space-y-8">
           <div>
             <h1 className="text-3xl font-bold text-white leading-tight tracking-tight">
               The operating system<br />for modern CA firms
             </h1>
-            <p className="text-sm text-slate-400 mt-3 leading-relaxed">
+            <p className="text-sm text-white mt-3 leading-relaxed">
               Manage clients, compliance, accounting, payroll and documents from one workspace.
             </p>
           </div>
           <div className="space-y-4">
             {FEATURES.map(({ icon: Icon, label, desc }) => (
               <div key={label} className="flex items-center gap-3.5">
-                <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0">
-                  <Icon size={16} className="text-blue-400" />
+                <div className="w-9 h-9 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center shrink-0">
+                  <Icon size={16} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-slate-200">{label}</p>
-                  <p className="text-xs text-slate-500">{desc}</p>
+                  <p className="text-sm font-semibold text-white">{label}</p>
+                  <p className="text-xs text-white">{desc}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="relative z-10 px-10 pb-8 text-2xs text-slate-600">
-          © 2026 PracticeSync AI — Trusted by accounting firms across India
-        </p>
+        <p className="px-10 pb-8 text-2xs text-white">© 2026 PracticeSync AI</p>
       </div>
 
-      {/* Right form panel */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-ps-bg">
-        <div className="w-full max-w-[380px]">
+      {/* The form, in a white card on the wash. */}
+      <div className="flex-1 flex items-center justify-center px-4 py-10 sm:px-6">
+        <div className="w-full max-w-[420px]">
 
-          <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
-            <div className="w-8 h-8 rounded-xl bg-brand flex items-center justify-center text-sm font-bold text-white">P</div>
-            <span className="text-base font-bold text-ps-ink">PracticeSync AI</span>
-          </div>
+          <FrontDoorWordmark className="lg:hidden mb-6" />
 
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-ps-ink tracking-tight">
-              {mfaStep ? "Two-factor authentication" : "Sign in"}
-            </h2>
-            <p className="text-sm text-ps-label mt-1">
-              {mfaStep ? "Enter the 6-digit code from your authenticator app" : "Enter your credentials to continue"}
-            </p>
-          </div>
+          <div className="rounded-2xl bg-white p-8 shadow-2xl">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-ps-ink tracking-tight">
+                {mfaStep ? "Two-factor authentication" : "Sign in"}
+              </h2>
+              <p className="text-sm text-ps-label mt-1">
+                {mfaStep ? "Enter the 6-digit code from your authenticator app" : "Enter your credentials to continue"}
+              </p>
+            </div>
 
-          {mfaStep ? (
-            <>
-            <form onSubmit={handleMfaSubmit} className="space-y-5">
+            {mfaStep ? (
+              <>
+              <form onSubmit={handleMfaSubmit} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label htmlFor="login-mfa-code" className="block text-sm font-semibold text-ps-ink">Authentication code</label>
+                  {/* `one-time-code` is what makes a phone offer the code from an SMS
+                      or a password manager offer a TOTP; `inputMode="numeric"` is
+                      what puts the digit pad up. Without a label tied to the box by
+                      `htmlFor`/`id`, neither a screen reader nor an autofill
+                      extension can tell which box is the code. */}
+                  <input
+                    id="login-mfa-code" name="code" autoComplete="one-time-code"
+                    autoFocus inputMode="numeric" pattern="[0-9]*" value={mfaCode} maxLength={6}
+                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="123456"
+                    className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                  />
+                </div>
+                {mfaFactorLoadFailed && (
+                  <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
+                    <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-state-problem text-3xs font-bold leading-none">!</span>
+                    </div>
+                    <p className="text-sm text-red-600 leading-snug">
+                      Could not load your authenticator details. Please refresh the page and try again.
+                    </p>
+                  </div>
+                )}
+                {error && (
+                  <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
+                    <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-state-problem text-3xs font-bold leading-none">!</span>
+                    </div>
+                    <p className="text-sm text-red-600 leading-snug">{error}</p>
+                  </div>
+                )}
+                <button
+                  type="submit" disabled={loading || mfaCode.length < 6 || !mfaFactorReady}
+                  className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
+                >
+                  {loading ? (
+                    <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
+                  ) : !mfaFactorReady ? (
+                    // The UI honestly reflects its own readiness rather than
+                    // hoping the user waits long enough: a code typed (or
+                    // autofilled) faster than listFactors() answers has nothing
+                    // to be verified against yet.
+                    <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing verification…</>
+                  ) : (
+                    <>Verify <ArrowRight size={15} /></>
+                  )}
+                </button>
+              </form>
+              <div className="mt-6">
+                {askingForReset ? (
+                  <div className="space-y-3 rounded-lg border border-ps-border bg-white p-4">
+                    <p className="text-sm font-semibold text-ps-ink">Ask a Partner to reset your authenticator</p>
+                    <p className="text-xs text-ps-label">
+                      A Partner at your firm has to approve this. Once they do, sign in again with your password and you will
+                      be asked to set up a new authenticator app.
+                    </p>
+                    <AuthenticatorResetRequest
+                      target={{ kind: "self" }}
+                      sentMessage="Request sent. A Partner will see it under Approvals. Once they approve it, sign in again with your password."
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAskingForReset(true)}
+                    className="w-full text-center text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                  >
+                    Lost your authenticator app?
+                  </button>
+                )}
+              </div>
+              </>
+            ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <label htmlFor="login-mfa-code" className="block text-sm font-semibold text-ps-ink">Authentication code</label>
-                {/* `one-time-code` is what makes a phone offer the code from an SMS
-                    or a password manager offer a TOTP; `inputMode="numeric"` is
-                    what puts the digit pad up. Without a label tied to the box by
-                    `htmlFor`/`id`, neither a screen reader nor an autofill
-                    extension can tell which box is the code. */}
+                <label htmlFor="login-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
+                {/* `username`, not `email`: the email IS the account name here, and
+                    `username` is the token a password manager pairs with the
+                    `current-password` box below to offer a saved credential. */}
                 <input
-                  id="login-mfa-code" name="code" autoComplete="one-time-code"
-                  autoFocus inputMode="numeric" pattern="[0-9]*" value={mfaCode} maxLength={6}
-                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="123456"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-lg tracking-[0.3em] text-center font-mono text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                  id="login-email" name="email" autoComplete="username"
+                  type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="ca@yourfirm.com"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
-              {mfaFactorLoadFailed && (
-                <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
-                  <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-state-problem text-3xs font-bold leading-none">!</span>
-                  </div>
-                  <p className="text-sm text-red-600 leading-snug">
-                    Could not load your authenticator details. Please refresh the page and try again.
-                  </p>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="login-password" className="block text-sm font-semibold text-ps-ink">Password</label>
+                  <Link href="/login/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                    Forgot password?
+                  </Link>
                 </div>
-              )}
+                <input
+                  id="login-password" name="password" autoComplete="current-password"
+                  type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                />
+              </div>
+
               {error && (
                 <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
                   <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
@@ -199,104 +279,27 @@ export default function LoginPage() {
                   <p className="text-sm text-red-600 leading-snug">{error}</p>
                 </div>
               )}
+
               <button
-                type="submit" disabled={loading || mfaCode.length < 6 || !mfaFactorReady}
+                type="submit" disabled={loading}
                 className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
               >
                 {loading ? (
-                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Verifying…</>
-                ) : !mfaFactorReady ? (
-                  // The UI honestly reflects its own readiness rather than
-                  // hoping the user waits long enough: a code typed (or
-                  // autofilled) faster than listFactors() answers has nothing
-                  // to be verified against yet.
-                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Preparing verification…</>
+                  <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing in…</>
                 ) : (
-                  <>Verify <ArrowRight size={15} /></>
+                  <>Sign in <ArrowRight size={15} /></>
                 )}
               </button>
             </form>
-            <div className="mt-6">
-              {askingForReset ? (
-                <div className="space-y-3 rounded-lg border border-ps-border bg-white p-4">
-                  <p className="text-sm font-semibold text-ps-ink">Ask a Partner to reset your authenticator</p>
-                  <p className="text-xs text-ps-label">
-                    A Partner at your firm has to approve this. Once they do, sign in again with your password and you will
-                    be asked to set up a new authenticator app.
-                  </p>
-                  <AuthenticatorResetRequest
-                    target={{ kind: "self" }}
-                    sentMessage="Request sent. A Partner will see it under Approvals. Once they approve it, sign in again with your password."
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setAskingForReset(true)}
-                  className="w-full text-center text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                >
-                  Lost your authenticator app?
-                </button>
-              )}
-            </div>
-            </>
-          ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-1.5">
-              <label htmlFor="login-email" className="block text-sm font-semibold text-ps-ink">Email address</label>
-              {/* `username`, not `email`: the email IS the account name here, and
-                  `username` is the token a password manager pairs with the
-                  `current-password` box below to offer a saved credential. */}
-              <input
-                id="login-email" name="email" autoComplete="username"
-                type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="ca@yourfirm.com"
-                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label htmlFor="login-password" className="block text-sm font-semibold text-ps-ink">Password</label>
-                <Link href="/login/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
-                  Forgot password?
-                </Link>
-              </div>
-              <input
-                id="login-password" name="password" autoComplete="current-password"
-                type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
-              />
-            </div>
-
-            {error && (
-              <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">
-                <div className="w-4 h-4 rounded-full bg-state-problem-surface flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-state-problem text-3xs font-bold leading-none">!</span>
-                </div>
-                <p className="text-sm text-red-600 leading-snug">{error}</p>
-              </div>
             )}
 
-            <button
-              type="submit" disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-3 rounded-lg transition-colors shadow-sm"
-            >
-              {loading ? (
-                <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Signing in…</>
-              ) : (
-                <>Sign in <ArrowRight size={15} /></>
-              )}
-            </button>
-          </form>
-          )}
-
-          <p className="text-center text-sm text-ps-hint mt-6">
-            New to PracticeSync?{" "}
-            <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
-              Create your account →
-            </Link>
-          </p>
+            <p className="text-center text-sm text-ps-hint mt-6">
+              New to PracticeSync?{" "}
+              <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                Create your account →
+              </Link>
+            </p>
+          </div>
         </div>
       </div>
     </div>

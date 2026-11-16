@@ -39,7 +39,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { LogoIcon } from "@/components/LogoIcon";
+import { FrontDoor } from "@/components/FrontDoor";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
@@ -234,113 +234,106 @@ export default function JoinPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-indigo-900 to-blue-400 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <LogoIcon size="xl" />
-          <h1 className="text-white text-2xl font-bold">PracticeSync AI</h1>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-2xl p-8 text-center space-y-4">
-          {status === "checking" && (
-            <>
-              <div className="flex items-center justify-center gap-1.5 py-4">
-                <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:0ms]" />
-                <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:150ms]" />
-                <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:300ms]" />
-              </div>
-              <p className="text-sm text-ps-label">Verifying your invite and setting up your account…</p>
-            </>
-          )}
-
-          {status === "ready" && (
-            <div data-join-ready="" className="space-y-4">
-              <h2 className="text-lg font-semibold text-ps-ink">You have been invited to join a practice</h2>
-              <p className="text-sm text-ps-label">
-                Press the button to sign in as the invited email address and join. If that address already has a
-                PracticeSync sign-in, sign in with it first and then open this link again.
-              </p>
-              <Button
-                variant="plain"
-                size="none"
-                onClick={() => joinNow()}
-                disabled={busy}
-                className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
-              >
-                {busy ? "Signing you in…" : "Accept the invitation"}
-              </Button>
+    <FrontDoor width="wide">
+      <div className="text-center space-y-4">
+        {status === "checking" && (
+          <>
+            <div className="flex items-center justify-center gap-1.5 py-4">
+              <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:0ms]" />
+              <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:150ms]" />
+              <div className="w-2 h-2 rounded-full bg-brand-light animate-bounce [animation-delay:300ms]" />
             </div>
-          )}
+            <p className="text-sm text-ps-label">Verifying your invite and setting up your account…</p>
+          </>
+        )}
 
-          {status === "other_account" && invitedAs && (
-            <div data-join-other-account="" className="space-y-4">
-              <h2 className="text-lg font-semibold text-ps-ink">This invitation is for another address</h2>
-              <p className="text-sm text-ps-label">
-                This browser is signed in as <strong>{signedInAs}</strong>. The invitation is for{" "}
-                <strong>{invitedAs}</strong>. To join as {invitedAs}, sign out here first.
-              </p>
-              <Button
-                variant="plain"
-                size="none"
-                onClick={() => switchAndJoin()}
-                disabled={busy}
-                className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
-              >
-                {busy ? "Signing you in…" : `Sign out and join as ${invitedAs}`}
-              </Button>
-              <button
-                type="button"
-                onClick={() => router.replace("/")}
-                disabled={busy}
-                className="w-full border border-ps-border text-ps-label text-sm py-2.5 rounded-lg hover:bg-ps-bg disabled:opacity-50"
-              >
-                Stay signed in as {signedInAs}
-              </button>
+        {status === "ready" && (
+          <div data-join-ready="" className="space-y-4">
+            <h2 className="text-lg font-semibold text-ps-ink">You have been invited to join a practice</h2>
+            <p className="text-sm text-ps-label">
+              Press the button to sign in as the invited email address and join. If that address already has a
+              PracticeSync sign-in, sign in with it first and then open this link again.
+            </p>
+            <Button
+              variant="plain"
+              size="none"
+              onClick={() => joinNow()}
+              disabled={busy}
+              className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+            >
+              {busy ? "Signing you in…" : "Accept the invitation"}
+            </Button>
+          </div>
+        )}
+
+        {status === "other_account" && invitedAs && (
+          <div data-join-other-account="" className="space-y-4">
+            <h2 className="text-lg font-semibold text-ps-ink">This invitation is for another address</h2>
+            <p className="text-sm text-ps-label">
+              This browser is signed in as <strong>{signedInAs}</strong>. The invitation is for{" "}
+              <strong>{invitedAs}</strong>. To join as {invitedAs}, sign out here first.
+            </p>
+            <Button
+              variant="plain"
+              size="none"
+              onClick={() => switchAndJoin()}
+              disabled={busy}
+              className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+            >
+              {busy ? "Signing you in…" : `Sign out and join as ${invitedAs}`}
+            </Button>
+            <button
+              type="button"
+              onClick={() => router.replace("/")}
+              disabled={busy}
+              className="w-full border border-ps-border text-ps-label text-sm py-2.5 rounded-lg hover:bg-ps-bg disabled:opacity-50"
+            >
+              Stay signed in as {signedInAs}
+            </button>
+          </div>
+        )}
+
+        {status === "done" && (
+          <>
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+              <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-          )}
-
-          {status === "done" && (
-            <>
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
-                <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-lg font-semibold text-ps-ink">
-                Welcome to the team{result?.full_name ? `, ${result.full_name}` : ""}!
-              </h2>
-              {result?.role && (
-                <p className="text-sm text-ps-label">
-                  You&apos;ve been added as <strong>{result.role}</strong>.
-                </p>
-              )}
-              <Button
-                variant="plain"
-                size="none"
-                onClick={() => goToDashboard()}
-                className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors"
-              >
-                Go to Dashboard →
-              </Button>
-            </>
-          )}
-
-          {status === "error" && (
-            <>
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto">
-                <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <h2 className="text-lg font-semibold text-ps-ink">This invitation could not be used</h2>
-              <p role="alert" className="text-sm text-ps-label">{errorMsg}</p>
-              <p className="text-xs text-ps-hint">
-                Already joined? <Link href="/login" className="text-brand underline">Sign in</Link>.
+            <h2 className="text-lg font-semibold text-ps-ink">
+              Welcome to the team{result?.full_name ? `, ${result.full_name}` : ""}!
+            </h2>
+            {result?.role && (
+              <p className="text-sm text-ps-label">
+                You&apos;ve been added as <strong>{result.role}</strong>.
               </p>
-            </>
-          )}
-        </div>
+            )}
+            <Button
+              variant="plain"
+              size="none"
+              onClick={() => goToDashboard()}
+              className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors"
+            >
+              Go to Dashboard →
+            </Button>
+          </>
+        )}
+
+        {status === "error" && (
+          <>
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+              <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-ps-ink">This invitation could not be used</h2>
+            <p role="alert" className="text-sm text-ps-label">{errorMsg}</p>
+            <p className="text-xs text-ps-hint">
+              Already joined? <Link href="/login" className="text-brand underline">Sign in</Link>.
+            </p>
+          </>
+        )}
       </div>
-    </div>
+    </FrontDoor>
   );
 }

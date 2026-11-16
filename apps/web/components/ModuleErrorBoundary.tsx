@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { ErrorState } from "@/components/ui/states";
+import { FrontDoor, type FrontDoorName } from "@/components/FrontDoor";
 import { reportClientError } from "@/lib/monitoring";
 
 /**
@@ -32,10 +33,17 @@ export default function ModuleErrorBoundary({
   error,
   reset,
   moduleName,
+  frontDoor = false,
+  frontDoorName,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
   moduleName?: string;
+  /** A signed-out page (sign-in, sign-up, the invitation, the portals, the engagement letter): drawn as a front door
+   *  (POST-A-446), and it does not tell the person to "use the navigation", because a signed-out page has none. */
+  frontDoor?: boolean;
+  /** The name the tree's own pages show above the card ("PracticeSync" on the portals'); the staff name otherwise. */
+  frontDoorName?: FrontDoorName;
 }) {
   useEffect(() => {
     // The browser console is where the smoke walk and a developer both look.
@@ -46,6 +54,23 @@ export default function ModuleErrorBoundary({
     // is scrubbed before it leaves (lib/monitoring/scrub.ts) and is a no-op with no DSN built in.
     reportClientError(error, moduleName || "page");
   }, [error, moduleName]);
+
+  if (frontDoor) {
+    return (
+      <div data-module-error={moduleName || "unknown"}>
+        <FrontDoor width="wide" name={frontDoorName}>
+          <ErrorState
+            title="This page could not be displayed"
+            message={
+              "Press Try again, or reload the page. If it keeps happening, quote the reference below." +
+              (error.digest ? ` Reference: ${error.digest}` : "")
+            }
+            onRetry={reset}
+          />
+        </FrontDoor>
+      </div>
+    );
+  }
 
   return (
     <div
