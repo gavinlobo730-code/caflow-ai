@@ -51,7 +51,7 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [progress.md](progress.md) | — | the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days) |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**THE BACKLOG: 450 open items** (15 before the demo, 435 after); 11 after-demo items are `high` priority; 23 are UNSURE. A further **150 items are parked** (not counted above).
+**THE BACKLOG: 450 open items** (15 before the demo, 435 after); 11 after-demo items are `high` priority; 24 are UNSURE. A further **150 items are parked** (not counted above).
 
 **Who must act (backlog).** 74 items are Claude's alone to build, but 14 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 60 can be built now. 176 need the owner to decide first and 200 only the owner or someone outside this container can do. In all **390 of the 450 wait on the owner.**
 
