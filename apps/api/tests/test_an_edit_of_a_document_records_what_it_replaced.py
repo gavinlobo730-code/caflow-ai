@@ -337,6 +337,49 @@ def test_the_lines_it_replaced_are_read_as_the_api_and_not_as_the_caller(audit_r
     assert row["old_data"] == {"lines": [{"id": "l1", "description": "really there"}]}
 
 
+class _Answering(_Db):
+    """A database whose function answers what its own DELETE removed (migration 625): here another save replaced the lines between the
+    read the door makes first and the lock, so the read finds 'old' while the call removed 'another save's'."""
+
+    def __init__(self, lines, removed):
+        super().__init__(lines)
+        self.removed = removed
+
+    def execute(self):
+        if self.rpcs:
+            return type("R", (), {"data": {"count": 1, "replaced": self.removed}})()
+        return super().execute()
+
+
+def test_what_the_call_removed_under_its_lock_is_recorded_and_not_what_was_read_before_it(audit_rows):
+    """POST-A-429: two members saving one draft at once each record what their own save replaced."""
+    from services import draft_document_lines as door
+    db = _Answering([{"id": "l1", "description": "old"}],
+                    removed=[{"id": "l3", "description": "another save's, second", "sort_order": 2},
+                             {"id": "l2", "description": "another save's, first", "sort_order": 1}])
+    door.replace_draft_lines(db, "sales_invoice", "inv-1", "F", [{"description": "mine"}], edited_by={"auth_user_id": "u"})
+    (row,) = audit_rows
+    assert row["old_data"] == {"lines": [{"id": "l2", "description": "another save's, first", "sort_order": 1},
+                                         {"id": "l3", "description": "another save's, second", "sort_order": 2}]}, \
+        "the lines are recorded as the call removed them, in the document's order"
+
+
+def test_an_answer_that_is_the_old_count_records_the_read_made_first(audit_rows):
+    """For the minutes the API is on production before migration 625 is, the function answers 560's bare count: the read the door made
+    first is what it records, as it did before."""
+    from services import draft_document_lines as door
+
+    class _Counting(_Db):
+        def execute(self):
+            if self.rpcs:
+                return type("R", (), {"data": 1})()
+            return super().execute()
+    door.replace_draft_lines(_Counting([{"id": "l1", "description": "old"}]), "credit_note", "cn-1", "F",
+                             [{"description": "new"}], edited_by={"auth_user_id": "u"})
+    (row,) = audit_rows
+    assert row["old_data"] == {"lines": [{"id": "l1", "description": "old"}]}
+
+
 def test_a_replacement_the_database_refused_records_nothing(audit_rows):
     from fastapi import HTTPException
     from services import draft_document_lines as door
