@@ -308,7 +308,7 @@ export default function ClientRelatedPartiesPage() {
             </div>
           )}
 
-          {note && note.section_185_loans.length > 0 && (
+          {note && (note.section_185_loans ?? []).length > 0 && (
             <div className="flex flex-wrap gap-2">
               <Badge className="bg-state-problem-surface text-state-problem text-3xs">
                 {note.section_185_loans.length} loan(s) flagged under Companies Act s.185

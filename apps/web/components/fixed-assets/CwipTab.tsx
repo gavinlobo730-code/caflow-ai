@@ -176,7 +176,7 @@ export function CwipTab({ clientId, asOf, openDoc }:
             <Plus size={12} /> New project
           </button>
         </div>
-        {register && register.projects.length === 0 ? (
+        {register && (register.projects ?? []).length === 0 ? (
           <p className="px-5 py-6 text-xs text-ps-hint">No projects under construction.</p>
         ) : (
           <div className="overflow-x-auto">

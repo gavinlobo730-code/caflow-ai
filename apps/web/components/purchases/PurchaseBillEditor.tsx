@@ -275,8 +275,8 @@ export function PurchaseBillEditor({
   const today = todayISO();
   const isEdit = !!existing;
   const initialLines: EditorLine[] =
-    existing && existing.lines.length > 0 ? detailLinesToEditorLines(existing.lines)
-    : duplicateSeed && duplicateSeed.lines.length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
+    existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
+    : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
     : [{ ...EMPTY_LINE, _k: 0 }];
 
   const [vendorId, setVendorId] = useState(existing?.vendor_id ?? duplicateSeed?.vendor_id ?? "");

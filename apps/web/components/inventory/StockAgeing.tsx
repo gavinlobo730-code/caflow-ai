@@ -76,7 +76,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
   useEffect(() => { load(); }, [load]);
 
   const oldValue = data
-    ? data.bands.filter((b) => OLD_BANDS.has(b))
+    ? (data.bands ?? []).filter((b) => OLD_BANDS.has(b))
         .reduce((n, b) => n + (data.total_value_by_band[b] ?? 0), 0)
     : 0;
 
@@ -112,7 +112,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
             <TableSkeleton rows={4} />
           ) : error ? (
             <div className="text-xs text-state-problem">{error}</div>
-          ) : !data || data.items.length === 0 ? (
+          ) : !data || (data.items ?? []).length === 0 ? (
             <p className="text-xs text-ps-label">
               No stock movements on or before {asOf}, so there is nothing to age.
             </p>
@@ -124,7 +124,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
                     <tr className="text-ps-label uppercase border-b border-ps-border">
                       <th className="text-left py-2 pr-3 font-medium">Item</th>
                       <th className="text-right py-2 px-2 font-medium">On hand</th>
-                      {data.bands.map((b) => (
+                      {(data.bands ?? []).map((b) => (
                         <th key={b} className={`text-right py-2 px-2 font-medium whitespace-nowrap ${
                           OLD_BANDS.has(b) ? "text-state-attention" : ""}`}>
                           {data.band_labels[b] ?? b}
@@ -156,7 +156,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
                         <td className="py-2 px-2 text-right font-mono text-ps-body tabular-nums">
                           {qty(it.qty_units)} {it.unit}
                         </td>
-                        {data.bands.map((b) => {
+                        {(data.bands ?? []).map((b) => {
                           const q = qty(it.band_qty[b]);
                           return (
                             <td key={b} className={`py-2 px-2 text-right font-mono tabular-nums ${
@@ -176,7 +176,7 @@ export function StockAgeingPanel({ clientId, asOf }: { clientId: string; asOf: s
                     <tr className="border-t border-ps-border-strong font-medium">
                       <td className="py-2 pr-3 text-ps-ink">Total</td>
                       <td />
-                      {data.bands.map((b) => (
+                      {(data.bands ?? []).map((b) => (
                         <td key={b} className="py-2 px-2 text-right font-mono text-ps-ink tabular-nums">
                           {formatPaise(data.total_value_by_band[b] ?? 0)}
                         </td>

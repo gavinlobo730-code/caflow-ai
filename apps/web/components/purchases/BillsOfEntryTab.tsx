@@ -391,7 +391,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
         </div>
       )}
 
-      {authorities && authorities.not_modelled.length > 0 && (
+      {authorities && (authorities.not_modelled ?? []).length > 0 && (
         <div className="bg-ps-bg border border-ps-border rounded-lg px-3 py-2 text-2xs text-ps-label space-y-1">
           <p className="font-semibold">What this document does not say</p>
           {authorities.not_modelled.map((x, i) => <p key={i}>{x}</p>)}

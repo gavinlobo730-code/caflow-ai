@@ -339,7 +339,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
 
       {loading ? (
         <p className="text-xs text-ps-hint">Loading…</p>
-      ) : !listing || listing.documents.length === 0 ? (
+      ) : !listing || (listing.documents ?? []).length === 0 ? (
         <p className="text-xs text-ps-hint">
           No opening documents recorded. Until they are, the opening balance
           appears in the ledger and in no ageing bucket.

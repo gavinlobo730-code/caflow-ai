@@ -1066,7 +1066,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
           {/* Schedule II gives several classes under one heading — a server is
               six years and a laptop three, a lorry on hire six and a company
               car eight. The CA picks; only the ordinary case is the default. */}
-          {selected && selected.classes.length > 1 && (
+          {selected && (selected.classes ?? []).length > 1 && (
             <Field label="Schedule II class">
               <select
                 className={INPUT}

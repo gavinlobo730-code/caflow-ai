@@ -299,7 +299,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           </div>
         )}
 
-        {turnover && turnover.years.length > 0 && (
+        {turnover && (turnover.years ?? []).length > 0 && (
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-ps-hint border-b border-ps-border">

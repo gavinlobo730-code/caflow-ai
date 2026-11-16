@@ -250,7 +250,7 @@ function CapacityRiskPanel() {
     return () => { live = false; };
   }, []);
 
-  if (!risk || risk.weeks.length === 0) return null;
+  if (!risk || (risk.weeks ?? []).length === 0) return null;
 
   const busiest = Math.max(1, ...risk.weeks.map((w) => w.items_due));
   const totalHours = risk.weeks.reduce((n, w) => n + w.estimated_hours, 0);
