@@ -997,6 +997,31 @@ def _refuse_over_delivery(db, firm_id: str, order_id: Optional[str],
     return problems
 
 
+def orders_whose_status_would_change(db, firm_id: str, client_id: Optional[str] = None, *, apply: bool = False) -> list:
+    """Every live order whose stored status is not the one its lines say, and (with `apply`) the status written again (POST-A-421, part c).
+
+    The rule that derives an order's status is Python (`order_cycle.order_status_for`), and an order the OLD rule left `delivered` or `partially_delivered` (by a challan whose goods were marked
+    received back, or a word a person set) keeps that word until a challan on it is next issued, cancelled or marked back. This derives each live order again, one at a time, through the same
+    reading the screens use (`order_open_position`) and the same writer (`_resettle_order_status`), so it can write nothing the screen would not show. It is a DATA step for production and is run
+    by a person (`scripts/resettle_sales_orders.py`, a dry run unless told): nothing calls it by itself. `closed` and `cancelled` orders are decisions and are never read or changed.
+    Returns `[{order_id, document_no, client_id, from, to}]` for the orders that differ (and were written, when `apply`)."""
+    orders = fetch_all(
+        lambda: (lambda q: q.eq("client_id", client_id) if client_id else q)(
+            db.table("sales_orders").select("id, client_id, document_no, status").eq("firm_id", firm_id)
+            .in_("status", sorted({*oc.ORDER_OPEN_STATUSES, "delivered"}))),
+        key="id", label="sales_cycle.resettle_orders")
+    changes: list = []
+    for order in orders:
+        position = order_open_position(db, firm_id, str(order["id"]))
+        wanted = position["status_would_be"]
+        if wanted != str(order.get("status") or ""):
+            changes.append({"order_id": str(order["id"]), "document_no": order.get("document_no"), "client_id": order.get("client_id"),
+                            "from": order.get("status"), "to": wanted})
+            if apply:
+                _resettle_order_status(db, firm_id, str(order["id"]))
+    return changes
+
+
 def _resettle_order_status(db, firm_id: str, order_id: Optional[str]) -> None:
     if not order_id:
         return
@@ -1407,11 +1432,15 @@ def issue_challan(db, firm_id: str, challan_id: str, *, client_id: str, consigne
     now = ist_now().isoformat()
     # THE MOMENT IT WAS ISSUED IS STORED (POST-A-419, migration 585): `updated_at` is overwritten by any later amendment and the audit event is allowed to be lost, so `issued_at` is the one place the moment
     # is kept, written once and with the status (a trigger refuses a moment on a draft and any change to one that is written).
-    done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now})
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", challan_id).eq("status", dc.STATUS_DRAFT).execute())
-    if not (done.data or []):
-        # another request changed the challan between the read and the write (an issue, a cancel): say so, and write nothing more
-        raise HTTPException(status_code=409, detail=f"Challan {no} was changed while it was being issued. Reload it and look at its status.")
+    # THE ISSUE LOCKS THE ORDER (POST-A-421, migration 652): the compare-and-set below protected this challan's row and not the quantity the order's lines hold, so two drafts of the whole order issued in
+    # the same instant each passed the check above and each won its own row. The function takes the challan's lock and then the order's, asks `over_delivery`'s rule again in SQL and writes the status.
+    if challan_writes.issue(db, firm_id, client_id, challan_id, now, document_no=no) is None:
+        # The API is live a few minutes before the migration that goes with it: issue as it was issued until it is (a compare-and-set on the status), and say so. Deleted once 652 has been in production.
+        _logger.error("issue_challan: migration 652 is not applied to this database; issuing %s with a compare-and-set", challan_id)
+        done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now})
+                .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", challan_id).eq("status", dc.STATUS_DRAFT).execute())
+        if not (done.data or []):
+            raise HTTPException(status_code=409, detail=f"Challan {no} was changed while it was being issued. Reload it and look at its status.")
     _resettle_order_status(db, firm_id, row.get("order_id"))      # the goods on it are delivered against its order from now
     return {**row, "status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now}
 

@@ -431,6 +431,10 @@ class _Q:
         self._rows = [r for r in self._rows if r.get(col) == val]
         return self
 
+    def is_(self, col, val):
+        self._rows = [r for r in self._rows if (r.get(col) is None) == (val == "null")]
+        return self
+
     def in_(self, col, vals):
         wanted = {str(v) for v in vals}
         self._rows = [r for r in self._rows if str(r.get(col) or "") in wanted]
