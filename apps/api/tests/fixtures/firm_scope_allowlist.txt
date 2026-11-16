@@ -42,8 +42,6 @@ repositories/branding_repository.py | BrandingRepository.get_invoice_template | 
 repositories/branding_repository.py | BrandingRepository.update_email_template | email_templates | update | 1 | repository-contract
 repositories/branding_repository.py | BrandingRepository.update_invoice_template | invoice_templates | update | 1 | repository-contract
 repositories/client_repository.py | ClientRepository.create | clients | insert | 1 | repository-contract
-repositories/client_repository.py | ClientRepository.find_by_gstin | clients | read | 1 | repository-contract
-repositories/client_repository.py | ClientRepository.find_by_pan | clients | read | 1 | repository-contract
 repositories/client_repository.py | ClientRepository.soft_delete | clients | update | 1 | repository-contract
 repositories/client_repository.py | ClientRepository.update | clients | update | 1 | repository-contract
 repositories/compliance_records_repository.py | ComplianceRecordsRepository.create | compliance_records | insert | 1 | repository-contract

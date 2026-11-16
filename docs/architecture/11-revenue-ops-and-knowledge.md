@@ -76,9 +76,12 @@ type is recorded as `Partnership` because sign-up does not ask. The practice cli
 client list, so no client screen reaches it, and the Partner sets the firm's real legal form on the Practice
 screen through `PATCH /api/practice/identity` (which `GET /api/practice` serves the stored value and the
 accepted list for). Sign-up still does not ask.
-There is also a SQL function `provision_internal_client()` (migration 073) that the
-application does not call; migration 086 revoked it from every role but the service
-role. It duplicates the Python path and the two must be kept in step.
+There used to be a SQL function `provision_internal_client()` (migration 073) that the
+application never called; migration 086 revoked it from every role but the service
+role, and by 16 November 2026 it had drifted from the Python path (no state, no state
+code, no race handling). Migration 610 dropped it (POST-A-169), so the Python path is
+the only provisioner, and `tests/test_610_the_sql_internal_client_provisioner_nothing_calls_is_dropped_pg.py`
+fails a caller added later.
 
 **It includes** the practice's own books: accounting, GST, TDS, documents, reports and
 billing. The firm-wide chart of accounts is shared, so the practice posts through the
@@ -161,8 +164,12 @@ non-Partner is told 404, never 403, so its existence is not disclosed.*
   `apps/web/scripts/a-client-picker-leaves-out-the-internal-client.test.ts`.
 - The view `clients_external` (migration 073, `security_invoker`) was meant to be the
   single source. **Nothing reads it**; the repository default and the per-query filters
-  are what enforce G2, and `docs/REVENUE_OPS_BRIDGE.md` B2-2 is right that a new direct
-  `clients` query has to remember the filter.
+  are what enforce G2. `docs/REVENUE_OPS_BRIDGE.md` B2-2 said a new direct `clients`
+  query has to remember the filter; since 16 November 2026 (POST-A-169)
+  `apps/api/tests/test_a_read_of_the_clients_table_leaves_the_practice_out_or_says_why.py`
+  makes it: every API read of `clients` that is not a lookup by id asks `is_internal` or is
+  listed with why the practice is in its answer, and two reads that count or list it among
+  the clients (the hub worklist's count and rows, the risk register) are listed as open.
 
 ### G3 — One linked customer per practice client
 
@@ -404,7 +411,7 @@ None of these is decided here.
 | Practice Billing and AR link to the invoices | they do not yet | PRE-A-018 |
 | Fee billing: one engine | two live: `fee_*` and the sales engine | POST-B-193 |
 | Time is billed | nothing bills it | POST-B-194 |
-| Bridge residue: two rate columns, two provisioners | both remain | POST-A-169 |
+| Bridge residue: two rate columns, two provisioners | both columns remain, read by one rule (`time_rate.entry_rate`); one provisioner (migration 610) | closed (POST-A-169) |
 
 **Observed on 8 October 2026 while writing this, in no ledger line.** Four of the six were fixed on 18 October 2026
 (POST-A-215, POST-A-216): `billing_service.generate_for_schedule()` now advances a due schedule whose period already
