@@ -311,6 +311,13 @@ def _compute_annual_depreciation(asset: dict) -> int:
         if wdv_now <= floor_paise:
             return 0  # fully depreciated
         annual = math.floor(Decimal(cost - salvage) / Decimal(life))
+        # THE LAST YEAR OF THE LIFE TAKES WHAT IS LEFT (POST-A-437). The figure is floored, so (cost - salvage) mod life paise
+        # (fewer than the years of life) are left over after the life and used to fall in a later year on their own. A year after
+        # which less than one year's figure, and fewer paise than the years of life, would be left is the last year: it takes
+        # what is left. In every earlier year at least one more full year's figure stays after it, so nothing else moves.
+        left = wdv_now - floor_paise
+        if 0 <= left - annual < min(annual, int(life)):
+            return left
     else:  # WDV
         rate_value = asset.get("wdv_rate_percent")
         if rate_value is None:
@@ -944,9 +951,8 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
     It runs `_month_charge`, the rule a posting charges by, month by month on a COPY of the register row, carrying the copy
     forward exactly as `_post_one_month` carries the row (accumulated depreciation, the year and the year's opening), so the
     projection is the postings' own arithmetic and not a second implementation of it. Where it starts is `_projection_start`.
-    It ends where a posting would stop: the year's figure is nil, or a month's charge rounds to nil once something has been
-    posted (a posting of that month charges nothing and does not move the register, and the next month cannot skip it; before
-    any posting a nil month is simply passed, since a first posting may start in any month), or after PROJECTION_YEARS years.
+    It ends where a posting would stop: the year's figure is nil, or after PROJECTION_YEARS years. A month whose share of a
+    positive year's figure is nil is passed, as a posting passes it (POST-A-437), and the projection goes on to the next.
     `through_fy` stops it after that financial year (the schedule's row reads the current year's figure from it).
 
     The year's figure is fixed once per financial year (`_annual_depreciation_for_period` reads the opening the copy carries), so
@@ -955,7 +961,7 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
 
     Answers `{"starts_at", "start_note", "years": [{financial_year, year_figure_paise, first_month, last_month, months,
     opening_wdv_paise, charge_paise, closing_wdv_paise}], "total_paise", "ends", "end_note"}`; `ends` is `fully_depreciated`,
-    `nil_charge` (no month charges anything), `rounds_to_nil`, `limit`, `not_depreciable` or `no_basis` (with the reason, and
+    `nil_charge` (no month charges anything), `limit`, `not_depreciable` or `no_basis` (with the reason, and
     no years), or None where `through_fy` stopped it. Every ending carries a sentence naming what stays on the register.
     """
     start, start_note = _projection_start(asset, today_period)
@@ -965,7 +971,6 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
                    end_note="Land is not depreciated: Schedule II gives it no useful life.")
         return out
     sim = dict(asset)
-    posted_any = bool(_month_label(asset.get("depreciation_posted_through")))
 
     def stands() -> str:
         return rupee_text(sim["purchase_cost_paise"] - int(sim.get("accumulated_depreciation_paise") or 0))
@@ -995,14 +1000,12 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
                     f"This asset's year's figure is nil (its rate gives no charge, or it has reached the residual its rate and "
                     f"life leave), so nothing is charged; it stands at {stands()} on the register."))
             break
-        if monthly <= 0 and not posted_any:
-            period = _next_month(period)                               # nothing posted yet: the next month is a first posting
-            continue
         if monthly <= 0:
-            out.update(ends="rounds_to_nil", end_note=(
-                f"From {_month_words(period)} a month's charge rounds to nil, so no further month posts anything and the asset "
-                f"stays on the register at {stands()}."))
-            break
+            # A nil share of a positive year's figure is a PASSED month (POST-A-437): a posting moves posted-through with no
+            # journal, so the next month is owed as usual. The year's other months carry the figure (the twelve add up to it).
+            sim.update(depreciation_fy=fy, depreciation_fy_start_accum_paise=fy_start_accum)
+            period = _next_month(period)
+            continue
         if not years or years[-1]["financial_year"] != fy:
             if len(years) == PROJECTION_YEARS:
                 out.update(ends="limit", end_note=(
@@ -1015,7 +1018,6 @@ def project_remaining_life(asset: dict, today_period: str, *, through_fy: Option
         row = years[-1]
         sim.update(accumulated_depreciation_paise=int(sim.get("accumulated_depreciation_paise") or 0) + monthly,
                    depreciation_fy=fy, depreciation_fy_start_accum_paise=fy_start_accum)
-        posted_any = True
         row.update(last_month=period, months=row["months"] + 1, charge_paise=row["charge_paise"] + monthly,
                    closing_wdv_paise=sim["purchase_cost_paise"] - sim["accumulated_depreciation_paise"])
         period = _next_month(period)
@@ -1138,9 +1140,7 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
                 "asset_id": asset["id"], "period": period, "posted": False}
 
     if monthly <= 0:
-        return {"message": "No depreciation to post for this period.",
-                "depreciation_paise": 0, "asset_id": asset["id"], "period": period,
-                "posted": False}
+        return _pass_a_nil_month(db, asset, period, firm_id, fy, fy_start_accum, entry_date, foreclosed)
 
     # Post journal — CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
     try:
@@ -1226,6 +1226,43 @@ def _post_one_month(db, asset: dict, period: str, firm_id: str, created_by: Opti
                 f"if it was acquired here: in that case reverse this entry and "
                 f"start at {foreclosed[0]}.")),
     }
+
+
+def _pass_a_nil_month(db, asset: dict, period: str, firm_id: str, fy: str, fy_start_accum: int, entry_date: str,
+                      foreclosed: list[str]) -> dict:
+    """A month whose share of a positive year's figure is nil is PASSED: posted-through moves to it and no journal is made
+    (POST-A-437).
+
+    A year's figure under twelve paise has months whose share is nil (5 paise a year: 0,0,1,0,1,0,0,1,0,1,0,1), and so has a
+    purchase month pro-rated to nothing. Such a month used to post nothing and leave posted-through where it was, so the next month
+    was refused ("post that month first") for ever, while the single-month route could start a later month as a first posting and
+    the range runner stopped at it. The month is charged what its share is, nil, so the register says it has been through it.
+
+    The write is a compare-and-set on the figure, posted-through and the reversal marker the request read: there is no journal to
+    take back, so a miss is a plain 409."""
+    changed = {"depreciation_posted_through": entry_date, "depreciation_fy": fy,
+               "depreciation_fy_start_accum_paise": fy_start_accum}
+    changed = _adopting_a_dead_marker(changed, asset)
+    update = (db.table("fixed_assets").update(changed).eq("id", asset["id"]).eq("firm_id", firm_id)
+              .eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0)))
+    read = asset.get("depreciation_posted_through")
+    update = update.eq("depreciation_posted_through", str(read)[:10]) if read else update.is_("depreciation_posted_through", "null")
+    update = _with_marker_as_read(update, asset)
+    if not (update.execute().data or []):
+        raise HTTPException(status_code=409, detail=(
+            f"This asset changed while {period} was being passed (a month was posted or reversed in between). Nothing was "
+            "posted; try again."))
+    asset.update(changed)
+    return {"message": (f"{_month_words(period)}'s share of this year's depreciation is nil, so nothing is charged for it and the "
+                        "asset is marked as depreciated through it."),
+            "depreciation_paise": 0, "asset_id": asset["id"], "period": period,
+            "posted": False, "passed": True, "journal_entry_id": None,
+            "new_accumulated": int(asset.get("accumulated_depreciation_paise") or 0),
+            "foreclosed_months": foreclosed,
+            "foreclosure_notice": (
+                "" if not foreclosed else (
+                    f"Nothing had been posted on this asset before {period}, so {', '.join(foreclosed)} can no longer be posted. "
+                    f"If the asset was acquired here, reverse {period} and start at {foreclosed[0]}."))}
 
 
 @router.post("/{asset_id}/depreciate")
@@ -1334,7 +1371,7 @@ def run_depreciation(
 
     results, months_posted, total_paise, remaining = [], 0, 0, 0
     for asset in assets:
-        posted_here, stopped_at, reason = [], None, None
+        posted_here, passed_here, stopped_at, reason = [], [], None, None
         for period in _months_in_range(data.from_period, data.to_period):
             if months_posted >= DEPRECIATION_RUN_CHUNK:
                 remaining += 1
@@ -1358,6 +1395,10 @@ def run_depreciation(
                                     "journal_entry_id": out.get("journal_entry_id")})
                 months_posted += 1
                 total_paise += out["depreciation_paise"]
+            elif out.get("passed"):
+                # A nil share of a positive year's figure (POST-A-437): the month is passed, posted-through has moved, and the next
+                # month is owed. Listed, so the run says what it did with every month it was asked for.
+                passed_here.append(period)
             elif out.get("message"):
                 # Fully depreciated, or a pro-rated purchase month that rounds to
                 # nothing. Not an error, and not silence either.
@@ -1368,6 +1409,7 @@ def run_depreciation(
             "asset_name": asset.get("asset_name"),
             "months_posted": len(posted_here), "months": posted_here,
             "depreciation_paise": sum(m["depreciation_paise"] for m in posted_here),
+            "months_passed": passed_here,
             "stopped_at": stopped_at, "reason": reason,
         })
 
@@ -2469,6 +2511,77 @@ def _complete_a_dead_reversal(db, asset: dict, period: str, current_user: dict):
     })
 
 
+def _was_passed(asset: dict, period: str) -> bool:
+    """Whether `period` is a month the register passed with no journal because its share of a positive year's figure is nil
+    (POST-A-437). Asked only inside the financial year whose figure the row carries (`depreciation_fy` with its opening), because
+    that is the only year whose figure the row still holds; the year's figure is then the one the month was passed on."""
+    if get_fy_for_date(f"{period}-01") != asset.get("depreciation_fy") or asset.get("depreciation_fy_start_accum_paise") is None:
+        return False
+    try:
+        monthly, annual, _fy, _open = _month_charge(asset, period)
+    except ValueError:
+        return False
+    return annual > 0 and monthly <= 0
+
+
+def _posted_through_before(db, asset: dict, period: str) -> Optional[str]:
+    """Where the register stood before `period` was posted: the month before it if that month was posted (a live journal) or passed
+    (POST-A-437, a nil share, no journal), else the opening position the asset was brought over at, else nothing.
+
+    The previous month is only the mark if it was actually reached: the first posting may legitimately start at any month, so a
+    purchase in April first charged in August goes back to nothing, not to July. A passed month has no journal, so the journal lookup
+    alone sent a reversal of the month after it back to nothing, and the next posting then foreclosed every month before it."""
+    firm_id, client_id = asset["firm_id"], asset["client_id"]
+    previous = _previous_month(period)
+    prev_ref = f"FA-DEPN-{asset.get('asset_code') or asset['id'][:8]}-{previous}"
+    prev_entry = ((db.table("journal_entries").select("id")
+                   .eq("firm_id", firm_id).eq("client_id", client_id)
+                   .eq("reference_no", prev_ref).eq("is_reversed", False)
+                   .limit(1).execute().data) or [None])[0]
+    if prev_entry or (previous >= str(asset.get("purchase_date") or "")[:7] and _was_passed(asset, previous)):
+        return _period_end_date(previous)
+    # THE FIRST MONTH AFTER AN OPENING POSITION ROLLS BACK TO THAT POSITION, NOT TO
+    # "NEVER DEPRECIATED" (accounting-18). The month before it has no journal — the
+    # position was STATED, not posted — so the lookup above finds nothing and would
+    # clear the mark. A cleared mark sends the next run to the PURCHASE month and
+    # charges the asset's whole history again on top of the accumulated depreciation
+    # it was brought over with.
+    opening_position = asset.get("opening_position_date")
+    if opening_position and previous <= _month_label(opening_position):
+        return str(opening_position)[:10]
+    return None
+
+
+def _reverse_a_passed_month(db, asset: dict, period: str, current_user: dict):
+    """Take a passed month off the register (POST-A-437): there is no journal, so posted-through goes back to where it stood before
+    the month, by compare-and-set on what the request read, and the figure does not move."""
+    firm_id = asset["firm_id"]
+    new_posted_through = _posted_through_before(db, asset, period)
+    update = {"depreciation_posted_through": new_posted_through, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if new_posted_through is None or get_fy_for_date(new_posted_through) != asset.get("depreciation_fy"):
+        update["depreciation_fy"] = None
+        update["depreciation_fy_start_accum_paise"] = None
+    q = (db.table("fixed_assets").update(update).eq("id", asset["id"]).eq("firm_id", firm_id)
+         .eq("accumulated_depreciation_paise", int(asset.get("accumulated_depreciation_paise") or 0))
+         .eq("depreciation_posted_through", str(asset.get("depreciation_posted_through"))[:10]))
+    if not (_with_marker_as_read(q, asset).execute().data or []):
+        raise HTTPException(status_code=409, detail=(
+            f"This asset changed while {period} was being reversed (a month was posted or reversed in between). Nothing was "
+            "reversed; look at the asset again."))
+    asset.update(update)
+    log_event(
+        firm_id, "fixed_asset", asset["id"], "update",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        old_data={"period": period, "depreciation_posted_through": _period_end_date(period)}, new_data=update,
+        metadata={"action": "depreciation_pass_reversed", "charge_paise": 0},
+    )
+    return api_response(True, {
+        "asset_id": asset["id"], "period": period, "reversed_paise": 0, "passed": True,
+        "accumulated_depreciation_paise": int(asset.get("accumulated_depreciation_paise") or 0),
+        "depreciation_posted_through": new_posted_through,
+    })
+
+
 @router.post("/{asset_id}/depreciation/{period}/reverse")
 def reverse_depreciation(
     asset_id: str,
@@ -2534,6 +2647,8 @@ def reverse_depreciation(
               .eq("reference_no", reference).eq("is_reversed", False)
               .limit(1).execute().data) or [None])[0]
     if not entry:
+        if _was_passed(asset, period):
+            return _reverse_a_passed_month(db, asset, period, current_user)
         raise HTTPException(
             status_code=404,
             detail=(f"No live depreciation journal found for {period} ({reference}). "
@@ -2564,23 +2679,13 @@ def reverse_depreciation(
     # month is only the new mark if it was actually POSTED — the first posting
     # may legitimately start at any month, so a purchase in April first charged
     # in August must go back to nothing, not to July.
-    previous = _previous_month(period)
-    prev_ref = f"FA-DEPN-{asset.get('asset_code') or asset['id'][:8]}-{previous}"
-    prev_entry = ((db.table("journal_entries").select("id")
-                   .eq("firm_id", firm_id).eq("client_id", client_id)
-                   .eq("reference_no", prev_ref).eq("is_reversed", False)
-                   .limit(1).execute().data) or [None])[0]
-    new_posted_through = _period_end_date(previous) if prev_entry else None
+    new_posted_through = _posted_through_before(db, asset, period)
     # THE FIRST MONTH AFTER AN OPENING POSITION ROLLS BACK TO THAT POSITION, NOT TO
     # "NEVER DEPRECIATED" (accounting-18). The month before it has no journal — the
     # position was STATED, not posted — so the lookup above finds nothing and would
     # clear the mark. A cleared mark sends the next run to the PURCHASE month and
     # charges the asset's whole history again on top of the accumulated depreciation
     # it was brought over with.
-    opening_position = asset.get("opening_position_date")
-    if (new_posted_through is None and opening_position
-            and previous <= _month_label(opening_position)):
-        new_posted_through = str(opening_position)[:10]
 
     new_accum = max(0, int(asset.get("accumulated_depreciation_paise") or 0) - charge)
     update = {
