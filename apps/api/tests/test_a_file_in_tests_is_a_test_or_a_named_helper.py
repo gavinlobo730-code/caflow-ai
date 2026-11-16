@@ -176,6 +176,11 @@ HELPERS = {
     # is proving (a hand-copied REAL_COLUMNS list is how the two drift). Imported by
     # `test_450_a_practices_own_mail_is_recorded_pg.py` and the notification-type guard.
     "_columns_from_migration.py",
+    # POST-A-038. The schema as the committed files describe it (the production snapshot, and the migrations replayed as text:
+    # columns, the values a CHECK on `status` allows, the keys to users), so the three frontend schema guards can be asked in the
+    # browser-contract job, which has no Postgres. Imported by `test_frontend_schema_guards_read_the_committed_files.py`; held to a
+    # migration-built database by `test_the_schema_read_from_the_committed_files_agrees_with_a_migration_built_database_pg.py`.
+    "_schema_from_files.py",
     # market_and_trust-09. The claims ledger, in three parts that are imported by
     # `test_every_capability_sentence_on_the_marketing_site_is_in_the_claims_ledger.py`
     # and are not tests: the copy extractor (`_marketing_copy`: what the site SAYS, as

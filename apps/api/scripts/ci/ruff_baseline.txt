@@ -932,7 +932,6 @@ tests/test_the_year_end_fx_revaluation_has_a_door.py :: F401 :: <module> :: 1
 tests/test_the_year_end_statements_use_the_chart_of_accounts.py :: F401 :: <module> :: 1
 tests/test_time_tracking_client_scope.py :: F401 :: test_export_time_entries_drops_rows_outside_the_effective_scope :: 2
 tests/test_two_identical_transactions_are_two.py :: F401 :: <module> :: 1
-tests/test_users_fk_columns_take_the_internal_id.py :: B905 :: _params_carrying_a_users_id :: 1
 tests/test_v13_payroll_assets.py :: F401 :: <module> :: 1
 tests/test_v13_payroll_assets.py :: F841 :: TestTDS192.test_new_regime_surcharge_capped_at_25_percent :: 1
 tests/test_vendor_payment_concurrency.py :: F811 :: _Q.limit :: 1
