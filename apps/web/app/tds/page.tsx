@@ -1457,7 +1457,7 @@ export default function TDSPage() {
       {depositForClient && Object.values(depositForClient.deductions).some(r => r.state === "not_deposited") && (
         <p className="text-xs text-ps-hint">Not deposited: {depositForClient.legend.not_deposited.sentence}</p>
       )}
-      {depositForClient && depositForClient.warnings.length > 0 && (
+      {depositForClient && (depositForClient.warnings ?? []).length > 0 && (
         <Callout tone="attention" title="About the challans recorded for this client">
           <ul className="list-disc pl-5 space-y-1">
             {depositForClient.warnings.map((w, i) => <li key={`${w.code}-${i}`}>{w.message}</li>)}

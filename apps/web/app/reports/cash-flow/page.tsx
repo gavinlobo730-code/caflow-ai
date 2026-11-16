@@ -109,7 +109,7 @@ export default function CashFlowForecastPage() {
     }
   }
 
-  const maxFlow = forecast && forecast.months.length
+  const maxFlow = forecast && (forecast.months ?? []).length
     ? Math.max(
         ...forecast.months.flatMap((m) => [m.inflows_paise, m.outflows_paise]),
         1,

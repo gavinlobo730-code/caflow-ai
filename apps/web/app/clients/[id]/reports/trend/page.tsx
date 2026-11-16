@@ -202,7 +202,7 @@ export default function ClientTrendPage() {
           </button>
           <button
             onClick={exportExcel}
-            disabled={!trend || trend.fys.length === 0}
+            disabled={!trend || (trend.fys ?? []).length === 0}
             className="flex items-center gap-1.5 text-2xs text-ps-label hover:text-ps-body border border-ps-border rounded-lg px-2.5 py-1.5 disabled:opacity-40"
           >
             <Download size={12} /> Excel

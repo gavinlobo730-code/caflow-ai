@@ -1066,7 +1066,7 @@ export default function CapitalGainsPage() {
                     </div>
                   ))}
 
-                  {exemption && exemption.caveats.map((v, i) => (
+                  {exemption && (exemption.caveats ?? []).map((v, i) => (
                     <p key={i} className="text-2xs text-ps-label italic">{v}</p>
                   ))}
 

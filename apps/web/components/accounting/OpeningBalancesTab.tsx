@@ -342,7 +342,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
 
       {loading ? (
         <LoadingRegion label="Loading the opening documents" className="text-xs text-ps-hint">Loading…</LoadingRegion>
-      ) : !listing || listing.documents.length === 0 ? (
+      ) : !listing || (listing.documents ?? []).length === 0 ? (
         <EmptyState
           className="py-8"
           title="No opening documents recorded"
