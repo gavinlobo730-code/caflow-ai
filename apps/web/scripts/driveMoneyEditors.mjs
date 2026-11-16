@@ -30,7 +30,7 @@
  *   pnpm smoke:build && node scripts/driveMoneyEditors.mjs
  *   node scripts/driveMoneyEditors.mjs --only dates --report .smoke/drive-report.json
  *
- * --only <text>    run the scenarios whose group or id starts with, or equals, the text
+ * --only <text>    run the scenarios whose group or id starts with, or equals, the text; several separated by commas (`--only dates,keyboard`) run the scenarios of any of them
  * --report <file>  also write the verdict as JSON and, under GitHub Actions, a table on the run's summary page
  * --no-tz-matrix   run each date scenario once, not under en-US/Los Angeles, en-IN/Kolkata and en-GB/Kiritimati (the first of them)
  * --zone <which>   which of those zones the date scenarios run under: `all` (the default), `rotate` (ONE zone, the matrix's zones in turn,
@@ -46,6 +46,8 @@
  * --list           print the runs that would be driven, one a line, and exit 0 before any build or browser is needed (what the tests of the rotation read)
  * --now <instant>  read the rotation at this instant (`2026-11-07T00:30:00Z`, with its zone) and not at the real clock, to reproduce a night or to test the runner's own use of it
  * --shots          keep a screenshot of every failed scenario in .smoke/drive/
+ * --browser <name> chromium (the default), firefox or webkit: the browser the drive runs in. The weekly other-browsers run (drive-other-browsers.yml) asks for the other two
+ * --width <px>     the window's width in CSS pixels (the default is 1440; 390 is a phone, 844 tall unless DRIVE_VIEWPORT_HEIGHT says otherwise)
  * --out <dir>      drive another export than out/ (a build of an earlier commit, a patched copy)
  * --no-headers     drive WITHOUT out/_headers (not the product as it is served)
  *
@@ -83,7 +85,7 @@ import { parseRules, resolve as resolveRule, rulesCloudflareKeeps } from "./chec
 import { headersFor, parseHeadersFile } from "./security-headers.mjs";
 import { ACCOUNTS, CLIENT_ID, CLIENT_ROW, CUSTOMER, FAKE_FIRM_ROW, FAKE_SESSION, FAKE_USERS_ROW, ITEM, JOURNAL_ENTRIES, NOW, VENDOR } from "./drive/fixtures.mjs";
 import {
-  SHARDS, contextsFor, deadlinePassed, inShard, installedChromium, loadPlaywright, parseArgs, partOfTheNight, reportOf, resolveNow, resolveShard, resolveStopAfter, resolveZone,
+  SHARDS, contextsFor, deadlinePassed, inShard, installedChromium, loadBrowserType, matchesOnly, parseArgs, resolveBrowser, resolveWidth, viewportFor, partOfTheNight, reportOf, resolveNow, resolveShard, resolveStopAfter, resolveZone,
 } from "./drive/kit.mjs";
 import { createStub, ok } from "./drive/stub.mjs";
 
@@ -116,6 +118,9 @@ const OUT = path.resolve(flags["--out"] ?? path.join(WEB, "out"));
 let zone = "all";
 let shard = "all";
 let stopAfter = null;
+/** The browser the drive runs in and the width of its window (POST-A-387). The nightly drive is Chromium at 1440; the weekly other-browsers run asks for Firefox, WebKit and a phone. */
+let browserName = "chromium";
+let width = 1440;
 const realNow = Date.now();
 let chosenAt = realNow;
 try {
@@ -123,6 +128,8 @@ try {
   zone = flags["--zone"] === undefined ? "all" : resolveZone(flags["--zone"], chosenAt);
   shard = resolveShard(flags["--shard"], flags["--zone"] ?? "all", chosenAt);
   stopAfter = resolveStopAfter(flags["--stop-after"]);
+  browserName = resolveBrowser(flags["--browser"]);
+  width = resolveWidth(flags["--width"]);
 } catch (e) {
   console.error(e instanceof Error ? e.message : String(e));
   process.exit(2);
@@ -156,7 +163,7 @@ function runsOf(group, scenario) {
   return contexts.map((c) => ({ ...base, id: `${base.id} [${c.locale} ${c.timezoneId}]`, context: c }));
 }
 const selected = modules.flatMap((m) => m.scenarios.flatMap((s) => runsOf(m.group, s)))
-  .filter((r) => !only || r.group === only || r.id === only || r.id.startsWith(only));
+  .filter((r) => matchesOnly(r, only));
 if (!selected.length) {
   console.error(only ? `No scenario matches --only ${only}.` : "No scenarios were found under scripts/drive/scenarios/.");
   process.exit(2);
@@ -239,14 +246,14 @@ function baseline() {
 
 const stub = createStub({ root: OUT, port: PORT, headerRules, resolveBuilt });
 await stub.start();
-const chromium = await loadPlaywright();
+const browserType = await loadBrowserType(browserName);
 // `--disable-background-networking` keeps Chromium itself (component updates, safe browsing) from calling out
 // during a run: the page's own requests are sealed off below, and a browser that phones home would be noise in
 // an environment whose egress is policed.
-const browser = await chromium.launch({
-  executablePath: installedChromium(),
-  args: ["--disable-background-networking"],
-});
+// Chromium's flag and its on-disk build are Chromium's: Firefox and WebKit take Playwright's own install and no such argument.
+const browser = await browserType.launch(browserName === "chromium"
+  ? { executablePath: installedChromium(), args: ["--disable-background-networking"] }
+  : {});
 if (shots) fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 const SESSION_SCRIPT = `(() => { try {
@@ -277,7 +284,7 @@ function writeReport(complete, final = false) {
   reportWrittenAt = Date.now();
   const report = reportOf({
     complete, stoppedAtDeadline, only, tzMatrix: !noTzMatrix, zone, shard, stopAfter, chosenAtMs: chosenAt, csp: cspState, pinnedClock: NOW,
-    commit: process.env.GITHUB_SHA || null, selected, results, escaped: [...escaped], startedMs: started, nowMs: Date.now(),
+    commit: process.env.GITHUB_SHA || null, browser: browserName, width, selected, results, escaped: [...escaped], startedMs: started, nowMs: Date.now(),
   });
   fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
@@ -292,7 +299,7 @@ for (const run of selected) {
   const context = await browser.newContext({
     // 1440 by 900 unless DRIVE_VIEWPORT_HEIGHT says otherwise: the probe `PROBE_DIALOG_FIT=1` is run at a shorter screen (768, 720) to find
     // the dialogs whose Save button is out of reach on a smaller laptop.
-    viewport: { width: 1440, height: Number(process.env.DRIVE_VIEWPORT_HEIGHT) || 900 },
+    viewport: viewportFor(width, process.env.DRIVE_VIEWPORT_HEIGHT),
     ...(run.context ?? {}),
   });
   await context.clock.setFixedTime(new Date(NOW));
@@ -435,7 +442,7 @@ if (reportPath) {
     const lines = [
       `### Money-editor drive: ${stoppedAtDeadline ? "STOPPED AT ITS DEADLINE" : failed.length ? "FAILED" : "clean"}`,
       "",
-      `${results.length} of ${selected.length} scenarios driven in Chromium against the smoke build, ${failed.length} failed. Date scenarios: ${zone === "all" ? "every zone of the matrix" : `${zone} only`}, ${shard === "all" ? "the whole group" : `part ${shard + 1} of ${SHARDS}`}.` +
+      `${results.length} of ${selected.length} scenarios driven in ${browserName[0].toUpperCase()}${browserName.slice(1)} at ${width} pixels against the smoke build, ${failed.length} failed. Date scenarios: ${zone === "all" ? "every zone of the matrix" : `${zone} only`}, ${shard === "all" ? "the whole group" : `part ${shard + 1} of ${SHARDS}`}.` +
         `${stoppedAtDeadline ? ` It was stopped at its deadline of ${stopAfter} minutes: ${selected.length - results.length} not driven (named in the report).` : ""}`,
       "",
     ];
