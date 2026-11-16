@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SETTINGS_GROUPS, settingsTabHref } from "@/lib/settings/groups";
+import { useAuth } from "@/lib/auth/AuthContext";
+import { SETTINGS_GROUPS, groupHasContent, linkShownTo, settingsTabHref } from "@/lib/settings/groups";
 import { cn, isExactPath } from "@/lib/utils";
 
 /**
@@ -24,9 +25,11 @@ import { cn, isExactPath } from "@/lib/utils";
  * NO `requires` HERE, and that is measured rather than assumed: every one of
  * these pages reads its own data over PostgREST or through an endpoint the
  * Settings screens already reach, so RLS and each page's own `RoleGuard`
- * govern them. Branding is the one with a Partner-only section, and its guard
- * is ON THE PAGE where it can explain itself, which is better than a link
- * that silently is not there.
+ * govern them. WHAT IT DOES FILTER ON IS THAT GUARD (POST-A-447): it listed
+ * every page to everyone, so a Manager, an Executive or a Reviewer was offered
+ * ten pages whose guard sent them straight back to the home page. A link is now
+ * shown only to the roles its page's guard admits (`roles` in the groups, held
+ * equal to each page's guard by `lib/settings/groups.test.ts`).
  */
 /**
  * THE GROUPS ARE `lib/settings/groups.ts` (PRE-A-023), the same list the tab row across every Settings page and
@@ -35,16 +38,21 @@ import { cn, isExactPath } from "@/lib/utils";
  * repeated here.
  */
 const PANEL_GROUPS = SETTINGS_GROUPS.map((g) => ({
+  group: g,
   id: g.id,
   heading: g.label,
   tabHref: settingsTabHref(g.id),
   items: g.links
-    .map((l) => ({ href: l.href.split("#")[0], label: l.label }))
+    .map((l) => ({ href: l.href.split("#")[0], label: l.label, link: l }))
     .filter((l, i, all) => l.href.startsWith("/settings") && all.findIndex((o) => o.href === l.href) === i),
 }));
 
 export function SettingsPanel() {
   const pathname = usePathname();
+  const { userRole } = useAuth();
+  const groups = PANEL_GROUPS
+    .filter(({ group }) => groupHasContent(group, userRole))
+    .map((g) => ({ ...g, items: g.items.filter(({ link }) => linkShownTo(link, userRole)) }));
 
   return (
     <div className="flex flex-col h-full">
@@ -54,7 +62,7 @@ export function SettingsPanel() {
         </p>
       </div>
       <nav className="flex-1 overflow-y-auto px-2 py-2">
-        {PANEL_GROUPS.map(({ id, heading, tabHref, items }) => (
+        {groups.map(({ id, heading, tabHref, items }) => (
           <div key={id} className="mt-3 first:mt-0">
             <Link
               href={tabHref}

@@ -11,9 +11,14 @@
  * to one cannot be missing from the others. It moves no page: every screen keeps the address it had, and a tab is
  * the Settings home with `?tab=` (no new route, so no redirect rule).
  *
- * `partnerOnly` repeats the guard each link had on the old home page and decides nothing about access: every page
- * keeps its own guard, and the server's permission check is what refuses.
+ * `roles` repeats, link by link, the roles the page's own `RoleGuard` admits (POST-A-447: the Settings panel listed every
+ * page to everyone, so a Manager, an Executive or a Reviewer was offered pages that sent them straight back to the home
+ * page, while three pages a Manager may open were hidden from them as "Partner only"). It decides nothing about
+ * access: every page keeps its own guard, and the server's permission check is what refuses.
+ * `lib/settings/groups.test.ts` holds each link's `roles` equal to its page's guard, so the two cannot drift.
  */
+
+import type { UserRole } from "@/lib/auth/permissions";
 
 export type SettingsGroupId = "profile" | "firm" | "security" | "documents" | "statutory" | "ai";
 
@@ -24,8 +29,11 @@ export interface SettingsLink {
   label: string;
   /** One sentence saying what is there. */
   says: string;
-  /** Shown on the Settings home to a Partner only, as it was. */
-  partnerOnly?: boolean;
+  /**
+   * The roles the page's own `RoleGuard` admits, where it has one (or, for a fragment, the roles the card it opens is
+   * shown to). Absent: every staff role may open it. Every surface that lists Settings shows the link only to these.
+   */
+  roles?: readonly UserRole[];
 }
 
 export interface SettingsGroup {
@@ -71,7 +79,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/multi-currency",
         label: "Foreign currency",
         says: "Whether this firm records foreign-currency documents at all, and which clients may. Off unless a Partner switches it on.",
-        partnerOnly: true,
+        roles: ["Partner"],
       },
     ],
   },
@@ -90,7 +98,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         label: "How this deployment is set up",
         says: "The security settings this deployment is running with, read from the server, with what each one means.",
         // The card on that page is shown to whoever may administer the firm, which is a Partner.
-        partnerOnly: true,
+        roles: ["Partner"],
       },
       {
         href: "/team",
@@ -101,7 +109,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/audit-log",
         label: "Audit log",
         says: "Who created, changed or deleted a client, a document or a ledger entry, and when.",
-        partnerOnly: true,
+        roles: ["Partner"],
       },
     ],
   },
@@ -114,31 +122,31 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/branding",
         label: "Branding",
         says: "Logo, tagline and primary colour for your practice's own invoices; the other settings are kept on file.",
-        partnerOnly: true,
+        roles: ["Partner"],
       },
       {
         href: "/settings/invoice-settings",
         label: "Invoice numbering and payment details",
         says: "Invoice numbering format, bank details, UPI and footer text.",
-        partnerOnly: true,
+        roles: ["Partner"],
       },
       {
         href: "/settings/invoice-templates",
         label: "Invoice templates",
         says: "Where the logo and the signature sit on your practice's own invoices.",
-        partnerOnly: true,
+        roles: ["Partner"],
       },
       {
         href: "/settings/email-templates",
         label: "Email templates",
         says: "The wording of the mails sent for invoices, engagements, documents and reminders.",
-        partnerOnly: true,
+        roles: ["Partner"],
       },
       {
         href: "/settings/firm-hsn-library",
         label: "HSN and SAC codes",
         says: "The HSN and SAC codes your firm bills against. You keep this list; nothing is suggested or shipped.",
-        partnerOnly: true,
+        roles: ["Partner", "Manager"],
       },
       {
         href: "/settings/scheduled-reports",
@@ -156,13 +164,13 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/statutory-values",
         label: "Professional tax and other statutory values",
         says: "Your firm's reading of the state professional-tax notifications. Four states are built in; the rest deduct nothing until you record them here.",
-        partnerOnly: true,
+        roles: ["Partner", "Manager"],
       },
       {
         href: "/settings/treaty-rates",
         label: "DTAA treaty rates",
         says: "Your firm's reading of the treaty rates it withholds under, per country and nature of income. Empty until you record them.",
-        partnerOnly: true,
+        roles: ["Partner", "Manager"],
       },
       {
         href: "/settings/dsc-tracker",
@@ -180,7 +188,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/ai",
         label: "PracticeSync AI status and allowance",
         says: "Whether PracticeSync AI (the assistant, the copilot and the invoice and notice readers) can reach its two providers, and the firm's monthly allowance.",
-        partnerOnly: true,
+        roles: ["Partner"],
       },
     ],
   },
@@ -228,13 +236,18 @@ export function everySettingsPage(): string[] {
   return seen;
 }
 
-/** The links a person sees on a tab: all of them for a Partner, those not marked Partner-only for anyone else. */
-export function visibleLinks(group: SettingsGroup, isPartner: boolean): SettingsLink[] {
-  return group.links.filter((l) => isPartner || !l.partnerOnly);
+/** Whether a person of this role is shown a link: every role when the link names none, else only the roles it names. */
+export function linkShownTo(link: SettingsLink, role: UserRole | null): boolean {
+  return !link.roles || (role !== null && link.roles.includes(role));
+}
+
+/** The links a person sees on a tab: those whose page admits their role. */
+export function visibleLinks(group: SettingsGroup, role: UserRole | null): SettingsLink[] {
+  return group.links.filter((l) => linkShownTo(l, role));
 }
 
 /** Whether a tab has anything to show the person: a form the page renders, or a link they may see. */
-export function groupHasContent(group: SettingsGroup, isPartner: boolean): boolean {
-  const inline = (group.inline ?? []).filter((f) => f !== "firm-profile" || isPartner);
-  return inline.length > 0 || visibleLinks(group, isPartner).length > 0;
+export function groupHasContent(group: SettingsGroup, role: UserRole | null): boolean {
+  const inline = (group.inline ?? []).filter((f) => f !== "firm-profile" || role === "Partner");
+  return inline.length > 0 || visibleLinks(group, role).length > 0;
 }

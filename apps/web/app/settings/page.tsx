@@ -8,7 +8,6 @@ import { FormSkeleton } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
-import { hasRole } from "@/lib/auth/permissions";
 import { SETTINGS_GROUPS, groupFromTab, visibleLinks } from "@/lib/settings/groups";
 import { api, type FirmProfile } from "@/lib/api";
 import { objectOrNull } from "@/lib/api/shape";
@@ -214,7 +213,6 @@ function Field({
 function SettingsHome() {
   const { user, fullName, refreshUserContext, userRole } = useAuth();
   const tab = useSearchParams()?.get("tab") ?? null;
-  const isPartner = hasRole(userRole, ["Partner"]);
   const supabase = getSupabaseClient();
 
   const [personalName, setPersonalName] = useState(fullName ?? "");
@@ -413,7 +411,7 @@ function SettingsHome() {
   // place are shown on the tab that holds them, the links on every tab.
   const group = SETTINGS_GROUPS.find((g) => g.id === groupFromTab(tab)) ?? SETTINGS_GROUPS[0];
   const inline = group.inline ?? [];
-  const links = visibleLinks(group, isPartner);
+  const links = visibleLinks(group, userRole);
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">

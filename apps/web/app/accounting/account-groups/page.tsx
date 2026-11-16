@@ -9,6 +9,7 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
+import { Can } from "@/components/Can";
 
 interface CoaRow {
   id: string;
@@ -275,10 +276,14 @@ export default function AccountGroupsPage() {
         title="Account Groups"
         subtitle={<>{parentGroups.length} parent groups · {accounts.length} active accounts</>}
         actions={
-          <button onClick={() => setAdding(true)}
-                  className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
-            <Plus size={12} /> Add ledger
-          </button>
+          // Adding and editing a ledger go through POST and PATCH /api/accounting/accounts, which ask `accounting`
+          // `write`. Both buttons were offered to everyone who could read the chart (POST-A-447).
+          <Can resource="accounting" action="write">
+            <button onClick={() => setAdding(true)}
+                    className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
+              <Plus size={12} /> Add ledger
+            </button>
+          </Can>
         }
       />
 
@@ -315,7 +320,9 @@ export default function AccountGroupsPage() {
                           <td className="px-3 py-2 text-ps-label">{acc.account_type}</td>
                           <td className="px-3 py-2 text-ps-hint">{acc.account_subtype ?? "—"}</td>
                           <td className="px-5 py-2 text-right">
-                            <button onClick={() => setEditing(acc)} className="text-2xs text-blue-600 hover:underline">Edit</button>
+                            <Can resource="accounting" action="write">
+                              <button onClick={() => setEditing(acc)} className="text-2xs text-blue-600 hover:underline">Edit</button>
+                            </Can>
                           </td>
                         </tr>
                       ))}

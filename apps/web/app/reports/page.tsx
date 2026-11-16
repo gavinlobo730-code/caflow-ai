@@ -34,9 +34,10 @@ import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
 import { LoadingRegion } from "@/components/ui/skeleton";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { reportOffered, type ReportId } from "@/lib/reports/offered";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type ReportId = "gst_summary" | "pl_statement" | "compliance_status" | "outstanding_invoices";
 
 interface GSTSummaryData {
   client: Client;
@@ -878,6 +879,9 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
 
 export default function ReportsPage() {
   const [activeReport, setActiveReport] = useState<ReportId | null>(null);
+  const { can, resolved } = usePermissions();
+  // A report is offered only when the caller's permissions admit the route it reads (POST-A-447).
+  const offered = REPORTS.filter((r) => reportOffered(r.id, can, resolved));
 
   return (
     <>
@@ -923,7 +927,7 @@ export default function ReportsPage() {
         {/* Report cards grid */}
         {!activeReport && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:hidden">
-            {REPORTS.map((report) => {
+            {offered.map((report) => {
               const Icon = report.icon;
               return (
                 <button
