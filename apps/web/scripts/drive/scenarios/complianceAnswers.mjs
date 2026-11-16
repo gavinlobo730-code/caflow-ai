@@ -20,7 +20,8 @@ import { CLIENT_ID } from "../fixtures.mjs";
 export const group = "compliance-answers";
 
 /** What the MCA doors say when their body fails (routers/mca_workspace.py): an HTTP 200 with success false. */
-const MCA_COULD_NOT_SENTENCE = "Unable to complete MCA operation. Please try again.";
+/** What an MCA door says when its write fails in a way nobody anticipated: `_could_not` in routers/mca_workspace.py, naming the door's own action (POST-A-392). */
+const MCA_COULD_NOT_SENTENCE = (action) => `Could not ${action}. The cause has been logged; please try again, and report it if it keeps failing.`;
 /** What the GST doors say when their body fails (routers/gst_workspace.py): an HTTP 200 with success false. */
 const GST_COULD_NOT_SENTENCE = "Unable to complete GST operation. Please try again.";
 /** What the TDS doors say for a failure nobody anticipated (routers/tds_workspace.py `_could_not`): an HTTP 200 with success false. */
@@ -222,8 +223,8 @@ async function openPayrollPt(env) {
 
 /** A control on a ROW or above a table: its answer is said above the table, the row stays as it was and the list is not read again over a refusal. */
 const ROW_ACTIONS = [
-  { id: "a-directors-kyc-change", what: "A client's MCA > Directors > Mark KYC Active", open: openMcaDirectors, button: "Mark KYC Active", method: "PATCH", write: /mca-workspace\/directors\/md-1$/, refusal: MCA_COULD_NOT_SENTENCE, rowId: "md-1" },
-  { id: "a-filings-status-change", what: "A client's MCA > Annual Filings > Start", open: openMcaFilings, button: "Start", method: "PATCH", write: /mca-workspace\/filings\/mf-1\/status$/, refusal: MCA_COULD_NOT_SENTENCE, rowId: "mf-1" },
+  { id: "a-directors-kyc-change", what: "A client's MCA > Directors > Mark KYC Active", open: openMcaDirectors, button: "Mark KYC Active", method: "PATCH", write: /mca-workspace\/directors\/md-1$/, refusal: MCA_COULD_NOT_SENTENCE("update the director"), rowId: "md-1" },
+  { id: "a-filings-status-change", what: "A client's MCA > Annual Filings > Start", open: openMcaFilings, button: "Start", method: "PATCH", write: /mca-workspace\/filings\/mf-1\/status$/, refusal: MCA_COULD_NOT_SENTENCE("record the filing's status"), rowId: "mf-1" },
   { id: "a-tds-returns-status-change", what: "A client's TDS > Returns > Prepare", open: openTdsReturnsWithOne, button: "Prepare", method: "PATCH", write: /api\/tds-workspace\/returns\/tr-1\/status$/, refusal: TDS_COULD_NOT_STATUS_SENTENCE, rowId: "tr-1" },
   { id: "a-pt-registration-removal", what: "A client's Payroll > Setup > Professional tax registrations > Remove (the tenth write of this shape and the last in the app)", open: openPayrollPt, button: "Remove", method: "DELETE",
     write: /api\/payroll\/statutory-identity\/pt/, refusal: CLIENT_NOT_FOUND_SENTENCE, rowId: "MH" },

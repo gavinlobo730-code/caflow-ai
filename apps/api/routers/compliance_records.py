@@ -72,8 +72,12 @@ def create_compliance_record(data: ComplianceRecordIn, current_user: dict = Depe
         # firm_id always comes from the authenticated user — never from the request body
         record = compliance_record_service.create_record(data.model_dump(), firm_id=current_user["firm_id"])
         return api_response(True, record)
-    except (ValidationError, KeyError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    except ValidationError as e:
+        # The sentence as written (POST-A-392): `str(e)` puts "Validation error on <column>:" in front of it.
+        raise HTTPException(status_code=422, detail=e.message) from None
+    except KeyError as e:
+        # `str(KeyError)` is the bare key in quotes, which says nothing a caller can act on.
+        raise HTTPException(status_code=422, detail=f"{e.args[0] if e.args else 'A required field'} is required.") from None
 
 
 # There was a GET /firm/summary here: the firm-level roll-up over compliance_records. No screen ever opened it (the Deadlines screen, the
@@ -128,4 +132,6 @@ def update_compliance_record(record_id: str, data: ComplianceRecordUpdateIn, cur
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValidationError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        # The sentence as written, as the obligation doors say it (POST-A-392): `str(e)` puts "Validation error on filed_date:"
+        # in front of it.
+        raise HTTPException(status_code=422, detail=e.message) from None

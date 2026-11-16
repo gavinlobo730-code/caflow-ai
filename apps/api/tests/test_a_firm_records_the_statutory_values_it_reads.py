@@ -408,3 +408,55 @@ def test_the_slabs_are_read_once_for_the_whole_run():
     src = create_path_source()
     assert src.count("_read_firm_pt_slabs(") == 1
     assert "_read_firm_pt_slabs" not in inspect.getsource(pr._compute_slip)
+
+
+# ── a band's own bounds are refused naming the band (POST-A-392) ─────────────────────────────────────────────────────
+#
+# A negative figure or an upper bound of 0 was refused by `Field(ge=...)` on the band, in pydantic's words ("Input should be greater
+# than or equal to 0"), which the screen showed without saying which band. The set's validator names the band by its place, as the
+# screen numbers them.
+
+@pytest.mark.parametrize("bands, sentence", [
+    ([(0, 1_200_000, 0), (1_200_000, None, -20_000)], "Band 2: the tax cannot be negative."),
+    ([(0, 0, 0), (0, None, 20_000)], "Band 1: the wage it runs up to must be more than the wage it starts from, or left blank for the "
+                                       "top band."),
+    ([(-100, 1_200_000, 0), (1_200_000, None, 20_000)], "Band 1: the wage it starts from cannot be below zero."),
+    ([(0, 1_200_000, 0), (1_200_000, 1_000_000, 20_000), (1_000_000, None, 30_000)],
+     "Band 2: the wage it runs up to must be more than the wage it starts from, or left blank for the top band."),
+], ids=["negative-tax", "upper-bound-zero", "negative-lower-bound", "upper-below-lower"])
+def test_a_band_with_impossible_bounds_is_refused_naming_the_band(bands, sentence):
+    from pydantic import ValidationError
+    from models.payroll import PTSlabBandIn
+    with pytest.raises(ValidationError) as e:
+        _set(bands=[PTSlabBandIn(from_paise=f, to_paise=t, amount_paise=a) for f, t, a in bands])
+    messages = [err["msg"] for err in e.value.errors()]
+    assert messages == [f"Value error, {sentence}"], messages
+
+
+def test_the_door_answers_a_band_with_impossible_bounds_in_the_bands_words(mock_mode):
+    """Through FastAPI, as the screen sends it: a 422 whose message names the band, and nothing recorded."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    app = FastAPI()
+    app.include_router(pr.router)
+    route = next(r for r in app.routes if getattr(r, "path", "").endswith("/statutory-values/pt") and "PUT" in r.methods)
+    for d in route.dependant.dependencies:
+        app.dependency_overrides[d.call] = lambda: USER
+    r = TestClient(app).put(route.path, json={
+        "state": "GJ", "effective_from": "2026-04-01", "notification_reference": "GJ/PT/2026-01", "notification_date": "2026-03-15",
+        "bands": [{"from_paise": 0, "to_paise": 1_200_000, "amount_paise": 0},
+                  {"from_paise": 1_200_000, "to_paise": None, "amount_paise": -20_000}]})
+    assert r.status_code == 422
+    assert "Band 2: the tax cannot be negative." in r.text
+    assert pr._MOCK_PT_SLABS == {}
+
+
+def test_the_settings_screen_says_the_servers_band_sentences_before_it_sends():
+    """The screen refuses the same three bounds in the server's own words, so a CA is told which band before anything is sent; held from
+    the side that owns the sentences, as the other browser copies of a server's words are."""
+    from pathlib import Path
+    page = (Path(__file__).resolve().parents[3] / "apps" / "web" / "app" / "settings" / "statutory-values" / "page.tsx").read_text(encoding="utf-8")
+    for sentence in ("the wage it starts from cannot be below zero.",
+                     "the wage it runs up to must be more than the wage it starts from, or left blank for the top band.",
+                     "the tax cannot be negative."):
+        assert f"`Band ${{i + 1}}: {sentence}`" in page, sentence

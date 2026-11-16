@@ -82,10 +82,14 @@ class CreateEInvoiceRequest(BaseModel):
         return v
 
 
+#: What the acknowledgement date keeps of a longer value, said to the caller in the request's own schema.
+_A_DAY_NOT_A_TIME = ("A value with a time of day is read for the Indian day it falls on and the time is not kept (POST-A-392): the column holds a day, and nothing in the product reads a time from it.")
+
+
 class RecordIRNRequest(BaseModel):
     irn: str
     ack_number: str
-    ack_date: str
+    ack_date: str = Field(..., description="The day the e-invoice portal printed, YYYY-MM-DD. " + _A_DAY_NOT_A_TIME)
     qr_data: Optional[str] = None
     provider_response: Optional[dict] = None
 

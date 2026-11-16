@@ -417,10 +417,14 @@ export function parseTypedDate(raw: string | null | undefined, ctx: TypedDateCon
   const min = readIso(ctx.min) ? (ctx.min as string).trim() : null;
   const max = readIso(ctx.max) ? (ctx.max as string).trim() : null;
   const outOfRange = min !== null && iso < min ? "min" : max !== null && iso > max ? "max" : null;
+  // A bound that IS today's date in India is said as that (POST-A-392): "15 Oct 2026 is after 08 Oct 2026." did not say why 08 Oct, and
+  // a person in another zone may be a day either side of it. Any other bound (the day the year ends, another box's date) is said as a day.
+  const today = readIso(ctx.today) ? (ctx.today as string) : todayIstISO();
+  const bound = (day: string) => (day === today ? `today's date in India, ${formatDate(day)}` : formatDate(day));
   const message = outOfRange === "min"
-    ? `${formatDate(iso)} is before ${formatDate(min)}.`
+    ? `${formatDate(iso)} is before ${bound(min as string)}.`
     : outOfRange === "max"
-      ? `${formatDate(iso)} is after ${formatDate(max)}.`
+      ? `${formatDate(iso)} is after ${bound(max as string)}.`
       : null;
   return { kind: "date", iso, display: typedDateText(iso), outOfRange, message };
 }

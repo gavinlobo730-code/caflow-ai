@@ -115,7 +115,7 @@ def test_a_date_that_is_not_a_date_is_refused_in_the_doors_own_words_and_nothing
     obligation = _obligation()
     out = _file(row, day=day)
     assert out["success"] is False
-    assert "filing_date must be YYYY-MM-DD" in out["error"] and "receipt" in out["error"]
+    assert "The filing date is not a date: write it as YYYY-MM-DD." in out["error"] and "receipt" in out["error"]
     assert "filed_date" not in out["error"].replace("filing_date", "")
     stored = tw._MOCK_RETURNS[row["id"]]
     assert stored["status"] == "ca_approved" and not stored.get("prn") and not stored.get("filed_at")
@@ -125,7 +125,7 @@ def test_a_date_that_is_not_a_date_is_refused_in_the_doors_own_words_and_nothing
 def test_a_filing_date_in_the_future_is_refused_in_the_doors_own_words():
     row = _statement()
     out = _file(row, day="2999-01-01")
-    assert out["success"] is False and "cannot be in the future" in out["error"]
+    assert out["success"] is False and "is after today's date in India" in out["error"] and "filing_date" not in out["error"]
     assert tw._MOCK_RETURNS[row["id"]]["status"] == "ca_approved"
     assert not tw._MOCK_RETURNS[row["id"]].get("filed_at")
 

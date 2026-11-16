@@ -149,6 +149,14 @@ export default function StatutoryValuesPage() {
         setFormError(`Band ${i + 1}: the amounts must be plain figures in rupees, without commas.`);
         return;
       }
+      // The server's own sentences for a band's bounds (models/payroll.PTSlabSetIn, POST-A-392), said here before anything is sent:
+      // the server used to refuse these in its framework's words, naming no band.
+      if (from < 0) { setFormError(`Band ${i + 1}: the wage it starts from cannot be below zero.`); return; }
+      if (to !== null && to <= from) {
+        setFormError(`Band ${i + 1}: the wage it runs up to must be more than the wage it starts from, or left blank for the top band.`);
+        return;
+      }
+      if (amount < 0) { setFormError(`Band ${i + 1}: the tax cannot be negative.`); return; }
       parsed.push({ from_paise: from, to_paise: to, amount_paise: amount });
     }
 

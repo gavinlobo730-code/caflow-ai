@@ -1194,7 +1194,8 @@ const GSTR_BEFORE_PERIOD_SENTENCE = (filed, end) => `A return cannot have been f
 /** The MCA door's answer to a filing date before the financial year it declares has ended (routers/mca_workspace.py); an HTTP 200 with success:false. */
 const MCA_BEFORE_YEAR_SENTENCE = "An AOC-4 for FY 2025-26 cannot have been filed before the year ended on 2026-03-31. Check the filing date. Nothing was changed.";
 /** What the MCA door says when its insert fails (routers/mca_workspace.py, create_company and create_filing): an HTTP 200 with success:false. */
-const MCA_COULD_NOT_SENTENCE = "Unable to complete MCA operation. Please try again.";
+/** What an MCA door says when its write fails in a way nobody anticipated: `_could_not` in routers/mca_workspace.py, naming the door's own action (POST-A-392). */
+const MCA_COULD_NOT_SENTENCE = (action) => `Could not ${action}. The cause has been logged; please try again, and report it if it keeps failing.`;
 /** What `assert_client_access` raises (HTTP 404, core/authz.py) for a client the caller is not assigned to; the create doors of the client MCA and TDS tabs re-raise it. */
 const CLIENT_NOT_FOUND_SENTENCE = "Not found";
 /** What the statutory-values door says for a slab set with a hole in it (routers/payroll.py `put_pt_slabs`): an HTTP 422 whose detail is this sentence. */
@@ -1207,7 +1208,7 @@ const MCA_DUPLICATE_DIN_SENTENCE = "This DIN is already recorded for this client
 /** What the TDS door says for a failure nobody anticipated, here the challan (routers/tds_workspace.py `_could_not`): an HTTP 200 with success:false. */
 const TDS_COULD_NOT_CHALLAN_SENTENCE = "Could not record the TDS challan. The cause has been logged; please try again, and report it if it keeps failing.";
 /** What a box that refuses a date after today says about 15 October 2026 at the pinned clock (8 October 2026). */
-const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after 08 Oct 2026.";
+const AFTER_TODAY_SENTENCE = "15 Oct 2026 is after today's date in India, 08 Oct 2026.";
 /** The instant at which the browser's day is AHEAD of India's on Kiritimati (UTC+14): 17:30 on 8 October in India and 02:00 on 9 October there. At the instant every scenario is pinned to (08:00 UTC)
  *  the day is 8 October in Los Angeles, Kolkata and Kiritimati, so only a scenario that re-pins to this one can tell India's day from the browser's. */
 const AHEAD_OF_INDIA = "2026-10-08T12:00:00Z";
@@ -2630,22 +2631,22 @@ async function shownInTheDialog(page, sentence, what) {
 }
 
 /** The four forms on a client's compliance tabs (fourteenth slice): three used to take a date as plain text and ignore the answer, and the fourth (a director) had been
- *  fixed for that but kept its typed values through Cancel. `refusal` is the sentence the door gives when its insert fails (`Unable to complete MCA operation…` in
- *  routers/mca_workspace.py, `_could_not` in routers/tds_workspace.py), `httpRefusal` the 404 `assert_client_access` raises for a client the caller is not assigned to;
+ *  fixed for that but kept its typed values through Cancel. `refusal` is the sentence the door gives when its insert fails (`_could_not` in
+ *  routers/mca_workspace.py, naming the door's action, `_could_not` in routers/tds_workspace.py), `httpRefusal` the 404 `assert_client_access` raises for a client the caller is not assigned to;
  *  tests/test_the_drives_filing_sentences_are_the_servers.py holds all three to the routers. `listShows` is text the saved record puts in its list; `optionalDate` is
  *  whether a blank date is allowed (and then sent as null), which the database decides: `mca_companies.incorp_date` and `mca_directors.date_of_appointment` are
  *  nullable, `mca_filings.due_date` and `tds_challans.payment_date` are NOT NULL. */
 const CLIENT_COMPLIANCE_FORMS = [
   { id: "client-mca-company", name: "A client's MCA > Company Master > Add Company", open: openClientMcaCompany, add: "+ Add Company", write: /mca-workspace\/companies$/,
     dateBox: "#mca-company-incorporated", dateKey: "incorporation_date", typedDate: "12/06/2019", typedLabel: "Company Name", typedValue: "Acme Traders Pvt Ltd", listShows: "Acme Traders Pvt Ltd", optionalDate: true,
-    refusal: MCA_COULD_NOT_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+    refusal: MCA_COULD_NOT_SENTENCE("save the company"), httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-mca-director", name: "A client's MCA > Directors > Add Director", open: openClientMcaDirector, add: "+ Add Director", write: /mca-workspace\/directors$/,
     dateBox: "#mca-director-appointment", dateKey: "date_of_appointment", typedDate: "01/04/2025", typedLabel: "Full Name", typedValue: "Asha Rao", listShows: "Asha Rao", optionalDate: true,
     refusal: MCA_DUPLICATE_DIN_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-mca-new-filing", name: "A client's MCA > Annual Filings > New Filing", open: openClientMcaNewFiling, add: "+ New Filing", write: /mca-workspace\/filings$/,
     dateBox: "#mca-new-filing-due-date", dateKey: "due_date", typedDate: "30/10/2026", typedLabel: "Financial year (for example 2025-26)", typedValue: "2025-26", listShows: "2026-10-30", optionalDate: false,
     askedFor: "Due date: enter the date this form is due.",
-    refusal: MCA_COULD_NOT_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
+    refusal: MCA_COULD_NOT_SENTENCE("save the filing"), httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-tds-challan", name: "A client's TDS > Challans > New Challan", open: openClientTdsChallan, add: "+ New Challan", write: /api\/tds-workspace\/challans$/,
     dateBox: "#tds-client-challan-date", dateKey: "challan_date", typedDate: "07/10/2026", typedLabel: "Challan No.", typedValue: "00123", listShows: "00123", optionalDate: false,
     askedFor: "Challan date: enter the date on the challan.",
@@ -3152,7 +3153,7 @@ export const scenarios = [
       const save = page.getByRole("button", { name: f.save, exact: true });
       // After today (the clock is pinned at 8 October 2026).
       await typeAndLeave(box, "15/10/2026");
-      const after = "15 Oct 2026 is after 08 Oct 2026.";
+      const after = "15 Oct 2026 is after today's date in India, 08 Oct 2026.";
       if (f.held) {
         assert.equal(await save.isDisabled(), true, `${f.name}: the button was live over a date after today`);
         await page.getByText(after).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`${f.name}: the box did not say "${after}"`); });
@@ -4007,7 +4008,7 @@ export const scenarios = [
       await typeAndLeave(page.locator("#sv-notified-on"), "10/10/2026");
       const record = page.getByRole("button", { name: "Record", exact: true });
       await record.click();
-      await shownInTheDialog(page, "Notification date: 10 Oct 2026 is after 09 Oct 2026.", "a day after India's today was not refused in a sentence");
+      await shownInTheDialog(page, "Notification date: 10 Oct 2026 is after today's date in India, 09 Oct 2026.", "a day after India's today was not refused in a sentence");
       await stub.quiet();
       assert.equal(stub.writesTo(/statutory-values\/pt$/).length, 0, "a notification date after India's today SENT A WRITE");
       await typeAndLeave(page.locator("#sv-notified-on"), "09/10/2026");
@@ -4278,7 +4279,7 @@ export const scenarios = [
       const create = lotDialog(page).getByRole("button", { name: "Create", exact: true });
       await typeAndLeave(made, "10/10/2026");
       await create.click();
-      await shownInTheDialog(page, "Manufactured: 10 Oct 2026 is after 09 Oct 2026.", "a day after India's today was not refused in a sentence");
+      await shownInTheDialog(page, "Manufactured: 10 Oct 2026 is after today's date in India, 09 Oct 2026.", "a day after India's today was not refused in a sentence");
       await stub.quiet();
       assert.equal(stub.writesTo(/api\/inventory\/batches$/).length, 0, "a manufacture date after India's today SENT A WRITE");
       await typeAndLeave(made, "09/10/2026");
@@ -4458,7 +4459,7 @@ export const scenarios = [
       await assertBrowserDay(page, AHEAD_OF_INDIA);
       await typeAndLeave(f.box(page), "09/10/2026");
       await f.save(page).click();
-      await shownInTheDialog(page, `${f.label}: 09 Oct 2026 is after 08 Oct 2026.`, `${f.name}: the day after India's today was not refused (on Kiritimati it is the browser's own today)`);
+      await shownInTheDialog(page, `${f.label}: 09 Oct 2026 is after today's date in India, 08 Oct 2026.`, `${f.name}: the day after India's today was not refused (on Kiritimati it is the browser's own today)`);
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: the day after India's today SENT A WRITE`);
       await typeAndLeave(f.box(page), "08/10/2026");
@@ -4479,7 +4480,7 @@ export const scenarios = [
       await assertBrowserDay(page, INDIA_NEXT_DAY);
       await typeAndLeave(f.box(page), "10/10/2026");
       await f.save(page).click();
-      await shownInTheDialog(page, `${f.label}: 10 Oct 2026 is after 09 Oct 2026.`, `${f.name}: the day after India's new day was not refused`);
+      await shownInTheDialog(page, `${f.label}: 10 Oct 2026 is after today's date in India, 09 Oct 2026.`, `${f.name}: the day after India's new day was not refused`);
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: the day after India's new day SENT A WRITE`);
       await typeAndLeave(f.box(page), "09/10/2026");

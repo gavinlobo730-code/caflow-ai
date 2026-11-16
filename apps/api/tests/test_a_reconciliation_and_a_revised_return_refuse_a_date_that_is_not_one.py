@@ -59,7 +59,7 @@ def test_an_earlier_returns_filing_date_in_the_future_is_refused():
     tomorrow = ist_today().fromordinal(ist_today().toordinal() + 1).isoformat()
     with pytest.raises(ValidationError) as caught:
         _filing(return_type="revised", original_filing_date=tomorrow)
-    assert "original_filing_date cannot be in the future" in str(caught.value)
+    assert "The earlier return's filing date" in str(caught.value) and "is after today's date in India" in str(caught.value)
 
 
 def test_blank_is_the_same_as_absent_and_a_real_past_date_is_kept():

@@ -65,10 +65,14 @@ class CreateEWayBillRequest(BaseModel):
     provider: str = "manual"
 
 
+#: What the two dates keep of a longer value, said to the caller in the request's own schema.
+_A_DAY_NOT_A_TIME = ("A value with a time of day is read for the Indian day it falls on and the time is not kept (POST-A-392): the column holds a day, and nothing in the product reads a time from it.")
+
+
 class RecordEWBGeneratedRequest(BaseModel):
     ewb_number: str
-    ewb_date: str
-    ewb_valid_upto: str
+    ewb_date: str = Field(..., description="The day the e-way bill was generated, as the portal printed it, YYYY-MM-DD. " + _A_DAY_NOT_A_TIME)
+    ewb_valid_upto: str = Field(..., description="The last day the bill is valid, as the portal printed it, YYYY-MM-DD. " + _A_DAY_NOT_A_TIME)
     provider_response: Optional[dict] = None
 
     @field_validator("ewb_date", "ewb_valid_upto")

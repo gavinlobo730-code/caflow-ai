@@ -165,9 +165,9 @@ class CreateFilingRequest(BaseModel):
             return None
         from domain.compliance_record_service import clean_filed_date
         try:
-            return clean_filed_date(v)
+            return clean_filed_date(v, "The earlier return's filing date")
         except ValueError as refusal:
-            raise ValueError(str(refusal).replace("filed_date", "original_filing_date")) from None
+            raise ValueError(str(refusal)) from None
 
     @model_validator(mode="after")
     def _years_are_a_pair(self):
@@ -204,9 +204,9 @@ class AcknowledgementRequest(BaseModel):
     def _date_is_a_filing_date(cls, v: str) -> str:
         from domain.compliance_record_service import clean_filed_date
         try:
-            return clean_filed_date(v)
+            return clean_filed_date(v, "The filing date")
         except ValueError as refusal:
-            raise ValueError(str(refusal).replace("filed_date", "filing_date")) from None
+            raise ValueError(str(refusal)) from None
 
 
 class SnapshotRequest(BaseModel):

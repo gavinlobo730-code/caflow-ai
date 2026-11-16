@@ -95,7 +95,7 @@ def _assert_return_period_has_ended(record: dict) -> None:
         )
 
 
-def clean_filed_date(v: object) -> str:
+def clean_filed_date(v: object, what: str = "The date filed") -> str:
     """YYYY-MM-DD, a real date, and not in the future (IST).
 
     The shape check keeps a typo out of `filings.filed_date`, which is a DATE
@@ -104,13 +104,20 @@ def clean_filed_date(v: object) -> str:
     itself: a return cannot have been filed tomorrow, and this is the field the
     audit reads to say when it went. IST, because a filing date is an Indian
     calendar date. Raises ValueError with the sentence, so a Pydantic validator
-    and the service can both use it — the two doors that take a date."""
+    and the service can both use it — the two doors that take a date.
+
+    THE SENTENCE NAMES THE DATE IN WORDS, NOT A COLUMN (POST-A-392). It said "filed_date cannot be in the future", and the doors that
+    reuse it patched the column they take into it ("filing_date", "original_filing_date"). `what` is the date's name as a person reads
+    it ("The filing date", "The earlier return's filing date"), and a day after today names both days and says the day is India's, so
+    a CA who gets past a screen's own box (or a caller that is not a screen) is told what to correct."""
     try:
         when = date.fromisoformat(str(v or "").strip())
     except ValueError:
-        raise ValueError("filed_date must be YYYY-MM-DD")
-    if when > ist_today():
-        raise ValueError("filed_date cannot be in the future")
+        raise ValueError(f"{what} is not a date: write it as YYYY-MM-DD.")
+    today = ist_today()
+    if when > today:
+        raise ValueError(f"{what}, {when:%d %b %Y}, is after today's date in India, {today:%d %b %Y}: a return cannot have been "
+                         f"filed on a day that has not come.")
     return when.isoformat()
 
 

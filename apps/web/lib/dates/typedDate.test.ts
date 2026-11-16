@@ -467,6 +467,18 @@ test("a form's problems map holds one sentence per unreadable date and drops it 
   assert.deepEqual(reportDateState({}, "x", "X", hint), {});
 });
 
+test("a bound that is today's date in India is said as that, and any other bound as a day (POST-A-392)", () => {
+  const TODAY = { financialYear: "2026-27", today: "2026-10-08" };
+  const said = (text: string, ctx: TypedDateContext) => (parseTypedDate(text, ctx) as { message: string | null }).message;
+  // The box of a date that cannot be after today: the sentence says whose today it is, and both days.
+  assert.equal(said("15/10/2026", { ...TODAY, max: "2026-10-08" }), "15 Oct 2026 is after today's date in India, 08 Oct 2026.");
+  // ...and a date that cannot be before today (a plan) says it the same way.
+  assert.equal(said("01/10/2026", { ...TODAY, min: "2026-10-08" }), "01 Oct 2026 is before today's date in India, 08 Oct 2026.");
+  // A bound that is some other day (the year's end, another box's date) is said as the day alone.
+  assert.equal(said("15/10/2026", { ...TODAY, max: "2026-10-09" }), "15 Oct 2026 is after 09 Oct 2026.");
+  assert.equal(said("01/04/2026", { ...TODAY, max: "2026-03-31" }), "01 Apr 2026 is after 31 Mar 2026.");
+});
+
 test("a box can refuse a date after its max, and only that box: the hint stays a hint everywhere else", () => {
   const after = dateFieldState("15/10/2026", parseTypedDate("15/10/2026", { ...JULY, max: "2026-10-08" }));
   assert.equal(after.status, "valid");

@@ -1950,9 +1950,9 @@ def _the_filing_date(body: UpdateReturnStatusRequest) -> tuple[Optional[str], Op
                       "defaulted: the day it is recorded here is not the day it was filed.")
     from domain.compliance_record_service import clean_filed_date
     try:
-        return clean_filed_date(body.filing_date), None
+        return clean_filed_date(body.filing_date, "The filing date"), None
     except ValueError as refusal:
-        return None, f"{str(refusal).replace('filed_date', 'filing_date')}. Enter the date on the portal's receipt."
+        return None, f"{refusal} Enter the date on the portal's receipt."
 
 
 @dataclass(frozen=True)
