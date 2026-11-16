@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
 import { selectAll, selectAllKeyset } from "@/lib/supabase/selectAll";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -567,16 +568,12 @@ export default function LoansAndFDPage() {
             {loading ? (
               <TableSkeleton cols={9} bare />
             ) : loans.length === 0 ? (
-              <div className="px-5 py-12 text-center space-y-2">
-                <TrendingDown className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm text-ps-label">No loans recorded yet</p>
-                <button
-                  onClick={() => setShowAddLoan(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add first loan
-                </button>
-              </div>
+              <EmptyState
+                className="py-12"
+                icon={<TrendingDown size={40} />}
+                title="No loans recorded yet"
+                description="Press Add Loan at the top of the page to record a client's borrowing. An Executive, Manager or Partner can add one; a Reviewer reads them."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -770,16 +767,12 @@ export default function LoansAndFDPage() {
             {loading ? (
               <TableSkeleton cols={11} bare />
             ) : fds.length === 0 ? (
-              <div className="px-5 py-12 text-center space-y-2">
-                <Landmark className="w-10 h-10 text-gray-200 mx-auto" />
-                <p className="text-sm text-ps-label">No fixed deposits recorded yet</p>
-                <button
-                  onClick={() => setShowAddFD(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-medium rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add first FD
-                </button>
-              </div>
+              <EmptyState
+                className="py-12"
+                icon={<Landmark size={40} />}
+                title="No fixed deposits recorded yet"
+                description="Press Add FD at the top of the page to record a client's deposit. An Executive, Manager or Partner can add one; a Reviewer reads them."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

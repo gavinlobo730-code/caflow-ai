@@ -15,6 +15,8 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import {
   HEALTH_DIMENSIONS, dimensionLabel, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass, weightLabel,
   type HealthDimensionKey,
@@ -332,17 +334,24 @@ export default function ClientHealthPage() {
       <div className="p-6 space-y-4">
         {error && <Callout tone="problem">{error}</Callout>}
         <Card className="bg-white border border-gray-200">
-          <CardContent className="py-12 text-center">
-            <Activity size={32} className="text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 mb-4">No health score calculated yet</p>
-            <button
-              onClick={handleRecalculate}
-              disabled={actionInFlight}
-              className="inline-flex items-center gap-2 text-sm bg-brand text-white px-4 py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
-            >
-              <RefreshCw size={14} className={recalculating ? "animate-spin" : ""} />
-              {recalculating ? "Calculating…" : "Calculate Now"}
-            </button>
+          <CardContent className="p-0">
+            <EmptyState
+              className="py-12"
+              icon={<Activity size={32} />}
+              title="No health score calculated yet"
+              description="The score is recalculated every night. Calculate it now to see it straight away."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction
+                    requires={["client", "write"]}
+                    icon={<RefreshCw size={14} />}
+                    label={recalculating ? "Calculating…" : "Calculate Now"}
+                    onClick={() => handleRecalculate()}
+                    disabled={actionInFlight}
+                  />
+                </EmptyStateActions>
+              }
+            />
           </CardContent>
         </Card>
       </div>

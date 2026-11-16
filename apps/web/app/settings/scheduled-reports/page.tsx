@@ -18,6 +18,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Callout } from "@/components/ui/callout";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
@@ -277,10 +278,12 @@ export default function ScheduledReportsPage() {
           </button>
         </div>
       ) : schedules.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ps-border px-5 py-14 text-center">
-          <Calendar className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-          <p className="text-sm text-ps-hint">No schedules yet</p>
-          <p className="text-xs text-ps-hint mt-1">Add the first report you plan to send</p>
+        <div className="bg-white rounded-xl border border-ps-border">
+          <EmptyState
+            icon={<Calendar size={32} />}
+            title="No schedules yet"
+            description="Press New Schedule at the top of the page to plan the first report you mean to send to a client."
+          />
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-ps-border overflow-hidden">

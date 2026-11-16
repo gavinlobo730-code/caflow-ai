@@ -316,10 +316,11 @@ export default function PriceListsPanel({
               </div>
 
               {items.length === 0 ? (
-                <p className="text-xs text-ps-hint">
-                  No item is priced on this list yet. An item with no price here uses the
-                  catalogue rate.
-                </p>
+                <EmptyState
+                  className="py-4"
+                  title="No item is priced on this list yet"
+                  description="Choose an item above and press Set price. An item with no price here uses the catalogue rate."
+                />
               ) : (
                 <div className="overflow-x-auto rounded border border-ps-border">
                   <table className="w-full text-sm">

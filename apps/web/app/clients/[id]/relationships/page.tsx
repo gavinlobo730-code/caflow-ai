@@ -23,6 +23,8 @@ import { windowDescription } from "@/lib/lists/window";
 import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 /**
@@ -268,10 +270,16 @@ export default function ClientRelatedPartiesPage() {
               The disclosure could not be loaded. The roles below are still current.
             </p>
           ) : included.length === 0 ? (
-            <p className="text-xs text-ps-hint">
-              No related party has been identified for this client yet. Link the
-              directors, partners or shareholders above and the note builds itself.
-            </p>
+            <EmptyState
+              className="py-6"
+              title="No related party has been identified for this client yet"
+              description="Link the directors, partners or shareholders with Link Entity and the note builds itself."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Link Entity" onClick={() => setAddRoleModal(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -329,9 +337,16 @@ export default function ClientRelatedPartiesPage() {
         <Card>
           <CardContent className="p-0">
             {roles.length === 0 ? (
-              <p className="p-5 text-xs text-ps-hint">
-                No entity is linked to this client yet.
-              </p>
+              <EmptyState
+                className="py-8"
+                title="No entity is linked to this client yet"
+                description="Link a director, partner, shareholder or group company from the firm's Entity Registry."
+                action={
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Link Entity" onClick={() => setAddRoleModal(true)} />
+                  </EmptyStateActions>
+                }
+              />
             ) : (
               <table className="w-full text-xs">
                 <thead>
@@ -460,9 +475,16 @@ export default function ClientRelatedPartiesPage() {
                     The entity register could not be loaded: {register.error}
                   </p>
                 ) : !register.loading && entities.length === 0 ? (
-                  <p className="mt-1 text-3xs text-ps-hint">
-                    No entity is registered yet — add one in the firm&apos;s Entity Registry first.
-                  </p>
+                  <EmptyState
+                    className="px-2 py-3"
+                    title="No entity is registered yet"
+                    description="Add one in the firm's Entity Registry first, then link it here."
+                    action={
+                      <EmptyStateActions>
+                        <EmptyStateAction requires={["client", "write"]} label="Open the Entity Registry" href="/relationships" variant="secondary" />
+                      </EmptyStateActions>
+                    }
+                  />
                 ) : null}
                 {register.window && (
                   <ListWindowNotice

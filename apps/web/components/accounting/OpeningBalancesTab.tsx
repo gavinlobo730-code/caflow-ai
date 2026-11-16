@@ -16,6 +16,8 @@
  * difference between the balance and its documents means, and the sentence that
  * describes it are all `domain/accounting/opening_documents.py`'s answers.
  */
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { EmptyState } from "@/components/ui/states";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { arrayOrEmpty, objectWithLists } from "@/lib/api/shape";
 import { Plus, AlertTriangle, X, Info, Check, Upload } from "lucide-react";
@@ -341,10 +343,17 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       {loading ? (
         <LoadingRegion label="Loading the opening documents" className="text-xs text-ps-hint">Loading…</LoadingRegion>
       ) : !listing || listing.documents.length === 0 ? (
-        <p className="text-xs text-ps-hint">
-          No opening documents recorded. Until they are, the opening balance
-          appears in the ledger and in no ageing bucket.
-        </p>
+        <EmptyState
+          className="py-8"
+          title="No opening documents recorded"
+          description="Until they are, the opening balance appears in the ledger and in no ageing bucket. Add each invoice or bill still open at the start, or import them from a file."
+          action={
+            <EmptyStateActions>
+              <EmptyStateAction requires={["accounting", "write"]} icon={<Plus size={14} />} label="Add a document" onClick={openForm} disabled={busy} />
+              <EmptyStateAction requires={["accounting", "write"]} icon={<Upload size={14} />} label="Import from CSV / Excel" variant="secondary" onClick={() => setShowImport(true)} disabled={busy} />
+            </EmptyStateActions>
+          }
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
