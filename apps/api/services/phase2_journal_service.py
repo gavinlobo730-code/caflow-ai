@@ -124,7 +124,8 @@ class Phase2JournalService:
                 issues_invoice=({"invoice_id": invoice["id"], "issued_at": issue_at} if issue_at else None),
                 **_ccy,
             )
-        except (journal_figures.InvoiceNoLongerADraft, journal_figures.AtomicIssueNotInstalled):
+        except (journal_figures.InvoiceNoLongerADraft, journal_figures.AtomicIssueNotInstalled,
+                journal_figures.InvoiceBillsMoreThanItsOrder):
             raise
         except ValueError:
             # Re-raise account resolution and balance errors so the router returns 422
@@ -2830,6 +2831,9 @@ class Phase2JournalService:
                 if (_sqlstate_of(rpc_err) == "55000" or "and not a draft" in issue_msg or "has changed since" in issue_msg
                         or "is not an invoice of this client" in issue_msg):
                     raise journal_figures.InvoiceNoLongerADraft(str(rpc_err)) from rpc_err
+                if _sqlstate_of(rpc_err) == "23514" and ("order_line_over_billed" in issue_msg or "has unbilled" in issue_msg):
+                    # Migration 650: another invoice billing the same order line was issued a moment ago (POST-A-440).
+                    raise journal_figures.InvoiceBillsMoreThanItsOrder(str(rpc_err)) from rpc_err
                 if "pgrst202" in issue_msg or ("issue_sales_invoice_atomic" in issue_msg and (
                         "does not exist" in issue_msg or "could not find the function" in issue_msg)):
                     raise journal_figures.AtomicIssueNotInstalled(

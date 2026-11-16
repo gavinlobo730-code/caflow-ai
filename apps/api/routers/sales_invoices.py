@@ -2197,6 +2197,13 @@ def _post_and_mark_issued(db, current_user: dict, inv: dict, invoice_id: str):
         return None, None, api_response(
             False, None, "Cannot issue — this invoice is no longer a draft (it was issued or changed a moment ago). "
                          "Reload the invoice to see where it stands.")
+    except journal_figures.InvoiceBillsMoreThanItsOrder:
+        # The database holds what issued invoices bill against an order line (migration 650, POST-A-440): another invoice billing the
+        # same line was issued between this route's check and the database's lock. Nothing was posted.
+        return None, None, api_response(
+            False, None, "Cannot issue — another invoice billing the same sales order line was issued a moment ago, and together they "
+                         "would bill more than was ordered. Nothing was posted and this invoice remains a draft. Reload the order to "
+                         "see what is left to bill.")
     except journal_figures.EntryCannotBeReused as ve:
         # An entry from an earlier issue that did not finish is in the ledger and the draft no longer matches it (POST-A-092).
         # The sentence is whole, and the advice to seed the chart of accounts would be wrong here.
