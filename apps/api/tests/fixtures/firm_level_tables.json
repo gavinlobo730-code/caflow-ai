@@ -59,7 +59,7 @@
     "dsc_records": {
       "category": "firm_wide",
       "writes": "",
-      "why": "The practice's own digital signature tokens (holder, PAN, type, expiry), a register of the firm and not of a client. The signed-in role holds no write; the server writes it."
+      "why": "The digital signature certificates the practice holds (holder, PAN, type, token, expiry): its own people's and its clients' directors' and partners', kept in one register with no client column. Read by every member of the firm on purpose, as the people register is (POST-A-357, POST-A-450), and the DSC tracker says so. The signed-in role holds no write; the server writes it."
     },
     "dtaa_treaty_rates": {
       "category": "firm_wide",

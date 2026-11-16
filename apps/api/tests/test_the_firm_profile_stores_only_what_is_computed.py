@@ -6,8 +6,8 @@ WHAT WAS WRONG
     database's own column defaults (migration 070) and from the same literals in `memory_repository.upsert_firm_profile`; a pair of
     risk categories (`gst_delay`, `document_missing`) was written as a literal whenever any client was critical, whatever was actually
     wrong; and the portfolio "trend" was the share of critical clients over ALL clients, the unscored included, which is not a trend.
-    Nothing on a screen reads the profile today (`GET /api/memory/firm/profile` is listed in the API client and called by no page),
-    which is why it was low, and why it was cheap to make true before anything does.
+    Nothing on a screen reads the profile today (its read route, `GET /api/memory/firm/profile`, which no page called, was deleted
+    under POST-A-453), which is why it was low, and why it was cheap to make true before anything does.
 
 WHAT IS HELD
     * every figure in `NOT_COMPUTED_FIRM_FIGURES` is written as nothing on every run, whatever the clients look like;

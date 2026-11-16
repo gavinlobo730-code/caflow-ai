@@ -68,3 +68,43 @@ def test_the_notice_names_the_fields_the_register_really_holds():
     for column in ("pan", "gstin", "phone", "address"):
         assert re.search(rf"(?m)^\s*{column}\s", body), f"`entities` has no `{column}` column, but the notice names it"
     assert re.search(r"ALTER TABLE entities ADD COLUMN IF NOT EXISTS date_of_birth\b", sql), "`entities` has no date_of_birth column"
+
+
+# ── THE DSC REGISTER IS THE SECOND ONE (POST-A-450) ────────────────────────────────────────────────────────────────────────────
+# `dsc_records` is `firm_wide` in the same catalog, and its recorded reason was "the practice's own tokens", while deleting a client is
+# blocked when a certificate carries the client's PAN: it holds clients' directors' certificates too. The tracker now says what the people
+# register says, and these hold the sentence and the reason to the catalog the policies are checked against.
+DSC_PAGE = API.parent / "web" / "app" / "settings" / "dsc-tracker" / "page.tsx"   # apps/web/app/settings/dsc-tracker/page.tsx
+
+
+def _dsc_page() -> str:
+    text = DSC_PAGE.read_text()
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"(?m)^\s*//[^\n]*$", "", text)
+
+
+def test_the_dsc_register_is_firm_wide_in_the_catalog_and_its_reason_says_whose_certificates_it_holds():
+    entry = json.loads(CATALOG.read_text())["tables"]["dsc_records"]
+    assert entry["category"] == "firm_wide", (
+        "dsc_records is no longer `firm_wide`: change the notice on the DSC tracker in the same commit, because it still says it is")
+    why = entry["why"]
+    assert "clients' directors" in why, "the reason no longer says the register holds clients' directors' certificates"
+    assert "practice's own digital signature tokens" not in why, "the old reason, which the code contradicts, is back"
+
+
+def test_the_dsc_tracker_says_every_member_sees_every_certificate():
+    flat = " ".join(_dsc_page().split())
+    assert 'title="This register is shared across the whole practice"' in flat, "the DSC tracker's notice is gone"
+    for must in ("Everyone in the firm who can open this page sees every certificate here",
+                 "whichever clients they are assigned to",
+                 "holder&apos;s name, PAN and token number",
+                 "global search finds a holder by name or PAN"):
+        assert must in flat, f"the notice no longer says: {must}"
+
+
+def test_the_search_the_notice_names_really_reads_the_dsc_register_by_name_and_pan():
+    src = (API / "routers" / "search.py").read_text()
+    at = src.index("# ── DSC records")
+    block = src[at: at + 1500]
+    assert "dsc_repo.find_all(firm_id=firm_id)" in block, "global search no longer reads the whole DSC register: correct the notice"
+    assert '("holder_name", "pan")' in block, "global search no longer finds a holder by name or PAN: correct the notice"

@@ -50,14 +50,24 @@ class NotificationsRepository(BaseRepository[dict]):
         result = query.order("created_at", desc=True).limit(limit).execute()
         return result.data or []
 
-    def count_unread(self, firm_id: Optional[str] = None, user_id: Optional[str] = None) -> int:
+    def count_unread(self, firm_id: Optional[str] = None, user_id: Optional[str] = None,
+                     client_ids: Optional[set] = None) -> int:
+        """Unread and not archived. `client_ids` is the reader's reach (POST-A-451): None counts every row, a set counts the rows that
+        name no client and the rows that name one of those clients, which is what the list beside the count shows (the list drops a
+        notification about a client the reader cannot open). An empty set counts only the rows that name no client."""
         if _USE_MOCK:
-            return len([n for n in MOCK_NOTIFICATIONS if not n["is_read"]])
+            rows = [n for n in MOCK_NOTIFICATIONS if not n["is_read"]]
+            if client_ids is not None:
+                rows = [n for n in rows if not n.get("client_id") or str(n.get("client_id")) in client_ids]
+            return len(rows)
         query = _get_db().table("notifications").select("id", count="exact").eq("is_read", False).eq("is_archived", False)
         if firm_id:
             query = query.eq("firm_id", firm_id)
         if user_id:
             query = query.eq("user_id", user_id)  # M2: own notifications only
+        if client_ids is not None:
+            reach = sorted(str(c) for c in client_ids)
+            query = query.or_("client_id.is.null" + (f",client_id.in.({','.join(reach)})" if reach else ""))
         result = query.execute()
         return result.count or 0
 

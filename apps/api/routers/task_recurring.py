@@ -86,7 +86,7 @@ def _assert_config_scope(current_user: dict, config_id: str) -> dict:
     status code never becomes an oracle for which config ids are real.
     """
     res = (
-        _get_db().table("task_recurring_configs").select("id, client_id")
+        _get_db().table("task_recurring_configs").select("id, client_id, assignee_id")
         .eq("id", config_id).eq("firm_id", current_user.get("firm_id"))
         .maybe_single().execute()
     )
@@ -156,6 +156,8 @@ def create_recurring(body: RecurringCreate, current_user: dict = Depends(rbac("t
             raise HTTPException(status_code=404, detail="Template not found")
     # `assignee_id` is a bare uuid on this table: nothing but this line asks whether the person named belongs to the caller's firm.
     named_row_ownership.member_is_the_firms(db, firm_id, body.assignee_id)
+    # POST-A-451: and can open the client every task this configuration makes will be for.
+    named_row_ownership.member_reaches_client(db, firm_id, body.assignee_id, body.client_id)
 
     now = _now_iso()
     result = db.table("task_recurring_configs").insert({
@@ -179,7 +181,7 @@ def create_recurring(body: RecurringCreate, current_user: dict = Depends(rbac("t
 def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict = Depends(rbac("task", "write"))):
     firm_id = current_user.get("firm_id")
     db = _get_db()
-    _assert_config_scope(current_user, config_id)
+    config = _assert_config_scope(current_user, config_id)
 
     # Both ends: the config you are editing, and the client you are moving it
     # to. Checking only the destination would let a config be lifted out of
@@ -192,6 +194,11 @@ def update_recurring(config_id: str, body: RecurringUpdate, current_user: dict =
     if "frequency" in updates and updates["frequency"] not in VALID_FREQUENCIES:
         raise HTTPException(status_code=400, detail=f"Invalid frequency")
     named_row_ownership.member_is_the_firms(db, firm_id, updates.get("assignee_id"))
+    # POST-A-451: the person the configuration will name can open the client it will be for (either may change here).
+    if "assignee_id" in updates or "client_id" in updates:
+        named_row_ownership.member_reaches_client(
+            db, firm_id, updates.get("assignee_id", (config or {}).get("assignee_id")),
+            updates.get("client_id", (config or {}).get("client_id")))
     updates["updated_at"] = _now_iso()
     result = db.table("task_recurring_configs").update(updates).eq("id", config_id).eq("firm_id", firm_id).execute()
     return api_response(True, {"config": result.data[0] if result.data else None})

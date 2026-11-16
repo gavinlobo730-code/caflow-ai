@@ -504,6 +504,7 @@ export default function WorkloadPage() {
               <CardContent className="py-4">
                 <p className="text-xs text-ps-label">Avg Utilisation</p>
                 <p className="text-2xl font-bold text-ps-ink mt-1">{workload.avg_utilisation_pct}%</p>
+                {workload.utilisation_counts && <p className="text-3xs text-ps-hint mt-1">{workload.utilisation_counts}</p>}
               </CardContent>
             </Card>
           </div>

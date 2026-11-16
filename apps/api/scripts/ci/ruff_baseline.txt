@@ -210,7 +210,6 @@ routers/engagement_letters.py :: F841 :: update_engagement :: 1
 routers/engagements.py :: F401 :: <module> :: 2
 routers/engagements.py :: F841 :: delete_engagement :: 2
 routers/engagements.py :: F841 :: get_engagement :: 1
-routers/engagements.py :: F841 :: update_engagement :: 1
 routers/eway_bill.py :: B904 :: ExtendEWBRequest._a_date :: 1
 routers/eway_bill.py :: B904 :: cancel_ewb :: 1
 routers/eway_bill.py :: B904 :: create_eway_bill :: 1

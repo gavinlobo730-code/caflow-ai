@@ -87,6 +87,33 @@ def member_is_the_firms(db, firm_id: str, member_id) -> None:
         raise _not_found("team member")
 
 
+#: What a door says when the person it names cannot open the client the row belongs to (POST-A-451). The person exists and is in
+#: the firm, so this is not the 404 of a stranger: it is a refusal the caller can act on, and only a Partner can act on it.
+NOT_ASSIGNED_TO_THE_CLIENT = (
+    "That team member is not assigned to this client, so they could not open the work or read what they would be sent "
+    "about it. A Partner can assign them to the client under Team, Assignments, and then they can be named here."
+)
+
+
+def member_reaches_client(db, firm_id: str, member_id, client_id) -> None:
+    """The question after `member_is_the_firms`, for a row that belongs to a client (POST-A-451): 422 unless the member named can
+    open that client (a Partner, or a member assigned to it). An obligation's preparer, reviewer and approver, a task's assignee
+    and an engagement's people are told about the client by name in the nightly mails, and they do the work inside it; naming
+    somebody the firm's own assignments keep out of the client handed them both a notice they should not read and work they could
+    not open. Asks nothing when no person or no client is named, or when there is no database (mock mode), like the others here.
+    A deleted member, a stranger or an invented id is the 404 `member_is_the_firms` gives, in its words."""
+    from core.authz import member_reaches_client as _reaches   # core.authz imports the database provider; kept out of import time
+    named = _named(member_id)
+    if db is None or named is None or not _named(client_id):
+        return
+    rows = _find(privileged_for(db).table("users").select("id, role").eq("id", named).eq("firm_id", firm_id)
+                 .is_("deleted_at", None).limit(1))
+    if not rows:
+        raise _not_found("team member")
+    if not _reaches({"id": named, "role": rows[0].get("role")}, str(client_id), firm_id):
+        raise HTTPException(status_code=422, detail=NOT_ASSIGNED_TO_THE_CLIENT)
+
+
 def member_auth_id_is_the_firms(db, firm_id: str, auth_user_id) -> None:
     """The same question for a column keyed to `auth.users(id)` (a lead's assignee): 404 unless `auth_user_id` is the auth id of a member of this
     firm who has not been deleted. Nothing named, nothing asked. A `users.id` is NOT an answer here: it is not an auth id, and the database

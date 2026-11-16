@@ -44,6 +44,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { istToday } from "@/lib/dateMath";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -2445,7 +2446,9 @@ function GSTR9Tab({ clientId }: { clientId: string }) {
 // back in TABS. There is still no gstr9 computation builder in
 // apps/api/domain/gst — drafts are saved via POST /gst-workspace/gstr9, not
 // derived here.
-const TABS: { id: GSTTab; label: string }[] = [
+// `requires` is the permission a tab's own first read asks (POST-A-454): the GSTR-9 tab computes GSTR-9 and GSTR-9C on opening,
+// through routes that ask `gst` `compute`, so a Reviewer was offered a tab that refused them on arrival.
+const TABS: { id: GSTTab; label: string; requires?: readonly [string, string] }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "gstr1", label: "GSTR-1" },
   // Its own tab, next to GSTR-1 and not inside it: an amendment is a
@@ -2458,7 +2461,7 @@ const TABS: { id: GSTTab; label: string }[] = [
   // from it, because the register CLASSIFIES journals the CA already posted
   // rather than being part of computing the return.
   { id: "itc", label: "ITC Register" },
-  { id: "gstr9", label: "GSTR-9" },
+  { id: "gstr9", label: "GSTR-9", requires: ["gst", "compute"] },
   { id: "gstr2b", label: "GSTR-2B Recon" },
   { id: "history", label: "Filing History" },
   // GST-20. Last, because most clients hold one registration and never open
@@ -2470,6 +2473,8 @@ const TABS: { id: GSTTab; label: string }[] = [
 export default function GSTWorkspacePage() {
   const { clientId } = useClientNav();
   const [tab, setTab] = useState<GSTTab>("dashboard");
+  const { can, resolved } = usePermissions();
+  const tabs = TABS.filter((t) => !t.requires || !resolved || can(t.requires[0], t.requires[1]));
 
   if (!clientId || clientId === "_placeholder") {
     return <p className="text-sm text-ps-label p-6">Select a client to view GST workspace.</p>;
@@ -2485,7 +2490,7 @@ export default function GSTWorkspacePage() {
       </div>
 
       <div className="flex gap-1 border-b">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               tab === t.id

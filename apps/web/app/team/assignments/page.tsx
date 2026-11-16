@@ -95,7 +95,7 @@ export default function AssignmentsPage() {
       <PageHeader
         icon={<Link2 size={18} className="text-brand" />}
         title="Client Assignments"
-        subtitle="Assign clients to staff. A user can only see, search, and be notified about clients assigned to them (Partners have firm-wide access and are not listed here)."
+        subtitle="Assign clients to staff. A member who is not a Partner sees, searches and is told about only the clients assigned to them, and is named on a client's work only once assigned to it. Shared across the whole practice whatever the assignment: the people and companies register under Relationships, the DSC tracker and the leads that are not yet clients. Partners see every client and are not listed here."
         className="mb-4"
       />
 

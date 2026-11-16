@@ -298,7 +298,7 @@ function LoadingSpinner({ allClients }: { allClients: boolean }) {
         <div className="flex items-start gap-2 px-4 py-2.5 rounded-lg text-xs bg-ps-bg border border-ps-border text-ps-label">
           <AlertTriangle size={13} className="text-ps-hint flex-shrink-0 mt-0.5" />
           <span>
-            Consolidating financial statements across every client in the firm
+            Consolidating financial statements across every client you can see
             — for a large practice this can take noticeably longer than a
             single client&apos;s statements.
           </span>

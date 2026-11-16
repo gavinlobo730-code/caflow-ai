@@ -144,7 +144,7 @@ def test_every_endpoint_returns_the_standard_envelope(monkeypatch):
         assert set(out) == {"success", "data", "error"}, path
         assert out["success"] is True, path
         checked += 1
-    assert checked >= 14, f"expected every memory endpoint, exercised {checked}"
+    assert checked >= 13, f"expected every memory endpoint, exercised {checked}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -298,12 +298,12 @@ def test_a_firmwide_role_may_still_run_the_pipeline(monkeypatch):
     assert ran == [FIRM]
 
 
-def test_the_firm_profile_READ_stays_open_to_the_whole_firm(monkeypatch):
-    """firm_profiles has no client_id. The figures are firm-level and are what
-    every member already sees on the dashboards — guarding the read would block
-    a legitimate user without protecting anything."""
-    monkeypatch.setattr(mem, "is_firmwide",
-                        lambda _u: pytest.fail("the READ must not be role-gated"))
-    monkeypatch.setattr(mem, "assert_client_access",
-                        lambda *_a: pytest.fail("firm_profiles has no client to scope to"))
-    mem.get_firm_profile(current_user=USER)
+def test_the_firm_profile_has_no_read_route_and_the_api_client_no_wrapper():
+    """POST-A-453. `GET /api/memory/firm/profile` answered every member of the firm with figures aggregated across every client,
+    including a member scoped to a few, and no screen called it, so it was deleted with its wrapper in the browser's API client.
+    A read put back must say whose clients it counts."""
+    import pathlib
+    from main import app
+    assert not any(getattr(r, "path", "") == "/api/memory/firm/profile" for r in app.routes)
+    web = pathlib.Path(__file__).resolve().parents[2] / "web" / "lib" / "api" / "index.ts"
+    assert "/api/memory/firm/profile\"" not in web.read_text()

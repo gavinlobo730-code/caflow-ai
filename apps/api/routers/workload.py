@@ -85,6 +85,15 @@ def set_capacity(body: CapacityUpdate, current_user: dict = Depends(rbac("worklo
     return api_response(True, {"capacity": record})
 
 
+#: What the utilisation on Team Overview and Team Workload counts, served with it so the card says it (POST-A-453). A person's
+#: capacity is the same whoever's client the hour was for, so the hours are every client's; a member who can open only some
+#: clients is told that rather than reading the figure as their clients' alone. No client is named in it.
+UTILISATION_COUNTS = (
+    "Counts every hour each person logged since Monday, on every client of the practice, "
+    "not only the clients you can open."
+)
+
+
 def _minutes_logged_this_week(db, firm_id: str) -> dict[str, int]:
     """Minutes logged per user since Monday of the current week."""
     today = ist_today()
@@ -265,6 +274,7 @@ def get_team_workload(current_user: dict = Depends(rbac("workload", "read"))):
         "overloaded_count": len(overloaded),
         "underutilised_count": len(underutilised),
         "avg_utilisation_pct": avg_util,
+        "utilisation_counts": UTILISATION_COUNTS,
         "unassigned": {
             "count": len(unassigned_tasks),
             "estimated_minutes": unassigned_expected.minutes,

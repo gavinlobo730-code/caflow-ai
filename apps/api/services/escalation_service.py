@@ -89,7 +89,8 @@ class EscalationService:
                     # Reassign to role with least busy user
                     reassign_to_role = rule.get("reassign_to_role")
                     if reassign_to_role:
-                        new_assignee = self._find_least_busy_user(firm_id, reassign_to_role)
+                        new_assignee = self._find_least_busy_user(firm_id, reassign_to_role,
+                                                                  client_id=task.get("client_id"))
                         if new_assignee:
                             old_assignee = task.get("assigned_to")
                             task_repo.update(task["id"], {"assigned_to": new_assignee["id"]})
@@ -134,6 +135,7 @@ class EscalationService:
                                 notifications_repo.create({
                                     "firm_id": firm_id,
                                     "user_id": manager["id"],
+                                    "client_id": task.get("client_id"),
                                     "type": "task_overdue",
                                     "title": f"Task Escalated: {task['title']}",
                                     "body": f"Task '{task['title']}' was overdue and has been reassigned to {new_assignee.get('full_name', 'Unknown')}.",
@@ -161,6 +163,7 @@ class EscalationService:
                         notifications_repo.create({
                             "firm_id": firm_id,
                             "user_id": manager["id"],
+                            "client_id": task.get("client_id"),
                             "type": "task_overdue",
                             "title": f"Overdue Task: {task['title']}",
                             "body": f"Task '{task['title']}' is overdue and assigned to {task.get('assigned_to', 'Unassigned')}.",
@@ -225,14 +228,21 @@ class EscalationService:
             "total_escalations": due_soon_count + overdue_count,
         }
 
-    def _find_least_busy_user(self, firm_id: str, role: str) -> Optional[dict]:
+    @staticmethod
+    def _who_can_open(firm_id: str, users: list, client_id) -> list:
+        """Of `users`, the ones who can open the task's client (POST-A-451): a task handed to, or a notice about it sent to, a member
+        the firm's own assignments keep out of the client is work they cannot open and a client they should not be told about."""
+        from core.authz import member_reaches_client
+        return [u for u in (users or []) if member_reaches_client(u, client_id, firm_id)]
+
+    def _find_least_busy_user(self, firm_id: str, role: str, client_id=None) -> Optional[dict]:
         """
-        Find the least busy user with a given role in the firm.
+        Find the least busy user with a given role in the firm who can open the task's client.
 
         Returns:
             User dict or None
         """
-        users = user_repo.find_all(firm_id=firm_id, role=role)
+        users = self._who_can_open(firm_id, user_repo.find_all(firm_id=firm_id, role=role), client_id)
         if not users:
             return None
 
@@ -247,17 +257,9 @@ class EscalationService:
         Returns:
             User dict (manager) or None
         """
-        # If task is assigned, find their manager
-        if task.get("assigned_to"):
-            assignee = user_repo.find_by_id(task["assigned_to"], firm_id=firm_id)
-            if assignee:
-                # Find manager with explicit lookup
-                managers = user_repo.find_all(firm_id=firm_id, role="Manager")
-                if managers:
-                    return managers[0]
-
-        # Otherwise, find any manager in the firm
-        managers = user_repo.find_all(firm_id=firm_id, role="Manager")
+        # A Manager who can open the task's client, else a Partner (POST-A-451). The branch that looked the assignee up first and
+        # then returned the first Manager anyway answered the same as the one below it, and is gone.
+        managers = self._who_can_open(firm_id, user_repo.find_all(firm_id=firm_id, role="Manager"), task.get("client_id"))
         if managers:
             return managers[0]
 
@@ -292,8 +294,8 @@ class EscalationService:
         if not escalate_to_role:
             return None
 
-        # Find user with the role to notify
-        users = user_repo.find_all(firm_id=firm_id, role=escalate_to_role)
+        # Find user with the role to notify, among those who can open the task's client (POST-A-451)
+        users = self._who_can_open(firm_id, user_repo.find_all(firm_id=firm_id, role=escalate_to_role), task.get("client_id"))
         if not users:
             return None
 
@@ -303,6 +305,7 @@ class EscalationService:
         notification = notifications_repo.create({
             "firm_id": firm_id,
             "user_id": user["id"],
+            "client_id": task.get("client_id"),
             "type": "due_soon",
             "title": f"Task Due Soon: {task['title']}",
             "body": f"Task '{task['title']}' is due in {days_threshold} day(s).",

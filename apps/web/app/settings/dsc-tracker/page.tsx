@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
+import { Can } from "@/components/Can";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -476,11 +477,24 @@ export default function DSCTrackerPage() {
         title="DSC Tracker"
         subtitle="Digital Signature Certificate expiry tracker"
         actions={
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
-            <Plus className="w-4 h-4" /> Add DSC
-          </button>
+          // POST /api/dsc asks `dsc` `write`, Manager and above: the button was offered to everyone who could open the page.
+          <Can resource="dsc" action="write">
+            <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
+              <Plus className="w-4 h-4" /> Add DSC
+            </button>
+          </Can>
         }
       />
+
+      {/* POST-A-450: the register is read by every member of the firm, as the people register is (POST-A-357), so the screen says so.
+          The Python guard tests/test_the_register_says_it_is_shared_across_the_practice.py holds this sentence to the table catalog. */}
+      <Callout tone="note" title="This register is shared across the whole practice">
+        Everyone in the firm who can open this page sees every certificate here, whichever clients they are assigned to,
+        including the holder&apos;s name, PAN and token number, and global search finds a holder by name or PAN. That is
+        deliberate: the practice keeps the certificates it holds for its clients&apos; directors and partners and for its own
+        people in one register, and an expiry is a filing deadline for whoever files next. Who may add or change a
+        certificate is decided by role.
+      </Callout>
 
       {/* Alert banner */}
       {expiringIn30 > 0 && (
@@ -570,16 +584,19 @@ export default function DSCTrackerPage() {
                           have to wait for the badge to turn amber in December
                           before the product will let them say so. */}
                       <td className="px-4 py-3 text-right">
-                        <button onClick={() => setRenewing(d)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-2xs border
-                                     border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
-                          <RefreshCw size={11} /> Renew
-                        </button>
-                        <button onClick={() => setCorrecting(d)}
-                          className="ml-1.5 px-2 py-1 text-2xs border border-ps-border
-                                     rounded-lg text-ps-label hover:bg-ps-bg">
-                          Correct
-                        </button>
+                        {/* Renew and Correct ask `dsc` `write` (Manager and above), as Add does. */}
+                        <Can resource="dsc" action="write">
+                          <button onClick={() => setRenewing(d)}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-2xs border
+                                       border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
+                            <RefreshCw size={11} /> Renew
+                          </button>
+                          <button onClick={() => setCorrecting(d)}
+                            className="ml-1.5 px-2 py-1 text-2xs border border-ps-border
+                                       rounded-lg text-ps-label hover:bg-ps-bg">
+                            Correct
+                          </button>
+                        </Can>
                       </td>
                     </tr>
                   );
