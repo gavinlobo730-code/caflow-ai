@@ -763,10 +763,13 @@ def test_every_mca_obligation_the_calendar_generates_has_a_form_that_closes_it()
 
 
 def test_the_forms_that_close_an_obligation_are_the_workspaces_annual_forms_and_no_event_form_is_among_them():
-    assert set(closes.OBLIGATION_FOR_FORM) == set(mw._ANNUAL_FORMS)
+    # The annual forms are those that close an obligation and those matched to none on purpose (MGT-7A, POST-C-209; POST-A-442).
+    assert set(closes.OBLIGATION_FOR_FORM) | set(closes.UNMATCHED_FORMS) == set(mw._ANNUAL_FORMS)
+    assert not set(closes.OBLIGATION_FOR_FORM) & set(closes.UNMATCHED_FORMS)
     assert not set(closes.OBLIGATION_FOR_FORM) & set(mw._EVENT_FORMS)
     assert set(closes.OBLIGATION_FOR_FORM.values()) <= set(cos.RETURN_OBLIGATION_TYPES)
-    assert all(closes.has_an_obligation(f) for f in mw._ANNUAL_FORMS)
+    assert all(closes.has_an_obligation(f) for f in set(mw._ANNUAL_FORMS) - set(closes.UNMATCHED_FORMS))
+    assert all(closes.is_asked_about(f) for f in mw._ANNUAL_FORMS)
     assert not any(closes.has_an_obligation(f) for f in mw._EVENT_FORMS)
 
 
