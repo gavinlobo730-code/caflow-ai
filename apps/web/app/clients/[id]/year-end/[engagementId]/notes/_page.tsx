@@ -12,6 +12,7 @@ import { formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const TYPE_BADGE: Record<string, string> = {
   auto: "bg-blue-100 text-blue-700",
@@ -40,6 +41,7 @@ export default function NotesPage() {
   const [editContent, setEditContent] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [lockingId, setLockingId] = useState<string | null>(null);
+  const mayLock = usePermissions().can("year_end", "approve");
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -293,8 +295,9 @@ export default function NotesPage() {
                     </div>
                   )}
 
-                  {/* Lock button */}
-                  {!note.is_locked && (
+                  {/* Lock button. Locking asks `year_end` `approve` (a Manager or a Partner) and was offered to an Executive,
+                      who was refused (POST-A-455). */}
+                  {!note.is_locked && mayLock && (
                     <div className="flex justify-end pt-1">
                       <Button variant="plain" size="none"
                         onClick={() => handleLock(note)}
@@ -312,7 +315,7 @@ export default function NotesPage() {
                   )}
                   {note.is_locked && (
                     <div className="flex items-center gap-1.5 text-3xs text-ps-hint">
-                      <Unlock size={10} /> Note is locked — contact an admin to unlock.
+                      <Unlock size={10} /> Note is locked: it is kept as it is, and is neither edited nor regenerated.
                     </div>
                   )}
 

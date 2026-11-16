@@ -41,6 +41,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { useFilingChoices } from "@/lib/mca/useFilingChoices";
 import { chosenCompany, preselectedYear } from "@/lib/mca/filingChoices";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -693,6 +694,10 @@ const DEMO_MCA_FORMS = ["AOC-4", "MGT-7", "MGT-7A", "ADT-1"];
 
 export default function MCAPage() {
   const { toast } = useToast();
+  // Mark Filed (one row or a selection) asks `mca` `approve` (a Manager or a Partner) and was offered to every member,
+  // who was refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("mca", "approve");
   const [activeTab, setActiveTab] = useState(0);
   // The filing walk-through (a SIMULATION that transmits and files nothing). Offered only where the SERVER says the flow exists, and only on an
   // annual form not yet filed: a control the server would refuse is a dead control (POST-A-003).
@@ -941,13 +946,13 @@ export default function MCAPage() {
   // Bulk "Mark Filed" only opens the batch reference-entry modal — it never
   // writes to Supabase itself (returns false so DataTable keeps the
   // selection visible while the modal is open; the modal does the real work).
-  const filingBulkActions: BulkAction<MCAFiling>[] = useMemo(() => [
+  const filingBulkActions: BulkAction<MCAFiling>[] = useMemo(() => (mayApprove ? [
     {
       id: "mark-filed",
       label: "Mark Filed",
-      run: (selected) => { openBatchModal(selected); return false; },
+      run: (selected: MCAFiling[]) => { openBatchModal(selected); return false; },
     },
-  ], []);
+  ] : []), [mayApprove]);
 
   // ── Directors tab DataTable — KYC-overdue emphasis in the status cell ───────
   const directorColumns: Column<Director>[] = useMemo(() => [
@@ -1111,7 +1116,11 @@ export default function MCAPage() {
                 <span className="text-xs text-ps-hint">Not applicable</span>
               ) : f.status !== "Filed" ? (
                 <span className="inline-flex items-center gap-3">
-                  <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+                  {mayApprove ? (
+                    <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
+                  ) : permissionsRead ? (
+                    <span className="text-xs text-ps-label">A Manager or a Partner records the filing</span>
+                  ) : null}
                   {demoFlows.includes("mca") && DEMO_MCA_FORMS.includes(f.form_type) && f.client_id && (
                     <button onClick={() => setDemo({ clientId: f.client_id, filingId: f.id })}
                       className="text-xs px-2 py-0.5 border border-state-attention-border rounded hover:bg-state-attention-hover text-state-attention font-medium">File (demo)</button>

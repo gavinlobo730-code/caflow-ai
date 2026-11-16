@@ -28,6 +28,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -488,6 +489,11 @@ function ChallansTab({ clientId }: { clientId: string }) {
 // ── Returns ────────────────────────────────────────────────────────────────
 
 function ReturnsTab({ clientId }: { clientId: string }) {
+  // Prepare asks `tds` `compute` (an Executive and above) and CA Approve asks `tds` `approve` (a Manager or a Partner);
+  // both were drawn to every member and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("tds", "compute");
+  const mayApprove = canDo("tds", "approve");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no TDS returns yet".
@@ -964,13 +970,16 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "pending" && (
+                  {r.status === "pending" && mayCompute && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "prepared")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Prepare</Button>
                   )}
-                  {r.status === "prepared" && (
+                  {r.status === "prepared" && mayApprove && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
+                  )}
+                  {r.status === "prepared" && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">A Manager or a Partner approves it</span>
                   )}
                   {/* Only on an approved statement, and only where the server says the walk-through exists — the dead-control rule. */}
                   {r.status === "ca_approved" && demoFlows.includes("tds") && (

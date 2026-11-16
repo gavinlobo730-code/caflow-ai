@@ -36,6 +36,7 @@ import { formatDate } from "@/lib/dates/format";
 
 import { Button } from "@/components/ui/button";
 import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
+import { usePermissions } from "@/lib/auth/AuthContext";
 function r(paise: number) {
   return "₹" + (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 });
 }
@@ -87,6 +88,10 @@ const QUARTER_LABELS: Record<TDSQuarter, string> = {
 };
 
 export default function TDSReturnsPage() {
+  // CA Approve and Mark as Filed ask `tds` `approve` (a Manager or a Partner) and were drawn to every member, who was
+  // refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("tds", "approve");
   const { clients, clientId, setClientId } = useClientPicker();
   const [returnType, setReturnType] = useState<TDSReturnType>("26Q");
   const [financialYear, setFinancialYear] = useState(currentFinancialYear());
@@ -700,7 +705,10 @@ export default function TDSReturnsPage() {
 
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
-            {(filingStatus === "prepared") && (
+            {(filingStatus === "prepared" || filingStatus === "ca_approved") && permissionsRead && !mayApprove && (
+              <p className="text-xs text-ps-label self-center">A Manager or a Partner approves this statement and records the filing.</p>
+            )}
+            {(filingStatus === "prepared") && mayApprove && (
               <Button variant="plain" size="none" onClick={handleApprove} disabled={actionInFlight || result.validation_errors.length > 0}
                 className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
                 <CheckCircle size={15} />
@@ -722,7 +730,7 @@ export default function TDSReturnsPage() {
                 File (demo)
               </button>
             )}
-            {filingStatus === "ca_approved" && (
+            {filingStatus === "ca_approved" && mayApprove && (
               <button onClick={openFiledModal}
                 className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700">
                 <FileText size={15} />

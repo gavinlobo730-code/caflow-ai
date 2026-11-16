@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
@@ -187,6 +188,9 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const [openingLoading, setOpeningLoading] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [reopenReason, setReopenReason] = useState("");
+  // Reopening a completed reconciliation asks `accounting` `approve`, a Partner's alone; the button was offered to everyone who
+  // can reconcile and answered a 403 (POST-A-455).
+  const mayReopen = usePermissions().can("accounting", "approve");
   const [lineSearch, setLineSearch] = useState("");
   const [lineSort, setLineSort] = useState<"date" | "-date" | "amount" | "-amount">("date");
   // The tie-out AS IF the current selection were reconciled. Computed on the
@@ -616,12 +620,13 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               {completed && (
                 <>
                   <span className="text-2xs text-money-in ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? formatDate(String(report.reconciliation.completed_at)) : ""} · locked</span>
-                  {/* The deliberate escape hatch. Partner-only server-side; a
-                      non-Partner gets a 403 and the message says so. */}
-                  <button onClick={() => setReopening(true)} disabled={busy}
-                    className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
-                    Reopen…
-                  </button>
+                  {/* The deliberate escape hatch, and a Partner's alone: it is offered only to someone the route admits. */}
+                  {mayReopen && (
+                    <button onClick={() => setReopening(true)} disabled={busy}
+                      className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
+                      Reopen…
+                    </button>
+                  )}
                 </>
               )}
             </div>

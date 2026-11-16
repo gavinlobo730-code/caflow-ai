@@ -533,6 +533,12 @@ function GSTDashboard({ clientId }: { clientId: string }) {
 // ── GSTR-1 ─────────────────────────────────────────────────────────────────
 
 function GSTR1Tab({ clientId }: { clientId: string }) {
+  // A return's row offers each step only to someone its route admits (POST-A-455): Validate, Recheck and Delete ask
+  // `gst` `compute` (an Executive and above), and CA Approve, Mark as filed, and a Recheck or Delete of an approved
+  // return ask `gst` `approve` (a Manager or a Partner). They were drawn to every member and came back refused.
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("gst", "compute");
+  const mayApprove = canDo("gst", "approve");
   const [returns, setReturns] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no GSTR-1 returns yet" — a masked
@@ -761,14 +767,18 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-1 Returns</h3>
         <div className="flex gap-2">
-          <button onClick={() => setShowCompute(true)}
-            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-            Compute from Books
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-            + New GSTR-1
-          </button>
+          {mayCompute && (
+            <>
+              <button onClick={() => setShowCompute(true)}
+                className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+                Compute from Books
+              </button>
+              <button onClick={() => setShowNew(true)}
+                className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+                + New GSTR-1
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -940,13 +950,16 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "draft" && (
+                  {r.status === "draft" && mayCompute && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "validated")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Validate</Button>
                   )}
-                  {r.status === "validated" && (
+                  {r.status === "validated" && mayApprove && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
+                  )}
+                  {(r.status === "validated" || r.status === "ca_approved") && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">A Manager or a Partner approves it and records the filing</span>
                   )}
                   {/* Only on an approved statement, and only where the server
                       says the walk-through exists — the dead-control rule. */}
@@ -959,7 +972,7 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
                   {/* The real thing: the CA filed on gst.gov.in and records
                       the acknowledgement here. This is what writes the
                       public.filings row the period lock reads. */}
-                  {r.status === "ca_approved" && (
+                  {r.status === "ca_approved" && mayApprove && (
                     <button onClick={() => { setRowError(null); setFilingRow({ id: r.id as string, period: r.period as string }); }}
                       className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark as filed
@@ -1005,6 +1018,12 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
 // ── GSTR-3B ────────────────────────────────────────────────────────────────
 
 function GSTR3BTab({ clientId }: { clientId: string }) {
+  // A return's row offers each step only to someone its route admits (POST-A-455): Validate, Recheck and Delete ask
+  // `gst` `compute` (an Executive and above), and CA Approve, Mark as filed, and a Recheck or Delete of an approved
+  // return ask `gst` `approve` (a Manager or a Partner). They were drawn to every member and came back refused.
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("gst", "compute");
+  const mayApprove = canDo("gst", "approve");
   const [returns, setReturns] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // The generic filing walk-through (services/filing_demo/gstr3b), rendered by
@@ -1333,14 +1352,18 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
       <div className="flex justify-between items-center">
         <h3 className="font-medium">GSTR-3B Returns</h3>
         <div className="flex gap-2">
-          <button onClick={() => setShowCompute(true)}
-            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-            Compute from Books
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-            + New GSTR-3B
-          </button>
+          {mayCompute && (
+            <>
+              <button onClick={() => setShowCompute(true)}
+                className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+                Compute from Books
+              </button>
+              <button onClick={() => setShowNew(true)}
+                className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+                + New GSTR-3B
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1646,13 +1669,16 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "draft" && (
+                  {r.status === "draft" && mayCompute && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "validated")}
                       disabled={busyRow === r.id}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted disabled:opacity-40">
                       {busyRow === r.id ? "Working…" : "Validate"}</Button>
                   )}
-                  {r.status === "validated" && (
+                  {(r.status === "validated" || r.status === "ca_approved") && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">A Manager or a Partner approves it and records the filing</span>
+                  )}
+                  {r.status === "validated" && mayApprove && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "ca_approved")}
                       disabled={busyRow === r.id}
                       title="Approval re-checks the return against the books first, which can take a few seconds"
@@ -1674,7 +1700,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       public.filings row journal_period_lock_reason reads, and
                       the ARN and date it carries are the ones its lock message
                       quotes (GST-23). */}
-                  {r.status === "ca_approved" && (
+                  {r.status === "ca_approved" && mayApprove && (
                     <button onClick={() => { setRowError(null); setFilingRow({ id: r.id as string, period: r.period as string }); }}
                       disabled={busyRow === r.id}
                       className="text-xs px-2 py-0.5 border border-state-ready-border rounded hover:bg-state-ready-surface text-state-ready disabled:opacity-40">
@@ -1685,7 +1711,7 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
                       filing record that locks the period — the server refuses
                       both of these for it, and offering them here would be a
                       control that exists only to be told no. */}
-                  {UNFILED.includes(r.status as string) && (
+                  {UNFILED.includes(r.status as string) && (r.status === "ca_approved" ? mayApprove : mayCompute) && (
                     <>
                       <Button variant="plain" size="none" onClick={() => recheck(r.id as string)}
                         disabled={busyRow === r.id}

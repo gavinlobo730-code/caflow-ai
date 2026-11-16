@@ -1000,6 +1000,13 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
 }) {
   const router = useRouter();
   const dayBook = mode === "day_book";
+  // A bulk action is offered only to someone its route admits (POST-A-455): Delete asks `accounting` `write` (Manager and
+  // above) and Reverse posted asks `accounting` `approve` (a Partner), and both were offered to every member, who was refused.
+  const { can: canDo } = usePermissions();
+  const mayDeleteEntries = canDo("accounting", "write");
+  // New Journal Entry and the voucher import write the books too (`accounting` `write`), and were drawn to an Executive.
+  const mayWriteBooks = canDo("accounting", "write");
+  const mayReverseEntries = canDo("accounting", "approve");
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesError, setEntriesError] = useState<string | null>(null);
@@ -1265,7 +1272,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
     await loadEntries();
   }, [loadEntries]);
 
-  const journalBulkActions: BulkAction<JournalEntry>[] = useMemo(() => [
+  const journalBulkActions: BulkAction<JournalEntry>[] = useMemo(() => ([
     {
       id: "discard",
       // "Delete", not "Discard". A CA arriving from Tally goes looking for
@@ -1324,7 +1331,8 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       ),
     },
     exportSelectedAction("journal.csv", journalColumns),
-  ], [runBulk, journalColumns]);
+  ] satisfies BulkAction<JournalEntry>[]).filter((a) => (a.id !== "discard" || mayDeleteEntries) && (a.id !== "reverse-posted" || mayReverseEntries)),
+  [runBulk, journalColumns, mayDeleteEntries, mayReverseEntries]);
 
   return (
     <div className="space-y-2">
@@ -1346,11 +1354,11 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
             <ReportExportButtons report="day-book" clientId={clientId} formats={["pdf", "xlsx"]}
               params={{ start_date: journalRange.start, end_date: journalRange.end }} />
           )}
-          {!dayBook && (
+          {!dayBook && mayWriteBooks && (
             <VoucherImportButton clientId={clientId} onImported={loadEntries}
               onSummary={(description) => toast({ title: "Voucher import", description })} />
           )}
-          {!dayBook && (
+          {!dayBook && mayWriteBooks && (
             <button
               onClick={() => router.push(journalEditorHref(clientId, "new"))}
               className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark flex items-center gap-1"
@@ -3621,6 +3629,9 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 function ApprovalQueue({ clientId }: { clientId: string }) {
+  // Approve & Post asks `accounting` `approve`, which is a Partner's alone; it was offered to every member (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayPost = canDo("accounting", "approve");
   const [status, setStatus] = useState<"draft" | "posted">("draft");
   const [rows, setRows] = useState<QueueJournal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -3698,12 +3709,14 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                     <td className="px-3 py-2 text-right font-mono text-ps-body">{fmt(j.total_debit_paise)}</td>
                     <td className="px-3 py-2 text-right font-mono text-ps-body">{fmt(j.total_credit_paise)}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
-                      {status === "draft" ? (
+                      {status === "draft" && mayPost ? (
                         <Button variant="plain" size="none" onClick={() => approve(j.id)} disabled={busy[j.id] || !balanced}
                           title={balanced ? "Approve & post to the ledger" : "Entry is not balanced"}
                           className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed">
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
                         </Button>
+                      ) : status === "draft" ? (
+                        <span className="text-ps-label">{permissionsRead ? "Awaiting a Partner" : ""}</span>
                       ) : (
                         <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}

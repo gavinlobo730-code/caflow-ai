@@ -15,6 +15,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 interface ClientDocument {
   id: string;
@@ -50,6 +51,8 @@ function formatFileSize(bytes: number | null): string {
 }
 
 export default function DocumentsPage() {
+  // Deleting a document asks `document` `delete`, a Partner's alone; Delete was drawn to every member, who was refused (POST-A-455).
+  const mayDeleteDocument = usePermissions().can("document", "delete");
   // A timeline event records WHEN SOMETHING HAPPENED, so its financial year is
   // the one we are actually in. It used to be whatever year the client header
   // was set to, which meant browsing back to FY 2024-25 and then marking a
@@ -299,13 +302,15 @@ export default function DocumentsPage() {
                               History
                             </button>
                           )}
-                          <button
-                            onClick={() => handleDeleteDocument(doc)}
-                            disabled={deletingDocId === doc.id}
-                            className="flex items-center gap-1 text-xs text-state-problem hover:underline disabled:opacity-40"
-                          >
-                            <Trash2 size={12} /> {deletingDocId === doc.id ? "Deleting…" : "Delete"}
-                          </button>
+                          {mayDeleteDocument && (
+                            <button
+                              onClick={() => handleDeleteDocument(doc)}
+                              disabled={deletingDocId === doc.id}
+                              className="flex items-center gap-1 text-xs text-state-problem hover:underline disabled:opacity-40"
+                            >
+                              <Trash2 size={12} /> {deletingDocId === doc.id ? "Deleting…" : "Delete"}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

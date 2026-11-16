@@ -23,6 +23,7 @@ import { lossRecordAnswer, lossRecordNote } from "@/lib/tax/lossRecordNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -197,6 +198,10 @@ interface KeyingSheet {
 }
 
 export default function ITRFilingPage() {
+  // Moving a return's status, recording its acknowledgement and updating the loss records from it ask `income_tax`
+  // `approve` (a Manager or a Partner); each was drawn to every member and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("income_tax", "approve");
   // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
   // serves the pre-rendered "_placeholder" HTML for every real client URL, so
   // useParams().id was the literal string "_placeholder" — the load below bailed
@@ -906,7 +911,7 @@ export default function ITRFilingPage() {
 
           {/* POST-A-368. A return recorded as filed writes, on each brought-forward loss, how much of it the return used. That happens when the
               acknowledgement is recorded; this is for the return whose write was refused, or that was made without a saved computation. */}
-          {selectedFiling.status === "filed" && (selectedFiling.return_type ?? "original") !== "updated" && (
+          {selectedFiling.status === "filed" && (selectedFiling.return_type ?? "original") !== "updated" && mayApprove && (
             <div className="rounded-lg border border-ps-border p-3 space-y-2">
               <p className="text-2xs font-medium text-ps-body">Brought-forward losses</p>
               {selectedFiling.computation_snapshot_id ? (
@@ -948,7 +953,10 @@ export default function ITRFilingPage() {
           {transitionError && <p className="text-xs text-red-600">{transitionError}</p>}
 
           <div className="flex gap-2 flex-wrap">
-            {nextStatus(selectedFiling.status) && selectedFiling.status !== "filed" && (
+            {nextStatus(selectedFiling.status) && selectedFiling.status !== "filed" && permissionsRead && !mayApprove && (
+              <p className="text-xs text-ps-label">A Manager or a Partner moves this return on and records its acknowledgement.</p>
+            )}
+            {nextStatus(selectedFiling.status) && selectedFiling.status !== "filed" && mayApprove && (
               <Button variant="plain" size="none" spinner={false}
                 onClick={() => handleTransition(selectedFiling, nextStatus(selectedFiling.status)!)}
                 disabled={actionInFlight}
@@ -968,7 +976,7 @@ export default function ITRFilingPage() {
                 File (demo)
               </button>
             )}
-            {selectedFiling.status === "ready_for_filing" && !showAck && (
+            {selectedFiling.status === "ready_for_filing" && !showAck && mayApprove && (
               <button
                 onClick={openAckPanel}
                 className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"

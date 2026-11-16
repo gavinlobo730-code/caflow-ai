@@ -73,6 +73,7 @@ import {
   type CurrencyOption, type InvoiceStatus,
 } from "@/lib/invoices/shared";
 import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 
@@ -1505,6 +1506,9 @@ function SalesInvoices({
 }) {
   const [invoices, setInvoices] = useState<SalesInvoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // Voiding an issued invoice asks `accounting` `approve`, a Partner's alone, while deleting a draft asks `accounting`
+  // `write`; the one bulk action did both for everyone and the voids came back refused (POST-A-455).
+  const mayVoid = usePermissions().can("accounting", "approve");
   // Client's own Product/Service catalogue — only needed for the CSV import's
   // "resolve missing references" step (product_service column). The manual
   // editor loads this itself via ServiceCataloguePicker.
@@ -1803,6 +1807,8 @@ function SalesInvoices({
           deleted++;
         } else if (inv.status === "cancelled") {
           failures.push(`${inv.invoice_no}: already voided`);
+        } else if (!mayVoid) {
+          failures.push(`${inv.invoice_no}: voiding an issued invoice is for a Partner`);
         } else {
           const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token);
           if (!result.success) throw new Error(result.error ?? "void failed");
@@ -2344,12 +2350,20 @@ function SalesInvoices({
             confirm: "Issue the selected draft invoices? This posts a journal entry for each and cannot be undone.",
             run: bulkIssueInvoices,
           },
-          {
+          mayVoid ? {
             id: "delete-void",
             label: "Delete / Void",
             icon: <Trash2 size={13} />,
             variant: "danger",
             confirm: "Delete the selected draft invoices and void the selected issued invoices? Voiding reverses the accounting entry but keeps the invoice number on record. This cannot be undone.",
+            run: bulkDeleteOrVoid,
+          } : {
+            id: "delete-void",
+            label: "Delete draft(s)",
+            icon: <Trash2 size={13} />,
+            variant: "danger",
+            appliesTo: (rows: SalesInvoice[]) => rows.some((r) => r.status === "draft"),
+            confirm: "Delete the selected draft invoices? Voiding an issued invoice is for a Partner, so any issued invoice in the selection is left as it is.",
             run: bulkDeleteOrVoid,
           },
           {
@@ -2950,6 +2964,11 @@ function Customers({
   clientId: string;
   onNavigate: (tab: SalesTab, custId?: string) => void;
 }) {
+  // Adding, importing, editing and reactivating a customer ask `client` `write` (a Manager or a Partner); deactivating and
+  // deleting one ask `client` `delete` (a Partner). Each was offered to every member and came back refused (POST-A-455).
+  const { can: canDo } = usePermissions();
+  const mayEditParty = canDo("client", "write");
+  const mayRemoveParty = canDo("client", "delete");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   // See SalesInvoices.loadFailed (audit M17): a failed fetch must not render as
@@ -3259,20 +3278,22 @@ function Customers({
         <p className="text-xs font-semibold text-ps-body">
           {customers.length} customer{customers.length !== 1 ? "s" : ""}
         </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
-          >
-            <Upload size={12} /> Import
-          </button>
-          <button
-            onClick={() => { setEditCustomer(null); setShowForm(true); }}
-            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
-          >
-            <Plus size={12} /> Add Customer
-          </button>
-        </div>
+        {mayEditParty && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"
+            >
+              <Upload size={12} /> Import
+            </button>
+            <button
+              onClick={() => { setEditCustomer(null); setShowForm(true); }}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+            >
+              <Plus size={12} /> Add Customer
+            </button>
+          </div>
+        )}
       </div>
 
       {/* accounting-20 — named price lists and each customer's default one: a PRE-FILL
@@ -3449,10 +3470,12 @@ function Customers({
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
               style={{ top: menu.top, left: menu.left }}
             >
-              <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
-                <Pencil size={13} /> Edit
-              </button>
+              {mayEditParty && (
+                <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
               <button onClick={() => { setMenu(null); onNavigate("invoices", c.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <FileText size={13} /> View Invoices
@@ -3461,22 +3484,24 @@ function Customers({
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <BookOpen size={13} /> View Ledger
               </button>
-              <div className="my-1 border-t border-ps-border" />
-              {c.is_active ? (
+              {(c.is_active ? mayRemoveParty : mayEditParty) && <div className="my-1 border-t border-ps-border" />}
+              {c.is_active && mayRemoveParty ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(c); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   <Ban size={13} /> Deactivate
                 </button>
-              ) : (
+              ) : !c.is_active && mayEditParty ? (
                 <Button variant="plain" size="none" onClick={() => { setMenu(null); return reactivateCustomer(c); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
                 </Button>
+              ) : null}
+              {mayRemoveParty && (
+                <button onClick={() => { setMenu(null); startDelete(c); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
+                  <Trash2 size={13} /> Delete
+                </button>
               )}
-              <button onClick={() => { setMenu(null); startDelete(c); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
-                <Trash2 size={13} /> Delete
-              </button>
             </div>
           </>
         );
@@ -3508,21 +3533,23 @@ function Customers({
           </EmptyStateActions>
         }
         bulkActions={[
-          {
-            id: "deactivate",
-            label: "Deactivate",
-            icon: <Ban size={13} />,
-            confirm: "Deactivate the selected customers? They will no longer be available for new invoices. Existing records are unaffected and this can be undone.",
-            run: bulkDeactivate,
-          },
-          {
-            id: "delete-permanent",
-            label: "Delete permanently",
-            icon: <Trash2 size={13} />,
-            variant: "danger",
-            confirm: "Permanently delete the selected customers? Any customer with linked invoices, receipts, credit notes or an opening balance will be skipped. This cannot be undone.",
-            run: bulkDeletePermanent,
-          },
+          ...(mayRemoveParty ? [
+            {
+              id: "deactivate",
+              label: "Deactivate",
+              icon: <Ban size={13} />,
+              confirm: "Deactivate the selected customers? They will no longer be available for new invoices. Existing records are unaffected and this can be undone.",
+              run: bulkDeactivate,
+            },
+            {
+              id: "delete-permanent",
+              label: "Delete permanently",
+              icon: <Trash2 size={13} />,
+              variant: "danger" as const,
+              confirm: "Permanently delete the selected customers? Any customer with linked invoices, receipts, credit notes or an opening balance will be skipped. This cannot be undone.",
+              run: bulkDeletePermanent,
+            },
+          ] : []),
           exportSelectedAction("customers-selected.csv", columns),
         ]}
         rowActions={(c) => (
@@ -3554,6 +3581,8 @@ function Receipts({
    *  table below. Null when the screen was opened any other way. */
   openDoc?: string | null;
 }) {
+  // Reversing a receipt asks `accounting` `approve`, a Partner's alone (POST-A-455).
+  const mayReverse = usePermissions().can("accounting", "approve");
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3798,10 +3827,12 @@ function Receipts({
               className="text-2xs text-blue-600 hover:text-blue-800 hover:underline">
               Apply
             </button>
-            <Button variant="plain" size="none" onClick={() => reverseReceipt(r)}
-              className="text-2xs text-red-600 hover:text-red-800 hover:underline">
-              Reverse
-            </Button>
+            {mayReverse && (
+              <Button variant="plain" size="none" onClick={() => reverseReceipt(r)}
+                className="text-2xs text-red-600 hover:text-red-800 hover:underline">
+                Reverse
+              </Button>
+            )}
           </div>
         )}
       />

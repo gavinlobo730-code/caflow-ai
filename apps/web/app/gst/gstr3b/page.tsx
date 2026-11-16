@@ -61,6 +61,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
 import { istToday } from "@/lib/dateMath";
+import { usePermissions } from "@/lib/auth/AuthContext";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function r(paise: number): string {
@@ -92,6 +93,11 @@ const STATUS_CONFIG: Record<GSTReturnStatus, { label: string; color: string }> =
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function GSTR3BPage() {
+  // CA Approve and Mark as Filed ask `gst` `approve` (a Manager or a Partner) and were drawn to every member, who was
+  // refused (POST-A-455); computing asks `gst` `compute`, which a Reviewer does not hold.
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("gst", "approve");
+  const mayCompute = canDo("gst", "compute");
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
   // Built when the screen opens, not when its code loads: a tab left open across a month end kept the old list and defaulted to the wrong month.
@@ -347,14 +353,14 @@ export default function GSTR3BPage() {
             />
           </div>
         </div>
-        <Button variant="plain" size="none"
+        {mayCompute && <Button variant="plain" size="none"
           onClick={handleCompute}
           disabled={actionInFlight || !clientId || !yearMonth}
           className="flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
         >
           <Calculator className="w-4 h-4" />
           {loading ? "Computing…" : "Compute GSTR-3B"}
-        </Button>
+        </Button>}
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
@@ -400,7 +406,10 @@ export default function GSTR3BPage() {
                   File (demo)
                 </button>
               )}
-              {filingStatus === "ca_approved" && (
+              {(filingStatus === "draft" || filingStatus === "validated" || filingStatus === "ca_approved") && permissionsRead && !mayApprove && (
+                <span className="text-xs text-ps-label">A Manager or a Partner approves this return and records the filing</span>
+              )}
+              {filingStatus === "ca_approved" && mayApprove && (
                 <button
                   onClick={() => setShowFiledModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-ps-muted hover:bg-ps-bg text-ps-body text-sm font-medium rounded-lg transition-colors"
@@ -409,7 +418,7 @@ export default function GSTR3BPage() {
                   Mark as Filed
                 </button>
               )}
-              {(filingStatus === "draft" || filingStatus === "validated") && (
+              {(filingStatus === "draft" || filingStatus === "validated") && mayApprove && (
                 <Button variant="plain" size="none"
                   onClick={handleApprove}
                   disabled={actionInFlight}

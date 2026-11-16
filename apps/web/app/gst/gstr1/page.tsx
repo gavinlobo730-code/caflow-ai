@@ -53,6 +53,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 
 import { Button } from "@/components/ui/button";
 import { istToday } from "@/lib/dateMath";
+import { usePermissions } from "@/lib/auth/AuthContext";
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function r(rupees: number): string {
@@ -91,6 +92,10 @@ type ActiveTab = "summary" | "b2b" | "b2cs" | "b2cl" | "cdnr" | "exp" | "hsn" | 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function GSTR1Page() {
+  // CA Approve and Mark as Filed ask `gst` `approve` (a Manager or a Partner) and were drawn to every member, who was
+  // refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayApprove = canDo("gst", "approve");
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
   // Built when the screen opens, not when its code loads: a tab left open across a month end kept the old list and defaulted to the wrong month.
@@ -399,7 +404,10 @@ export default function GSTR1Page() {
                   File (demo)
                 </button>
               )}
-              {filingStatus === "ca_approved" && (
+              {(filingStatus === "draft" || filingStatus === "validated" || filingStatus === "ca_approved") && permissionsRead && !mayApprove && (
+                <span className="text-xs text-ps-label">A Manager or a Partner approves this return and records the filing</span>
+              )}
+              {filingStatus === "ca_approved" && mayApprove && (
                 <button
                   onClick={() => setShowFiledModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-ps-muted hover:bg-ps-bg text-ps-body text-sm font-medium rounded-lg transition-colors"
@@ -408,7 +416,7 @@ export default function GSTR1Page() {
                   Mark as Filed
                 </button>
               )}
-              {(filingStatus === "draft" || filingStatus === "validated") && (
+              {(filingStatus === "draft" || filingStatus === "validated") && mayApprove && (
                 <Button variant="plain" size="none"
                   onClick={handleApprove}
                   disabled={actionInFlight}

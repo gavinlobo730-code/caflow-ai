@@ -29,6 +29,7 @@ import { toast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { usePermissions } from "@/lib/auth/AuthContext";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function getToken(): Promise<string> {
@@ -530,6 +531,11 @@ const EMPTY_FILING_FORM = { form_type: "", financial_year: "", due_date: "", des
 const ANOTHER_YEAR = "__another__";
 
 function FilingsTab({ clientId, category }: { clientId: string; category: "annual" | "event" }) {
+  // Start asks `mca` `write` (an Executive and above) and Mark Filed asks `mca` `approve` (a Manager or a Partner); both
+  // were drawn to every member and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayWrite = canDo("mca", "write");
+  const mayApprove = canDo("mca", "approve");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no filings of this category yet".
@@ -851,11 +857,14 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "not_started" && (
+                  {r.status === "not_started" && mayWrite && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "in_progress")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Start</Button>
                   )}
-                  {r.status === "in_progress" && (
+                  {r.status === "in_progress" && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">A Manager or a Partner records the filing</span>
+                  )}
+                  {r.status === "in_progress" && mayApprove && (
                     <button onClick={() => openConfirmFiling(r)}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark Filed (CA)

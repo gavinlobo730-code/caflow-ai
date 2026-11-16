@@ -128,10 +128,17 @@ export interface JournalEditorProps {
     attachments: { name: string; url: string }[];
   }) => void | boolean | Promise<boolean | void>;
   onCancel: () => void;
+  /**
+   * Whether this person may POST a draft that already exists. A new entry is posted through the create route, which asks
+   * `accounting` `write`, the same as Save Draft; a saved draft is posted through the approval route, which asks
+   * `accounting` `approve`, a Partner's alone. Post Entry on a saved draft was offered to a Manager, whose correction was
+   * saved and whose post was then refused (POST-A-455). Omitted, the button is offered.
+   */
+  mayPostDraft?: boolean;
 }
 
 export function JournalEditor({
-  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel,
+  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel, mayPostDraft = true,
 }: JournalEditorProps) {
   const isNew = existing === null;
   const isPosted = !!existing?.is_posted;
@@ -686,11 +693,15 @@ export function JournalEditor({
                         className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
                   Save Draft
                 </Button>
-                <Button variant="plain" size="none" flight={flight}
-                        onClick={() => handleSave("post")} disabled={saving || !isBalanced}
-                        className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-                  {saving ? "Saving…" : "Post Entry"}
-                </Button>
+                {isNew || mayPostDraft ? (
+                  <Button variant="plain" size="none" flight={flight}
+                          onClick={() => handleSave("post")} disabled={saving || !isBalanced}
+                          className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+                    {saving ? "Saving…" : "Post Entry"}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-ps-label self-center">A Partner posts a saved draft, from the Approvals tab.</p>
+                )}
               </>
             )}
           </div>
