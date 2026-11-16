@@ -58,9 +58,10 @@ def test_the_part_recorded_by_hand_is_the_stored_total_less_the_entries():
 
 
 def test_a_record_that_predates_the_column_or_holds_nothing_has_no_uses_and_no_hand_recorded_part():
-    assert uses_view({"original_amount_paise": 5 * L, "remaining_amount_paise": 5 * L}, {}) == {"hand_recorded_paise": 0, "uses": []}
-    assert uses_view(row(), {}) == {"hand_recorded_paise": 0, "uses": []}
-    assert uses_view({"utilisations": "oops"}, {}) == {"hand_recorded_paise": 0, "uses": []}
+    nothing = {"hand_recorded_paise": 0, "hand_recorded_entry_id": None, "uses": []}   # no part, so nothing to take back
+    assert uses_view({"original_amount_paise": 5 * L, "remaining_amount_paise": 5 * L}, {}) == nothing
+    assert uses_view(row(), {}) == nothing
+    assert uses_view({"utilisations": "oops"}, {}) == nothing
 
 
 def test_an_entry_of_no_rupees_is_not_a_use():
@@ -114,6 +115,7 @@ def test_each_record_is_served_with_where_it_went():
     filed("F1", ack="ACK-A")
     got = listing()["L1"]
     assert got["hand_recorded_paise"] == L
+    assert got["hand_recorded_entry_id"] == "hand-recorded"      # what a take-back of the part recorded by hand names (POST-A-368)
     assert [(u["financial_year"], u["amount_paise"], u["acknowledgement_number"], u["filing_found"]) for u in got["uses"]] == [
         ("2025-26", 4 * L, "ACK-A", True)]
     assert got["original_amount_paise"] == 10 * L and got["remaining_amount_paise"] == 5 * L        # the record's own columns are still served
@@ -122,7 +124,7 @@ def test_each_record_is_served_with_where_it_went():
 def test_a_loss_nobody_used_is_served_with_an_empty_list_and_nothing_by_hand():
     stored("L1")
     got = listing()["L1"]
-    assert got["uses"] == [] and got["hand_recorded_paise"] == 0
+    assert got["uses"] == [] and got["hand_recorded_paise"] == 0 and got["hand_recorded_entry_id"] is None
 
 
 def test_only_the_asked_for_clients_losses_and_filings_are_read():

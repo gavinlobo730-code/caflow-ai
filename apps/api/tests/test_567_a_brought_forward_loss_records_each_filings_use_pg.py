@@ -31,6 +31,7 @@ from pathlib import Path
 
 import pytest
 
+from domain.income_tax.computation_workspace import bf_loss_entries_text
 from domain.income_tax.loss_utilisation import after_filing, available_for_year_paise
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -202,6 +203,43 @@ def test_a_write_that_names_the_totals_it_read_matches_nothing_once_a_hand_edit_
         f"AND utilized_amount_paise = {read['utilized_amount_paise']} AND remaining_amount_paise = {read['remaining_amount_paise']} "
         "RETURNING 1) SELECT count(*) FROM t;"))
     assert out.splitlines()[-1] == "0"
+
+
+def _compare_and_store(dsn: str, loss_id: str, read: dict, *, with_entries: bool) -> str:
+    """How many rows the write `store_bf_loss_use` makes would match: the totals as read, and (POST-A-368) the entries as read, held both ways
+    with the very text the filter carries (jsonb contains it and is contained by it, which together are equality)."""
+    named = ""
+    if with_entries:
+        text = bf_loss_entries_text(read)
+        named = f" AND utilisations @> '{text}'::jsonb AND utilisations <@ '{text}'::jsonb"
+    return _one(dsn, (
+        "WITH t AS (UPDATE brought_forward_losses SET remaining_amount_paise = remaining_amount_paise WHERE id = '" + loss_id + "' "
+        f"AND utilized_amount_paise = {read['utilized_amount_paise']} AND remaining_amount_paise = {read['remaining_amount_paise']}"
+        + named + " RETURNING 1) SELECT count(*) FROM t;")).splitlines()[-1]
+
+
+def test_a_write_that_names_the_entries_it_read_matches_nothing_once_one_was_swapped_for_another_of_the_same_size(db):
+    """POST-A-368: two corrections landing together that swap an entry for another of the same size leave BOTH totals as they were, so a
+    compare of the totals alone matches the row and the second correction is written over the first's entries. Naming the entries too does not."""
+    loss_id = _loss(db, original=10 * L, utilized=2 * L)
+    mine = {"manual:2024-25": {"financial_year": "2024-25", "amount_paise": 2 * L, "return_type": "manual"}}
+    assert _store(db, loss_id, {"utilisations": mine, "utilized_amount_paise": 2 * L, "remaining_amount_paise": 8 * L}).returncode == 0
+    read = _row(db, loss_id)
+    assert _compare_and_store(db, loss_id, read, with_entries=True) == "1"                  # not vacuous: the row as read matches itself
+    theirs = {"manual:2025-26": {"financial_year": "2025-26", "amount_paise": 2 * L, "return_type": "manual"}}
+    assert _store(db, loss_id, {"utilisations": theirs, "utilized_amount_paise": 2 * L, "remaining_amount_paise": 8 * L}).returncode == 0
+    assert _compare_and_store(db, loss_id, read, with_entries=False) == "1"                 # the old compare could not tell
+    assert _compare_and_store(db, loss_id, read, with_entries=True) == "0"                  # this one can
+
+
+def test_the_entries_compare_matches_a_row_with_none_and_does_not_confuse_one_entry_with_two(db):
+    loss_id = _loss(db)
+    assert _compare_and_store(db, loss_id, _row(db, loss_id), with_entries=True) == "1"      # the empty object matches the empty object
+    one = {"f-1": {"financial_year": "2025-26", "amount_paise": L, "return_type": "original"}}
+    two = {**one, "f-2": {"financial_year": "2026-27", "amount_paise": 0, "return_type": "revised"}}
+    assert _store(db, loss_id, {"utilisations": two, "utilized_amount_paise": L, "remaining_amount_paise": 9 * L}).returncode == 0
+    assert _compare_and_store(db, loss_id, {**_row(db, loss_id), "utilisations": one}, with_entries=True) == "0"   # read one, now two
+    assert _compare_and_store(db, loss_id, {**_row(db, loss_id), "utilisations": two}, with_entries=True) == "1"
 
 
 # ── 5. re-runnable, and reversible ───────────────────────────────────────────

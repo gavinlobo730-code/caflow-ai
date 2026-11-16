@@ -368,7 +368,7 @@ export default function TaxComputationPage() {
   const lossUsesSeq = useRef(0);
   // A correction made by hand (POST-A-368, items 2 and 3): which loss it is for and whether a year is being recorded or one use taken back.
   // The server decides every refusal; `handError` is its sentence as written.
-  const [handEdit, setHandEdit] = useState<{ loss: BFLoss; take?: LossUse } | null>(null);
+  const [handEdit, setHandEdit] = useState<{ loss: BFLoss; take?: LossUse; takeHand?: { entry_id: string; amount_paise: number } } | null>(null);
   const [handBusy, setHandBusy] = useState(false);
   const [handError, setHandError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>("overview");
@@ -722,11 +722,12 @@ export default function TaxComputationPage() {
         { financial_year: financialYear, amount_paise: amountPaise, reason })
       : undefined;
 
-  const takeBackUse = (reason: string) =>
-    handEdit?.take
-      ? sendHandEdit(`/api/itr/bf-losses/${encodeURIComponent(handEdit.loss.id)}/uses/${encodeURIComponent(handEdit.take.entry_id)}/take-back`,
-        { reason })
+  const takeBackUse = (reason: string) => {
+    const entryId = handEdit?.take?.entry_id ?? handEdit?.takeHand?.entry_id;
+    return handEdit && entryId
+      ? sendHandEdit(`/api/itr/bf-losses/${encodeURIComponent(handEdit.loss.id)}/uses/${encodeURIComponent(entryId)}/take-back`, { reason })
       : undefined;
+  };
 
   async function markSnapshotReviewed(snapshotId: string) {
     setReviewing(snapshotId);
@@ -2692,7 +2693,8 @@ export default function TaxComputationPage() {
                       <p className="text-3xs text-ps-hint">Expires AY {l.expiry_assessment_year}</p>
                       <LossUses state={lossUses.state} view={lossUses.byId[l.id]} canEdit={can("income_tax", "compute")}
                         onRecord={() => { setHandError(null); setHandEdit({ loss: l }); }}
-                        onTakeBack={(use) => { setHandError(null); setHandEdit({ loss: l, take: use }); }} />
+                        onTakeBack={(use) => { setHandError(null); setHandEdit({ loss: l, take: use }); }}
+                        onTakeBackHandRecorded={(entryId, amountPaise) => { setHandError(null); setHandEdit({ loss: l, takeHand: { entry_id: entryId, amount_paise: amountPaise } }); }} />
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-semibold text-ps-ink">{paise(l.remaining_amount_paise)}</p>
@@ -2762,7 +2764,10 @@ export default function TaxComputationPage() {
           mode={handEdit.take
             ? { kind: "take_back", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}`,
                 entryLabel: `the use for FY ${handEdit.take.financial_year}`, byAReturn: handEdit.take.return_type !== "manual" }
-            : { kind: "record", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}` }}
+            : handEdit.takeHand
+              ? { kind: "take_back", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}`,
+                  entryLabel: `the ${paise(handEdit.takeHand.amount_paise)} recorded by hand with no year`, byAReturn: false }
+              : { kind: "record", lossName: `${handEdit.loss.loss_type.replace(/_/g, " ")} loss, AY ${handEdit.loss.assessment_year}` }}
           busy={handBusy}
           error={handError}
           onRecord={recordYearUse}

@@ -434,16 +434,31 @@ def test_the_real_store_names_the_row_the_firm_and_both_totals_it_read(monkeypat
             calls.append(("eq", column, value))
             return self
 
+        def contains(self, column, value):
+            calls.append(("contains", column, value))
+            return self
+
+        def contained_by(self, column, value):
+            calls.append(("contained_by", column, value))
+            return self
+
         def execute(self):
             return type("R", (), {"data": [{"id": "L1"}]})()
 
     monkeypatch.setattr(workspace, "_USE_MOCK", False)
     monkeypatch.setattr(workspace, "_supabase", lambda: Fake())
     columns = {"utilisations": {}, "utilized_amount_paise": 4 * L, "remaining_amount_paise": 6 * L}
-    assert workspace.store_bf_loss_use(FIRM, "L1", {"utilized_amount_paise": 0, "remaining_amount_paise": 10 * L}, columns) is True
+    held = {"f-25": {"financial_year": "2025-26", "amount_paise": 1 * L, "return_type": "original"}}
+    before = {"utilized_amount_paise": 1 * L, "remaining_amount_paise": 9 * L, "utilisations": held}
+    assert workspace.store_bf_loss_use(FIRM, "L1", before, columns) is True
     assert calls[:2] == [("table", "brought_forward_losses"), ("update", columns)]
-    assert {c[1:] for c in calls if c[0] == "eq"} == {("id", "L1"), ("firm_id", FIRM), ("utilized_amount_paise", 0),
-                                                       ("remaining_amount_paise", 10 * L)}
+    assert {c[1:] for c in calls if c[0] == "eq"} == {("id", "L1"), ("firm_id", FIRM), ("utilized_amount_paise", 1 * L),
+                                                       ("remaining_amount_paise", 9 * L)}
+    # POST-A-368: the entries it read are named too, held both ways (jsonb contains it AND is contained by it, which together are equality),
+    # so an entry swapped for another of the same size by a concurrent write matches no row.
+    import json
+    named = {c[0]: json.loads(c[2]) for c in calls if c[0] in ("contains", "contained_by") and c[1] == "utilisations"}
+    assert named == {"contains": held, "contained_by": held}
 
 
 def test_a_failure_before_any_write_never_raises_and_says_so(monkeypatch):
