@@ -98,8 +98,9 @@
  * --no-headers    walk WITHOUT out/_headers (the build is then not the product as served)
  * --anon          do NOT sign in, so the sign-in screens render as
  *                 themselves. Looking only — see `anon` below.
- * --shots          write a PNG per route to .smoke/ (the visual baseline —
- *                  NOT a regression gate; these are supposed to change)
+ * --shots          write a JPEG per route and a contact sheet to .smoke/ (.smoke/client/
+ *                  with --real-client), the visual baseline — NOT a regression
+ *                  gate; these are supposed to change
  * --real-client    put a UUID in /clients/:id instead of the static-export
  *                  placeholder, so the CLIENT WORKSPACE renders its own shell.
  *                  Without it every client screen wears the firm chrome and
@@ -519,6 +520,14 @@ const anon = args.includes("--anon");
 const realClient = args.includes("--real-client");
 
 /**
+ * Where `--shots` writes. The client-workspace pass writes into a folder of its own, `.smoke/client/`, because the
+ * nightly runs it after the full walk in the same checkout and both write a contact sheet called `index.html` (and the
+ * firm-level /clients screens under the same file names): in one folder the second pass overwrote the first walk's
+ * sheet, and the failed-run artifact then showed 44 client screens and not the walk that failed.
+ */
+const shotDir = realClient ? path.join(SHOT_DIR, "client") : SHOT_DIR;
+
+/**
  * ⚠️ THE ROUTE LIST IS THE LIVE `app/` TREE, AND IT USED TO BE
  * `screens.snapshot.json`. Those answer different questions and the walk was
  * asking the wrong one.
@@ -711,7 +720,7 @@ if (anon) {
               (only ? "" : "  NO --only: every protected route will redirect " +
                "to the sign-in page, which is not a walk of anything."));
 }
-if (shots) fs.mkdirSync(SHOT_DIR, { recursive: true });
+if (shots) fs.mkdirSync(shotDir, { recursive: true });
 
 const broken = [];
 const timings = [];            // how long each screen took to settle, for --report
@@ -784,7 +793,7 @@ for (const route of routes) {
       // is ~150KB and every difference a design review cares about survives.
       const name = (route === "/" ? "root" : route.slice(1).replace(/[/?=&]/g, "_")) + ".jpg";
       await page.screenshot({
-        path: path.join(SHOT_DIR, name), fullPage: true, type: "jpeg", quality: 72,
+        path: path.join(shotDir, name), fullPage: true, type: "jpeg", quality: 72,
       });
       captured.push({ route, file: name });
     }
@@ -887,7 +896,7 @@ if (shots) {
   const cards = captured.map(({ route, file }) =>
     `<figure><a href="${file}"><img src="${file}" loading="lazy" alt="${route}"></a>` +
     `<figcaption>${route}</figcaption></figure>`).join("\n");
-  fs.writeFileSync(path.join(SHOT_DIR, "index.html"),
+  fs.writeFileSync(path.join(shotDir, "index.html"),
     `<!doctype html><meta charset="utf-8"><title>PracticeSync screens</title>` +
     `<style>body{font:14px system-ui;margin:0;padding:24px;background:#F8FAFC;color:#0F172A}` +
     `h1{font-size:18px;margin:0 0 4px}p{color:#64748B;margin:0 0 24px}` +
@@ -898,7 +907,7 @@ if (shots) {
     `overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style>` +
     `<h1>${captured.length} screens</h1><p>Rendered with no data, at 1440x900. ` +
     `Click a card for the full page.</p><div class="grid">${cards}</div>`);
-  console.log(`\n${captured.length} screenshots and a contact sheet in ${SHOT_DIR}`);
+  console.log(`\n${captured.length} screenshots and a contact sheet in ${shotDir}`);
 }
 // ── The accessibility verdict (frontend_ux-03; scripts/axeAudit.mjs) ─────────────────────────────────────
 //

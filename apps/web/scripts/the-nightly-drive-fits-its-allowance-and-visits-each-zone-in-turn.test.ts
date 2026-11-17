@@ -460,6 +460,41 @@ test("the deadline leaves the job room to end: the part before the drive, the de
   assert.ok(stops[1] < stops[0], "a night's deadline is not shorter than the whole matrix's");
 });
 
+/** The steps that ran before the drive on the nights WORST_SETUP_MINUTES was read from (5 and 6 November 2026), in order, and the two after it that FINISH_MINUTES timed. The 17 minutes and
+ *  the minute describe THESE steps: a step added among them was never timed, so the arithmetic above would go on passing while the job no longer fits. (The client-workspace pass of POST-A-036 was
+ *  first put between the walk and the drive, about two minutes of a slack of one and a half, and this file stayed green.) */
+const MEASURED_BEFORE_THE_DRIVE = [
+  "actions/checkout", "pnpm/action-setup", "actions/setup-node", "Install dependencies", "Add Playwright and the axe scanner to THIS job", "Drop third-party apt sources",
+  "Install Chromium", "Build the static export for the walk", "Walk every screen", "Keep the report",
+];
+const MEASURED_AFTER_THE_DRIVE = ["Keep the money-editor drive report", "Keep the screenshots of a failed walk"];
+
+/** The job's steps in order, each named by its `name:` or, for an unnamed one, by the action it uses. */
+function workflowSteps(): Array<{ name: string; body: string }> {
+  const at = WORKFLOW.indexOf("    steps:");
+  assert.ok(at > 0, "the workflow no longer has a steps list");
+  return WORKFLOW.slice(at).split(/\n(?=      - (?:name|uses):)/).slice(1).map((body) => ({
+    name: (/^\s*- name:\s*(.+)/.exec(body)?.[1] ?? /^\s*- uses:\s*([^@\s]+)/.exec(body)?.[1] ?? "").trim(),
+    body,
+  }));
+}
+
+test("nothing runs before the drive, or between it and the uploads the arithmetic counts, that the arithmetic did not time; a command after those has a bound of its own", () => {
+  const steps = workflowSteps();
+  const drive = steps.findIndex((s) => s.name === "Drive the money editors");
+  assert.ok(drive > 0, "the workflow no longer has the drive step");
+  assert.deepEqual(steps.slice(0, drive).map((s) => s.name), MEASURED_BEFORE_THE_DRIVE,
+    `the steps before the drive are not the ones the ${WORST_SETUP_MINUTES} minutes measured: time a new one on a runner and raise WORST_SETUP_MINUTES (and lower the deadline to match), or run it after the drive's report is kept`);
+  const after = drive + 1 + MEASURED_AFTER_THE_DRIVE.length;
+  assert.deepEqual(steps.slice(drive + 1, after).map((s) => s.name), MEASURED_AFTER_THE_DRIVE,
+    `the steps straight after the drive are not the uploads the ${FINISH_MINUTES} minute measured: the drive's report and the walk's pictures must be kept before anything else runs`);
+  // What comes after them is what a slow night may cut at the allowance, and only that. A command there that can hang still needs a bound, or one screen that never goes quiet takes the run to
+  // the allowance every night.
+  for (const s of steps.slice(after)) {
+    if (/\n\s+run:/.test(s.body)) assert.match(s.body, /\n\s+timeout-minutes: \d+\n/, `${s.name} runs after the drive's report is kept and has no timeout-minutes of its own`);
+  }
+});
+
 test("the estimated drive of the worst night fits what its deadline leaves, and so does the whole matrix", async () => {
   const scenarios = await everyScenario();
   const { stops } = workflowNumbers();

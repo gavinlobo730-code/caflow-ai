@@ -112,6 +112,8 @@
 #       visible before it fails;
 #     * `smoke-walk-screens`: the screenshots and contact sheet, only when the walk (or the drive) FAILED, 14
 #       days. A scenario of the drive that failed leaves its picture in .smoke/drive/;
+#     * `smoke-walk-client-report` on every run (30 days) and `smoke-walk-client-screens` when that pass failed (14
+#       days): the same two for the client-workspace pass, which runs last and keeps its pictures in .smoke/client/;
 #     * the run's summary page: a table of the broken routes, the accessibility table and the slow-server
 #       verdict, and one error annotation per broken route or axe failure (the first ten of each) naming it.
 name: Smoke walk
@@ -215,29 +217,6 @@ jobs:
         working-directory: apps/web
         run: node scripts/smoke-walk.mjs --report .smoke/report.json --shots
 
-      # THE CLIENT WORKSPACE, AS A CA SEES IT (POST-A-036). The walk above puts `_placeholder` in /clients/:id, which
-      # `isClientWorkspacePath` deliberately refuses, so every client screen it photographs wears the FIRM chrome; and
-      # since D28's `ClientResolutionGate` a real client id that resolves to nothing renders only "no such client".
-      # `--real-client` puts a UUID in the address and the stub answers the one lookup keyed on that client
-      # (`scripts/walkStub.mjs`), so the gate lets the screens through and the client shell is the chrome. It walks only
-      # /clients (the rest of the product is the walk above), keeps MAX_ROUTES_PER_DIGEST at 5, and runs even when the
-      # first walk found a broken screen. The accessibility scan is off for this pass until its baseline exists
-      # (`apps/web/scripts/axe-baseline.json` is keyed on the placeholder routes and would call every client screen new):
-      # the item that remains says so. Like the walk it is no check anything waits on.
-      - name: Walk the client workspace
-        if: always() && steps.build.outcome == 'success'
-        working-directory: apps/web
-        run: node scripts/smoke-walk.mjs --only /clients --real-client --no-axe --no-slow-server --report .smoke/client-report.json --shots
-
-      - name: Keep the client-workspace report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: smoke-walk-client-report
-          path: apps/web/.smoke/client-report.json
-          if-no-files-found: warn
-          retention-days: 30
-
       - name: Keep the report
         if: always()
         uses: actions/upload-artifact@v7
@@ -286,5 +265,47 @@ jobs:
         with:
           name: smoke-walk-screens
           path: apps/web/.smoke/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # THE CLIENT WORKSPACE, AS A CA SEES IT (POST-A-036). The walk above puts `_placeholder` in /clients/:id, which
+      # `isClientWorkspacePath` deliberately refuses, so every client screen it photographs wears the FIRM chrome; and
+      # since D28's `ClientResolutionGate` a real client id that resolves to nothing renders only "no such client".
+      # `--real-client` puts a UUID in the address and the stub answers the one lookup keyed on that client
+      # (`scripts/walkStub.mjs`), so the gate lets the screens through and the client shell is the chrome. It walks only
+      # /clients (the rest of the product is the walk above), keeps MAX_ROUTES_PER_DIGEST at 5, and runs even when the
+      # first walk found a broken screen. The accessibility scan is off for this pass until its baseline exists
+      # (`apps/web/scripts/axe-baseline.json` is keyed on the placeholder routes and would call every client screen new):
+      # the item that remains says so. Like the walk it is no check anything waits on.
+      #
+      # IT RUNS LAST, AND IS BOUNDED (review of POST-A-036). The drive's deadline above is sized on what ran before the
+      # drive when it was measured (17 minutes, the slowest night seen) and on what runs after it (a minute of uploads):
+      # 17 + 24 + 1.5 + 1 = 43.5 of 45. This pass is about two minutes (44 routes at the walk's 1.7 s a route, plus the
+      # pictures), so before the drive it would have spent the slack that keeps the drive's report from being lost to a
+      # cancelled job. After the drive's report and the walk's pictures are kept, a slow night can cut only this pass and
+      # what it leaves. `timeout-minutes` bounds a client screen that never goes quiet (the walk waits up to 30 s a
+      # route). Its pictures and contact sheet go to .smoke/client/, so they never overwrite the first walk's.
+      - name: Walk the client workspace
+        id: client_walk
+        if: always() && steps.build.outcome == 'success'
+        timeout-minutes: 5
+        working-directory: apps/web
+        run: node scripts/smoke-walk.mjs --only /clients --real-client --no-axe --no-slow-server --report .smoke/client-report.json --shots
+
+      - name: Keep the client-workspace report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-walk-client-report
+          path: apps/web/.smoke/client-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Keep the screenshots of a failed client-workspace walk
+        if: failure() && steps.client_walk.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-walk-client-screens
+          path: apps/web/.smoke/client/
           if-no-files-found: ignore
           retention-days: 14
