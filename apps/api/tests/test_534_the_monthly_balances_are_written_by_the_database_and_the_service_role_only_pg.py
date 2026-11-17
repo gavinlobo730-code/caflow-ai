@@ -311,6 +311,10 @@ def test_posting_as_an_assigned_executive_moves_the_bucket_with_the_ledger(dsn):
 
 
 def test_a_manual_journal_edited_and_discarded_by_a_manager_and_a_reversal_keep_the_buckets_equal_to_the_ledger(dsn):
+    # Migration 682 made the two manual-journal wrappers the server's alone; this drives their signed-in branch, so the grant is handed
+    # back here only (the real grants are asserted in test_682_...).
+    assert _psql(dsn, "GRANT EXECUTE ON FUNCTION public.edit_posted_journal(uuid, uuid, uuid, jsonb, text, text, date, uuid) TO authenticated; "
+                      "GRANT EXECUTE ON FUNCTION public.discard_posted_journal(uuid, uuid, uuid, uuid, boolean) TO authenticated;").returncode == 0
     ok, entry_id = _post(dsn, "manager_a", CLIENT_A, OPEN_DAY, "MJ-1", source_type="manual")
     assert ok, entry_id
     new_lines = json.dumps([{"account_id": BANK_A, "debit_paise": 25000, "credit_paise": 0, "narration": "d"},
