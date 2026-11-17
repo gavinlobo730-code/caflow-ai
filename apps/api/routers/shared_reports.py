@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from core.authz import can_access_client
 from core.observability import capture_soft_failure
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from core.uploads import looks_like, read_limited
 from core.storage_door import storage_folder
 from domain.reporting.shared_report import BUCKET, MAX_BYTES, ShareRefused, plan_share
@@ -190,7 +190,18 @@ def shared_report_link(
     The two screens that list shared reports signed the link in the browser from the row's `storage_path`. The row is
     read as the caller (row security is the second lock), must be in the caller's firm and the caller must be assigned
     to its client; one fixed 404 covers a missing id, another firm's and an unassigned client's, so the answer is not an
-    existence oracle. A link that could not be made is an error and not an empty answer."""
+    existence oracle. A link that could not be made is an error and not an empty answer.
+
+    THE FILE IS THE BOOKS, SO THE BOOKS' OWN PAIR IS ASKED TOO (POST-A-467). A shared report is the client's Profit & Loss,
+    Balance Sheet or Trial Balance (`domain/reporting/shared_report.REPORT_TYPES`), which the accounting screen and the
+    report exports serve under `accounting` read. `report` read alone admitted a member a Partner had blocked from the books
+    on the Team screen, and a Reviewer, whose role does not reach them, so the link was a way round the block. It is asked
+    before any row is read, so the refusal says nothing about whether the report exists."""
+    if not can_user(current_user, "accounting", "read"):
+        raise HTTPException(
+            status_code=403,
+            detail="A report shared with a client is its Profit & Loss, Balance Sheet or Trial Balance, and your access to "
+                   "the books (Accounting) is switched off, so no link was made. A Partner can change this on the Team screen.")
     if _USE_MOCK:
         return api_response(True, {"download_url": None})
     from core.supabase_client import get_supabase

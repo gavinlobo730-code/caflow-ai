@@ -14,6 +14,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteRowAndConfirm, ROW_NOT_DELETED } from "@/lib/data/deleteRowAndConfirm";
 import { api } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import type { ClientDocumentList, ClientNotice, PortalUnreadSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
@@ -158,6 +159,10 @@ function formatFileSize(bytes: number | null): string {
 }
 
 export default function ClientPortalPage() {
+  // A shared report is the client's P&L, Balance Sheet or Trial Balance, and its link is made only for someone the books
+  // are open to (POST-A-467). Offered while permissions are still loading, because the server is the one that refuses.
+  const { can, resolved: permissionsResolved } = usePermissions();
+  const booksOpen = !permissionsResolved || can("accounting", "read");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -913,6 +918,7 @@ export default function ClientPortalPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
+                              {booksOpen ? (
                               <button
                                 disabled={actionInFlight}
                                 onClick={async () => {
@@ -931,6 +937,9 @@ export default function ClientPortalPage() {
                               >
                                 <Download size={12} /> Download
                               </button>
+                              ) : (
+                                <span className="text-xs text-ps-hint">Opens for someone with access to the books</span>
+                              )}
                               <Button variant="plain" size="none"
                                 onClick={async () => {
                                   if (!(await confirmDialog({ message: "Remove this shared report?", danger: true, confirmLabel: "Remove" }))) return;
