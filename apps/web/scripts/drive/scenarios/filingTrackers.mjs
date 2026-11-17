@@ -4,10 +4,10 @@
  * Both trackers used to work the word out from the due date and the filed date alone, so a filing recorded as NOT APPLICABLE with a past
  * date was printed Overdue (and counted in the Overdue tile), and a row somebody had moved to Overdue by hand with its date still ahead was
  * printed Pending. They call `filingTrackerStatus` now. The source guards hold that both pages call it and the function is pinned in
- * `lib/compliance/overdue.test.ts`; this proves what the PAGES print, in Chromium, against the stub's tables (the pages read their rows over
+ * `lib/compliance/overdue.test.ts`; this proves what the PAGES print, in Chromium, against the stub (the MCA page reads its rows over
  * PostgREST, which the stub answers from a table map).
  *
- *   1. the GST tracker: a pending return past its date and a return moved to overdue by hand with its date ahead are both Overdue, a
+ *   1. the GST tracker (its rows are read through GET /api/compliance/calendar/tracker since POST-A-208, so the stub answers that route): a pending return past its date and a return moved to overdue by hand with its date ahead are both Overdue, a
  *      return recorded as not applicable says "Not applicable" (and offers no Mark as Filed), a filed one says Filed, and the Overdue
  *      tile counts two, not three;
  *   2. the MCA tracker: a not_started filing past its date is Overdue, one moved to overdue by hand with its date ahead is Overdue, one
@@ -15,6 +15,7 @@
  */
 import assert from "node:assert/strict";
 import { until } from "../kit.mjs";
+import { ok } from "../stub.mjs";
 import { CLIENT_ROW, FAKE_USERS_ROW } from "../fixtures.mjs";
 
 export const group = "filing-trackers";
@@ -45,12 +46,13 @@ export const scenarios = [
     title: "GST: pending past its date and overdue-by-hand with its date ahead print Overdue, not applicable prints so with no Mark as Filed, and the Overdue tile counts two",
     async run(env) {
       const { page, stub } = env;
-      stub.setTable("compliance_calendar", [
+      // The GST tracker reads its rows through the API (POST-A-208), each with its client under `clients`, as the stub's table did.
+      stub.route({ method: "GET", re: /compliance\/calendar\/tracker\?family=gst$/, reply: () => ok([
         gstRow("g-pending", "Pending Co", "GSTR3B", "2024-12-01", "2025-01-20", "pending"),
         gstRow("g-na", "NotApplicable Co", "GSTR1", "2024-11-01", "2024-12-11", "na"),
         gstRow("g-hand", "HandSet Co", "GSTR3B", "2099-10-01", "2099-11-20", "overdue"),
         gstRow("g-filed", "Filed Co", "GSTR1", "2024-10-01", "2024-11-11", "filed", "2024-11-09"),
-      ]);
+      ]) });
       await page.goto(`${env.base}/gst/`, { waitUntil: "networkidle" });
       await waitFor(page, page.locator("tr", { hasText: "Pending Co" }).first());
 

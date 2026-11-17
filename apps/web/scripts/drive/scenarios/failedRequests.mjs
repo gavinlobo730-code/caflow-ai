@@ -294,7 +294,7 @@ const DRAFT_RUN = { id: "run-1", status: "draft", month: "2026-08", headcount: 3
 
 async function atPayrollRuns(env) {
   const { page, stub } = env;
-  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
   stub.route({ method: "GET", re: /api\/payroll\/runs\?/, reply: () => ok([DRAFT_RUN]) });
   await page.goto(env.at("/payroll/"), { waitUntil: "networkidle" });
   // the runs are the Register tab

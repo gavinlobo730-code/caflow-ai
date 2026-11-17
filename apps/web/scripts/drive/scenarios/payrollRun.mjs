@@ -28,7 +28,7 @@ const FINALIZE = /api\/payroll\/runs\/run-1\/finalize$/;
 
 async function atTheRuns(env, { runs = [RUN] } = {}) {
   const { page, stub } = env;
-  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve"] } }) });
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write", "approve", "finalize"] } }) });
   stub.route({ method: "GET", re: /payroll\/runs\?/, reply: () => ok(runs) });
   await page.goto(env.at("/payroll/?tab=register"), { waitUntil: "networkidle" });
   await page.getByText("Create New Run").waitFor();
