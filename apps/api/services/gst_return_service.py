@@ -984,6 +984,26 @@ def gstr3b_detail(db, firm_id: str, client_id: str, period: str, line: str,
                 "tax_paise": blocked_i + blocked_c + blocked_s,
                 "status": b.get("status") or "",
             })
+        # And the blocked part of a purchase note's tax (POST-A-459, migration 685), with the note's sign: a return to the supplier
+        # takes blocked credit out, the supplier's increase adds it.
+        for kind, notes, number, day, sign in (
+                ("Blocked ITC (s.17(5)), debit note", _issued_debit_notes(db, firm_id, client_id, start, end),
+                 "debit_note_no", "debit_note_date", -1),
+                ("Blocked ITC (s.17(5)), credit note", _issued_purchase_credit_notes(db, firm_id, client_id, start, end),
+                 "credit_note_no", "credit_note_date", 1)):
+            for n in notes:
+                blocked_i = sign * int(n.get("ineligible_itc_igst_paise") or 0)
+                blocked_c = sign * int(n.get("ineligible_itc_cgst_paise") or 0)
+                blocked_s = sign * int(n.get("ineligible_itc_sgst_paise") or 0)
+                if blocked_i == blocked_c == blocked_s == 0:
+                    continue
+                vend = _vendor_names(db, firm_id, [n])
+                rows.append({
+                    "id": n.get("id"), "kind": kind, "document_no": n.get(number) or "",
+                    "document_date": str(n.get(day) or "")[:10], "party": vend.get(n.get("vendor_id"), ""),
+                    "taxable_paise": 0, "igst_paise": blocked_i, "cgst_paise": blocked_c, "sgst_paise": blocked_s,
+                    "tax_paise": blocked_i + blocked_c + blocked_s, "status": n.get("status") or "",
+                })
 
     elif line == "4B2":
         from services import itc_register_service
@@ -1784,6 +1804,12 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=-int(dn.get("igst_paise") or 0),
             cess_paise=-int(dn.get("cess_paise") or 0),
             is_reverse_charge=bool(dn.get("is_reverse_charge", False)),
+            # CGST Act s.17(5) (POST-A-459, migration 685): the blocked part of the note's tax comes out of 4(B)(1) as its gross comes
+            # out of 4(A), so 4(C) moves by the creditable tax only, as the bill's did.
+            ineligible_igst_paise=-int(dn.get("ineligible_itc_igst_paise") or 0),
+            ineligible_cgst_paise=-int(dn.get("ineligible_itc_cgst_paise") or 0),
+            ineligible_sgst_paise=-int(dn.get("ineligible_itc_sgst_paise") or 0),
+            ineligible_cess_paise=-int(dn.get("ineligible_itc_cess_paise") or 0),
             is_import_of_services=dn.get("vendor_id") in imps_vendors,
         ))
     # Purchase credit notes (purchase_credit_notes table) — in this codebase's
@@ -1804,6 +1830,11 @@ def gstr3b_from_books(db, firm_id: str, client_id: str, period: str, gstin: str,
             igst_paise=int(pcn.get("igst_paise") or 0),
             cess_paise=int(pcn.get("cess_paise") or 0),
             is_reverse_charge=bool(pcn.get("is_reverse_charge", False)),
+            # CGST Act s.17(5) (POST-A-459): the blocked part goes to 4(B)(1), as a bill's does.
+            ineligible_igst_paise=int(pcn.get("ineligible_itc_igst_paise") or 0),
+            ineligible_cgst_paise=int(pcn.get("ineligible_itc_cgst_paise") or 0),
+            ineligible_sgst_paise=int(pcn.get("ineligible_itc_sgst_paise") or 0),
+            ineligible_cess_paise=int(pcn.get("ineligible_itc_cess_paise") or 0),
             is_import_of_services=pcn.get("vendor_id") in imps_vendors,
         ))
     # A bank charge the CA marked as carrying GST (BANK-24). CGST Act §16 gives

@@ -37,7 +37,8 @@ from pydantic import BaseModel, field_validator
 from models.iso_date import IsoDate, PatchIsoDate
 from models.clearable import patch_dict
 from models.common import api_response
-from models.invoices import InvoiceLineIn
+from models.invoices import PurchaseNoteLineIn
+from domain.gst import note_blocked_credit
 from domain.gst import compensation_cess
 from domain.accounting import opening_documents as _opening
 from core.authz import assert_client_access, can_access_client
@@ -71,7 +72,7 @@ class PurchaseCreditNoteIn(BaseModel):
     client_id: str
     vendor_id: str
     credit_note_date: IsoDate  # YYYY-MM-DD
-    lines: list[InvoiceLineIn]
+    lines: list[PurchaseNoteLineIn]
     purchase_bill_id: str | None = None
     reason: str | None = None
     is_interstate: bool = False
@@ -106,7 +107,7 @@ class PurchaseCreditNoteUpdateIn(BaseModel):
     reason: str | None = None
     is_interstate: bool | None = None
     is_reverse_charge: bool | None = None
-    lines: list[InvoiceLineIn] | None = None
+    lines: list[PurchaseNoteLineIn] | None = None
     notes: str | None = None
     document_url: str | None = None
 
@@ -191,6 +192,8 @@ def _compute_lines(lines_data: list, is_interstate: bool, owner: Optional[ItemOw
             "line_total_paise": taxable + cgst + sgst + igst + cess["cess_paise"],
             "service_catalogue_id": ln.get("service_catalogue_id"),
         })
+    # CGST Act s.17(5): each line keeps the blocked mark it was sent with (POST-A-459, migration 685).
+    computed = note_blocked_credit.mark_lines(computed, lines_data)
     return computed, total_taxable, total_cgst, total_sgst, total_igst
 
 
@@ -267,6 +270,7 @@ def create_purchase_credit_note(data: PurchaseCreditNoteIn, current_user: dict =
             "total_gst_paise": total_cgst + total_sgst + total_igst,
             "status": "draft", "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        payload.update(note_blocked_credit.header_columns(computed))   # s.17(5), only when a line is blocked (POST-A-459)
         if _USE_MOCK:
             payload["id"] = str(uuid.uuid4())
             seq = sequence_after(
@@ -354,6 +358,7 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
                             "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                             "total_gst_paise": total_cgst + total_sgst + total_igst,
                         })
+                        data.update(note_blocked_credit.header_columns(computed, always=note_blocked_credit.carries_any(d)))   # s.17(5) (POST-A-459)
                         MOCK_PURCHASE_CREDIT_NOTE_LINES[:] = [l for l in MOCK_PURCHASE_CREDIT_NOTE_LINES if l.get("credit_note_id") != pcn_id]
                         for ln in computed:
                             MOCK_PURCHASE_CREDIT_NOTE_LINES.append({**ln, "credit_note_id": pcn_id})
@@ -402,6 +407,7 @@ def update_purchase_credit_note(pcn_id: str, data: PurchaseCreditNoteUpdateIn, c
                 "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
+            data.update(note_blocked_credit.header_columns(computed, always=note_blocked_credit.carries_any(d)))   # s.17(5) (POST-A-459)
             draft_document_lines.replace_draft_lines(db, "purchase_credit_note", pcn_id, firm_id or "", computed, edited_by=current_user)
 
         if data:

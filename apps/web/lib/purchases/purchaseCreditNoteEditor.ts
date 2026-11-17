@@ -6,10 +6,11 @@
  * (unlike a debit note, a credit note has nothing to exceed).
  */
 import { parseLineAmounts } from "../money/lineInput.ts";
+import { blockedCreditProblem, type NoteLineBlockedCredit } from "./noteBlockedCredit.ts";
 import { dnLineGst } from "./debitNoteGst.ts";
 import { previewLineCess } from "../invoices/gst.ts";
 
-export interface PurchaseCreditNoteEditorLine {
+export interface PurchaseCreditNoteEditorLine extends NoteLineBlockedCredit {
   description: string;
   hsn_sac: string;
   qty: string;
@@ -88,5 +89,8 @@ export function validatePurchaseCreditNoteEditor(input: PurchaseCreditNoteEditor
   if (input.lines.filter(isValidPurchaseCreditNoteLine).length === 0) {
     errors.lines = "Add at least one line with a Product/Service, quantity and rate.";
   }
+  // CGST Act s.17(5) (POST-A-459): a line marked blocked names its clause, as on the bill. The server refuses it too.
+  const blocked = blockedCreditProblem(input.lines);
+  if (!errors.lines && blocked) errors.lines = blocked;
   return { errors, ok: Object.keys(errors).length === 0 };
 }
