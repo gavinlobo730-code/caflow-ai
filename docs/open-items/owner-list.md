@@ -389,6 +389,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Keying the salary deposit obligation on the month of payment; the closer records no false on-time deposit either way.
 - **Ledger:** POST-A-466
 
+### S40. Fixed deposits: how a bank computes the maturity amount
+
+- **Question:** How do Indian banks compute the maturity amount of a cumulative fixed deposit: compounded quarterly for the whole quarters and simple interest for the remaining days, or another way? And how for a payout deposit?
+- **Needed:** the banks' deposit terms, or the Indian Banks' Association's code.
+- **Who can supply it:** a practising CA or the owner.
+- **Stays unbuilt meanwhile:** moving the fixed-deposit maturity estimate on the loans page to a server answer. It stays a labelled browser estimate, and the deposit receipt is the document of record.
+- **Ledger:** POST-A-266
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
