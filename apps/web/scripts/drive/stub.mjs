@@ -145,14 +145,15 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
 
     if (pathname.startsWith("/__api/")) {
       let body = "";
-      req.on("data", (d) => { body += d; });
+      const chunks = [];
+      req.on("data", (d) => { body += d; chunks.push(d); });
       req.on("end", () => {
         const target = pathname + url.search;
         const route = routes.find((r) => (!r.method || r.method === req.method) && r.re.test(target));
         const isWrite = req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS";
         const born = generation;
         if (isWrite) {
-          writes.push({ t: Date.now(), via: "api", method: req.method, path: pathname, search: url.search, body });
+          writes.push({ t: Date.now(), via: "api", method: req.method, path: pathname, search: url.search, body, bytes: Buffer.concat(chunks) });
           inFlight += 1;
           touch();
         }
