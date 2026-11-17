@@ -47,6 +47,9 @@ OTHER_SUBJECTS = {
     "opening-suggestion": "a bank reconciliation session's suggested opening figure (a GET that "
                           "posts nothing), described in 09-bank-entries.md and not a posting of an "
                           "opening position",
+    "opening-positions": "a client's payroll opening positions (POST-A-082, migration 641): a record of what an employee had "
+                         "been paid and had deducted before payroll ran here, described in 10-payroll.md; it is not an "
+                         "accounting opening balance and posts nothing",
 }
 
 
