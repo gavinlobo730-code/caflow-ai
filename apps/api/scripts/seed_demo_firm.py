@@ -590,6 +590,49 @@ def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
     return ids
 
 
+def _engagement_letter(api: Api, c, client_id: str, fy: str, written: dict) -> None:
+    """The client's engagement letter for the year, written and rendered and NOT sent (PRE-A-004): a send is an email to a client, and
+    a seed mails nobody. It is left `Generated`, where a practice leaves a letter until it has been read through. The fee is the
+    fixture's: the year's engagements, so the letter and the fee billing agree."""
+    letter = fixture.letter_for(c, fy)
+    made = api.post("/api/engagement-letters", {
+        "title": letter.title, "client_id": client_id, "fee_amount_paise": letter.fee_paise,
+        "start_date": letter.start_date, "expiry_date": letter.expiry_date,
+        "recipient_name": letter.recipient_name, "recipient_email": letter.recipient_email,
+    })
+    api.post(f"/api/engagement-letters/{_id(made)}/generate", {})
+    written["engagement_letters"] += 1
+
+
+def _promoters(api: Api, client_ids: dict[str, str], written: dict) -> None:
+    """The people who stand behind more than one client: an entity each, a role at each company, a spouse relationship, and the
+    cross-client scan the Relationships hub offers (which finds the same person at two clients by PAN). Written once for the firm,
+    after the clients, because a role names a client."""
+    entity_ids: dict[str, str] = {}
+    for person in fixture.promoters():
+        entity = api.post("/api/relationships/entities", {
+            "full_name": person.full_name, "entity_type": "Individual", "pan": person.pan, "email": person.email,
+        })
+        entity_ids[person.full_name] = _id(entity)
+        written["entities"] += 1
+        for role in person.roles:
+            api.post(f"/api/relationships/entities/{entity_ids[person.full_name]}/roles", {
+                "client_id": client_ids[role.client_name], "role_type": role.role_type,
+                "ownership_percent": role.ownership_percent,
+            })
+            written["entity_roles"] += 1
+    for person in fixture.promoters():
+        # one edge per couple: written from the alphabetically first, so the pair is not stored twice
+        if person.spouse_of and person.full_name < person.spouse_of:
+            api.post("/api/relationships/relationships", {
+                "from_entity_id": entity_ids[person.full_name], "to_entity_id": entity_ids[person.spouse_of],
+                "relationship_type": "Spouse",
+            })
+            written["relationships"] += 1
+    found = api.post("/api/relationships/cross-client-matches/detect", {}).get("data") or {}
+    written["cross_client_matches"] += int(found.get("new_matches_detected") or 0) if isinstance(found, dict) else 0
+
+
 #: The moves a task makes from `todo` to reach each status, through the machine in `services/task_service` (a task is
 #: created `todo` and moved, so the seeder walks the same transitions a person does).
 _TASK_PATH = {
@@ -1651,6 +1694,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "itr_filings": 0, "itr_waiting": 0, "itr_filed": 0, "itr_not_yet_filable": 0,
                "tds_challans": 0, "tds_deposits_not_yet_due": 0, "tds_statements_not_yet_due": 0,
                "tds_statements_filed": 0, "tds_statements_prepared": 0, "tds_quarters_without_deductions": 0,
+               "engagement_letters": 0, "entities": 0, "entity_roles": 0, "relationships": 0, "cross_client_matches": 0,
                "health_scored": 0, "health_not_scored": [],
                "returns_refused": []}
 
@@ -1688,6 +1732,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     last_month = fixture.draft_month(firm.financial_year)
 
     fee_plan: list = []          # the fee invoices to raise once every client is done (see `_fee_billing`)
+    client_ids: dict[str, str] = {}   # client name -> id, for what is written once the clients are (`_promoters`)
     for c in firm.clients:
         print(f"  {c.name} — {c.demonstrates}")
         client_id = _id(api.post("/api/clients", {
@@ -1768,6 +1813,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         # fallback. Creating it here is what makes that possible; creating it
         # later would mean a year of postings that all carry the fallback
         # disclosure.
+        client_ids[c.name] = client_id
         bank_ids, bank_ledgers = _banks(api, c, client_id, fy_start, written)
         bank_id = bank_ids[0] if bank_ids else None
         _capital(api, c, client_id, bank_ledgers[0] if bank_ledgers else None, firm.financial_year, written)
@@ -1845,6 +1891,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
         _cwip(api, c, client_id, book, written)
         _payroll(api, c, client_id, bank_id, written)
         engagement_ids = _engagements(api, c, client_id, firm.financial_year, fy_start, written)
+        _engagement_letter(api, c, client_id, firm.financial_year, written)
         _practice(api, c, client_id, firm.financial_year, engagement_ids, written, fee_plan)
         # LAST, because the credits above are known only once every invoice
         # has been written and the engine has told us what each one came to.
@@ -1870,6 +1917,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
     # not a client's: both are written once, after the clients.
     _fee_billing(api, fee_plan, written)
     _leads(api, written)
+    _promoters(api, client_ids, written)
     return written
 
 
