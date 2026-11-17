@@ -70,7 +70,34 @@ test("the nightly walks the client workspace too, with the digest limit unchange
   const wf = fs.readFileSync(path.join(here, "../../../.github/workflows/smoke-walk.yml"), "utf8");
   const code = wf.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n");
   assert.match(code, /node scripts\/smoke-walk\.mjs --only \/clients --real-client /);
-  assert.match(code, /name: Walk the client workspace\n\s+if: always\(\) && steps\.build\.outcome == 'success'/);
+  assert.match(code, /name: Walk the client workspace\n(?:\s+id: \w+\n)?\s+if: always\(\) && steps\.build\.outcome == 'success'/);
   assert.doesNotMatch(code, /name: Walk the client workspace[\s\S]{0,300}continue-on-error/);
   assert.match(read("smoke-walk.mjs"), /const MAX_ROUTES_PER_DIGEST = 5;/);
+});
+
+// THE REVIEW OF POST-A-036. Both passes run with --shots in one checkout, and both wrote `.smoke/index.html` (and the firm-level /clients
+// screens under one file name each), so the second overwrote the first walk's contact sheet and the failed-run artifact showed 44 client
+// screens instead of the walk that failed. And the pass sat between the walk and the drive, where the drive's arithmetic had no room for it.
+test("the client-workspace pass keeps its pictures and its contact sheet in a folder of its own", () => {
+  const walk = read("smoke-walk.mjs");
+  assert.match(walk, /const shotDir = realClient \? path\.join\(SHOT_DIR, "client"\) : SHOT_DIR;/, "the pass with a real client does not choose its own folder");
+  // The rule, not a list of today's writes: nothing but that choice reads SHOT_DIR, so every picture and the sheet go where the pass chose.
+  const readers = walk.split("\n").filter((l) => /\bSHOT_DIR\b/.test(l) && !/^const SHOT_DIR = /.test(l) && !/^const shotDir = /.test(l));
+  assert.deepEqual(readers, [], "a write goes straight into .smoke/ and a second pass would overwrite the first walk's");
+  assert.match(walk, /fs\.writeFileSync\(path\.join\(shotDir, "index\.html"\)/);
+});
+
+test("the nightly runs the client-workspace pass after the drive's report and the walk's pictures are kept, bounded, and keeps its own pictures", () => {
+  const wf = fs.readFileSync(path.join(here, "../../../.github/workflows/smoke-walk.yml"), "utf8");
+  const code = wf.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n");
+  const at = (name: string) => code.indexOf(`- name: ${name}\n`);
+  for (const before of ["Drive the money editors", "Keep the money-editor drive report", "Keep the screenshots of a failed walk"]) {
+    assert.ok(at(before) > 0 && at(before) < at("Walk the client workspace"), `the client-workspace pass runs before "${before}"`);
+  }
+  const step = code.slice(at("Walk the client workspace"), code.indexOf("\n      - ", at("Walk the client workspace") + 10));
+  assert.match(step, /\n\s+timeout-minutes: \d+\n/, "the pass has no bound of its own: a client screen that never goes quiet costs 30 s a route");
+  const id = /\n\s+id: (\w+)\n/.exec(step)?.[1];
+  assert.ok(id, "the pass has no id for its pictures' upload to ask");
+  assert.match(code, new RegExp(`- name: [^\\n]+\\n\\s+if: failure\\(\\) && steps\\.${id}\\.outcome == 'failure'\\n[\\s\\S]*?path: apps/web/\\.smoke/client/\\n`),
+    "the pass's pictures are not kept when it fails");
 });
