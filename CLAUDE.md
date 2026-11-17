@@ -1861,9 +1861,9 @@ _Longer design records for this area were moved to `docs/design-record/engineeri
   `scripts/generate-redirects.test.ts` measures `cloudflareDynamicCount` (rules from the
   first dynamic one onward) and asserts the order on a synthetic tree as well as `app/`.
   **Do not interleave them again, and do not read the budget off a count of lines that
-  contain `:` or `*`.** Budget: 98 dynamic + 40 static, so **one more page under a
-  dynamic prefix costs 2 and lands on 100, and one that opens a new splat group costs 3
-  and breaks it** — decision D10: no new dynamic route under `/clients/[id]`; a new
+  contain `:` or `*`.** Budget: 99 dynamic + 40 static, so **one more page under a
+  dynamic prefix costs 2 and lands on 101, past the cap, and one that opens a new splat
+  group costs 3 and lands on 102** — decision D10: no new dynamic route under `/clients/[id]`; a new
   section there is a QUERY PARAMETER on an existing route. A route with no `:` of its
   own can still be shadowed by a sibling's placeholder (`/health/critical` vs
   `/health/:client_id`), which is what `staticLeafShadowRules` is for.
