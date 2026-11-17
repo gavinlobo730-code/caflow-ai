@@ -29,6 +29,7 @@ import uuid
 from pathlib import Path
 
 import pytest
+from tests._signed_in_writes_handed_back import hand_back
 
 API_ROOT = Path(__file__).resolve().parents[1]
 RUNNER = API_ROOT / "scripts" / "db" / "apply_migrations.py"
@@ -133,6 +134,9 @@ def db(pg_template):
             INSERT INTO user_permissions (firm_id, user_id, resource, action, granted) VALUES {grid};
         """)
         assert seed.returncode == 0, seed.stderr
+        # Migration 680 (POST-A-442) took the signed-in write on mca_filings away; these policies stay as the SECOND lock, and this file
+        # measures that lock, so the write is handed back in the throwaway copy (without it the privilege would refuse first).
+        assert hand_back(dsn, ["mca_filings"]) == ["mca_filings"]
         yield dsn
     finally:
         _psql(admin_dsn, f'DROP DATABASE IF EXISTS "{dbname}" WITH (FORCE);')

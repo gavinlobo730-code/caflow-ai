@@ -170,6 +170,8 @@ _M559_ROLLBACK = _M559.replace(".sql", "_rollback.sql")
 #: measured, as 559's are, with its rollback applied (the second-lock file).
 _M563 = "563_a_signed_in_session_writes_none_of_the_six_document_headers_or_their_lines.sql"
 _M563_ROLLBACK = _M563.replace(".sql", "_rollback.sql")
+_M680 = "680_the_mca_filings_are_written_by_the_api_only.sql"
+_M680_ROLLBACK = _M680.replace(".sql", "_rollback.sql")
 _ADMIN = os.environ.get("HARNESS_PG")
 
 _NEEDS_PG = pytest.mark.skipif(
@@ -1580,9 +1582,15 @@ def test_the_second_lock_file_covers_exactly_the_tables_migrations_499_515_549_5
     assert observed_563 == {"client_sales_invoices", "purchase_bills", "credit_notes", "debit_notes", "purchase_credit_notes",
                             "sales_debit_notes"}, sorted(observed_563)
     revoked |= observed_563
+    # and the one table migration 680 took every WRITE from (reading stays), the MCA filings, which the matrix observes: measured like
+    # 559's and 563's.
+    sql_680 = (_MIGRATIONS / _M680).read_text()
+    revoked_680 = set(re.findall(r"t text := '([a-z_]+)';", sql_680))
+    assert revoked_680 == {"mca_filings"} and revoked_680 <= set(matrix_tables()), sorted(revoked_680)
+    revoked |= revoked_680
     second = load_second_lock()
     assert {t for _a, t in second} == revoked, (
-        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549, 550, 551, 559 and 563 revoke: "
+        f"rls_expected_second_lock.json covers a different set of tables than migrations 499, 515, 549, 550, 551, 559, 563 and 680 revoke: "
         f"missing {sorted(revoked - {t for _a, t in second})}, extra {sorted({t for _a, t in second} - revoked)}")
     assert len(second) == len(revoked) * len(ACTORS)
     # and the main expectation reads "no privilege" in every cell of the tables 549 and 550 closed entirely, and in every WRITE
@@ -1615,6 +1623,7 @@ def test_the_second_lock_decides_when_the_first_is_lifted(world):
     exactly as they did before 550."""
     copy = clone_world(_ADMIN, world)
     try:
+        _ok(copy.dsn, _migration_sql(_M680_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M563_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M559_ROLLBACK))
         _ok(copy.dsn, _migration_sql(_M551_ROLLBACK))
