@@ -4797,6 +4797,22 @@ export const api = {
     // NOT lock its period, so the books could still move under a return
     // already at the portal, while the client GST workspace showed the same
     // return as a draft.
+    /** Every calendar row one firm-level tracker lists (POST-A-208): `gst` = GSTR-1, GSTR-3B and GSTR-9, `itr` = the income-tax return, each row
+     *  with its client's name (and GSTIN, or PAN and entity type) under `clients`. The calendar, not the obligation store. The server reads
+     *  every page and narrows to the caller's clients; the trackers used to read the table from the browser. */
+    trackerRows: (family: "gst" | "itr") => request<ApiResp<Array<Record<string, unknown>>>>(
+      `/api/compliance/calendar/tracker?family=${family}`),
+    /** Add one return to the calendar, pending (POST-A-208). Never created filed: `markFiled` records that. A second row for the same client,
+     *  return and period start is a 409 in a sentence. */
+    addCalendarEntry: (body: {
+      client_id: string;
+      compliance_type: "GSTR1" | "GSTR3B" | "GSTR9" | "ITR";
+      period_start: string;
+      period_end: string;
+      due_date: string;
+      /** The ITR form the CA picked: the calendar's type is the bare "ITR". */
+      notes?: string | null;
+    }) => request<ApiResp<Record<string, unknown>>>("/api/compliance/calendar", { method: "POST", body: JSON.stringify(body) }),
     markFiled: (recordId: string, body: { filed_date: string; arn?: string | null }) =>
       request<ApiResp<MarkFiledResult>>(
         `/api/compliance/calendar/${encodeURIComponent(recordId)}/filed`,

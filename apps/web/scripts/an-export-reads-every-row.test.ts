@@ -289,8 +289,8 @@ test("BOTH pagers stop on a short page, never on a count", () => {
 /** The (screen, table) pairs whose reads feed a count, a total or a balance. A screen here may make any number of OTHER
  *  reads (singles, writes, lookups); only the named table's reads are held to the pager. */
 const PAGED_READS_THAT_FEED_A_FIGURE: Record<string, string[]> = {
-  "app/gst/page.tsx": ["compliance_calendar"],
-  "app/income-tax/page.tsx": ["compliance_calendar"],
+  // app/gst/page.tsx and app/income-tax/page.tsx are not here any more: they read the calendar through GET /api/compliance/calendar/tracker,
+  // which reads every page and narrows to the caller's clients (POST-A-208), so neither has a direct read of the table to hold.
   // app/payroll/attendance/page.tsx is not here any more (POST-A-010): the attendance sheet and the leave ledger come from
   // GET /api/payroll/attendance-board and /leave-ledger, whose reads page every row and are held by tests/test_the_payroll_staff_screens_ask_the_server_for_their_lists.py.
   // app/tds/page.tsx is not here any more: it reads the client's deductions through the API, which cuts and counts them

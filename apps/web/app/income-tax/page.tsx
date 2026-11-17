@@ -47,10 +47,8 @@ import {
   IndianRupee,
 } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
-import { getFirmId } from "@/lib/data/getFirmId";
 import { api, request, type ApiResp } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { getClients } from "@/lib/data/clients";
 import { formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
@@ -424,6 +422,7 @@ const TABS = ["ITR Status", "Advance Tax"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function IncomeTaxPage() {
+  const { can } = usePermissions();
   const [activeTab, setActiveTab] = useState<Tab>("ITR Status");
   const [entries, setEntries] = useState<ITREntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -477,21 +476,16 @@ export default function IncomeTaxPage() {
     setLoading(true);
     setError(null);
     try {
-      const [clientList, firmId] = await Promise.all([getClients(), getFirmId()]);
+      const clientList = await getClients();
       setClients(clientList);
 
-      const sb = getSupabaseClient();
-      // Every ITR row of every year for every client; paged so a long-running book is not cut at ~1000 rows.
-      const { data, error: dbErr } = await selectAll(() => sb
-        .from("compliance_calendar")
-        .select("*, clients(client_name, pan, entity_type)")
-        .eq("firm_id", firmId)
-        .eq("compliance_type", "ITR")
-        .order("due_date")
-        .order("id"));
-
-      if (dbErr) throw new Error(dbErr.message);
-      setEntries((data ?? []) as ITREntry[]);
+      // The calendar's ITR rows through the API (POST-A-208): every year, every client the caller may reach, all pages, each with its
+      // client's name, PAN and entity type. The list is still the calendar, not the obligation store, and the sentence under the heading
+      // says so.
+      const res = await api.compliance.trackerRows("itr");
+      if (!res.success) throw new Error(res.error ?? "The income-tax filings could not be read.");
+      const data = res.data ?? [];
+      setEntries(data as unknown as ITREntry[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
@@ -634,27 +628,22 @@ export default function IncomeTaxPage() {
         setAddError("No due date yet — pick a client so the due date can be computed.");
         return;
       }
-      const firmId = await getFirmId();
       const fy = addForm.financial_year as FY;
       const period = FY_PERIOD[fy];
 
-      const sb = getSupabaseClient();
-      // compliance_type is CHECK-constrained to the bare "ITR" — there is no
-      // per-form value in the constraint's vocabulary. The form the CA picked
-      // goes in `notes`, the only column that can carry it without a
-      // migration; itrFormLabel() reads it back everywhere it is displayed.
-      const { error: insertErr } = await sb.from("compliance_calendar").insert({
-        firm_id: firmId,
+      // compliance_type is CHECK-constrained to the bare "ITR" — there is no per-form value in the constraint's vocabulary. The form the CA
+      // picked goes in `notes`, the only column that can carry it without a migration; itrFormLabel() reads it back everywhere it is
+      // displayed. Added through the API (POST-A-208): the route asks `compliance_record:write` and the client, writes an audit event and
+      // answers a second return for the same year in a sentence.
+      const added = await api.compliance.addCalendarEntry({
         client_id: addForm.client_id,
         compliance_type: "ITR",
         notes: addForm.itr_form,
         period_start: period.start,
         period_end: period.end,
         due_date: addForm.due_date,
-        filing_status: "pending",
       });
-
-      if (insertErr) throw new Error(insertErr.message);
+      if (!added.success) throw new Error(added.error ?? "The ITR deadline was not added.");
       setShowAddModal(false);
       setAddForm({ client_id: "", itr_form: "ITR-1", financial_year: "2025-26", due_date: "" });
       setDueDate(null);
@@ -867,13 +856,16 @@ export default function IncomeTaxPage() {
         title="Income Tax"
         subtitle="ITR Tracking — IT Act Section 139"
         actions={
-          <button
-            onClick={openAddModal}
-            className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add ITR Deadline
-          </button>
+          // The add route asks `compliance_record` write (POST-A-208), so the button is offered only to someone it admits.
+          can("compliance_record", "write") ? (
+            <button
+              onClick={openAddModal}
+              className="flex items-center gap-2 px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add ITR Deadline
+            </button>
+          ) : undefined
         }
       >
         {/* Sub-navigation */}

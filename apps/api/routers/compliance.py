@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from models.common import api_response
 from core.permissions import rbac
-from core.authz import assert_client_access
+from core.authz import assert_client_access, filter_by_client
 from services.audit_service import log_event
 # itr_due_date is deliberately NOT imported here any more. It answers "which
 # date is 31 July and which is 31 October"; it does not answer "which one does
@@ -21,8 +21,9 @@ from services.gst_filing_record_service import (
     FILING_TYPE_FOR_RETURN, NO_FILING_ROW_DEFAULT, NO_FILING_ROW_REASON,
     FiledDateRefused, checked_filed_date, record_filing)
 from domain.compliance_record_service import clean_filed_date
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from models.fy import FYLabel
+from models.iso_date import a_real_date
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
 
@@ -360,6 +361,111 @@ def calculate_due_dates(year: int, month: int,
         ],
         "advance_tax_schedule": advance_tax_due_dates(fy_end),
     })
+
+
+# ── The firm-level trackers' calendar rows (POST-A-208) ──────────────────────
+#
+# The firm-level /gst and /income-tax trackers READ `compliance_calendar` and the income-tax one INSERTED into it from the browser, over
+# PostgREST, so `rbac()` never ran, the assignment scope was whatever row security said, and the insert wrote no audit event. Only their
+# Mark Filed went through the server (above). Both now come through here. WHICH LIST THEY SHOW IS UNCHANGED: the calendar, not the
+# obligation store (`compliance_records`), and each screen still says so and links to Deadlines. Whether they should move onto the store
+# is decided in `docs/design-record/filing-and-compliance.md`, not here.
+
+#: What each tracker lists, and the client columns its rows carry (the embed the screens always read).
+_TRACKER_FAMILIES = {
+    "gst": (("GSTR1", "GSTR3B", "GSTR9"), "clients(client_name, gstin)"),
+    "itr": (("ITR",), "clients(client_name, pan, entity_type)"),
+}
+
+
+@router.get("/calendar/tracker")
+def calendar_tracker_rows(
+    family: Annotated[Literal["gst", "itr"], Query()],
+    current_user: dict = Depends(rbac("compliance_record", "read")),
+):
+    """Every calendar row one firm-level tracker lists (`gst`: GSTR-1, GSTR-3B, GSTR-9; `itr`: the income-tax return), oldest due date
+    first, each with its client's name (and GSTIN, or PAN and entity type).
+
+    FIRM-SCOPED, AND NARROWED TO THE CALLER'S CLIENTS: a Partner reads the firm, anyone else the clients assigned to them (a row of a
+    client outside that set is dropped, as the other firm screens do). READ IN PAGES: one row per return per client per period, every year,
+    is more than PostgREST returns in one answer, and the screen counts the newest filings, so a cut list would lose exactly those.
+    A row's `clients` is None when the client row could not be read; the screen shows no name then, and does not guess one."""
+    if _USE_MOCK:
+        return api_response(True, [])
+    types, embed = _TRACKER_FAMILIES[family]
+    from core.db_paging import fetch_all_ordered
+    from core.supabase_client import get_supabase
+    firm_id = current_user.get("firm_id") or ""
+    db = get_supabase()
+    rows = fetch_all_ordered(
+        lambda: (db.table("compliance_calendar")
+                 .select("id, firm_id, client_id, compliance_type, period_start, period_end, due_date, filing_status, filed_date, "
+                         "arn_number, notes, created_at, " + embed)
+                 .eq("firm_id", firm_id).in_("compliance_type", list(types))),
+        order=[("due_date", False)], label=f"compliance.calendar_tracker.{family}")
+    return api_response(True, filter_by_client(current_user, rows))
+
+
+class CalendarEntryIn(BaseModel):
+    client_id: str
+    compliance_type: Literal["GSTR1", "GSTR3B", "GSTR9", "ITR"]
+    period_start: str
+    period_end: str
+    due_date: str
+    #: The ITR form the CA picked: `compliance_type` is the bare "ITR" (the table's CHECK has no per-form value), so the form rides here.
+    notes: Optional[str] = None
+
+    @field_validator("period_start", "period_end", "due_date")
+    @classmethod
+    def _a_day(cls, v, info):
+        return a_real_date(v, info.field_name)
+
+    @field_validator("period_end")
+    @classmethod
+    def _ends_after_it_starts(cls, v, info):
+        start = info.data.get("period_start")
+        if start and v < start:
+            raise ValueError("period_end is before period_start.")
+        return v
+
+
+@router.post("/calendar")
+def add_calendar_entry(
+    body: CalendarEntryIn,
+    current_user: dict = Depends(rbac("compliance_record", "write")),
+):
+    """Add one return to the calendar, PENDING. It is never created filed: recording a filing is `PATCH /calendar/{id}/filed`, which writes the
+    filing row that locks the period (a third path recording a filing would not).
+
+    The client is the caller's (404 otherwise, existence not disclosed). The calendar holds one row per client, return type and period start,
+    so a second is answered in a sentence and not as the database's own words."""
+    assert_client_access(current_user, body.client_id)
+    if _USE_MOCK:
+        raise HTTPException(status_code=503, detail="Adding a return to the calendar needs the database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.db_provider import privileged_for
+    from core.supabase_client import get_supabase
+    db = privileged_for(get_supabase())
+    record = {
+        "firm_id": firm_id, "client_id": body.client_id, "compliance_type": body.compliance_type,
+        "period_start": body.period_start, "period_end": body.period_end, "due_date": body.due_date,
+        "filing_status": "pending", "filed_date": None,
+        "notes": (body.notes or "").strip() or None,
+    }
+    try:
+        rows = db.table("compliance_calendar").insert(record).execute().data or []
+    except Exception as exc:                                    # noqa: BLE001
+        text = str(exc)
+        if "23505" in text or "duplicate key" in text:
+            raise HTTPException(status_code=409, detail=(
+                f"This client already has a {body.compliance_type} on the calendar for the period starting {body.period_start}. "
+                "Nothing was added.")) from None
+        raise
+    row = rows[0] if rows else record
+    log_event(firm_id, "compliance_calendar", str(row.get("id") or ""), "create",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={k: record[k] for k in ("client_id", "compliance_type", "period_start", "period_end", "due_date", "notes")})
+    return api_response(True, row)
 
 
 @router.patch("/calendar/{record_id}/filed")
