@@ -596,6 +596,11 @@ def compute_itr(req: ComputeITRRequest, current_user: dict = Depends(rbac("incom
         },
         "warnings": result.warnings,
         "validation_errors": result.validation_errors,
+        # THE REQUEST AS COMPUTED, kept with the answer (POST-A-068). The computation screen saves this whole answer as the snapshot, so
+        # a snapshot now carries the inputs the CA typed and the choices they made, and the filing season's bulk re-run
+        # (`services/filing_season_service`) can compute the same inputs again at today's rates and records without asking for them
+        # twice. A snapshot saved before this key existed has no inputs, and the bulk run says so for it and re-runs nothing.
+        "inputs": req.model_dump(mode="json"),
         # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
         "ca_review_required": True,
     })

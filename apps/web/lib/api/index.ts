@@ -6023,9 +6023,20 @@ export const api = {
       request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/reopen`, {
         method: "POST", body: JSON.stringify({ reason }),
       }),
-    /** Which obligation types the reopen door accepts, so the screen offers it only on those and holds no list of its own. */
+    /** Records, with a reason, that an advance-tax obligation is not owed by the client (`compliance.approve`, POST-A-267 item 4). */
+    notRequired: (id: string, reason: string) =>
+      request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/not-required`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }),
+    /** Takes a "not required" record back, with a reason; the obligation returns to Not Started. */
+    requiredAgain: (id: string, reason: string) =>
+      request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/required-again`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }),
+    /** Which obligation types the reopen door accepts (and the not-required door, `not_requirable_types`), so the screen offers each
+     *  only on those and holds no list of its own. */
     reopenableTypes: () =>
-      request<ApiResp<{ obligation_types: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
+      request<ApiResp<{ obligation_types: string[]; not_requirable_types?: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
@@ -6804,6 +6815,19 @@ export const api = {
     listActive: (firmId?: string) =>
       request(`/api/lifecycle/onboarding/checklist/active${firmId ? `?firm_id=${firmId}` : ""}`),
   },
+  /* POST-A-068. The income-tax filing season at firm level: every client's return for a year by stage, and a bulk re-run of the
+     saved computations. Read-only list; the run saves DRAFT computations only and moves no return. */
+  itrSeason: {
+    list: (params: { financial_year: string; stage?: string; limit?: number; offset?: number }) => {
+      const q = new URLSearchParams({ financial_year: params.financial_year });
+      if (params.stage) q.set("stage", params.stage);
+      if (params.limit != null) q.set("limit", String(params.limit));
+      if (params.offset != null) q.set("offset", String(params.offset));
+      return request<ApiResp<ItrSeasonPayload>>(`/api/itr/season?${q.toString()}`);
+    },
+    compute: (body: { financial_year: string; chosen_clients: string[] }) =>
+      request<ApiResp<ItrSeasonComputePayload>>(`/api/itr/season/compute`, { method: "POST", body: JSON.stringify(body) }),
+  },
   workload: {
     capacityList: () => request("/api/workload/capacity"),
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
@@ -6814,6 +6838,19 @@ export const api = {
     capacityRisk: (weeksAhead = 13) =>
       request<ApiResp<CapacityRiskPayload>>(
         `/api/workload/capacity-risk?weeks_ahead=${weeksAhead}`),
+    /** How long one filing of each obligation type takes in this practice, as the firm stated it (POST-A-212). Nothing is defaulted. */
+    obligationEstimates: () =>
+      request<ApiResp<{
+        estimates: { compliance_type: string; estimated_minutes: number; updated_at?: string | null }[];
+        types_without_an_estimate: string[];
+        max_minutes: number;
+      }>>(`/api/workload/obligation-estimates`),
+    setObligationEstimate: (body: { compliance_type: string; estimated_minutes: number }) =>
+      request<ApiResp<{ estimate: { compliance_type: string; estimated_minutes: number } }>>(
+        `/api/workload/obligation-estimates`, { method: "PUT", body: JSON.stringify(body) }),
+    clearObligationEstimate: (complianceType: string) =>
+      request<ApiResp<{ cleared: string }>>(
+        `/api/workload/obligation-estimates?compliance_type=${encodeURIComponent(complianceType)}`, { method: "DELETE" }),
   },
   /* 3b-2. Its own prefix rather than an /api/accounting/reports entry: that
      one serves the AS-3 cash flow STATEMENT (what happened), this is a
@@ -9444,4 +9481,51 @@ export interface OpeningPositions {
   without: { employee_id: string; employee_name: string | null; joining_date: string | null }[];
   carries: string;
   does_not_carry: string;
+}
+
+/** One client's row of `GET /api/itr/season`. */
+export interface ItrSeasonRow {
+  client_id: string;
+  client_name: string | null;
+  entity_type: string | null;
+  stage: string;
+  stage_label: string;
+  itr_form: string | null;
+  filing_status: string | null;
+  acknowledgement_number: string | null;
+  filing_date: string | null;
+  computation_version: number | null;
+  computation_status: string | null;
+  net_payable_paise: number | null;
+  is_refund: boolean | null;
+}
+
+export interface ItrSeasonPayload {
+  financial_year: string;
+  total_clients: number;
+  counts: Record<string, number>;
+  stage_labels: Record<string, string>;
+  matching: number;
+  limit: number;
+  offset: number;
+  rows: ItrSeasonRow[];
+  not_tracked: string[];
+  max_bulk_clients: number;
+}
+
+/** One client's answer from `POST /api/itr/season/compute`. */
+export interface ItrSeasonComputeResult {
+  client_id: string;
+  client_name: string | null;
+  state: string;
+  message: string;
+  version?: number;
+  previous_version?: number;
+}
+
+export interface ItrSeasonComputePayload {
+  financial_year: string;
+  results: ItrSeasonComputeResult[];
+  tally: Record<string, number>;
+  did_not: string[];
 }

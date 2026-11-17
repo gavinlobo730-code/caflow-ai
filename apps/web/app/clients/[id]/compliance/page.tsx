@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
-import { getComplianceCalendarDirect, getReopenRule, markFiled as markObligationFiled, reopenObligation, seedComplianceCalendar } from "@/lib/data/compliance";
+import { getComplianceCalendarDirect, getReopenRule, markFiled as markObligationFiled, reopenObligation, seedComplianceCalendar, setObligationRequired } from "@/lib/data/compliance";
 import type { ComplianceEntry, ReopenRule } from "@/lib/data/compliance";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { formatDate } from "@/lib/services/formatting";
@@ -20,6 +20,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue } from "@/lib/compliance/overdue";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
+import { ObligationRequiredModal } from "@/components/compliance/ObligationRequiredModal";
 import { EditNoticeReadingModal } from "@/components/compliance/EditNoticeReadingModal";
 import type { NoticeReadingForm } from "@/lib/compliance/noticeReading";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
@@ -343,7 +344,12 @@ export default function CompliancePage() {
   // obligation types the SERVER says it will reopen, so the browser holds no list of them.
   const { can } = usePermissions();
   const canReopen = can("compliance", "approve");
-  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500 });
+  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500, notRequirableTypes: [] });
+  // Recording an obligation as NOT REQUIRED of this client, or taking that back (POST-A-267, item 4): the same person and the same
+  // server-held list of types, `compliance.approve`.
+  const [requiredForm, setRequiredForm] = useState<{ id: string; required: boolean } | null>(null);
+  const [requiredSaving, setRequiredSaving] = useState(false);
+  const [requiredError, setRequiredError] = useState<string | null>(null);
   const [reopenId, setReopenId] = useState<string | null>(null);
   const [reopening, setReopening] = useState(false);
   const [reopenError, setReopenError] = useState<string | null>(null);
@@ -506,6 +512,22 @@ export default function CompliancePage() {
     }
   }
 
+  async function handleRequired(reason: string) {
+    if (!requiredForm) return;
+    setRequiredSaving(true);
+    setRequiredError(null);
+    try {
+      const message = await setObligationRequired(requiredForm.id, requiredForm.required, reason);
+      setRequiredForm(null);
+      await reloadCompliance();
+      toast({ title: requiredForm.required ? "Required again" : "Recorded as not required", description: message });
+    } catch (e) {
+      setRequiredError(failureSentence(e, "Couldn't change this.", "write"));
+    } finally {
+      setRequiredSaving(false);
+    }
+  }
+
   const filtered = compliance.filter((c) => {
     if (subTab === "all") return true;
     // PMT06 is genuinely a GST-category obligation (the QRMP monthly challan)
@@ -553,7 +575,7 @@ export default function CompliancePage() {
       const results = await Promise.all(
         ids.map(async (id) => {
           const entry = compliance.find((c) => c.id === id);
-          if (entry?.filing_status === "filed") return { kind: "skipped" as const };
+          if (entry?.filing_status === "filed" || entry?.filing_status === "na") return { kind: "skipped" as const };
           try {
             const res = await markObligationFiled(id, { filedDate: v.filedDate });
             return { kind: "success" as const, locked: describeFilingOutcome(res, "").locked };
@@ -694,6 +716,20 @@ export default function CompliancePage() {
           onClose={() => { setReopenId(null); setReopenError(null); }}
         />
       )}
+      {requiredForm && (
+        <ObligationRequiredModal
+          required={requiredForm.required}
+          intro={(() => {
+            const e = compliance.find((c) => c.id === requiredForm.id);
+            return e ? `${e.compliance_type}, ${formatRangeLabel(e.period_start, e.period_end)}` : undefined;
+          })()}
+          maxReasonChars={reopenRule.maxReasonChars}
+          busy={requiredSaving}
+          error={requiredError}
+          onConfirm={handleRequired}
+          onClose={() => { setRequiredForm(null); setRequiredError(null); }}
+        />
+      )}
       {bulkPromptOpen && (
         <MarkFiledModal
           title={`Mark ${selected.size} filed`}
@@ -807,7 +843,7 @@ export default function CompliancePage() {
                     </td>
                     <td className="px-3 py-3 text-xs text-ps-label font-mono">{c.arn_number ?? "—"}</td>
                     <td className="px-5 py-3">
-                      {c.filing_status !== "filed" && (
+                      {c.filing_status !== "filed" && c.filing_status !== "na" && (
                         <button
                           onClick={() => { setFilingError(null); setMarkFiled({ id: c.id, arn: c.arn_number ?? "" }); }}
                           className="text-xs text-blue-600 hover:underline flex items-center gap-1"
@@ -821,6 +857,14 @@ export default function CompliancePage() {
                           className="text-xs text-blue-600 hover:underline"
                         >
                           Reopen
+                        </button>
+                      )}
+                      {c.filing_status !== "filed" && canReopen && reopenRule.notRequirableTypes.includes(c.compliance_type) && (
+                        <button
+                          onClick={() => { setRequiredError(null); setRequiredForm({ id: c.id, required: c.filing_status === "na" }); }}
+                          className="text-xs text-blue-600 hover:underline"
+                        >
+                          {c.filing_status === "na" ? "Required again" : "Not required"}
                         </button>
                       )}
                     </td>
