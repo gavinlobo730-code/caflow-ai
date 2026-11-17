@@ -585,6 +585,11 @@ def writedown_stock_to_nrv(
             raise HTTPException(status_code=422, detail="Only stock-tracked products can be written down.")
 
         period_validation_service.validate_posting_date(firm_id or "", data.writedown_date)
+        # THE CLIENT'S OWN CLOSURES TOO (its finalised year-end), asked BEFORE the stock row is written: the posting kernel refuses the
+        # journal in a closed year, and `apply_nrv_writedown` writes the stock row first, so a write-down that reached it would stand in
+        # the stock ledger with no journal behind it and move the closed year's closing stock on its own. The same call the stock-effect
+        # retry makes; a filed return is not asked, for the reason the dated-posting list gives (no GST line, no credit reversed).
+        period_lock_service.assert_not_closed(db, firm_id or "", data.client_id, data.writedown_date)
 
         reference_no = data.reference_no or f"NRV-{data.writedown_date}"
         movement = apply_nrv_writedown(
@@ -702,6 +707,8 @@ def post_nrv_review(
     from services import nrv_review_service
     db = get_supabase()
     period_validation_service.validate_posting_date(firm_id, data.writedown_date)
+    # The client's finalised year as well, before any line is written: the single door's question, for the single door's reason.
+    period_lock_service.assert_not_closed(db, firm_id, data.client_id, data.writedown_date)
     reference_no = (data.reference_no or "").strip() or f"NRV-{data.writedown_date}"
     try:
         result = nrv_review_service.post_review(

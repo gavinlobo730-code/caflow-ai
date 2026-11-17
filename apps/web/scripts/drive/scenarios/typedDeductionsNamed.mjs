@@ -2,7 +2,8 @@
  * A DEDUCTION TYPED ON THE TDS SCREEN IS NAMED ON THE STATEMENT BUILT FROM THE BOOKS, AND THE YEAR IS NOT CALLED BELOW A THRESHOLD FOR A PAYEE THE SERVER COULD NOT LOOK UP (POST-A-078).
  *
  * The 26Q built from the books carries the deductions a CA typed on the TDS screen as deductee rows (POST-A-078, the carrying half; the note of the rows it carries,
- * `typed_on_statement`, is not driven here), and a typed row recorded for ANOTHER statement is left out of it. The two return screens said nothing of what was left out: a
+ * `typed_on_statement`, is not driven here), and a typed row recorded for ANOTHER statement, or naming a supplier now recorded as non-resident, is left out of it
+ * (the server's sentence says which; the answer driven here is the first). The two return screens said nothing of what was left out: a
  * statement that is silent about the register's tax reads as a complete one. The server names them (`excluded_typed`) and the screens draw what
  * it said: how many, the tax they withheld, its own sentence, and (folded away) which they are. Nothing is added to the statement. Here, on the client's TDS tab and on the
  * firm-level page, at 1280 px and at 440: the note is drawn from a whole answer, it is not drawn when nothing is left out or when the key is absent, an answer that is there

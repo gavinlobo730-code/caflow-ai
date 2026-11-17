@@ -14,7 +14,8 @@ WHAT IS HELD HERE
       about which deduction a challan paid;
     * the statement's totals hold the typed tax, and the tie-out with the TDS Payable account compares the documents' tax alone (`books_paise`), with the typed tax
       beside it (`typed_paise`), because no journal stands behind a typed deduction;
-    * a row naming a non-resident supplier is excluded to the non-resident note like a bill, and a row recorded for another statement is named and not carried;
+    * a row naming a supplier now recorded as non-resident, and a row recorded for another statement, are named with the typed deductions left out and not
+      carried; the first is NOT put in the non-resident note, which sends the CA to the 27Q built from the books, because that statement does not carry it;
     * a typed row that may be a document already on the statement is named, never dropped; the note says which rows name no supplier;
     * a 2025-Act statement carries the row's payment code (or names why not), and 27Q and 24Q carry no typed rows.
 """
@@ -164,16 +165,71 @@ def test_a_quarter_with_no_typed_row_reports_a_typed_tax_of_nothing():
 
 # ── what is not carried, and what is named ───────────────────────────────────
 
-def test_a_typed_row_naming_a_non_resident_supplier_goes_to_the_non_resident_note_like_a_bill():
+def test_a_typed_row_naming_a_non_resident_supplier_is_left_out_with_the_typed_deductions_and_not_sent_to_the_27q():
+    """The non-resident note says "Build 27Q for the same quarter to file them", and the 27Q built from the books reads bills and advances only, so a typed row
+    put there was on neither statement while the screen said it would be on 27Q (the review of POST-A-078). It is named with the typed deductions left out, in a
+    sentence that says the 27Q built from the books does not carry it."""
     db = FakeDB()
     _vendor(db, "v-nr", name="Overseas Co", pan=None, status="non_resident")
     db.seed("tds_deductions", _typed("t1", vendor="v-nr"))
     out = _build(db)
     assert out["deductee_count"] == 0 and out["typed_on_statement"]["count"] == 0
-    assert out["excluded_non_resident"]["bill_count"] == 1 and out["excluded_non_resident"]["tds_paise"] == 10_000_00
-    assert out["excluded_non_resident"]["bills"][0]["kind"] == "typed"
-    assert out["excluded_non_resident"]["bills"][0]["bill_no"] == "TDS register entry of 2025-10-12", "named by its day, not by a bare id"
+    assert out["excluded_non_resident"]["bill_count"] == 0 and out["excluded_non_resident"]["bills"] == []
+    left = out["excluded_typed"]
+    assert left["count"] == 1 and left["tds_paise"] == 10_000_00 and [d["id"] for d in left["deductions"]] == ["t1"]
+    assert left["reason"].startswith("The supplier it names is now recorded as non-resident, so it belongs on Form 27Q under Rule 31A(4)(b)")
+    assert "built from the books carries purchase bills and advances only" in left["reason"]
+    assert "from the TDS register" in left["reason"] and "correct the supplier's record" in left["reason"]
+    assert "another statement" not in left["reason"]
     assert out["reconciliation"]["typed_paise"] == 0
+    # THE PREMISE OF THE SENTENCE, held: the 27Q built from the books for the same quarter does not carry the typed row. If it ever does, the row belongs in the
+    # non-resident note and this sentence is wrong.
+    from services.tds_return_service import tds_27q_from_books
+    q27 = tds_27q_from_books(db, FIRM, CLIENT, "2025-26", "Q3", "MUMP12345A", "Client Pvt Ltd", "AAACC1111C", "Mumbai")
+    assert q27["deductee_count"] == 0
+
+
+def test_a_bill_of_a_non_resident_supplier_still_goes_to_the_non_resident_note():
+    db = FakeDB()
+    _vendor(db, "v-nr", name="Overseas Co", pan=None, status="non_resident")
+    _bill(db, vendor="v-nr", section="195")
+    db.seed("tds_deductions", _typed("t1", vendor="v-nr"))
+    out = _build(db)
+    assert out["excluded_non_resident"]["bill_count"] == 1 and out["excluded_non_resident"]["bills"][0]["kind"] == "bill"
+    assert "27Q" in out["excluded_non_resident"]["reason"]
+    assert out["excluded_typed"]["count"] == 1
+
+
+def test_the_two_reasons_a_typed_row_is_left_out_are_both_said():
+    db = FakeDB()
+    _vendor(db, "v-nr", name="Overseas Co", pan=None, status="non_resident")
+    db.seed("tds_deductions", _typed("t1", vendor="v-nr"))
+    db.seed("tds_deductions", _typed("t2", return_type="27Q", day="2025-11-03"))
+    db.seed("tds_deductions", _typed("t3", return_type="27Q", day="2025-11-04"))
+    left = _build(db)["excluded_typed"]
+    assert left["count"] == 3 and left["tds_paise"] == 30_000_00
+    assert left["reason"].startswith("2 of them are recorded for another statement: key them on the statement they are recorded for")
+    assert "One of them names a supplier that is now recorded as non-resident, so it belongs on Form 27Q" in left["reason"]
+
+
+def test_the_non_resident_form_is_the_periods_own():
+    db = FakeDB()
+    _vendor(db, "v-nr", name="Overseas Co", pan=None, status="non_resident")
+    db.seed("tds_deductions", _typed("t1", vendor="v-nr", day="2026-10-12"))
+    reason = _build(db, fy="2026-27")["excluded_typed"]["reason"]
+    assert "Form 144 under Rule 31A(4)(b)" in reason and "27Q" not in reason
+
+
+def test_the_keying_sheet_says_why_a_typed_row_of_a_non_resident_supplier_is_not_on_it():
+    db = FakeDB()
+    _vendor(db, "v-nr", name="Overseas Co", pan=None, status="non_resident")
+    db.seed("tds_deductions", _typed("t1", vendor="v-nr"))
+    out = _build(db)
+    left = [g for g in out["keying_sheet"]["gaps"] if "are not on this sheet" in g]
+    assert len(left) == 1
+    assert left[0] == ("1 deduction(s) typed on the TDS screen for this quarter, with ₹10,000.00 of tax withheld, are not on this sheet. "
+                       + out["excluded_typed"]["reason"])
+    assert "another statement" not in left[0]
 
 
 def test_a_typed_row_recorded_for_another_statement_is_named_and_not_carried():

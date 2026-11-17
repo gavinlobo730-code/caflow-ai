@@ -26,11 +26,13 @@ import { todayIstISO } from "@/lib/dates/format";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
+import { LoadingRegion } from "@/components/ui/skeleton";
 import { DateInput } from "@/components/ui/date-input";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
-/** How many lines one request carries. The server takes up to 100 (`nrv_review.MAX_LINES`); each line is several round trips when
- *  it posts, so a sheet is sent in parts that each finish well inside the browser's wait. */
+/** How many lines one POSTING request carries. The server posts up to 100 in one (`nrv_review.MAX_LINES`); each line is several
+ *  round trips when it posts, so a sheet is posted in parts that each finish well inside the browser's wait. "Work out the
+ *  write-downs" asks for every typed line at once: the preview reads the whole register in one question and has no such cap. */
 export const NRV_REVIEW_PART = 25;
 
 type Line = { service_catalogue_id: string; nrv_per_unit_paise: number };
@@ -246,7 +248,7 @@ export function NrvReviewPanel({ clientId, onClose, onPosted }: { clientId: stri
               </td></tr>
             )}
             {loading && !sheet && (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-ps-hint">Loading the register…</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-ps-hint"><LoadingRegion label="Loading the register" noticeClassName="justify-center text-center">Loading the register…</LoadingRegion></td></tr>
             )}
           </tbody>
         </table>
