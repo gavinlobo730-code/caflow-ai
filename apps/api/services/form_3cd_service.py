@@ -415,7 +415,15 @@ def _year_figures(db, firm_id: str, client_id: str, fy: str, current_user: dict)
     stock_why = None
     try:
         from services import stock_position_service
-        stock = int(stock_position_service.position(db, firm_id, client_id, end).get("total_value_paise") or 0)
+        position = stock_position_service.position(db, firm_id, client_id, end)
+        # An item with movements to the date is listed even where it nets to nil, so an EMPTY list means the stock ledger holds
+        # nothing for this client, not that the closing stock is nil: stock kept only as a ledger balance (a trial-balance
+        # import, a closing-stock journal) is not seen there, and a nil read off an empty ledger would be an unknown shown as 0.
+        if position.get("items"):
+            stock = int(position.get("total_value_paise") or 0)
+        else:
+            stock_why = (f"No item is kept in the stock ledger as at {end}, so closing stock is not read from it (stock held only "
+                         "as a ledger balance is not seen there) and no stock-in-trade ratio is given.")
     except Exception as e:                                        # noqa: BLE001
         _logger.warning("form 3CD clause 40 stock for %s %s: %s", client_id, fy, e)
         stock_why = f"Closing stock as at {end} could not be read from the stock ledger."
@@ -461,7 +469,7 @@ def _clause_40(db, firm_id: str, client_id: str, financial_year: str,
     value = {"this_year": this, "preceding_year": before, "gaps": gaps}
     return value, (
         "The Profit & Loss for each year (accrual basis, through the reporting service so the caller's scope applies) and the stock "
-        "ledger's closing value. Turnover is the income under 'Revenue from Operations'; gross profit is turnover less cost of "
+        "ledger's closing value (a stock ledger holding no item is named, not read as nil). Turnover is the income under 'Revenue from Operations'; gross profit is turnover less cost of "
         "sales; net profit is the P&L's own. Ratios are in basis points. Where a figure could not be derived the value names it "
         "under 'gaps' and gives no number.")
 
@@ -521,9 +529,9 @@ def save_manual_clauses(db, firm_id: str, client_id: str, financial_year: str,
     saving a clause never silently reopens a finalised checklist. A status is changed only when one is sent.
 
     `clauses` may name ANY clause code, including a derivable one — the
-    caller's value does not win there (`build` above only reads `manual` for
-    codes ABSENT from `derived`), so recording a note against clause 18 does
-    not shadow the computed §32 figure. That is a deliberate asymmetry from
+    caller's value does not win there (`build` above reads `manual` only for
+    codes `derived` holds no figure for: absent, or derived as None), so
+    recording a note against clause 18 does not shadow the computed §32 figure. That is a deliberate asymmetry from
     `domain/tds/deductor.resolve`'s "caller wins": the derived clauses here are
     figures from the client's own live books, and a stale manual override
     sitting underneath one would go stale the next time a bill was entered.
