@@ -24,7 +24,6 @@ def _get_repo():
     return memory_repo
 
 
-
 # ── Client-assignment scope (M2) ──────────────────────────────────────────────
 # `core.authz` makes only the **Partner** firm-wide (`_FIRMWIDE_ROLES`); a
 # Manager, Executive or Reviewer sees only the clients in
@@ -126,14 +125,6 @@ def list_profiles(
 
 
 # ── Firm Profile ─────────────────────────────────────────────────────────────
-
-@router.get("/firm/profile")
-def get_firm_profile(current_user: dict = Depends(rbac("copilot", "read"))):
-    """Get firm-level intelligence profile."""
-    firm_id = current_user["firm_id"]
-    profile = _get_repo().get_firm_profile(firm_id)
-    return api_response(True, data={"profile": profile})
-
 
 @router.post("/firm/profile/compute")
 def compute_firm_profile(current_user: dict = Depends(rbac("copilot", "write"))):

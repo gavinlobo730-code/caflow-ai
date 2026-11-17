@@ -185,13 +185,19 @@ def generate_obligations(client_id: Optional[str] = Query(None),
 def assign_obligation(record_id: str, body: AssignBody,
                       current_user: dict = Depends(rbac("compliance", "write"))):
     """Set preparer / reviewer / approver on an obligation (audited + timelined)."""
-    _assert_obligation_scope(current_user, record_id)
+    rec = _assert_obligation_scope(current_user, record_id)
     # Each person named is a member of the caller's firm. Only `assigned_to` (which this route sets to the preparer) is keyed, to `users`;
     # `preparer_id`, `reviewer_id` and `approver_id` are bare uuids (migration 108), so for them this check is the only one.
+    # And each can open the obligation's client (POST-A-451): the nightly run mails all three about it by name, and the work is done
+    # inside the client.
     _db = db_provider.request_db_or_none()
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.preparer_id)
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.reviewer_id)
     named_row_ownership.member_is_the_firms(_db, current_user["firm_id"], body.approver_id)
+    client_id = (rec or {}).get("client_id")
+    named_row_ownership.member_reaches_client(_db, current_user["firm_id"], body.preparer_id, client_id)
+    named_row_ownership.member_reaches_client(_db, current_user["firm_id"], body.reviewer_id, client_id)
+    named_row_ownership.member_reaches_client(_db, current_user["firm_id"], body.approver_id, client_id)
     return api_response(True, obligations.assign(
         current_user["firm_id"], record_id, preparer_id=body.preparer_id,
         reviewer_id=body.reviewer_id, approver_id=body.approver_id, actor=current_user))

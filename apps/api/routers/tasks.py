@@ -3,8 +3,9 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
+from services.named_row_ownership import NOT_ASSIGNED_TO_THE_CLIENT
 from core.authz import (
-    filter_by_client, assert_client_access, assert_firmwide_job,
+    filter_by_client, assert_client_access, assert_firmwide_job, member_reaches_client,
 )
 from repositories.task_repository import task_repo
 from repositories.client_repository import client_repo
@@ -146,6 +147,9 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
         assignee = user_repo.find_by_id(body.assigned_to, firm_id=current_user.get("firm_id"))
         if not assignee or assignee.get("firm_id") != current_user.get("firm_id"):
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
+        # POST-A-451: and can open the task's client. The task-assigned mail names the client, and the work is done inside it.
+        if not member_reaches_client(assignee, body.client_id, current_user.get("firm_id")):
+            raise HTTPException(status_code=422, detail=NOT_ASSIGNED_TO_THE_CLIENT)
     now = datetime.now(timezone.utc).isoformat()
     fields = body.model_dump()
     if fields.get("assigned_to"):
@@ -226,6 +230,25 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
     return api_response(True, {"task": task, "activity": activity})
 
 
+def _assignee_can_open_the_client(task: dict, updates: dict, firm_id: str) -> None:
+    """POST-A-451: the person the task will be assigned to can open the client it will belong to. Asked when either changes: a new
+    assignee on the same client, or the same assignee carried to a client the task is moved to (they may not be assigned to that one).
+    A person the firm no longer holds is left to the membership check above, which has already answered for a new one."""
+    # An assignee equal to the one already held is not a change: a form sends the whole task, and refusing a title edit because the
+    # existing assignee has since lost the assignment would stop the work on a task that already names them. `client_id` has been
+    # pruned in `_changes_in` when it is the held one, so its presence is a move.
+    assignee_changed = "assigned_to" in updates and updates["assigned_to"] != task.get("assigned_to")
+    if not assignee_changed and "client_id" not in updates:
+        return
+    after_assignee = updates["assigned_to"] if "assigned_to" in updates else task.get("assigned_to")
+    if not after_assignee:
+        return
+    from repositories.user_repository import user_repo
+    person = user_repo.find_by_id(after_assignee, firm_id=firm_id)
+    if person and not member_reaches_client(person, updates.get("client_id", task.get("client_id")), firm_id):
+        raise HTTPException(status_code=422, detail=NOT_ASSIGNED_TO_THE_CLIENT)
+
+
 def _changes_in(body: "TaskUpdate", task: dict, current_user: dict, firm_id: str) -> dict:
     """What a PATCH actually changes: the fields sent, minus any that equal what is held, plus the two a null clears."""
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -298,6 +321,7 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
         assignee = user_repo.find_by_id(updates["assigned_to"], firm_id=firm_id)
         if not assignee or assignee.get("firm_id") != firm_id:
             raise HTTPException(status_code=422, detail="Assignee not found in this firm")
+    _assignee_can_open_the_client(task, updates, firm_id)
 
     if "status" in updates:
         if not is_valid_transition(task["status"], updates["status"]):

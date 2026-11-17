@@ -799,7 +799,10 @@ AUDITED: dict[str, tuple[str, ...]] = {
     # obeys — hence filter_by_client. The five remaining routes are
     # recipient-owned tallies and transitions with no client_id in them at
     # all; all EXEMPT below.
-    "/api/notifications": ("assert_client_access", "filter_by_client"),
+    # The unread count joined them (POST-A-451): it counts the notifications the
+    # list shows, narrowed by effective_client_ids, so it is audited and no
+    # longer exempt.
+    "/api/notifications": ("assert_client_access", "filter_by_client", "effective_client_ids"),
     # documents.py — documents.client_id is NOT NULL (migration 001).
     # upload_document/parse_document were already guarded via _scope_client
     # (multipart form fields are invisible to the mount-level guard, so those
@@ -1132,13 +1135,6 @@ EXEMPT: dict[str, str] = {
         "recorded in the audit doc.",
     "/api/lifecycle/leads/{lead_id}":
         "same table, addressed by id.",
-    "/api/memory/firm/profile":
-        "firm_profiles has firm_id and nothing else (migration 070) — the "
-        "firm's own intelligence profile, not any client's. It IS derived by "
-        "aggregating across the firm's clients, which is why the COMPUTE that "
-        "writes it is limited to firm-wide roles; the resulting figures are "
-        "firm-level and are what every member of the firm already sees on the "
-        "dashboards.",
     "/api/tasks/transitions":
         "the status machine itself (which status a task may move to from each), a constant of the product. No row, no client "
         "and no figure derived from either: the screens read it to offer only the moves the server will accept (POST-A-227).",
@@ -1207,12 +1203,6 @@ EXEMPT: dict[str, str] = {
         "every firm and every client, served so the form holds no vocabulary "
         "and no period. Same shape as /api/tds/sections above; the request "
         "model has no client_id to check.",
-    "/api/lifecycle/dashboard":
-        "aggregate counts only: lead stage tallies, a proposal count, an "
-        "overdue-renewal count. No client is named and no per-client figure is "
-        "returned. The renewal count IS a cardinality signal derived from "
-        "client rows — that is the line being drawn, stated rather than "
-        "pretending the endpoint touches nothing client-shaped.",
     # billing.py: every endpoint requires Partner (PERMISSIONS["billing"] is
     # Partner-only), the sole firm-wide role — these nine paths have no
     # client_id in the request at all (verified by
@@ -1599,9 +1589,6 @@ EXEMPT: dict[str, str] = {
     # scoped by user_id=the caller's own id, which is STRICTLER than a
     # client-assignment check: they read and write only the caller's own
     # inbox, never another staff member's.
-    "/api/notifications/count":
-        "the caller's own unread tally (count_unread(user_id=caller)) — one "
-        "integer, no client named.",
     "/api/notifications/read-all":
         "marks the CALLER's own notifications read (mark_all_read("
         "user_id=caller)). Touches no other user's row and names no client.",
@@ -1611,9 +1598,6 @@ EXEMPT: dict[str, str] = {
         "gate than client assignment, not a looser one.",
     "/api/notifications/{notification_id}/archive":
         "same table, same recipient scoping, the archive transition.",
-    "/api/notifications/stats":
-        "firm-wide counts by type/severity. No client is named and no "
-        "per-client figure is returned.",
     # practice_management-03 — the caller's OWN mail settings and record. There
     # is no user id to pass (the caller is always the subject), no client is
     # named, and nothing per-client is returned: a stricter scope than
@@ -1690,10 +1674,6 @@ EXEMPT: dict[str, str] = {
         "template. Covers GET (list) on this path.",
     "/api/automation/rules/{rule_id}/toggle":
         "same table, addressed by rule id — enables/disables a firm rule.",
-    "/api/automation/executions":
-        "the firm's rule-execution log, keyed by rule.",
-    "/api/automation/stats":
-        "firm-level counts of rules and executions. No client is named.",
     "/api/automation/trigger":
         "manually fires the firm's automation pass.",
     "/api/onboarding/firm":
@@ -1779,7 +1759,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/lifecycle": 19, "/api/payroll": 16,
               "/api/recurring-invoices": 11,
               "/api/recurring-journals": 9,
-              "/api/memory": 14,
+              "/api/memory": 13,
               "/api/tasks": 15, "/api/task-recurring": 9,
               "/api/tds-workspace": 12,
               "/api/tds": 8,
@@ -1816,7 +1796,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/receipts": 5, "/api/purchase-payments": 5,
               "/api/document-intelligence-v2": 5, "/api/payments": 6,
               "/api/insights": 2, "/api/assignments": 5, "/api/risks": 5,
-              "/api/notifications": 10, "/api/documents": 5, "/api/workload": 4,
+              "/api/notifications": 9, "/api/documents": 5, "/api/workload": 4,
               "/api/team": 1, "/api/ai-copilot": 3,
               "/api/einvoice": 4, "/api/form-26as": 5, "/api/fixed-assets": 5,
               "/api/analytics": 4, "/api/intelligence": 6, "/api/hsn": 1,
@@ -1824,7 +1804,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/customer-statements": 4, "/api/party-credits": 3,
               "/api/timeline": 1, "/api/search": 1,
               "/api/firm-hsn-rate-history": 4, "/api/assistant": 1,
-              "/api/audit": 2, "/api/scheduler": 2, "/api/automation": 5,
+              "/api/audit": 2, "/api/scheduler": 2, "/api/automation": 3,
               "/api/onboarding": 3, "/api/practice": 3,
               "/api/document-intelligence-v1": 1,
               "/api/portal/self": 8, "/api/portal/me": 1,

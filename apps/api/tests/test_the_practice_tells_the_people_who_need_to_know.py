@@ -705,6 +705,10 @@ def test_instantiating_a_template_for_somebody_mails_them_like_the_other_doors(w
     monkeypatch.setattr(tt.task_template_repo, "find_by_id",
                         lambda tid, firm_id=None: {"id": tid, "name": "Monthly GST", "firm_id": FIRM})
     monkeypatch.setattr(tt, "assert_client_access", lambda u, c, **_k: None)
+    # Whether the person is the firm's and can open the client is asked by the door and held by
+    # tests/test_a_person_named_on_a_clients_work_can_open_the_client.py; this test is about who is told.
+    monkeypatch.setattr(tt.named_row_ownership, "member_is_the_firms", lambda *a, **k: None)
+    monkeypatch.setattr(tt.named_row_ownership, "member_reaches_client", lambda *a, **k: None)
     monkeypatch.setattr("repositories.task_extras_repository.task_extras_repo.log_event", lambda **k: None)
     res = _staff_client(PARTNER, tt).post("/api/task-templates/tpl-1/instantiate", json={
         "client_id": CLIENT, "assignee_id": PREPARER["id"], "due_date": "2026-10-20"})

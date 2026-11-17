@@ -108,15 +108,6 @@ class TestNotificationsRepo:
         assert result["success"] is True
         assert "marked_read" in result["data"]
 
-    def test_notification_stats_structure(self):
-        from routers.notifications import notification_stats
-        result = notification_stats(current_user=USER_A)
-        assert result["success"] is True
-        stats = result["data"]
-        assert "total" in stats
-        assert "unread" in stats
-        assert "by_type" in stats
-
     def test_create_notification_via_repo(self):
         from repositories.notifications_repository import notifications_repo
         before = len(notifications_repo.find_all())
@@ -169,20 +160,6 @@ class TestAutomationRepo:
         assert result["success"] is True
         # Restore
         toggle(rule_id=rule_id, enabled=original, current_user=USER_A)
-
-    def test_executions_returns_list(self):
-        from routers.automation import executions
-        result = executions(current_user=USER_A)
-        assert result["success"] is True
-        assert isinstance(result["data"], list)
-
-    def test_automation_stats_structure(self):
-        from routers.automation import stats
-        result = stats(current_user=USER_A)
-        assert result["success"] is True
-        s = result["data"]
-        assert "rules_active" in s
-        assert "executions_today" in s
 
     def test_manual_trigger(self):
         from routers.automation import manual_trigger, TriggerBody
@@ -403,4 +380,5 @@ class TestTenantIsolationPilotFeatures:
         with patch("routers.notifications.notifications_repo", mock_repo):
             result = unread_count(current_user=USER_A)
         assert result["data"]["unread"] == 3
-        mock_repo.count_unread.assert_called_once_with(firm_id=FIRM_A, user_id=None)
+        # client_ids is the reader's reach (POST-A-451); None in mock mode, where every client is in reach.
+        mock_repo.count_unread.assert_called_once_with(firm_id=FIRM_A, user_id=None, client_ids=None)

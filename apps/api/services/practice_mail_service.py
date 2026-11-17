@@ -614,12 +614,40 @@ def send_overdue_task_mails(firm_id: str, tasks: list[dict],
     if not overdue:
         return {}
     mailed = _recently_mailed(firm_id, "task_overdue", today)
-    names = client_names(firm_id, [t.get("client_id") for ts in overdue.values() for t in ts])
-    tally: dict[str, int] = {}
+    # The mail names the client, so it goes only for a task whose client the assignee can open (POST-A-451): a task that
+    # still names somebody the firm's assignments have since kept from the client is theirs on the list, not in their inbox.
+    # One answer per (person, client) for the sweep; a read that fails answers "no" (nothing is mailed that nobody checked).
+    reach: dict[tuple[str, str], bool] = {}
+    people: dict[str, Optional[dict]] = {}
+    left_out: list[tuple[str, str]] = []
+
+    def can_open(person: dict, user_id: str, client_id) -> bool:
+        key = (user_id, str(client_id or ""))
+        if key not in reach:
+            try:
+                from core.authz import member_reaches_client
+                reach[key] = bool(member_reaches_client(person, client_id, firm_id))
+            except Exception as exc:                            # noqa: BLE001
+                from core.observability import capture_soft_failure
+                capture_soft_failure(exc, operation="practice_mail.overdue_reach", firm_id=firm_id)
+                reach[key] = False
+        return reach[key]
+
+    kept: dict[str, list[dict]] = {}
     for user_id, mine in overdue.items():
-        person = _staff_member(firm_id, user_id)
+        person = people[user_id] = _staff_member(firm_id, user_id)
         if not person:
             continue
+        ok = [t for t in mine if can_open(person, user_id, t.get("client_id"))]
+        left_out += [(user_id, str(t["id"])) for t in mine if t not in ok]
+        if ok:
+            kept[user_id] = ok
+    if left_out:
+        _logger.info("caflow.practice_mail: overdue task mail left out for people who cannot open the client: %s", left_out)
+    names = client_names(firm_id, [t.get("client_id") for ts in kept.values() for t in ts])
+    tally: dict[str, int] = {}
+    for user_id, mine in kept.items():
+        person = people[user_id]
         email = str(person.get("email") or "").strip().lower()
         due_now = [t for t in mine if rules.overdue_reminder_is_due(
             mailed.get((email, str(t["id"]))), today)]

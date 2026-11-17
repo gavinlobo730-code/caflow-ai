@@ -245,7 +245,7 @@ export default function ClientReportsPage() {
           >
             Export &amp; share
           </button>
-          . Firm-wide reporting across every client lives outside this workspace, under Reports in the main sidebar.
+          . Reporting across clients (every client you can see) lives outside this workspace, under Reports in the main sidebar.
         </p>
       </div>
     </div>

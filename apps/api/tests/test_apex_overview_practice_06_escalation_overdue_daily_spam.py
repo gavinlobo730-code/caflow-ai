@@ -31,6 +31,9 @@ def _isolate(monkeypatch):
     MOCK_COMPLIANCE_RECORDS.clear()
     monkeypatch.setattr("services.timeline_service.timeline_service.log", lambda *a, **k: None)
     monkeypatch.setattr("services.audit_service.log_event", lambda *a, **k: None)
+    # The preparer is a member of the firm who can open the client: the nightly run tells only such a person (POST-A-451).
+    monkeypatch.setattr("repositories.user_repository.user_repo.find_by_id",
+                        lambda uid, firm_id=None: {"id": uid, "firm_id": FIRM, "role": "Partner"} if uid == "p1" else None)
     yield
     MOCK_COMPLIANCE_RECORDS.clear()
 

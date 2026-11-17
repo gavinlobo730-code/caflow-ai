@@ -82,7 +82,7 @@ export default function HealthAlertsPage() {
       <PageHeader
         icon={<Bell size={20} className="text-amber-500" />}
         title="Health Alerts"
-        subtitle="Active unresolved alerts across all clients"
+        subtitle="Active unresolved alerts across the clients you can see"
       />
       {error && <Callout tone="problem">{error}</Callout>}
       {loading ? (

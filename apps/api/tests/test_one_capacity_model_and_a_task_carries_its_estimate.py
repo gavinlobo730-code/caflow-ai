@@ -375,6 +375,11 @@ def workload(db, monkeypatch):
     return _app(wl).get("/api/workload").json()["data"]
 
 
+def test_the_answer_says_the_utilisation_counts_every_clients_hours(workload):
+    """POST-A-453: the cards draw this under the figure, so a member who sees some clients does not read it as theirs."""
+    assert workload["utilisation_counts"] == wl.UTILISATION_COUNTS
+
+
 def _configured(monkeypatch, hours=45):
     """`capacity_repo` answers from its own in-memory store in mock mode, so the
     configured week is stated through it rather than seeded into FakeDB."""

@@ -376,7 +376,7 @@ for (const [rel, site] of Object.entries(PRINT_SITES)) {
 
 test("a statement tab's own chrome is not printed", () => {
   const src = code("app/clients/[id]/accounting/page.tsx");
-  const bar = src.indexOf("{TABS.map(");
+  const bar = src.indexOf("{TABS.filter(");
   assert.ok(bar > 0, "the sub-tab bar moved: re-point this at it");
   assert.ok(enclosingDivClasses(src, bar).some((l) => has(l, "print:hidden")),
     "the sub-tab bar is drawn above every printed statement");

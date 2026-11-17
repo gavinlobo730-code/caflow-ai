@@ -47,7 +47,7 @@ def global_search(
         return api_response(True, {"results": []})
 
     firm_id = current_user.get("firm_id")
-    eff = effective_client_ids(current_user)  # None ⇒ firm-wide (Partner/Manager)
+    eff = effective_client_ids(current_user)  # None ⇒ firm-wide (a Partner; a Manager is assignment-scoped, M3)
     ql = query.lower()
     results: list[dict] = []
 

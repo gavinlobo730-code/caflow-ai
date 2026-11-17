@@ -5896,15 +5896,12 @@ export const api = {
   automation: {
     rules: () => request("/api/automation/rules"),
     toggleRule: (id: string, enabled: boolean) => request(`/api/automation/rules/${id}/toggle`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
-    executions: () => request("/api/automation/executions"),
-    stats: () => request("/api/automation/stats"),
   },
   notifications: {
     list: (unreadOnly?: boolean) => request(`/api/notifications${unreadOnly ? "?unread_only=true" : ""}`),
     count: () => request("/api/notifications/count"),
     markRead: (id: string) => request(`/api/notifications/${id}/read`, { method: "PATCH" }),
     markAllRead: () => request("/api/notifications/read-all", { method: "PATCH" }),
-    stats: () => request("/api/notifications/stats"),
     /** Which of the practice's own mail THIS person gets, event by event, and
      *  whether they chose it or it is the event's default. */
     emailPreferences: () =>
@@ -6727,8 +6724,6 @@ export const api = {
       request(`/api/memory/clients/${clientId}/profile/compute`, { method: "POST" }),
     listProfiles: (params?: Record<string, string>) =>
       request("/api/memory/profiles", { params } as RequestInit),
-    getFirmProfile: () =>
-      request("/api/memory/firm/profile"),
     listTriggers: (params?: Record<string, string>) =>
       request(`/api/memory/triggers${params ? "?" + new URLSearchParams(params) : ""}`),
     acknowledgeTrigger: (id: string) =>

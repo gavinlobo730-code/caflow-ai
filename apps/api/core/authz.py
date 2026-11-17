@@ -11,7 +11,7 @@ Design notes
 * Deny by default — unknown role / unknown resource-action / unassigned client
   all resolve to "no".
 * Role-aware: delegates the role↔action matrix to core.permissions.can().
-* Assignment-aware: Partner/Manager are firm-wide; Executive/Reviewer/Client are
+* Assignment-aware: a Partner is firm-wide; Manager/Executive/Reviewer/Client are
   restricted to clients in user_client_assignments. Returns 404 (not 403) on an
   unauthorized client so existence is not disclosed.
 * Visibility-layer compatible: can_access_client / effective_client_ids are the
@@ -146,6 +146,22 @@ def is_client_assigned(user_id: Optional[str], client_id: Optional[str], firm_id
     )
     # G1, as in `assigned_client_ids` and read in the same statement: an assignment to the practice assigns nothing (POST-A-433).
     return any(not _names_the_practice(r) for r in (res.data or []))
+
+
+def member_reaches_client(member: dict, client_id: Optional[str], firm_id: Optional[str]) -> bool:
+    """Whether a member of the firm whom somebody else NAMES (an assignee, a preparer, a reviewer, a recipient) can open the
+    client, by the same rule the member's own requests are judged by: a firm-wide role sees every client, anyone else the
+    clients assigned to them (POST-A-451). `member` is a `users` row with at least its `id` and `role`.
+
+    Asked where work or a notice about a client is handed to a person: a member who cannot open the client cannot do the
+    work, and a notice naming the client tells them about a client their own assignments keep from them. The client is
+    the caller's to vouch for (it belongs to the firm, and the caller reached it); this asks only about the person named.
+    Mock/dev permissive through `is_client_assigned`."""
+    if not client_id:
+        return True
+    if is_firmwide(member):
+        return True
+    return is_client_assigned(member.get("id"), str(client_id), firm_id)
 
 
 def effective_client_ids(user: dict) -> Optional[set[str]]:

@@ -78,7 +78,9 @@ type AccountingTab =
   | "day-book"
   | "cost-centres";
 
-const TABS: { id: AccountingTab; label: string }[] = [
+// `requires` is the permission a tab's own first read asks (POST-A-454): Verify Books loads the reconciliation checks and runs, which
+// ask `accounting` `approve` (Partner only), so a Manager and an Executive were offered a tab that refused them on arrival.
+const TABS: { id: AccountingTab; label: string; requires?: readonly [string, string] }[] = [
   { id: "dashboard",     label: "Dashboard" },
   { id: "coa",           label: "Accounts" },
   { id: "journal",       label: "Journal" },
@@ -88,7 +90,7 @@ const TABS: { id: AccountingTab; label: string }[] = [
   { id: "balance-sheet", label: "Balance Sheet" },
   { id: "cashflow",      label: "Cash Flow" },
   { id: "approvals",     label: "Approvals" },
-  { id: "verify-books",  label: "Verify Books" },
+  { id: "verify-books",  label: "Verify Books", requires: ["accounting", "approve"] },
   { id: "reports",       label: "Reports" },
   { id: "opening-balances", label: "Opening Balances" },
   // ACC-13. A TAB rather than a route, which costs zero of D10's
@@ -265,6 +267,7 @@ export default function AccountingPage() {
   // switched back to a report tab, instead of once per client for this whole
   // page.
   const ledgerSpan = useLedgerSpan(clientId);
+  const { can: tabsCan, resolved: tabsResolved } = usePermissions();
   // The tab lives in the URL, not only in state, so it survives leaving the
   // page and coming back — which the journal editor does on every save. Before
   // this, "Back to Journal" landed the CA on the Dashboard.
@@ -361,7 +364,7 @@ export default function AccountingPage() {
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 overflow-x-auto px-6 pt-5 pb-0 print:hidden">
         <div className="flex gap-0.5 bg-ps-bg rounded-lg p-1 w-fit">
-          {TABS.map((t) => (
+          {TABS.filter((t) => !t.requires || !tabsResolved || tabsCan(t.requires[0], t.requires[1])).map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -404,7 +407,14 @@ export default function AccountingPage() {
           <ApprovalQueue clientId={clientId} />
         )}
         {tab === "verify-books" && (
-          <VerifyBooks clientId={clientId} />
+          // Reached by a link or a typed address by someone the tab is not offered to: say so rather than load and be refused.
+          tabsResolved && !tabsCan("accounting", "approve") ? (
+            <p role="status" className="text-sm text-ps-label">
+              Verify Books runs the checks a Partner signs off, so it needs permission to approve the books, which your access does not include.
+            </p>
+          ) : (
+            <VerifyBooks clientId={clientId} />
+          )
         )}
         {tab === "opening-balances" && (
           <OpeningBalancesTab clientId={clientId} />

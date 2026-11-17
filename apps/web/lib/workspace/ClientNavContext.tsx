@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { PLACEHOLDER_CLIENT_ID, type ClientResolution } from "./clientGate";
+import { workspaceTileOffered } from "./tileOffered";
 
 export { PLACEHOLDER_CLIENT_ID } from "./clientGate";
 export type { ClientResolution, GateVerdict } from "./clientGate";
@@ -44,6 +45,14 @@ export interface ClientSectionConfig {
   id: ClientSection;
   label: string;
   href: (clientId: string) => string;
+  /**
+   * The permission the section's own first read asks, READ OFF THE ROUTE (POST-A-454), so the client menu does not offer a
+   * section that refuses the person on arrival. The same two fields a workspace tile carries, asked by the same rule
+   * (`lib/workspace/tileOffered.ts`). An absent field means every member of staff the section is shown to can read it.
+   * `scripts/a-client-section-asks-what-its-page-asks.test.ts` holds each pair to its route.
+   */
+  requires?: readonly [resource: string, action: string];
+  requiresAnyOf?: ReadonlyArray<readonly [resource: string, action: string]>;
 }
 
 // "reports" IS BACK, and the reasons it was pulled are worth keeping in view.
@@ -68,20 +77,28 @@ export interface ClientSectionConfig {
 // line — there is no standalone sidebar destination for it.
 export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview/` },
-  { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/` },
-  { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/` },
+  // accounting.py profit-loss / cash-flow, the dashboard's first reads → rbac("accounting", "read").
+  { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/`, requires: ["accounting", "read"] },
+  // The Sales screen opens on Sales Invoices, whose first reads are the unfinished-invoice lists (accounting read).
+  { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/`, requires: ["accounting", "read"] },
   { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
   // Banking is its own section rather than an Accounting tab: it is a
   // sequential pipeline (import -> categorize -> post -> reconcile) done in
   // order, where the financial statements next door are jumped to directly.
-  { id: "bank",         label: "Bank",          href: (id) => `/clients/${id}/bank/` },
-  { id: "inventory",    label: "Inventory",     href: (id) => `/clients/${id}/inventory/` },
+  // banking accounts list → rbac("banking", "read").
+  { id: "bank",         label: "Bank",          href: (id) => `/clients/${id}/bank/`, requires: ["banking", "read"] },
+  // inventory stock summary and items → rbac("accounting", "read").
+  { id: "inventory",    label: "Inventory",     href: (id) => `/clients/${id}/inventory/`, requires: ["accounting", "read"] },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
   { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/` },
-  { id: "fixed-assets", label: "Fixed Assets",  href: (id) => `/clients/${id}/fixed-assets/` },
-  { id: "year-end",     label: "Year End",      href: (id) => `/clients/${id}/year-end/` },
+  // fixed_assets.py list → rbac("accounting", "read").
+  { id: "fixed-assets", label: "Fixed Assets",  href: (id) => `/clients/${id}/fixed-assets/`, requires: ["accounting", "read"] },
+  // year-end engagements list → rbac("year_end", "read").
+  { id: "year-end",     label: "Year End",      href: (id) => `/clients/${id}/year-end/`, requires: ["year_end", "read"] },
   { id: "tax",          label: "Tax",           href: (id) => `/clients/${id}/tax/` },
-  { id: "reports",      label: "Reports",       href: (id) => `/clients/${id}/reports/` },
+  // An index whose every report reads the books or the bank, so it is offered to someone who may read either.
+  { id: "reports",      label: "Reports",       href: (id) => `/clients/${id}/reports/`,
+    requiresAnyOf: [["accounting", "read"], ["banking", "read"]] },
   { id: "documents",    label: "Documents",     href: (id) => `/clients/${id}/documents/` },
   { id: "tasks",        label: "Tasks",         href: (id) => `/clients/${id}/tasks/` },
   { id: "portal",        label: "Portal",         href: (id) => `/clients/${id}/portal/` },
@@ -119,6 +136,15 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
 //
 // getCurrentFinancialYear() stays — a page that needs a default needs this,
 // and it is a pure function of the date rather than a shared mutable setting.
+
+/** The client sections offered to the person (POST-A-454): each by the permission its first read asks, nothing withheld while
+ *  the permissions are still being read. */
+export function sectionsOffered(
+  can: (resource: string, action: string) => boolean,
+  resolved: boolean,
+): ClientSectionConfig[] {
+  return CLIENT_SECTIONS.filter((s) => workspaceTileOffered(s, can, resolved));
+}
 
 export function getCurrentFinancialYear(): string {
   return currentFinancialYearLabel();

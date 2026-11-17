@@ -1366,7 +1366,29 @@ def transition(firm_id: str, record_id: str, new_status: str, actor: Optional[di
     return compliance_record_service.update_record(record_id, data, firm_id=firm_id, actor=actor)
 
 
-def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) -> set:
+def _people_who_can_open(firm_id: str, client_id, named: set, cache: Optional[dict] = None) -> set:
+    """Of the people an obligation names, the ones who can open its client (POST-A-451): a Partner, or a member assigned to it.
+
+    The reminders name the client, and the assign route now refuses naming somebody who cannot open it; this covers an obligation
+    named before that, and a member whose assignment was taken away since. `cache` holds one answer per (person, client) for a sweep,
+    so sixty obligations of one client ask about each person once. A person who is not a member of the firm (deleted since) is not
+    sent anything either."""
+    from core.authz import member_reaches_client
+    from repositories.user_repository import user_repo
+    cache = {} if cache is None else cache
+    reach = set()
+    for uid in named:
+        key = (str(uid), str(client_id or ""))
+        if key not in cache:
+            person = user_repo.find_by_id(uid, firm_id=firm_id)
+            cache[key] = bool(person) and member_reaches_client(person, client_id, firm_id)
+        if cache[key]:
+            reach.add(uid)
+    return reach
+
+
+def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
+                     reach_cache: Optional[dict] = None) -> set:
     """Internal-only escalation: client timeline + audit, plus a best-effort
     in-app notification to preparer/reviewer/approver. NEVER emails the client.
 
@@ -1392,23 +1414,38 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict]) 
                              firm_id=firm_id, entity_type="compliance_record", entity_id=rec.get("id"))
     except Exception:  # pragma: no cover
         pass
+    # The people named, and of them the ones who can open the client (POST-A-451). A person named who cannot is told nothing, and
+    # the audit row says who that was, so a reminder that did not go out is on record rather than missing without a word.
+    named: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
+                              rec.get("approver_id"), rec.get("assigned_to")) if r}
+    # The reads that say who can open the client are best-effort like every other side effect here: one failed read must not stop
+    # the nightly sweep for the whole firm. It FAILS CLOSED: nobody is told this time (and the obligation is escalated again
+    # tomorrow), never somebody nobody has checked.
+    reach_unreadable = False
+    try:
+        recipients: set = _people_who_can_open(firm_id, rec.get("client_id"), named, reach_cache)
+    except Exception as exc:  # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="compliance.escalation_reach", firm_id=firm_id)
+        recipients, reach_unreadable = set(), True
     try:
         from services.audit_service import log_event
         log_event(firm_id, "compliance_record", rec.get("id"), "escalation",
                   actor_id=(actor or {}).get("auth_user_id"),
                   new_data={"tier": tier, "due_date": rec.get("due_date")},
                   metadata={"recipients": [rec.get("preparer_id"), rec.get("reviewer_id"),
-                                           rec.get("approver_id")]})
+                                           rec.get("approver_id")],
+                            "not_told_cannot_open_the_client": sorted(str(u) for u in named - recipients) if not reach_unreadable else [],
+                            "not_told_reach_unreadable": reach_unreadable})
     except Exception:  # pragma: no cover
         pass
     # Best-effort in-app notifications (internal). Guarded — never fatal.
-    recipients: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
-                                   rec.get("approver_id"), rec.get("assigned_to")) if r}
     try:
         from repositories.notifications_repository import notifications_repo
         for uid in recipients:
             notifications_repo.create({
-                "firm_id": firm_id, "user_id": uid, "type": "compliance_due",
+                # The client, so the notification follows the client's own rule on the recipient's list (POST-A-451).
+                "firm_id": firm_id, "user_id": uid, "type": "compliance_due", "client_id": rec.get("client_id"),
                 "title": f"Compliance {label}: {rec.get('obligation_type', '')}",
                 # Same raw-ISO-date defect in a different spelling, found by
                 # the same grep — CLAUDE.md's own bug-fixing rule.
@@ -1433,6 +1470,7 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     today_s = today.isoformat()
     counts = {"due_7": 0, "due_3": 0, "due_1": 0, "overdue": 0}
     mail_batch: dict[str, list[dict]] = {}
+    reach_cache: dict = {}   # one answer per (person, client) for the sweep (POST-A-451)
     # Pushed server-side: escalate() only ever acts on open obligations, so
     # there's no reason to also fetch every Filed/Completed row just to
     # discard it in Python.
@@ -1462,7 +1500,7 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
         if tier == "overdue" and last_tier == "overdue" and last_on:
             if (today - ce_date(last_on)).days < 7:
                 continue
-        for uid in _notify_internal(firm_id, r, tier, actor):
+        for uid in _notify_internal(firm_id, r, tier, actor, reach_cache):
             mail_batch.setdefault(str(uid), []).append({
                 "record_id": r.get("id"), "tier": tier,
                 "client_id": r.get("client_id"), "due_date": due,

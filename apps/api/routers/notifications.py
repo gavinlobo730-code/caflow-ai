@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 from models.common import api_response
 from core.list_window import MAX_LIST_LIMIT, probe, split
 from core.permissions import rbac
-from core.authz import assert_client_access, filter_by_client
+from core.authz import assert_client_access, effective_client_ids, filter_by_client
 from repositories.notifications_repository import notifications_repo
 from core import db_provider
 from services import named_row_ownership
@@ -104,10 +104,12 @@ def list_notifications(
     # M2: notifications.client_id is nullable (migration 004) — a notification
     # ABOUT a client the caller is no longer assigned to should stop being
     # readable, the same rule the underlying record obeys. filter_by_client
-    # keeps client-less (firm-level) notifications. unread_count below is a
-    # bare tally that names no client, so it is left as the recipient's own.
+    # keeps client-less (firm-level) notifications. The unread count beside it
+    # counts the same notifications (POST-A-451): it used to count every one,
+    # so a member was told of unread items the list then did not show them.
     notifications = filter_by_client(current_user, notifications)
-    unread_count = notifications_repo.count_unread(firm_id=firm_id, user_id=user_id)
+    unread_count = notifications_repo.count_unread(
+        firm_id=firm_id, user_id=user_id, client_ids=effective_client_ids(current_user))
     return api_response(True, {
         "notifications": notifications,
         "returned": len(notifications),
@@ -122,7 +124,8 @@ def list_notifications(
 def unread_count(current_user: dict = Depends(rbac("notification", "read"))):
     firm_id = current_user.get("firm_id")
     user_id = current_user.get("id")
-    count = notifications_repo.count_unread(firm_id=firm_id, user_id=user_id)
+    count = notifications_repo.count_unread(firm_id=firm_id, user_id=user_id,
+                                           client_ids=effective_client_ids(current_user))   # what the list shows (POST-A-451)
     return api_response(True, {"unread": count})
 
 
@@ -163,6 +166,9 @@ def create_notification(body: NotificationCreate, current_user: dict = Depends(r
     assert_client_access(current_user, body.client_id)
     # A notification is delivered to the member it names: a stranger of another firm would be sent this firm's title, body and link.
     named_row_ownership.member_is_the_firms(db_provider.request_db_or_none(), firm_id, body.user_id)
+    # And, for a notification about a client, can open it (POST-A-451): the list would hide it from them and the count no longer
+    # counts it, so it would be a notice nobody can read, about a client their assignments keep from them.
+    named_row_ownership.member_reaches_client(db_provider.request_db_or_none(), firm_id, body.user_id, body.client_id)
     notif = notifications_repo.create({
         "firm_id": firm_id,
         "type": body.type,
@@ -179,8 +185,3 @@ def create_notification(body: NotificationCreate, current_user: dict = Depends(r
     return api_response(True, {"notification": notif})
 
 
-@router.get("/stats")
-def notification_stats(current_user: dict = Depends(rbac("notification", "read"))):
-    firm_id = current_user.get("firm_id")
-    stats = notifications_repo.get_stats(firm_id=firm_id)
-    return api_response(True, stats)

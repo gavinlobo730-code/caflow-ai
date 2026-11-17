@@ -326,7 +326,7 @@ export default function PayrollPeoplePage() {
           back={{ href: "/payroll", label: "Payroll" }}
           icon={<Users size={22} className="text-blue-600" />}
           title="People"
-          subtitle="Every employee across every client, and what the statutory outputs still need from them."
+          subtitle="Every employee of the clients you can see, and what the statutory outputs still need from them."
           className="mb-6"
         />
 
