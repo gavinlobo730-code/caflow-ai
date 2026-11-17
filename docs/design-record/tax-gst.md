@@ -1509,3 +1509,13 @@ real document with wrong figures.
   recorded VBA files) and the existing statement test, whose fixtures named a seller of another State and an Enrolment ID "E-1" and now
   carry those findings. Not done: no door refuses such a row on the way in (the findings are the utility's posture, an error in the row,
   not a refusal), and the GSTIN check-digit and shape checks the doors already apply are unchanged.
+- **THE RULE 37 REPORT REVERSES THE CREDIT A BILL AVAILED, SO TAX ITS LINES MARKED BLOCKED UNDER S.17(5) IS NEVER IN IT, AND A NOTE NETS ONLY THE TAX IT MOVED** (POST-A-463, 17-11-2026; no migration).
+  What was wrong: `services/itc_reversal_service.rule37_report` passed the bill's whole CGST, SGST and IGST to `reversal_for_bill` as the
+  credit availed, and `_fold_notes` netted each purchase debit note's and credit note's whole tax against it. A bill line marked blocked
+  posts its tax to the cost (migration 240) and since POST-A-459 a purchase note does the same (migration 685), so the report showed
+  blocked tax as credit due for reversal. What the fix does: the bill and both note tables are read with their three
+  `ineligible_itc_*_paise` heads, and the credit of each head is the head less its blocked part (never below nil, a blocked figure larger
+  than its head read as the whole head). The proportion is unchanged (the value of the supply still includes blocked tax, because the
+  supplier is owed it), and each bill carries `blocked_itc_paise`, net of its notes, so a reversal smaller than the bill's tax says why.
+  How verified: 8 tests in `tests/test_rule37_report.py`, all failing on the code before. Not done: cess is not in the report, before or
+  after; the GSTR-3B screen does not draw the new figure.
