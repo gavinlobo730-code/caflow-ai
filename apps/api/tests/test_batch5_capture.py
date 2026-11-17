@@ -6,7 +6,15 @@ import pytest
 
 from core.permissions import can
 import services.billing_service as billing
+from domain.billing import time_rate
 from routers.time_tracking import ManualEntryCreate, EntryUpdate
+
+
+def _worth(minutes, billable, hourly):
+    """What an entry is worth by the one rule (`time_rate.entry_rate`, then `value_paise`). `billing_service.unbilled_value_paise`
+    restated the rule with no caller outside this file and was deleted (POST-A-169)."""
+    return time_rate.value_paise(minutes, time_rate.entry_rate(
+        {"billable_rate_paise": billable, "hourly_rate_paise": hourly}))
 
 
 @pytest.fixture(autouse=True)
@@ -18,15 +26,15 @@ def _clear():
 
 def test_unbilled_value_paise_arithmetic():
     # 60 min @ ₹1,000/hr (1,00,000 paise) -> ₹1,000
-    assert billing.unbilled_value_paise(60, 100000, None) == 100000
+    assert _worth(60, 100000, None) == 100000
     # 90 min @ same rate -> 1,50,000 paise
-    assert billing.unbilled_value_paise(90, 100000, None) == 150000
+    assert _worth(90, 100000, None) == 150000
     # billable_rate preferred over hourly_rate
-    assert billing.unbilled_value_paise(60, 200000, 100000) == 200000
+    assert _worth(60, 200000, 100000) == 200000
     # fallback to hourly_rate when billable_rate absent
-    assert billing.unbilled_value_paise(60, None, 120000) == 120000
+    assert _worth(60, None, 120000) == 120000
     # integer paise (floor), never float
-    assert billing.unbilled_value_paise(50, 100000, None) == 83333
+    assert _worth(50, 100000, None) == 83333
 
 
 def test_group_unbilled_filters_and_groups():
@@ -68,7 +76,7 @@ def test_cost_rate_rejects_negative():
 
 def test_cost_rate_not_used_in_unbilled_value():
     # Data-capture only: cost_rate must NOT influence unbilled (billable) value.
-    assert billing.unbilled_value_paise(60, 100000, None) == 100000  # independent of any cost rate
+    assert _worth(60, 100000, None) == 100000  # independent of any cost rate
 
 
 def test_is_billed_not_manually_editable_via_models():

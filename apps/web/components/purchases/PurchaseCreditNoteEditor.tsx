@@ -24,7 +24,8 @@ import type { ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { apiCall, getAuthToken, fmt, gstRateOptions, gstRateToPercent } from "@/lib/invoices/shared";
+import { apiCall, getAuthToken, cessInputsFromStored, fmt, gstRateOptions, gstRateToPercent, linesCarryCess } from "@/lib/invoices/shared";
+import { cessPayload } from "@/lib/invoices/lineItemPayload";
 import { editedText } from "@/lib/forms/editedValue";
 import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -81,6 +82,9 @@ export interface PurchaseCreditNoteLineDetail {
   unit?: string | null;
   rate_paise: number;
   gst_rate_bps: number;
+  /** Compensation cess limbs (migration 615). A bigint may arrive as a string. */
+  cess_rate_bps?: number | string | null;
+  cess_specific_paise_per_unit?: number | string | null;
   service_catalogue_id?: string | null;
 }
 
@@ -100,6 +104,7 @@ export interface PurchaseCreditNoteDetail {
   cgst_paise?: number;
   sgst_paise?: number;
   igst_paise?: number;
+  cess_paise?: number;
   total_gst_paise?: number;
   total_paise?: number;
   applied_paise?: number;
@@ -115,6 +120,9 @@ function detailLinesToEditorLines(lines: PurchaseCreditNoteDetail["lines"]): Edi
     qty: String(l.quantity ?? 1),
     rate: String((l.rate_paise ?? 0) / 100),
     gst_rate: gstRateToPercent(l.gst_rate_bps),
+    // Compensation cess (migration 615), rehydrated because a draft's save re-sends every line and the server derives the cess
+    // from what is sent: a limb the editor did not carry would be a cess silently taken off a note nobody meant to change.
+    ...cessInputsFromStored(l),
     unit: l.unit ?? "NOS",
     service_catalogue_id: l.service_catalogue_id ?? "",
     _k: i,
@@ -152,6 +160,9 @@ export function PurchaseCreditNoteEditor({
   const [isReverseCharge, setIsReverseCharge] = useState(existing?.is_reverse_charge ?? duplicateSeed?.is_reverse_charge ?? false);
   const isLocked = isEdit && existing?.status !== "draft";
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
+  // Compensation cess reaches a handful of trades, so its two columns are revealed rather than always shown, and are on from the
+  // start whenever the note already carries cess (migration 615), so the fields are never hidden from a note that has them.
+  const [showCess, setShowCess] = useState<boolean>(() => linesCarryCess(initialLines));
   const keyRef = useRef(initialLines.length);
   const nextKey = () => keyRef.current++;
   const [saving, setSaving] = useState(false);
@@ -308,6 +319,8 @@ export function PurchaseCreditNoteEditor({
         rate_paise: parseLineAmounts(l.qty, l.rate)!.ratePaise,
         gst_rate_percent: l.gst_rate,
         service_catalogue_id: l.service_catalogue_id || undefined,
+        // The two cess limbs, through the one parser every editor uses (omitted when nothing was typed).
+        ...cessPayload(l),
       }));
 
       if (isEdit && existing) {
@@ -384,6 +397,8 @@ export function PurchaseCreditNoteEditor({
           <Row label="SGST" value={fmt(totals.sgst_paise)} />
         </>
       )}
+      {/* Its own row, below the GST heads and never folded into them: Compensation Act s.11(2) proviso. */}
+      {totals.cess_paise > 0 && <Row label="Compensation cess" value={fmt(totals.cess_paise)} />}
       <p className="text-3xs text-ps-hint">
         {isInterstate ? "Interstate — IGST" : "Intra-state — CGST + SGST"} (CGST Act §8)
       </p>
@@ -497,7 +512,20 @@ export function PurchaseCreditNoteEditor({
         </section>
 
         <section className="bg-white rounded-xl border border-ps-border p-4">
-          <h2 className="text-xs font-semibold text-ps-body mb-2">Line items</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-ps-body">Line items</h2>
+            {!isLocked && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showCess}
+                  onChange={(e) => setShowCess(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-ps-border-strong accent-brand-dark"
+                />
+                <span className="text-2xs text-ps-label">Compensation cess</span>
+              </label>
+            )}
+          </div>
           {isLocked && (
             <p className="mb-2 text-3xs text-ps-hint">
               Frozen once issued — issue a fresh credit note to correct a quantity, rate, or item (CGST Act §34).
@@ -505,7 +533,7 @@ export function PurchaseCreditNoteEditor({
           )}
           <fieldset disabled={isLocked} className="border-0 p-0 m-0 min-w-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[760px]">
+            <table className={`w-full text-xs ${showCess ? "min-w-[920px]" : "min-w-[760px]"}`}>
               <thead>
                 <tr className="border-b border-ps-border text-ps-hint">
                   <th className="pb-2 text-left font-semibold w-36">Product/Service *</th>
@@ -515,6 +543,14 @@ export function PurchaseCreditNoteEditor({
                   <th className="pb-2 text-left font-semibold w-16">Unit</th>
                   <th className="pb-2 text-right font-semibold w-24">Rate (₹)</th>
                   <th className="pb-2 text-right font-semibold w-20">GST %</th>
+                  {/* GST (Compensation to States) Act 2017 s.8(2) levies "on the basis of value, quantity or on such basis": two
+                      limbs, added. Per unit of THIS LINE'S UQC; nothing converts tonnes to kilograms. */}
+                  {showCess && (
+                    <>
+                      <th className="pb-2 text-right font-semibold w-20" title="Compensation cess, ad valorem">Cess %</th>
+                      <th className="pb-2 text-right font-semibold w-24" title="Compensation cess per unit of this line's UQC">Cess/unit</th>
+                    </>
+                  )}
                   <th className="pb-2 text-right font-semibold w-24">Amount</th>
                   <th className="pb-2 w-6" />
                 </tr>
@@ -557,6 +593,22 @@ export function PurchaseCreditNoteEditor({
                           {gstRateOptions(line.gst_rate).map((r) => <option key={r} value={r}>{r}%</option>)}
                         </select>
                       </td>
+                      {showCess && (
+                        <>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01" value={line.cessPercent ?? ""}
+                              onChange={(e) => setLine(idx, { cessPercent: e.target.value })}
+                              placeholder="0" aria-label={`Line ${idx + 1} compensation cess percent`}
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                          </td>
+                          <td className="py-1.5 px-1">
+                            <input type="number" min="0" step="0.01" value={line.cessPerUnit ?? ""}
+                              onChange={(e) => setLine(idx, { cessPerUnit: e.target.value })}
+                              placeholder="0.00" aria-label={`Line ${idx + 1} compensation cess per unit`}
+                              className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-right text-xs" />
+                          </td>
+                        </>
+                      )}
                       <td className="py-1.5 px-2 text-right font-mono text-ps-body">{g.grand_total_paise > 0 ? fmt(g.grand_total_paise) : "—"}</td>
                       <td className="py-1.5">
                         {lines.length > 1 && (

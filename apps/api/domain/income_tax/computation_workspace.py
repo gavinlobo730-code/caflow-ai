@@ -6,6 +6,7 @@ IT Act 1961 — Sections 40A(3), 43B, 80C–80JJAA, 72 (carry-forward of losses)
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -510,25 +511,46 @@ def get_bf_loss(firm_id: str, loss_id: str) -> Optional[dict]:
     return res.data[0] if res.data else None
 
 
+def bf_loss_reads_as(before: dict, now: dict) -> bool:
+    """Whether a loss record still reads as it did when a change to it was worked out: its two totals AND its entries.
+
+    The totals alone missed a correction that swaps one entry for another of the same size (POST-A-368, item 3): the totals do not move, so a
+    second correction worked out from the first reading was written over the first one's entries. A reading that never held the entries (the
+    key is absent: a narrow select) is compared on the totals alone, as before; both readers select every column, and a test says so."""
+    return ((now.get("utilized_amount_paise"), now.get("remaining_amount_paise"))
+            == (before.get("utilized_amount_paise"), before.get("remaining_amount_paise"))
+            and ("utilisations" not in before or (now.get("utilisations") or {}) == (before.get("utilisations") or {})))
+
+
+def bf_loss_entries_text(before: dict) -> str:
+    """The entries a loss record held when a change to it was worked out, as the one compact, ordered JSON text the write's filter names
+    (postgrest-py sends a string as it is, so what the database is asked is a known string and a test can run exactly it)."""
+    held = before.get("utilisations")
+    return json.dumps(dict(held) if isinstance(held, dict) else {}, separators=(",", ":"), sort_keys=True)
+
+
 def store_bf_loss_use(firm_id: str, loss_id: str, before: dict, columns: dict) -> bool:
     """Write the three columns `loss_utilisation.after_filing` returns, only while the row still reads as it did when they were worked out.
 
-    The totals are compared because they are what a hand entry, a take-back and a filing all move, and the database's own checks
-    (`chk_remaining_consistency`, `chk_utilized_lte_original`) hold the pair together. A write that matches no row returns False and writes
-    nothing: the caller says so and leaves the record as it was. The compare cannot see an entry swapped for another of the same size by a
-    concurrent write. For a filing's write the acknowledgement can only be recorded once, which keeps that from mattering; for a hand entry or a
-    take-back two corrections landing in the same instant could do it, and the window is the length of one request."""
+    "Reads as it did" is the two totals (which a hand entry, a take-back and a filing all move, and which the database's own checks
+    `chk_remaining_consistency` and `chk_utilized_lte_original` hold together) AND the entries themselves, so an entry swapped for another of
+    the same size by a concurrent write is seen too (POST-A-368). The entries are compared as JSON by containment both ways (`cs` and `cd`,
+    jsonb `@>` and `<@`), which together are equality for an object of scalar-valued entries. A write that matches no row returns False and
+    writes nothing: the caller says so and leaves the record as it was."""
     if _USE_MOCK:
         loss = _MOCK_LOSSES.get(loss_id)
         if not loss or loss.get("firm_id") != firm_id:
             return False
-        if (loss.get("utilized_amount_paise"), loss.get("remaining_amount_paise")) != (
-                before.get("utilized_amount_paise"), before.get("remaining_amount_paise")):
+        if not bf_loss_reads_as(before, loss):
             return False
         loss.update(columns)
         return True
     sb = _supabase()
-    res = sb.table("brought_forward_losses").update(columns).eq("id", loss_id).eq("firm_id", firm_id).eq(
+    query = sb.table("brought_forward_losses").update(columns).eq("id", loss_id).eq("firm_id", firm_id).eq(
         "utilized_amount_paise", before.get("utilized_amount_paise")
-    ).eq("remaining_amount_paise", before.get("remaining_amount_paise")).execute()
+    ).eq("remaining_amount_paise", before.get("remaining_amount_paise"))
+    if "utilisations" in before:
+        entries = bf_loss_entries_text(before)
+        query = query.contains("utilisations", entries).contained_by("utilisations", entries)
+    res = query.execute()
     return bool(res.data)

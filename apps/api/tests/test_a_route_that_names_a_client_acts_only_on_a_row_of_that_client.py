@@ -70,6 +70,9 @@ DELETES = [
     ("/api/gstr9c/expense-lines/", "gstr9c_expense_lines"),
     ("/api/ecommerce-operator/supplies/", "ecommerce_operator_supplies"),
     ("/api/ecommerce-operator/unregistered-supplies/", "ecommerce_operator_unregistered_supplies"),
+    # GSTR-8 Table 4 / 4.1 (POST-A-056, migration 617)
+    ("/api/ecommerce-operator/amendments/", "ecommerce_operator_supply_amendments"),
+    ("/api/ecommerce-operator/unregistered-amendments/", "ecommerce_operator_unregistered_supply_amendments"),
 ]
 
 

@@ -26,10 +26,18 @@ WHAT IT DOES NOW
     the argument for the parameter is read whether it is passed by keyword or by position. A call the graph cannot resolve is matched
     by its name, as before and by keyword only: a caller nobody can name is unknown, not safe.
 
+A PAYLOAD BUILT IN ONE FUNCTION AND WRITTEN BY ANOTHER (POST-A-166, 16-11-2026)
+    `document_repo.create(data)` in a router, and `.table("documents").insert({**data, ...})` in the repository: the table is named in
+    one file and the column in another, which is how `documents.uploaded_by` reached production keyed to `team_members` (migration 479
+    re-keyed it). `tests/_write_payloads.py` follows a payload parameter (handed over whole or spread) through every caller the graph
+    resolves, to the function that builds the dict, and three rules read it: no such write sets a users key from the sign-in id; a
+    router parameter written into a users key through a repository is a carrier like any other, so its callers are checked; and nothing
+    but None is written into a column still keyed to the retired `team_members`.
+
 WHAT IT STILL CANNOT SEE
-    A payload built in one function and inserted by another (`repo.create(payload)`), a column named by a variable, a call made at
-    module level, and a value that reaches a carrier through anything but a plain parameter (an attribute, a dict lookup). The person
-    column guard follows more shapes for the columns WITHOUT a key; this one is the rule for the columns WITH one.
+    A payload returned by a call (`od.row_for(...)`), a column named by a variable, a call made at module level, and a value that
+    reaches a carrier through anything but a plain parameter (an attribute, a dict lookup). The person column guard follows more shapes
+    for the columns WITHOUT a key; this one is the rule for the columns WITH one.
 """
 from __future__ import annotations
 
@@ -43,6 +51,7 @@ from functools import lru_cache
 import pytest
 
 from tests._call_graph import CallGraph, called_name
+from tests._write_payloads import Reader
 
 API = pathlib.Path(__file__).resolve().parent.parent
 _PG = os.environ.get("HARNESS_PG")
@@ -158,7 +167,22 @@ def _direct_carriers(graph: CallGraph, pairs: Pairs) -> dict[FnKey, dict[str, se
                             if (isinstance(k, ast.Constant) and k.value in cols
                                     and isinstance(v, ast.Name) and v.id in params):
                                 carriers.setdefault(key, {}).setdefault(v.id, set()).add((table, k.value))
+    # POST-A-166: a parameter written into a users key through a payload another function inserts (a repository's caller).
+    for w in _reader(graph).followed():
+        if (w.column in pairs.get(w.table, ()) and isinstance(w.value, ast.Name)
+                and w.value.id in graph.parameters(w.scope)):
+            carriers.setdefault(w.function, {}).setdefault(w.value.id, set()).add((w.table, w.column))
     return carriers
+
+
+_READERS: dict[int, Reader] = {}
+
+
+def _reader(graph: CallGraph) -> Reader:
+    """The payload reader over the same graph, built once per graph."""
+    if id(graph) not in _READERS:
+        _READERS[id(graph)] = Reader(pathlib.Path("."), graph=graph)
+    return _READERS[id(graph)]
 
 
 @lru_cache(maxsize=4)
@@ -307,3 +331,119 @@ def test_a_call_the_graph_cannot_resolve_is_matched_by_name_and_not_passed(tmp_p
     found, _ = offenders(_tree(tmp_path, files), {"keyed": {"created_by"}})
     assert found == ["routers.r.c: services.keyed.create(actor_id=...) is written into keyed.created_by "
                      "(by name: the call could not be resolved)"]
+
+
+# ── A payload built in one function and written by another, and the retired team_members keys (POST-A-166) ───────────────
+
+def team_members_fk_pairs(template: str) -> Pairs:
+    """table -> its columns still keyed to the retired public.team_members (none, once the table goes)."""
+    out = subprocess.run(
+        ["psql", f"{_PG} dbname={template}", "-X", "-Atc",
+         "select c.conrelid::regclass::text||'|'||a.attname "
+         "from pg_constraint c join pg_attribute a "
+         "  on a.attrelid=c.conrelid and a.attnum=c.conkey[1] "
+         "where c.contype='f' and c.confrelid=to_regclass('public.team_members')"],
+        capture_output=True, text=True, check=True).stdout
+    pairs: Pairs = {}
+    for line in out.splitlines():
+        if "|" in line:
+            t, c = line.split("|", 1)
+            pairs.setdefault(t.replace("public.", ""), set()).add(c)
+    return pairs
+
+
+def payload_reader(root: pathlib.Path, scan_dirs: tuple[str, ...] = SCAN_DIRS) -> Reader:
+    return _reader(_graph(str(root), scan_dirs)[0])
+
+
+def auth_id_writes(reader: Reader, keyed: Pairs) -> list[str]:
+    """Every write, made where its dict is built or through a function that inserts a payload it was handed, that sets a keyed
+    column from the sign-in id."""
+    return sorted({f"{w.module}:{w.line} {w.table}.{w.column}" + (f" (written by {w.via})" if w.via else "")
+                   for w in reader.writes
+                   if w.column in keyed.get(w.table, ()) and "auth_user_id" in ast.unparse(w.value)})
+
+
+def team_member_writes(reader: Reader, keyed: Pairs) -> list[str]:
+    """Every write that puts anything but None into a column keyed to the retired `team_members`."""
+    return sorted({f"{w.module}:{w.line} {w.table}.{w.column}" + (f" (written by {w.via})" if w.via else "")
+                   for w in reader.writes
+                   if w.column in keyed.get(w.table, ())
+                   and not (isinstance(w.value, ast.Constant) and w.value.value is None)})
+
+
+@_NEEDS_PG
+def test_no_write_puts_the_auth_id_into_a_users_fk_column_wherever_its_payload_is_built(pg_template):
+    """The repository pattern. The window sweep saw the table in one file and the column in another, and passed."""
+    pairs = users_fk_pairs(pg_template.name)
+    assert pairs, "the FK list came back empty — the query or the schema is wrong"
+    found = auth_id_writes(payload_reader(API), pairs)
+    assert not found, (
+        "these writes set a column that FKs public.users(id) from the Supabase auth id, which can never satisfy the key:\n  "
+        + "\n  ".join(found))
+
+
+@_NEEDS_PG
+def test_nothing_writes_a_person_into_a_column_keyed_to_the_retired_team_members(pg_template):
+    """`team_members` holds no rows on production and nothing in the API writes it, so a column keyed to it can hold only NULL: any
+    other value is refused with 23503, in whatever path writes it. Read on production on 30-10-2026, every value of the four columns
+    still keyed to it (`activity_logs.actor_id`, `ai_insights.resolved_by`, `clients.assigned_to`, `filings.filed_by`) is NULL and
+    nothing writes them; this holds that for the next writer, a repository's caller included. Retiring the keys goes with the table
+    (POST-B-303 decides the documents half of it); until then this is the rule."""
+    keyed = team_members_fk_pairs(pg_template.name)
+    found = team_member_writes(payload_reader(API), keyed)
+    assert not found, (
+        "these writes put a value into a column keyed to team_members, which has no rows; the database refuses every one of them. "
+        "Write the person into a column keyed to users instead:\n  " + "\n  ".join(found))
+
+
+_REPOSITORY_TREE = {
+    "repositories/doc_repository.py": (
+        "class DocRepository:\n"
+        "    def create(self, data):\n"
+        "        return db().table('documents').insert({**data, 'created_at': 'now'}).execute()\n\n"
+        "doc_repo = DocRepository()\n"),
+    "routers/docs.py": (
+        "from repositories.doc_repository import doc_repo\n\n"
+        "def upload(current_user):\n"
+        "    data = {'title': 'x', 'uploaded_by': current_user.get('UPLOADER')}\n"
+        "    doc_repo.create(data)\n\n"
+        "def file_it(db, actor_id):\n"
+        "    doc_repo.create({'title': 'y', 'reviewed_by': actor_id})\n\n"
+        "def route(db, current_user):\n"
+        "    file_it(db, current_user.get('REVIEWER'))\n"),
+}
+
+
+def _repository_tree(tmp_path: pathlib.Path, **ids: str) -> pathlib.Path:
+    files = {}
+    for rel, src in _REPOSITORY_TREE.items():
+        for name, value in ids.items():
+            src = src.replace(name, value)
+        files[rel] = src
+    return _tree(tmp_path, files)
+
+
+def test_a_payload_a_router_builds_and_a_repository_writes_is_read(tmp_path):
+    root = _repository_tree(tmp_path, UPLOADER="auth_user_id", REVIEWER="id")
+    keyed = {"documents": {"uploaded_by", "reviewed_by"}}
+    expected = "routers.docs:4 documents.uploaded_by (written by repositories.doc_repository:DocRepository.create)"
+    assert auth_id_writes(payload_reader(root), keyed) == [expected]
+    assert team_member_writes(payload_reader(root), {"documents": {"uploaded_by"}}) == [expected]
+    assert offenders(root, keyed)[0] == []
+
+
+def test_a_router_parameter_written_through_a_repository_is_a_carrier(tmp_path):
+    root = _repository_tree(tmp_path, UPLOADER="id", REVIEWER="auth_user_id")
+    keyed = {"documents": {"uploaded_by", "reviewed_by"}}
+    assert auth_id_writes(payload_reader(root), keyed) == []
+    found, carriers = offenders(root, keyed)
+    assert carriers[("routers.docs", "file_it")] == {"actor_id": {("documents", "reviewed_by")}}
+    assert found == ["routers.docs.route: routers.docs.file_it(actor_id=...) is written into documents.reviewed_by"]
+
+
+def test_the_reader_follows_the_documents_router_into_its_repository():
+    """An anchor on the real tree, with no database: the write that escaped is one the reader now sees."""
+    seen = {(w.module, w.column, w.via) for w in payload_reader(API).followed() if w.table == "documents"}
+    assert ("routers.documents", "uploaded_by", "repositories.document_repository:DocumentRepository.create") in seen, sorted(seen)
+

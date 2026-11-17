@@ -24,6 +24,12 @@ export interface LossUse {
 
 export interface LossUsesView {
   hand_recorded_paise: number;
+  /**
+   * What a take-back of the part recorded by hand with no year names (POST-A-368): the server names it only when there is such a part. `null`
+   * when there is none, and when an older server did not say (then the part cannot be taken back from here, which is the honest reading of an
+   * answer that did not name it).
+   */
+  hand_recorded_entry_id: string | null;
   uses: LossUse[];
 }
 
@@ -60,7 +66,11 @@ export function lossUsesOf(data: unknown): Record<string, LossUsesView> | null {
     // One item that is not a use makes the whole record unreadable: showing the others would understate where the loss went.
     const items = r.uses.map(useOf);
     if (items.some((u) => u === null)) continue;
-    out[r.id] = { hand_recorded_paise: r.hand_recorded_paise, uses: items as LossUse[] };
+    out[r.id] = {
+      hand_recorded_paise: r.hand_recorded_paise,
+      hand_recorded_entry_id: typeof r.hand_recorded_entry_id === "string" && r.hand_recorded_entry_id ? r.hand_recorded_entry_id : null,
+      uses: items as LossUse[],
+    };
   }
   return out;
 }

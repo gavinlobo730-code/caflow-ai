@@ -37,12 +37,13 @@ import logging
 from typing import Any, Mapping, Optional
 
 from core.authz import can_access_client
+from core.ist_clock import assessment_year_for
 from core.permissions import can_user
 from domain.income_tax import computation_workspace as workspace
 from domain.income_tax.loss_utilisation import (
-    MANUAL, HeldByReturn, MoreThanTheRecordCanTake, NoSuchEntry, Superseded, after_filing, available_for_year_paise,
-    entries_of, holds_entry_for, is_earlier_year, later_uses, record_by_hand, take_back, used_in_year_paise,
-    uses_view,
+    HAND_RECORDED, MANUAL, HeldByReturn, MoreThanTheRecordCanTake, NoSuchEntry, OutsideTheRecordsYears, Superseded, after_filing,
+    available_for_year_paise, baseline_paise, entries_of, holds_entry_for, is_earlier_year, later_uses, record_by_hand, take_back,
+    used_in_year_paise, uses_view,
 )
 from domain.money_sentence import rupee_text
 
@@ -363,8 +364,7 @@ def _after_a_refused_write(firm_id: str, loss_id: str, before: Mapping[str, Any]
         would_store = None          # a revised return holds the year: this write could not have been stored, so it is not "already right"
     if would_store is not None and _already_what_it_should_be(now, would_store):
         return UNCHANGED, ""
-    if (now.get("utilized_amount_paise"), now.get("remaining_amount_paise")) != (
-            before.get("utilized_amount_paise"), before.get("remaining_amount_paise")):
+    if not workspace.bf_loss_reads_as(dict(before), now):
         return NOT_WRITTEN, "the loss record changed while this was being written, so it was left as it was."
     return NOT_WRITTEN, "this loss record could not be written with your access, so it was left as it was."
 
@@ -536,8 +536,7 @@ def _store_or_refuse(firm_id: str, row: Mapping[str, Any], columns: Mapping[str,
     if workspace.store_bf_loss_use(firm_id, str(row["id"]), row, dict(columns)):
         return
     now = workspace.get_bf_loss(firm_id, str(row["id"])) or {}
-    if (now.get("utilized_amount_paise"), now.get("remaining_amount_paise")) != (
-            row.get("utilized_amount_paise"), row.get("remaining_amount_paise")):
+    if not workspace.bf_loss_reads_as(row, now):
         raise UseRefused("The loss record changed while this was being saved, so it was left as it was. Reload the loss and try again.", 409)
     raise UseRefused("This loss record could not be written with your access, so it was left as it was.", 403)
 
@@ -563,6 +562,8 @@ def record_year_use(current_user: Mapping[str, Any], loss_id: str, financial_yea
         raise UseRefused(f"A return on file already holds FY {fy}'s use of this loss, so it is corrected on that return (the Tax Filing screen "
                          "writes its loss records again) and not by hand. If that return's use is wrong, take it off the list first and "
                          "then record the year.", 409) from None
+    except OutsideTheRecordsYears as exc:
+        raise UseRefused(_outside_sentence(fy, exc)) from None
     except MoreThanTheRecordCanTake as exc:
         raise UseRefused(f"FY {fy} cannot be recorded as using more than {rupee_text(exc.room_paise)} of this loss: the loss is "
                          f"{rupee_text(int(row.get('original_amount_paise') or 0))}, and other years' uses and the part recorded by hand "
@@ -582,14 +583,26 @@ def record_year_use(current_user: Mapping[str, Any], loss_id: str, financial_yea
                         else f"The hand entry for FY {fy} was taken off this loss.")}
 
 
+def _outside_sentence(fy: str, exc: OutsideTheRecordsYears) -> str:
+    """The refusal of a year the record itself puts outside the loss, in the record's own years. It advises nothing: a loss record's years
+    cannot be edited (there is no screen or route for it), so the only honest thing to say is which years the record allows."""
+    ay = assessment_year_for(fy) or f"the assessment year of FY {fy}"
+    if exc.too_early:
+        return (f"FY {fy} (AY {ay}) is before this loss arose, in AY {exc.first_ay}, so the record cannot show it as using the loss.")
+    return (f"FY {fy} (AY {ay}) is after AY {exc.last_ay}, the last year this record allows the loss to be set off in, so the record cannot "
+            "show it as using the loss.")
+
+
 def take_back_use(current_user: Mapping[str, Any], loss_id: str, entry_id: str, reason: str) -> dict:
-    """Take one entry off the record: a hand entry, or the use a filed return had written. The part recorded by hand without a year (the old
-    route's) is not an entry and is not taken back here. A return's entry comes back the next time that return's loss records are written, and
-    the answer says so."""
+    """Take one entry off the record: a hand entry, the use a filed return had written, or (`HAND_RECORDED`) the part recorded by hand with no
+    year, which the old route typed in. A return's entry comes back the next time that return's loss records are written, and the answer says
+    so."""
     firm_id = current_user["firm_id"]
     why = clean_reason(reason)
     row = _loss(firm_id, loss_id)
-    held = entries_of(row).get(str(entry_id))
+    hand_part = str(entry_id) == HAND_RECORDED
+    held = ({"financial_year": None, "amount_paise": baseline_paise(row), "return_type": "hand_recorded"} if hand_part
+            else entries_of(row).get(str(entry_id)))
     try:
         columns = take_back(row, entry_id)
     except NoSuchEntry:
@@ -598,6 +611,9 @@ def take_back_use(current_user: Mapping[str, Any], loss_id: str, entry_id: str, 
                            requested={"entry_id": str(entry_id), "financial_year": (held or {}).get("financial_year"),
                                       "amount_paise": (held or {}).get("amount_paise"), "kind": (held or {}).get("return_type")})
     _store_or_refuse(firm_id, row, columns)
+    if hand_part:
+        return {"state": WRITTEN, "loss_id": str(row["id"]), "entry_id": str(entry_id),
+                "message": f"The {rupee_text((held or {}).get('amount_paise') or 0)} recorded by hand with no year was taken off this loss."}
     by_a_return = (held or {}).get("return_type") != MANUAL
     note = (" It was written by a filed return, and it comes back the next time that return's loss records are written; to keep it off, "
             "do not write them again.") if by_a_return else ""

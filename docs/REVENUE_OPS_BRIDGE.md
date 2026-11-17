@@ -25,7 +25,15 @@ debt the compatibility layer carries. It is updated as each batch lands.
   `hourly_rate_paise`.** New Amendment-conformant column added; the legacy
   `INTEGER` `hourly_rate_paise` is left untouched. Readers must prefer
   `billable_rate_paise` when present, else fall back to `hourly_rate_paise`.
-  *Debt:* two rate columns until a future consolidation phase.
+  *Debt:* two rate columns until a future consolidation phase. *Held since
+  16-11-2026 (POST-A-169):* the order is ONE function,
+  `domain/billing/time_rate.entry_rate`, with `entry_worth` for what an entry
+  is worth; the Time screen, the time export, the unbilled-work total and
+  realization read through it, the SQL `unbilled_time_summary` restates it as
+  `COALESCE`, and `tests/test_an_hour_is_priced_by_one_rule_wherever_it_is_shown.py`
+  fails a new module that reads `hourly_rate_paise` off a row itself. The one
+  reader left outside it is the legacy `POST /api/invoices/from-time`, which no
+  screen calls and whose replacement or removal is POST-B-194's decision.
 - **B1-2 · `billing_schedules.service_id` has no FK.** The Amendment references
   `service_catalogue`, which does not exist in this codebase. `service_id` is a
   nullable `uuid` with no foreign key. *Debt:* add the FK if/when a
@@ -45,15 +53,22 @@ debt the compatibility layer carries. It is updated as each batch lands.
   excludes internal by default; a few direct `db.table("clients")` queries
   (Health recalc, Analytics, Onboarding status) were patched individually.
   *Debt:* any *new* direct `clients` query must remember to exclude
-  `is_internal` (or use `client_repo`/`clients_external`).
+  `is_internal` (or use `client_repo`/`clients_external`). *Held since
+  16-11-2026 (POST-A-169):* `apps/api/tests/test_a_read_of_the_clients_table_leaves_the_practice_out_or_says_why.py`
+  fails an API read of `clients` that is not a lookup by id, never asks
+  `is_internal` and is not listed with why the practice belongs in it; the
+  browser's reads have their own rule
+  (`apps/web/scripts/a-client-picker-leaves-out-the-internal-client.test.ts`).
 - **B2-3 · Provisioning inputs.** Internal-client `entity_type` defaults to
   `Partnership` (CA-firm typical) and PAN comes from `firms.pan`; provisioning is
   skipped (logged) when no valid PAN exists. Re-runnable via
   `POST /api/practice/provision`.
-- **B2-4 · `provision()` duplicates the SQL `provision_internal_client()`.** The
+- **B2-4 · `provision()` duplicated the SQL `provision_internal_client()`.** The
   Python service is the runtime path (works with service-role + mock); the SQL
-  function (migration 073) remains a DB-callable foundation. *Debt:* keep the two
-  in step (both idempotent, same insert + link).
+  function (migration 073) was a DB-callable foundation nothing called. *Resolved
+  16-11-2026 (POST-A-169):* the two had drifted (the SQL one recorded no state,
+  no state code and handled no race), so migration 610 dropped the SQL one and
+  the Python service is the only provisioner.
 
 ### Batch 3 (billing orchestration)
 - **B3-1 · Real table is `client_sales_invoices`** (not Doc-5 `sales_invoices`).

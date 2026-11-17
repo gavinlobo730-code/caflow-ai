@@ -389,6 +389,11 @@ def refresh_firm(db, firm_id: str, reporting=None, today=None) -> dict:
     The unit the 06:00 IST scheduler job runs. Returns a compact summary for
     the run log, the shape `audit_and_heal_firm` and `run_reconciliation_for_firm`
     already return.
+
+    The firm's own practice is LEFT OUT (Guardrail G2, POST-A-169): these rows
+    have one reader, the cross-client benchmark, and the practice is not a
+    client to benchmark. A row stored for it before this filter stays in the
+    table, so the benchmark also skips it by id.
     """
     if reporting is None:
         from domain.reporting.service import ReportingService
@@ -396,7 +401,7 @@ def refresh_firm(db, firm_id: str, reporting=None, today=None) -> dict:
         reporting = ReportingService(SupabaseLedgerSource(db, None))
 
     clients = fetch_all(
-        lambda: db.table("clients").select("id").eq("firm_id", firm_id),
+        lambda: db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", False),
         label="client_metrics.clients",
     )
     years = years_to_sweep(today)

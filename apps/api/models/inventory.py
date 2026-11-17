@@ -114,6 +114,39 @@ class NrvWritedownPreviewIn(BaseModel):
         return v
 
 
+# ── The cross-item NRV review (POST-A-111) ──────────────────────────────────
+# One sheet for the register, not one modal per item. Each line is an NRV the
+# CA estimated for one item; nothing here carries a figure the server works
+# out (the carrying value, the write-down), and nothing is defaulted: an item
+# with no line is not written down.
+
+class NrvReviewLineIn(BaseModel):
+    service_catalogue_id: str
+    nrv_per_unit_paise: int
+
+    @field_validator("nrv_per_unit_paise")
+    @classmethod
+    def non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("nrv_per_unit_paise must be non-negative.")
+        return v
+
+
+class NrvReviewSheetIn(BaseModel):
+    """Ask what the NRVs typed so far would do (POST /api/inventory/nrv-review/preview). No lines is the sheet as it stands."""
+    client_id: str
+    lines: list[NrvReviewLineIn] = []
+
+
+class NrvReviewPostIn(BaseModel):
+    """Post the reviewed lines as write-downs under one reference (POST /api/inventory/nrv-review/post)."""
+    client_id: str
+    writedown_date: IsoDate  # YYYY-MM-DD
+    lines: list[NrvReviewLineIn]
+    reference_no: Optional[str] = None
+    notes: Optional[str] = None
+
+
 # ── The physical count (INV-08) ──────────────────────────────────────────────
 # One session, not a hundred adjustments. The variance is DERIVED — nothing
 # here carries one — and the s.17(5)(h) decision is per line and tri-state:
@@ -192,3 +225,9 @@ class StockEffectRetryIn(BaseModel):
         except (ValueError, AttributeError, TypeError):
             raise ValueError("document_id must be the document's id.") from None
         return str(value)
+
+
+class StockEffectSettleIn(StockEffectRetryIn):
+    """Mark one issued document's stock effect as settled by hand (POST-A-092): the same document key as a retry, and the reason the CA gives.
+    The reason is judged by `domain/inventory/stock_settlement.reason_problem` at the route, so one speaker words the refusal."""
+    reason: str

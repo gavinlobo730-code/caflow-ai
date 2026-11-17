@@ -56,10 +56,15 @@ not earn. `domain/tds/purchase_return.py` is the rule; both note routers now
 resync the register on issue, which its own docstring always claimed happened
 "on every transition".
 
-THE REGISTER'S TYPED ROWS ARE NAMED ON A 26Q, NOT ADDED (POST-A-078). A deduction a CA typed on the TDS screen is a register row that neither a bill nor an advance
-wrote, so it is on no statement built from the books. `tds_26q_from_books` reads them to NAME them in `excluded_typed` (how many, the tax, each row) and adds none
-to a total: they have no journal behind them, so adding them would stop the tie-out above meaning what it says. Carrying them needs the typed row's tax to be the
-bill path's resolver's first, and that is the rest of POST-A-078.
+THE REGISTER'S TYPED ROWS ARE ON A 26Q, OUTSIDE THE TIE-OUT (POST-A-078). A deduction a CA typed on the TDS screen is a register row that neither a bill nor an
+advance wrote. It is a deduction the deductor made, so the statement of the quarter's deductions carries it: `tds_26q_from_books` makes it a deductee row like a
+bill's, fills it from the quarter's challans by the same FIFO the register's own readers use (`deposit_due.mapping_from_register` has always put typed rows in that
+fill, so a statement that left them out disagreed with them about which deduction a challan paid), and gives it its payment code. It has no journal behind
+it, so the tie-out with the TDS Payable account compares the bills and advances alone (`reconciliation.books_paise`) and the typed tax is reported beside it
+(`reconciliation.typed_paise`, and `typed_on_statement`: how many, the tax, each row and a sentence that says so). A typed row recorded for another statement
+(`return_type`, the register's routing key) is not carried and is named in `excluded_typed`. So is a typed row naming a supplier now recorded as non-resident, with
+its own sentence: it is NOT put in `excluded_non_resident`, whose note sends the CA to the 27Q built from the books, because that statement reads bills and advances
+only and the typed row would be on neither.
 
 Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
@@ -78,7 +83,7 @@ from domain.tds.tds_computer import (
     TDSComputer, TDSDeducteeRecord, TDS27QDeducteeRecord,
 )
 from domain.tds.section_rates import quarter_dates
-from domain.tds.residency import is_non_resident
+from domain.tds.residency import FORM_26Q, is_non_resident
 from domain.tds.purchase_return import credit_moved_after_deduction, deposit_position
 from core.db_paging import fetch_all
 from core.db_provider import privileged_for
@@ -197,9 +202,8 @@ def _typed_deductions_in_quarter(db, firm_id: str, client_id: str, start: str, e
     """The deductions a CA TYPED on the TDS screen for this quarter that withheld tax: `tds_deductions` rows that neither a purchase bill nor a vendor advance wrote
     (`manual_register.written_by_a_document`), except salary (a typed section 192 is refused at the door and belongs to 24Q).
 
-    The 26Q built from the books reads posted purchase bills and advances only, so these never reach it. They are read here to be NAMED, not to be added: they have no
-    journal behind them (the typed register is a book of its own), so adding them would break the tie-out with the TDS Payable control account that
-    `reconciliation` reports, and a figure nobody can trace is worse than a figure the statement says it left out (POST-A-078).
+    They are deductions the deductor made, so the 26Q carries them as deductee rows (POST-A-078). They have no journal behind them (the typed register is a book of
+    its own), so the statement keeps them out of the tie-out with the TDS Payable control account that `reconciliation` reports and says so.
 
     A row that withheld nothing is not one: a statement reports DEDUCTIONS (bills are read with `tds_paise > 0` and advances are dropped when they withheld nothing),
     and a payment recorded below its section's limit is a register entry that counts toward the year's total, not tax to key.
@@ -211,7 +215,8 @@ def _typed_deductions_in_quarter(db, firm_id: str, client_id: str, start: str, e
     # advance this function already reads whole, so the read stays the size of the quarter's documents, and no query here depends on a filter the stand-ins for the
     # database in the statement tests do not have.
     rows = fetch_all(lambda: db.table("tds_deductions")
-            .select("id, deductee_name, deductee_pan, section, transaction_date, payment_amount_paise, tds_paise, purchase_bill_id, purchase_payment_id")
+            .select("id, deductee_name, deductee_pan, section, transaction_date, payment_amount_paise, tds_paise, tds_rate_pct, "
+                    "is_lower_deduction, lower_deduction_cert, nature_of_payment, vendor_id, return_type, purchase_bill_id, purchase_payment_id")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .gte("transaction_date", start).lte("transaction_date", end))
     return [r for r in rows
@@ -220,17 +225,129 @@ def _typed_deductions_in_quarter(db, firm_id: str, client_id: str, start: str, e
             and (r.get("section") or "") != "192"]
 
 
-#: The sentence the two return screens show after the count and the tax (the drive's copy of it is compared with this by a test). It does not repeat
-#: the lead, which the screen writes from the count and the tax: that these are the deductions typed on the TDS screen, and that they are not on the statement.
+#: The sentence the two return screens show after the count and the tax of the typed deductions the statement LEAVES OUT (the drive's copy of it is compared
+#: with this by a test). It does not repeat the lead, which the screen writes from the count and the tax: that these are the deductions typed on the TDS screen,
+#: and that they are not on the statement. Since POST-A-078 carried the typed rows, this is the sentence for the ones whose register row names another statement;
+#: a typed row whose supplier is now recorded as non-resident is left out too, and `_excluded_typed_reason` words that one.
 EXCLUDED_TYPED_REASON = (
-    "A statement built from the books carries posted purchase bills and advances only, so deductions typed on the TDS screen are not in its totals. "
-    "Key them from the register when you key the statement: tax withheld on a typed deduction is still owed on the statement, and a typed "
-    "deduction counted in a supplier's year was taken into the tax worked out on that supplier's later bills."
+    "Their register rows are recorded for another statement, so they are not in this one's totals. Key them on the statement they are "
+    "recorded for, or correct the register row if they belong on this one."
+)
+
+#: The sentence the two return screens show after the count and the tax of the typed deductions the statement CARRIES (POST-A-078). The lead, from the count and
+#: the tax, says they are on the statement; this says what is different about them.
+TYPED_ON_STATEMENT_REASON = (
+    "Each is a deductee row under the challan that paid it, like a bill's. No journal stands behind a deduction typed on the TDS screen, so the tie-out with "
+    "the TDS Payable account compares the purchase bills and advances alone, and these are outside it."
 )
 
 
-def _excluded_typed(rows: list[dict], section_labels: dict[str, str]) -> dict:
-    """What the statement leaves out: how many typed deductions the quarter holds, the tax they withheld, and each one.
+def _excluded_typed_reason(other_statement: list[dict], non_resident: list[dict], fy: str) -> str:
+    """The sentence after the lead of `excluded_typed`, for the two reasons a typed deduction is left off the 26Q: its register row is recorded for another
+    statement (`EXCLUDED_TYPED_REASON`, unchanged where it is the only reason), or the supplier it names is NOW recorded as non-resident.
+
+    THE SECOND IS NOT THE NON-RESIDENT NOTE'S (the review of POST-A-078). That note tells the CA to build the 27Q for the same quarter, and `tds_27q_from_books`
+    reads purchase bills and advances only, so a typed row moved there would be on neither statement while the screen said it was on the other. This says so: the
+    payment belongs on the non-resident statement under Rule 31A(4)(b), the one built from the books does not carry it, and the CA keys it there from the register
+    or corrects the supplier's record."""
+    if not non_resident:
+        return EXCLUDED_TYPED_REASON
+    form = _vocabulary.statement_form(_vocabulary.NON_RESIDENT, fy_label=fy)
+    one = len(non_resident) == 1
+    tail = (
+        f" now recorded as non-resident, so {'it belongs' if one else 'they belong'} on Form {form} under Rule 31A(4)(b) and not on this statement, and the "
+        f"Form {form} built from the books carries purchase bills and advances only, not deductions typed on the TDS screen. Key {'it' if one else 'them'} on "
+        f"Form {form} from the TDS register, or correct the supplier's record where the supplier is a resident.")
+    if not other_statement:
+        return ("The supplier it names is" if one else "The suppliers they name are") + tail
+    alone = len(other_statement) == 1
+    return (
+        f"{'One of them is' if alone else f'{len(other_statement)} of them are'} recorded for another statement: key "
+        f"{'it on the statement it is' if alone else 'them on the statement they are'} recorded for, or correct the register row if "
+        f"{'it belongs' if alone else 'they belong'} on this one. "
+        + ("One of them names a supplier that is" if one else f"{len(non_resident)} of them name suppliers that are") + tail)
+
+
+def _on_this_statement(row: dict) -> bool:
+    """Whether a typed row belongs on the 26Q: its `return_type` is the register's routing key (migration 037, '26Q' by default, and the typed door never sets
+    another), so a row recorded for another statement is left to it and named, never carried here."""
+    return (str(row.get("return_type") or "").strip() or FORM_26Q) == FORM_26Q
+
+
+def _typed_rate_bps(rate_pct) -> int:
+    """The rate a typed row stored as a percentage (`tds_rate_pct`, NUMERIC), as basis points, the unit a bill's rate travels in."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    try:
+        return int((Decimal(str(rate_pct or 0)) * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    except InvalidOperation:
+        return 0
+
+
+def _typed_on_statement_reason(events: list[dict], fy: str) -> str:
+    """The carried note's sentence: the fixed part, then what applies to these rows: how many name no supplier (their tax was worked out on the typed rows for
+    their PAN alone), how many sit under a section that also reaches a non-resident with no supplier to record the payee's residence, and how many have the same
+    day and amount as a bill or an advance on this statement."""
+    parts = [TYPED_ON_STATEMENT_REASON]
+    no_supplier = [e for e in events if not e.get("vendor_id")]
+    if no_supplier:
+        n = len(no_supplier)
+        parts.append(
+            f"{'One of them names' if n == 1 else f'{n} of them name'} no supplier, so the tax on {'it' if n == 1 else 'each'} was worked out on the "
+            "deductions typed for its PAN alone, without any supplier's bills.")
+    residence = _residence_not_recorded(events)
+    if residence:
+        n = len(residence)
+        parts.append(
+            f"{'One' if n == 1 else n} under section {', '.join(sorted({e['section'] for e in residence}))} {'names' if n == 1 else 'name'} no supplier, "
+            "so the payee's residence is not recorded: it is carried here as a payment to a resident, and a payment to a non-resident goes on Form "
+            f"{_vocabulary.statement_form(_vocabulary.NON_RESIDENT, fy_label=fy)} (Rule 31A(4)(b)).")
+    mirrored = [e for e in events if e.get("mirrors")]
+    if mirrored:
+        n = len(mirrored)
+        parts.append(
+            f"{'One has' if n == 1 else f'{n} have'} the same day and amount as a bill or an advance on this statement and may be the same payment "
+            "reported twice; the statement's gaps name them.")
+    return " ".join(parts)
+
+
+def _residence_not_recorded(events: list[dict]) -> list[dict]:
+    """Typed rows that name no supplier under a section whose charge also reaches a non-resident (`residency.SECTIONS_REACHING_NON_RESIDENTS` and
+    `SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT`): the register holds no fact about the payee's residence, so whether the row belongs on 26Q is not known."""
+    from domain.tds.residency import SECTIONS_REACHING_NON_RESIDENTS, SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT
+    from domain.tds.section_rates import parent_of
+    reaching = set(SECTIONS_REACHING_NON_RESIDENTS) | set(SECTIONS_UNSETTLED_FOR_A_NON_RESIDENT)
+    return [e for e in events if not e.get("vendor_id") and parent_of(str(e.get("section") or "")) in reaching]
+
+
+def _mark_mirrors(typed: list[dict], documents: list[dict], vendors: dict[str, dict]) -> list[str]:
+    """A typed row that names a supplier and has the same day and amount as a bill or an advance of that supplier on this statement: the door named it when the
+    row was recorded (`tds_deduction_mirrors_a_document`) and kept it, and on the statement the two would report one payment twice. Marked on the event and
+    named in the statement's gaps, never dropped: whether they are one payment is the CA's to say. The amount is matched the way the door matches it, a bill's
+    taxable value or its total, an advance's base or the sum paid. The supplier is named as the deductee row names it (its current record), not by the
+    snapshot the typed row kept."""
+    from domain.money_sentence import rupee_text
+    out: list[str] = []
+    for t in typed:
+        if not t.get("vendor_id"):
+            continue
+        twins = [d for d in documents
+                 if d.get("vendor_id") == t.get("vendor_id") and d.get("on_date") == t.get("on_date")
+                 and t["base_paise"] in (int(d.get("base_paise") or 0), int(d.get("total_paise") or 0))]
+        if not twins:
+            continue
+        t["mirrors"] = True
+        twin = twins[0]
+        out.append(
+            f"The deduction typed on the TDS screen on {t['on_date']} for "
+            f"{(vendors.get(t.get('vendor_id')) or {}).get('name') or t.get('deductee_name') or 'this supplier'} ({rupee_text(t['base_paise'])} paid, "
+            f"{rupee_text(t['tds_paise'])} withheld) has the same day and amount as {'bill' if twin.get('kind') == 'bill' else 'advance'} {twin.get('doc_no')} on "
+            "this statement. If they are the same payment it is reported twice: remove the typed deduction from the register before filing.")
+    return out
+
+
+def _typed_note(rows: list[dict], section_labels: dict[str, str], reason: str) -> dict:
+    """A note of typed deductions: how many, the payments and the tax, each one, and the server's sentence. The same shape for the ones the statement carries
+    (`typed_on_statement`) and the ones it leaves out (`excluded_typed`), so one reader reads both.
 
     A row's section goes out the way a deductee's does (TDS-17): the label the PERIOD's own Act uses as `section`, the stored routing key beside it as
     `section_1961`, translated here at the emission and never in the store.
@@ -239,7 +356,7 @@ def _excluded_typed(rows: list[dict], section_labels: dict[str, str]) -> dict:
         "count": len(rows),
         "payment_paise": sum(int(r.get("payment_amount_paise") or 0) for r in rows),
         "tds_paise": sum(int(r.get("tds_paise") or 0) for r in rows),
-        "reason": EXCLUDED_TYPED_REASON,
+        "reason": reason,
         "deductions": [
             {"id": r.get("id"), "deductee_name": r.get("deductee_name"), "deductee_pan": r.get("deductee_pan"),
              "section": section_labels.get(str(r.get("section") or "").strip(), r.get("section")), "section_1961": r.get("section"),
@@ -269,6 +386,31 @@ def _as_deduction_event(row: dict, *, kind: str) -> dict:
     §201(1)/§201(1A) demand against a deductor who did exactly what the
     Assessing Officer's certificate told them to.
     """
+    if kind == "typed":
+        # A deduction typed on the TDS screen (POST-A-078): its own row is the document. The base is the payment typed, the taxable value excluding GST as on the
+        # bill path; the rate is the one the door stored; a resident section carries neither surcharge nor cess; the s.197 certificate travels as a bill's does.
+        nature = str(row.get("nature_of_payment") or "").strip()
+        return {
+            "id": row["id"], "kind": "typed", "vendor_id": row.get("vendor_id"),
+            "section": row.get("section") or "",
+            "on_date": str(row.get("transaction_date") or "")[:10],
+            # Named by its day: the register row has no number of its own, and a bill's number is what a list of exclusions prints.
+            "doc_no": f"TDS register entry of {str(row.get('transaction_date') or '')[:10]}",
+            "narration": nature or "Payment recorded on the TDS register",
+            "base_paise": int(row.get("payment_amount_paise") or 0),
+            "total_paise": int(row.get("payment_amount_paise") or 0),
+            "tds_paise": int(row.get("tds_paise") or 0),
+            "rate_bps": _typed_rate_bps(row.get("tds_rate_pct")),
+            "surcharge_paise": 0,
+            "cess_paise": 0,
+            "nature": nature or None,
+            "basis": None,
+            "form_15ca_ack_no": None,
+            "certificate_no": (row.get("lower_deduction_cert") or None) if row.get("is_lower_deduction") else None,
+            "journal_entry_id": None,
+            "deductee_name": row.get("deductee_name"),
+            "deductee_pan": row.get("deductee_pan"),
+        }
     if kind == "bill":
         return {
             "id": row["id"], "kind": "bill", "vendor_id": row.get("vendor_id"),
@@ -277,6 +419,8 @@ def _as_deduction_event(row: dict, *, kind: str) -> dict:
             "doc_no": row.get("bill_no") or row["id"],
             "narration": f"Vendor payment — Bill {row.get('bill_no') or row['id']}",
             "base_paise": int(row.get("taxable_amount_paise") or 0),
+            # The bill's total, read only to say whether a typed deduction of the same day and amount may be this bill (`_mark_mirrors`).
+            "total_paise": int(row.get("total_paise") or 0),
             "tds_paise": int(row.get("tds_paise") or 0),
             "rate_bps": int(row.get("tds_rate_bps") or 0),
             "surcharge_paise": int(row.get("tds_surcharge_paise") or 0),
@@ -298,6 +442,7 @@ def _as_deduction_event(row: dict, *, kind: str) -> dict:
         "doc_no": row.get("payment_no") or row["id"],
         "narration": f"Advance to vendor — Payment {row.get('payment_no') or row['id']}",
         "base_paise": int(row.get("tds_base_paise") or 0),
+        "total_paise": int(row.get("amount_paise") or 0),
         "tds_paise": int(row.get("tds_paise") or 0),
         "rate_bps": int(row.get("tds_rate_bps") or 0),
         "surcharge_paise": int(row.get("tds_surcharge_paise") or 0),
@@ -519,6 +664,10 @@ def tds_26q_from_books(
     """
     start, end, due_date = quarter_dates(fy, quarter)
 
+    # THE DEDUCTIONS TYPED ON THE TDS SCREEN ARE DEDUCTIONS TOO (POST-A-078), and the ones recorded for this statement are carried as deductee rows.
+    typed_rows = _typed_deductions_in_quarter(db, firm_id, client_id, start, end)
+    typed_left = [r for r in typed_rows if not _on_this_statement(r)]
+
     events = (
         [_as_deduction_event(b, kind="bill")
          for b in _posted_vendor_tds_bills(db, firm_id, client_id, start, end)]
@@ -528,6 +677,7 @@ def tds_26q_from_books(
            # counts toward the year's aggregate and is not one — the same
            # asymmetry the register applies (services/tds_register_service.py).
            if int(p.get("tds_paise") or 0) > 0]
+        + [_as_deduction_event(r, kind="typed") for r in typed_rows if _on_this_statement(r)]
     )
     vendors = _vendors_by_id(db, firm_id, {e["vendor_id"] for e in events if e.get("vendor_id")})
 
@@ -545,12 +695,20 @@ def tds_26q_from_books(
     # Reported, never silent: a total that quietly drops between one quarter
     # and the next is exactly the kind of thing nobody notices until a notice
     # arrives.
-    excluded_non_resident = [
-        e for e in events
-        if is_non_resident((vendors.get(e.get("vendor_id")) or {}).get("residential_status"))
-    ]
-    if excluded_non_resident:
-        excluded_ids = {e["id"] for e in excluded_non_resident}
+    #
+    # BILLS AND ADVANCES ONLY in that note. It sends the CA to the 27Q built
+    # from the books, which reads bills and advances and nothing else, so a
+    # typed row whose supplier is now recorded as non-resident is left out with
+    # the typed deductions instead (`excluded_typed`), in a sentence that says
+    # the 27Q built from the books does not carry it.
+    def _now_non_resident(e: dict) -> bool:
+        return is_non_resident((vendors.get(e.get("vendor_id")) or {}).get("residential_status"))
+
+    excluded_non_resident = [e for e in events if e["kind"] != "typed" and _now_non_resident(e)]
+    typed_non_resident_ids = {e["id"] for e in events if e["kind"] == "typed" and _now_non_resident(e)}
+    typed_non_resident = [r for r in typed_rows if r["id"] in typed_non_resident_ids]
+    excluded_ids = {e["id"] for e in excluded_non_resident} | typed_non_resident_ids
+    if excluded_ids:
         events = [e for e in events if e["id"] not in excluded_ids]
 
     # Non-salary challans only — a firm's TDS Payable challan for section 192
@@ -578,14 +736,22 @@ def tds_26q_from_books(
     # clause key.
     mapping = challan_mapping.assign(events, challans, fy=fy)
 
+    # A typed row that names a supplier with a bill or an advance of the same day and amount on this statement is named (POST-A-078).
+    typed_events = [e for e in events if e["kind"] == "typed"]
+    mirror_gaps = _mark_mirrors(typed_events, [e for e in events if e["kind"] != "typed"], vendors)
+
     deductees: list[TDSDeducteeRecord] = []
+    recorded_by: list[str] = []
     for e in events:
         vendor = vendors.get(e.get("vendor_id"), {})
         assigned = mapping.for_deduction(e["id"])
         matching_challan = assigned.challan
+        if e["section"] != "192":
+            recorded_by.append({"bill": "purchase_bill", "advance": "advance", "typed": "tds_register"}[e["kind"]])
         deductees.append(TDSDeducteeRecord(
-            deductee_name=vendor.get("name") or "Unknown Vendor",
-            deductee_pan=(vendor.get("pan") or "PANNOTAVBL").strip().upper() or "PANNOTAVBL",
+            # A supplier's own name and PAN, as for its bills; a typed row that names none is the payee it recorded (POST-A-078).
+            deductee_name=vendor.get("name") or e.get("deductee_name") or "Unknown Vendor",
+            deductee_pan=(vendor.get("pan") or e.get("deductee_pan") or "PANNOTAVBL").strip().upper() or "PANNOTAVBL",
             section=e["section"],
             nature_of_payment=e["narration"],
             payment_date=e["on_date"],
@@ -607,10 +773,9 @@ def tds_26q_from_books(
         deductor_address=deductor_address, financial_year=fy, quarter=quarter,
         deductees=deductees, challans=[dict(c) for c in challans],
     )
-    # The typed deductions this statement leaves out (POST-A-078) are read here so that their sections are labelled by the same call as the deductees', and a
-    # section the period's Act has no code for is named once, in the same gap.
-    typed_rows = _typed_deductions_in_quarter(db, firm_id, client_id, start, end)
-    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees] + [r.get("section") for r in typed_rows])
+    # The typed deductions this statement leaves out (POST-A-078) are labelled by the same call as the deductees', so a section the period's Act has no code for is
+    # named once, in the same gap.
+    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees] + [r.get("section") for r in typed_left + typed_non_resident])
     # TDS-31: the numeric payment code each row of a 2025-Act statement
     # carries, asked of the rows the PAYLOAD holds (26Q drops §192 rows).
     _pay_rows, _pay_notes = _payment_codes(fy, payload.deductees)
@@ -618,7 +783,10 @@ def tds_26q_from_books(
     tds_payable_id = _find_account_by_exact_name(db, firm_id, client_id, "TDS Payable")
     journal_ids = [e["journal_entry_id"] for e in events if e.get("journal_entry_id")]
     gl_paise = _gl_movement_for_entries(db, firm_id, client_id, tds_payable_id, journal_ids)
-    books_paise = payload.total_tds_deducted_paise
+    # THE TIE-OUT IS THE DOCUMENTS' (POST-A-078). A typed deduction has no journal behind it, so the books side of the tie-out is the bills and advances on the
+    # statement, and the typed tax is reported beside it. Adding it in would make every quarter with a typed deduction fail to match a ledger that never held it.
+    typed_paise = sum(e["tds_paise"] for e in typed_events if e["section"] != "192")
+    books_paise = payload.total_tds_deducted_paise - typed_paise
     matched = tds_payable_id is not None and books_paise == gl_paise
 
     result = {
@@ -629,8 +797,9 @@ def tds_26q_from_books(
         "act": _vocabulary.vocabulary_for(fy).act_name,
         "statutory_gaps": ([g.note for g in _vocabulary.vocabulary_for(fy).gaps()]
                            + _pay_notes + _sec_gaps
-                           + _credit_moved_gaps(db, firm_id, events, mapping)),
-        "source": "posted_purchase_bills_and_advances",
+                           + _credit_moved_gaps(db, firm_id, events, mapping)
+                           + mirror_gaps),
+        "source": "posted_purchase_bills_and_advances_and_typed_deductions",
         "tan": payload.tan,
         "deductor_name": payload.deductor_name,
         "deductor_pan": payload.deductor_pan,
@@ -665,8 +834,10 @@ def tds_26q_from_books(
                 # deduction and raises a §201(1)/§201(1A) demand.
                 "is_lower_deduction": d.is_lower_deduction,
                 "lower_deduction_cert": d.lower_deduction_cert,
+                # What recorded the deduction: a purchase bill, an advance, or the TDS register (typed on the TDS screen, no journal behind it; POST-A-078).
+                "recorded_by": _by,
             }
-            for d, _pc in zip(payload.deductees, _pay_rows)
+            for d, _pc, _by in zip(payload.deductees, _pay_rows, recorded_by, strict=True)
         ],
         "challans": payload.challans,
         # WHAT THE CHALLAN MAPPING COULD NOT SETTLE. Not a validation error —
@@ -696,9 +867,18 @@ def tds_26q_from_books(
                 for e in excluded_non_resident
             ],
         },
-        # WHAT THE STATEMENT LEAVES OUT THAT THE REGISTER HOLDS (POST-A-078): the deductions typed on the TDS screen for this quarter. Named with their count, tax
-        # and each row, like the non-resident payments above, because a statement that is silent about them reads as a complete one.
-        "excluded_typed": _excluded_typed(typed_rows, _sec_labels),
+        # THE DEDUCTIONS TYPED ON THE TDS SCREEN THAT THE STATEMENT CARRIES (POST-A-078): their count, tax and each row, with a sentence that says they are
+        # outside the tie-out below, because a screen saying "reconciled" over a total that holds them would read as a claim about all of it.
+        "typed_on_statement": _typed_note(
+            [{"id": e["id"], "deductee_name": d.deductee_name, "deductee_pan": d.deductee_pan, "section": e["section"],
+              "transaction_date": e["on_date"], "payment_amount_paise": e["base_paise"], "tds_paise": e["tds_paise"]}
+             for e, d in zip(events, deductees, strict=True) if e["kind"] == "typed" and e["section"] != "192"],
+            _sec_labels, _typed_on_statement_reason(typed_events, fy)),
+        # WHAT THE STATEMENT LEAVES OUT THAT THE REGISTER HOLDS: the typed deductions recorded for another statement, and those naming a supplier now recorded as
+        # non-resident (which the 27Q built from the books does not carry either, and the sentence says so). Named with their count, tax and each row, like the
+        # non-resident payments above, because a statement that is silent about them reads as a complete one.
+        "excluded_typed": _typed_note(typed_left + typed_non_resident, _sec_labels,
+                                      _excluded_typed_reason(typed_left, typed_non_resident, fy)),
         "validation_errors": payload.validation_errors,
         "warnings": payload.warnings,
         "reconciliation": {
@@ -707,6 +887,8 @@ def tds_26q_from_books(
             "difference_paise": books_paise - gl_paise,
             "matched": matched,
             "account_found": tds_payable_id is not None,
+            # The tax of the typed deductions on the statement, which no journal holds and the tie-out does not compare (POST-A-078).
+            "typed_paise": typed_paise,
         },
         "ca_review_required": True,
     }

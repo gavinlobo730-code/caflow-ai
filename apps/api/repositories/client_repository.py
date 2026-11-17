@@ -23,7 +23,7 @@ class ClientRepository(BaseRepository[dict]):
     kept in sync by archive()/restore()/soft_delete() for index support;
     status + deleted_at are the read-canonical fields.
 
-    All read paths (find_all/find_by_id/find_by_pan/find_by_gstin) filter on the
+    All read paths (find_all/find_by_id) filter on the
     canonical fields (deleted_at IS NULL, status != 'archived') — never on the
     mirror booleans. The mirrors exist only to back partial indexes.
     """
@@ -106,18 +106,6 @@ class ClientRepository(BaseRepository[dict]):
                              .neq("status", "archived"),
                              key="id", label="clients: live names")
         return {r["id"]: r.get("client_name", "Unknown") for r in rows}
-
-    def find_by_pan(self, pan: str) -> Optional[dict]:
-        if _USE_MOCK:
-            return next((c for c in MOCK_CLIENTS if c["pan"] == pan and not c.get("deleted_at")), None)
-        result = _get_db().table("clients").select("*").eq("pan", pan).is_("deleted_at", None).execute()
-        return result.data[0] if result.data else None
-
-    def find_by_gstin(self, gstin: str) -> Optional[dict]:
-        if _USE_MOCK:
-            return next((c for c in MOCK_CLIENTS if c.get("gstin") == gstin and not c.get("deleted_at")), None)
-        result = _get_db().table("clients").select("*").eq("gstin", gstin).is_("deleted_at", None).execute()
-        return result.data[0] if result.data else None
 
     def get_or_raise(self, id: str) -> dict:
         client = self.find_by_id(id)

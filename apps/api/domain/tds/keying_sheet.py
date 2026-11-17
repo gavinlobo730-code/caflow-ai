@@ -127,12 +127,23 @@ ORPHAN_CHALLAN_ROWS = (
     "silently dropped."
 )
 
-#: POST-A-078. The statement is built from posted purchase bills and advances, so a deduction a CA typed on the TDS screen is not on it, and this sheet is what
-#: the CA keys from: a CA keying from the sheet alone would leave those deductions off the filed statement without knowing the register holds them.
-TYPED_DEDUCTIONS_NOT_ON_THIS_SHEET = (
-    "{count} deduction(s) typed on the TDS screen for this quarter, with {tds} of tax withheld, are not on this sheet: a statement built from the books "
-    "carries posted purchase bills and advances only. Key them from the register yourself if they belong on the statement, or leave them out knowingly."
+#: POST-A-078. The statement carries the deductions a CA typed on the TDS screen as deductee rows beside the purchase bills' and advances', so they are on this
+#: sheet; no journal stands behind them, so the sheet says which tax the tie-out with the TDS Payable account does not hold.
+TYPED_DEDUCTIONS_ON_THIS_SHEET = (
+    "{count} deduction(s) typed on the TDS screen for this quarter, with {tds} of tax withheld, are on this sheet as deductee rows, like the purchase bills' and "
+    "advances'. No journal stands behind a typed deduction, so their tax is outside the tie-out with the TDS Payable account."
 )
+
+#: POST-A-078. A typed deduction whose register row is recorded for another statement, or whose supplier is now recorded as non-resident, is not carried here, and
+#: this sheet is what the CA keys from: keying from the sheet alone would leave those deductions off the filed statement without knowing the register holds them.
+#: WHY they are left out, and where to key them, is the statement's own sentence (`excluded_typed.reason`), followed here rather than restated: the two reasons send
+#: the CA to different places, and a sheet that named only the first said "recorded for another statement" of a row that was not.
+TYPED_DEDUCTIONS_NOT_ON_THIS_SHEET = (
+    "{count} deduction(s) typed on the TDS screen for this quarter, with {tds} of tax withheld, are not on this sheet. {why}"
+)
+
+#: Where the statement sent no sentence of its own for the typed deductions it leaves out.
+TYPED_DEDUCTIONS_NOT_ON_THIS_SHEET_NO_REASON = "The statement's note of the typed deductions names them."
 
 
 def _challan_key(bsr_code: Any, challan_no: Any, challan_date: Any) -> tuple:
@@ -216,12 +227,18 @@ def build(data: dict) -> dict[str, Any]:
             count=len(uncoded),
             sections=", ".join(sections) if sections else "unnamed sections"))
 
-    # Only the 26Q build carries the key (the typed register holds no salary and no non-resident rows), and a statement saved before the key existed has none:
-    # an absent key is a statement that never looked, which the sheet does not turn into a claim either way.
+    # Only the 26Q build carries the keys (the 27Q and 24Q builders carry no typed rows), and a statement saved before a key existed has none: an absent key is a
+    # statement that never looked, which the sheet does not turn into a claim either way.
+    carried = data.get("typed_on_statement") or {}
+    if int(carried.get("count") or 0) > 0:
+        gaps.append(TYPED_DEDUCTIONS_ON_THIS_SHEET.format(
+            count=int(carried["count"]), tds=rupee_text(int(carried.get("tds_paise") or 0))))
     typed = data.get("excluded_typed") or {}
     if int(typed.get("count") or 0) > 0:
+        why = typed.get("reason")
         gaps.append(TYPED_DEDUCTIONS_NOT_ON_THIS_SHEET.format(
-            count=int(typed["count"]), tds=rupee_text(int(typed.get("tds_paise") or 0))))
+            count=int(typed["count"]), tds=rupee_text(int(typed.get("tds_paise") or 0)),
+            why=why.strip() if isinstance(why, str) and why.strip() else TYPED_DEDUCTIONS_NOT_ON_THIS_SHEET_NO_REASON))
 
     gaps.append(NO_FVU_FILE_IS_PRODUCED)
 

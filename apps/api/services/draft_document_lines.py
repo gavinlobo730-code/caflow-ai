@@ -54,6 +54,11 @@ def _read_lines(db, document: str, document_id: str) -> list[dict]:
     """Every line the document holds now, in the order the document shows them, read in keyset pages: a document with more lines than
     PostgREST's row cap (a bill built from an import) would otherwise be recorded short, and the audit log can never be corrected."""
     rows = fetch_all(lambda: _READ[document](db, document_id), key="id", label=f"{document} lines for the edit record")
+    return _in_document_order(rows)
+
+
+def _in_document_order(rows: list[dict]) -> list[dict]:
+    """Lines in the order the document shows them, the order `_read_lines` gives (the function's DELETE returns them in no order)."""
     return sorted(rows, key=lambda r: (r.get("sort_order") if isinstance(r.get("sort_order"), int) else 0, str(r.get("id"))))
 
 
@@ -108,10 +113,10 @@ def replace_draft_lines(db, document: str, document_id: str, firm_id: str, lines
     IT RECORDS WHAT IT REPLACED (POST-A-424). The lines a draft held are read first (as the API, and in full) and written to the audit
     log beside the lines that replace them, as one row for this document by `edited_by` (the signed-in member), after the replacement
     has happened and only then. No row-level record of a line exists: the line tables carry no firm, so the capture trigger is not on
-    them. A save that sends the lines the draft already holds records nothing, because nothing was replaced in substance. The read is
-    made before the database function takes the header's lock, so two members saving one draft at the same moment can both record
-    the same lines as the ones they replaced (POST-A-429). `edited_by` has no default, so a caller that replaces lines has to say
-    whose edit it is."""
+    them. A save that sends the lines the draft already holds records nothing, because nothing was replaced in substance. The lines
+    recorded as replaced are the ones the database function's own DELETE removed under the header's lock (migration 625), so two
+    members saving one draft at the same moment each record what their own save replaced (POST-A-429). `edited_by` has no default, so
+    a caller that replaces lines has to say whose edit it is."""
     _lines_table, fk, noun = DOCUMENTS[document]
     rows = [{k: v for k, v in ln.items() if k != fk} for ln in lines]
     # Written as the API, after the route has read the draft under its firm and client: the signed-in role holds no write on the lines
@@ -121,9 +126,15 @@ def replace_draft_lines(db, document: str, document_id: str, firm_id: str, lines
     # went through the caller's own client would find nothing and record "the lines were empty" beside lines that were not.
     previous = _read_lines(db, document, document_id)
     try:
-        db.rpc("replace_draft_document_lines", {
+        answer = db.rpc("replace_draft_document_lines", {
             "p_document": document, "p_document_id": document_id, "p_firm_id": firm_id, "p_lines": rows,
-        }).execute()
+        }).execute().data
+        # WHAT THE CALL REPLACED, READ UNDER ITS LOCK (POST-A-429, migration 625): the function answers the lines its own DELETE removed,
+        # so a save made between the read above and the lock cannot put another save's lines in this edit record. The read above is
+        # used only when the answer is migration 560's bare count, for the minutes the API is on production before migration 625 is.
+        replaced = answer.get("replaced") if isinstance(answer, dict) else None
+        if isinstance(replaced, list):
+            previous = _in_document_order(replaced)
         if not _same_lines(previous, rows):
             from services.audit_service import log_document_edit
             log_document_edit(

@@ -255,6 +255,10 @@ def test_every_sql_object_it_names_is_created_by_a_migration():
     for name in SQL_OBJECTS:
         assert name in _doc(), f"the record no longer names {name}; remove it from SQL_OBJECTS"
         assert name in sql, f"the record names {name} and no migration creates it"
+    # POST-A-169: the record says the SQL provisioner was dropped, and the migration it cites drops it.
+    assert "Migration 610 dropped it" in _doc()
+    assert "DROP FUNCTION IF EXISTS public.provision_internal_client" in _migrations()[
+        "610_the_sql_internal_client_provisioner_nothing_calls_is_dropped.sql"]
     for table in TABLES_FROM_073:
         assert re.search(rf"CREATE TABLE IF NOT EXISTS {table}\b", _migrations()["073_revenue_ops_foundation.sql"]), table
         assert table in _doc(), f"the record no longer names {table}"

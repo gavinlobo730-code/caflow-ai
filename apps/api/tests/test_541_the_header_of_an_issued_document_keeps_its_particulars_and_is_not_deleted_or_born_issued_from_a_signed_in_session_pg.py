@@ -124,7 +124,8 @@ CLASSIFIED = {
             'id', 'firm_id', 'client_id', 'customer_id', 'sales_invoice_id', 'credit_note_no', 'credit_note_date',
             'reason', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise', 'igst_paise', 'total_paise', 'status',
             'journal_entry_id', 'created_at', 'is_interstate', 'applied_paise', 'total_gst_paise', 'deleted_at',
-            'goods_returned'],   # migration 581 (POST-A-371): whether the goods came back is a particular of the note, frozen once it is issued
+            'goods_returned',   # migration 581 (POST-A-371): whether the goods came back is a particular of the note, frozen once it is issued
+            'cess_paise'],   # migration 615 (POST-A-058): the note's compensation cess, a particular like its GST
         "generated": []},
     "debit_notes": {
         "allowed": [
@@ -133,7 +134,8 @@ CLASSIFIED = {
             'id', 'firm_id', 'client_id', 'vendor_id', 'purchase_bill_id', 'debit_note_no', 'debit_note_date',
             'reason', 'is_interstate', 'is_reverse_charge', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise',
             'igst_paise', 'total_paise', 'total_gst_paise', 'applied_paise', 'status', 'journal_entry_id',
-            'created_at', 'created_by', 'deleted_at', 'goods_returned'],   # migration 581 (POST-A-371): frozen once issued, like the credit note's
+            'created_at', 'created_by', 'deleted_at', 'goods_returned',   # migration 581 (POST-A-371): frozen once issued, like the credit note's
+            'cess_paise'],   # migration 615 (POST-A-058)
         "generated": []},
     "purchase_credit_notes": {
         "allowed": [
@@ -142,7 +144,8 @@ CLASSIFIED = {
             'id', 'firm_id', 'client_id', 'vendor_id', 'purchase_bill_id', 'credit_note_no', 'credit_note_date',
             'reason', 'is_interstate', 'is_reverse_charge', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise',
             'igst_paise', 'total_paise', 'total_gst_paise', 'applied_paise', 'status', 'journal_entry_id',
-            'created_at', 'created_by', 'deleted_at'],
+            'created_at', 'created_by', 'deleted_at',
+            'cess_paise'],   # migration 615 (POST-A-058)
         "generated": []},
     "sales_debit_notes": {
         "allowed": [
@@ -151,7 +154,8 @@ CLASSIFIED = {
             'id', 'firm_id', 'client_id', 'customer_id', 'sales_invoice_id', 'debit_note_no', 'debit_note_date',
             'reason', 'is_interstate', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise', 'igst_paise',
             'total_paise', 'total_gst_paise', 'status', 'journal_entry_id', 'applied_paise', 'created_at',
-            'deleted_at'],
+            'deleted_at',
+            'cess_paise'],   # migration 615 (POST-A-058)
         "generated": []},
 }
 

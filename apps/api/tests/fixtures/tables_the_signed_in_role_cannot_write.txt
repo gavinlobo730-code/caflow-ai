@@ -19,6 +19,8 @@
 # 592 creates fixed_asset_verifications and fixed_asset_verification_findings (POST-A-112) with no signed-in write: the API's privileged client opens a count, and record_fixed_asset_finding and close_fixed_asset_verification are the only other writers.
 # 593 closes tds_deductions, tds_returns, tds_challans and tds_certificates (POST-A-443): the TDS register, returns, challans and certificates are written by the API's privileged client since the change that shipped before it.
 # 595 closes itc_reversal_register, gstr2b_uploads, gst_sync_jobs, gst_portal_snapshots, client_gst_turnover, hsn_sac_preferences and gst_challans (POST-A-008, the GST tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing writes gst_challans.
+# 617 creates ecommerce_operator_supply_amendments and ecommerce_operator_unregistered_supply_amendments (POST-A-056, GSTR-8 Table 4 and 4.1) with no signed-in privilege at all: the API's privileged client is their one reader and writer.
+# 620 creates stock_effect_settlements (POST-A-092) with no signed-in privilege at all: the marks that a document's stock was put right by hand are written and read by the API's privileged client only.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -86,7 +88,9 @@ document_risks
 documents
 dsc_records
 ecommerce_operator_supplies
+ecommerce_operator_supply_amendments
 ecommerce_operator_unregistered_supplies
+ecommerce_operator_unregistered_supply_amendments
 einvoice_records
 email_outbox
 email_suppressions
@@ -203,6 +207,7 @@ self_assessment_challans
 statutory_remittances
 stock_count_lines
 stock_count_sessions
+stock_effect_settlements
 task_dependencies
 task_escalations
 task_tags

@@ -3,12 +3,21 @@ Time entry export — CSV and XLSX.
 
 Rate/amount columns are derived from integer paise; amounts are emitted as
 integer paise plus a display string so no float arithmetic touches money.
+
+The rate and the amount are `time_rate.entry_worth`'s, the rule the Time screen
+shows (POST-A-169). The export used to read the legacy `hourly_rate_paise` alone,
+so every hour priced since migration 451 (whose rate is in `billable_rate_paise`)
+left in the file at a rate of 0 and an amount of 0. An hour with no rate, a
+non-billable hour and a running entry leave those cells EMPTY: "nobody said what
+it is worth" is not "it is worth nothing". The column keeps its old name, because
+it is still the rate for an hour and a saved spreadsheet reads it by name.
 """
 import csv
 import io
 from typing import Optional
 
 from core.ist_clock import ist_day_iso
+from domain.billing import time_rate
 from domain.money_text import rupees_paise
 
 EXPORT_COLUMNS = [
@@ -26,9 +35,9 @@ def build_export_rows(entries: list[dict], users_by_id: dict, clients_by_id: dic
     rows = []
     for e in entries:
         minutes = e.get("duration_minutes") or 0
-        rate_paise = e.get("hourly_rate_paise") or 0
-        # amount = minutes * rate / 60, integer paise arithmetic (multiply before divide)
-        amount_paise = (minutes * rate_paise) // 60
+        # amount = minutes * rate / 60, floored per entry in integer paise (time_rate.value_paise)
+        worth = time_rate.entry_worth(e)
+        rate_paise, amount_paise = worth["rate_paise"], worth["value_paise"]
         user = users_by_id.get(e.get("user_id"), {})
         client = clients_by_id.get(e.get("client_id"), {})
         rows.append({
@@ -42,9 +51,9 @@ def build_export_rows(entries: list[dict], users_by_id: dict, clients_by_id: dic
             "duration_minutes": minutes,
             "hours": f"{minutes // 60}:{minutes % 60:02d}",
             "is_billable": "Yes" if e.get("is_billable") else "No",
-            "hourly_rate_paise": rate_paise,
-            "amount_paise": amount_paise,
-            "amount_inr": _paise_to_inr_str(amount_paise),
+            "hourly_rate_paise": "" if rate_paise is None else rate_paise,
+            "amount_paise": "" if amount_paise is None else amount_paise,
+            "amount_inr": "" if amount_paise is None else _paise_to_inr_str(amount_paise),
         })
     return rows
 

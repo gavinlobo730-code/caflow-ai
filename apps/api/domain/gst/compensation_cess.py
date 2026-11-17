@@ -156,3 +156,32 @@ def carries_cess(line: dict) -> bool:
     never be asked to hold an account it will never post to."""
     return bool(int(line.get("cess_rate_bps") or 0)
                 or int(line.get("cess_specific_paise_per_unit") or 0))
+
+
+def line_columns(line: dict, *, taxable_paise: int, quantity) -> dict:
+    """The three cess columns a document LINE stores: both limbs as recorded
+    and the amount `line_cess` derives from them on the line's own value of
+    supply and quantity.
+
+    One function for every line table that carries the cess, so the four s.34
+    note routers cannot each spell the derivation their own way: a note
+    adjusts an invoice or a bill whose lines were charged by `line_cess`, and
+    a note that charged the same limbs differently would leave a residue of
+    cess on the document it was meant to clear. Raises ValueError on a negative
+    limb, as `line_cess` does; the request models refuse one first.
+    """
+    rate_bps = int(line.get("cess_rate_bps") or 0)
+    per_unit = int(line.get("cess_specific_paise_per_unit") or 0)
+    cess = line_cess(taxable_paise=taxable_paise, quantity=quantity,
+                     cess_rate_bps=rate_bps, cess_specific_paise_per_unit=per_unit)
+    return {
+        "cess_rate_bps": rate_bps,
+        "cess_specific_paise_per_unit": per_unit,
+        "cess_paise": cess.cess_paise,
+    }
+
+
+def lines_cess(lines) -> int:
+    """The document's cess: the sum of its lines' `cess_paise`, which is what
+    the header column holds (and what the issue check asks it to be)."""
+    return sum(int(ln.get("cess_paise") or 0) for ln in lines or [])

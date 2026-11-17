@@ -65,20 +65,28 @@ def _period_bounds(period: str) -> tuple[str, str]:
 
 
 def _allocations_by_receipt(db, receipt_ids: list[str]) -> dict:
-    """receipt_id -> [(allocated_paise, created_at)].
+    """receipt_id -> [(allocated_paise, created_at)], LIVE rows only.
 
     Table 11 asks what was outstanding AT THE PERIOD END, not what is
     outstanding today. receipts.unallocated_paise is the state now, so reading
     it would answer a July question with August's facts and quietly change a
     filed period every time an old advance is settled.
+
+    A VOIDED row is not an adjustment (POST-A-369): reversing a receipt voids
+    its rows (migration 215) and they no longer settle anything, which is also
+    how migration 571 sums a receipt's allocated total. Read off the row in
+    Python, not with `.eq()`, so a row that lacks the key (a double, a row from
+    before 215) counts as live rather than vanishing.
     """
     out: dict = {}
     if not receipt_ids:
         return out
     rows = (db.table("receipt_allocations")
-            .select("receipt_id, allocated_paise, created_at")
+            .select("receipt_id, allocated_paise, created_at, is_voided")
             .in_("receipt_id", receipt_ids).execute().data) or []
     for r in rows:
+        if r.get("is_voided"):
+            continue
         # `created_at` is a UTC stamp; Table 11 is measured against the INDIAN month, so an allocation made at 00:30 IST
         # on 1 July (stored 19:00 UTC on 30 June) is a July allocation. An unreadable stamp sorts after every period.
         day = ist_date_of(r.get("created_at"))
@@ -205,9 +213,20 @@ def table_11_sections(db, firm_id: str, client_id: str, period: str,
     start, end = bounds if bounds else _period_bounds(period)
     receipts = fetch_all(lambda: db.table("receipts")
         .select("id, receipt_date, amount_paise, gst_rate_bps, "
-                "place_of_supply, is_interstate")
+                "place_of_supply, is_interstate, is_reversed")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .lte("receipt_date", end))
+    # A REVERSED RECEIPT IS NOT AN ADVANCE (POST-A-369). Its journal was
+    # reversed and its allocations voided, and the row is kept for the audit
+    # trail only (migration 215); read as a live receipt it was declared in 11A
+    # as money received and never invoiced. Read off the row, so an absent key
+    # is a receipt that was never reversed. NOT DECIDED HERE: a receipt
+    # reversed after its period's GSTR-1 was filed (what Rule 51's refund
+    # voucher and Table 11 then require is a question for a CA); the receipt
+    # carries no reversal date, so any build of that period made after the
+    # reversal leaves it out too, and nothing adjusts what the filed return
+    # declared.
+    receipts = [r for r in receipts if not r.get("is_reversed")]
     allocs = _allocations_by_receipt(db, [r["id"] for r in receipts])
 
     at_buckets: dict = {}
@@ -305,9 +324,14 @@ def advances_report(db, firm_id: str, client_id: str, period: str) -> dict:
 
     receipts = fetch_all(lambda: db.table("receipts")
         .select("id, receipt_no, receipt_date, customer_id, amount_paise, "
-                "allocated_paise, unallocated_paise")
+                "allocated_paise, unallocated_paise, is_reversed")
         .eq("firm_id", firm_id).eq("client_id", client_id)
         .gte("receipt_date", start).lte("receipt_date", end))
+    # A reversed receipt keeps its unallocated figure (the reversal voids the
+    # rows and leaves the column), so read as live it was listed as money
+    # sitting unadjusted that is no longer money at all (POST-A-369). Read off
+    # the row: an absent key is a receipt that was never reversed.
+    receipts = [r for r in receipts if not r.get("is_reversed")]
 
     cust_ids = {r.get("customer_id") for r in receipts if r.get("customer_id")}
     names: dict = {}

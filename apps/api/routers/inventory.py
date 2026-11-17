@@ -16,8 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from models.common import api_response
 from models.inventory import (StockAdjustmentIn, NrvWritedownIn, NrvWritedownPreviewIn,
+                              NrvReviewSheetIn, NrvReviewPostIn,
                               StockCountOpenIn, StockCountSaveIn,
-                              CostingPolicyIn, StockEffectRetryIn)
+                              CostingPolicyIn, StockEffectRetryIn, StockEffectSettleIn)
 from core.permissions import rbac
 from core.authz import assert_client_access
 from core.db_paging import fetch_all_ordered
@@ -455,6 +456,101 @@ def retry_stock_effect(
     return api_response(True, answer)
 
 
+@router.get("/stock-effects/settled")
+def documents_marked_settled(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The client's documents the CA marked as settled by hand (POST-A-092, migration 620), newest first, each with the reason they typed. A read that could
+    not be made is a failure, never an empty list: an empty list means no document is marked."""
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"settlements": []})
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    try:
+        rows = retry_service.settlements(get_supabase(), firm_id=current_user.get("firm_id") or "", client_id=client_id)
+    except Exception as e:
+        _logger.error("documents_marked_settled: %s", type(e).__name__)
+        return api_response(False, None, "Could not read the documents marked as settled just now. This is not the same as there being none.")
+    return api_response(True, {"settlements": rows})
+
+
+@router.post("/stock-effects/settle")
+def settle_stock_effect(
+    data: StockEffectSettleIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Mark ONE listed document's stock effect as settled by hand, with the reason the CA gives (POST-A-092, migration 620): the list stops offering it and
+    "Complete the stock" refuses it in words. It moves no stock and posts no journal, and it does not check the claim: it records it, with who and when.
+    A missing document and another client's are the same 404; a document that is not on the list is refused in words."""
+    from domain.inventory import stock_settlement
+    assert_client_access(current_user, data.client_id)
+    problem = stock_settlement.reason_problem(data.reason)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+    if _USE_MOCK:
+        return api_response(False, None, "A document cannot be marked in the demo without a database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    try:
+        mark = retry_service.settle(
+            get_supabase(), firm_id=firm_id, client_id=data.client_id, kind=data.kind, document_id=data.document_id, reason=data.reason,
+            # users.id is the internal id, as for every `*_by` column; the name is kept as it was when the mark was made.
+            settled_by=current_user.get("id"), settled_by_name=current_user.get("full_name") or current_user.get("email"),
+        )
+    except retry_service.NotFound:
+        raise HTTPException(status_code=404, detail="Document not found.") from None
+    except retry_service.Refused as refusal:
+        raise HTTPException(status_code=409, detail=str(refusal)) from None
+    except ValueError as bad:
+        raise HTTPException(status_code=422, detail=str(bad)) from None
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("settle_stock_effect: %s", type(e).__name__)
+        return api_response(False, None, "Unable to mark this document just now. Nothing was changed.")
+    log_event(
+        firm_id, "stock_effect", data.document_id, "settle",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        new_data={"kind": data.kind, "reason": mark["reason"]},
+    )
+    return api_response(True, mark)
+
+
+@router.delete("/stock-effects/settled/{settlement_id}")
+def take_back_a_stock_settlement(
+    settlement_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Take a mark back (POST-A-092): the document is listed again if its stock is still not all recorded. The mark's own client is the one whose access is
+    proved; a missing mark, another firm's and an id that is not one are the same 404."""
+    if _USE_MOCK:
+        return api_response(False, None, "A mark cannot be taken back in the demo without a database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    db = get_supabase()
+    try:
+        mark = retry_service.get_settlement(db, firm_id=firm_id, settlement_id=settlement_id)
+    except retry_service.NotFound:
+        raise HTTPException(status_code=404, detail="Mark not found.") from None
+    assert_client_access(current_user, mark["client_id"], detail="Mark not found.")
+    try:
+        retry_service.remove(db, firm_id=firm_id, client_id=mark["client_id"], settlement_id=settlement_id)
+    except Exception as e:
+        _logger.error("take_back_a_stock_settlement: %s", type(e).__name__)
+        return api_response(False, None, "Unable to take the mark off just now. Nothing was changed.")
+    log_event(
+        firm_id, "stock_effect", str(mark.get("document_id") or settlement_id), "unsettle",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        new_data={"kind": mark.get("document_kind")},
+    )
+    from domain.inventory import stock_settlement
+    return api_response(True, {"removed": True, "message": stock_settlement.TAKEN_BACK})
+
+
 @router.post("/items/{service_catalogue_id}/writedown")
 def writedown_stock_to_nrv(
     service_catalogue_id: str,
@@ -489,6 +585,11 @@ def writedown_stock_to_nrv(
             raise HTTPException(status_code=422, detail="Only stock-tracked products can be written down.")
 
         period_validation_service.validate_posting_date(firm_id or "", data.writedown_date)
+        # THE CLIENT'S OWN CLOSURES TOO (its finalised year-end), asked BEFORE the stock row is written: the posting kernel refuses the
+        # journal in a closed year, and `apply_nrv_writedown` writes the stock row first, so a write-down that reached it would stand in
+        # the stock ledger with no journal behind it and move the closed year's closing stock on its own. The same call the stock-effect
+        # retry makes; a filed return is not asked, for the reason the dated-posting list gives (no GST line, no credit reversed).
+        period_lock_service.assert_not_closed(db, firm_id or "", data.client_id, data.writedown_date)
 
         reference_no = data.reference_no or f"NRV-{data.writedown_date}"
         movement = apply_nrv_writedown(
@@ -549,6 +650,90 @@ def preview_writedown_stock_to_nrv(
     except Exception as e:
         _logger.error("preview_writedown_stock_to_nrv: %s", e)
         return api_response(False, None, "Unable to work out the write-down. Please try again.")
+
+
+# ── The cross-item NRV review (POST-A-111, the rest of INV-10) ───────────────
+# A year-end valuation reviews the whole register, and the write-down above
+# takes ONE item per call. These two routes are the sheet and the batch: the
+# CA types an NRV for the items they judge to have fallen below cost, sees what
+# each would write down, and posts the lot under one reference.
+#
+# NOTHING HERE POSTS DIRECTLY, AND NOTHING HERE ESTIMATES AN NRV.
+# `services/nrv_review_service.post` calls `apply_nrv_writedown` once per line,
+# the function `writedown_stock_to_nrv` above calls; the rule is
+# `domain/inventory/nrv_review.py`. CA REVIEW REQUIRED — every NRV is the CA's.
+
+@router.post("/nrv-review/preview")
+def preview_nrv_review(
+    data: NrvReviewSheetIn,
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The review sheet: every stock-tracked product that holds stock now, with its quantity and carrying value, and for each NRV the
+    CA has typed, what it would write down. The arithmetic is the posting's own (`_compute_nrv_writedown`) on the same ledger row.
+    Reads only: no movement, no journal, no audit entry. POST because the typed NRVs are a body, as for the single preview."""
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        from domain.inventory import nrv_review
+        return api_response(True, nrv_review.build_sheet([], {}, {}))
+    from core.supabase_client import get_supabase
+    from services import nrv_review_service
+    try:
+        return api_response(True, nrv_review_service.review_sheet(
+            get_supabase(), firm_id=current_user.get("firm_id") or "", client_id=data.client_id,
+            lines=[line.model_dump() for line in data.lines]))
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("preview_nrv_review: %s", e)
+        return api_response(False, None, "Unable to load the NRV review just now. Please try again.")
+
+
+@router.post("/nrv-review/post")
+def post_nrv_review(
+    data: NrvReviewPostIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Write each reviewed item down to the NRV the CA entered, under one reference, one line at a time through the single-item
+    door's function. A line whose NRV is not below the carrying value is left alone and said to be; a line that could not be
+    recorded is named; posting the same sheet again writes down only what is still above the value entered.
+
+    # CA REVIEW REQUIRED — the CA confirms the sheet before this runs.
+    """
+    assert_client_access(current_user, data.client_id)
+    if _USE_MOCK:
+        return api_response(False, None, "Write-downs cannot be posted in the demo without a database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.supabase_client import get_supabase
+    from services import nrv_review_service
+    db = get_supabase()
+    period_validation_service.validate_posting_date(firm_id, data.writedown_date)
+    # The client's finalised year as well, before any line is written: the single door's question, for the single door's reason.
+    period_lock_service.assert_not_closed(db, firm_id, data.client_id, data.writedown_date)
+    reference_no = (data.reference_no or "").strip() or f"NRV-{data.writedown_date}"
+    try:
+        result = nrv_review_service.post_review(
+            db, firm_id=firm_id, client_id=data.client_id, writedown_date=data.writedown_date,
+            reference_no=reference_no, lines=[line.model_dump() for line in data.lines],
+            # journal_entries.created_by FK references users(id), not auth_user_id.
+            created_by=current_user.get("id"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("post_nrv_review: %s", e)
+        return api_response(False, None, "Unable to post the write-downs just now. The register shows what was recorded; posting "
+                                         "the same sheet again writes down only what is still above the value entered.")
+    # One audit entry per line, the single door's own event, so an item's trail reads the same whichever door wrote it, and the
+    # CA's judgement is kept for a line that wrote nothing down too.
+    for kind, rows in (("posted", result["posted"]), ("not_needed", result["not_needed"]), ("failed", result["failed"])):
+        for row in rows:
+            log_event(
+                firm_id, "inventory_nrv_writedown", row["service_catalogue_id"], "create",
+                actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                new_data={"nrv_per_unit_paise": row["nrv_per_unit_paise"], "notes": data.notes, "applied": kind == "posted",
+                          "outcome": kind, "reference_no": reference_no, "review": True},
+            )
+    return api_response(True, result)
 
 
 # ── The physical count (INV-08) ──────────────────────────────────────────────

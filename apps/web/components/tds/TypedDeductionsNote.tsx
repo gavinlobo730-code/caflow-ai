@@ -3,9 +3,10 @@
 /**
  * The deductions typed on the TDS screen that this statement leaves out (POST-A-078).
  *
- * A 26Q built from the books carries posted purchase bills and withholding advances only. A deduction a CA typed on the TDS screen is a register row that neither a bill
- * nor an advance wrote, so it is not on the statement, and a statement that says nothing about them reads as a complete one while the register holds tax withheld for the
- * same quarter. This note says how many there are, how much tax they withheld, in the server's own sentence why they are not here, and (folded away) which they are.
+ * A 26Q built from the books carries the deductions a CA typed on the TDS screen as deductee rows, except a row recorded for another statement and a row naming a
+ * supplier now recorded as non-resident (which the 27Q built from the books does not carry either). A statement that says nothing about those reads as a complete one
+ * while the register holds tax withheld for the same quarter. This note says how many there are, how much tax they withheld, in the server's own sentence why they are
+ * not here and where to key them, and (folded away) which they are.
  *
  * Nothing is added up here and nothing is added to the statement: every figure is the server's (`lib/tds/excludedTyped.ts` reads it and draws nothing it cannot read
  * whole). An answer that is THERE and cannot be read is said to be unreadable, because silence would read as "none". Both return screens draw this one component, so the

@@ -408,6 +408,7 @@ class Phase2JournalService:
         """
         Dr Sales Returns (Sales Revenue account) = taxable_amount_paise
         Dr GST Output Tax Payable (CGST/SGST/IGST) — per-head accounts
+        Dr Compensation Cess Payable = cess_paise (its own ledger, migration 615)
         Cr Trade Receivables = total_paise
         CGST Act §34: Credit notes for reduction in taxable value.
         CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
@@ -468,6 +469,20 @@ class Phase2JournalService:
                     "narration": "IGST output tax reversed",
                 })
 
+            # Compensation cess reversed to its OWN liability, the ledger the invoice
+            # credited (Compensation Act s.11(2) proviso: this cess is never set off
+            # against GST). `total_paise` includes it (migration 615), so a note that
+            # carries cess and no leg for it would not balance.
+            if int(cn.get("cess_paise") or 0) > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Payable%",
+                        system_key="gst_cess_output"),
+                    "debit_paise": int(cn["cess_paise"]),
+                    "credit_paise": 0,
+                    "narration": "Compensation cess reversed — Compensation Act s.8",
+                })
+
             lines.append({
                 "account_id": receivables_id,
                 "debit_paise": 0,
@@ -505,6 +520,7 @@ class Phase2JournalService:
         Dr Trade Payables      = total_paise         (we owe the vendor less)
         Cr Purchases/Expense   = taxable_amount_paise (reverse the expense)
         Cr GST Input Tax Credit (CGST/SGST/IGST)     (reverse the ITC claimed)
+        Cr Compensation Cess Input Credit = cess_paise (its own ledger, migration 615)
         CGST Act §34: debit notes for reduction in value/tax.
         """
         if _USE_MOCK:
@@ -545,6 +561,17 @@ class Phase2JournalService:
                     "credit_paise": gst_reversed,
                     "narration": "GST input tax credit reversed",
                 })
+            # The cess credit the bill took goes back to its OWN asset (Compensation
+            # Act s.11(2) proviso), the ledger the bill debited.
+            if int(dn.get("cess_paise") or 0) > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Input%",
+                        system_key="gst_cess_input"),
+                    "debit_paise": 0,
+                    "credit_paise": int(dn["cess_paise"]),
+                    "narration": "Compensation cess input credit reversed — Compensation Act s.8",
+                })
 
             return self._create_journal(
                 created_by=created_by,
@@ -575,6 +602,7 @@ class Phase2JournalService:
         Dr Trade Receivables    = total_paise         (customer owes us MORE)
         Cr Sales Revenue        = taxable_amount_paise (additional revenue)
         Cr GST Output Tax Payable (CGST/SGST/IGST) — per-head accounts
+        Cr Compensation Cess Payable = cess_paise (its own ledger, migration 615)
         CGST Act §34(3): debit notes for an increase in taxable value or tax charged.
         CGST Act §8: Intra-state → CGST+SGST; Inter-state → IGST.
         """
@@ -635,6 +663,17 @@ class Phase2JournalService:
                     "credit_paise": dn["igst_paise"],
                     "narration": "IGST output tax — additional",
                 })
+            # Additional compensation cess, to its OWN liability (Compensation Act
+            # s.11(2) proviso), as the invoice's own cess was.
+            if int(dn.get("cess_paise") or 0) > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Payable%",
+                        system_key="gst_cess_output"),
+                    "debit_paise": 0,
+                    "credit_paise": int(dn["cess_paise"]),
+                    "narration": "Compensation cess payable — additional, Compensation Act s.8",
+                })
 
             return self._create_journal(
                 created_by=created_by,
@@ -665,6 +704,7 @@ class Phase2JournalService:
         (a vendor undercharged us; we owe them more):
         Dr Purchases/Expense   = taxable_amount_paise (additional expense)
         Dr GST Input Tax Credit (CGST/SGST/IGST)      (additional ITC claimed)
+        Dr Compensation Cess Input Credit = cess_paise (its own ledger, migration 615)
         Cr Trade Payables      = total_paise           (we owe the vendor more)
         CGST Act §34(3): debit notes for an increase in value/tax — issued by the
         vendor; this is our own AP-side record of it, mirroring how the existing
@@ -702,6 +742,17 @@ class Phase2JournalService:
                     "debit_paise": gst_claimed,
                     "credit_paise": 0,
                     "narration": "GST input tax credit — additional",
+                })
+            # Additional cess credit, to its OWN asset (Compensation Act s.11(2)
+            # proviso), as the bill's own cess credit was.
+            if int(cn.get("cess_paise") or 0) > 0:
+                lines.append({
+                    "account_id": self._find_account(
+                        db, firm_id, client_id, "%Compensation Cess Input%",
+                        system_key="gst_cess_input"),
+                    "debit_paise": int(cn["cess_paise"]),
+                    "credit_paise": 0,
+                    "narration": "Compensation cess input credit — additional, Compensation Act s.8",
                 })
             lines.append({
                 "account_id": payables_id,

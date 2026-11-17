@@ -485,20 +485,6 @@ def preview_due(firm_id: str, as_of: Optional[str] = None) -> list[dict]:
 MOCK_COST_RATES: dict = {}   # mock-mode staff cost rates {user_id: paise}
 
 
-def unbilled_value_paise(minutes: Optional[int], billable_rate_paise: Optional[int],
-                         hourly_rate_paise: Optional[int]) -> int:
-    """Billable value of a time entry in integer paise (minutes x rate / 60).
-    Prefers billable_rate_paise; falls back to the legacy hourly_rate_paise.
-
-    An entry with NEITHER is worth 0 HERE and that is this function's old
-    contract, kept for its callers — it is NOT how the unbilled-work total reads
-    one any more: `domain/billing/time_rate.fold_unbilled` lists such an entry as
-    "no rate" instead of adding a zero, because "nobody said what it is worth"
-    is not "it is worth nothing"."""
-    rate = billable_rate_paise if billable_rate_paise is not None else hourly_rate_paise
-    return time_rate.value_paise(minutes, rate) or 0
-
-
 def group_unbilled(entries: list[dict]) -> dict:
     """Group billable, not-yet-billed time entries by client and by work item.
     Pure: filters is_billable AND billed_invoice_id IS NULL. No cost, no margin.

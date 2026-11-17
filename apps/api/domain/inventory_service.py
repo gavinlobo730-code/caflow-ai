@@ -2605,7 +2605,15 @@ def preview_nrv_writedown(db, service_catalogue_id: str, nrv_per_unit_paise: int
     and the arithmetic is `_compute_nrv_writedown`, the function the posting uses, read from the same row.
 
     Reads only. Nothing is inserted, no version is bumped, no journal is posted."""
-    prev = _last_ledger_row(db, service_catalogue_id)
+    return nrv_writedown_answer(_last_ledger_row(db, service_catalogue_id), nrv_per_unit_paise)
+
+
+def nrv_writedown_answer(prev: Optional[dict], nrv_per_unit_paise: int) -> dict:
+    """What a write-down to this NRV would do to the stock this ledger row holds: the one answer the single-item preview
+    and the cross-item review (POST-A-111) both give, from `_compute_nrv_writedown`, the function the posting runs.
+
+    `prev` is the item's latest ledger row (`_last_ledger_row`, or the same row `stock_latest_rows` returns for many items
+    at once), or None for an item that has never moved. Pure: no I/O, no rounding of its own."""
     if prev is None:
         return {"has_stock": False, "needed": False, "quantity_units": "0",
                 "carrying_value_paise": 0, "new_value_paise": 0, "write_down_paise": 0}

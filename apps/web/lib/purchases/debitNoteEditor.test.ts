@@ -25,12 +25,12 @@ test("isValidDebitNoteLine requires positive qty, positive rate and a Product/Se
 
 test("previewDebitNoteTotals: intra-state splits 18% into 9% CGST + 9% SGST", () => {
   const t = previewDebitNoteTotals([line({ qty: "2", rate: "500", gst_rate: 18 })], false);
-  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, gst_paise: 18000, grand_total_paise: 118000 });
+  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 9000, sgst_paise: 9000, igst_paise: 0, gst_paise: 18000, cess_paise: 0, grand_total_paise: 118000 });
 });
 
 test("previewDebitNoteTotals: inter-state applies the full rate as IGST", () => {
   const t = previewDebitNoteTotals([line({ qty: "2", rate: "500", gst_rate: 18 })], true);
-  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 0, sgst_paise: 0, igst_paise: 18000, gst_paise: 18000, grand_total_paise: 118000 });
+  assert.deepEqual(t, { taxable_paise: 100000, cgst_paise: 0, sgst_paise: 0, igst_paise: 18000, gst_paise: 18000, cess_paise: 0, grand_total_paise: 118000 });
 });
 
 test("previewDebitNoteTotals sums multiple valid lines and skips invalid ones", () => {
@@ -59,4 +59,13 @@ test("validateDebitNoteEditor: passes with a vendor, date and one valid line", (
   const v = validateDebitNoteEditor({ vendorId: "VEND1", debitNoteDate: "2026-07-17", lines: [line()] });
   assert.equal(v.ok, true);
   assert.deepEqual(v.errors, {});
+});
+
+test("previewDebitNoteTotals: a line's compensation cess is its own figure and in the total (migration 615)", () => {
+  // ₹1,000 x 3 at 18%, cess 12% ad valorem plus ₹4 a unit: 36,000 + 1,200 paise, the server's own arithmetic (compensation_cess.py).
+  const t = previewDebitNoteTotals([line({ qty: "3", rate: "1000", gst_rate: 18, cessPercent: "12", cessPerUnit: "4" })], false);
+  assert.equal(t.cess_paise, 37200);
+  assert.equal(t.gst_paise, 54000, "the cess is never part of the GST");
+  assert.equal(t.grand_total_paise, 300000 + 54000 + 37200);
+  assert.equal(previewDebitNoteTotals([line({ cessPercent: "abc" })], false).cess_paise, 0, "a box that is not a number adds nothing");
 });

@@ -86,6 +86,22 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("client_sales_invoice_lines", "sales_order_line_id"): "migration 589 (POST-A-104): the sales-order line an invoice line bills; NULL = none",
     ("tds_deductions", "vendor_id"): "migration 594 (POST-A-078): the supplier a deduction typed on the TDS screen was paid to; NULL = none named",
     ("fixed_assets", "depreciation_reversal_claimed_at"): "migration 587 (POST-A-349): a depreciation reversal's marker, the month it claimed and when; NULL = none in flight",
+    ("credit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("sales_debit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("debit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("purchase_credit_notes", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("credit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("credit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("credit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("sales_debit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("sales_debit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("sales_debit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("debit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("debit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("debit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("purchase_credit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("purchase_credit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("purchase_credit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
 }
 
 

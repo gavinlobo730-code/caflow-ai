@@ -329,13 +329,17 @@ def test_editing_a_draft_keeps_the_cess_in_the_total(sales_db):
     assert line["cess_paise"] == 12_000
 
 
-def test_the_note_models_have_no_cess_field():
-    """Migration 374 covers the invoice and the bill; the four s.34 note tables
-    have no cess column. A field the note path accepted and then dropped would
-    let a CA believe they had reversed a charge they had not."""
+def test_the_note_models_carry_the_cess_since_migration_615():
+    """Migration 374 covered the invoice and the bill and left the four s.34
+    note tables without a cess column, so the shared line model the notes use
+    carried no cess field (a field the note path accepted and then dropped
+    would have let a CA believe they had reversed a charge they had not).
+    Migration 615 gave the notes the columns (POST-A-058), so the fields are on
+    the shared model now; tests/test_a_s34_note_carries_compensation_cess.py
+    drives each note end to end."""
     from models.invoices import InvoiceLineIn
-    assert "cess_rate_bps" not in InvoiceLineIn.model_fields
-    assert "cess_specific_paise_per_unit" not in InvoiceLineIn.model_fields
+    assert "cess_rate_bps" in InvoiceLineIn.model_fields
+    assert "cess_specific_paise_per_unit" in InvoiceLineIn.model_fields
 
 
 # ── purchase bill ───────────────────────────────────────────────────────────
@@ -810,20 +814,21 @@ def test_the_line_cess_reaches_table_12(monkeypatch):
     assert line.cess_paise == 12_000
 
 
-def test_a_note_against_a_cess_invoice_is_named_rather_than_silently_short():
-    """The four s.34 note tables have no cess column, so such a note adjusts
-    the value and the GST and leaves the cess. That is a real short
-    declaration; the return says so instead of showing a nil that reads as
-    "none due"."""
+def test_a_note_with_no_cess_against_a_cess_invoice_is_named_rather_than_silently_short():
+    """A note that carries no cess and adjusts an invoice that carried some may
+    have left the cess where it was. The return says so instead of showing a
+    nil that reads as "none due". A note that carries its own cess (migration
+    615) is answered by its own csamt and is not named."""
     import services.gst_return_service as grs
 
     parents = {"INV-1": {"cess_paise": 12_000}, "INV-2": {"cess_paise": 0}}
     notes = [{"sales_invoice_id": "INV-1", "credit_note_no": "CN-1"},
-             {"sales_invoice_id": "INV-2", "credit_note_no": "CN-2"}]
+             {"sales_invoice_id": "INV-2", "credit_note_no": "CN-2"},
+             {"sales_invoice_id": "INV-1", "credit_note_no": "CN-3", "cess_paise": 600}]
     gaps = grs._note_cess_not_carried(notes, parents)
     assert len(gaps) == 1
-    assert "CN-1" in gaps[0] and "₹120.00 of compensation cess" in gaps[0] and "paise" not in gaps[0]
-    assert "CN-2" not in " ".join(gaps)
+    assert "CN-1" in gaps[0] and "₹120.00 of it" in gaps[0] and "paise" not in gaps[0]
+    assert "CN-2" not in " ".join(gaps) and "CN-3" not in " ".join(gaps)
 
 
 # ── the customer's copy ─────────────────────────────────────────────────────

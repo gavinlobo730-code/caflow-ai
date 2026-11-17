@@ -223,6 +223,49 @@ export interface NrvWritedownPreview {
   write_down_paise: number;
 }
 
+/** One item of the cross-item NRV review (`POST /api/inventory/nrv-review/preview`, POST-A-111). Every figure is the server's.
+ *  `nrv_per_unit_paise` is the value the CA typed, echoed back, and null where they typed none: the sheet never suggests one.
+ *  `write_down_paise` and `new_value_paise` are null for an item with no value typed. */
+export interface NrvReviewItem {
+  service_catalogue_id: string;
+  name: string;
+  unit: string | null;
+  quantity_units: string;
+  carrying_value_paise: number;
+  average_cost_paise: number;
+  nrv_per_unit_paise: number | null;
+  write_down_paise: number | null;
+  new_value_paise: number | null;
+  status: "not_entered" | "write_down" | "not_below_carrying_value" | "no_stock";
+}
+
+/** The NRV review sheet: every stock-tracked product that holds stock now, with the server's two sentences about what it is. */
+export interface NrvReviewSheet {
+  items: NrvReviewItem[];
+  item_count: number;
+  entered_count: number;
+  write_down_count: number;
+  carrying_value_paise: number;
+  write_down_paise: number;
+  measured_now: string;
+  no_nrv_of_our_own: string;
+}
+
+/** What one posted part of the NRV review did (`POST /api/inventory/nrv-review/post`). `message` is the server's sentence. */
+export interface NrvReviewPostResult {
+  reference_no: string;
+  writedown_date: string;
+  posted: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; write_down_paise: number;
+            movement_id: string | null; journal_posted: boolean | null }[];
+  not_needed: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; why: string }[];
+  failed: { service_catalogue_id: string; name: string; nrv_per_unit_paise: number; why: string }[];
+  posted_count: number;
+  not_needed_count: number;
+  failed_count: number;
+  write_down_paise: number;
+  message: string;
+}
+
 /** One kind of practice mail a person can switch on or off
  *  (`GET /api/notifications/email-preferences`). The vocabulary and the
  *  defaults are the server's (`domain/practice_notices`) and this screen
@@ -1892,6 +1935,19 @@ export type UnrecordedStockDocument = {
 
 export type UnrecordedStock = { total: number; documents: UnrecordedStockDocument[] };
 
+/** A document the CA marked as settled by hand (POST-A-092, migration 620), as the server lists it. The reason is what the CA typed; `settled_by_name` and
+ *  `settled_at` say who and when. The mark moves no stock: it only stops the list offering to. */
+export type StockSettlement = {
+  id: string;
+  document_kind: UnrecordedStockDocument["kind"];
+  document_id: string;
+  reference: string | null;
+  document_date: string | null;
+  reason: string;
+  settled_by_name: string | null;
+  settled_at: string;
+};
+
 /** What a retry answered. `recorded` is true, false, or null when the document carries no goods line; `message` is the server's sentence. */
 export type StockRetryAnswer = { recorded: boolean | null; message: string; stock_effect: Record<string, unknown> | null };
 
@@ -2947,6 +3003,45 @@ export type Gstr8UnregisteredSupply = {
   notes: string | null;
 };
 
+/** One row of GSTR-8 Table 4 (POST-A-056): the figures a registered seller's row of an EARLIER month is revised to. `period` is the
+ *  statement it is declared in, `original_period` (MMYYYY) the month it amends; `net_liable_paise` is the server's. `action` is the
+ *  offline utility's own Add / Delete choice, kept as chosen. Recorded and checked, never netted against the row it amends. */
+export type Gstr8Amendment = {
+  id: string;
+  gstin: string;
+  period: string;
+  original_period: string;
+  original_supplier_gstin: string;
+  original_place_of_supply: string | null;
+  supplier_gstin: string;
+  place_of_supply: string | null;
+  gross_registered_paise: number;
+  returns_registered_paise: number;
+  gross_unregistered_paise: number;
+  returns_unregistered_paise: number;
+  igst_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  net_liable_paise: number;
+  action: "add" | "delete";
+  notes: string | null;
+};
+
+/** One row of GSTR-8 Table 4.1: an Enrolment-ID seller's row of an EARLIER month, revised. */
+export type Gstr8UnregisteredAmendment = {
+  id: string;
+  gstin: string;
+  period: string;
+  original_period: string;
+  original_enrolment_id: string;
+  enrolment_id: string;
+  gross_value_paise: number;
+  returns_paise: number;
+  net_liable_paise: number;
+  action: "add" | "delete";
+  notes: string | null;
+};
+
 export type Gstr8Finding = {
   supplier_gstin: string;
   problems: string[];
@@ -2972,6 +3067,14 @@ export type Gstr8Working = {
   findings: Gstr8Finding[];
   supplies: Gstr8Supply[];
   unregistered_supplies: Gstr8UnregisteredSupply[];
+  /** Table 4 / 4.1 (POST-A-056): counts and findings only, never a total, and the server's sentence saying they are not netted against
+   *  the rows they amend. `amendment_note` is null when the month has none. */
+  amendment_count?: number;
+  unregistered_amendment_count?: number;
+  amendment_findings?: Gstr8Finding[];
+  amendment_note?: string | null;
+  amendments?: Gstr8Amendment[];
+  unregistered_amendments?: Gstr8UnregisteredAmendment[];
   gstr8_rates_verified: boolean;
 };
 
@@ -3795,9 +3898,10 @@ export interface Gstr2bBulkAnswer {
 export type ItcTimeBarStatus = "open" | "closing_soon" | "closed";
 
 export interface ItcTimeBarItem {
-  /** A received bill whose credit §16(2)(aa) withholds, or a 2B document the
-   *  books have no bill for. */
-  kind: "withheld_bill" | "not_booked";
+  /** A received bill whose credit §16(2)(aa) withholds, a 2B document the
+   *  books have no bill for, or a withheld bill the supplier furnished in a
+   *  LATER month's 2B, shown as one row (POST-A-062). */
+  kind: "withheld_bill" | "not_booked" | "furnished_later";
   closes_on: string;
   days_left: number;
   status: ItcTimeBarStatus;
@@ -3812,6 +3916,8 @@ export interface ItcTimeBarItem {
   verdict: string;
   reason: string;
   credit_at_risk_paise: number;
+  /** On a `furnished_later` row: the tax the later month's GSTR-2B carries on the bill. */
+  furnished_credit_paise?: number;
 }
 
 export interface ItcTimeBar {
@@ -5374,6 +5480,15 @@ export const api = {
      *  no journal; a line already recorded is not recorded twice. */
     retryStockEffect: (body: { client_id: string; kind: UnrecordedStockDocument["kind"]; document_id: string }) =>
       request<ApiResp<StockRetryAnswer>>(`/api/inventory/stock-effects/retry`, { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-092 — the client's documents marked as settled by hand, newest first. A failed read is a failure and never an empty list. */
+    settledStock: (clientId: string) =>
+      request<ApiResp<{ settlements: StockSettlement[] }>>(`/api/inventory/stock-effects/settled?${new URLSearchParams({ client_id: clientId })}`),
+    /** POST-A-092 — mark ONE listed document's stock as settled by hand, with the reason the CA gives. It moves no stock and posts no journal. */
+    settleStockEffect: (body: { client_id: string; kind: UnrecordedStockDocument["kind"]; document_id: string; reason: string }) =>
+      request<ApiResp<StockSettlement & { message: string }>>(`/api/inventory/stock-effects/settle`, { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-092 — take a mark back: the document is listed again if its stock is still not all recorded. */
+    unsettleStockEffect: (settlementId: string) =>
+      request<ApiResp<{ removed: boolean; message: string }>>(`/api/inventory/stock-effects/settled/${encodeURIComponent(settlementId)}`, { method: "DELETE" }),
     /** Closing stock AS AT a date — the statement that ties to the Inventories
      *  line on the balance sheet. Distinct from `items`, which is the CURRENT
      *  position and takes no date: the two answer different questions, and only
@@ -5416,6 +5531,17 @@ export const api = {
       request<ApiResp<NrvWritedownPreview | null>>(
         `/api/inventory/items/${serviceCatalogueId}/writedown-preview`,
         { method: "POST", body: JSON.stringify(body), asked: "read" }),
+    // POST-A-111 — the cross-item NRV review. The sheet is a read (what each typed NRV would write down, from the function the
+    // posting runs) and the post writes each line down through the single-item door's function, under one reference.
+    nrvReview: (body: { client_id: string; lines: { service_catalogue_id: string; nrv_per_unit_paise: number }[] }) =>
+      request<ApiResp<NrvReviewSheet>>("/api/inventory/nrv-review/preview",
+        { method: "POST", body: JSON.stringify(body), asked: "read" }),
+    postNrvReview: (body: {
+      client_id: string; writedown_date: string; lines: { service_catalogue_id: string; nrv_per_unit_paise: number }[];
+      reference_no?: string; notes?: string;
+    }) =>
+      request<ApiResp<NrvReviewPostResult>>("/api/inventory/nrv-review/post",
+        { method: "POST", body: JSON.stringify(body) }),
     // INV-08 — the physical count. One sheet, not a hundred adjustments. The
     // VARIANCE is derived on the server against the position as at the count
     // date and is never sent up; so is which line may post and why.
@@ -7754,8 +7880,10 @@ export const api = {
     listSupplies: (clientId: string, period: string, gstin?: string) => {
       const q = new URLSearchParams({ client_id: clientId, period });
       if (gstin) q.set("gstin", gstin);
-      return request<ApiResp<{ registered: Gstr8Supply[]; unregistered: Gstr8UnregisteredSupply[] }>>(
-        `/api/ecommerce-operator/supplies?${q}`);
+      return request<ApiResp<{
+        registered: Gstr8Supply[]; unregistered: Gstr8UnregisteredSupply[];
+        amendments?: Gstr8Amendment[]; unregistered_amendments?: Gstr8UnregisteredAmendment[];
+      }>>(`/api/ecommerce-operator/supplies?${q}`);
     },
     recordSupply: (body: {
       client_id: string; gstin?: string; period: string; supplier_gstin: string;
@@ -7779,6 +7907,35 @@ export const api = {
     deleteUnregisteredSupply: (supplyId: string, clientId: string) =>
       request<ApiResp<{ id: string; deleted: boolean }>>(
         `/api/ecommerce-operator/unregistered-supplies/${supplyId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    /** GSTR-8 Table 4 — an amendment of a registered seller's row of an EARLIER month (POST-A-056). */
+    recordAmendment: (body: {
+      client_id: string; gstin?: string; period: string; original_period: string;
+      original_supplier_gstin: string; original_place_of_supply?: string | null;
+      supplier_gstin: string; place_of_supply?: string | null;
+      gross_registered_paise?: number; returns_registered_paise?: number;
+      gross_unregistered_paise?: number; returns_unregistered_paise?: number;
+      igst_paise?: number; cgst_paise?: number; sgst_paise?: number;
+      action: "add" | "delete"; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8Amendment>>("/api/ecommerce-operator/amendments",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteAmendment: (amendmentId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/amendments/${amendmentId}?client_id=${encodeURIComponent(clientId)}`,
+        { method: "DELETE" }),
+    /** GSTR-8 Table 4.1 — an amendment of an Enrolment-ID seller's row of an EARLIER month. */
+    recordUnregisteredAmendment: (body: {
+      client_id: string; gstin?: string; period: string; original_period: string;
+      original_enrolment_id: string; enrolment_id: string;
+      gross_value_paise?: number; returns_paise?: number;
+      action: "add" | "delete"; notes?: string | null;
+    }) =>
+      request<ApiResp<Gstr8UnregisteredAmendment>>("/api/ecommerce-operator/unregistered-amendments",
+        { method: "POST", body: JSON.stringify(body) }),
+    deleteUnregisteredAmendment: (amendmentId: string, clientId: string) =>
+      request<ApiResp<{ id: string; deleted: boolean }>>(
+        `/api/ecommerce-operator/unregistered-amendments/${amendmentId}?client_id=${encodeURIComponent(clientId)}`,
         { method: "DELETE" }),
   },
 

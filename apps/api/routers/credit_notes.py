@@ -17,6 +17,7 @@ from models.common import api_response
 from models.invoices import InvoiceLineIn
 from core import db_provider
 from core.authz import assert_client_access, can_access_client
+from domain.gst import compensation_cess
 from domain.inventory import note_goods
 from domain.inventory import stock_effect as stock_effects
 from services import named_row_ownership
@@ -222,12 +223,16 @@ def _compute_lines(lines_data: list, is_interstate: bool, owner: Optional[ItemOw
             gst_rate_bps = int(round(float(ln.get("gst_rate_percent")) * 100))
         taxable = int(Decimal(str(qty)) * rate_paise)
         cgst, sgst, igst = _compute_line_gst(taxable, gst_rate_bps, is_interstate)
+        # Compensation cess on the SAME value of supply the three heads are charged on, by the one derivation every line table
+        # that carries it uses (migration 615): a note adjusts a document whose lines were charged that way.
+        cess = compensation_cess.line_columns(ln, taxable_paise=taxable, quantity=qty)
         total_taxable += taxable; total_cgst += cgst; total_sgst += sgst; total_igst += igst
         computed.append({
             "description": ln.get("description", ""), "hsn_sac": ln.get("hsn_sac", ""),
             "quantity": qty, "unit": ln.get("unit") or "NOS", "rate_paise": rate_paise, "gst_rate_bps": gst_rate_bps,
             "taxable_amount_paise": taxable, "cgst_paise": cgst, "sgst_paise": sgst,
-            "igst_paise": igst, "line_total_paise": taxable + cgst + sgst + igst,
+            "igst_paise": igst, **cess,
+            "line_total_paise": taxable + cgst + sgst + igst + cess["cess_paise"],
             # Which Product/Service (goods only, in practice) this return
             # restocks — migration 189. Optional: a line with no pick just
             # never moves stock (domain.inventory_service.apply_credit_note_to_inventory).
@@ -371,7 +376,8 @@ def create_credit_note(
         # Compute lines (shared with the PATCH endpoint — see _compute_lines)
         computed_lines, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
             lines_data, is_interstate, owner=None if _USE_MOCK else ItemOwner.live(firm_id or "", client_id))
-        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+        total_cess = compensation_cess.lines_cess(computed_lines)
+        total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
         if total_paise <= 0:
             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
 
@@ -435,6 +441,7 @@ def create_credit_note(
                 "cgst_paise":           total_cgst,
                 "sgst_paise":           total_sgst,
                 "igst_paise":           total_igst,
+                "cess_paise":           total_cess,
                 "total_paise":          total_paise,
                 "total_gst_paise":      total_cgst + total_sgst + total_igst,
                 "status":               "draft",
@@ -464,6 +471,7 @@ def create_credit_note(
             "cgst_paise":           total_cgst,
             "sgst_paise":           total_sgst,
             "igst_paise":           total_igst,
+            "cess_paise":           total_cess,
             "total_paise":          total_paise,
             "total_gst_paise":      total_cgst + total_sgst + total_igst,
             "status":               "draft",
@@ -572,12 +580,13 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
                         is_interstate = data.get("is_interstate", c.get("is_interstate", False))
                         computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
                             lines_data, is_interstate, owner=None)   # mock mode has no catalogue
-                        total_paise = total_taxable + total_cgst + total_sgst + total_igst
+                        total_cess = compensation_cess.lines_cess(computed)
+                        total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
                         if total_paise <= 0:
                             raise HTTPException(status_code=422, detail="Credit note total must be positive.")
                         data.update({
                             "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
-                            "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                            "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                             "total_gst_paise": total_cgst + total_sgst + total_igst,
                         })
                         MOCK_CREDIT_NOTE_LINES[:] = [l for l in MOCK_CREDIT_NOTE_LINES if l.get("credit_note_id") != cn_id]
@@ -619,12 +628,13 @@ def update_credit_note(cn_id: str, data: CreditNoteUpdateIn, current_user: dict 
             computed, total_taxable, total_cgst, total_sgst, total_igst = _compute_lines(
                 lines_data, is_interstate,
                 owner=ItemOwner.live(current_user.get("firm_id") or "", c.get("client_id") or ""))
-            total_paise = total_taxable + total_cgst + total_sgst + total_igst
+            total_cess = compensation_cess.lines_cess(computed)
+            total_paise = total_taxable + total_cgst + total_sgst + total_igst + total_cess
             if total_paise <= 0:
                 raise HTTPException(status_code=422, detail="Credit note total must be positive.")
             data.update({
                 "taxable_amount_paise": total_taxable, "cgst_paise": total_cgst,
-                "sgst_paise": total_sgst, "igst_paise": total_igst, "total_paise": total_paise,
+                "sgst_paise": total_sgst, "igst_paise": total_igst, "cess_paise": total_cess, "total_paise": total_paise,
                 "total_gst_paise": total_cgst + total_sgst + total_igst,
             })
             draft_document_lines.replace_draft_lines(db, "credit_note", cn_id, firm_id or "", computed, edited_by=current_user)

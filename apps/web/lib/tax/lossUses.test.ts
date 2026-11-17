@@ -12,9 +12,18 @@ const record = (over: Record<string, unknown> = {}) => ({ id: "L1", hand_recorde
 
 test("a record's uses and hand-recorded part are handed on exactly as the server gave them, a return's entry id being the filing's id when an older server sent none", () => {
   const out = lossUsesOf([record({ hand_recorded_paise: 100000 })]);
-  assert.deepEqual(out, { L1: { hand_recorded_paise: 100000, uses: [{ ...aUse(), entry_id: "f1" }] } });
+  assert.deepEqual(out, { L1: { hand_recorded_paise: 100000, hand_recorded_entry_id: null, uses: [{ ...aUse(), entry_id: "f1" }] } });
   const named = lossUsesOf([record({ uses: [aUse({ entry_id: "e-9" })] })])!.L1.uses[0];
   assert.equal(named.entry_id, "e-9");
+});
+
+test("the part recorded by hand with no year is named by the server's id for taking it back, and by nothing else (POST-A-368)", () => {
+  const named = lossUsesOf([record({ hand_recorded_paise: 100000, hand_recorded_entry_id: "hand-recorded" })])!.L1;
+  assert.equal(named.hand_recorded_entry_id, "hand-recorded");
+  // none to take back, or an older server that did not say: no id, so no control is drawn for it
+  assert.equal(lossUsesOf([record({ hand_recorded_entry_id: null })])!.L1.hand_recorded_entry_id, null);
+  assert.equal(lossUsesOf([record()])!.L1.hand_recorded_entry_id, null);
+  for (const bad of ["", 7, true, {}, []]) assert.equal(lossUsesOf([record({ hand_recorded_entry_id: bad })])!.L1.hand_recorded_entry_id, null);
 });
 
 test("a use recorded by hand keeps its kind and its entry id, and names no return (POST-A-368, item 2)", () => {

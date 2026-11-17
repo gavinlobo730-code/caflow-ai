@@ -344,6 +344,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Keying the bill path's year, its advance pool and its orphan-advance rule on the PAN. Each record keeps its own year, as today, and a typed deduction with no supplier whose PAN two records hold is counted in neither, and the form says so.
 - **Ledger:** POST-A-444
 
+### S35. A carried-forward loss: may it be used in the assessment year it arose in, or only from the next?
+
+- **Question:** A hand entry that says a financial year used part of a brought-forward loss is refused for a year assessed BEFORE the year the loss arose in (it cannot have been used before it existed) and for a year after the record's stored last year, using only what the record itself says. For the year the loss arose in, is a carried-forward set-off possible at all, or does the carry-forward begin with the following assessment year (the product's carry-forward rule counts the permitted years from the year the loss was computed, and has not read whether that year is itself one of them)? The answer decides whether a hand entry for the loss's own assessment year is refused.
+- **Needed:** Income-tax Act 1961 sections 71B, 72, 73 and 74 (the provisions that carry a loss forward, and the years it is carried to), which the product's carry-forward periods already cite; for tax years from 2026-27, the corresponding sections of the Income-tax Act 2025.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Refusing a hand entry for the loss's own assessment year. It is accepted (it shows in the loss list and can be taken back), as is the record's stored last year.
+- **Ledger:** POST-A-368
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
