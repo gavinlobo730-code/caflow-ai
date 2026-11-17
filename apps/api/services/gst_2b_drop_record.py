@@ -169,7 +169,8 @@ def read_back(db, *, firm_id: str, member_id: Optional[str], may_see: Callable[[
     if ids:
         def page():
             return (db.table("gstr2b_bulk_drop_files")
-                    .select("id, drop_id, seq, " + ", ".join(_KEPT))
+                    .select("id, drop_id, seq, name, status, reason, gstin, period, client_id, needs_attention, "
+                            "summary, problems, registration_caveat, replaced_earlier")
                     .eq("firm_id", firm_id).in_("drop_id", ids)
                     .order("seq").order("id"))
         rows = fetch_all(page, label="gst2b.drop_files")
