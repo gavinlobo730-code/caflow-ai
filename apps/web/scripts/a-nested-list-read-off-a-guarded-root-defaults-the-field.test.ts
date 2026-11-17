@@ -13,8 +13,11 @@
  * spelling because the `?.` guards `variance` and says nothing about `notes`.
  *
  * WHAT THIS CANNOT SEE. A read whose root is not tested in the same expression (`report.rows.map` after an early return somewhere above), which
- * is `an-object-payload-is-not-its-fields-until-it-is-checked`'s for state and nobody's for a prop; a read of a string field's `.length` that
- * happens to follow a root test would be flagged, and there is none today (the list of exceptions is empty and a new one is named with its reason).
+ * is `an-object-payload-is-not-its-fields-until-it-is-checked`'s for state and nobody's for a prop; and an OBJECT field read off a presence-tested
+ * root (`d?.revenue.total_paise`, `sheet?.session.status`, and a list on the third segment such as `d?.revenue.lines ?? []`, whose `?? []` covers
+ * `lines` and not `revenue`), which throws on `{}` the same way: 53 such reads in 15 files on 17-11-2026, and POST-A-360 stays open for them. A
+ * read of a string field's `.length` that happens to follow a root test would be flagged, and there is none today (the list of exceptions is
+ * empty and a new one is named with its reason).
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";

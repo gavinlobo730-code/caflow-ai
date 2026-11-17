@@ -8,8 +8,9 @@
 //
 // THE RULE, per screen, in the code that builds the edit's request:
 //  1. each clearable key is sent through `editedText` or `editedChoice` (directly, or through a local `edited` that calls `editedChoice`), never as `x || undefined` or `x || null`;
-//  2. a tax identifier (GSTIN, PAN, TAN, state code, foreign tax number) is never sent through either and never as `|| null`: an empty one is left out, and the screen calls
-//     `removedIdentifierProblem` for each identifier it shows before anything is sent, which is the server's sentence;
+//  2. a tax identifier a return reads (a party's GSTIN and state code, a vendor's PAN and foreign tax number) is never sent through either and never as `|| null`: an empty
+//     one is left out, and the screen calls `removedIdentifierProblem` for each such identifier it shows before anything is sent, which is the server's sentence (a customer's
+//     PAN and TAN are not among them: no return reads them, so they are clearable and go through rule 1);
 //  3. the bank account's ledger link is never sent as `|| null` on the edit, and an emptied link on file is refused on the screen.
 // WHAT THIS CANNOT SEE: what the request carries in a browser (no drive is written for these four screens), and a new master edit screen, which is not on the list below.
 import { test } from "node:test";
@@ -60,8 +61,9 @@ const SCREENS: Screen[] = [
     file: "components/customers/CustomerFormModal.tsx",
     from: '`/api/customers/${existing.id}`, "PATCH"',
     to: 'await apiCall("/api/customers/", "POST"',
-    clearable: ["email", "phone", "city", "state", "credit_limit_paise"],
-    identifiers: [{ key: "gstin", label: "GSTIN" }, { key: "state_code", label: "state code" }, { key: "pan", label: "PAN" }, { key: "tan", label: "TAN" }],
+    // A customer's PAN and TAN are cleared, not refused: no return reads either off a customer, so the refusal's reason would be untrue of them.
+    clearable: ["email", "phone", "city", "state", "credit_limit_paise", "pan", "tan"],
+    identifiers: [{ key: "gstin", label: "GSTIN" }, { key: "state_code", label: "state code" }],
   },
   {
     name: "the client's vendor form",
@@ -144,6 +146,13 @@ for (const s of SCREENS) {
     });
   }
 }
+
+test("the customer form does not refuse an emptied PAN or TAN, which no return reads off a customer", () => {
+  const src = read(SCREENS[0].file);
+  for (const label of ["PAN", "TAN"]) {
+    assert.doesNotMatch(src, new RegExp(`removedIdentifierProblem\\("${label}",`), `the customer form refuses an emptied ${label}, saying a return reads it, which none does`);
+  }
+});
 
 test("the bank-account form keeps its ledger link and refuses emptying one on file", () => {
   const body = region(SCREENS[3]);

@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError as PydanticValidationError
 from domain.party_duplicates import possible_duplicates, same_party_sentence
 from models.common import api_response
 from models.clearable import drop_empty, patch_dict, removed_identifier_problem
-from models.parties import PARTY_IDENTIFIERS, CustomerIn, CustomerUpdateIn
+from models.parties import CUSTOMER_IDENTIFIERS, CustomerIn, CustomerUpdateIn
 from core.authz import assert_client_access, can_access_client
 from core.permissions import rbac
 from services import party_erasure
@@ -689,10 +689,11 @@ def update_customer(
     current_user: dict = Depends(rbac("client", "write")),
 ):
     try:
-        # POST-A-399. What the model names in CLEARABLE and the request sent empty is a clear (written NULL); a tax identifier sent empty over
-        # nothing writes nothing (never a stored ""), and one sent empty over a stored value is refused below, once the row is read.
+        # POST-A-399. What the model names in CLEARABLE and the request sent empty is a clear (written NULL), a customer's PAN and TAN among
+        # them; the GSTIN or the state code sent empty over nothing writes nothing (never a stored ""), and one sent empty over a stored value
+        # is refused below, once the row is read.
         model = data
-        payload = drop_empty(patch_dict(data), PARTY_IDENTIFIERS)
+        payload = drop_empty(patch_dict(data), CUSTOMER_IDENTIFIERS)
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         # A validator only at the create door is one PATCH from being none
         # (GST-29). Editing a customer is a place a human types a GSTIN, and
@@ -708,7 +709,7 @@ def update_customer(
         # can post a real GL journal, so the refusal must land before that fetch even
         # decides whether anything changed, let alone before the update itself.
         prior = _load_customer_or_404(current_user, customer_id)
-        _removed = removed_identifier_problem(model, prior, PARTY_IDENTIFIERS)
+        _removed = removed_identifier_problem(model, prior, CUSTOMER_IDENTIFIERS)
         if _removed:
             raise HTTPException(status_code=422, detail=_removed)
 

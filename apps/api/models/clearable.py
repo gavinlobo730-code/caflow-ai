@@ -61,11 +61,13 @@ def patch_dict(model: BaseModel) -> dict[str, Any]:
 def removed_identifier_problem(model: BaseModel, stored: dict, labels: dict[str, str]) -> str | None:
     """The sentence refusing an edit that EMPTIES an identifier the stored row carries, or None (POST-A-399, the party masters).
 
-    A tax identifier on a party (a GSTIN, a PAN, a TAN, the state code that follows a GSTIN, a foreign tax number) is corrected and not removed
-    by an edit: every GST return not yet filed reads the party's GSTIN and state code LIVE for the documents already issued to it (a recipient with
-    a GSTIN is B2B, one without is B2C, and §16(2)(aa) sends the credit to whoever the GSTIN names), so emptying one would silently move documents
-    already issued between tables of a return. `labels` maps each such field to the words a person reads. A field the request SENT empty (null or
-    blank) over a stored value is refused; one sent empty over nothing is not this function's to refuse (the route drops it, so nothing is written).
+    A tax identifier a return reads off a party (its GSTIN and the state code that follows it, and a vendor's PAN and foreign tax number) is
+    corrected and not removed by an edit: every GST return not yet filed reads the party's GSTIN and state code LIVE for the documents already
+    issued to it (a recipient with a GSTIN is B2B, one without is B2C, and §16(2)(aa) sends the credit to whoever the GSTIN names), so emptying one
+    would silently move documents already issued between tables of a return. A customer's PAN and TAN are not passed here, because no return reads
+    them and the sentence would be untrue of them. `labels` maps each field the route refuses to empty to the words a person reads. A field the
+    request SENT empty (null or blank) over a stored value is refused; one sent empty over nothing is not this function's to refuse (the route drops
+    it, so nothing is written).
     """
     for name, label in labels.items():
         if name not in model.model_fields_set:

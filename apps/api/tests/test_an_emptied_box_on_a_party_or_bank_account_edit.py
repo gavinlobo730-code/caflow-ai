@@ -12,11 +12,14 @@ WHAT THIS HOLDS
       and on the vendor, and in the customer's and the vendor's mock-mode branches;
     * on the vendor, the answers whose NULL is "nobody has said" (the payment terms, the treaty rate, the residential status, the GST registration
       status, the nature of income, the payee class) are cleared by a null;
-    * a tax identifier (GSTIN, PAN, TAN, state code, foreign tax number) sent empty over a stored value is REFUSED with a sentence and nothing is written;
-      sent empty over nothing it writes nothing (never a stored "");
+    * a tax identifier a return reads (a party's GSTIN and state code, a vendor's PAN and foreign tax number) sent empty over a stored value is REFUSED
+      with a sentence and nothing is written; sent empty over nothing it writes nothing (never a stored "");
+    * a customer's PAN and TAN, which no return reads (the TAN steers only the 26AS deductor match, the PAN prints on the invoice and matches a related
+      party), sent as null or blank are written NULL: the refusal's own reason, "every return not yet filed reads it", would be untrue of them;
     * what is not clearable still reads null as "not sent": the customer's credit days (NOT NULL), the vendor's no-PE declaration reference (evidence),
       the bank account's ledger link;
-    * the bank account's IFSC sent as null is cleared, and the rest of the edit behaves as before.
+    * the bank account's IFSC sent as null is cleared, and the rest of the edit behaves as before;
+    * a stored non-resident vendor's country cleared on its own is refused, because the row the edit would leave is one the model refuses.
 """
 from __future__ import annotations
 
@@ -27,7 +30,7 @@ import routers.banking as bank
 import routers.customers as cu
 import routers.vendors as ve
 from models.banking import BankAccountUpdateIn
-from models.parties import PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
+from models.parties import CUSTOMER_IDENTIFIERS, PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
 from tests.e2e_harness import FakeDB, wire_e2e
 
 FIRM = "FIRM-A"
@@ -74,7 +77,7 @@ def test_a_customers_credit_days_sent_as_null_are_not_a_clear(monkeypatch):
     assert out["success"] is True and _row(db, "customers", "CUST")["credit_days"] == 15
 
 
-@pytest.mark.parametrize("field", ["gstin", "pan", "tan", "state_code"])
+@pytest.mark.parametrize("field", ["gstin", "state_code"])
 @pytest.mark.parametrize("sent", [None, ""])
 def test_a_customers_tax_identifier_emptied_over_a_stored_one_is_refused_and_nothing_is_written(monkeypatch, field, sent):
     db = _customer(monkeypatch)
@@ -84,6 +87,23 @@ def test_a_customers_tax_identifier_emptied_over_a_stored_one_is_refused_and_not
     assert e.value.status_code == 422
     assert f"The {PARTY_IDENTIFIERS[field]} on file can be corrected but not removed" in e.value.detail
     assert _row(db, "customers", "CUST") == before, "a refused edit wrote something"
+
+
+@pytest.mark.parametrize("sent", [None, ""])
+def test_a_customers_pan_and_tan_sent_empty_are_cleared_because_no_return_reads_them(monkeypatch, sent):
+    db = _customer(monkeypatch)
+    out = cu.update_customer("CUST", CustomerUpdateIn(pan=sent, tan=sent), CALLER)
+    assert out["success"] is True, out
+    row = _row(db, "customers", "CUST")
+    assert (row["pan"], row["tan"]) == (None, None), "an emptied PAN or TAN was refused or kept, with a reason (a return reads it) that is untrue of a customer"
+    assert row["gstin"] == GSTIN and row["state_code"] == GSTIN[:2], "what was not sent is left alone"
+
+
+def test_the_customer_edit_refuses_to_empty_only_what_a_return_reads():
+    """The customer's refusal set is the GSTIN and the state code; the PAN and the TAN are clearable instead, and no field is both."""
+    assert set(CUSTOMER_IDENTIFIERS) == {"gstin", "state_code"}
+    assert {"pan", "tan"} <= CustomerUpdateIn.CLEARABLE
+    assert not (set(CUSTOMER_IDENTIFIERS) & CustomerUpdateIn.CLEARABLE)
 
 
 def test_a_customers_empty_identifier_over_nothing_writes_nothing_and_never_a_blank(monkeypatch):
@@ -148,6 +168,32 @@ def test_a_vendors_tax_identifier_emptied_over_a_stored_one_is_refused(monkeypat
         ve.update_vendor("VEN", VendorUpdateIn(**{field: None}), CALLER)
     assert e.value.status_code == 422 and "can be corrected but not removed" in e.value.detail
     assert _row(db, "vendors", "VEN") == before
+
+
+def test_a_stored_non_residents_country_cleared_alone_is_refused_because_the_row_would_lose_it(monkeypatch):
+    """The model asks that a non-resident carries a country only of what one request sends; a PATCH clearing just the country never sends the
+    status, so the route asks the row the edit would leave (Form 27Q reports the country on every deductee row, and Rule 37BC's relief from the
+    s.206AA floor rests on it)."""
+    from models.parties import NON_RESIDENT_NEEDS_COUNTRY
+
+    db = _vendor(monkeypatch, residential_status="non_resident", country_of_residence="AE", tds_section=None)
+    before = dict(_row(db, "vendors", "VEN"))
+    # A null only: a blank country is refused by the model's two-letter check before the route is reached.
+    with pytest.raises(HTTPException) as e:
+        ve.update_vendor("VEN", VendorUpdateIn(country_of_residence=None), CALLER)
+    assert e.value.status_code == 422 and e.value.detail == NON_RESIDENT_NEEDS_COUNTRY
+    assert _row(db, "vendors", "VEN") == before, "a refused edit wrote something"
+
+
+def test_a_non_residents_country_is_cleared_with_the_status_and_a_residents_alone(monkeypatch):
+    db = _vendor(monkeypatch, residential_status="non_resident", country_of_residence="AE", tds_section=None)
+    out = ve.update_vendor("VEN", VendorUpdateIn(country_of_residence=None, residential_status=None), CALLER)
+    assert out["success"] is True, out
+    row = _row(db, "vendors", "VEN")
+    assert (row["residential_status"], row["country_of_residence"]) == (None, None)
+    db = _vendor(monkeypatch, residential_status="resident", country_of_residence="IN")
+    out = ve.update_vendor("VEN", VendorUpdateIn(country_of_residence=None), CALLER)
+    assert out["success"] is True and _row(db, "vendors", "VEN")["country_of_residence"] is None
 
 
 def test_the_mock_mode_branch_of_the_vendor_edit_clears_too(monkeypatch):

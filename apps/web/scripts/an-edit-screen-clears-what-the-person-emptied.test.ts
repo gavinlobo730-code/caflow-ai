@@ -204,9 +204,15 @@ test("the invoice editor judges a draft against what the draft last held: the sn
   assert.ok((src.match(/initialSnapshot\.current = snapshotOfWhatWasSaved\(\);/g) ?? []).length >= 2, "a draft that was saved and is edited again is judged against what it held at the save, not what it held when the form opened");
 });
 
+/** An identity field decided, one at a time, to be clearable, each with its reason. A customer's PAN and TAN: no return reads either off a customer
+ * (the TAN steers only the 26AS deductor match, the PAN prints on the invoice and matches a related party), so the refusal's own reason would be
+ * untrue of them and the route clears them (POST-A-399, `CustomerUpdateIn.CLEARABLE`). */
+const IDENTITY_DECIDED_CLEARABLE = new Set(["components/customers/CustomerFormModal.tsx: pan", "components/customers/CustomerFormModal.tsx: tan"]);
+
 test("nothing outside the six editors sends a date or a piece of evidence through editedText", () => {
   const roots = ["components", "app", "lib"];
   const offenders: string[] = [];
+  const decidedSeen = new Set<string>();
   const walk = (dir: string) => {
     for (const ent of fs.readdirSync(path.join(WEB, dir), { withFileTypes: true })) {
       const rel = `${dir}/${ent.name}`;
@@ -215,12 +221,14 @@ test("nothing outside the six editors sends a date or a piece of evidence throug
       const src = stripComments(read(rel));
       if (!src.includes("editedText(")) continue;
       for (const c of editedCalls(src)) {
+        if (IDENTITY_DECIDED_CLEARABLE.has(`${rel}: ${c.key}`)) { decidedSeen.add(`${rel}: ${c.key}`); continue; }
         if (/(_date|_on|_at|date)$/i.test(c.key) || /^(credit_days|bill_no|document_url|form_15\w+|gstin|pan|tan)$/i.test(c.key)) offenders.push(`${rel}: ${c.key}`);
       }
     }
   };
   for (const r of roots) walk(r);
   assert.deepEqual(offenders, [], "editedText is for a soft free-text box; a date is corrected and not emptied, and evidence and identity are decided one field at a time");
+  assert.deepEqual([...IDENTITY_DECIDED_CLEARABLE].filter((k) => !decidedSeen.has(k)), [], "a decided identity field is no longer sent through editedText: take it off the list");
 });
 
 test("the request that carries the edit keeps a null in its body", () => {

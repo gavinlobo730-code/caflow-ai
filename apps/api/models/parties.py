@@ -31,6 +31,14 @@ def _no_pe_declaration_day(v: Optional[str], *, a_blank_is_no_date: bool) -> Opt
     return a_day_that_has_happened(v, "no_pe_declaration_on", "The no-PE declaration date cannot be after today's date in India.", a_blank_is_no_date=a_blank_is_no_date)
 
 
+#: Why a non-resident vendor must carry a country of residence, said once: by both vendor models of what one request carries, and by
+#: `routers/vendors.update_vendor` of the row an edit would leave, because a PATCH that clears only the country never sends the status.
+NON_RESIDENT_NEEDS_COUNTRY = (
+    "A non-resident vendor needs a country_of_residence — Form 27Q "
+    "reports it on every deductee row, and Rule 37BC's relief from the "
+    "s.206AA 20% floor is conditional on holding it.")
+
+
 def _normalise_residency(model) -> list[str]:
     """Validate and canonicalise a vendor's residency fields IN PLACE.
 
@@ -182,10 +190,7 @@ def _normalise_residency(model) -> list[str]:
             errors.append(contradiction)
 
     if model.residential_status == NON_RESIDENT and not model.country_of_residence:
-        errors.append(
-            "A non-resident vendor needs a country_of_residence — Form 27Q "
-            "reports it on every deductee row, and Rule 37BC's relief from the "
-            "s.206AA 20% floor is conditional on holding it.")
+        errors.append(NON_RESIDENT_NEEDS_COUNTRY)
 
     return errors
 
@@ -321,10 +326,13 @@ class CustomerIn(BaseModel):
 
 
 class CustomerUpdateIn(BaseModel):
-    # POST-A-399. What an edit may take away: a contact particular, and the credit limit, whose NULL is its own answer ("no limit recorded",
-    # migration 414) and not a figure. Read through `models.clearable.patch_dict`. NOT the GSTIN, the PAN, the TAN or the state code: those are
-    # corrected and not removed (`PARTY_IDENTIFIERS`), and NOT the credit days, whose column is NOT NULL with a default of 30.
-    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"email", "phone", "address", "city", "state", "pincode", "credit_limit_paise"})
+    # POST-A-399. What an edit may take away: a contact particular, the credit limit, whose NULL is its own answer ("no limit recorded",
+    # migration 414) and not a figure, and the PAN and the TAN, which no return reads off a customer (the TAN steers only the 26AS deductor
+    # match and the PAN prints on the invoice and matches a related party), so a wrong one recorded on a customer who has none can be taken
+    # away. Read through `models.clearable.patch_dict`. NOT the GSTIN or the state code: every GST return not yet filed reads those live for the
+    # documents already issued to the customer, so they are corrected and not removed (`CUSTOMER_IDENTIFIERS`); and NOT the credit days, whose
+    # column is NOT NULL with a default of 30.
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"email", "phone", "address", "city", "state", "pincode", "credit_limit_paise", "pan", "tan"})
     name: Optional[str] = None
     gstin: Optional[str] = None
     pan: Optional[str] = None
@@ -408,11 +416,16 @@ class CustomerUpdateIn(BaseModel):
 
 #: The identifiers on a party that an edit corrects and never empties (POST-A-399), with the words a person reads for each. Every GST return not
 #: yet filed reads a party's GSTIN and state code live for the documents already issued to it, so emptying one moves those documents between the
-#: tables of a return; the PAN, the TAN and a foreign tax number are the party's identity on a TDS statement and in the 26AS match. The edit
-#: routes refuse an empty one over a stored value through `models.clearable.removed_identifier_problem`, and the two forms say the same sentence.
+#: tables of a return; a vendor's PAN and foreign tax number are its identity on the TDS statement the client files as the deductor. The vendor
+#: edit refuses an empty one over a stored value through `models.clearable.removed_identifier_problem`, and the vendor forms say the same sentence.
 PARTY_IDENTIFIERS: dict[str, str] = {
     "gstin": "GSTIN", "pan": "PAN", "tan": "TAN", "state_code": "state code", "tax_identification_number": "tax identification number",
 }
+
+#: The two of them the CUSTOMER edit refuses to empty: the GSTIN and the state code, which every GST return not yet filed reads live for the
+#: documents already issued to the customer. A customer's PAN and TAN are NOT here and are clearable (`CustomerUpdateIn.CLEARABLE`): no return
+#: reads either off a customer, so the refusal's own reason ("every return not yet filed reads it") would be untrue of them.
+CUSTOMER_IDENTIFIERS: dict[str, str] = {name: PARTY_IDENTIFIERS[name] for name in ("gstin", "state_code")}
 
 
 def _reject_negative_credit_limit(value):
