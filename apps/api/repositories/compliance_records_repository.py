@@ -16,6 +16,28 @@ if _USE_MOCK:
 _get_db = db_provider.request_db
 
 
+def _writer():
+    """Every write below goes on the server's own client, acting as the request's person (POST-A-461): the signed-in role holds no
+    write on `compliance_records` once migration 705 applies, so a member cannot set an obligation's status to Filed or Not Required
+    over PostgREST, past the door that asks for a filing record, a reason, `compliance.approve` and an audit row. The privileged
+    client carries no row security, so every update names the firm AND the client the caller checked, and an insert must carry both."""
+    return db_provider.privileged_for(_get_db())
+
+
+def _scope_or_refuse(firm_id: Optional[str], client_id: Optional[str], what: str) -> None:
+    if not firm_id or not client_id:
+        raise ValueError(f"{what} needs the firm and the client: the privileged client has no row security of its own")
+
+
+def _mock_in_scope(record: dict, firm_id: Optional[str], client_id: Optional[str]) -> bool:
+    """The mock twin of the `.eq("firm_id")` / `.eq("client_id")` the database writes carry, for a caller that named them."""
+    if firm_id and record.get("firm_id") and str(record["firm_id"]) != str(firm_id):
+        return False
+    if client_id and str(record.get("client_id")) != str(client_id):
+        return False
+    return True
+
+
 class ComplianceRecordsRepository(BaseRepository[dict]):
 
     def find_by_id(self, id: str) -> Optional[dict]:
@@ -112,21 +134,26 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
             MOCK_COMPLIANCE_RECORDS.append(record)
             return record
         payload = {k: v for k, v in data.items() if v is not None}
+        _scope_or_refuse(payload.get("firm_id"), payload.get("client_id"), "create")
         payload.setdefault("created_at", self.now_iso())
         payload.setdefault("updated_at", self.now_iso())
-        result = _get_db().table("compliance_records").insert(payload).execute()
+        result = _writer().table("compliance_records").insert(payload).execute()
         return result.data[0]
 
-    def update(self, id: str, data: dict) -> Optional[dict]:
+    def update(self, id: str, data: dict, *, firm_id: Optional[str] = None, client_id: Optional[str] = None) -> Optional[dict]:
+        """Writes only the row of `firm_id` and `client_id`. Both are required against the database; in mock mode a caller that names
+        them is held to them too, and an older test that names neither is not."""
         if _USE_MOCK:
             record = self.find_by_id(id)
-            if not record:
+            if not record or not _mock_in_scope(record, firm_id, client_id):
                 return None
             record.update({**data, "updated_at": self.now_iso()})
             return record
+        _scope_or_refuse(firm_id, client_id, "update")
         payload = {k: v for k, v in data.items() if v is not None}
         payload["updated_at"] = self.now_iso()
-        result = _get_db().table("compliance_records").update(payload).eq("id", id).execute()
+        result = (_writer().table("compliance_records").update(payload)
+                  .eq("id", id).eq("firm_id", firm_id).eq("client_id", client_id).execute())
         return result.data[0] if result.data else None
 
     #: The columns `update_clearing` may blank. `update` drops a None on purpose (a PATCH that omits a field must not wipe it), so
@@ -140,7 +167,7 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
     CLEARABLE_RECORD = ("closing_tds_challan_ids",)
 
     def update_clearing(self, id: str, firm_id: str, data: dict, clear: tuple,
-                        only_if_status: Optional[tuple] = None) -> Optional[dict]:
+                        only_if_status: Optional[tuple] = None, *, client_id: Optional[str] = None) -> Optional[dict]:
         """`update` plus an explicit NULL for each column named in `clear`, which must be among `CLEARABLE` and `CLEARABLE_RECORD`. It names the firm, so
         the write is confined to that firm's row whatever the caller checked before (the rows of two firms never share an id, and
         this does not rely on that). With `only_if_status` it acts only on a row still in one of those statuses, the state the
@@ -152,22 +179,23 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
             raise ValueError("update_clearing needs the firm")
         if _USE_MOCK:
             record = self.find_by_id(id)
-            if not record or str(record.get("firm_id")) != str(firm_id):
+            if not record or str(record.get("firm_id")) != str(firm_id) or not _mock_in_scope(record, firm_id, client_id):
                 return None
             if only_if_status is not None and record.get("status") not in only_if_status:
                 return None
             record.update({**data, **{c: None for c in clear}, "updated_at": self.now_iso()})
             return record
+        _scope_or_refuse(firm_id, client_id, "update_clearing")
         payload = {k: v for k, v in data.items() if v is not None}
         payload.update({c: None for c in clear})
         payload["updated_at"] = self.now_iso()
-        query = _get_db().table("compliance_records").update(payload).eq("id", id).eq("firm_id", firm_id)
+        query = _writer().table("compliance_records").update(payload).eq("id", id).eq("firm_id", firm_id).eq("client_id", client_id)
         if only_if_status is not None:
             query = query.in_("status", list(only_if_status))
         result = query.execute()
         return result.data[0] if result.data else None
 
-    def stamp_closing_tds_challans(self, id: str, firm_id: str, challan_ids: list[str]) -> bool:
+    def stamp_closing_tds_challans(self, id: str, firm_id: str, challan_ids: list[str], *, client_id: Optional[str] = None) -> bool:
         """Record which TDS challans a monthly deposit obligation was closed on (POST-A-362, migration 569). Written once, by
         `services/tds_deposit_closes_obligation`, right after it closes the obligation; confined to the firm and to a row that is NOW
         Filed or Completed, so a row somebody reopened in between is not stamped as though it were closed. True when a row was
@@ -177,16 +205,18 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         ids = sorted({str(c) for c in challan_ids if c})
         if _USE_MOCK:
             record = self.find_by_id(id)
-            if not record or str(record.get("firm_id")) != str(firm_id) or not is_filed(record.get("status")):
+            if (not record or str(record.get("firm_id")) != str(firm_id) or not _mock_in_scope(record, firm_id, client_id)
+                    or not is_filed(record.get("status"))):
                 return False
             record.update({"closing_tds_challan_ids": ids, "updated_at": self.now_iso()})
             return True
-        result = (_get_db().table("compliance_records")
+        _scope_or_refuse(firm_id, client_id, "stamp_closing_tds_challans")
+        result = (_writer().table("compliance_records")
                   .update({"closing_tds_challan_ids": ids, "updated_at": self.now_iso()})
-                  .eq("id", id).eq("firm_id", firm_id).in_("status", list(FILED)).execute())
+                  .eq("id", id).eq("firm_id", firm_id).eq("client_id", client_id).in_("status", list(FILED)).execute())
         return bool(result.data)
 
-    def soft_delete(self, id: str) -> bool:
+    def soft_delete(self, id: str, *, firm_id: Optional[str] = None, client_id: Optional[str] = None) -> bool:
         """Mark one obligation deleted without erasing it — the row the audit
         trail and any reconciliation gap still name stays readable by id, it
         simply stops being "existing" for find_all/find_by_id and stops
@@ -198,15 +228,16 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         now = self.now_iso()
         if _USE_MOCK:
             record = next((r for r in MOCK_COMPLIANCE_RECORDS if r["id"] == id), None)
-            if not record:
+            if not record or not _mock_in_scope(record, firm_id, client_id):
                 return False
             record["deleted_at"] = now
             record["updated_at"] = now
             return True
+        _scope_or_refuse(firm_id, client_id, "soft_delete")
         result = (
-            _get_db().table("compliance_records")
+            _writer().table("compliance_records")
             .update({"deleted_at": now, "updated_at": now})
-            .eq("id", id)
+            .eq("id", id).eq("firm_id", firm_id).eq("client_id", client_id)
             .execute()
         )
         return bool(result.data)

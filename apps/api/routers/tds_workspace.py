@@ -16,7 +16,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from models.common import api_response
 from core.permissions import can_user, rbac
@@ -260,6 +260,10 @@ class CreateChallanRequest(BaseModel):
     minor_head: Literal["200", "400"] = Field(
         default="200",
         description="200 = TDS payable by the deductor; 400 = regular assessment")
+    #: POST-A-267 (migration 695): on a salary challan, the wage month (YYYY-MM) whose section 192 tax it deposits, as the person
+    #: recording it states it. It is what lets the challan close that month's salary deposit obligation on the calendar; blank closes
+    #: none. Refused on any other section and for a month outside the challan's own quarter (`month_problem`).
+    deduction_month: Optional[str] = Field(default=None, description="Salary challans only: the wage month it pays, YYYY-MM")
 
     @field_validator("minor_head")
     @classmethod
@@ -288,6 +292,19 @@ class CreateChallanRequest(BaseModel):
         if day > ist_today().isoformat():
             raise ValueError("The challan date cannot be after today's date in India.")
         return day
+
+    @model_validator(mode="after")
+    def _a_wage_month_belongs_to_a_salary_challan_of_its_quarter(self):
+        from services.tds_salary_deposit_closes_obligation import month_problem
+        if self.deduction_month is not None and not self.deduction_month.strip():
+            self.deduction_month = None
+        problem = month_problem(deduction_month=self.deduction_month, section=self.section,
+                                financial_year=str(self.financial_year), quarter=self.quarter)
+        if problem:
+            raise ValueError(problem)
+        if self.deduction_month is not None:
+            self.deduction_month = self.deduction_month.strip()
+        return self
 
     def tds_paise(self) -> int:
         """What of the total is TAX. Never negative — the components are
@@ -842,6 +859,13 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         has_key = manual_register.usable_pan_key(pan) is not None
         gaps.append(manual_register.GAP_NO_SUPPLIER if has_key else manual_register.GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN)
 
+    # A payee with no key is never added up by its NAME (POST-A-078): the year's earlier payments typed under the same name are NAMED with
+    # their figures, and the charge stays the first-payment charge above. `extra_gap_messages` are sentences that carry figures.
+    same_name_gaps, extra_gap_messages = _same_name_payments(
+        db, ask=register_asked and supplier is None and not has_key, firm_id=firm_id, client_id=client_id, section=section,
+        name=name, when=when, exclude_id=exclude_id)
+    gaps.extend(same_name_gaps)
+
     # THE DEDUCTION IS BOUNDED BY THE PAYMENT, as a bill's is by the bill (routers/purchase_bills.py): the year's tax falls on the payment that
     # crosses a threshold and can be many times its size. The shortfall is not lost: the next payment or bill to this payee credits what was
     # actually withheld (s.200) and charges the rest. The typed amount is the taxable value, so the cap can only be smaller than a bill's.
@@ -955,9 +979,22 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         "supplier_note": supplier_note,
         "gaps": gaps,
         "gap_messages": [manual_register.GAP_MESSAGES[g] for g in gaps
-                         if g in manual_register.GAP_MESSAGES],
+                         if g in manual_register.GAP_MESSAGES] + extra_gap_messages,
     }
     return {"row": row, "explain": explain}
+
+
+def _same_name_payments(db, *, ask: bool, firm_id: str, client_id: str, section: str, name: str, when: date,
+                        exclude_id: Optional[str]) -> tuple[list[str], list[str]]:
+    """(gaps, sentences) for the year's earlier typed payments under the same name, for a payee with no supplier and no usable PAN
+    (`ask`); nothing otherwise, and nothing when there are none (POST-A-078, `manual_register.same_name_without_a_pan`)."""
+    if not ask:
+        return [], []
+    count, taxable, tds = manual_register.same_name_without_a_pan(
+        db, firm_id=firm_id, client_id=client_id, section=section, deductee_name=name, on=when, exclude_id=exclude_id)
+    if not count:
+        return [], []
+    return [manual_register.GAP_SAME_NAME_WITHOUT_A_PAN], [manual_register.same_name_sentence(count, taxable, tds)]
 
 
 @router.post("/deductions")
@@ -1353,8 +1390,17 @@ def _close_the_deposit_obligations(current_user: dict, challan: dict) -> list[di
     from core.observability import capture_soft_failure
     from core.supabase_client import get_supabase
     from services import tds_deposit_closes_obligation as closes
+    from services import tds_salary_deposit_closes_obligation as salary
+    from domain.tds.deposit_due import is_salary
     firm_id = current_user["firm_id"]
     try:
+        if is_salary(str(challan.get("section") or "")):
+            # A salary challan closes the month it names, against what payroll deducted (POST-A-267). The closer reads payroll's
+            # figures with the privileged client and names them, so a person blocked from READING payroll is not shown them.
+            return salary.close_for_recorded_challan(
+                db=get_supabase(), firm_id=firm_id, client_id=challan.get("client_id") or "", challan=challan, actor=current_user,
+                may_write_compliance=can_user(current_user, "compliance", "write"),
+                may_read_payroll=can_user(current_user, "payroll", "read"))
         return closes.close_for_recorded_challan(
             db=get_supabase(), firm_id=firm_id, client_id=challan.get("client_id") or "",
             financial_year=challan.get("financial_year"), quarter=challan.get("quarter"), challan_id=challan.get("id") or "",
@@ -1421,6 +1467,10 @@ def create_challan(
             "status": "deposited",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Only when stated, so a challan recorded without a month is written exactly as before even in the minutes the API is live
+        # before migration 695 is.
+        if body.deduction_month:
+            record["deduction_month"] = body.deduction_month
 
         if _USE_MOCK:
             _MOCK_CHALLANS[record["id"]] = record

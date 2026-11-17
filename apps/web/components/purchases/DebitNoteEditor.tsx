@@ -30,6 +30,8 @@ import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { apiCall, getAuthToken, cessInputsFromStored, fmt, gstRateOptions, gstRateToPercent, linesCarryCess } from "@/lib/invoices/shared";
 import { cessPayload } from "@/lib/invoices/lineItemPayload";
+import { blockedCreditFromStored, blockedCreditPayload } from "@/lib/purchases/noteBlockedCredit";
+import { NoteLineBlockedCredit } from "@/components/purchases/NoteLineBlockedCredit";
 import { editedText } from "@/lib/forms/editedValue";
 import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -92,6 +94,9 @@ export interface DebitNoteLineDetail {
   cess_rate_bps?: number | string | null;
   cess_specific_paise_per_unit?: number | string | null;
   service_catalogue_id?: string | null;
+  /** CGST Act s.17(5) mark (migration 685): false = the line's credit is blocked, with its clause. Absent = eligible. */
+  itc_eligible?: boolean | null;
+  blocked_credit_reason?: string | null;
 }
 
 export interface DebitNoteDetail {
@@ -131,6 +136,8 @@ function detailLinesToEditorLines(lines: DebitNoteDetail["lines"]): EditorLine[]
     // Compensation cess (migration 615), rehydrated because a draft's save re-sends every line and the server derives the cess
     // from what is sent: a limb the editor did not carry would be a cess silently taken off a note nobody meant to change.
     ...cessInputsFromStored(l),
+    // The s.17(5) mark (POST-A-459), rehydrated for the same reason: a draft's save re-sends every line.
+    ...blockedCreditFromStored(l),
     unit: l.unit ?? "NOS",
     service_catalogue_id: l.service_catalogue_id ?? "",
     _k: i,
@@ -348,6 +355,8 @@ export function DebitNoteEditor({
         service_catalogue_id: l.service_catalogue_id || undefined,
         // The two cess limbs, through the one parser every editor uses (omitted when nothing was typed).
         ...cessPayload(l),
+        // The s.17(5) mark (POST-A-459): nothing for an eligible line, the mark and its clause for a blocked one.
+        ...blockedCreditPayload(l),
       }));
 
       if (isEdit && existing) {
@@ -608,6 +617,7 @@ export function DebitNoteEditor({
                       <td className="py-1.5 pr-2">
                         <input value={line.description} onChange={(e) => setLine(idx, { description: e.target.value })} placeholder="Item description" aria-label={`Line ${idx + 1} description`}
                           className="w-full px-2 py-1 border border-ps-border rounded focus:outline-none focus:ring-1 focus:ring-brand text-xs" />
+                        <NoteLineBlockedCredit index={idx} line={line} disabled={isLocked} onChange={(patch) => setLine(idx, patch)} />
                       </td>
                       <td className="py-1.5 px-1">
                         <HsnLookup clientId={clientId} value={line.hsn_sac} onChange={(v) => setLine(idx, { hsn_sac: v })}

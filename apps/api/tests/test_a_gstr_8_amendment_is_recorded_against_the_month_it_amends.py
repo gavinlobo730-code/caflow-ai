@@ -333,8 +333,13 @@ def test_the_statement_carries_the_amendments_their_findings_and_the_note(world)
     out = grs.gstr8_statement(world, FIRM, A, "062026", OPERATOR)
     assert (out["amendment_count"], out["unregistered_amendment_count"]) == (2, 1)
     assert out["amendment_note"] == gstr8.AMENDMENT_NOT_NETTED_NOTE
-    assert [f["supplier_gstin"] for f in out["amendment_findings"]] == [OTHER_SELLER]
-    assert any("no tax is recorded" in p for p in out["amendment_findings"][0]["problems"])
+    by_row = {f["supplier_gstin"]: f["problems"] for f in out["amendment_findings"]}
+    assert any("no tax is recorded" in p for p in by_row[OTHER_SELLER])
+    # The fixtures' seller is of State 29 and its Enrolment ID is "E-1", which the utility's own row checks refuse beside the row
+    # (POST-A-458): a supplier of another State than the operator's 27, and an Enrolment ID not of its shape.
+    assert sorted(by_row) == sorted([SELLER, OTHER_SELLER, "E-1"])
+    assert all("of another State" in " ".join(by_row[g]) for g in (SELLER, OTHER_SELLER))
+    assert all("Enrolment ID (E-1) is not in the form" in " ".join(by_row["E-1"]) for _ in (0,))
     assert len(out["amendments"]) == 2 and len(out["unregistered_amendments"]) == 1
     assert out["total_net_liable_paise"] == 0 and out["supplier_count"] == 0, "an amendment is not a Table 3 row"
 

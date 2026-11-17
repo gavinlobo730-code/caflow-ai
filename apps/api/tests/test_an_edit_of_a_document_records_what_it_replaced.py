@@ -280,10 +280,11 @@ def test_an_edit_that_sends_nothing_to_write_records_nothing(monkeypatch, module
 # ════════════════════════════════════════════════════════
 
 class _Db:
-    """A database that holds the lines a draft has now and answers the replacement the way the real function does, or refuses."""
+    """A database that holds the lines a draft has now and answers the replacement the way the real function does since migration 625
+    (the lines its own DELETE removed), or refuses. `reads` counts every statement executed before the call: the door makes none."""
 
     def __init__(self, lines, refuse=None):
-        self.lines, self.refuse, self.rpcs = lines, refuse, []
+        self.lines, self.refuse, self.rpcs, self.reads = lines, refuse, [], 0
 
     def table(self, name):
         return self
@@ -301,7 +302,10 @@ class _Db:
     def execute(self):
         if self.refuse and self.rpcs:
             raise RuntimeError(self.refuse)
-        return type("R", (), {"data": self.lines if not self.rpcs else None})()
+        if not self.rpcs:
+            self.reads += 1
+            return type("R", (), {"data": self.lines})()
+        return type("R", (), {"data": {"count": len(self.rpcs[-1][1]["p_lines"]), "replaced": self.lines}})()
 
 
 @pytest.fixture
@@ -325,38 +329,24 @@ def test_the_door_records_the_lines_it_replaced_beside_the_lines_that_replace_th
     assert (row["actor_id"], row["actor_email"]) == ("auth-7", "a@b")
 
 
-def test_the_lines_it_replaced_are_read_as_the_api_and_not_as_the_caller(audit_rows, monkeypatch):
-    """The signed-in role holds no read on the document tables (migration 551): the caller's own client finds nothing, and recording
-    that would say the lines were empty beside lines that were not."""
+def test_the_call_is_made_as_the_api_and_not_as_the_caller(audit_rows, monkeypatch):
+    """The signed-in role holds no write or read on the document tables (migrations 551, 563): the call goes through the privileged
+    client, and what it removed is what the privileged client's function answered."""
     from services import draft_document_lines as door
-    caller = _Db([])                                   # what a client with no grant reads
+    caller = _Db([])
     privileged = _Db([{"id": "l1", "description": "really there"}])
     monkeypatch.setattr(door, "privileged_for", lambda db: privileged)
     door.replace_draft_lines(caller, "sales_invoice", "inv-1", "F", [{"description": "new"}], edited_by={"auth_user_id": "u"})
+    assert not caller.rpcs and privileged.rpcs
     (row,) = audit_rows
     assert row["old_data"] == {"lines": [{"id": "l1", "description": "really there"}]}
 
 
-class _Answering(_Db):
-    """A database whose function answers what its own DELETE removed (migration 625): here another save replaced the lines between the
-    read the door makes first and the lock, so the read finds 'old' while the call removed 'another save's'."""
-
-    def __init__(self, lines, removed):
-        super().__init__(lines)
-        self.removed = removed
-
-    def execute(self):
-        if self.rpcs:
-            return type("R", (), {"data": {"count": 1, "replaced": self.removed}})()
-        return super().execute()
-
-
-def test_what_the_call_removed_under_its_lock_is_recorded_and_not_what_was_read_before_it(audit_rows):
-    """POST-A-429: two members saving one draft at once each record what their own save replaced."""
+def test_what_the_call_removed_under_its_lock_is_recorded_in_the_documents_order(audit_rows):
+    """POST-A-429: two members saving one draft at once each record what their own save replaced, which is what the call removed."""
     from services import draft_document_lines as door
-    db = _Answering([{"id": "l1", "description": "old"}],
-                    removed=[{"id": "l3", "description": "another save's, second", "sort_order": 2},
-                             {"id": "l2", "description": "another save's, first", "sort_order": 1}])
+    db = _Db([{"id": "l3", "description": "another save's, second", "sort_order": 2},
+              {"id": "l2", "description": "another save's, first", "sort_order": 1}])
     door.replace_draft_lines(db, "sales_invoice", "inv-1", "F", [{"description": "mine"}], edited_by={"auth_user_id": "u"})
     (row,) = audit_rows
     assert row["old_data"] == {"lines": [{"id": "l2", "description": "another save's, first", "sort_order": 1},
@@ -364,9 +354,20 @@ def test_what_the_call_removed_under_its_lock_is_recorded_and_not_what_was_read_
         "the lines are recorded as the call removed them, in the document's order"
 
 
-def test_an_answer_that_is_the_old_count_records_the_read_made_first(audit_rows):
-    """For the minutes the API is on production before migration 625 is, the function answers 560's bare count: the read the door made
-    first is what it records, as it did before."""
+def test_the_door_reads_nothing_before_its_call(audit_rows):
+    """POST-A-429: migration 625 is on production (17-11-2026), so the read a save made before the call, kept only for a database that
+    answered migration 560's bare count, is gone: one round trip less, and no second account of what was replaced."""
+    from services import draft_document_lines as door
+    db = _Db([{"id": "l1", "description": "old"}])
+    door.replace_draft_lines(db, "credit_note", "cn-1", "F", [{"description": "new"}], edited_by={"auth_user_id": "u"})
+    assert db.reads == 0, "the door read the lines before replacing them"
+    assert len(audit_rows) == 1
+
+
+def test_an_answer_that_names_no_replaced_lines_records_none_and_says_so(audit_rows, caplog):
+    """A database without migration 625 answers a bare count. The edit happened, so the save is not refused; the record names no lines
+    rather than lines read at another moment, and the gap is logged at ERROR."""
+    import logging
     from services import draft_document_lines as door
 
     class _Counting(_Db):
@@ -374,10 +375,13 @@ def test_an_answer_that_is_the_old_count_records_the_read_made_first(audit_rows)
             if self.rpcs:
                 return type("R", (), {"data": 1})()
             return super().execute()
-    door.replace_draft_lines(_Counting([{"id": "l1", "description": "old"}]), "credit_note", "cn-1", "F",
-                             [{"description": "new"}], edited_by={"auth_user_id": "u"})
-    (row,) = audit_rows
-    assert row["old_data"] == {"lines": [{"id": "l1", "description": "old"}]}
+    db = _Counting([{"id": "l1", "description": "old"}])
+    with caplog.at_level(logging.ERROR, logger="caflow.documents.draft_lines"):
+        n = door.replace_draft_lines(db, "credit_note", "cn-1", "F", [{"description": "new"}], edited_by={"auth_user_id": "u"})
+    assert n == 1
+    assert db.reads == 0
+    assert not audit_rows, "lines read at another moment were recorded as the ones this save replaced"
+    assert any("did not name the lines it removed" in r.getMessage() for r in caplog.records)
 
 
 def test_a_replacement_the_database_refused_records_nothing(audit_rows):

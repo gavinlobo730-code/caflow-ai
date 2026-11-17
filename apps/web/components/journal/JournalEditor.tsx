@@ -129,12 +129,14 @@ export interface JournalEditorProps {
   }) => void | boolean | Promise<boolean | void>;
   onCancel: () => void;
   /**
-   * Whether this person may POST a draft that already exists. A new entry is posted through the create route, which asks
-   * `accounting` `write`, the same as Save Draft; a saved draft is posted through the approval route, which asks
-   * `accounting` `approve`, a Partner's alone. Post Entry on a saved draft was offered to a Manager, whose correction was
-   * saved and whose post was then refused (POST-A-455). Omitted, the button is offered.
+   * Whether this person may put the entry on the books: Post Entry on a new entry or a saved draft, and Save Correction on an entry
+   * already posted. Both posting routes ask `accounting` `write` and then the firm's rule (POST-A-456): where the firm has a Partner
+   * approve every manual journal, only someone who may approve posts or corrects a posted entry, and everyone else saves a draft for
+   * Approvals. The page passes the server's answer for this person. Omitted, the buttons are offered.
    */
-  mayPostDraft?: boolean;
+  mayPost?: boolean;
+  /** The sentence saying the firm's rule could not be read (Post is then offered and the server decides); null when it was read. */
+  postRuleNote?: string | null;
   /**
    * Whether this person may write to the books at all: Save Draft, Save Correction and a new entry's Post Entry ask
    * `accounting` `write`, and an Executive's `accounting` is read only. Without it the entry is shown to read, with a
@@ -144,7 +146,7 @@ export interface JournalEditorProps {
 }
 
 export function JournalEditor({
-  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel, mayPostDraft = true, mayWrite = true,
+  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel, mayPost = true, postRuleNote = null, mayWrite = true,
 }: JournalEditorProps) {
   const isNew = existing === null;
   const isPosted = !!existing?.is_posted;
@@ -153,8 +155,10 @@ export function JournalEditor({
     ? "This entry has been reversed, so it can no longer be edited."
     : existing?.lock_reason ?? null;
   const locked = !isNew && lockReason !== null;
-  // A person who may not write to the books is shown the entry to read, the same as a locked one is.
-  const readOnly = locked || !mayWrite;
+  // A person who may not write to the books is shown the entry to read, the same as a locked one is; so is an entry on the books
+  // to someone the firm's rule does not let change one (POST-A-456).
+  const postedHeldForApproval = isPosted && mayWrite && !mayPost;
+  const readOnly = locked || !mayWrite || postedHeldForApproval;
   /* ACC-25, second half. The documents are a DRAFT-only edit and the control
      has to say so rather than accept a link the PATCH will refuse.
      `prevent_posted_journal_modification` lets a posted entry's header change
@@ -440,6 +444,15 @@ export function JournalEditor({
           saved or posted. Someone with write access to the books records and corrects journal entries.
         </p>
       )}
+      {postedHeldForApproval && !locked && (
+        <p role="status" className="text-xs text-ps-label bg-ps-bg rounded px-3 py-2">
+          This firm has a Partner approve every manual journal, and you may not approve, so an entry on the books is shown to read
+          here. Someone who may approve corrects it, or reverses it.
+        </p>
+      )}
+      {postRuleNote && !readOnly && (
+        <p role="status" className="text-xs text-ps-label bg-ps-bg rounded px-3 py-2">{postRuleNote}</p>
+      )}
       {locked && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 space-y-1">
           <p className="text-sm text-amber-900 font-medium">This entry can no longer be edited.</p>
@@ -707,14 +720,14 @@ export function JournalEditor({
                         className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
                   Save Draft
                 </Button>
-                {isNew || mayPostDraft ? (
+                {mayPost ? (
                   <Button variant="plain" size="none" flight={flight}
                           onClick={() => handleSave("post")} disabled={saving || !isBalanced}
                           className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                     {saving ? "Saving…" : "Post Entry"}
                   </Button>
                 ) : (
-                  <p className="text-xs text-ps-label self-center">Posting a saved draft needs permission to approve journal entries, so the button is not shown to you; it is posted from the Approvals tab.</p>
+                  <p className="text-xs text-ps-label self-center">This firm has a Partner approve every manual journal, and you may not approve, so Post Entry is not shown to you: Save Draft, and the entry waits in the Approvals tab.</p>
                 )}
               </>
             )}

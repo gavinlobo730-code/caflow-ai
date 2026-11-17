@@ -370,3 +370,26 @@ def test_a_candidate_nobody_includes_changes_no_figure(register):
     out = it.compute_advance_tax_interest(_req(unforeseen_income=[]),
                                           current_user={"firm_id": "F"})
     assert out["data"]["unforeseen_income"] == []
+
+
+def test_the_panel_sends_the_years_total_income_by_the_routes_own_name():
+    """POST-A-075: the endpoint could include the surcharge from 16-11-2026, and no
+    screen sent it the year's total income, so through the screen none was ever
+    offered. The browser's reader must send the parameter the ROUTE declares (read
+    off the route's signature, not spelled here), and the panel must offer the box
+    and pass its figure; a blank box sends nothing, never a zero."""
+    import inspect
+    from pathlib import Path
+
+    declared = inspect.signature(it.advance_tax_unforeseen_income).parameters
+    assert "total_income_paise" in declared
+    web = Path(__file__).resolve().parents[2] / "web"
+    reader = (web / "lib" / "data" / "income-tax.ts").read_text(encoding="utf-8")
+    body = reader.split("export async function listUnforeseenIncomeCandidates(", 1)[1].split("\n}\n", 1)[0]
+    assert 'params.set("total_income_paise"' in body
+    assert "if (totalIncomePaise !== null)" in body
+    panel = (web / "components" / "tax" / "UnforeseenIncomePanel.tsx").read_text(encoding="utf-8")
+    assert "readTotalIncome(totalIncomeRs)" in panel
+    assert 'total.kind === "amount" ? total.paise : null' in panel
+    helper = (web / "lib" / "tax" / "unforeseenTotalIncome.ts").read_text(encoding="utf-8")
+    assert 'if (raw.trim() === "") return { kind: "absent" };' in helper

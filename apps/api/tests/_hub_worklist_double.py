@@ -126,6 +126,10 @@ class Double:
     """`{table: [row, ...]}`. Rows are dicts exactly as PostgREST returns them."""
 
     def __init__(self, tables: dict[str, list[dict]]):
+        # `clients.is_internal` is NOT NULL DEFAULT false (migration 073), so a client row a test writes without it is an ordinary
+        # client, as it would be in the database.
+        for row in tables.get("clients", []):
+            row.setdefault("is_internal", False)
         self.tables = tables
 
     def table(self, name: str) -> "_Table":

@@ -296,6 +296,24 @@ class SalesInvoiceLineIn(InvoiceLineIn):
     # the columns (POST-A-058). An invoice line takes them from there.
 
 
+class PurchaseNoteLineIn(InvoiceLineIn):
+    """A line of a purchase debit note (a return to the supplier) or a purchase credit note (the supplier's increase): an invoice line
+    that also says whether its input credit is blocked, CGST Act s.17(5), the two fields `PurchaseBillLineIn` carries (migration 240 on
+    the bill, 685 on the notes). CA-set only, never inferred, and a blocked line names its reason. A note against a bill whose line was
+    blocked marks the same line blocked, so the note moves the credit ledgers by the creditable tax only, as the bill did (POST-A-459)."""
+    # An `InvoiceLineIn` built in Python (what the notes took before) is read by its attributes, so a caller that builds one still works.
+    model_config = ConfigDict(from_attributes=True)
+
+    itc_eligible: bool = True
+    blocked_credit_reason: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_blocked_credit_reason(self) -> "PurchaseNoteLineIn":
+        if not self.itc_eligible and not (self.blocked_credit_reason or "").strip():
+            raise ValueError("blocked_credit_reason is required when itc_eligible is false.")
+        return self
+
+
 class SalesInvoiceIn(BaseModel):
     """Create a new sales invoice. CGST Act §31."""
     client_id: str

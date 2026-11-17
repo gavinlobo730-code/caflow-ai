@@ -578,6 +578,9 @@ export interface UnforeseenIncomeCandidate {
   description: string;
   gain_paise: number;
   tax_paise: number;
+  /** The surcharge included in `tax_paise` (POST-A-075): 0 where the year's total income was not given or the client's kind is
+   *  offered none, and the server's caveats say which. Absent from an answer served before the field existed. */
+  surcharge_paise?: number;
   is_estimate: boolean;
   rate_is_a_slab_estimate: boolean;
 }
@@ -680,12 +683,16 @@ export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): 
  *  no figure. */
 export async function listUnforeseenIncomeCandidates(
   clientId: string, fy: string,
+  /** The year's total income in paise, where the CA gave it (POST-A-075); null or omitted sends none, and the server then
+   *  offers no surcharge and says so. */
+  totalIncomePaise: number | null = null,
 ): Promise<{
   kinds: { key: string; label: string }[];
   candidates: UnforeseenIncomeCandidate[];
   caveats: string[];
 }> {
   const params = new URLSearchParams({ client_id: clientId, fy });
+  if (totalIncomePaise !== null) params.set("total_income_paise", String(totalIncomePaise));
   const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax/unforeseen-income?${params}`,
     { headers: await _authHeaders() }, "read");
   const answer = await readAnswer<unknown>(res, "Failed to load the register's gains.");

@@ -310,12 +310,12 @@ def test_a_row_somebody_changed_between_the_read_and_the_write_is_not_overwritte
     rec = _obl()
     real = compliance_records_repo.update_clearing
 
-    def somebody_else_first(id, firm_id, data, clear, only_if_status=None):
+    def somebody_else_first(id, firm_id, data, clear, only_if_status=None, **kw):
         row = _row(rec)
         row.update(status="Ready To File", filed_date=None, acknowledgement_no=None)          # A's reopen
         row.update(status="Filed", filed_date="2026-07-12", acknowledgement_no="CHALLAN-2")   # the corrected filing
         row["status"] = "Ready To File"                                                       # ... and a third change in flight
-        return real(id, firm_id, data, clear, only_if_status=only_if_status)
+        return real(id, firm_id, data, clear, only_if_status=only_if_status, **kw)
 
     monkeypatch.setattr(compliance_records_repo, "update_clearing", somebody_else_first)
 
@@ -365,14 +365,15 @@ def test_against_the_database_the_update_sends_explicit_nulls_and_drops_other_no
     monkeypatch.setattr(repo_module, "_get_db", lambda: _DB())
 
     compliance_records_repo.update_clearing("r1", "F1", {"status": "Ready To File", "notes": None},
-                                            clear=compliance_records_repo.CLEARABLE, only_if_status=("Filed", "Completed"))
+                                            clear=compliance_records_repo.CLEARABLE, only_if_status=("Filed", "Completed"),
+                                            client_id="C1")
 
     payload, = sent
     assert payload["status"] == "Ready To File"
     assert "notes" not in payload                                # an ordinary None is still dropped
     assert all(k in payload and payload[k] is None for k in ("filed_date", "acknowledgement_no", "completed_at"))
     # The write is confined to the firm's row and to a row still in the state the caller saw.
-    assert ("eq", "id", "r1") in seen and ("eq", "firm_id", "F1") in seen
+    assert ("eq", "id", "r1") in seen and ("eq", "firm_id", "F1") in seen and ("eq", "client_id", "C1") in seen
     assert ("in", "status", ["Filed", "Completed"]) in seen
     assert all(k in payload and payload[k] is None for k in ("last_escalated_tier", "last_escalated_on"))
 

@@ -67,7 +67,7 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
   {
     id: "firm",
     label: "The firm",
-    says: "The practice's own details, its financial year, its team and the currencies it records.",
+    says: "The practice's own details, its financial year, its team, the currencies it records and who approves manual journals.",
     inline: ["firm-profile", "financial-year"],
     links: [
       {
@@ -79,6 +79,12 @@ export const SETTINGS_GROUPS: readonly SettingsGroup[] = [
         href: "/settings/multi-currency",
         label: "Foreign currency",
         says: "Whether this firm records foreign-currency documents at all, and which clients may. Off unless a Partner switches it on.",
+        roles: ["Partner"],
+      },
+      {
+        href: "/settings/journal-approval",
+        label: "Journal approval",
+        says: "Whether a Partner approves every manual journal before it reaches a client's books. Off unless a Partner switches it on.",
         roles: ["Partner"],
       },
     ],

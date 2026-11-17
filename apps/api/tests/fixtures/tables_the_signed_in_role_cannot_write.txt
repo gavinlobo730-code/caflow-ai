@@ -24,6 +24,7 @@
 # 641 creates payroll_opening_positions (POST-A-082) with no signed-in privilege at all: the API's privileged client is its only reader and writer.
 # 660 creates nightly_exception_results (POST-A-050) with no signed-in write: the nightly books check, through the API's privileged client, is its one writer.
 # 671 creates compliance_effort_estimates (POST-A-212) with no signed-in write: its writer is the API's privileged client from the start.
+# 680 closes mca_filings (POST-A-442): the MCA filings are written by the API's privileged client since the change that shipped before it.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -152,6 +153,7 @@ lead_contacts
 leads
 leave_balances
 login_events
+mca_filings
 nightly_exception_results
 party_credit_balances
 party_credit_ledger

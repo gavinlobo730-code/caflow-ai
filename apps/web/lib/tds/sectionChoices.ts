@@ -12,7 +12,13 @@
  */
 import type { TDSSection } from "@/lib/data/tds";
 
-export interface ChallanSection { section: string; label: string | null }
+export interface ChallanSection {
+  section: string;
+  label: string | null;
+  /** Whether a challan under it is a salary deposit, which may name the wage month it pays (POST-A-267). Absent from a server one
+   *  deploy behind, which then offers no month box. */
+  salary?: boolean;
+}
 
 export interface SectionChoices {
   /** section code (or clause key) -> its plain-English name, for the sections that have one. */

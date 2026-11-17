@@ -58,7 +58,7 @@ def patch_dict(model: BaseModel) -> dict[str, Any]:
     return out
 
 
-def removed_identifier_problem(model: BaseModel, stored: dict, labels: dict[str, str]) -> str | None:
+def removed_identifier_problem(model: BaseModel, stored: dict, labels: dict[str, str], *, why: str | None = None) -> str | None:
     """The sentence refusing an edit that EMPTIES an identifier the stored row carries, or None (POST-A-399, the party masters).
 
     A tax identifier a return reads off a party (its GSTIN and the state code that follows it, and a vendor's PAN and foreign tax number) is
@@ -67,7 +67,8 @@ def removed_identifier_problem(model: BaseModel, stored: dict, labels: dict[str,
     would silently move documents already issued between tables of a return. A customer's PAN and TAN are not passed here, because no return reads
     them and the sentence would be untrue of them. `labels` maps each field the route refuses to empty to the words a person reads. A field the
     request SENT empty (null or blank) over a stored value is refused; one sent empty over nothing is not this function's to refuse (the route drops
-    it, so nothing is written).
+    it, so nothing is written). `why` replaces the second sentence where the reader is not a return about documents issued to a party (an
+    employee's PAN, UAN, ESI number and bank account, POST-A-399's third slice).
     """
     for name, label in labels.items():
         if name not in model.model_fields_set:
@@ -75,7 +76,7 @@ def removed_identifier_problem(model: BaseModel, stored: dict, labels: dict[str,
         value = getattr(model, name, None)
         if (value is None or (isinstance(value, str) and not value.strip())) and str(stored.get(name) or "").strip():
             return (f"The {label} on file can be corrected but not removed: enter the corrected {label}. "
-                    f"Every return not yet filed reads it for the documents already issued to this party.")
+                    + (why or "Every return not yet filed reads it for the documents already issued to this party."))
     return None
 
 

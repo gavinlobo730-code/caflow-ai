@@ -788,3 +788,27 @@ def test_every_kind_the_radar_answers_with_has_a_label_on_the_screen():
     for kind in kinds:
         assert f'"{kind}"' in types, kind
         assert f"{kind}: \"" in screen, kind
+
+
+def test_two_withheld_bills_of_one_number_in_different_years_each_join_only_their_own_years_document():
+    """POST-A-460: the BILL side is keyed by its own financial year too. A June 2025 bill '15' and a June 2026 bill '15' of one supplier
+    are two documents; when only the 2025 one is furnished late, it joins and the 2026 one stays withheld, and the credit is counted
+    once. Keyed by supplier and number alone, the pair 'shared a key' and joined nothing, so the 2025 bill and its later 2B document
+    both stayed as rows and that credit was counted twice."""
+    store = _world([_bill("b-15a", "15", "2025-06-10"), _bill("b-15b", "15", "2026-06-10")])
+    _reconcile(store, "062025", [])
+    _reconcile(store, "082025", [("15", "10-06-2025", "Y")])
+    _reconcile(store, "062026", [])
+    out = _radar(store)[0]
+    rows = sorted((i["kind"], i["document_date"]) for i in out["items"])
+    assert rows == [(bar.KIND_FURNISHED_LATER, "2025-06-10"), ("withheld_bill", "2026-06-10")]
+    assert out["totals"]["credit_at_risk_paise"] == 2 * 18_000, "each bill's credit once, the 2B document not again"
+
+
+def test_two_withheld_bills_of_one_number_in_the_same_year_still_join_nothing():
+    bill = {"kind": bar.KIND_WITHHELD, "verdict": "not_in_2b", "document_date": "2025-06-10", "credit_at_risk_paise": 18_000}
+    doc = {"document_type": "invoice", "supplier_gstin": SUPPLIER, "invoice_number": "15", "return_period": "082025",
+           "invoice_date": "2025-06-10", "itc_available": "Y", "cgst_paise": 9_000, "sgst_paise": 9_000}
+    bills = [{**bill, "document_id": "b-1"}, {**bill, "document_id": "b-2", "document_date": "2025-07-01"}]
+    rows, unbooked = bar.join_furnished_later(bills, [doc], {"b-1": (SUPPLIER, "15"), "b-2": (SUPPLIER, "15")})
+    assert [r["kind"] for r in rows] == [bar.KIND_WITHHELD, bar.KIND_WITHHELD] and unbooked == [doc]

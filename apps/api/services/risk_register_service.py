@@ -72,11 +72,17 @@ def build_register(db, firm_id: str, client_ids: Optional[set[str]] = None) -> d
 
     clients = fetch_all(
         lambda: _scoped_clients(
-            db.table("clients").select("id, client_name, gstin, pan").eq("firm_id", firm_id),
+            db.table("clients").select("id, client_name, gstin, pan, is_internal").eq("firm_id", firm_id),
             client_ids,
         ),
         label="risk_register.clients",
     )
+    # THE FIRM'S OWN PRACTICE IS NOT ON THE FIRM'S RISK REGISTER (Guardrail G2, POST-A-457). It is a `clients` row, so the reads below
+    # find its calendar, its loans, its deposits and its notices like any client's, and the register listed it among the firm's
+    # clients. Its own filings are on its own workspace and on Deadlines; here it is left out of every list the register is built from,
+    # and the register says so when there was something of it to leave out.
+    practice = {str(c["id"]) for c in clients if c.get("is_internal") is True}
+    clients = [c for c in clients if str(c.get("id")) not in practice]
 
     # ONE calendar read, three questions. The window is the wider of "overdue"
     # (everything before today) and "recently active" (the last ninety days), so
@@ -160,6 +166,19 @@ def build_register(db, firm_id: str, client_ids: Optional[set[str]] = None) -> d
         label="risk_register.government_notices",
     )
 
+    left_out = 0
+    if practice:
+        def _not_the_practice(rows: list[dict]) -> list[dict]:
+            nonlocal left_out
+            kept = [r for r in rows if str(r.get("client_id")) not in practice]
+            left_out += len(rows) - len(kept)
+            return kept
+        calendar, loans, deposits, notices = (_not_the_practice(calendar), _not_the_practice(loans),
+                                              _not_the_practice(deposits), _not_the_practice(notices))
+        recent -= practice
+        tracked -= practice
+        filed_keys = {k for k in filed_keys if k.split("|", 1)[0] not in practice}
+
     reg = rule.build(
         calendar=calendar,
         clients=clients,
@@ -173,6 +192,11 @@ def build_register(db, firm_id: str, client_ids: Optional[set[str]] = None) -> d
         notices=notices,
         as_at=as_at,
     )
+    if left_out:
+        reg.notes.append(
+            "The firm's own practice is not on this register: it is not one of the firm's clients. Its own deadlines are on its "
+            "workspace and on Deadlines."
+        )
     return _to_payload(reg, as_at)
 
 

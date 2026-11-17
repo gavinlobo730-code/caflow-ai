@@ -21,8 +21,14 @@
  * a request that does not say, and a screen that picked for the CA would be the
  * same omission one layer up. Drafts are off-books, so they are the safe choice;
  * posting is what most files are for.
+ *
+ * POSTING IS OFFERED ONLY WHERE THE SERVER WILL TAKE IT (POST-A-456). An import sent as posted puts manual journals on the books, so
+ * the route asks the firm's journal-approval rule as the editor does. Where the server's answer for this person is that they may not
+ * post, "Post to the ledger now" is not offered and the screen says the vouchers are saved as drafts for approval. While the answer is
+ * being read, or when it could not be read, posting stays offered (hiding it would tell a writer they may not post when the firm may
+ * not require approval at all) and the server decides.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Upload } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import CsvImportModal from "@/components/LazyCsvImportModal";
@@ -35,6 +41,12 @@ import {
   voucherOutcomeFrom, voucherSummarySentence,
   type VoucherLayout, type VoucherStatus,
 } from "@/lib/accounting/voucherImport";
+import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
+
+/** What the screen says in place of "Post to the ledger now" where the server's answer is that this person may not post. */
+export const HELD_FOR_APPROVAL =
+  "This firm has a Partner approve every manual journal, and you may not approve, so the vouchers are saved as drafts: each waits in "
+  + "Approvals for someone who may approve it.";
 
 export function VoucherImportButton({ clientId, onImported, onSummary }: {
   clientId: string;
@@ -46,9 +58,14 @@ export function VoucherImportButton({ clientId, onImported, onSummary }: {
   const [step, setStep] = useState<"closed" | "choose" | "import">("closed");
   const [layout, setLayout] = useState<VoucherLayout>("lines");
   const [status, setStatus] = useState<VoucherStatus | null>(null);
+  const [ruleKey, setRuleKey] = useState(0);
+  const postingRule = useJournalApprovalRule(ruleKey);
+  const mayPost = postingRule.mayPost !== false;
+  useEffect(() => { if (!mayPost) setStatus((s) => (s === "posted" ? null : s)); }, [mayPost]);
 
   async function handleImport(rows: ImportRow[], meta?: ImportMeta): Promise<ImportResult> {
     if (!status) throw new Error("Say whether the vouchers are posted or saved as drafts.");
+    if (status === "posted" && !mayPost) throw new Error(HELD_FOR_APPROVAL);
     const batches = chunkVouchers(buildVoucherLegs(rows, layout, meta?.rowNumbers));
     const parts: VoucherImportResult[] = [];
     const stopped: string[] = [];
@@ -85,7 +102,7 @@ export function VoucherImportButton({ clientId, onImported, onSummary }: {
     <>
       <button
         type="button"
-        onClick={() => { setStatus(null); setStep("choose"); }}
+        onClick={() => { setStatus(null); setRuleKey((k) => k + 1); setStep("choose"); }}
         className="text-xs px-3 py-1.5 border border-ps-border text-ps-body rounded-lg hover:bg-ps-bg flex items-center gap-1"
       >
         <Upload size={12} /> Import vouchers
@@ -114,18 +131,23 @@ export function VoucherImportButton({ clientId, onImported, onSummary }: {
 
             <fieldset className="space-y-1.5">
               <legend className="font-medium text-ps-body mb-1">Where do the vouchers go?</legend>
-              <label className="flex items-start gap-2 text-ps-body">
-                <input type="radio" name="voucher-status" className={radio}
-                       checked={status === "posted"} onChange={() => setStatus("posted")} />
-                <span>Post to the ledger now
-                  <span className="block text-3xs text-ps-hint">A closed period or a filed return refuses a voucher by name; the rest post.</span></span>
-              </label>
+              {mayPost ? (
+                <label className="flex items-start gap-2 text-ps-body">
+                  <input type="radio" name="voucher-status" className={radio}
+                         checked={status === "posted"} onChange={() => setStatus("posted")} />
+                  <span>Post to the ledger now
+                    <span className="block text-3xs text-ps-hint">A closed period or a filed return refuses a voucher by name; the rest post.</span></span>
+                </label>
+              ) : (
+                <p className="text-3xs text-ps-hint">{HELD_FOR_APPROVAL}</p>
+              )}
               <label className="flex items-start gap-2 text-ps-body">
                 <input type="radio" name="voucher-status" className={radio}
                        checked={status === "draft"} onChange={() => setStatus("draft")} />
                 <span>Save as drafts for review
                   <span className="block text-3xs text-ps-hint">Off the books until each is posted.</span></span>
               </label>
+              {postingRule.error && <p className="text-3xs text-ps-hint">{postingRule.error}</p>}
             </fieldset>
 
             <p className="text-3xs text-ps-hint">

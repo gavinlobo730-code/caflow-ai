@@ -1309,7 +1309,7 @@ function Statements({ clientId }: { clientId: string }) {
   }
 
   function openEmail() {
-    setEmailTo(stmt?.customer.email ?? "");
+    setEmailTo(stmt?.customer?.email ?? "");
     setEmailMsg(null); setEmailModal(true);
   }
   async function sendEmail() {

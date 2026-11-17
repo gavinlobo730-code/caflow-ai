@@ -200,7 +200,7 @@ def _foreign_problems(header: Mapping[str, Any], rows: list[Mapping[str, Any]]) 
 
 def _blocked_credit_problems(header: Mapping[str, Any], rows: list[Mapping[str, Any]],
                              convert: Callable[[int], int]) -> list[Problem]:
-    """A bill's blocked-credit columns (CGST Act s.17(5)) against the lines marked as not eligible for input credit."""
+    """A bill's or a purchase note's blocked-credit columns (CGST Act s.17(5)) against the lines marked as not eligible for input credit."""
     found: list[Problem] = []
     blocked = [r for r in rows if r.get("itc_eligible") is False]
     for label, column, line_column in (
@@ -234,7 +234,7 @@ def _line_problems(kind: str, header: Mapping[str, Any], rows: list[Mapping[str,
         if _paise(header, column) != expected:
             found.append(Problem(LINES, f"its {label} is {_rupees(_paise(header, column))} but its lines come to "
                                         f"{_rupees(expected)}" + (" at the document's exchange rate" if is_foreign(kind, header) else "")))
-    if kind == PURCHASE_BILL:
+    if kind in (PURCHASE_BILL, DEBIT_NOTE, PURCHASE_CREDIT_NOTE):   # the two purchase notes since migration 685 (POST-A-459)
         found.extend(_blocked_credit_problems(header, rows, convert))
     return found
 

@@ -28,6 +28,18 @@ import { fetchPlain, jsonPlain, type Doing } from "@/lib/api/failureSentence";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import type { CreditLedgerBlock } from "@/lib/api";
 import { getFirmId } from "./getFirmId";
+import { objectOrNull } from "@/lib/api/shape";
+
+/**
+ * The credit-ledger block whole, or not at all (POST-A-360). The save below read `credit_ledger?.opening.balance.igst_paise`, which
+ * guards the block and nothing in it: a block without `opening` threw, and one with an opening and no closing would have stored half a
+ * ledger. A block missing any part is treated as absent, which leaves whatever the row already records, never a partial or a zero.
+ */
+function wholeCreditLedger(block: CreditLedgerBlock | undefined): CreditLedgerBlock | undefined {
+  const b = objectOrNull<CreditLedgerBlock>(block);
+  if (!b || !objectOrNull(b.opening) || !objectOrNull(b.opening.balance) || !objectOrNull(b.closing)) return undefined;
+  return b;
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -989,6 +1001,7 @@ export async function saveGSTR3BReturn(
   const sb = getSupabaseClient();
   const firmId = await getFirmId();
   const w = result.working;
+  const ledger = wholeCreditLedger(result.credit_ledger);
   // Same normalisation the backend's `_existing_return` applies before
   // matching (routers/gst_workspace.py) — the unique index below is a raw
   // string compare, so a case mismatch would open a second row instead of
@@ -1095,16 +1108,16 @@ export async function saveGSTR3BReturn(
     // `undefined` drops the key, so a backend that sent no block leaves
     // whatever the row already records — never a stored zero. Every figure is
     // the server's; nothing is computed here.
-    credit_opening_igst_paise: result.credit_ledger?.opening.balance.igst_paise,
-    credit_opening_cgst_paise: result.credit_ledger?.opening.balance.cgst_paise,
-    credit_opening_sgst_paise: result.credit_ledger?.opening.balance.sgst_paise,
-    credit_opening_cess_paise: result.credit_ledger?.opening.balance.cess_paise,
-    credit_closing_igst_paise: result.credit_ledger?.closing.igst_paise,
-    credit_closing_cgst_paise: result.credit_ledger?.closing.cgst_paise,
-    credit_closing_sgst_paise: result.credit_ledger?.closing.sgst_paise,
-    credit_closing_cess_paise: result.credit_ledger?.closing.cess_paise,
-    credit_closing_as_of: result.credit_ledger?.closing_as_of,
-    credit_opening_source: result.credit_ledger?.opening.source,
+    credit_opening_igst_paise: ledger?.opening?.balance?.igst_paise,
+    credit_opening_cgst_paise: ledger?.opening?.balance?.cgst_paise,
+    credit_opening_sgst_paise: ledger?.opening?.balance?.sgst_paise,
+    credit_opening_cess_paise: ledger?.opening?.balance?.cess_paise,
+    credit_closing_igst_paise: ledger?.closing?.igst_paise,
+    credit_closing_cgst_paise: ledger?.closing?.cgst_paise,
+    credit_closing_sgst_paise: ledger?.closing?.sgst_paise,
+    credit_closing_cess_paise: ledger?.closing?.cess_paise,
+    credit_closing_as_of: ledger?.closing_as_of,
+    credit_opening_source: ledger?.opening?.source,
     payload_json: result.payload,
     validation_errors: result.validation_warnings,
     status: "draft",

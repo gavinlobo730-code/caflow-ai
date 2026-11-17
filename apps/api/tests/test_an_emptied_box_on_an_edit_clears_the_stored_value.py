@@ -36,6 +36,7 @@ import routers.purchase_credit_notes as pcn
 import routers.sales_debit_notes as sdn
 import routers.sales_invoices as si
 from models.banking import BankAccountUpdateIn
+from models.payroll import EMPLOYEE_IDENTIFIERS, EmployeeUpdateIn
 from models.clearable import clearable_fields, patch_dict
 from models.parties import CUSTOMER_IDENTIFIERS, PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
 from models.invoices import (InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn, PurchaseBillUpdateIn, SalesInvoiceIn,
@@ -395,6 +396,7 @@ MASTER_MODELS = [
     (CustomerUpdateIn, "customers"),
     (VendorUpdateIn, "vendors"),
     (BankAccountUpdateIn, "bank_accounts"),
+    (EmployeeUpdateIn, "payroll_employees"),   # POST-A-399, third slice
 ]
 MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER = {
     "credit_limit_paise",  # "no limit recorded", against 0 which is cash only (migrations 378 and 414)
@@ -462,7 +464,8 @@ def test_the_clearable_names_are_free_text_and_never_a_date_an_amount_or_evidenc
 
 #: The identifiers each master's edit refuses to empty because a return reads them: a party's GSTIN and state code, and a vendor's PAN and foreign
 #: tax number. A customer's PAN and TAN are not among them (no return reads them off a customer) and are clearable.
-MASTER_IDENTIFIERS = {CustomerUpdateIn: set(CUSTOMER_IDENTIFIERS), VendorUpdateIn: set(PARTY_IDENTIFIERS), BankAccountUpdateIn: set()}
+MASTER_IDENTIFIERS = {CustomerUpdateIn: set(CUSTOMER_IDENTIFIERS), VendorUpdateIn: set(PARTY_IDENTIFIERS), BankAccountUpdateIn: set(),
+                      EmployeeUpdateIn: set(EMPLOYEE_IDENTIFIERS)}
 
 
 def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_identifier_a_date_or_evidence():
@@ -472,7 +475,9 @@ def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_id
               "no_pe_declaration_on", "no_pe_declaration_ref", "no_pe_declaration_on_file", "is_active", "tds_section"}
     assert set(MASTER_IDENTIFIERS) == {m for m, _ in MASTER_MODELS}
     for model, _ in MASTER_MODELS:
-        forbidden = always | MASTER_IDENTIFIERS[model]
+        # `bank_name` is the bank ACCOUNT's own name on BankAccountUpdateIn (a NOT NULL column); on an employee it is a free-text note of where the
+        # salary is banked, nullable and read by nothing statutory, so it is clearable there.
+        forbidden = (always - {"bank_name"} if model is EmployeeUpdateIn else always) | MASTER_IDENTIFIERS[model]
         names = clearable_fields(model())
         assert names, f"{model.__name__} names nothing it may clear"
         assert not (names & forbidden), f"{model.__name__}.CLEARABLE names {sorted(names & forbidden)}"

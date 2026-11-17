@@ -24,7 +24,6 @@ routers/firm_hsn_library.py::update_code
 routers/knowledge.py::update_instruction
 routers/lifecycle.py::update_lead
 routers/mca_workspace.py::update_director
-routers/payroll.py::update_employee
 routers/relationships.py::update_entity
 routers/service_catalogue.py::update_service
 routers/task_recurring.py::update_assignment_rule

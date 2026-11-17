@@ -135,7 +135,9 @@ CLASSIFIED = {
             'reason', 'is_interstate', 'is_reverse_charge', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise',
             'igst_paise', 'total_paise', 'total_gst_paise', 'applied_paise', 'status', 'journal_entry_id',
             'created_at', 'created_by', 'deleted_at', 'goods_returned',   # migration 581 (POST-A-371): frozen once issued, like the credit note's
-            'cess_paise'],   # migration 615 (POST-A-058)
+            'cess_paise',   # migration 615 (POST-A-058)
+            # migration 685 (POST-A-459): the credit blocked per head is a particular of the note, frozen once issued like its GST
+            'ineligible_itc_cgst_paise', 'ineligible_itc_sgst_paise', 'ineligible_itc_igst_paise', 'ineligible_itc_cess_paise'],
         "generated": []},
     "purchase_credit_notes": {
         "allowed": [
@@ -145,7 +147,9 @@ CLASSIFIED = {
             'reason', 'is_interstate', 'is_reverse_charge', 'taxable_amount_paise', 'cgst_paise', 'sgst_paise',
             'igst_paise', 'total_paise', 'total_gst_paise', 'applied_paise', 'status', 'journal_entry_id',
             'created_at', 'created_by', 'deleted_at',
-            'cess_paise'],   # migration 615 (POST-A-058)
+            'cess_paise',   # migration 615 (POST-A-058)
+            # migration 685 (POST-A-459): the credit blocked per head is a particular of the note, frozen once issued like its GST
+            'ineligible_itc_cgst_paise', 'ineligible_itc_sgst_paise', 'ineligible_itc_igst_paise', 'ineligible_itc_cess_paise'],
         "generated": []},
     "sales_debit_notes": {
         "allowed": [

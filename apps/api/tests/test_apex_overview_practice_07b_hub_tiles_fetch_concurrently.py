@@ -56,6 +56,11 @@ def probe(monkeypatch):
     # though the lambdas were already built before this patch runs).
     monkeypatch.setattr(hub_service, "_count", p)
     monkeypatch.setattr(hub_service, "_sum_paise", p)
+    # The firm hub's five worklist tiles first read which client is the firm's own practice (POST-A-457); here there is no database, so
+    # that read answers "none" and the tiles reach the probe as before.
+    import services.hub_worklist_service as hub_worklist_service
+    monkeypatch.setattr(hub_worklist_service, "_practice_ids", lambda db, firm_id: set())
+    monkeypatch.setattr(hub_service, "_db", lambda: None)
     return p
 
 

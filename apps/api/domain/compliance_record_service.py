@@ -72,7 +72,11 @@ REOPEN_AFTERMATH: dict[str, str] = {
     "ESI_DEPOSIT": "A payment record that closed it, if there was one, is still there: retract it on the payroll hand-off if it was "
                    "wrong. Nothing closes it again by itself.",
     "EPF_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
-    "TDS_SALARY_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
+    "TDS_SALARY_DEPOSIT": "The salary challans that closed it are remembered on the month, so while only those same challans name "
+                          "it, recording another salary challan for the month does not close it again; a different one that pays "
+                          "it on time does, or you can mark it filed from Compliance with the date it really went. If a challan "
+                          "was recorded in error, retract it on the Challans tab first (a Manager or Partner can): that reopens "
+                          "the month it closed.",
     "TDS_NON_SALARY_DEPOSIT": "The challans that closed it are remembered on the month, so while only those same challans cover it, "
                               "recording another challan for the quarter does not close it again; a different challan covering it "
                               "does, or you can mark it filed from Compliance with the date it really went. If a challan was "
@@ -500,9 +504,11 @@ class ComplianceRecordService:
         # Filed clears it (Filed to Completed is the same closure).
         if new_status == "Filed" and record.get("closing_tds_challan_ids") is not None:
             updated = compliance_records_repo.update_clearing(
-                record_id, firm_id or record.get("firm_id") or "", updates, clear=compliance_records_repo.CLEARABLE_RECORD)
+                record_id, firm_id or record.get("firm_id") or "", updates, clear=compliance_records_repo.CLEARABLE_RECORD,
+                client_id=record.get("client_id"))
         else:
-            updated = compliance_records_repo.update(record_id, updates)
+            updated = compliance_records_repo.update(record_id, updates, firm_id=firm_id or record.get("firm_id"),
+                                                     client_id=record.get("client_id"))
         if not updated:
             raise NotFoundError("ComplianceRecord", record_id)
 
@@ -558,7 +564,7 @@ class ComplianceRecordService:
         updated = compliance_records_repo.update_clearing(
             record_id, firm_id or record["firm_id"], {"status": REOPENED_STATUS, "notes": notes},
             clear=compliance_records_repo.CLEARABLE + (compliance_records_repo.CLEARABLE_RECORD if forget_what_closed_it else ()),
-            only_if_status=FILED)
+            only_if_status=FILED, client_id=record.get("client_id"))
         if not updated:
             # The row was read as filed a moment ago, so it is gone, or somebody changed it in between (reopened it, or recorded
             # it as filed again with a new date). Writing over that would erase their change.
@@ -636,7 +642,7 @@ class ComplianceRecordService:
         notes = f"{record['notes']}\n{note}" if record.get("notes") else note
         updated = compliance_records_repo.update_clearing(
             record["id"], firm_id or record["firm_id"], {"status": to_status, "notes": notes}, clear=(),
-            only_if_status=(old_status,))
+            only_if_status=(old_status,), client_id=record.get("client_id"))
         if not updated:
             if not compliance_records_repo.find_by_id(record["id"]):
                 raise NotFoundError("ComplianceRecord", record["id"])

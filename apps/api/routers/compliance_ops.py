@@ -147,6 +147,7 @@ def list_obligations(client_id: Optional[str] = Query(None),
         firm_id=current_user["firm_id"], client_id=client_id,
         status=status, compliance_type=compliance_type)
     rows = filter_by_client(current_user, rows)   # M2/M5: assignment scope
+    rows = obligations.with_people_named(current_user["firm_id"], rows)   # POST-A-206: who prepares and reviews each
     return api_response(True, {"obligations": rows, "total": len(rows)})
 
 
@@ -328,6 +329,15 @@ def reopenable_obligation_types(current_user: dict = Depends(rbac("compliance", 
     return api_response(True, {"obligation_types": sorted(REOPENABLE_OBLIGATION_TYPES),
                                "not_requirable_types": sorted(NOT_REQUIRABLE_OBLIGATION_TYPES),
                                "max_reason_chars": MAX_REOPEN_REASON_CHARS})
+
+
+@router.get("/obligations/mine")
+def my_obligations(current_user: dict = Depends(rbac("compliance", "read"))):
+    """The caller's own open obligations, the ones they are named on as preparer, reviewer or approver (POST-A-206), for My Work.
+    Firm-scoped and narrowed to the caller's clients like the dashboard."""
+    return api_response(True, obligations.my_obligations(
+        current_user["firm_id"], current_user.get("id") or "",
+        allowed_client_ids=effective_client_ids(current_user)))
 
 
 @router.get("/dashboard")

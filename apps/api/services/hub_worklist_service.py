@@ -237,7 +237,16 @@ def _python_twin(db, firm_id: str, tile_id: str,
         if not cid:
             continue
         tally[str(cid)] = tally.get(str(cid), 0) + (int(r.get(col) or 0) if col else 1)
-    return [{"client_id": k, "signal": v} for k, v in tally.items()]
+    # The firm's own practice is not one of its clients to list (Guardrail G2, POST-A-457), and migration 706 leaves it out of the SQL
+    # function the same way, so the two halves still agree.
+    practice = _practice_ids(db, firm_id)
+    return [{"client_id": k, "signal": v} for k, v in tally.items() if k not in practice]
+
+
+def _practice_ids(db, firm_id: str) -> set[str]:
+    """The ids of the firm's own practice (`clients.is_internal`). A firm has at most one; a set, so a second would not slip in."""
+    rows = (db.table("clients").select("id").eq("firm_id", firm_id).eq("is_internal", True).execute().data) or []
+    return {str(r["id"]) for r in rows if r.get("id")}
 
 
 def _with_names(firm_id: str, rows: list[dict]) -> list[dict]:
@@ -276,7 +285,8 @@ def _client_count(firm_id: str, scope: Optional[list[str]]) -> int:
     if db is None:
         return 0
     try:
-        q = db.table("clients").select("id", count="exact").eq("firm_id", firm_id)
+        # The practice is not a client the worklist examined (G2, POST-A-457): the rows leave it out, so the count does too.
+        q = db.table("clients").select("id", count="exact").eq("firm_id", firm_id).eq("is_internal", False)
         if scope is not None:
             q = q.in_("id", scope)
         return int(q.limit(1).execute().count or 0)

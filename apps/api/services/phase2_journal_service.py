@@ -22,6 +22,7 @@ from services.ledger_door import ledger_rpc
 from core.observability import capture_posting_failure
 from domain.currency.policy import BASE_CURRENCY, CurrencyPolicy
 from domain.accounting import journal_figures, journal_source as JS
+from domain.gst import note_blocked_credit
 from domain.sales import issue_readiness
 from domain.currency.rate_types import DEFAULT_RATE_TYPE, is_valid_rate_type
 from core.db_provider import privileged_for
@@ -543,6 +544,9 @@ class Phase2JournalService:
                 db, firm_id, client_id, "%GST Input%", system_key="gst_input"
             )
 
+            # CGST Act s.17(5) (POST-A-459, migration 685): the tax on a line marked blocked was never credit, so the bill put it on
+            # the cost; the note takes it back off the cost, and the credit ledgers move by the creditable tax only, as the bill's did.
+            blocked = note_blocked_credit.blocked_of(dn)
             lines = [{
                 "account_id": payables_id,
                 "debit_paise": dn["total_paise"],
@@ -551,10 +555,11 @@ class Phase2JournalService:
             }, {
                 "account_id": purchases_id,
                 "debit_paise": 0,
-                "credit_paise": dn["taxable_amount_paise"],
+                "credit_paise": int(dn["taxable_amount_paise"]) + sum(blocked.values()),
                 "narration": "Purchase returns — debit note",
             }]
-            gst_reversed = int(dn.get("cgst_paise", 0)) + int(dn.get("sgst_paise", 0)) + int(dn.get("igst_paise", 0))
+            gst_reversed = (int(dn.get("cgst_paise", 0)) + int(dn.get("sgst_paise", 0)) + int(dn.get("igst_paise", 0))
+                            - blocked["cgst"] - blocked["sgst"] - blocked["igst"])
             if gst_reversed > 0:
                 lines.append({
                     "account_id": gst_input_id,
@@ -563,14 +568,15 @@ class Phase2JournalService:
                     "narration": "GST input tax credit reversed",
                 })
             # The cess credit the bill took goes back to its OWN asset (Compensation
-            # Act s.11(2) proviso), the ledger the bill debited.
-            if int(dn.get("cess_paise") or 0) > 0:
+            # Act s.11(2) proviso), the ledger the bill debited; a blocked line's cess was cost.
+            cess_reversed = int(dn.get("cess_paise") or 0) - blocked["cess"]
+            if cess_reversed > 0:
                 lines.append({
                     "account_id": self._find_account(
                         db, firm_id, client_id, "%Compensation Cess Input%",
                         system_key="gst_cess_input"),
                     "debit_paise": 0,
-                    "credit_paise": int(dn["cess_paise"]),
+                    "credit_paise": cess_reversed,
                     "narration": "Compensation cess input credit reversed — Compensation Act s.8",
                 })
 
@@ -730,13 +736,17 @@ class Phase2JournalService:
                 db, firm_id, client_id, "%GST Input%", system_key="gst_input"
             )
 
+            # CGST Act s.17(5) (POST-A-459, migration 685): the tax on a line marked blocked is cost, as on the bill, and only the
+            # creditable tax reaches the credit ledgers.
+            blocked = note_blocked_credit.blocked_of(cn)
             lines = [{
                 "account_id": purchases_id,
-                "debit_paise": cn["taxable_amount_paise"],
+                "debit_paise": int(cn["taxable_amount_paise"]) + sum(blocked.values()),
                 "credit_paise": 0,
                 "narration": "Additional purchases — credit note",
             }]
-            gst_claimed = int(cn.get("cgst_paise", 0)) + int(cn.get("sgst_paise", 0)) + int(cn.get("igst_paise", 0))
+            gst_claimed = (int(cn.get("cgst_paise", 0)) + int(cn.get("sgst_paise", 0)) + int(cn.get("igst_paise", 0))
+                           - blocked["cgst"] - blocked["sgst"] - blocked["igst"])
             if gst_claimed > 0:
                 lines.append({
                     "account_id": gst_input_id,
@@ -745,13 +755,14 @@ class Phase2JournalService:
                     "narration": "GST input tax credit — additional",
                 })
             # Additional cess credit, to its OWN asset (Compensation Act s.11(2)
-            # proviso), as the bill's own cess credit was.
-            if int(cn.get("cess_paise") or 0) > 0:
+            # proviso), as the bill's own cess credit was; a blocked line's cess is cost.
+            cess_claimed = int(cn.get("cess_paise") or 0) - blocked["cess"]
+            if cess_claimed > 0:
                 lines.append({
                     "account_id": self._find_account(
                         db, firm_id, client_id, "%Compensation Cess Input%",
                         system_key="gst_cess_input"),
-                    "debit_paise": int(cn["cess_paise"]),
+                    "debit_paise": cess_claimed,
                     "credit_paise": 0,
                     "narration": "Compensation cess input credit — additional, Compensation Act s.8",
                 })

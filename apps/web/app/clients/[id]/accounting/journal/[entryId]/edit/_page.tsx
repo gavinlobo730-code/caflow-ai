@@ -29,6 +29,7 @@ import { ErrorState } from "@/components/ui/states";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import EntryHistory from "@/components/accounting/EntryHistory";
 import { usePermissions } from "@/lib/auth/AuthContext";
+import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
 
 function getEntryIdFromLocation(): string {
   if (typeof window === "undefined") return "";
@@ -53,8 +54,11 @@ export default function JournalEntryPageClient() {
   useEffect(() => { setEntryId(getEntryIdFromLocation()); }, [pathname]);
   const isNew = entryId === "new";
   const router = useRouter();
-  // Posting a saved draft asks `accounting` `approve` (POST-A-455); the editor offers Post Entry on one only to a Partner.
-  const mayPostDraft = usePermissions().can("accounting", "approve");
+  // Posting, a new entry or a saved draft, asks `accounting` `write` at both routes and then the firm's rule (POST-A-456): where the
+  // firm has a Partner approve every manual journal, only someone who may approve posts, or corrects an entry on the books. The
+  // rule is the server's answer for this person; while it is unknown Post is offered and the server decides.
+  const postingRule = useJournalApprovalRule();
+  const mayPost = usePermissions().can("accounting", "write") && postingRule.mayPost !== false;
   // Saving a draft or a correction and posting a new entry ask `accounting` `write`; an Executive's is read only.
   const mayWrite = usePermissions().can("accounting", "write");
 
@@ -233,7 +237,8 @@ export default function JournalEntryPageClient() {
         saving={saving}
         serverError={saveError}
         onSave={handleSave}
-        mayPostDraft={mayPostDraft}
+        mayPost={mayPost}
+        postRuleNote={postingRule.error}
         mayWrite={mayWrite}
         onCancel={() => router.push(journalListHref(clientId))}
       />

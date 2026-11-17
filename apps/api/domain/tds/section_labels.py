@@ -57,4 +57,7 @@ def challan_sections(fy: Optional[str] = None) -> list[dict]:
             seen.append(parent)
     if SECTION_195 not in seen:
         seen.append(SECTION_195)
-    return [{"section": sec, "label": label_of(sec, fy)} for sec in seen]
+    # `salary` (POST-A-267): whether a challan under the section is a salary deposit, which may name the wage month it pays
+    # (migration 695). Served so the screen offers the month box without knowing which sections are salary.
+    from domain.tds.deposit_due import is_salary
+    return [{"section": sec, "label": label_of(sec, fy), "salary": is_salary(sec)} for sec in seen]

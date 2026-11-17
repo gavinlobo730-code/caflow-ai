@@ -1,5 +1,6 @@
 "use client";
 
+import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
@@ -3634,9 +3635,12 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 function ApprovalQueue({ clientId }: { clientId: string }) {
-  // Approve & Post asks `accounting` `approve`, which is a Partner's alone; it was offered to every member (POST-A-455).
+  // Approve & Post asks `accounting` `write` and then the firm's rule (POST-A-456): where the firm has a Partner approve every manual
+  // journal, only someone who may approve posts a draft. The rule is the server's answer for this person; while it is unknown the
+  // button is offered to someone the route admits and the server decides.
   const { can: canDo, resolved: permissionsRead } = usePermissions();
-  const mayPost = canDo("accounting", "approve");
+  const postingRule = useJournalApprovalRule();
+  const mayPost = canDo("accounting", "write") && postingRule.mayPost !== false;
   const [status, setStatus] = useState<"draft" | "posted">("draft");
   const [rows, setRows] = useState<QueueJournal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -3721,7 +3725,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
                         </Button>
                       ) : status === "draft" ? (
-                        <span className="text-ps-label">{permissionsRead ? "Awaiting someone who may approve journal entries" : ""}</span>
+                        <span className="text-ps-label">{permissionsRead ? "Awaiting someone who may post journal entries" : ""}</span>
                       ) : (
                         <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}
@@ -3735,7 +3739,12 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
       )}
 
       <p className="text-3xs text-ps-hint text-center">
-        Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement). Requires approval permission; locked financial years are blocked.
+        Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement); locked financial years are blocked.{" "}
+        {postingRule.rule
+          ? (postingRule.rule.approval_required
+            ? "This firm has a Partner approve every manual journal: only someone who may approve posts a draft."
+            : "This firm lets anyone who may write the books post a draft; a Partner can require approval in Settings.")
+          : postingRule.error ?? ""}
       </p>
     </div>
   );
@@ -4119,6 +4128,11 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     // column of an exported trial balance returned 0 — silently, because
     // SheetJS writes no `ignoredErrors` so Excel shows no warning either.
     const money = moneyCell;
+    // A READ THAT FAILED IS NOT A REPORT OF ZEROS (POST-A-360). Each branch used to export `d?.total ?? 0` over a refused or empty
+    // answer, so a sheet of nil figures left the building under the client's name; now the export is refused in words instead.
+    const refuse = (what: string): never => {
+      throw new Error(`The ${what} could not be read, so nothing was exported. Try again in a moment.`);
+    };
 
     if (reportType === "trial") {
       // ACC-08. `start` as well as `end`, because this function's own contract
@@ -4129,7 +4143,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       const res = (await api.accounting.trialBalance({
         basis, as_of_date: end, start_date: start, client_id: clientId })) as
         { success: boolean; data: TBApiData | null };
-      const d = res.data;
+      const d = res.success && res.data ? res.data : refuse("trial balance");
       const periodic = !!d?.start_date;
       const rows: Record<string, string | number | null>[] = (d?.lines ?? []).map((l) => ({
         "Account Code": l.account_code, "Account Name": l.account_name, "Type": l.account_type,
@@ -4157,25 +4171,27 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     if (reportType === "pl") {
       const res = (await api.accounting.profitLoss({ basis, start_date: start, end_date: end, client_id: clientId })) as
         { success: boolean; data: PLApiData | null };
-      const d = res.data;
+      // The three sections are checked here, where the answer is read: `d?.revenue.lines` passed `{}` to the read and threw there.
+      const d = res.success && res.data && res.data.revenue && res.data.cost_of_sales && res.data.operating_expenses
+        ? res.data : refuse("profit and loss");
       const rows: Record<string, string | number | null>[] = [];
       // Prefer the backend's own Schedule III caption (single source of
       // truth); plBucket() is only a fallback for the brief window where the
       // frontend has redeployed ahead of the backend.
       const captionOf = (l: PLApiLine, type: string) => l.schedule_iii_caption ?? plBucket(type, l.account_subtype ?? null);
-      for (const l of d?.revenue.lines ?? [])
+      for (const l of d.revenue.lines ?? [])
         rows.push({ "Schedule III Category": captionOf(l, "Revenue"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Revenue", "Amount (₹)": money(l.amount_paise) });
-      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d?.revenue.total_paise ?? 0) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Revenue", "Type": "", "Amount (₹)": money(d.revenue.total_paise ?? 0) });
       // Cost of Goods Sold — own section, separate from operating_expenses
       // (see PLApiData above); both bucket into "Cost of Materials Consumed"
       // via the shared caption, so must be exported alongside
       // operating_expenses or the XLSX undercounts Total Expenses the same
       // way the on-screen P&L did.
-      for (const l of d?.cost_of_sales.lines ?? [])
+      for (const l of d.cost_of_sales.lines ?? [])
         rows.push({ "Schedule III Category": captionOf(l, "Expense"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
-      for (const l of d?.operating_expenses.lines ?? [])
+      for (const l of d.operating_expenses.lines ?? [])
         rows.push({ "Schedule III Category": captionOf(l, "Expense"), "Account Code": l.account_code ?? "", "Account Name": l.account_name, "Type": "Expense", "Amount (₹)": money(l.amount_paise) });
-      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money((d?.cost_of_sales.total_paise ?? 0) + (d?.operating_expenses.total_paise ?? 0)) });
+      rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Total Expenses", "Type": "", "Amount (₹)": money((d.cost_of_sales.total_paise ?? 0) + (d.operating_expenses.total_paise ?? 0)) });
       rows.push({ "Schedule III Category": "", "Account Code": "", "Account Name": "Net Profit", "Type": "", "Amount (₹)": money(d?.net_profit_paise ?? 0) });
       return { rows, sheetName: `P&L ${basisLabel}`.slice(0, 31),
                moneyColumns: ["Amount (₹)"] };
@@ -4183,7 +4199,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
 
     const res = (await api.accounting.balanceSheet({ basis, as_of_date: end, client_id: clientId })) as
       { success: boolean; data: BSApiData | null };
-    const d = res.data;
+    const d = res.success && res.data ? res.data : refuse("balance sheet");
     const rows: Record<string, string | number | null>[] = [];
     const section = (secs: BSApiSection[] | undefined, type: string) => {
       for (const s of secs ?? []) for (const l of s.lines ?? [])

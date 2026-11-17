@@ -283,7 +283,9 @@ function DeductionsTab({ clientId }: { clientId: string }) {
 
 // ── Challans ───────────────────────────────────────────────────────────────
 
-const EMPTY_CHALLAN_FORM = { challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" };
+// `deduction_month` (POST-A-267): on a salary challan, the wage month (YYYY-MM) whose tax it deposits; blank on any other. The server
+// refuses it on another section or outside the challan's quarter, in words, and says what it closed on the compliance calendar.
+const EMPTY_CHALLAN_FORM = { challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1", deduction_month: "" };
 
 function ChallansTab({ clientId }: { clientId: string }) {
   // Recording a challan or a certificate and preparing a return ask `tds` `compute`; a Reviewer's is read only (POST-A-455).
@@ -413,6 +415,7 @@ function ChallansTab({ clientId }: { clientId: string }) {
               { key: "section", placeholder: "TDS Section (e.g. 194C)" },
               { key: "amount_rupees", placeholder: "Amount (₹)" },
               { key: "financial_year", placeholder: "FY (e.g. 2025-26)" },
+              { key: "deduction_month", placeholder: "Wage month, salary challans only (e.g. 2025-07)" },
             ].map(({ key, placeholder, date }: { key: string; placeholder: string; date?: boolean }) => date ? (
               // The one date box: a typed "07/10/2026" is read by the one rule and sent as the ISO date. That it is a day, and not after today in India, is judged here,
               // as at the server: the bank has taken the tax by the day the challan is dated. How far back it may go is the period lock's, and nothing in this screen knows.

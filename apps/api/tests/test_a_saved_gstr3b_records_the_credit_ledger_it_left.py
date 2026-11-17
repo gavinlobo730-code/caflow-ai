@@ -175,8 +175,11 @@ def test_the_firm_level_save_writes_the_ten_columns_from_the_servers_block():
     src = (WEB / "lib" / "data" / "gst.ts").read_text(encoding="utf-8")
     fn = src[src.index("export async function saveGSTR3BReturn"):]
     upsert = fn[fn.index(".upsert({"):fn.index("}, {")] if "}, {" in fn else fn
+    # POST-A-360: the block is taken whole or not at all (`wholeCreditLedger`), so a block missing a part leaves the row as it was
+    # rather than storing half a ledger; every column still comes from the server's block, through that one name.
+    assert re.search(r"const ledger = wholeCreditLedger\(result\.credit_ledger\);", fn), "the save no longer reads the server's block whole"
     for col in TEN_COLUMNS:
-        assert re.search(rf"\b{col}:\s*result\.credit_ledger\?\.", upsert), (
+        assert re.search(rf"\b{col}:\s*ledger\?\.", upsert), (
             f"the firm-level GSTR-3B save no longer writes {col} from the server's block")
 
 

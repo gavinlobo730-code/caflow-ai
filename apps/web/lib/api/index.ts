@@ -5409,6 +5409,15 @@ export const api = {
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
     /**
+     * Whether this firm has a Partner approve every manual journal, and what the CALLER may do under it (POST-A-456). The posting
+     * doors ask the same function, so a screen offers Post only where `may_post` is true.
+     */
+    journalApproval: () => request<ApiResp<JournalApprovalRule>>("/api/accounting/journal-approval"),
+    /** A Partner turns the firm's manual-journal approval on or off (`settings` `write`). */
+    setJournalApproval: (approvalRequired: boolean) =>
+      request<ApiResp<JournalApprovalRule>>("/api/accounting/journal-approval",
+        { method: "PUT", body: JSON.stringify({ approval_required: approvalRequired }) }),
+    /**
      * Delete a manual journal entry — a draft always, a POSTED one while its
      * period is still open (migration 275, the same gate that governs editing
      * one). The server refuses an auto-posted entry, or a period closed by a
@@ -6034,6 +6043,8 @@ export const api = {
     reopenableTypes: () =>
       request<ApiResp<{ obligation_types: string[]; not_requirable_types?: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
+    /** The caller's own open obligations, the ones they are named on as preparer, reviewer or approver (POST-A-206). */
+    mine: () => request<ApiResp<Record<string, unknown>>>(`/api/compliance/obligations/mine`),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
   // Replaces the frontend's direct-Supabase health-score-compute.ts.
@@ -9524,4 +9535,12 @@ export interface ItrSeasonComputePayload {
   results: ItrSeasonComputeResult[];
   tally: Record<string, number>;
   did_not: string[];
+}
+
+/** `GET /api/accounting/journal-approval` (POST-A-456): the firm's setting and what the caller may do under it. */
+export interface JournalApprovalRule {
+  approval_required: boolean;
+  may_post: boolean;
+  may_approve: boolean;
+  may_change_setting: boolean;
 }
