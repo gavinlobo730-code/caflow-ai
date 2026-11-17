@@ -382,5 +382,10 @@ test("the workflow installs the exact version the walk pins, in the walk's own j
     assert.equal(pkg[section]?.["@axe-core/playwright"], undefined, "the product must not depend on the scanner");
     assert.equal(pkg[section]?.["axe-core"], undefined);
   }
-  assert.doesNotMatch(wf, /--no-axe/, "the nightly runs the scan");
+  // The nightly runs the scan. ONE pass is excused, by name, until its baseline exists (POST-A-036): the client-workspace
+  // pass (`--real-client`), whose routes carry a client id the baseline has no lines for, so every finding would read as
+  // new on the first night. Any other walk without the scan is still a failure here.
+  const withoutScan = wf.split("\n").filter((l) => !l.trimStart().startsWith("#") && /--no-axe/.test(l));
+  assert.deepEqual(withoutScan.filter((l) => !/--real-client/.test(l)), [], "the nightly runs the scan");
+  assert.ok(withoutScan.length <= 1, "only the client-workspace pass may skip the scan, and only the one pass");
 });
