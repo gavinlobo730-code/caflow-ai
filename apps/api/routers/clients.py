@@ -17,7 +17,7 @@ from services.audit_service import log_event
 from services.internal_client_service import assert_can_view_client
 from core.authz import effective_client_ids, can_access_client
 from core.ist_clock import ist_today
-from domain.practice.compliance_overdue import is_settled, overdue_records
+from domain.practice.compliance_overdue import is_filed, is_settled, overdue_records
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 _logger = logging.getLogger("caflow.clients")
@@ -205,7 +205,7 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
     # Ready To File/Filed/Completed/Overdue — capitalized, not System B's
     # lowercase pending/in_progress/filed/overdue/not_applicable).
     tasks = compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id)
-    open_compliance = [t for t in tasks if t.get("status") not in ("Filed", "Completed")]
+    open_compliance = [t for t in tasks if not is_settled(t.get("status"))]
     docs = document_repo.find_all(firm_id=firm_id, client_id=client_id)
     insights = ai_insights_repo.find_all(firm_id=firm_id, client_id=client_id)
     client_tasks = task_repo.find_all(firm_id=firm_id, client_id=client_id)
@@ -239,7 +239,7 @@ def get_client_workspace(client_id: str = Path(...), current_user: dict = Depend
             # Derived by date: nothing writes the stored word "Overdue" when a due date passes (domain/practice/compliance_overdue).
             "overdue_count": len(overdue_records(tasks, ist_today())),
             "pending_count": sum(1 for t in tasks if t.get("status") == "Not Started"),
-            "filed_count": sum(1 for t in tasks if t.get("status") in ("Filed", "Completed")),
+            "filed_count": sum(1 for t in tasks if is_filed(t.get("status"))),
             "document_count": len(docs),
             "open_insights": sum(1 for i in insights if i.get("status") == "open"),
         }

@@ -54,6 +54,7 @@ What it deliberately does not do:
 """
 from __future__ import annotations
 
+from domain.practice.compliance_overdue import is_filed, is_settled
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Optional
@@ -186,7 +187,7 @@ def close_for_recorded_remittance(
     if record is None:
         return [{**answer(NOT_ON_THE_CALENDAR, f"The client has no {what} on the compliance calendar, so none was closed."),
                  "month": wage_month, "needs_action": False}]
-    if record.get("status") in ("Filed", "Completed"):
+    if is_settled(record.get("status")):
         return []
     if not may_write_compliance:
         return [{**answer(NOT_ALLOWED, f"Your access does not include Compliance, so the {what} was left open. Someone with "
@@ -233,7 +234,7 @@ def note_after_retraction(*, db, firm_id: str, client_id: str, remittance: dict)
     record = next((r for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id, compliance_type=COMPLIANCE_TYPE)
                    if r.get("obligation_type") == OBLIGATION_TYPE and str(r.get("period_start") or "")[:10] == month_start.isoformat()),
                   None)
-    if record is None or record.get("status") not in ("Filed", "Completed"):
+    if record is None or not is_filed(record.get("status")):
         return None
     filed_on = str(record.get("filed_date") or "")[:10]
     return (f"The compliance calendar still shows the {_what(wage_month)} as filed"

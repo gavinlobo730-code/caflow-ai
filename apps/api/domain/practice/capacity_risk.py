@@ -73,7 +73,7 @@ NOT_FORECAST: tuple[str, ...] = (
     "How long anything takes, except where the task itself carries an "
     "estimate (copied from its template or workflow step when it was made). "
     "Nothing is averaged across the tasks that carry none, and a filing that is "
-    "not worked as a task has none at all.",
+    "not worked as a task has one only where the practice has stated how long that kind of filing takes.",
     "Who is available. Leave, notice periods and a new joiner's ramp-up are "
     "facts no table here holds, so the team figures are a headcount and a "
     "configured week, not an availability forecast.",

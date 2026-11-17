@@ -13,7 +13,7 @@ NOT a filing engine: it never submits anything, never touches GST/accounting/ban
 schemas, and never emails clients (escalations are internal only). All money/date
 logic is server-side; the pure helpers here are deterministic and unit-tested.
 """
-from domain.practice.compliance_overdue import is_overdue
+from domain.practice.compliance_overdue import SETTLED, is_overdue, is_settled
 from domain.tds import vocabulary
 import os
 import logging
@@ -39,7 +39,7 @@ _logger = logging.getLogger("caflow.compliance_ops")
 # engagement" decides which override a recorded hour bills under, and two sets
 # would make it mean two things in one product.
 from domain.billing.time_rate import ACTIVE_ENGAGEMENT_STATUSES as _ACTIVE_ENGAGEMENT_STATUSES
-_OPEN_OBLIGATION = lambda s: s not in ("Filed", "Completed")  # noqa: E731
+_OPEN_OBLIGATION = lambda s: not is_settled(s)  # noqa: E731
 
 # GSTR1/GSTR3B/PMT06 are the three obligation types whose PERIOD SHAPE depends
 # on the client's own GST filing frequency (Rule 61A) — a monthly and a
@@ -1436,7 +1436,7 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
     # Pushed server-side: escalate() only ever acts on open obligations, so
     # there's no reason to also fetch every Filed/Completed row just to
     # discard it in Python.
-    for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=("Filed", "Completed")):
+    for r in compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=SETTLED):
         if allowed_client_ids is not None and str(r.get("client_id")) not in allowed_client_ids:
             continue
         due = str(r.get("due_date", ""))[:10]
@@ -1576,7 +1576,7 @@ def client_names(firm_id: str, client_ids: set) -> dict:
     return _dashboard_names(firm_id, set(client_ids), set())[0]
 
 
-_DONE_STATUSES = ("Filed", "Completed")
+_DONE_STATUSES = SETTLED
 
 
 def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date] = None,
@@ -1618,7 +1618,7 @@ def calendar(firm_id: str, client_id: Optional[str] = None, today: Optional[date
         records = list(by_id.values())
     upcoming, overdue, completed = [], [], []
     for r in records:
-        if r.get("status") in ("Filed", "Completed"):
+        if is_settled(r.get("status")):      # filed, or recorded as not required of the client (POST-A-267)
             completed.append(r)
         elif is_overdue(r, today):          # the one rule (POST-A-280): by its date, or moved to "Overdue" by hand, whatever the date
             overdue.append(r)

@@ -50,7 +50,7 @@ from services.timeline_service import timeline_service
 from core.ist_clock import IST, ist_date_of, ist_today
 from domain.health.scoring import DIMENSION_WEIGHTS_BP, DIMENSIONS, grade, is_at_risk, is_critical, weighted_score
 from domain.health.overrides import apply_overrides, as_payload
-from domain.practice.compliance_overdue import overdue_records
+from domain.practice.compliance_overdue import FILED, SETTLED, overdue_records
 from core import db_provider
 from core.db_provider import privileged_for
 
@@ -325,7 +325,7 @@ def _detect_hard_override_db(db, client_id: str, firm_id: str) -> Optional[str]:
         itr = (db.table("compliance_records").select("id")
                .eq("firm_id", firm_id).eq("client_id", client_id)
                .eq("obligation_type", "ITR")
-               .not_.in_("status", ["Filed", "Completed"])
+               .not_.in_("status", list(SETTLED))
                .lt("due_date", six_months_ago).limit(1).execute().data or [])
         if itr:
             return "itr_overdue_6months"
@@ -374,7 +374,7 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
         # client has a few dozen obligations a year, so this is not a read that grows with the ledger.
         unsettled = (db.table("compliance_records").select("id, status, due_date")
                      .eq("firm_id", firm_id).eq("client_id", client_id).is_("deleted_at", "null")
-                     .not_.in_("status", ["Filed", "Completed"]).execute().data or [])
+                     .not_.in_("status", list(SETTLED)).execute().data or [])
         score -= len(overdue_records(unsettled, ist_today())) * 25
     except Exception as exc:
         capture_soft_failure(exc, operation="health.dim_compliance_health_db.1", firm_id=firm_id, client_id=client_id)
@@ -382,7 +382,7 @@ def _dim_compliance_health_db(db, client_id: str, firm_id: str) -> int:
     try:
         filed = (db.table("compliance_records").select("due_date, filed_date")
                  .eq("firm_id", firm_id).eq("client_id", client_id)
-                 .in_("status", ["Filed", "Completed"]).execute().data or [])
+                 .in_("status", list(FILED)).execute().data or [])
         late_filings = [
             r for r in filed
             if r.get("filed_date") and r.get("due_date") and r["filed_date"] > r["due_date"]
@@ -774,7 +774,7 @@ def _dimension_detail_db(db, client_id: str, firm_id: str, dimension: str) -> li
             # The one rule (POST-A-280), not the date alone: the unsettled obligations are read and `overdue_records` judges them.
             overdue = overdue_records((db.table("compliance_records").select("id, status, period_label, compliance_type, due_date")
                                        .eq("firm_id", firm_id).eq("client_id", client_id).is_("deleted_at", "null")
-                                       .not_.in_("status", ["Filed", "Completed"]).execute().data or []), today)
+                                       .not_.in_("status", list(SETTLED)).execute().data or []), today)
             for t in overdue[:5]:
                 label = t.get("period_label") or t.get("compliance_type") or "Return"
                 factors.append({

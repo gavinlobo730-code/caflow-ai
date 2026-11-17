@@ -23,6 +23,8 @@ const NEXT_STATUS: Record<string, string[]> = {
   "Filed": ["Completed"],
   "Completed": [],
   "Overdue": ["In Progress", "Awaiting Documents"],
+  // Reached and left only with a written reason, from Deadlines or the client's Compliance tab (POST-A-267, item 4).
+  "Not Required": [],
 };
 const STATUS_BADGE: Record<string, string> = {
   "Not Started": "bg-gray-100 text-gray-600",
@@ -33,6 +35,7 @@ const STATUS_BADGE: Record<string, string> = {
   "Filed": "bg-state-ready-surface text-state-ready",
   "Completed": "bg-state-ready-surface text-state-ready",
   "Overdue": "bg-state-problem-surface text-state-problem",
+  "Not Required": "bg-ps-muted text-ps-label",
 };
 
 interface Obligation {
@@ -78,7 +81,7 @@ interface Dashboard {
 /** Whether a queue row is late: the server's flag, with the old reading only for the window where this page is deployed ahead of the
  *  backend that sends it. */
 function isLate(o: Obligation, today: string): boolean {
-  return o.overdue ?? (o.status !== "Filed" && o.status !== "Completed" && o.due_date < today);
+  return o.overdue ?? (o.status !== "Filed" && o.status !== "Completed" && o.status !== "Not Required" && o.due_date < today);
 }
 
 function ComplianceDashboard() {

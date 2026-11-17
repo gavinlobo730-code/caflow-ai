@@ -30,7 +30,8 @@ from core.authz import filter_by_client
 from core.db_paging import fetch_all
 from core.ist_clock import ist_today
 from domain.practice import capacity_risk as rule
-from domain.practice import task_estimate
+from domain.practice import obligation_estimate, task_estimate
+from repositories.compliance_effort_repository import compliance_effort_repo
 from domain.risk.register import SETTLED_FILING_STATUSES
 from repositories.capacity_repository import DEFAULT_WEEKLY_HOURS
 
@@ -137,6 +138,9 @@ def capacity_risk(db, current_user: dict, *,
     # which is the biggest population in that table. The fold is COUNTED, not
     # silent: a partner comparing this with the deadline list would otherwise
     # read the difference as the forecast being short.
+    # What the firm itself says one filing of each kind takes (POST-A-212, migration 671). An obligation worked as a task is counted by
+    # that task's own estimate above and never here; a kind the firm has not stated stays None, which the rule counts and never averages.
+    stated = obligation_estimate.hours_by_type(compliance_effort_repo.find_all(firm_id=firm_id))
     folded = 0
     for o in obligations:
         linked = o.get("task_id")
@@ -146,7 +150,7 @@ def capacity_risk(db, current_user: dict, *,
         items.append(rule.DueItem(
             due_date=o.get("due_date") or "",
             source="compliance",
-            effort_hours=None,       # nothing records how long a filing takes
+            effort_hours=stated.get(str(o.get("compliance_type") or "")),   # None unless the firm stated it for this kind
             label=o.get("compliance_type"),
         ))
 

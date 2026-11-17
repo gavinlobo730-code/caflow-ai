@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import { getClients } from "@/lib/data/clients";
 import { OpenWorkPanel } from "@/components/team/OpenWorkPanel";
+import { FilingEffortPanel } from "@/components/team/FilingEffortPanel";
 import type { Client, TeamWorkload, WorkloadMember } from "@/lib/types";
 import { Callout } from "@/components/ui/callout";
 import Link from "next/link";
@@ -369,6 +370,8 @@ export default function WorkloadPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingMember, setEditingMember] = useState<WorkloadMember | null>(null);
+  // Bumped when a filing-time figure changes, so the forecast above it is read again with the new figure.
+  const [forecastVersion, setForecastVersion] = useState(0);
   // Only names for the task lists below; a failure to load them costs the lists
   // their client names and nothing else.
   const [clients, setClients] = useState<Client[]>([]);
@@ -460,7 +463,8 @@ export default function WorkloadPage() {
       {/* Rendered unconditionally rather than inside the `workload` branch: the
           forecast is its own fetch and a slow or refused workload read must not
           take the one answer no other screen gives with it. */}
-      <CapacityRiskPanel />
+      <CapacityRiskPanel key={forecastVersion} />
+      <FilingEffortPanel onChanged={() => setForecastVersion((v) => v + 1)} />
 
       {loading && !workload ? (
         <LoadingRegion label="Loading workload data" noticeClassName="justify-center text-center">

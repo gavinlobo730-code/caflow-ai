@@ -5,6 +5,7 @@ from typing import Optional
 from core.db_paging import fetch_all
 from repositories.base import BaseRepository
 from core import db_provider
+from domain.practice.compliance_overdue import FILED, is_filed
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 
@@ -176,13 +177,13 @@ class ComplianceRecordsRepository(BaseRepository[dict]):
         ids = sorted({str(c) for c in challan_ids if c})
         if _USE_MOCK:
             record = self.find_by_id(id)
-            if not record or str(record.get("firm_id")) != str(firm_id) or record.get("status") not in ("Filed", "Completed"):
+            if not record or str(record.get("firm_id")) != str(firm_id) or not is_filed(record.get("status")):
                 return False
             record.update({"closing_tds_challan_ids": ids, "updated_at": self.now_iso()})
             return True
         result = (_get_db().table("compliance_records")
                   .update({"closing_tds_challan_ids": ids, "updated_at": self.now_iso()})
-                  .eq("id", id).eq("firm_id", firm_id).in_("status", ["Filed", "Completed"]).execute())
+                  .eq("id", id).eq("firm_id", firm_id).in_("status", list(FILED)).execute())
         return bool(result.data)
 
     def soft_delete(self, id: str) -> bool:

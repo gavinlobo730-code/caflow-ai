@@ -43,6 +43,7 @@ from __future__ import annotations
 from typing import Iterable, Optional
 
 from domain.health import scoring
+from domain.practice.compliance_overdue import FILED as _FILED, NOT_REQUIRED
 
 #: Bumped whenever the SHAPE OR MEANING of the stored payload changes. The
 #: dashboard is cached for an hour in `ai_summaries.metadata`; a row written by
@@ -58,8 +59,8 @@ from domain.health import scoring
 #: cached row from before counts those clients as healthy.
 DASHBOARD_VERSION = 7
 
-#: Compliance statuses that mean the obligation is done.
-FILED = ("Filed", "Completed")
+#: Compliance statuses that mean the obligation was filed (`domain/practice/compliance_overdue`, the one place that names them).
+FILED = _FILED
 
 
 def score_of(client: dict) -> Optional[int]:
@@ -183,6 +184,8 @@ def compliance_coverage(records: Iterable[dict], fy_start: str, today: str) -> d
         d = str(r.get("due_date") or "")[:10]
         if not d or not (fy_start <= d <= today):
             continue
+        if r.get("status") == NOT_REQUIRED:
+            continue                         # recorded as not owed by the client (POST-A-267): neither due nor a failure to file
         due += 1
         if r.get("status") in FILED:
             filed += 1

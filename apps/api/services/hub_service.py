@@ -47,6 +47,7 @@ from domain.banking import entry as bank_entry
 from domain.hub.tiles import describe, not_recorded_caveat, tiles_for_scope
 from core import db_provider
 from services import tds_position_service
+from domain.practice.compliance_overdue import SETTLED
 
 logger = logging.getLogger("caflow.hub")
 
@@ -90,7 +91,7 @@ _JOURNAL_DONE = ("posted", "void")
 _PAYROLL_DONE = ("finalized", "paid")          # PAY-04's `_PAYROLL_RELEASED`
 _GST_RETURN_DONE = ("submitted",)
 _ITR_DONE = ("filed",)
-_COMPLIANCE_DONE = ("Filed", "Completed")
+_COMPLIANCE_DONE = SETTLED          # an obligation not required of the client is not outstanding (POST-A-267)
 _YEAR_END_DONE = ("locked",)
 
 # ── The two MONEY tiles ask a different question of their documents ─────────
@@ -120,7 +121,7 @@ _ALL = {
     "itr_filings": ("draft", "review", "partner_review", "ready_for_filing", "filed"),
     "compliance_records": ("Not Started", "Awaiting Documents", "In Progress",
                            "Ready For Review", "Ready To File", "Filed",
-                           "Completed", "Overdue"),
+                           "Completed", "Overdue", "Not Required"),
     "year_end_engagements": ("draft", "in_review", "approved", "locked"),
     # Held so the `_pg` guard can prove `_DEAD_DOCUMENT` names real states of
     # BOTH checks — a dead state spelled wrong would exclude nothing, silently.

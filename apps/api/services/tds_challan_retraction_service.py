@@ -48,6 +48,7 @@ from core.db_provider import privileged_for
 from domain.tds import deposit_due
 from repositories.compliance_records_repository import compliance_records_repo
 from services import tds_deposit_closes_obligation as deposit_closer
+from domain.practice.compliance_overdue import is_filed
 
 _logger = logging.getLogger("caflow.tds.challan_retraction")
 
@@ -134,7 +135,7 @@ def calendar_effect(*, firm_id: str, client_id: str, challan: dict, reason: Opti
             str(challan.get("financial_year") or ""), str(challan.get("quarter") or ""))}
         filed = [rec for rec in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id,
                                                                  compliance_type=deposit_closer.COMPLIANCE_TYPE)
-                 if rec.get("obligation_type") == deposit_closer.OBLIGATION_TYPE and rec.get("status") in ("Filed", "Completed")]
+                 if rec.get("obligation_type") == deposit_closer.OBLIGATION_TYPE and is_filed(rec.get("status"))]
     except Exception as exc:                                # noqa: BLE001
         from core.observability import capture_soft_failure
         capture_soft_failure(exc, operation="tds.challan_retraction.calendar_note", firm_id=firm_id, client_id=client_id)

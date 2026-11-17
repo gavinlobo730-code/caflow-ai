@@ -89,7 +89,7 @@ test("the rule is read three times before the screen gives up and offers nothing
 
 test("the data layer reads a failed rule as 'offer nothing' and throws the server's refusal", () => {
   const rule = DATA.slice(DATA.indexOf("export async function getReopenRule"));
-  assert.ok(/return \{ types: \[\], maxReasonChars: 500 \};\s*\}/.test(rule), "a failed read of the rule does not fall back to offering nothing");
+  assert.ok(/return \{ types: \[\], maxReasonChars: 500, notRequirableTypes: \[\] \};\s*\}/.test(rule), "a failed read of the rule does not fall back to offering nothing");
   assert.ok(/if \(!res\?\.success\) throw new Error\(res\?\.error \?\? "The obligation could not be reopened\."\)/.test(DATA),
     "a refusal is not thrown with the server's sentence");
 });
