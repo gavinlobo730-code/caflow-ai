@@ -253,3 +253,106 @@ export const Boxes = (p: IconProps) => (
     <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
   </Icon>
 );
+
+// ── Marks the redrawn product screens need (components/home/screens/) ──────────
+// They stand where the product's own icons stand on those screens (the client
+// top bar, the bank Entries toolbar, the GSTR-3B status row and the copilot).
+// They are this site's own simple marks, not copies of the product's.
+
+export const ChevronLeft = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m15 18-6-6 6-6" />
+  </Icon>
+);
+
+export const ChevronDown = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+);
+
+export const ChevronsUpDown = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m7 15 5 5 5-5" />
+    <path d="m7 9 5-5 5 5" />
+  </Icon>
+);
+
+export const LayoutGrid = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  </Icon>
+);
+
+export const Search = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.3-4.3" />
+  </Icon>
+);
+
+export const Settings = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 4.8 13.9 2.7 15.6 3.2 16 6 17.1 6.9 19.9 6.7 20.8 8.4 19.1 10.6 19.2 12 21.3 13.9 20.8 15.6 18 16 17.1 17.1 17.3 19.9 15.6 20.8 13.4 19.1 12 19.2 10.1 21.3 8.4 20.8 8 18 6.9 17.1 4.1 17.3 3.2 15.6 4.9 13.4 4.8 12 2.7 10.1 3.2 8.4 6 8 6.9 6.9 6.7 4.1 8.4 3.2 10.6 4.9Z" />
+  </Icon>
+);
+
+export const Upload = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="m17 8-5-5-5 5" />
+    <path d="M12 3v12" />
+  </Icon>
+);
+
+export const CheckCircle = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="m9 12 2 2 4-4" />
+  </Icon>
+);
+
+export const Undo = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 14 4 9l5-5" />
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+  </Icon>
+);
+
+export const Info = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 16v-4M12 8h.01" />
+  </Icon>
+);
+
+export const Plus = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 12h14M12 5v14" />
+  </Icon>
+);
+
+export const Send = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m22 2-7 20-4-9-9-4Z" />
+    <path d="M22 2 11 13" />
+  </Icon>
+);
+
+export const ThumbsUp = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M7 10v12" />
+    <path d="M15 5.9 14 10h5.8a2 2 0 0 1 1.9 2.6l-2.3 8a2 2 0 0 1-1.9 1.4H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.8a2 2 0 0 0 1.8-1.1L12 2a3.1 3.1 0 0 1 3 3.9Z" />
+  </Icon>
+);
+
+export const ThumbsDown = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M17 14V2" />
+    <path d="M9 18.1 10 14H4.2a2 2 0 0 1-1.9-2.6l2.3-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.8a2 2 0 0 0-1.8 1.1L12 22a3.1 3.1 0 0 1-3-3.9Z" />
+  </Icon>
+);

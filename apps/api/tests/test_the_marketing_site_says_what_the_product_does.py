@@ -1,8 +1,8 @@
 """
 Guards on apps/marketing that the marketing site cannot enforce for itself.
 
-WHY THESE LIVE HERE. apps/marketing has no test runner of its own — it lints,
-typechecks and builds, and that is all. These four things are each a defect that
+WHY THESE LIVE HERE. apps/marketing's own CI lints, typechecks, builds and (since
+16-11-2026) runs `pnpm test`, but it is path-filtered and not a required check. These four things are each a defect that
 ships silently and that CI would otherwise never see, so they are asserted from
 the backend suite, which is one of the two required checks on `main`. It is the
 same reasoning as tests/test_the_browser_fallback_speaks_the_engines_vocabulary.py:

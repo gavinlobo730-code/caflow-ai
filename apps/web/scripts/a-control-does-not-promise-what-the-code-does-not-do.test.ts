@@ -5,7 +5,7 @@
 // utility accepts; (2) the marketing home page said the ITR JSON was "ready to
 // file" while the generator always refuses (pinned from the Python side in
 // apps/api/tests/test_the_marketing_site_does_not_claim_what_the_code_does_not_do.py,
-// because the marketing app has no test runner of its own); (3) "Generate
+// because the claim is held to the backend's generator); (3) "Generate
 // certificate" inserted a pending register row and produced no document — Form
 // 16 / 16A come only from TRACES.
 //

@@ -29,9 +29,9 @@ What it deliberately does NOT do, and this file holds that too:
     left out of the SITEMAP instead: a URL blocked in robots.txt can still be
     listed, without a description, which is the opposite of the intent).
 
-THE GUARD IS ON THE PYTHON SIDE: apps/marketing has no test runner, and this is
-the suite whose required check runs on a marketing-only diff (backend-ci's `scope`
-job counts apps/marketing).
+THE GUARD IS ON THE PYTHON SIDE: apps/marketing's own runner (`pnpm test`, since
+16-11-2026) runs only in the path-filtered Marketing CI, and this is the suite that
+runs on a marketing-only diff (backend-ci's `scope` job counts apps/marketing).
 """
 import re
 from pathlib import Path

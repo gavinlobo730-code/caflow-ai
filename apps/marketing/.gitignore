@@ -6,6 +6,9 @@
 /out/
 next-env.d.ts
 
+# the reports scripts/quality-pass.mjs writes (kept as a workflow artifact, never committed)
+/.qa/
+
 # misc
 *.tsbuildinfo
 .DS_Store

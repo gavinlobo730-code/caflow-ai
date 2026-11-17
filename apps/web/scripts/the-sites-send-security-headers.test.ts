@@ -39,7 +39,7 @@
 //
 // NOT HELD HERE: that Cloudflare applies the file (scripts/check-live-headers.mjs asks the live site), that the
 // product renders under the policy (scripts/smoke-walk.mjs applies out/_headers and fails on a violation), and
-// anything about the marketing app's own build, which has no test runner (the Python side reads its script).
+// anything about the marketing app's own build (the Python side reads its script).
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

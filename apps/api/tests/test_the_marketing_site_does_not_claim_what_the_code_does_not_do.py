@@ -37,8 +37,8 @@ clients' books.
 
 The guard is on the PYTHON side — the Schedule III caption lesson: a test in
 `apps/marketing` would assert the site against a copy of itself. The marketing
-app has no test runner of its own, so this is also the only place the TDS dates
-can be pinned to `compliance_engine`.
+app's own runner (`pnpm test`, since 16-11-2026) cannot import the backend, so
+this is also the only place the TDS dates can be pinned to `compliance_engine`.
 """
 import re
 from pathlib import Path

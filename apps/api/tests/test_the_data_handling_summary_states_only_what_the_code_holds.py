@@ -43,7 +43,7 @@ name field; and everything a person types or uploads, which the other card cover
 
 THE PYTHON PORT OF A TYPESCRIPT RULE. "No session-replay or screen-recording tool" is held for the product by
 `apps/web/scripts/the-browser-reports-crashes-without-recording-screens.test.ts`, a TypeScript test. The
-claims ledger names only Python tests as proof, and the marketing app has no test runner at all, so the rule
+claims ledger names only Python tests as proof (the marketing app's own `pnpm test` is not one it can name), so the rule
 is restated here over BOTH apps: no replay integration or sample rate in the source, no replay or recording
 package in either `package.json`. It is a scan of what is in the repository. It cannot see a tool injected at
 the edge or switched on in a dashboard, and the ledger's `not_proved` says so.
