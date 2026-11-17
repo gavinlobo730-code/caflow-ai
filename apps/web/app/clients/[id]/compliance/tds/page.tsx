@@ -821,7 +821,11 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               <div className="border-t pt-3 space-y-2">
                 <div className={`text-sm px-3 py-2 rounded ${matched ? "bg-state-ready-surface text-state-ready" : "bg-state-attention-surface text-state-attention"}`}>
                   {!accountFound
-                    ? "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped."
+                    // The server's sentence when it has one (POST-A-083): two accounts that could each be the salary TDS
+                    // account are named there, and "couldn't find" would be false.
+                    ? (typeof rec?.account_note === "string" && rec.account_note
+                      ? `⚠ ${rec.account_note} Reconciliation skipped.`
+                      : "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped.")
                     : matched ? (rec.typed_paise ? "✓ The purchase bills and advances reconcile to the General Ledger" : "✓ Reconciled to the General Ledger")
                     : "⚠ Does not reconcile to the General Ledger — review before saving"}
                   {/* The server's own figure (POST-A-078): typed deductions are in the totals below and in no journal, so they are outside this check. */}

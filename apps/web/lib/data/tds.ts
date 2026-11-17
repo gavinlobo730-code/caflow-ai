@@ -191,6 +191,10 @@ export interface TDSReturnPayload {
     /** POST-A-078. The tax of the deductions typed on the TDS screen that the statement carries: no journal stands behind them, so the tie-out above does not
      *  compare it. Absent from a statement built before the field existed. */
     typed_paise?: number;
+    /** The account the tie-out read (24Q: the payroll resolver's answer, POST-A-083). */
+    account_name?: string | null;
+    /** Why no account was read when the server can say (24Q: two accounts could each be the salary TDS account, named). */
+    account_note?: string | null;
   };
   excluded_non_resident?: {
     bill_count: number;

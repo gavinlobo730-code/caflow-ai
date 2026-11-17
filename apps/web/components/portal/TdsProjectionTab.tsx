@@ -33,6 +33,16 @@ import { LoadingRegion } from "@/components/ui/skeleton";
 interface MonthRow {
   month: string;
   actual: boolean;
+  /** A month before your employer's payroll ran here (POST-A-082): what it paid is in the opening position, in total, so the
+   *  month's own figures are null and are shown as a dash, never as a paid nothing. */
+  opening?: boolean;
+  gross_paise: number | null;
+  tds_paise: number | null;
+}
+
+interface OpeningPosition {
+  first_month_here: string;
+  months_paid: number;
   gross_paise: number;
   tds_paise: number;
 }
@@ -46,8 +56,12 @@ interface Projection {
   projected_monthly_gross_paise: number;
   estimated_annual_tds_paise: number;
   estimated_annual_gross_paise: number;
+  opening_position?: OpeningPosition | null;
   gaps: string[];
 }
+
+/** A month's own figure, or a dash when the server sent none (a month inside the opening position). */
+const monthFigure = (paise: number | null | undefined) => (paise == null ? "—" : formatPaise(paise));
 
 export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) {
   // The year list is DERIVED from the clock, never listed — a hardcoded array
@@ -130,13 +144,19 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
                 {data.months.map((m) => (
                   <tr key={m.month}>
                     <td className="px-5 py-2 text-ps-ink">{formatMonthYear(m.month)}</td>
-                    <td className="px-5 py-2 text-right tabular-nums">{formatPaise(m.gross_paise)}</td>
-                    <td className="px-5 py-2 text-right tabular-nums">{formatPaise(m.tds_paise)}</td>
+                    <td className="px-5 py-2 text-right tabular-nums">{monthFigure(m.gross_paise)}</td>
+                    <td className="px-5 py-2 text-right tabular-nums">{monthFigure(m.tds_paise)}</td>
                     <td className="px-5 py-2">
                       {/* A PAID month and an EXPECTED one must never look the
                           same: one is what came out of a payslip, the other is
-                          an estimate that can still move. */}
-                      {m.actual ? (
+                          an estimate that can still move. A month before the
+                          payroll ran here is neither: its pay is in the opening
+                          position, in total. */}
+                      {m.opening ? (
+                        <span className="text-2xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label">
+                          Before this payroll (in the opening position)
+                        </span>
+                      ) : m.actual ? (
                         <span className="text-2xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
                           Paid
                         </span>
@@ -151,6 +171,18 @@ export function TdsProjectionTab({ onToast }: { onToast: (m: string) => void }) 
               </tbody>
             </table>
           </div>
+
+          {/* The opening position's totals, once, beside the months it covers. */}
+          {data.opening_position && (
+            <div className="px-5 py-3 border-t border-ps-border">
+              <p className="text-2xs text-ps-label">
+                Before {formatMonthYear(data.opening_position.first_month_here)} your employer&apos;s payroll was not run
+                here. For those {data.opening_position.months_paid} month(s) your employer recorded{" "}
+                {formatPaise(data.opening_position.gross_paise)} paid and {formatPaise(data.opening_position.tds_paise)}{" "}
+                tax deducted, in total; that is counted in &quot;Deducted so far&quot; and &quot;Months paid&quot; above.
+              </p>
+            </div>
+          )}
 
           {/* The caveats are the server's sentences, rendered where the figures
               are. A projection read without them is taken for a decision. */}
