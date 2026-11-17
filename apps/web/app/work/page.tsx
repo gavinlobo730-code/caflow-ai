@@ -113,7 +113,9 @@ function MyObligationsCard({ data, error }: { data: MyObligations | null; error:
         {error ? (
           <p className="text-sm text-state-problem text-center py-4">Your obligations could not be read: {error}</p>
         ) : data === null ? (
-          <p className="text-sm text-ps-hint text-center py-4">Reading your obligations…</p>
+          <LoadingRegion label="Reading your obligations" noticeClassName="justify-center text-center">
+            <p className="text-sm text-ps-hint text-center py-4">Reading your obligations…</p>
+          </LoadingRegion>
         ) : data.obligations.length === 0 ? (
           <p className="text-sm text-ps-hint text-center py-4">You are not named as preparer, reviewer or approver on any open obligation.</p>
         ) : (
