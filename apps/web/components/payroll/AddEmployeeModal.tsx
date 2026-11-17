@@ -138,7 +138,7 @@ export function AddEmployeeModal({
     : [];
   const removedAt = (field: EmployeeIdentifier) => removed.find((r) => r.field === field)?.sentence ?? null;
   const boxClass = (field: EmployeeIdentifier, extra = "") =>
-    `w-full border rounded-lg px-3 py-2 text-sm${extra}${removedAt(field) ? " border-red-500" : ""}`;
+    `w-full border rounded-lg px-3 py-2 text-sm${extra}${removedAt(field) ? " border-state-problem" : ""}`;
 
   async function save() {
     if (dates.first) { dates.refuseWith(setErr, undefined, ""); return; }
@@ -293,7 +293,7 @@ export function AddEmployeeModal({
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">PAN</label>
             <input aria-label="PAN" aria-invalid={removedAt("pan") ? true : undefined} className={boxClass("pan", " uppercase")} value={form.pan} onChange={e => setForm(f => ({ ...f, pan: e.target.value }))} maxLength={10} />
-            {removedAt("pan") && <p role="alert" className="text-3xs text-red-600 mt-0.5">{removedAt("pan")}</p>}
+            {removedAt("pan") && <p role="alert" className="text-3xs text-state-problem mt-0.5">{removedAt("pan")}</p>}
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Designation</label>
@@ -468,14 +468,14 @@ export function AddEmployeeModal({
             <label className="block text-xs font-medium text-ps-body mb-1">UAN</label>
             <input aria-label="UAN" aria-invalid={removedAt("uan") ? true : undefined} className={boxClass("uan")} value={form.uan}
                    onChange={e => setForm(f => ({ ...f, uan: e.target.value }))} maxLength={12} inputMode="numeric" />
-            {removedAt("uan") && <p role="alert" className="text-3xs text-red-600 mt-0.5">{removedAt("uan")}</p>}
+            {removedAt("uan") && <p role="alert" className="text-3xs text-state-problem mt-0.5">{removedAt("uan")}</p>}
             <p className="text-3xs text-ps-hint mt-0.5">12 digits. Without it this member cannot go in the EPFO ECR.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">ESIC IP number</label>
             <input aria-label="ESIC IP number" aria-invalid={removedAt("esi_number") ? true : undefined} className={boxClass("esi_number")} value={form.esi_number}
                    onChange={e => setForm(f => ({ ...f, esi_number: e.target.value }))} />
-            {removedAt("esi_number") && <p role="alert" className="text-3xs text-red-600 mt-0.5">{removedAt("esi_number")}</p>}
+            {removedAt("esi_number") && <p role="alert" className="text-3xs text-state-problem mt-0.5">{removedAt("esi_number")}</p>}
             <p className="text-3xs text-ps-hint mt-0.5">Without it this member cannot go in the ESIC return.</p>
           </div>
           <div>
@@ -496,13 +496,13 @@ export function AddEmployeeModal({
             <label className="block text-xs font-medium text-ps-body mb-1">Bank account number</label>
             <input aria-label="Bank account number" aria-invalid={removedAt("bank_account_no") ? true : undefined} className={boxClass("bank_account_no")} value={form.bank_account_no}
                    onChange={e => setForm(f => ({ ...f, bank_account_no: e.target.value }))} />
-            {removedAt("bank_account_no") && <p role="alert" className="text-3xs text-red-600 mt-0.5">{removedAt("bank_account_no")}</p>}
+            {removedAt("bank_account_no") && <p role="alert" className="text-3xs text-state-problem mt-0.5">{removedAt("bank_account_no")}</p>}
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">IFSC</label>
             <input aria-label="IFSC" aria-invalid={removedAt("bank_ifsc") ? true : undefined} className={boxClass("bank_ifsc", " uppercase")} value={form.bank_ifsc}
                    onChange={e => setForm(f => ({ ...f, bank_ifsc: e.target.value }))} maxLength={11} />
-            {removedAt("bank_ifsc") && <p role="alert" className="text-3xs text-red-600 mt-0.5">{removedAt("bank_ifsc")}</p>}
+            {removedAt("bank_ifsc") && <p role="alert" className="text-3xs text-state-problem mt-0.5">{removedAt("bank_ifsc")}</p>}
             <p className="text-3xs text-ps-hint mt-0.5">The account and IFSC are what a salary payment file is built from.</p>
           </div>
           <div className="col-span-2">
