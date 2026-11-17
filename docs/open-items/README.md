@@ -53,9 +53,9 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 
 **THE BACKLOG: 436 open items** (15 before the demo, 421 after); 11 after-demo items are `high` priority; 24 are UNSURE. A further **150 items are parked** (not counted above).
 
-**Who must act (backlog).** 60 items are Claude's alone to build, but 17 of them are marked `waits on owner` (a statutory reading or a document only the owner can supply, written in [owner-list.md](owner-list.md)), so 43 can be built now. 176 need the owner to decide first and 200 only the owner or someone outside this container can do. In all **393 of the 436 wait on the owner.**
+**Who must act (backlog).** 60 items are Claude's by their letter. Of those, **30 need no help and can be built now**; 19 wait on the owner for a document or a statutory reading (written in [owner-list.md](owner-list.md)), 8 need the owner's hands (a real browser or phone, a step on the live database, or something this container is refused) and 3 are held by the owner's own rule. 176 need the owner to decide first and 200 only the owner or someone outside this container can do. In all **406 of the 436 need the owner.**
 
-**NEW FINDINGS: 21 open** (0 before the demo, 21 after; 2 `high` priority; 0 UNSURE), counted apart from the backlog. 14 are Claude's alone to build (8 of them `waits on owner`, so 6 can be built now), 6 need the owner to decide first and 1 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+**NEW FINDINGS: 21 open** (0 before the demo, 21 after; 2 `high` priority; 0 UNSURE), counted apart from the backlog. 14 are Claude's by their letter (**4 need no help and can be built now**, 8 wait on a document or reading, 2 need the owner's hands, 0 are held), 6 need the owner to decide first and 1 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
 
 <!-- counts:end -->
 
