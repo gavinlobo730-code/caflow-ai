@@ -12,8 +12,11 @@ WHAT IS HELD
     * the last year of a straight-line life takes what is left, and every earlier year is the floored figure;
     * through the single-month route and the range runner, every month of a year whose figure is 5 paise is reached: the nil months
       are passed (posted-through moves, no journal), the others post, and the year closes at its figure;
-    * a reversal of the month after a passed month goes back to the passed month, a passed month can itself be reversed, and the
-      months then post again to the same figure;
+    * a reversal of the month after a passed month goes back to the passed month where an earlier month of the run carries a journal,
+      a passed month can itself be reversed, and the months then post again to the same figure;
+    * a passed month with no journal before it cannot be told from a month a first posting foreclosed (FA-04 lets a first posting
+      start in any month), so the reversal of the month after it goes back to nothing: re-passing a nil month costs nothing, while a
+      mark left on a month that was never reached refuses every month before it that still carries a charge;
     * the projection passes a nil month as a posting does and ends fully depreciated.
 """
 from __future__ import annotations
@@ -102,12 +105,29 @@ def test_a_reversal_goes_back_to_a_passed_month_and_a_passed_month_can_be_revers
     out = fa.reverse_depreciation(row["id"], "2026-07", CALLER)["data"]
     assert out["reversed_paise"] == 0 and out["passed"] is True and out["depreciation_posted_through"] == "2026-06-30"
     assert int(row["accumulated_depreciation_paise"]) == 1
-    for period in ("2026-06", "2026-05", "2026-04"):
-        assert fa.reverse_depreciation(row["id"], period, CALLER)["success"]
+    # June is the run's first journal: April and May before it were passed with none, which is also what a first posting at June
+    # would have left, so the reversal of June goes back to nothing (and April and May are passed again below).
+    out = fa.reverse_depreciation(row["id"], "2026-06", CALLER)["data"]
+    assert out["depreciation_posted_through"] is None
     assert row["depreciation_posted_through"] is None and int(row["accumulated_depreciation_paise"]) == 0
     for period in YEAR:
         assert fa.post_depreciation(row["id"], DepreciationIn(period=period), CALLER)["success"]
     assert int(row["accumulated_depreciation_paise"]) == 5, "posted again, the year closes at its figure"
+
+
+def test_reversing_a_first_posting_does_not_leave_the_mark_on_a_month_it_foreclosed(monkeypatch):
+    # A five-paise year bought in April and first posted in August: April to July were foreclosed, not passed, though July's share
+    # is nil. Reversing August must go back to nothing, or April would be refused as already posted through and June's paisa lost.
+    db = _firm(monkeypatch)
+    row = _create(db, name="Pin", category="Intangibles", cost=25, life=5, method="SL", date="2026-04-01")
+    assert fa._month_share(5, "2026-07", None) == 0
+    out = fa.post_depreciation(row["id"], DepreciationIn(period="2026-08"), CALLER)["data"]
+    assert out["depreciation_paise"] == 1
+    out = fa.reverse_depreciation(row["id"], "2026-08", CALLER)["data"]
+    assert out["depreciation_posted_through"] is None, "July was never reached"
+    for period in YEAR:
+        assert fa.post_depreciation(row["id"], DepreciationIn(period=period), CALLER)["success"], period
+    assert int(row["accumulated_depreciation_paise"]) == 5, "June's paisa is posted and the year closes at its figure"
 
 
 def test_the_projection_passes_a_nil_month_and_ends_fully_depreciated():

@@ -2550,13 +2550,42 @@ def _was_passed(asset: dict, period: str) -> bool:
     return annual > 0 and monthly <= 0
 
 
+#: How many of an asset's earlier depreciation references `_an_earlier_month_was_posted` reads, newest first. Only the asset's own
+#: references match exactly; the bound is there so a read for one month never grows with the asset's life.
+_EARLIER_JOURNAL_PROBE = 24
+_MONTH_SUFFIX = re.compile(r"\d{4}-\d{2}")
+
+
+def _an_earlier_month_was_posted(db, asset: dict, before: str) -> bool:
+    """Whether this asset has a live depreciation journal for a month from its purchase month up to (not including) `before`.
+
+    The register is one unbroken run of months from its first posting (after that, a month may not be skipped, and a reversal takes
+    off the last month only), and every live journal of the asset is inside that run. So a journal before a passed month proves the
+    run began before it, and the month was reached rather than foreclosed by a first posting that started after it."""
+    code = asset.get("asset_code") or asset["id"][:8]
+    prefix = f"FA-DEPN-{code}-"
+    rows = (db.table("journal_entries").select("reference_no")
+            .eq("firm_id", asset["firm_id"]).eq("client_id", asset["client_id"]).eq("is_reversed", False)
+            .gte("reference_no", prefix + str(asset.get("purchase_date") or "")[:7]).lt("reference_no", prefix + before)
+            .order("reference_no", desc=True).limit(_EARLIER_JOURNAL_PROBE).execute().data) or []
+    # An exact match on this asset's own reference shape: another asset whose code begins with this one's sorts inside the range.
+    return any(str(r.get("reference_no") or "").startswith(prefix)
+               and _MONTH_SUFFIX.fullmatch(str(r["reference_no"])[len(prefix):]) for r in rows)
+
+
 def _posted_through_before(db, asset: dict, period: str) -> Optional[str]:
     """Where the register stood before `period` was posted: the month before it if that month was posted (a live journal) or passed
-    (POST-A-437, a nil share, no journal), else the opening position the asset was brought over at, else nothing.
+    (POST-A-437, a nil share, no journal) inside the run of postings, else the opening position the asset was brought over at, else
+    nothing.
 
     The previous month is only the mark if it was actually reached: the first posting may legitimately start at any month, so a
     purchase in April first charged in August goes back to nothing, not to July. A passed month has no journal, so the journal lookup
-    alone sent a reversal of the month after it back to nothing, and the next posting then foreclosed every month before it."""
+    alone sent a reversal of the month after it back to nothing, and the next posting then foreclosed every month before it. But a
+    nil share alone does not say the month was passed: in a year whose figure is under twelve paise, a month a first posting
+    foreclosed has a nil share too, and a mark left on it refuses every month before it that still carries a charge. So a passed
+    month counts only where the run reaches behind it: an earlier live journal of the asset, or the opening position it was brought
+    over at. A run of passed months with neither behind it goes back to nothing, which costs nothing: those months are nil, and
+    passing them again posts nothing."""
     firm_id, client_id = asset["firm_id"], asset["client_id"]
     previous = _previous_month(period)
     prev_ref = f"FA-DEPN-{asset.get('asset_code') or asset['id'][:8]}-{previous}"
@@ -2564,8 +2593,12 @@ def _posted_through_before(db, asset: dict, period: str) -> Optional[str]:
                    .eq("firm_id", firm_id).eq("client_id", client_id)
                    .eq("reference_no", prev_ref).eq("is_reversed", False)
                    .limit(1).execute().data) or [None])[0]
-    if prev_entry or (previous >= str(asset.get("purchase_date") or "")[:7] and _was_passed(asset, previous)):
+    if prev_entry:
         return _period_end_date(previous)
+    if previous >= str(asset.get("purchase_date") or "")[:7] and _was_passed(asset, previous):
+        opening_month = _month_label(asset.get("opening_position_date"))
+        if (opening_month and opening_month < previous) or _an_earlier_month_was_posted(db, asset, previous):
+            return _period_end_date(previous)
     # THE FIRST MONTH AFTER AN OPENING POSITION ROLLS BACK TO THAT POSITION, NOT TO
     # "NEVER DEPRECIATED" (accounting-18). The month before it has no journal — the
     # position was STATED, not posted — so the lookup above finds nothing and would

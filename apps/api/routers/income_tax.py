@@ -1534,6 +1534,10 @@ def advance_tax_unforeseen_income(
     the year's listed-equity gains in date order, and the surcharge from the
     FY-versioned registry's bracket for `total_income_paise` where the caller
     gives the year's total income (without it none is included, and it says so).
+    That bracket is the slab path's, so it is offered only where the client's
+    own entity type (read here, firm-scoped) makes it an individual, a HUF, an
+    AOP or a BOI; a firm, an LLP, a company or a client with no tax basis
+    recorded is offered no surcharge, and the sentence says why.
     A year the registry does not hold is never filled with another year's figure.
     It is still an estimate and is marked one: the CA replaces it with the
     computation's figure where they have it, and a candidate nobody includes
@@ -1583,7 +1587,11 @@ def advance_tax_unforeseen_income(
         transfers.append(unforeseen_offer.Transfer(
             r.get("id"), str(r["sale_date"])[:10], res.section_ref, res.gain_paise, res.tax_liability_paise))
         computed.append((r, res))
-    offers, notes = unforeseen_offer.offer(transfers, fy, total_income_paise)
+    client_rows = (db.table("clients").select("entity_type")
+                   .eq("firm_id", current_user["firm_id"]).eq("id", client_id)
+                   .limit(1).execute().data) or []
+    kind, _no_basis = assessee_kind_for_entity_type(client_rows[0].get("entity_type") if client_rows else None)
+    offers, notes = unforeseen_offer.offer(transfers, fy, total_income_paise, assessee_kind=kind)
     caveats.extend(notes)
     out = []
     for (r, res), o in zip(computed, offers, strict=True):

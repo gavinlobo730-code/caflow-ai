@@ -95,7 +95,8 @@ def books(monkeypatch):
     }
     monkeypatch.setattr(acc, "_reporting_service", lambda user: _Reporting(state))
     monkeypatch.setattr(stock_position_service, "position",
-                        lambda db, f, c, as_of, item_id=None: {"total_value_paise": 2_00_000_00 if as_of == "2026-03-31" else 1_00_000_00})
+                        lambda db, f, c, as_of, item_id=None: {"items": [{"service_catalogue_id": "i1"}],
+                                                               "total_value_paise": 2_00_000_00 if as_of == "2026-03-31" else 1_00_000_00})
     return state
 
 
@@ -140,6 +141,58 @@ def test_clause_40_with_no_turnover_has_no_ratio_not_a_zero_ratio(books):
     this = value["this_year"]
     assert this["turnover_paise"] == 0 and this["gross_profit_to_turnover_bps"] is None and this["stock_to_turnover_bps"] is None
     assert any("no ratio to turnover" in g for g in this["gaps"])
+
+
+def test_clause_40_with_no_item_in_the_stock_ledger_names_the_stock_and_shows_no_figure(books, monkeypatch):
+    # A client whose stock is held only as an Inventories balance in the ledger (a trial-balance import, a closing-stock journal)
+    # has no row in the stock ledger: the position is empty, and an empty position is not a closing stock of nil.
+    from services import stock_position_service
+    monkeypatch.setattr(stock_position_service, "position",
+                        lambda db, f, c, as_of, item_id=None: {"items": [], "total_value_paise": 0, "total_items": 0})
+    value, _ = svc._clause_40(None, FIRM, CLIENT, "2025-26", USER)
+    for year in (value["this_year"], value["preceding_year"]):
+        assert year["closing_stock_paise"] is None and year["stock_to_turnover_bps"] is None
+        assert any("No item is kept in the stock ledger" in g for g in year["gaps"]), year["gaps"]
+    assert value["this_year"]["gross_profit_to_turnover_bps"] == 4000, "the other ratios are unaffected"
+
+
+def test_clause_40_an_item_that_nets_to_nil_is_a_closing_stock_of_nil(books, monkeypatch):
+    from services import stock_position_service
+    monkeypatch.setattr(stock_position_service, "position",
+                        lambda db, f, c, as_of, item_id=None: {"items": [{"service_catalogue_id": "i1", "value_paise": 0}],
+                                                               "total_value_paise": 0})
+    value, _ = svc._clause_40(None, FIRM, CLIENT, "2025-26", USER)
+    assert value["this_year"]["closing_stock_paise"] == 0 and value["this_year"]["stock_to_turnover_bps"] == 0
+
+
+# ── a CA's own answer where nothing was derived ─────────────────────────────
+
+def test_a_cas_own_answer_is_shown_where_the_derived_clause_has_no_value():
+    reg = f3cd.build_register(client_id=CLIENT, financial_year="2025-26",
+                              derived={"33": (None, "No deduction claim is recorded on the computation workspace.")},
+                              manual={"33": "80C Rs 1,50,000 as per the CA's working"})
+    c33 = next(c for c in reg.clauses if c.code == "33")
+    assert c33.value == "80C Rs 1,50,000 as per the CA's working" and c33.derived is False
+    assert "Recorded by the CA" in c33.note and "No deduction claim is recorded" in c33.note
+
+
+def test_a_derived_figure_still_wins_over_a_cas_own_answer():
+    figure = {"total_claimed_paise": 1}
+    reg = f3cd.build_register(client_id=CLIENT, financial_year="2025-26",
+                              derived={"40": (figure, "from the P&L")}, manual={"40": "typed"})
+    c40 = next(c for c in reg.clauses if c.code == "40")
+    assert c40.value == figure and c40.derived is True
+
+
+def test_through_the_service_a_saved_answer_for_clause_33_is_read_back(monkeypatch):
+    from tests.e2e_harness import FakeDB
+    db = FakeDB()
+    db.seed("tax_audit_checklists", {"id": "k", "firm_id": FIRM, "client_id": CLIENT, "financial_year": "2025-26",
+                                     "clauses_json": {"33": "typed by the CA"}, "status": "draft"})
+    _claims(monkeypatch, [])
+    out = svc.build(db, FIRM, CLIENT, "2025-26", current_user=None)
+    c33 = next(c for c in out["clauses"] if c["code"] == "33")
+    assert c33["value"] == "typed by the CA" and c33["derived"] is False
 
 
 def test_clause_40_without_the_callers_scope_is_not_read():
