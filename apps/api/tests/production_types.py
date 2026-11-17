@@ -102,6 +102,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("purchase_credit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
     ("purchase_credit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
     ("purchase_credit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("tds_challans", "deduction_month"): "migration 695 (POST-A-267): the wage month a salary challan deposits, as typed; NULL = none stated",
 }
 
 
