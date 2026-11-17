@@ -24,6 +24,8 @@ import {
   type ReconciliationCheck,
   type ReconciliationCheckCatalogue,
 } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
   bankCountDecision, readingFromAnswer, unmatchedBankTile, type UnmatchedBankReading,
@@ -4096,6 +4098,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   const [loadingShared, setLoadingShared] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   // A report's link is being fetched: one at a time, so a second click does not open a second tab.
   const [openingReport, setOpeningReport] = useState(false);
   const [shareSuccess, setShareSuccess] = useState<string | null>(null);
@@ -4271,7 +4274,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       form.append("report_id", reportType);
       form.append("report_label", label);
       form.append("financial_year", financialYear);
-      const res = await api.accounting.shareReport(form);
+      const res = await api.accounting.shareReport(form, setSent);
       if (!res?.success) throw new Error(res?.error || "Share failed");
 
       setShareSuccess(reportType);
@@ -4280,6 +4283,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Share failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setSharing(null);
     }
   }
@@ -4333,6 +4337,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-ps-ink">{r.label}</p>
                 <p className="text-3xs text-ps-hint mt-0.5">{r.description}</p>
+                {sharing === r.id && sent && <UploadProgress progress={sent} what="the workbook" />}
               </div>
               <div className="flex items-center gap-2">
                 {/* No print button on these rows (PRE-A-016). It called window.print(),

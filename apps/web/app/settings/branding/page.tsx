@@ -7,6 +7,8 @@ import { Palette, Image as ImageIcon, Globe, Save, Upload, Eye } from "lucide-re
 import { useAuth } from "@/lib/auth/AuthContext";
 import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { PageHeader } from "@/components/ui/page-header";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -160,6 +162,7 @@ export default function BrandingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,7 +214,7 @@ export default function BrandingPage() {
     if (!file) return;
     setUploading(true);
     try {
-      const res = await api.branding.uploadLogo(file) as ApiResp<{ logo_url: string }>;
+      const res = await api.branding.uploadLogo(file, setSent) as ApiResp<{ logo_url: string }>;
       if (res.success) {
         setBranding((b) => ({ ...b, logo_url: res.data.logo_url }));
         showToast("Logo uploaded", "success");
@@ -219,6 +222,7 @@ export default function BrandingPage() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Upload failed", "error");
     } finally {
+      setSent(null);
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -283,6 +287,7 @@ export default function BrandingPage() {
                   </button>
                   <input aria-label="Logo image to upload" ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                 </div>
+                <UploadProgress progress={sent} what="the logo" />
                 <p className="text-xs text-ps-label">
                   The invoice PDF prints a PNG, JPEG or WebP logo of up to 2,000,000 bytes (about 2 MB) that the server can fetch within three seconds. An SVG, a larger file or one that does not answer in time is kept and shown here but is left off the invoice.
                 </p>
