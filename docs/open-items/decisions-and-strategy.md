@@ -93,7 +93,7 @@ Written on 30 Sep 2026 from the per-area improvement plans. Each decision gates 
 - **Open ledger items carrying them:** POST-B-147
 
 ### Decision 15. Approve moving the website hosting to Cloudflare Workers (decision D26) in your own Cloudflare account
-- **Why it matters:** A hidden limit of 100 rewrite rules already broke every reload of a client page once, and the budget now sits at 98 of 100. Workers removes the limit; it needs your account and a cutover.
+- **Why it matters:** A hidden limit of 100 rewrite rules already broke every reload of a client page once, and the budget now sits at 99 of 100, so one more client page goes past it. Workers removes the limit; it needs your account and a cutover.
 - **Cost or time:** About a day of work per the plan; no new subscription per the plan's own research (not re-checked). The repo says it is your call.
 - **Roadmap points it unlocks:** ops-26, frontend_ux-27, new client sections without breaking reloads
 - **Open ledger items carrying them:** POST-B-055
