@@ -542,11 +542,15 @@ def mark_calendar_entry_filed(
     # test_backend_columns_exist_pg.py can only read the column names out of a
     # literal dict — an .update(variable) is counted as an unreadable reference
     # and its columns stop being checked against the real schema.
-    updated = (db.table("compliance_calendar").update({
+    # The write goes on the privileged client, acting as the request's person (POST-A-208): the signed-in role holds no write on
+    # `compliance_calendar` once migration 707 applies. That client has no row security, so the statement names the firm AND the client
+    # `assert_client_access` just checked.
+    from core.db_provider import privileged_for
+    updated = (privileged_for(db).table("compliance_calendar").update({
         "filing_status": "filed",
         "filed_date": body.filed_date,
         "arn_number": arn,
-    }).eq("id", record_id).eq("firm_id", firm_id).execute().data or [])
+    }).eq("id", record_id).eq("firm_id", firm_id).eq("client_id", row.get("client_id")).execute().data or [])
     record = updated[0] if updated else {
         **row, "filing_status": "filed",
         "filed_date": body.filed_date, "arn_number": arn}
