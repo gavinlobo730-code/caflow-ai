@@ -1452,9 +1452,15 @@ real document with wrong figures.
   Python-side guard holds every kind the rule answers with to a label there.
   NOT done: the radar still judges each bill against its own month's 2B and
   does not move the claim to the later month's GSTR-3B; it only shows the two
-  facts as one. The BILL side of the key is not split by year: two withheld
-  bills of one supplier and number join nothing whatever their years, so the
-  late filing of one of them stays two rows (the conservative direction).
+  facts as one. **The BILL side of the key carries the bill's own year too**
+  (POST-A-460, no migration): it used to be supplier and number alone, so a
+  June 2025 bill '15' and a June 2026 bill '15' of one supplier 'shared a key'
+  and joined nothing, and when the 2025 one was furnished late it stayed two
+  rows and its credit was counted twice in the totals. Each bill is now keyed
+  by (supplier, number, its financial year), matched only against its own
+  year's document; two same-numbered bills in ONE year still join nothing, and
+  a bill whose date cannot be read joins nothing. Held by two tests in the same
+  file, one of which fails on the code before the change.
 - **A BULK GSTR-2B DROP NEVER PUTS AN OLDER DOWNLOAD OVER A NEWER
   RECONCILIATION, ACROSS REQUESTS TOO** (POST-A-057, part; no migration). What
   was wrong: the bulk door refused two files for one client and month in ONE

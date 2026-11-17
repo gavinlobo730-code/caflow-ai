@@ -332,8 +332,12 @@ def join_furnished_later(rows: list[dict], records: Iterable[dict],
     still March's year). A document of another year, or with no readable date,
     is left out BEFORE the one-bill / one-document test, so it neither joins nor
     makes the bill's own year's document ambiguous, and it stays on the
-    unbooked list. The bill side is unchanged: two withheld bills that share a
-    key join nothing, whatever their years, and both stay as they were.
+    unbooked list. THE BILL SIDE IS KEYED BY ITS OWN FINANCIAL YEAR TOO
+    (POST-A-460): two withheld bills of one supplier and number in DIFFERENT
+    years are two documents, so each is matched only against its own year's
+    document; two withheld bills that share a key in the SAME year join
+    nothing, and both stay as they were. A bill whose own date cannot be read
+    has no year and joins nothing.
     """
     from domain.gst.itc_matching import normalise_document_number
 
@@ -353,26 +357,28 @@ def join_furnished_later(rows: list[dict], records: Iterable[dict],
         if k:
             offered.setdefault(k, []).append(i)
 
-    waiting: dict[tuple[str, str], list[int]] = {}
+    # Rule 46(b): a number is one only within a financial year, on the bill side as on the document side (POST-A-460).
+    waiting: dict[tuple[str, str, str], list[int]] = {}
     for j, row in enumerate(rows):
         if row.get("kind") != KIND_WITHHELD or row.get("verdict") != rule_36_4.NOT_IN_2B:
             continue
         gstin, number = bill_keys.get(str(row.get("document_id") or ""), ("", ""))
         k = key(gstin, number)
-        if k:
-            waiting.setdefault(k, []).append(j)
+        year = _financial_year_of(row.get("document_date"))
+        if k and year:
+            waiting.setdefault((*k, year), []).append(j)
 
     used: set[int] = set()
     out = [dict(r) for r in rows]
-    for k, bills in waiting.items():
+    for (gstin_k, number_k, own_year), bills in waiting.items():
         if len(bills) != 1:
             continue
         j = bills[0]
         own = out[j].get("document_date") or ""
         own_period = f"{own[5:7]}{own[0:4]}" if len(own) >= 7 else ""
-        own_year = _financial_year_of(own)
         # Rule 46(b): the same number in another financial year is another document (see the docstring).
-        same_year = [i for i in offered.get(k, []) if own_year and _financial_year_of(records[i].get("invoice_date")) == own_year]
+        same_year = [i for i in offered.get((gstin_k, number_k), [])
+                     if _financial_year_of(records[i].get("invoice_date")) == own_year]
         later = [i for i in same_year if _later(str(records[i].get("return_period") or ""), own_period)]
         if len(same_year) != 1 or len(later) != 1:
             continue
