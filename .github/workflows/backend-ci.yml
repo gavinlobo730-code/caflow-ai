@@ -112,6 +112,14 @@ jobs:
     name: pytest — mock mode (Python 3.11)
     runs-on: ubuntu-latest
     needs: scope
+    # THE ONE JOB IN THIS FILE THAT WRITES ANYTHING TO GITHUB, and only a pull-request comment (POST-A-041): the coverage step's
+    # figures, in one comment the last step below edits on every push. `pull-requests: write` is for that comment and nothing
+    # else; `contents: read` is what the checkout needs. Naming a permission sets every one not named to none, so this job's token
+    # can do exactly those two things. A pull request from a fork still gets a read-only token whatever this says, and that
+    # step then warns and carries on.
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v7
@@ -184,6 +192,7 @@ jobs:
       # scripts/ci/coverage_floor.py holds each above a recorded floor in the next step. Only the mock-mode suite is
       # measured here: the real-Postgres tests run in the other job and are not part of this number.
       - name: Run tests (in-memory / FakeDB), in parallel, with coverage
+        id: tests
         if: needs.scope.outputs.api == 'true'
         working-directory: apps/api
         env:
@@ -211,6 +220,26 @@ jobs:
           name: backend-coverage
           path: apps/api/coverage.json
           retention-days: 14
+
+      # THE SAME FIGURES ON THE PULL REQUEST, IN ONE COMMENT THAT EVERY PUSH EDITS (POST-A-041). The script finds its own earlier
+      # comment by a hidden marker and edits it, and every body names the commit it measured, so twenty pushes leave one comment
+      # and an earlier push's figure is never read as this one's. It reads the report and the floors through coverage_floor.py, so
+      # the comment and the check cannot disagree.
+      #
+      # IT CAN NEVER TURN THE JOB RED: the script answers 0 whatever happens (a fork's read-only token, an API error) and says why
+      # in a warning, and the step is continue-on-error besides. The floor is held by the step above, not by this one.
+      #
+      # `!cancelled()` and not `success()`, ON PURPOSE: when the tests failed, or the coverage step found a package below its
+      # floor, the comment is still edited, to say there is no figure for this commit or which package is below. A comment left
+      # alone would go on showing the last good figure as though it were current.
+      - name: Post the coverage figures on the pull request
+        if: ${{ !cancelled() && needs.scope.outputs.api == 'true' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        working-directory: apps/api
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+        run: python3 scripts/ci/coverage_comment.py coverage.json
 
       - name: No backend changes
         if: needs.scope.outputs.api != 'true'
@@ -374,15 +403,18 @@ jobs:
   # the orphan-endpoint guard has no path of its own and would be missed by a
   # grep.
   #
-  # ⚠️ ONE RESIDUAL, NAMED RATHER THAN HIDDEN. The three `*_pg.py` frontend
-  # guards (columns exist, status vocabulary, auth-id FKs) self-skip here
-  # because they need HARNESS_PG, and giving this job a Postgres service means
-  # applying 470 migrations — the cost this job exists to avoid. They protect
-  # against a frontend change naming a column or status the schema does not
-  # have, which IS a real apps/web risk, and today that is caught only when the
-  # same PR also touches apps/api. Closing it properly means a mock-mode
-  # variant reading the committed production snapshot in tests/fixtures/
-  # instead of a live database; that is a build, not a config change.
+  # THE THREE `*_pg.py` FRONTEND GUARDS (columns exist, status vocabulary,
+  # auth-id FKs) still self-skip here, because they need HARNESS_PG and giving
+  # this job a Postgres service means applying ~600 migrations, the cost this
+  # job exists to avoid. What runs here instead is their mock-mode variant,
+  # tests/test_frontend_schema_guards_read_the_committed_files.py (POST-A-038):
+  # the same scanners asked of the production snapshot in tests/fixtures/ and
+  # the migrations read as text, so a frontend-only PR that names a column or
+  # status nothing declares, or writes a sign-in id into a key to users, fails
+  # here. The import rule above picks it up, as it does the orphan guard. It
+  # can only be weaker than the real guards, never stricter: the real-Postgres
+  # job holds its reading to a migration-built database
+  # (test_the_schema_read_from_the_committed_files_agrees_with_a_migration_built_database_pg.py).
   browser-contract:
     name: browser contract — python guards that read a frontend
     runs-on: ubuntu-latest

@@ -8,7 +8,7 @@ WHAT WAS LEFT
     `audit_log.actor_id` and `client_timeline_events.actor_id` are mixed on purpose. A key to `users(id)` is right for the nine and
     WRONG for the eleven. Nothing on a screen is wrong today (a reader that resolves a creator tries both ids), so what a wrong writer
     does is leave a column that two readers now disagree about. The model for this guard is
-    `test_users_fk_columns_take_the_internal_id.py`, which covers the keyed columns from the schema.
+    `test_users_fk_columns_take_the_internal_id_pg.py`, which covers the keyed columns from the schema.
 
 WHAT THIS HOLDS (mock mode, no database)
     * THE MAP. The twenty columns whose data was read are named below with the id each holds. It is data, not a rule written from

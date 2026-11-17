@@ -17,7 +17,9 @@ WHAT THE MEMBER CHECK IS
         `firm_id` (the writers set `first_run_dismissed_at`, `cost_rate_paise` and `default_billable_rate_paise`, and onboarding INSERTS a
         member into a firm once), no migration's SQL updates it, and the signed-in role holds no UPDATE privilege on the column (production,
         read-only, 1-11-2026: no table-level UPDATE and no column-level one on `firm_id` or `role`; the two policies are the own-row select and
-        the own-row rename). The second and third tests hold the first two halves and the real-Postgres test the third.
+        the own-row rename). The second and third tests hold the first two halves and the real-Postgres test the third. That one
+        ran nowhere until this file was named `*_pg.py` (POST-A-438): the mock job skips it and the real-Postgres job collects
+        only `tests/test_*_pg.py` and two named files. The rest of the file needs no database and runs in both jobs.
 
 WHAT THE PROBES CANNOT SEE (and which way each limit fails)
     * The users-write probe reads a payload only when it is a dict LITERAL. A payload built in a variable, or spread from another dict, is

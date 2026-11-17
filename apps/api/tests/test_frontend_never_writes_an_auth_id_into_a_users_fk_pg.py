@@ -7,7 +7,7 @@ WHY THE FRONTEND NEEDS ITS OWN CHECK
 `.from(…)` calls over ~83 tables — so a write there never passes through
 `apps/api` and no backend test, fixture or type can see it.
 
-`tests/test_users_fk_columns_take_the_internal_id.py` asserts this rule for the
+`tests/test_users_fk_columns_take_the_internal_id_pg.py` asserts this rule for the
 backend and could not have caught the instance that prompted this file:
 `apps/web/app/client-portal/page.tsx` set
 
@@ -98,11 +98,12 @@ def _payloads(src: str):
         yield m.group("t"), i, j
 
 
-@_NEEDS_PG
-def test_no_frontend_write_puts_an_auth_id_in_a_users_fk_column(pg_template):
-    pairs = _users_fk_columns(pg_template.name)
-    assert pairs, "the FK list came back empty — the query or the schema is wrong"
+def auth_id_writes(pairs: dict[str, set[str]]) -> list[str]:
+    """Every frontend write payload that sets one of these (table, column) keys to users from an auth-shaped value.
 
+    The scan, apart from where the pairs come from: this module reads them from a migration-built database, and
+    `test_frontend_schema_guards_read_the_committed_files.py` from the committed migrations, so the browser-contract job
+    asks the same question with no Postgres."""
     offenders = []
     for path in sorted(_WEB.rglob("*.ts")) + sorted(_WEB.rglob("*.tsx")):
         if "node_modules" in path.parts or ".next" in path.parts:
@@ -120,6 +121,15 @@ def test_no_frontend_write_puts_an_auth_id_in_a_users_fk_column(pg_template):
                         offenders.append(
                             f"{path.relative_to(_WEB.parent.parent)}:{line}  "
                             f"{tbl}.{col} = {w.group(1).strip()[:60]}")
+    return offenders
+
+
+@_NEEDS_PG
+def test_no_frontend_write_puts_an_auth_id_in_a_users_fk_column(pg_template):
+    pairs = _users_fk_columns(pg_template.name)
+    assert pairs, "the FK list came back empty — the query or the schema is wrong"
+
+    offenders = auth_id_writes(pairs)
     assert not offenders, (
         "These frontend writes put a Supabase AUTH id into a column that is a "
         "foreign key to public.users(id) — the INTERNAL user id. The two are "

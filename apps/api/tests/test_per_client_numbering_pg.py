@@ -9,7 +9,10 @@ per-supplier uniqueness, CGST Rule 46).
 
 Runs only when HARNESS_PG is set (a keyword DSN without a dbname) and psql is on
 PATH — same gate as tests/test_migrations_apply.py; skips in the mock-mode CI
-job. The dedicated `migrations` CI job runs it against its Postgres service.
+job. The dedicated `migrations` CI job runs it against its Postgres service,
+and has only since this file was named `*_pg.py` (POST-A-438): it used to be
+`test_per_client_numbering`, a name that job's command never collected, so it
+ran nowhere while this sentence said otherwise.
 """
 from __future__ import annotations
 

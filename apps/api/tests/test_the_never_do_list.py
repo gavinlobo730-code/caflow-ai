@@ -239,6 +239,12 @@ OUTBOUND_MODULES: dict[str, str] = {
     "scripts/smoke_api.py":
         "this product's OWN deployed API, over its public URL. A smoke test, "
         "and not part of the running service",
+    "scripts/ci/coverage_comment.py":
+        "GitHub's REST API (api.github.com, or GITHUB_API_URL), from the backend "
+        "CI workflow only: it lists and edits the one coverage comment on the "
+        "pull request being tested, with that run's own token. It sends the "
+        "coverage table and the commit id, no client data, and it is not part "
+        "of the running service (POST-A-041)",
     "core/readiness.py":
         "this product's OWN database host — the Supabase project at "
         "SUPABASE_URL, which is fixed configuration and not a portal — one "
