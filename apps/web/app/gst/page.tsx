@@ -20,8 +20,6 @@ import {
   Receipt,
 } from "lucide-react";
 import Link from "next/link";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { getClients } from "@/lib/data/clients";
 import type { Client } from "@/lib/types";
@@ -34,6 +32,7 @@ import { formatDate, formatMonthYear, todayIstISO } from "@/lib/dates/format";
 import { MONTH_NAMES, buildMonthOptions, parsePeriodOption, periodBounds } from "@/lib/gst/filingPeriod";
 import { useToast } from "@/components/ui/use-toast";
 import { api, type GstDueDates } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { Callout } from "@/components/ui/callout";
 import { BulkGstr2bPanel } from "@/components/gst/BulkGstr2bPanel";
 import { Button } from "@/components/ui/button";
@@ -145,12 +144,11 @@ const STATUS_STYLE: Record<FilingStatus, string> = {
 
 interface AddFilingModalProps {
   clients: Client[];
-  firmId: string;
   onClose: () => void;
   onAdded: (filing: GSTFiling) => void;
 }
 
-function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalProps) {
+function AddFilingModal({ clients, onClose, onAdded }: AddFilingModalProps) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [returnType, setReturnType] = useState<ReturnType>("GSTR-1");
   const [period, setPeriod] = useState(MONTH_OPTIONS[MONTH_OPTIONS.length - 1]?.value ?? "");
@@ -225,37 +223,27 @@ function AddFilingModal({ clients, firmId, onClose, onAdded }: AddFilingModalPro
     setSaving(true);
     setErr(null);
     try {
-      const sb = getSupabaseClient();
       const selectedClient = clients.find((c) => c.id === clientId);
       const filedDate = status === "Filed" ? filedOn : null;
 
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       // Map ReturnType to compliance_calendar compliance_type values
-      const complianceTypeMap: Record<string, string> = { "GSTR-1": "GSTR1", "GSTR-3B": "GSTR3B", "GSTR-9": "GSTR9" };
+      const complianceTypeMap: Record<string, "GSTR1" | "GSTR3B" | "GSTR9"> = { "GSTR-1": "GSTR1", "GSTR-3B": "GSTR3B", "GSTR-9": "GSTR9" };
       const bounds = periodBounds(period);
       if (!bounds) throw new Error("Pick a filing period.");
       const { start: periodStart, end: periodEnd } = bounds;
-      const { data, error } = await sb
-        .from("compliance_calendar")
-        .insert({
-          firm_id: firmId,
-          client_id: clientId,
-          compliance_type: complianceTypeMap[returnType] ?? returnType,
-          period_start: periodStart,
-          period_end: periodEnd,
-          due_date: dueDate,
-          // The row is created PENDING even when the CA says it is already
-          // filed. Creating it "filed" here would be a third path recording a
-          // filing that never reaches public.filings, so the period would not
-          // lock — the same defect the mark-filed buttons had. The filing is
-          // recorded a line below, through the API that writes both.
-          filing_status: "pending",
-          filed_date: null,
-        })
-        .select()
-        .single();
+      const compType = complianceTypeMap[returnType];
+      if (!compType) throw new Error("Pick a return type.");
+      // Added through the API (POST-A-208): the route asks `compliance_record:write` and the client, writes an audit event and answers a
+      // second row for the same period in a sentence. The row is created PENDING even when the CA says it is already filed. Creating it
+      // "filed" here would be a third path recording a filing that never reaches public.filings, so the period would not lock. The filing
+      // is recorded a line below, through the API that writes both.
+      const created = await api.compliance.addCalendarEntry({
+        client_id: clientId, compliance_type: compType, period_start: periodStart, period_end: periodEnd, due_date: dueDate,
+      });
+      if (!created.success || !created.data) throw new Error(created.error ?? "The filing was not added.");
+      const data = created.data;
 
-      if (error) throw new Error(error.message);
       // The row exists and is pending. If the server declines to record it as filed (a date before the period ended is its to refuse), the
       // dialog must not stay open over a row that now exists: the next Save would insert it again and the database would answer in its own words.
       // So the row is added as it is, and the sentence is said where the page can show it (the MCA form does the same).
@@ -647,10 +635,10 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function GSTPage() {
+  const { can } = usePermissions();
   const { toast } = useToast();
   const [filings, setFilings] = useState<GSTFiling[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [firmId, setFirmId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -671,8 +659,6 @@ export default function GSTPage() {
     async function load() {
       try {
         setLoading(true);
-        const sb = getSupabaseClient();
-
         // Resolve firm_id from authenticated user
         // lib/data/getFirmId is the one firm-id lookup, and it caches for five
         // minutes; this was another of the twelve hand-rolled copies. It throws where this
@@ -680,30 +666,28 @@ export default function GSTPage() {
         // "no firm, render nothing" — so the throw is caught rather than the
         // helper changed.
         const resolvedFirmId = await getFirmId().catch(() => "");
-        setFirmId(resolvedFirmId);
 
         const cls = await getClients().catch(() => [] as Client[]);
         setClients(cls);
 
         // Load from compliance_calendar with client join for GST types
         if (resolvedFirmId) {
-          // One row per return per client per period, every year: 25 a year for a client filing monthly, 1,250 a year
-          // for fifty of them. PostgREST cuts an unpaged read at ~1000 rows without a word, and this one is ordered
-          // oldest first, so what went missing was the NEWEST filings, the ones the counts above the table are about.
-          const { data, error: dbErr } = await selectAll(() => sb
-            .from("compliance_calendar")
-            .select("id, firm_id, client_id, compliance_type, period_start, period_end, due_date, filing_status, filed_date, created_at, clients(client_name, gstin)")
-            .eq("firm_id", resolvedFirmId)
-            .in("compliance_type", ["GSTR1", "GSTR3B", "GSTR9"])
-            .order("due_date", { ascending: true })
-            .order("id"));
+          // The calendar's GST rows through the API (POST-A-208): the server reads every page (one row per return per client per period,
+          // every year, is more than one PostgREST answer holds, and the newest filings are what the counts above the table are about)
+          // and narrows to the caller's clients. The list is still the calendar, not the obligation store, and the sentence under the
+          // heading says so.
+          let dbErr: { message: string } | null = null;
+          let data: Array<Record<string, unknown>> | null = null;
+          try {
+            const res = await api.compliance.trackerRows("gst");
+            if (res.success) data = res.data ?? [];
+            else dbErr = { message: res.error ?? "The GST filings could not be read." };
+          } catch (e) {
+            dbErr = { message: e instanceof Error ? e.message : "The GST filings could not be read." };
+          }
 
           if (dbErr) {
-            if (dbErr.code === "42P01" || dbErr.message?.includes("does not exist")) {
-              setFilings([]);
-            } else {
-              throw new Error(dbErr.message);
-            }
+            throw new Error(dbErr.message);
           } else {
             const returnTypeMap: Record<string, ReturnType> = { GSTR1: "GSTR-1", GSTR3B: "GSTR-3B", GSTR9: "GSTR-9" };
             const rows: GSTFiling[] = (data ?? []).map((r: Record<string, unknown>) => {
@@ -939,13 +923,16 @@ export default function GSTPage() {
               <Receipt className="w-3.5 h-3.5" />
               GSTR-3B
             </Link>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add GST Filing
-            </button>
+            {/* The add route asks `compliance_record` write (POST-A-208), so the button is offered only to someone it admits. */}
+            {can("compliance_record", "write") && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-2 rounded-lg hover:bg-brand-dark"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add GST Filing
+              </button>
+            )}
           </div>
         }
       />
@@ -1094,7 +1081,6 @@ export default function GSTPage() {
       {showAddModal && clients.length > 0 && (
         <AddFilingModal
           clients={clients}
-          firmId={firmId}
           onClose={() => setShowAddModal(false)}
           onAdded={(filing) => setFilings((prev) => [...prev, filing])}
         />
