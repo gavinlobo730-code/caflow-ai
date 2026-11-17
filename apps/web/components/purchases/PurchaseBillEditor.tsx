@@ -9,6 +9,7 @@
  * matches the backend's own _compute_line_gst exactly); the backend remains
  * authoritative and recomputes everything on save.
  */
+import { fitForExtraction, reducedSentence } from "@/lib/images/fitUpload";
 import { useState, useRef, useEffect } from "react";
 import { Trash2, Plus, Loader2, AlertCircle, AlertTriangle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
@@ -342,6 +343,8 @@ export function PurchaseBillEditor({
   // AI Upload (Extract) — create-only; re-extracting into an already-saved
   // draft would silently overwrite manually-corrected fields.
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  /** Said when the photograph was reduced to fit the upload limit (lib/images/fitUpload). */
+  const [photoNote, setPhotoNote] = useState<string | null>(null);
   // POST-A-131: on a phone the bill is a photograph, so a second control opens the camera (`capture`) and feeds the same file the Extract
   // button reads. It is shown on a TOUCH device (`pointer: coarse`: a phone in either orientation, a tablet), not by width, and never on a
   // desktop, because `capture` means nothing there. The camera input itself is hidden, so the visible button carries the name and the AI disclosure.
@@ -856,8 +859,11 @@ export function PurchaseBillEditor({
     setAiSupplier(null);
     setError(null);
     try {
+      // A photograph over the 10 MB limit is reduced to fit; one that fits goes exactly as it was taken (it is kept as the supplier's invoice).
+      const fitted = await fitForExtraction(uploadFile);
+      setPhotoNote(fitted.reduced ? reducedSentence(fitted.fromBytes, fitted.toBytes) : null);
       const formData = new FormData();
-      formData.append("file", uploadFile);
+      formData.append("file", fitted.file);
       formData.append("client_id", clientId);
       const token = await getAuthToken();
       // A reading is a proposal, not a record of a bill: what a dropped connection costs is the result, so it is told as one that did not come back.
@@ -1215,6 +1221,7 @@ export function PurchaseBillEditor({
             {/* WHO RECEIVES THE FILE, said before the button is pressed (PRE-A-006).
                 Colour is the sibling notes' own on this tinted box. */}
             <AiDisclosure id="ai-disclosure-invoice-extraction" surface="invoice_extraction" className="text-state-attention" />
+            {photoNote && <p role="status" className="text-3xs text-state-attention">{photoNote}</p>}
             {aiExtracted && (
               <div className="mt-1 text-3xs text-state-attention bg-state-attention-surface rounded px-2 py-1.5">
                 ✓ AI extracted data pre-filled below. <strong>Review before saving.</strong>
