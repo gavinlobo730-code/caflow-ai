@@ -1046,3 +1046,29 @@ class ApplyStructureIn(BaseModel):
         except ValueError:
             raise ValueError(f"{s!r} is not a real date.")
         return s
+
+
+class OpeningPositionIn(BaseModel):
+    """What one employee had been paid and had deducted this financial year BEFORE the client's payroll ran on this product
+    (migration 641, POST-A-082). Every figure is required: a missing one is not a nil, and the screen has the CA say which."""
+    employee_id: str
+    first_month_here: str = Field(..., description='The first month this product runs payroll for the client, "YYYY-MM"')
+    months_paid: int
+    gross_paise: int
+    tds_paise: int
+    pf_employee_paise: int
+    pf_employer_paise: int
+    esi_employee_paise: int
+    esi_employer_paise: int
+    pt_paise: int
+    esi_contributed_earlier_in_period: Optional[bool] = Field(
+        None, description="Whether the employee contributed to ESI earlier in the contribution period the first month falls "
+                          "in. Null is not known, and is not read as no.")
+    source_note: Optional[str] = Field(None, description="Where the figures were read from (the old system's report, its date)")
+
+
+class OpeningPositionsIn(BaseModel):
+    """One or more positions for one client, refused whole if any is wrong. The financial year of each is the one its first
+    month falls in."""
+    client_id: str
+    rows: list[OpeningPositionIn] = Field(..., min_length=1, max_length=500)

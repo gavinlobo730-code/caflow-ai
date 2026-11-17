@@ -63,7 +63,14 @@ def _payroll_prefixed_tables_the_migrations_create() -> set[str]:
         if path.name.endswith("_rollback.sql"):
             continue
         sql = re.sub(r"--[^\n]*", "", path.read_text())
-        created |= set(re.findall(r"CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?(payroll_[a-z_]+)", sql))
+        new = set(re.findall(r"CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?(payroll_[a-z_]+)", sql))
+        # A table a LATER migration creates already closed to the signed-in role (REVOKE ALL ... authenticated, and no grant
+        # to it) has nothing for 549 to take back: payroll_opening_positions, migration 641 (POST-A-082).
+        if path.name.split("_", 1)[0].isdigit() and int(path.name.split("_", 1)[0]) > 549:
+            new = {t for t in new
+                   if not (re.search(rf"REVOKE ALL ON (?:TABLE )?public\.{t} FROM PUBLIC, anon, authenticated", sql)
+                           and not re.search(rf"GRANT [A-Z, ]+ ON (?:TABLE )?public\.{t} TO authenticated", sql))}
+        created |= new
         dropped |= set(re.findall(r"DROP TABLE (?:IF EXISTS )?(?:public\.)?(payroll_[a-z_]+)", sql))
     return created - dropped
 
