@@ -1935,6 +1935,19 @@ export type UnrecordedStockDocument = {
 
 export type UnrecordedStock = { total: number; documents: UnrecordedStockDocument[] };
 
+/** A document the CA marked as settled by hand (POST-A-092, migration 620), as the server lists it. The reason is what the CA typed; `settled_by_name` and
+ *  `settled_at` say who and when. The mark moves no stock: it only stops the list offering to. */
+export type StockSettlement = {
+  id: string;
+  document_kind: UnrecordedStockDocument["kind"];
+  document_id: string;
+  reference: string | null;
+  document_date: string | null;
+  reason: string;
+  settled_by_name: string | null;
+  settled_at: string;
+};
+
 /** What a retry answered. `recorded` is true, false, or null when the document carries no goods line; `message` is the server's sentence. */
 export type StockRetryAnswer = { recorded: boolean | null; message: string; stock_effect: Record<string, unknown> | null };
 
@@ -5417,6 +5430,15 @@ export const api = {
      *  no journal; a line already recorded is not recorded twice. */
     retryStockEffect: (body: { client_id: string; kind: UnrecordedStockDocument["kind"]; document_id: string }) =>
       request<ApiResp<StockRetryAnswer>>(`/api/inventory/stock-effects/retry`, { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-092 — the client's documents marked as settled by hand, newest first. A failed read is a failure and never an empty list. */
+    settledStock: (clientId: string) =>
+      request<ApiResp<{ settlements: StockSettlement[] }>>(`/api/inventory/stock-effects/settled?${new URLSearchParams({ client_id: clientId })}`),
+    /** POST-A-092 — mark ONE listed document's stock as settled by hand, with the reason the CA gives. It moves no stock and posts no journal. */
+    settleStockEffect: (body: { client_id: string; kind: UnrecordedStockDocument["kind"]; document_id: string; reason: string }) =>
+      request<ApiResp<StockSettlement & { message: string }>>(`/api/inventory/stock-effects/settle`, { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-092 — take a mark back: the document is listed again if its stock is still not all recorded. */
+    unsettleStockEffect: (settlementId: string) =>
+      request<ApiResp<{ removed: boolean; message: string }>>(`/api/inventory/stock-effects/settled/${encodeURIComponent(settlementId)}`, { method: "DELETE" }),
     /** Closing stock AS AT a date — the statement that ties to the Inventories
      *  line on the balance sheet. Distinct from `items`, which is the CURRENT
      *  position and takes no date: the two answer different questions, and only
