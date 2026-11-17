@@ -260,6 +260,68 @@ test("the budget is spent in the shape D10 says it is", () => {
       "this subset. If it is no longer the bulk of the budget, re-read the decision.");
 });
 
+test("every place that states today's redirect budget states the measured one", () => {
+  // POST-A-148 took the count from 98 to 99 and the pin above moved with it, while the
+  // generator's own D10 block, the live check's header, the owner's decision text, the
+  // payroll design and the D26 ledger line all went on saying 98 of 100 and that one more
+  // page lands ON the cap. At 99 it lands past it. Each of these is a present-tense claim
+  // about the file, so each is held to the file; a dated record (THE-PLAN's 24 September
+  // decisions, a closed line in checked-closed.md) is history and is not on this list.
+  // CLAUDE.md's Deployment bullet says the same and is not edited from a branch.
+  const generated = buildRedirectsFile(APP_DIR);
+  const rules = rulesIn(generated);
+  const dynamic = rules.filter((r) => isDynamicRule(r.from));
+  const total = cloudflareDynamicCount(generated);
+  const firstDynamicPosition = rules.findIndex((r) => isDynamicRule(r.from)) + 1;
+  const splats = dynamic.filter((r) => r.from.endsWith("/*")).length;
+  const bare = dynamic.filter((r) => !r.from.endsWith("/*") && !r.from.endsWith(".txt")).length;
+  const landing = dynamic.filter((r) => r.from.endsWith("/index.txt")).length;
+  const bareRsc = dynamic.length - splats - bare - landing;
+
+  const REPO = path.join(__dirname, "..", "..", "..");
+  // Prose wraps; a comment's leading "*" or "#", or a quote's ">", is not part of the sentence.
+  const prose = (rel: string) =>
+    fs.readFileSync(path.join(REPO, rel), "utf8")
+      .split("\n").map((l) => l.replace(/^\s*(\*|#|>)\s?/, "")).join(" ").replace(/\s+/g, " ");
+  const block = fs.readFileSync(path.join(__dirname, "generate-redirects.js"), "utf8");
+  const once = (text: string, re: RegExp, where: string) => {
+    const hits = [...text.matchAll(new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g"))];
+    assert.equal(hits.length, 1, `${where}: expected exactly one ${re}, found ${hits.length}`);
+    return hits[0].slice(1).map(Number);
+  };
+
+  const claims: Array<[string, number[], number[]]> = [
+    ["generate-redirects.js composition: bare path", once(block, /^ \*\s+(\d+)\s+bare path\s/m, "generator"), [bare]],
+    ["generate-redirects.js composition: bare RSC", once(block, /^ \*\s+(\d+)\s+bare RSC \.txt\s/m, "generator"), [bareRsc]],
+    ["generate-redirects.js composition: landing", once(block, /^ \*\s+(\d+)\s+landing payload\s/m, "generator"), [landing]],
+    ["generate-redirects.js composition: splats", once(block, /^ \*\s+(\d+)\s+splats\s/m, "generator"), [splats]],
+    ["generate-redirects.js composition: total", once(block, /^ \*\s+(\d+)\s+of a hard 100$/m, "generator"), [total]],
+    ["generate-redirects.js D10: one more page",
+      once(prose("apps/web/scripts/generate-redirects.js"),
+        /dynamic prefix costs 2 rules and lands on (\d+)\b.*?costs 3 and lands on (\d+)\b/, "generator"),
+      [total + 2, total + 3]],
+    ["generate-redirects.js D10: the collapse",
+      once(prose("apps/web/scripts/generate-redirects.js"), /would take the file from (\d+) rules to (\d+)\b/, "generator"),
+      [total, total - bare]],
+    [".github/workflows/live-redirects.yml header",
+      once(prose(".github/workflows/live-redirects.yml"), /The budget now stands at (\d+) of 100\b/, "live-redirects.yml"),
+      [total]],
+    ["docs/open-items/decisions-and-strategy.md Decision 15",
+      once(prose("docs/open-items/decisions-and-strategy.md"), /the budget now sits at (\d+) of 100\b/, "decisions-and-strategy.md"),
+      [total]],
+    ["docs/architecture/10-payroll.md navigation constraint",
+      once(prose("docs/architecture/10-payroll.md"), /holds \*\*(\d+) dynamic rules against Cloudflare/, "10-payroll.md"),
+      [total]],
+    ["docs/open-items/post-demo-B-ours.md POST-B-055",
+      once(prose("docs/open-items/post-demo-B-ours.md"),
+        /public\/_redirects has (\d+) rules \((\d+) dynamic, first dynamic rule at position (\d+);/, "post-demo-B-ours.md"),
+      [rules.length, total, firstDynamicPosition]],
+  ];
+  const wrong = claims.filter(([, said, measured]) => JSON.stringify(said) !== JSON.stringify(measured))
+    .map(([where, said, measured]) => `${where}: says ${said.join("/")}, the file measures ${measured.join("/")}`);
+  assert.deepEqual(wrong, [], "a statement of the redirect budget no longer matches the generated file");
+});
+
 test("one more page under a dynamic prefix costs two rules, which is why the budget has no room left", () => {
   // The arithmetic the budget rests on, proved on a synthetic tree rather
   // than asserted in prose — and deliberately NOT by copying app/, which

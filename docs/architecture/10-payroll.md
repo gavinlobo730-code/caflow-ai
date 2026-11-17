@@ -164,7 +164,7 @@ Payroll becomes the **13th top-level workspace**, not a link inside Accounting.
 Six sections.
 
 > **A hard constraint that shaped this.** `apps/web/public/_redirects` holds
-> **98 dynamic rules against Cloudflare Pages' cap of 100.** Every route below is
+> **99 dynamic rules against Cloudflare Pages' cap of 100.** Every route below is
 > therefore **static**, and per-employee and per-run detail are **drawers on a
 > query parameter**, not routes. A per-client route tree is unbuildable at any
 > price. This is also a standing risk worth its own task, independent of payroll.
