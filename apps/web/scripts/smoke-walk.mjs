@@ -118,6 +118,7 @@ import {
   summaryMarkdown,
 } from "./axeAudit.mjs";
 import { auditNamedScreens, slowServerScenario } from "./walkAudits.mjs";
+import { CLIENT_UUID, knownRead } from "./walkStub.mjs";
 
 
 /**
@@ -278,6 +279,7 @@ function serve(root, headerRules = []) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = decodeURIComponent(req.url.split("?")[0]);
+      const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?") + 1) : "";
       // The headers Cloudflare Pages would add to a static asset (security_privacy-05): the SAME file the
       // deploy ships, parsed by the same function the generator's tests use, applied to every static
       // response and not to the two stub prefixes (they stand in for other hosts, not for assets).
@@ -302,6 +304,11 @@ function serve(root, headerRules = []) {
         if (url.startsWith("/__supabase/rest/v1/firms")) {
           return sendJson(res, wantsObject ? FAKE_FIRM_ROW : [FAKE_FIRM_ROW]);
         }
+        // The ONE lookup keyed on the client the walk names (`clients?id=eq.<CLIENT_UUID>`), which the client
+        // workspace's gate needs before it renders a screen (POST-A-036; scripts/walkStub.mjs says why and what
+        // stays empty).
+        const known = knownRead(url, query, wantsObject);
+        if (known !== undefined) return sendJson(res, known);
         // Everything else stays EMPTY, deliberately. The no-data state is the
         // one a developer with a seeded database never looks at and the one a
         // redesign most often breaks — see the note above `serve`. This row
@@ -510,7 +517,6 @@ const anon = args.includes("--anon");
  * and the build has one page per shape, not per record.
  */
 const realClient = args.includes("--real-client");
-const CLIENT_UUID = "00000000-0000-4000-8000-000000000001";
 
 /**
  * ⚠️ THE ROUTE LIST IS THE LIVE `app/` TREE, AND IT USED TO BE
