@@ -17,6 +17,11 @@ WHAT THIS IS
         own documents are almost never dated on one. Guilty: an entry made
         outside the ordinary course, which SA 240 tells an auditor to test.
         Innocent: somebody catching up at the weekend, or a date mistyped.
+        A journal dated on the FIRST or LAST day of a month is not tested: a
+        month-end or year-end accrual or provision is dated on the period's
+        last day, and its reversal on the next period's first, whatever day of
+        the week that is, so the Sunday there says nothing about when the work
+        was done.
       * DEPARTED_MEMBER_ENTRY — an entry that names as its maker a member who
         was suspended BEFORE it was made. Guilty: a departed person's identity
         still in use. Innocent: a recurring template or a scheduled job they
@@ -30,8 +35,9 @@ WHAT THIS IS
 EACH STAYS QUIET ON THE ORDINARY CASE, and how is the point of the module:
     the round figure must be large AND one-off (a narration and account set
     that recurs in another month is a recurring entry, not a target); the
-    Sunday test needs enough of the client's own documents to judge from and
-    stands down for a client that trades on Sundays; the departed member needs
+    Sunday test needs enough of the client's own documents to judge from,
+    stands down for a client that trades on Sundays and leaves out a journal
+    dated on a month's first or last day; the departed member needs
     a recorded suspension instant and an entry made after it; and the receipts
     test needs a quarter of output tax to fall from and both movements past a
     stated share. Every threshold here is a HEURISTIC chosen for this module —
@@ -51,7 +57,7 @@ Pure: no database, no clock beyond the `as_of` the caller passes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Iterable, Optional
 
 from domain.accounting import journal_source
@@ -108,6 +114,9 @@ NOT_CHECKED: tuple[str, ...] = (
     "the ledger, not the papers.",
     "Saturdays and public holidays: Saturday is a working day for much of Indian "
     "business, and no holiday calendar is held.",
+    "A manual journal dated on the first or last day of a month, on a Sunday: a "
+    "month-end or year-end accrual is dated on the period's last day and its "
+    "reversal on the next period's first, so the day of the week says nothing there.",
     "Entries by a member who left without being suspended in this product: there "
     "is no departure date to compare with.",
     "Sales billed as exempt or zero-rated, which carry no output tax: the receipts "
@@ -160,6 +169,13 @@ def _instant(value) -> Optional[datetime]:
     except ValueError:
         return None
     return got if got.tzinfo else got.replace(tzinfo=timezone.utc)
+
+
+def _is_period_boundary(d: date) -> bool:
+    """The first or last day of a calendar month: a date an accrual, a provision
+    or its reversal takes from the period it belongs to, not from the day the
+    entry was keyed."""
+    return d.day == 1 or (d + timedelta(days=1)).day == 1
 
 
 def _debit_total(entry) -> int:
@@ -237,7 +253,7 @@ def sunday_journals(entries: Iterable, *, as_of: date) -> list[Exception_]:
     out = []
     for e in _recent_manual(entries, as_of):
         d = _date(e.entry_date)
-        if d is None or d.weekday() != 6:
+        if d is None or d.weekday() != 6 or _is_period_boundary(d):
             continue
         out.append(Exception_(
             SUNDAY_JOURNAL,

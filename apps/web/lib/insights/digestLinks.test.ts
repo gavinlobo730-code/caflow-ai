@@ -34,6 +34,17 @@ test("each section leads to the screen it is about", () => {
   assert.equal(digestSectionHref("tasks_overdue"), "/tasks");
 });
 
+test("the GSTR-2B section opens the radar it counts, behind the permission its section asks", () => {
+  // The section is gated on GST read; the bill list asks accounting read, which a Reviewer
+  // lacks, so the link opens the GST screen's ITC tab, where the §16(4) radar is drawn.
+  assert.equal(digestClientHref("itc_not_furnished", "c1"), "/clients/c1/compliance/gst?tab=itc");
+  const gst = code(read("app/clients/[id]/compliance/gst/page.tsx"));
+  assert.match(gst, /\{ id: "itc", label: "ITC Register" \}/, "the tab exists and asks no further permission");
+  assert.match(gst, /useSearchParams\(\)\.get\("tab"\)/, "the screen opens the tab a link names");
+  const itc = gst.slice(gst.indexOf('{tab === "itc" && ('));
+  assert.ok(itc.indexOf("<ItcTimeBarRadar clientId={clientId} />") > 0, "the radar is on that tab");
+});
+
 test("a section with no firm-level screen has no section link, rather than a dead one", () => {
   assert.equal(digestSectionHref("books_findings"), null);
 });
@@ -46,7 +57,7 @@ test("a key the map does not know falls back to the client's overview and no sec
 test("no client route adds a dynamic segment under /clients/[id]", () => {
   for (const [key, r] of Object.entries(DIGEST_ROUTES)) {
     // Decision D10: a new section there is a query parameter on an existing route.
-    assert.match(r.client("x"), /^\/clients\/x\/(compliance|tasks|accounting|purchases|overview)(\?tab=[a-z-]+)?$/, key);
+    assert.match(r.client("x"), /^\/clients\/x\/(compliance(\/gst)?|tasks|accounting|purchases|overview)(\?tab=[a-z-]+)?$/, key);
   }
 });
 

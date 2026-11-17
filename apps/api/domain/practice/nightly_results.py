@@ -25,6 +25,13 @@ A ROW HAS TWO STATES, AND THE SECOND IS NEVER A ZERO
     `reason` says why. A digest that printed "0 bills missing in 2B" for a client
     whose 2B was never reconciled would tell a CA their credit is safe on the
     strength of nothing, the `table_4a_gaps` discipline applied to a stored row.
+    A zero is a zero only when EVERYTHING it speaks for was looked at: a GSTR-2B
+    zero from a window where some month whose credit can still be claimed has no
+    reconciliation, or where bills were recorded after their month was
+    reconciled, is `not_computed` too, because those bills were never checked. A
+    count above zero from such a window is kept (what it found is real) and the
+    unchecked months and bills are in the details, which the digest reads to say
+    the figure is partial (`left_unchecked`).
 
 Pure: no database, no clock beyond the date the caller passes.
 """
@@ -100,8 +107,15 @@ def from_itc_radar(radar: dict, *, window_months: int) -> Result:
     `radar` is `services/itc_time_bar_service.radar`'s dict. The count is the
     rows whose credit can still be claimed (open or closing soon); credit whose
     date has already passed is kept in the details and not counted as something
-    to act on, because nothing can be done about it but know it."""
-    unreconciled = len(radar.get("periods_not_reconciled") or [])
+    to act on, because nothing can be done about it but know it.
+
+    What was NOT checked is counted the same way: a month with no GSTR-2B
+    reconciled whose credit can still be claimed (a month whose date has passed
+    is left out, as its credit is), and the bills recorded after their month was
+    reconciled, which §16(2)(aa) has not been asked of. With either present and
+    nothing found, the answer is not a zero but `not_computed`."""
+    periods = radar.get("periods_not_reconciled") or []
+    unreconciled = len(periods)
     reconciled = window_months - unreconciled
     if reconciled <= 0:
         return not_computed(
@@ -109,8 +123,27 @@ def from_itc_radar(radar: dict, *, window_months: int) -> Result:
             "No GSTR-2B has been reconciled for any month the §16(4) radar scans, "
             "so no bill has been checked against what suppliers furnished.",
             months_scanned=window_months)
+    # A period the radar could not date is counted as still open: the direction
+    # that cannot call an unchecked month clear.
+    months_unchecked = sum(1 for p in periods
+                           if not isinstance(p, dict) or p.get("status") != cw.CLOSED)
+    not_assessed = int(radar.get("not_assessed_count") or 0)
     live = [r for r in radar.get("items") or []
             if r.get("status") in (cw.OPEN, cw.CLOSING_SOON)]
+    if not live and (months_unchecked or not_assessed):
+        parts = []
+        if months_unchecked:
+            parts.append(f"{months_unchecked} month(s) whose credit can still be claimed "
+                         "have no GSTR-2B reconciled")
+        if not_assessed:
+            parts.append(f"{not_assessed} bill(s) were recorded after their month's "
+                         "GSTR-2B was reconciled")
+        return not_computed(
+            GSTR_2B,
+            "Nothing was found in what was checked, but " + " and ".join(parts)
+            + ", so those bills have not been checked against what suppliers furnished.",
+            months_scanned=window_months, months_not_reconciled=unreconciled,
+            months_unchecked=months_unchecked, not_assessed=not_assessed)
     lapsed = [r for r in radar.get("items") or [] if r.get("status") == cw.CLOSED]
     return Result(
         GSTR_2B, COMPUTED, count=len(live),
@@ -119,18 +152,32 @@ def from_itc_radar(radar: dict, *, window_months: int) -> Result:
             "basis": GSTR_2B_BASIS,
             "months_scanned": window_months,
             "months_not_reconciled": unreconciled,
+            "months_unchecked": months_unchecked,
             "bills_not_in_2b": sum(1 for r in live if r.get("kind") == bar.KIND_WITHHELD),
             "documents_not_booked": sum(1 for r in live if r.get("kind") == bar.KIND_NOT_BOOKED),
             "closing_soon": sum(1 for r in live if r.get("status") == cw.CLOSING_SOON),
             "lapsed_count": len(lapsed),
             "lapsed_paise": sum(int(r.get("credit_at_risk_paise") or 0) for r in lapsed),
             "blocked_by_2b": int(radar.get("blocked_by_2b_count") or 0),
-            "not_assessed": int(radar.get("not_assessed_count") or 0),
+            "not_assessed": not_assessed,
             "examples": [{"label": r.get("label"), "supplier": r.get("supplier"),
                           "closes_on": r.get("closes_on"),
                           "credit_at_risk_paise": r.get("credit_at_risk_paise")}
                          for r in live[:MAX_EXAMPLES]],
         })
+
+
+def left_unchecked(row: dict) -> bool:
+    """Whether a stored COMPUTED row's count speaks for less than the whole
+    window: a GSTR-2B row whose details name an unchecked month or bill. The
+    other engines read everything they count, so they never are. A row without
+    its details answers False, which a reader must not take as "fully checked"
+    unless it asked for the details."""
+    if row.get("engine") != GSTR_2B or row.get("status") != COMPUTED:
+        return False
+    details = row.get("details") or {}
+    return bool(int(details.get("months_unchecked") or 0)
+                or int(details.get("not_assessed") or 0))
 
 
 # ── near-duplicate bills ─────────────────────────────────────────────────────

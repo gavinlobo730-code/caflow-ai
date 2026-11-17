@@ -88,6 +88,18 @@ def test_a_saturday_journal_is_not_tested():
     assert jx.sunday_journals(entries, as_of=AS_OF) == []
 
 
+@pytest.mark.parametrize("day", [
+    "2026-05-31",   # a Sunday that is a month's LAST day: the month-end provision is dated on it
+    "2026-03-01",   # a Sunday that is a month's FIRST day: the accrual's reversal is dated on it
+])
+def test_a_journal_dated_on_a_months_first_or_last_day_is_not_tested(day):
+    # The date is the period's, not the day the entry was keyed, so the Sunday says
+    # nothing; the same client's mid-month Sunday journal is still found.
+    entries = _weekday_documents(25) + [_e("edge", day, amount=1234),
+                                        _e("mid", "2026-10-11", amount=4321)]
+    assert [x.entry_id for x in jx.sunday_journals(entries, as_of=AS_OF)] == ["mid"]
+
+
 # ── a suspended maker ────────────────────────────────────────────────────────
 
 MEMBERS = [
