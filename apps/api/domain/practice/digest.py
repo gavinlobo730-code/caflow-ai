@@ -305,6 +305,17 @@ def not_covered_by_stored(label: str, count: int) -> str:
             f"nothing is reported for {'it' if count == 1 else 'them'}.")
 
 
+def partly_checked_by_stored(label: str, count: int) -> str:
+    """Clients whose computed result counts only part of what it speaks for
+    (`nightly_results.left_unchecked`): what was found is in the figure, and the
+    figure is said to be partial, because more may be at stake in what was not
+    checked."""
+    return (f"For {_n(count, 'client')}, {label.lower()} counts only what was checked: "
+            f"some months whose credit can still be claimed have no GSTR-2B reconciled, or "
+            f"bills were recorded after their month was reconciled, so more may be at "
+            f"stake than is shown.")
+
+
 # ── what is not here ─────────────────────────────────────────────────────────
 
 NOT_INCLUDED = (

@@ -133,9 +133,11 @@ def test_the_service_reads_this_clients_live_recent_bills_and_leaves_opening_one
 
 # ── 1c. GSTR-2B / ITC ────────────────────────────────────────────────────────
 
-def _radar(items, unreconciled):
-    return {"items": items, "periods_not_reconciled": ["p"] * unreconciled,
-            "blocked_by_2b_count": 1, "not_assessed_count": 2}
+def _radar(items, unreconciled, *, unreconciled_status="open", not_assessed=2):
+    return {"items": items,
+            "periods_not_reconciled": [{"period": f"{i + 1:02d}2026", "status": unreconciled_status}
+                                       for i in range(unreconciled)],
+            "blocked_by_2b_count": 1, "not_assessed_count": not_assessed}
 
 
 def _item(kind, status, paise, label="B1"):
@@ -157,9 +159,37 @@ def test_credit_still_claimable_is_counted_and_credit_already_lapsed_is_kept_apa
     assert r.details["months_not_reconciled"] == 10
 
 
-def test_a_reconciled_month_with_nothing_missing_is_a_computed_zero():
-    r = nr.from_itc_radar(_radar([], unreconciled=18), window_months=19)
+def test_a_window_checked_throughout_with_nothing_missing_is_a_computed_zero():
+    r = nr.from_itc_radar(_radar([], unreconciled=0, not_assessed=0), window_months=19)
     assert (r.status, r.count) == (nr.COMPUTED, 0)
+    # A month nobody reconciled whose credit has already lapsed takes nothing claimable with it.
+    r = nr.from_itc_radar(_radar([], unreconciled=2, unreconciled_status="closed", not_assessed=0),
+                          window_months=19)
+    assert (r.status, r.count) == (nr.COMPUTED, 0)
+
+
+@pytest.mark.parametrize("unreconciled, status, not_assessed", [
+    (18, "open", 0),            # one month of nineteen reconciled: the other eighteen were never checked
+    (1, "closing_soon", 0),     # one month still claimable, and closing soon, never checked
+    (1, None, 0),               # a month the radar could not date is not taken as lapsed
+    (0, "open", 3),             # every month reconciled, but three bills recorded after it
+])
+def test_nothing_found_in_part_of_the_window_is_not_a_zero(unreconciled, status, not_assessed):
+    r = nr.from_itc_radar(_radar([], unreconciled=unreconciled, unreconciled_status=status,
+                                 not_assessed=not_assessed), window_months=19)
+    assert r.status == nr.NOT_COMPUTED and r.count is None
+    assert "have not been checked" in r.reason
+
+
+def test_a_finding_in_part_of_the_window_is_kept_and_says_it_is_partial():
+    r = nr.from_itc_radar(_radar([_item("withheld_bill", "open", 1000)], unreconciled=3, not_assessed=0),
+                          window_months=19)
+    assert (r.status, r.count, r.details["months_unchecked"]) == (nr.COMPUTED, 1, 3)
+    row = {"engine": nr.GSTR_2B, "status": nr.COMPUTED, "details": r.details}
+    assert nr.left_unchecked(row)
+    whole = nr.from_itc_radar(_radar([_item("withheld_bill", "open", 1000)], unreconciled=0,
+                                     not_assessed=0), window_months=19)
+    assert not nr.left_unchecked({"engine": nr.GSTR_2B, "status": nr.COMPUTED, "details": whole.details})
 
 
 def test_a_result_cannot_be_built_that_reads_as_zero_while_not_computed():
@@ -265,10 +295,11 @@ def world(monkeypatch):
     return state
 
 
-def _seed(db, client, engine, count, *, hours_ago=2, status="computed", firm=FIRM):
+def _seed(db, client, engine, count, *, hours_ago=2, status="computed", firm=FIRM, details=None):
     db.seed("nightly_exception_results", {
         "firm_id": firm, "client_id": client, "engine": engine, "status": status, "count": count,
-        "amount_paise": None, "computed_at": (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()})
+        "amount_paise": None, "details": details or {},
+        "computed_at": (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()})
 
 
 def _stored(allowed, engines=("gstr_2b", "duplicate_bills", "recurring_journals")):
@@ -291,6 +322,15 @@ def test_another_firms_rows_and_stale_rows_are_ignored(world):
     _seed(world["db"], "c2", "duplicate_bills", 8, hours_ago=24 * 10)
     items, _ = _stored(None, ["duplicate_bills"])
     assert items[0]["status"] == dg.UNKNOWN
+
+
+def test_a_client_whose_2b_figure_is_partial_is_named_beside_the_section(world):
+    _seed(world["db"], "c1", "gstr_2b", 2, details={"months_unchecked": 4, "not_assessed": 0})
+    _seed(world["db"], "c2", "gstr_2b", 0, details={"months_unchecked": 0, "not_assessed": 0})
+    items, notes = _stored(None, ["gstr_2b"])
+    assert items[0]["count"] == 2
+    assert any("For 1 client, credit suppliers have not furnished counts only what was checked" in n
+               for n in notes)
 
 
 def test_a_client_with_no_result_is_named_beside_the_section(world):

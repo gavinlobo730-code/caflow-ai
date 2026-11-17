@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
@@ -2532,6 +2533,23 @@ export default function GSTWorkspacePage() {
   const [tab, setTab] = useState<GSTTab>("dashboard");
   const { can, resolved } = usePermissions();
   const tabs = TABS.filter((t) => !t.requires || !resolved || can(t.requires[0], t.requires[1]));
+  // A link may open a tab by ?tab=<id> (the morning digest's GSTR-2B section opens "itc",
+  // where the §16(4) radar it summarises lives). Validated against this screen's own TABS,
+  // and a tab that asks a permission is opened only once the caller is known to hold it.
+  // Keyed on the VALUE, as the purchases and bank screens are, and a value is applied
+  // once, so a click on another tab is not snapped back by a query string that has not
+  // changed or by the permissions arriving.
+  const tabParam = useSearchParams().get("tab");
+  const appliedTabParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (tabParam === appliedTabParam.current) return;
+    const wanted = TABS.find((t) => t.id === tabParam);
+    if (!wanted) return;
+    if (wanted.requires && !(resolved && can(wanted.requires[0], wanted.requires[1]))) return;
+    appliedTabParam.current = tabParam;
+    setTab(wanted.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam, resolved]);
 
   if (!clientId || clientId === "_placeholder") {
     return <p className="text-sm text-ps-label p-6">Select a client to view GST workspace.</p>;

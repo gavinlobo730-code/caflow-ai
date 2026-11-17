@@ -57,7 +57,7 @@ from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_now, ist_today
 from core.permissions import can_user
 from domain.ai import groq_text, narration
-from domain.practice import digest
+from domain.practice import digest, nightly_results
 
 _logger = logging.getLogger("caflow.digest")
 
@@ -122,7 +122,7 @@ def _stored_results(firm_id: str, allowed: Optional[set], names: dict[str, str],
 
     def page():
         return (db.table("nightly_exception_results")
-                .select("id, client_id, engine, status, count, amount_paise, computed_at")
+                .select("id, client_id, engine, status, count, amount_paise, details, computed_at")
                 .eq("firm_id", firm_id).in_("engine", engines)
                 .gte("computed_at", cutoff))
 
@@ -139,6 +139,10 @@ def _stored_results(firm_id: str, allowed: Optional[set], names: dict[str, str],
         missing = len(set(names) - covered)
         if missing and covered:
             notes.append(digest.not_covered_by_stored(digest.STORED_SECTIONS[engine][1], missing))
+        partly = {str(r["client_id"]) for r in mine if nightly_results.left_unchecked(r)}
+        if partly:
+            notes.append(digest.partly_checked_by_stored(digest.STORED_SECTIONS[engine][1],
+                                                         len(partly)))
     return items, notes
 
 
