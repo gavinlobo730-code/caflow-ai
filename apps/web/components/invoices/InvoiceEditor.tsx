@@ -22,7 +22,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
-import { estimateBaseMinor } from "@/lib/services/currencyPreview";
+import { baseTotalOfHeads } from "@/lib/services/currencyPreview";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { joinSentences, stockEffectProblem } from "@/lib/documents/stockEffect";
 import { computeLineGst, discountPaise, gstRateBpsFromPercent,
@@ -457,7 +457,6 @@ export function InvoiceEditor({
   }, [isEdit, existing?.id, clientId]);
 
   const isForeign = currency !== "" && currency !== "INR";
-  const rateNum = parseFloat(exchangeRate);
 
   // ── Dirty detection (Batch 2 carry-forward: real "Unsaved changes" indicator) ──
   const initialSnapshot = useRef({
@@ -545,8 +544,13 @@ export function InvoiceEditor({
     [customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate,
      supplyStateCode, supplyType, isReverseCharge],
   );
-  const estimatedBasePaise = isForeign && !Number.isNaN(rateNum) && rateNum > 0 && totals.grand_total_paise > 0
-    ? estimateBaseMinor(totals.grand_total_paise, rateNum)
+  // The INR total the save will store: each head converted at the typed rate and the results added, the save's own rule
+  // (lib/services/currencyPreview, pinned to the server). Nothing for a rate it cannot read or a currency the master has not
+  // described; a foreign invoice is never rupee-rounded, so there is no round-off head.
+  const basePaise = isForeign && totals.grand_total_paise > 0
+    ? baseTotalOfHeads(
+        [totals.taxable_paise, totals.cgst_paise, totals.sgst_paise, totals.igst_paise, totals.cess_paise],
+        exchangeRate, currencies.find((c) => c.code === currency)?.minor_unit)
     : null;
 
   function fmtAmt(minor: number): string {
@@ -1085,8 +1089,8 @@ export function InvoiceEditor({
         <span>Grand Total{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(totals.grand_total_paise)}</span>
       </div>
-      {isForeign && estimatedBasePaise != null && (
-        <Row label="≈ INR total" value={fmt(estimatedBasePaise)} muted />
+      {isForeign && basePaise != null && (
+        <Row label="INR total at this rate" value={fmt(basePaise)} muted />
       )}
       <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
         <Row label="Due date" value={dueDate || "—"} />

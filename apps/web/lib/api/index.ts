@@ -5218,6 +5218,10 @@ export const api = {
     // captions the engine could not honour, and spelled five others
     // differently, which is how nine live mappings were being discarded.
     scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
+    /** The loans screen's EMI calculator: worked on the server in exact decimal arithmetic (POST-A-266). A guide; nothing stores it. */
+    emi: (principalPaise: number, annualRateBps: number, months: number) =>
+      request<ApiResp<{ emi_paise: number; principal_paise: number; annual_rate_bps: number; months: number; basis: string }>>(
+        `/api/accounting/emi?${new URLSearchParams({ principal_paise: String(principalPaise), annual_rate_bps: String(annualRateBps), months: String(months) })}`),
     // GET /api/accounting/journal (a date-windowed LIST across every entry) is
     // retired (apex-sales-purchases-01) — it read mock data only, in every
     // deployment, and this helper's one caller (six document-view drawers'

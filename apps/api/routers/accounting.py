@@ -204,6 +204,32 @@ def _assert_account_scope(current_user: dict, account_id: str) -> dict:
     return account
 
 
+@router.get("/emi")
+def loan_emi(
+    principal_paise: Annotated[int, Query(gt=0, le=10**15)],
+    annual_rate_bps: Annotated[int, Query(ge=0, le=100_000)],
+    months: Annotated[int, Query(gt=0, le=1200)],
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The loans screen's EMI calculator, worked here and not in the browser (POST-A-266).
+
+    A guide, not a figure anything is built from: nothing stores it, and the screen says the loan agreement's
+    instalment is the one to record. `domain/loans/emi.py` holds the arithmetic and says what it does not know.
+    """
+    from domain.loans.emi import emi_paise
+    try:
+        emi = emi_paise(principal_paise, annual_rate_bps, months)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return api_response(True, {
+        "emi_paise": emi,
+        "principal_paise": principal_paise,
+        "annual_rate_bps": annual_rate_bps,
+        "months": months,
+        "basis": "Reducing balance, interest monthly at the annual rate over 12, rounded to the paisa once.",
+    })
+
+
 @router.get("/schedule-iii/captions")
 def schedule_iii_captions(current_user: dict = Depends(rbac("accounting", "read"))):
     """The Schedule III captions a mapping may be set to, grouped by statement.
