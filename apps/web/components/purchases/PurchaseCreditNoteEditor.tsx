@@ -13,7 +13,9 @@
  * deliberately no Cancel/reversal path, same as Debit Notes.
  */
 import { parseLineAmounts } from "@/lib/money/lineInput";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { Trash2, Plus, Loader2, AlertCircle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
@@ -154,6 +156,9 @@ export function PurchaseCreditNoteEditor({
 }) {
   const today = todayISO();
   const isEdit = !!existing;
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !isEdit);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const initialLines: EditorLine[] =
     existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
     : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
@@ -472,7 +477,7 @@ export function PurchaseCreditNoteEditor({
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
+              <VendorLookup vendors={vendors} recent={recentVendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
               {isEdit && <p className="mt-1 text-3xs text-ps-hint">Vendor can&apos;t be changed once a credit note exists.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>

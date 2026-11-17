@@ -3371,6 +3371,9 @@ export type ReportGSTSummary = {
   ca_review_required: true;
 };
 
+/** Which parties a client used most recently (`domain/party_recent`): ids newest first, read off a bounded window of its documents. */
+export type RecentParties = { ids: string[]; documents_read: number; window: number };
+
 /** A multipart POST. With a progress callback it goes through `XMLHttpRequest` (the only way to see bytes sent); without one it is `fetch`, as before. Never retried either way. */
 function uploadForm(url: string, token: string | undefined, form: FormData, onProgress?: (p: UploadProgress) => void): Promise<Response> {
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -7933,6 +7936,9 @@ export const api = {
       if (includeInactive) q.set("include_inactive", "true");
       return request<ApiResp<{ id: string; name: string }[]>>(`/api/customers/?${q}`);
     },
+    /** The customers this client invoiced most recently, newest first: ids only, for the top of the picker (POST-A-155). */
+    recent: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/customers/recent?${new URLSearchParams({ client_id: clientId })}`),
   },
 
   vendors: {
@@ -7941,6 +7947,9 @@ export const api = {
       if (includeInactive) q.set("include_inactive", "true");
       return request<ApiResp<Vendor[]>>(`/api/vendors/?${q}`);
     },
+    /** The suppliers this client billed against most recently, newest first: ids only, for the top of the picker (POST-A-155). */
+    recent: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/vendors/recent?${new URLSearchParams({ client_id: clientId })}`),
     create: (body: VendorWrite & { client_id: string }) =>
       request<ApiResp<Vendor & { duplicate?: boolean }>>("/api/vendors/",
         { method: "POST", body: JSON.stringify(body) }),
