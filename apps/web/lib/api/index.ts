@@ -6043,6 +6043,8 @@ export const api = {
     reopenableTypes: () =>
       request<ApiResp<{ obligation_types: string[]; not_requirable_types?: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
+    /** The caller's own open obligations, the ones they are named on as preparer, reviewer or approver (POST-A-206). */
+    mine: () => request<ApiResp<Record<string, unknown>>>(`/api/compliance/obligations/mine`),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
   // Replaces the frontend's direct-Supabase health-score-compute.ts.

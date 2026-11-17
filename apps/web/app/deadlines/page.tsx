@@ -35,6 +35,14 @@ import { MissingIrnPanel } from "@/components/gst/MissingIrnPanel";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 
+// ─── Who prepares and who reviews (POST-A-206) ─────────────────────────────
+const UNASSIGNED = "__unassigned__";
+
+function personLabel(id: string | null | undefined, name: string | null | undefined): string {
+  if (!id) return "Not assigned";
+  return name ?? "A member the server could not name";
+}
+
 // ─── Type filter mapping ───────────────────────────────────────────────────
 // URL param → compliance_type predicate. TDS and MCA use prefix matching because
 // the DB stores subtypes (TDS24Q, TDS26Q, MCA_AOC4, MCA_MGT7).
@@ -411,6 +419,18 @@ function DeadlinesContent() {
         </div>
       ),
     },
+    // Who prepares and who reviews it (POST-A-206): the names the server resolved for the people the obligation names. An id the
+    // server could not resolve says so, and nobody named reads "Not assigned", never a blank that looks like a missing read.
+    {
+      key: "preparer", header: "Preparer", sortable: true, searchable: true,
+      accessor: (r) => personLabel(r.preparer_id, r.preparer_name),
+      render: (r) => <span className={`text-xs ${r.preparer_id ? "text-ps-label" : "text-ps-hint"}`}>{personLabel(r.preparer_id, r.preparer_name)}</span>,
+    },
+    {
+      key: "reviewer", header: "Reviewer", sortable: true, searchable: true,
+      accessor: (r) => personLabel(r.reviewer_id, r.reviewer_name),
+      render: (r) => <span className={`text-xs ${r.reviewer_id ? "text-ps-label" : "text-ps-hint"}`}>{personLabel(r.reviewer_id, r.reviewer_name)}</span>,
+    },
     {
       key: "arn", header: "ARN",
       accessor: (r) => r.arn_number ?? "",
@@ -419,6 +439,15 @@ function DeadlinesContent() {
       ),
     },
   ], [clientMap, clientGstinMap, today]);
+
+  const assigneeOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of records) {
+      if (r.preparer_id && !seen.has(r.preparer_id)) seen.set(r.preparer_id, personLabel(r.preparer_id, r.preparer_name));
+    }
+    const people = [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }));
+    return [...people, { value: UNASSIGNED, label: "Not assigned" }];
+  }, [records]);
 
   // ── DataTable filters — status always; type only when URL doesn't set it ────
   // (Matching the original: the Type dropdown is hidden — and not applied — when
@@ -437,6 +466,11 @@ function DeadlinesContent() {
           { value: "not_overdue", label: "Not overdue" },
         ] },
       { key: "due_date", label: "Due Date", type: "dateRange", accessor: (r) => r.due_date },
+      // The assignee is the preparer (`assign` sets one to the other). The options are the people the rows name, so nobody is
+      // offered who has nothing here, and "Not assigned" finds what is on nobody's list.
+      { key: "assignee", label: "Assignee (preparer)", type: "select",
+        accessor: (r) => r.preparer_id ?? UNASSIGNED,
+        options: assigneeOptions },
     ];
     if (!urlType) {
       defs.splice(1, 0, {
@@ -445,7 +479,7 @@ function DeadlinesContent() {
       });
     }
     return defs;
-  }, [urlType, today]);
+  }, [urlType, today, assigneeOptions]);
 
   // ── DataTable bulk actions — mark filed (skips rows already filed/na) + export ─
   const bulkActions: BulkAction<ComplianceEntry>[] = useMemo(() => [
