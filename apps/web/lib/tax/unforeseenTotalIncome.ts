@@ -28,3 +28,27 @@ export function readTotalIncome(raw: string): TotalIncomeReading {
   }
   return { kind: "amount", paise };
 }
+
+/**
+ * Which offer's answer may still be shown. The total-income box stays editable while an offer is in flight, and an answer computed
+ * for a total the person has since changed is about a superseded figure: shown, it would put a surcharge for one total beside a box
+ * holding another. So each offer takes a ticket, editing the box (or a newer offer) supersedes every ticket handed out, and only the
+ * latest ticket's answer is applied. Nothing about the figures is decided here.
+ */
+export interface OfferSequence {
+  /** A ticket for an offer starting now; it supersedes every earlier one. */
+  next(): number;
+  /** The figure the offers were for has changed: no ticket handed out so far is current. */
+  supersede(): void;
+  /** Whether an answer that came back under this ticket may be applied. */
+  isCurrent(ticket: number): boolean;
+}
+
+export function offerSequence(): OfferSequence {
+  let latest = 0;
+  return {
+    next: () => ++latest,
+    supersede: () => { latest += 1; },
+    isCurrent: (ticket) => ticket === latest,
+  };
+}
