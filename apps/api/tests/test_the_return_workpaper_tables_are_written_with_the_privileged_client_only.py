@@ -22,6 +22,13 @@ WHAT IS HELD (no database)
     * driven through a request client that REFUSES these tables' writes the way `authenticated` does, a save, a correction, a
       withdrawal and an issue on each table still lands, on the privileged client, with the firm and the client on the row, and the
       request's client is never asked to write.
+
+THE TWO GSTR-8 AMENDMENT TABLES CANNOT EVEN BE READ BY A SIGNED-IN SESSION (POST-A-056, migration 617)
+    The twelve keep `SELECT` for `authenticated`; migration 617 revokes ALL on Table 4's and Table 4.1's tables and grants the service
+    role alone. A first version still READ them on the caller's session (the two lists, the GSTR-8 build and the upsert's own lookup),
+    which every double accepted and production would have refused with 42501, taking the Table 3 and 3.1 rows that work today down
+    with the screen and the statement. So for those two the rule is every query, a read as well as a write: each starts at
+    `privileged_for(db)` and filters on the firm and the client, and the refusing double refuses a read of them as the database would.
 """
 from __future__ import annotations
 
@@ -41,6 +48,8 @@ TABLES = (
     "ecommerce_operator_supply_amendments", "ecommerce_operator_unregistered_supply_amendments",
     "rcm_documents", "stock_count_sessions", "stock_count_lines",
 )
+#: The two tables migration 617 gives NO privilege at all to a signed-in session (the other twelve keep SELECT): a read is refused too.
+UNREADABLE_TO_A_SIGNED_IN_SESSION = ("ecommerce_operator_supply_amendments", "ecommerce_operator_unregistered_supply_amendments")
 WRITER_FILES = {
     "services/gstr4_annual_service.py", "services/gstr9c_service.py", "services/ecommerce_operator_service.py",
     "services/rcm_document_service.py", "services/stock_count_service.py",
@@ -138,11 +147,59 @@ def test_each_write_names_the_firm_and_the_client_because_the_privileged_client_
             assert ".eq('firm_id'" in whole and ".eq('client_id'" in whole, f"{rel}:{line} {fn}: a filter is missing on this {verb}"
 
 
+def _reads_of_the_unreadable_tables() -> list[tuple[str, str, str, int, str]]:
+    """(file, function, table, line, receiver) for every read of the two tables no signed-in session may read, in every module."""
+    found = []
+    for rel, text in _sources():
+        for table in UNREADABLE_TO_A_SIGNED_IN_SESSION:
+            if table in text:
+                found += [(rel, fn, table, line, ast.unparse(receiver))
+                          for kind, fn, line, receiver, _verbs in _uses(text, table) if kind == "read"]
+    return found
+
+
+def test_every_read_of_the_two_gstr_8_amendment_tables_is_made_on_the_privileged_client():
+    found = _reads_of_the_unreadable_tables()
+    assert {t for _r, _f, t, *_ in found} == set(UNREADABLE_TO_A_SIGNED_IN_SESSION), "a table is read by nothing, or the scan is blind"
+    assert len(found) >= 4, f"{len(found)} reads found; the scan has stopped reading the service"
+    wrong = [row for row in found if row[4] != "privileged_for(db)"]
+    assert not wrong, ("these reads use the caller's own session, on a table migration 617 gives a signed-in session no privilege on "
+                       f"at all, so production refuses them with 42501 (read with `privileged_for(db)`): {wrong}")
+
+
+def test_a_read_on_the_callers_session_is_what_the_check_above_reports():
+    for text in ('def f(db):\n    return db.table("ecommerce_operator_supply_amendments").select("id").eq("id", 1).execute()\n',
+                 'def f(db):\n    return fetch_all(lambda: db.table("ecommerce_operator_unregistered_supply_amendments").select("id"),'
+                 ' key="id", label="ecommerce_operator_unregistered_supply_amendments")\n'):
+        table = next(t for t in UNREADABLE_TO_A_SIGNED_IN_SESSION if f'"{t}"' in text)
+        assert [ast.unparse(r) for kind, _fn, _l, r, _v in _uses(text, table) if kind == "read"] == ["db"]
+
+
+def test_each_read_of_the_two_amendment_tables_names_the_firm_and_the_client_because_the_privileged_client_has_no_row_security():
+    rel = "services/ecommerce_operator_service.py"
+    tree = ast.parse((API / rel).read_text(encoding="utf-8"))
+    parents = {c: p for p in ast.walk(tree) for c in ast.iter_child_nodes(p)}
+    reads = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "table"
+                and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value in UNREADABLE_TO_A_SIGNED_IN_SESSION):
+            continue
+        top = node
+        while top in parents and isinstance(parents[top], (ast.Attribute, ast.Call)):
+            top = parents[top]
+        whole = ast.unparse(top)
+        if not any(f".{verb}(" in whole for verb in WRITE_VERBS):
+            reads.append((node.lineno, whole))
+    assert len(reads) >= 4, reads
+    for line, whole in reads:
+        assert ".eq('firm_id'" in whole and ".eq('client_id'" in whole, f"{rel}:{line} reads without naming both: {whole[:160]}"
+
+
 # ── the behaviour ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 class _Authenticated(FakeDB):
     """The request's client: shares the store with the privileged one and refuses the twelve tables' writes the way the signed-in role
-    is refused in production. A refusal is recorded BEFORE it raises, so a writer left on this client is seen even where the caller
-    swallows the error."""
+    is refused in production, and a READ of the two amendment tables too, on which migration 617 leaves it no privilege at all. A
+    refusal is recorded BEFORE it raises, so a query left on this client is seen even where the caller swallows the error."""
 
     def __init__(self, shared: FakeDB):
         super().__init__()
@@ -152,7 +209,7 @@ class _Authenticated(FakeDB):
     def table(self, name):
         query = super().table(name)
         if name in TABLES:
-            for verb in WRITE_VERBS:
+            for verb in WRITE_VERBS | ({"select"} if name in UNREADABLE_TO_A_SIGNED_IN_SESSION else set()):
                 def refuse(*_a, _verb=verb, **_k):
                     self.refused.append((name, _verb))
                     raise RuntimeError(f"permission denied for table {name}")
@@ -181,6 +238,10 @@ def test_the_refusing_double_refuses_every_write_verb_on_these_tables_and_only_t
                 getattr(request.table(table), verb)({})
     request.table("vendors").insert({"id": "v1", "firm_id": FIRM}).execute()          # not protected: allowed
     assert [r["id"] for r in shared.rows("vendors")] == ["v1"]
+    for table in UNREADABLE_TO_A_SIGNED_IN_SESSION:                                   # migration 617: not even a read
+        with pytest.raises(RuntimeError, match="permission denied"):
+            request.table(table).select("id")
+    assert request.table("ecommerce_operator_supplies").select("id").execute().data == []   # the twelve keep SELECT: allowed
 
 
 GSTIN = "27AAPFU0939F1ZV"
@@ -266,6 +327,37 @@ def test_a_gstr_8_amendment_is_written_on_the_privileged_client(world):
     assert _only(privileged, "ecommerce_operator_supply_amendments") == []
     assert _only(privileged, "ecommerce_operator_unregistered_supply_amendments") == []
     assert request.refused == []
+
+
+def test_a_gstr_8_amendment_is_listed_and_the_statement_built_on_the_privileged_client(world, monkeypatch):
+    """The screen's list (`GET /supplies`) and the GSTR-8 build read the two tables a signed-in session cannot read at all, so both
+    read them on the privileged client, naming the firm and the client: a sibling client's row is not in either answer."""
+    from types import SimpleNamespace
+
+    import services.client_gst_registration_service as regs
+    from domain.gst.registrations import TCS_COLLECTOR
+    from services import ecommerce_operator_service as svc
+    from services import gst_return_service as grs
+    privileged, request = world
+    keys = dict(gstin=GSTIN, period="062026", original_period="042026", original_supplier_gstin="29ABCDE1234F1Z5",
+                original_place_of_supply="29", supplier_gstin="29ABCDE1234F1Z5", place_of_supply="29", action="add")
+    svc.record_amendment(request, FIRM, CLIENT, gross_registered_paise=1_000, igst_paise=10, **keys)
+    svc.record_amendment(request, FIRM, OTHER, gross_registered_paise=9_999, igst_paise=99, **keys)
+    ukeys = dict(gstin=GSTIN, period="062026", original_period="042026", original_enrolment_id="E1", enrolment_id="E1", action="add")
+    svc.record_unregistered_amendment(request, FIRM, CLIENT, gross_value_paise=500, **ukeys)
+    svc.record_supply(request, FIRM, CLIENT, gstin=GSTIN, period="062026", supplier_gstin="29ABCDE1234F1Z5",
+                      place_of_supply="29", gross_registered_paise=100)
+
+    listed = svc.list_amendments(request, FIRM, CLIENT, GSTIN, "062026")
+    assert [(r["client_id"], r["net_liable_paise"]) for r in listed] == [(CLIENT, 1_000)]
+    unlisted = svc.list_unregistered_amendments(request, FIRM, CLIENT, GSTIN, "062026")
+    assert [(r["client_id"], r["net_liable_paise"]) for r in unlisted] == [(CLIENT, 500)]
+
+    monkeypatch.setattr(regs, "resolve", lambda _db, _firm, _client, gstin=None: SimpleNamespace(
+        gstin=gstin or GSTIN, registration_type=TCS_COLLECTOR))
+    out = grs.gstr8_statement(request, FIRM, CLIENT, "062026", GSTIN)
+    assert (out["amendment_count"], out["unregistered_amendment_count"], out["supplier_count"]) == (1, 1, 1)
+    assert request.refused == [], "a query of a table the signed-in role cannot read was made on the request's own client"
 
 
 def test_a_stock_count_sheet_is_opened_saved_and_posted_on_the_privileged_client(world, monkeypatch):

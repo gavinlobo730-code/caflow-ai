@@ -1,7 +1,9 @@
 """What an e-commerce operator's sellers supplied through it (GST-25, GSTR-8).
 
 `domain/gst/gstr8.py` is the rule; this fetches and writes the two tables
-migration 421 created. Nothing here decides whether a figure reconciles —
+migration 421 created and the two amendment tables of migration 617, which a
+signed-in session cannot even read, so every query of those two is made on the
+privileged client. Nothing here decides whether a figure reconciles —
 that is the domain module's job, asked by `services.gst_return_service
 .gstr8_statement`.
 """
@@ -195,9 +197,14 @@ def delete_unregistered_supply(db, firm_id: str, client_id: str, supply_id: str)
 
 def list_amendments(db, firm_id: str, client_id: str, gstin: str, period: str) -> list[dict]:
     """The Table 4 rows declared in `period`'s statement, each naming the earlier month and seller it amends, with the revised figures'
-    net as the domain derives it (`net_liable_paise`): the screen shows what the server says and sums nothing itself."""
+    net as the domain derives it (`net_liable_paise`): the screen shows what the server says and sums nothing itself.
+
+    Every query of the two amendment tables, a READ included, is made on `privileged_for(db)`: migration 617 leaves a signed-in
+    session no privilege on them at all, so under `USE_USER_JWT` the caller's own session is refused 42501. The privileged client
+    carries no row security, so the firm and the client are named on every query; the routes assert the caller's access to the
+    client before they reach here."""
     rows = fetch_all(
-        lambda: db.table("ecommerce_operator_supply_amendments").select(
+        lambda: privileged_for(db).table("ecommerce_operator_supply_amendments").select(
             "id, firm_id, client_id, gstin, period, original_period, original_supplier_gstin, "
             "original_place_of_supply, supplier_gstin, place_of_supply, gross_registered_paise, "
             "returns_registered_paise, gross_unregistered_paise, returns_unregistered_paise, "
@@ -213,7 +220,7 @@ def _existing_amendment(db, firm_id: str, client_id: str, gstin: str, period: st
                         original_supplier_gstin: str, original_place_of_supply: Optional[str]) -> Optional[dict]:
     """The row with this natural key: the utility's own duplicate key (original month + original supplier, and from FY 2025-26 the
     original place of supply), which migration 617's unique index is. A NULL place of supply is a value of the key, not a wildcard."""
-    query = (db.table("ecommerce_operator_supply_amendments").select("id")
+    query = (privileged_for(db).table("ecommerce_operator_supply_amendments").select("id")
              .eq("firm_id", firm_id).eq("client_id", client_id)
              .eq("gstin", gstin).eq("period", period)
              .eq("original_period", original_period)
@@ -294,7 +301,7 @@ def delete_amendment(db, firm_id: str, client_id: str, amendment_id: str) -> dic
 
 def list_unregistered_amendments(db, firm_id: str, client_id: str, gstin: str, period: str) -> list[dict]:
     rows = fetch_all(
-        lambda: db.table("ecommerce_operator_unregistered_supply_amendments").select(
+        lambda: privileged_for(db).table("ecommerce_operator_unregistered_supply_amendments").select(
             "id, firm_id, client_id, gstin, period, original_period, original_enrolment_id, "
             "enrolment_id, gross_value_paise, returns_paise, action, notes, created_at, updated_at")
         .eq("firm_id", firm_id).eq("client_id", client_id)
@@ -306,7 +313,7 @@ def list_unregistered_amendments(db, firm_id: str, client_id: str, gstin: str, p
 
 def _existing_unregistered_amendment(db, firm_id: str, client_id: str, gstin: str, period: str,
                                      original_period: str, original_enrolment_id: str) -> Optional[dict]:
-    return _first(db.table("ecommerce_operator_unregistered_supply_amendments").select("id")
+    return _first(privileged_for(db).table("ecommerce_operator_unregistered_supply_amendments").select("id")
                   .eq("firm_id", firm_id).eq("client_id", client_id)
                   .eq("gstin", gstin).eq("period", period)
                   .eq("original_period", original_period)
