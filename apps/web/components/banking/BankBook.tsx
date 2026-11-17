@@ -235,12 +235,12 @@ export function BankRegister({ clientId }: { clientId: string }) {
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">From</span>
-          <DateInput key={`from-${clearedTimes}`} value={dateFrom} onChange={setDateFrom}
+          <DateInput key={`from-${clearedTimes}`} aria-label="Bank book from" value={dateFrom} onChange={setDateFrom}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">
           <span className="text-3xs font-medium text-ps-label">To</span>
-          <DateInput key={`to-${clearedTimes}`} value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
+          <DateInput key={`to-${clearedTimes}`} aria-label="Bank book to" value={dateTo} onChange={setDateTo} anchor={dateFrom || null} notBefore={dateFrom || null}
             className="mt-1 block border border-ps-border rounded px-2 py-1.5 text-xs" />
         </label>
         <label className="block">

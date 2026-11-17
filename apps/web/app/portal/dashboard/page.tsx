@@ -521,11 +521,11 @@ export default function PortalDashboardPage() {
             <Panel title="Account Statement">
               <div className="flex flex-wrap items-end gap-2 mb-3">
                 <label className="text-xs text-ps-label">From
-                  <DateInput value={stmtStart} onChange={(v) => setStmtStart(v)}
+                  <DateInput aria-label="Statement from" value={stmtStart} onChange={(v) => setStmtStart(v)}
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <label className="text-xs text-ps-label">To
-                  <DateInput anchor={stmtStart || null} notBefore={stmtStart || null} value={stmtEnd} onChange={(v) => setStmtEnd(v)}
+                  <DateInput aria-label="Statement to" anchor={stmtStart || null} notBefore={stmtStart || null} value={stmtEnd} onChange={(v) => setStmtEnd(v)}
                     className="ml-1 block sm:inline border border-ps-border rounded px-2 py-1 text-xs" />
                 </label>
                 <button disabled={busy} onClick={reloadStatement}
