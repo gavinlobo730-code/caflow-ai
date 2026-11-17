@@ -12,7 +12,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-// @ts-expect-error — a plain .mjs module with no declaration file
 import { CLIENT_ROW, CLIENT_UUID, knownRead, project, selectItems } from "./walkStub.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
