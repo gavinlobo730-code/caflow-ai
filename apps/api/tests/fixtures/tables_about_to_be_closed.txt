@@ -4,5 +4,3 @@
 # migration that revokes the grant moves each name to that list and empties this one. The Python ships first, the grant at least an
 # hour later: the old API against a revoked grant fails soft and wrong.
 # Empty since migration 563 (29-10-2026) moved the twelve document tables to the closed list; the next change that moves writers ahead of a grant fills it.
-# POST-A-461 (17-11-2026): compliance_records, whose writers (repositories/compliance_records_repository.py) moved to the privileged client ahead of migration 705.
-compliance_records
