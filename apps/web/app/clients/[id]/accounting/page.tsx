@@ -1,6 +1,7 @@
 "use client";
 
 import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
+import { deleteActsOn, deleteAppliesTo, POSTED_LEFT_ALONE } from "@/lib/accounting/journalDeleteScope";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
@@ -1009,6 +1010,9 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
   // New Journal Entry and the voucher import write the books too (`accounting` `write`), and were drawn to an Executive.
   const mayWriteBooks = canDo("accounting", "write");
   const mayReverseEntries = canDo("accounting", "approve");
+  // Where the firm has a Partner approve every manual journal, a posted entry is deleted only by someone who may approve
+  // (POST-A-462): the server's own answer for this person (`may_post`), never a copy of the rule.
+  const deleteRule = useJournalApprovalRule();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesError, setEntriesError] = useState<string | null>(null);
@@ -1283,11 +1287,13 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       label: "Delete",
       icon: <Trash2 size={13} />,
       variant: "danger",
+      // Not offered for a selection of posted entries alone when the server says this person may not change them (POST-A-462).
+      appliesTo: (rows) => deleteAppliesTo(deleteRule.mayPost, rows),
       // Drafts always; a MANUAL posted entry while its period is open
       // (migration 275, the same gate that governs editing one). The server
       // decides — an auto-posted entry, a locked year or a filed return each
       // come back with a sentence naming the reason, which runBulk shows.
-      confirm:
+      confirm: deleteRule.mayPost === false ? POSTED_LEFT_ALONE :
         "Delete the selected entries? Drafts go immediately. A posted entry goes " +
         "only if you typed it yourself and its period is still open — anything " +
         "auto-posted or covered by a filed return is refused and named. An entry " +
@@ -1296,10 +1302,11 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
         "report, and stay in Settings → Audit Log with their lines.",
       run: (rows) => runBulk(
         rows,
-        // No client-side eligibility rule beyond "not already gone". Deciding
-        // here which posted entries qualify would be a second copy of the
-        // period gate, and the two would drift.
-        () => true,
+        // No client-side eligibility rule beyond "not already gone" and the
+        // server's own answer on posted entries (POST-A-462). Deciding here
+        // which posted entries qualify would be a second copy of the period
+        // gate, and the two would drift.
+        deleteActsOn(deleteRule.mayPost),
         // with_pair, because the confirm above said so. Half a pair is still
         // refused by the server either way round — it would strand the other.
         (e) => api.accounting.discardJournalEntry(e.id, true),
@@ -1334,7 +1341,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
     },
     exportSelectedAction("journal.csv", journalColumns),
   ] satisfies BulkAction<JournalEntry>[]).filter((a) => (a.id !== "discard" || mayDeleteEntries) && (a.id !== "reverse-posted" || mayReverseEntries)),
-  [runBulk, journalColumns, mayDeleteEntries, mayReverseEntries]);
+  [runBulk, journalColumns, mayDeleteEntries, mayReverseEntries, deleteRule.mayPost]);
 
   return (
     <div className="space-y-2">
