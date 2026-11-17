@@ -17,7 +17,7 @@ from typing import Callable
 from core.ist_clock import ist_now
 from tests.production_types import assert_write_fits_production_types
 
-_TABLES = ("delivery_challans", "delivery_challan_lines", "delivery_challan_returns")
+_TABLES = ("delivery_challans", "delivery_challan_lines", "delivery_challan_returns", "sales_orders", "sales_order_lines")
 
 
 class Refusal(Exception):
@@ -106,7 +106,7 @@ def record_lot(tables: dict, new_id: Callable[[str], str], firm_id, client_id, c
                      and _same(ln.get("firm_id"), firm_id) and _same(ln.get("client_id"), client_id)), None)
         if line is None:
             raise Refusal("line_not_found", "P0002")
-        mine = [r for r in _rows(tables, "delivery_challan_returns") if _same(r.get("challan_line_id"), line["id"])]
+        mine = [r for r in _rows(tables, "delivery_challan_returns") if _same(r.get("challan_line_id"), line["id"]) and not r.get("retracted_at")]
         back = sum((Decimal(str(r.get("quantity_returned") or 0)) for r in mine), Decimal(0))
         lost = sum((Decimal(str(r.get("quantity_lost_or_wasted") or 0)) for r in mine), Decimal(0))
 
@@ -118,7 +118,7 @@ def record_lot(tables: dict, new_id: Callable[[str], str], firm_id, client_id, c
             raise Refusal("lot_exceeds_line")
         if now_back == 0 and now_lost == 0:      # the table's own CHECK: a lot records something that moved
             raise Refusal('new row for relation "delivery_challan_returns" violates check constraint "delivery_challan_returns_something_moved"', "23514")
-        written = {**{k: v for k, v in lot.items() if k not in ("challan_id", "challan_line_id", "firm_id", "client_id")},
+        written = {**{k: v for k, v in lot.items() if k not in ("challan_id", "challan_line_id", "firm_id", "client_id", "retracted_at", "retracted_by", "retraction_reason")},
                    "challan_id": challan["id"], "challan_line_id": line["id"], "firm_id": firm_id, "client_id": client_id}
         for column in ("quantity_returned", "quantity_lost_or_wasted"):
             if column in written:
@@ -127,7 +127,7 @@ def record_lot(tables: dict, new_id: Callable[[str], str], firm_id, client_id, c
         row = {"id": new_id("delivery_challan_returns"), **written}
         _rows(tables, "delivery_challan_returns").append(row)
         every = [ln for ln in _rows(tables, "delivery_challan_lines") if _same(ln.get("challan_id"), challan_id)]
-        returns = [r for r in _rows(tables, "delivery_challan_returns") if _same(r.get("challan_id"), challan_id)]
+        returns = [r for r in _rows(tables, "delivery_challan_returns") if _same(r.get("challan_id"), challan_id) and not r.get("retracted_at")]
 
         def came_back(ln) -> Decimal:
             return sum((Decimal(str(r.get("quantity_returned") or 0)) for r in returns if _same(r.get("challan_line_id"), ln["id"])), Decimal(0))
@@ -138,6 +138,78 @@ def record_lot(tables: dict, new_id: Callable[[str], str], firm_id, client_id, c
             challan.update({"status": "received_back", "received_back_on": last, "updated_at": ist_now().isoformat()})
             stamped = True
         return {"lot": dict(row), "challan_marked_received_back": stamped, "received_back_on": last}
+
+    return _atomic(tables, body)
+
+
+def retract_lot(tables: dict, firm_id, client_id, challan_id, lot_id, reason, by) -> dict:
+    if not str(reason or "").strip():
+        raise Refusal("retraction_needs_reason")
+
+    def body():
+        challan = next((c for c in _rows(tables, "delivery_challans")
+                        if _same(c.get("id"), challan_id) and _same(c.get("firm_id"), firm_id) and _same(c.get("client_id"), client_id)), None)
+        if challan is None:
+            raise Refusal("challan_not_found", "P0002")
+        if challan.get("status") not in ("issued", "received_back"):
+            raise Refusal("challan_not_issued", detail=f"status is {challan.get('status')}")
+        lot = next((r for r in _rows(tables, "delivery_challan_returns")
+                    if _same(r.get("id"), lot_id) and _same(r.get("challan_id"), challan_id) and not r.get("retracted_at")), None)
+        if lot is None:
+            raise Refusal("lot_not_found", "P0002")
+        # The lots that were live BEFORE this retraction (the one being retracted among them), read before it is stamped.
+        before = [r for r in _rows(tables, "delivery_challan_returns") if _same(r.get("challan_id"), challan_id) and not r.get("retracted_at")]
+        lot.update({"retracted_at": ist_now().isoformat(), "retracted_by": by, "retraction_reason": str(reason).strip()})
+        reverted = False
+        if challan.get("status") == "received_back":
+            live = [r for r in before if r is not lot]
+            every = [ln for ln in _rows(tables, "delivery_challan_lines") if _same(ln.get("challan_id"), challan_id)]
+
+            def open_lines(lots) -> int:
+                def back(ln) -> Decimal:
+                    return sum((Decimal(str(r.get("quantity_returned") or 0)) for r in lots if _same(r.get("challan_line_id"), ln["id"])), Decimal(0))
+                return sum(1 for ln in every if Decimal(str(ln.get("quantity") or 0)) > back(ln))
+
+            # The lots marked it back only when they brought every line back before this retraction; a challan the whole-challan door marked back is left as it is.
+            if open_lines(before) == 0 and open_lines(live) > 0:
+                challan.update({"status": "issued", "received_back_on": None, "updated_at": ist_now().isoformat()})
+                reverted = True
+        return {"lot": dict(lot), "challan_back_to_issued": reverted}
+
+    return _atomic(tables, body)
+
+
+def issue(tables: dict, firm_id, client_id, challan_id, issued_at) -> dict:
+    """`issue_delivery_challan_atomic` (migration 652): a draft is issued once the order's over-delivery rule holds, in one step."""
+    def body():
+        challan = next((c for c in _rows(tables, "delivery_challans")
+                        if _same(c.get("id"), challan_id) and _same(c.get("firm_id"), firm_id) and _same(c.get("client_id"), client_id)), None)
+        if challan is None:
+            raise Refusal("challan_not_found", "P0002")
+        if challan.get("status") != "draft":
+            raise Refusal("challan_not_draft", detail=f"status is {challan.get('status')}")
+        order_id = challan.get("order_id")
+        if order_id is not None and not any(_same(o.get("id"), order_id) and _same(o.get("firm_id"), firm_id) and _same(o.get("client_id"), client_id)
+                                            for o in _rows(tables, "sales_orders")):
+            raise Refusal("order_line_not_of_order")
+        mine = [ln for ln in _rows(tables, "delivery_challan_lines") if _same(ln.get("challan_id"), challan_id) and ln.get("order_line_id")]
+        order_lines = {str(ol["id"]): ol for ol in _rows(tables, "sales_order_lines") if order_id is not None and _same(ol.get("order_id"), order_id)}
+        if any(str(ln["order_line_id"]) not in order_lines for ln in mine):
+            raise Refusal("order_line_not_of_order")
+        issued = {str(c["id"]) for c in _rows(tables, "delivery_challans") if c.get("status") == "issued" and not _same(c.get("id"), challan_id)}
+        if any(Decimal(str(ln.get("quantity") or 0)) <= 0 for ln in mine):
+            raise Refusal("order_over_delivered")
+        wanted: dict = {}                       # the lines naming one order line, added together
+        for ln in mine:
+            wanted[str(ln["order_line_id"])] = wanted.get(str(ln["order_line_id"]), Decimal(0)) + Decimal(str(ln.get("quantity") or 0))
+        for lid, quantity in wanted.items():
+            ol = order_lines[lid]
+            delivered = sum((Decimal(str(d.get("quantity") or 0)) for d in _rows(tables, "delivery_challan_lines")
+                             if _same(d.get("order_line_id"), ol["id"]) and str(d.get("challan_id")) in issued), Decimal(0))
+            if quantity > max(Decimal(0), Decimal(str(ol.get("quantity") or 0)) - delivered):
+                raise Refusal("order_over_delivered")
+        challan.update({"status": "issued", "issued_at": issued_at, "updated_at": issued_at})
+        return dict(challan)
 
     return _atomic(tables, body)
 
@@ -187,9 +259,14 @@ def call(tables: dict, new_id: Callable[[str], str], fn: str, params: dict):
         return create(tables, new_id, params["p_header"], params["p_lines"])
     if fn == "record_challan_lot_atomic":
         return record_lot(tables, new_id, params["p_firm_id"], params["p_client_id"], params["p_challan_id"], params["p_lot"])
+    if fn == "issue_delivery_challan_atomic":
+        return issue(tables, params["p_firm_id"], params["p_client_id"], params["p_challan_id"], params["p_issued_at"])
+    if fn == "retract_challan_lot_atomic":
+        return retract_lot(tables, params["p_firm_id"], params["p_client_id"], params["p_challan_id"], params["p_lot_id"], params["p_reason"], params["p_by"])
     if fn == "correct_draft_challan_lines_atomic":
         return correct_draft(tables, params["p_firm_id"], params["p_client_id"], params["p_challan_id"], params["p_header"], params["p_fixes"])
     raise Exception(f"FakeDB: unsupported rpc {fn!r}")
 
 
-FUNCTIONS = ("create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic")
+FUNCTIONS = ("create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic", "retract_challan_lot_atomic",
+             "issue_delivery_challan_atomic")

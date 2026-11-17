@@ -222,6 +222,8 @@ EXEMPT = {
     "get_settlement": "the settlement is read by firm and client and the employee off it by firm and client too; one that cannot be read under that client is shown as unknown, never another client's (POST-A-096)",
     "put_attendance": "the roster is read by firm and client and an id outside it is refused",
     "get_one_time_earnings": "the rows are read by firm, client and month",
+    "get_opening_positions": "the positions and the roster are read by firm and client; no employee id comes from the request",
+    "put_opening_positions": "the roster is read by firm and client and an employee id outside it is refused with its own sentence (POST-A-082)",
     "put_one_time_earnings": "the roster is read by firm and client; an id outside it is refused (`strangers`)",
     "payroll_employee_exceptions": "reads the firm's employees and narrows the result to the caller's clients at the end",
     "tds_projection": "`compute_tds_projection` reads the employee by firm, client AND id",

@@ -156,6 +156,9 @@ NOT_FOR_THE_API = {
     # alone, which is its one reader and writer (the stock-effect retry service, naming the firm and the client); `authenticated`,
     # `anon` and PUBLIC hold no privilege, and the deny-list test below proves it.
     "stock_effect_settlements",
+    # Migration 641 (POST-A-082): a mid-year client's payroll opening position per employee, a payroll table like the twenty-three
+    # above; the API's privileged client is its only reader and writer, and `authenticated`, `anon` and PUBLIC hold no privilege.
+    "payroll_opening_positions",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

@@ -165,14 +165,6 @@ UNMEASURED: dict[str, set[str]] = {
     "components/purchases/BillsOfEntryTab.tsx": {"posted"},
     # mca_filings.status allows all three; the page reads mca_companies only.
     "app/clients/[id]/compliance/mca/page.tsx": {"filed", "in_progress", "not_started"},
-    # `GSTFiling.status` is DERIVED in the browser by computeOverdueStatus and
-    # never written — compliance_calendar has no `status` column at all, and the
-    # column the screen does write is `filing_status`, whose 'pending' is
-    # reported here only through the documented `status:` left-boundary
-    # limitation. Renaming the derived field is the real fix and is separate.
-    "app/gst/page.tsx": {"Filed", "Overdue", "Pending", "pending"},
-    # Same shape as the GST screen, lower-cased; compliance_tasks allows both.
-    "app/income-tax/page.tsx": {"filed", "pending"},
     # client_sales_invoices.status and purchase_bills.status both allow 'draft'.
     # Each editor reads service_catalogue, which has no status column.
     "components/invoices/InvoiceEditor.tsx": {"draft"},

@@ -175,7 +175,8 @@ def test_the_update_names_the_client_as_well_as_the_firm_and_the_id(db, monkeypa
     monkeypatch.setattr(svc, "row_of_client", lambda _db, _table, _firm, _row_id, _client, _what: _stored(db, c))
     with pytest.raises(HTTPException) as caught:
         svc.issue_challan(db, itc.FIRM, c["id"], client_id=itc.OTHER_CLIENT, consigner=CONSIGNER)
-    assert caught.value.status_code == 409 and "changed while it was being issued" in str(caught.value.detail)
+    # the issue function (migration 652) names the client with the firm and the id, so another client's challan is not found by it, and nothing is written
+    assert caught.value.status_code == 404
     assert _stored(db, c)["status"] == "draft", "the issue wrote a challan of another client"
 
 

@@ -16,7 +16,9 @@
  *   7. the firm's form for an AOC-4 with no open year: a period must be typed (a filing with none could never close its obligation);
  *   8. an answer that cannot be read is said with Try again, and Try again reads it, after which the company is chosen from the list;
  *   9. the client tab with two open years and none preselected: Save without a year is refused in words and sends nothing;
- *  10. an earlier, slower answer (for AOC-4) that lands after a later one (for MGT-7) does not replace it.
+ *  10. an earlier, slower answer (for AOC-4) that lands after a later one (for MGT-7) does not replace it;
+ *  11. the firm's form creates the filing through the API (POST-A-442): it offers only the forms the server takes, says which it does not,
+ *      and sends the status and the notes the CA chose.
  *
  * No scenario has a date of its own, so none has a zone.
  */
@@ -47,8 +49,13 @@ function answersChoices(stub, data) {
 async function atAddFiling(env, data) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { mca: ["read", "write", "approve"] } }) });
+  // The firm-level form creates the filing through the API (POST-A-442), as the client tab does: what it SENDS is recorded here.
   const inserted = [];
-  stub.answerInserts("mca_filings", (row) => { inserted.push(row); return { ...row, id: `m-new-${inserted.length}` }; });
+  stub.route({ method: "POST", re: /\/api\/mca-workspace\/filings$/, reply: (_req, body) => {
+    const sent = JSON.parse(body);
+    inserted.push(sent);
+    return ok({ ...sent, id: `m-new-${inserted.length}`, filed_date: null, srn: null });
+  } });
   stub.setTable("mca_filings", []);
   const asked = answersChoices(stub, data);
   await page.goto(`${env.base}/mca/`, { waitUntil: "networkidle" });
@@ -89,8 +96,8 @@ export const scenarios = [
       await until(async () => inserted.length === 1, "the filing to be written");
       const row = inserted[0];
       assert.equal(row.company_id, "co-b");
-      assert.equal(row.cin, BETA.cin);
-      assert.equal(row.company_cin, BETA.cin);
+      // The company's own CIN is the server's to write from its row: none is sent where the chosen company holds one.
+      assert.equal(row.cin, null);
       assert.equal(row.period, "FY 2024-25");
       assert.equal(row.financial_year, "2024-25");
     },
@@ -107,7 +114,7 @@ export const scenarios = [
       await dueAndAdd(page);
       await until(async () => inserted.length === 1, "the filing to be written");
       assert.equal(inserted[0].company_id, "co-a");
-      assert.equal(inserted[0].cin, ALPHA.cin);
+      assert.equal(inserted[0].cin, null);
       assert.equal(inserted[0].period, "FY 2025-26");
       assert.equal(inserted[0].financial_year, "2025-26");
     },
@@ -147,6 +154,25 @@ export const scenarios = [
       assert.equal(inserted[0].company_id, null);
       assert.equal(inserted[0].cin, "U17200MH2010PTC205678");
       assert.equal(inserted[0].period, "FY 2025-26");
+    },
+  },
+  {
+    id: "firm-form-offers-only-the-forms-the-server-takes-and-sends-what-the-ca-chose",
+    title: "firm Add Filing (POST-A-442): INC-20A, DIR-3 KYC and MSME-1 are not offered and the form says so; Overdue and the notes reach the server",
+    async run(env) {
+      const { page } = env;
+      const { inserted } = await atAddFiling(env, { companies: [ALPHA], company_required: false, has_obligation: true, periods: [YEARS[0]], periods_note: null });
+      const offered = await page.locator("select[aria-label='Form Type']").last().locator("option").evaluateAll((os) => os.map((o) => o.value));
+      assert.deepEqual(offered, ["AOC-4", "MGT-7", "MGT-7A", "ADT-1", "CHG-1"]);
+      await page.getByText("INC-20A, DIR-3 KYC and MSME-1 are not recorded here.").waitFor();
+      await page.locator("select[aria-label='Status']").selectOption("Overdue");
+      await page.getByLabel("Notes", { exact: true }).fill("Board approval awaited");
+      await dueAndAdd(page);
+      await until(async () => inserted.length === 1, "the filing to be sent");
+      assert.equal(inserted[0].status, "overdue");
+      assert.equal(inserted[0].description, "Board approval awaited");
+      assert.equal(inserted[0].client_id, CLIENT_ID);
+      assert.equal(inserted[0].due_date, "2026-10-30");
     },
   },
   {

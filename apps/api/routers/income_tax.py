@@ -1520,6 +1520,7 @@ def advance_tax_unforeseen_income(
     client_id: str = Query(...),
     *,
     fy: Annotated[FYLabel, Query()],
+    total_income_paise: Annotated[Optional[int], Query(ge=0)] = None,
     current_user: dict = Depends(rbac("income_tax", "read")),
 ):
     """The capital gains register's transfers in this financial year, offered as
@@ -1528,26 +1529,30 @@ def advance_tax_unforeseen_income(
     A CANDIDATE, NEVER AN ANSWER. Whether a gain is "income that arose after an
     instalment fell due" is decided by its date, which the register holds, and
     what it ADDS to the year's tax is a figure from the computation. The tax
-    offered here is the register's own — the statutory rate on the gain alone,
-    with cess — and it leaves out the surcharge, the ₹1,25,000 §112A exemption
-    (which is annual and cannot be assigned to one transfer) and the basic
-    exemption the slab income did not use. So it is an estimate and is marked
-    one, the CA replaces it with the computation's figure where they have it,
-    and a candidate nobody includes affects nothing: prepare-only, with an
-    accept and a reject on every line.
+    offered here is `domain/income_tax/unforeseen_offer`'s (POST-A-075): the
+    register's rate on the gain with the ANNUAL §112A exemption used once across
+    the year's listed-equity gains in date order, and the surcharge from the
+    FY-versioned registry's bracket for `total_income_paise` where the caller
+    gives the year's total income (without it none is included, and it says so).
+    That bracket is the slab path's, so it is offered only where the client's
+    own entity type (read here, firm-scoped) makes it an individual, a HUF, an
+    AOP or a BOI; a firm, an LLP, a company or a client with no tax basis
+    recorded is offered no surcharge, and the sentence says why.
+    A year the registry does not hold is never filled with another year's figure.
+    It is still an estimate and is marked one: the CA replaces it with the
+    computation's figure where they have it, and a candidate nobody includes
+    affects nothing: prepare-only, with an accept and a reject on every line.
 
     Only transfers that produced a GAIN with tax on it are offered. A loss, or a
     gain wholly inside an exemption, adds no tax and has nothing to excuse.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT to Income Tax Portal"""
     assert_client_access(current_user, client_id)
     from core.ist_clock import fy_bounds
-    from domain.income_tax.statutory_rates import cess_paise, rates_for
+    from domain.income_tax import unforeseen_offer
 
     caveats = [
-        "The tax shown is the statutory rate on each gain alone, plus cess. It "
-        "leaves out surcharge, the annual ₹1,25,000 §112A exemption and any "
-        "basic exemption the slab income did not use, so it is an ESTIMATE — "
-        "replace it with the figure from the computation where you have one.",
+        "The tax shown is an ESTIMATE of what each gain adds to the year's tax: replace it with the figure from the computation "
+        "where you have one. What it includes and leaves out is listed below.",
     ]
     from domain.income_tax.advance_tax_interest_engine import (
         UNFORESEEN_KIND_LABELS, UNFORESEEN_KINDS)
@@ -1564,8 +1569,7 @@ def advance_tax_unforeseen_income(
             .eq("firm_id", current_user["firm_id"]).eq("client_id", client_id)
             .gte("sale_date", start).lte("sale_date", end)
             .order("sale_date").execute().data) or []
-    rates = rates_for(fy)
-    out = []
+    transfers, computed = [], []
     for r in rows:
         try:
             res = compute_capital_gains(
@@ -1580,9 +1584,19 @@ def advance_tax_unforeseen_income(
             # A register row the engine cannot recompute is left out and not
             # guessed at; the register screen is where it is repaired.
             continue
-        if res.gain_paise <= 0 or res.tax_liability_paise <= 0:
+        transfers.append(unforeseen_offer.Transfer(
+            r.get("id"), str(r["sale_date"])[:10], res.section_ref, res.gain_paise, res.tax_liability_paise))
+        computed.append((r, res))
+    client_rows = (db.table("clients").select("entity_type")
+                   .eq("firm_id", current_user["firm_id"]).eq("id", client_id)
+                   .limit(1).execute().data) or []
+    kind, _no_basis = assessee_kind_for_entity_type(client_rows[0].get("entity_type") if client_rows else None)
+    offers, notes = unforeseen_offer.offer(transfers, fy, total_income_paise, assessee_kind=kind)
+    caveats.extend(notes)
+    out = []
+    for (r, res), o in zip(computed, offers, strict=True):
+        if res.gain_paise <= 0 or o.tax_paise <= 0:
             continue
-        tax = res.tax_liability_paise
         out.append({
             "source": "capital_gains_register",
             "register_id": r.get("id"),
@@ -1590,7 +1604,8 @@ def advance_tax_unforeseen_income(
             "arose_on": str(r["sale_date"])[:10],
             "description": str(r.get("asset_description") or "")[:200],
             "gain_paise": res.gain_paise,
-            "tax_paise": tax + cess_paise(tax, rates),
+            "tax_paise": o.tax_paise,
+            "surcharge_paise": o.surcharge_paise,
             "is_estimate": True,
             "rate_is_a_slab_estimate": res.is_slab_rate_estimate,
         })
@@ -2777,7 +2792,7 @@ def form_3cd_register(
     from services.form_3cd_service import build
     return api_response(True, build(
         db, current_user["firm_id"], client_id, fy,
-        nature=nature, bank_rate_bps=bank_rate_bps))
+        nature=nature, bank_rate_bps=bank_rate_bps, current_user=current_user))
 
 
 class Form3cdManualClauses(BaseModel):

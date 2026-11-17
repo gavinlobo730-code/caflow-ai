@@ -22,7 +22,7 @@ from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, Pay
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, LeaveBalanceIn, PayrollSettingsIn, PTSlabSetIn,
-                           OneTimeEarningsIn, PayrollEnablementIn,
+                           OneTimeEarningsIn, PayrollEnablementIn, OpeningPositionsIn,
                            ReleaseIn, ApplyStructureIn, EmployeeImportIn)
 from core.authz import assert_client_access, filter_by_client
 from core.db_paging import fetch_all
@@ -97,6 +97,7 @@ def _fy_for_month(month: str) -> Optional[str]:
         return None
     start = y if m >= 4 else y - 1
     return f"{start}-{str(start + 1)[2:]}"
+from domain.payroll import opening_position as opening_domain
 from domain.income_tax.statutory_rates import (
     rates_for, slab_tax_paise, apply_rebate_87a,
     apply_surcharge_with_marginal_relief, cess_paise, current_fy,
@@ -459,6 +460,26 @@ def _attendance_gap(emp: dict, attendance_entered: bool) -> list[str]:
             f"on the 26-day default. Enter it, or confirm the default is right."]
 
 
+def _opening_position_gap(emp: dict, month: str, fy: str, tds_ytd: dict) -> list[str]:
+    """A named gap for an employee this product has no earlier month for in the year and who was employed before this month
+    (POST-A-082). Listed with the run like the other statutory gaps; it blocks nothing, because a client that really started the
+    employee this month, or whose first run this is in April, is the ordinary case and has nothing to record. An opening position
+    of nil months is an answer and silences it. An unreadable joining date cannot rule an earlier month out, so it is named.
+
+    A `tds_ytd` whose read FAILED (`_UnreadYtd`) is not "nothing on file": the earlier months or the positions may well exist, so
+    every employee who could have had an earlier month is named with what could not be read, whether or not they are in it."""
+    if month[5:7] == "04":
+        return []
+    joined = str(emp.get("joining_date") or "")[:7]
+    if joined and joined >= month[:7] and len(joined) == 7:
+        return []
+    if getattr(tds_ytd, "unread", False):
+        return [opening_domain.unread_sentence(emp.get("name") or "An employee", month)]
+    if emp.get("id") in tds_ytd:
+        return []
+    return [opening_domain.gap_sentence(emp.get("name") or "An employee", month)]
+
+
 def _statutory_gaps(emp: dict, pt_covered: Optional[set] = None) -> list[str]:
     """Statutory deductions this employee's state levies that we did not compute.
 
@@ -548,6 +569,23 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
     in past the ceiling) rather than the one that over-deducts from people who
     were never covered.
     """
+    # An opening position that SAYS the employee contributed earlier in the period the position's first month falls in
+    # (POST-A-082). Only an explicit TRUE counts: an unknown is not a contribution. Read in its OWN try, so a position table
+    # that cannot be read (before migration 641 is applied, or any failure) costs only what the positions say and never the
+    # coverage the released runs below establish. And a first month of April or October opens its period, so a TRUE there
+    # describes the previous period and is not counted (the validation refuses it; this holds a row written before it did).
+    try:
+        period = esi_contribution_period(month)
+        opening_covered = {str(r["employee_id"]) for r in
+                           _opening_positions(db, firm_id, client_id, _fy_for_month(month) or "")
+                           if r.get("esi_contributed_earlier_in_period") is True
+                           and opening_domain.applies(r, month)
+                           and esi_contribution_period(str(r["first_month_here"])[:7]) == period
+                           and opening_domain.esi_answer_can_be_yes(
+                               date.fromisoformat(f"{str(r['first_month_here'])[:7]}-01"))}
+    except Exception:
+        _logger.exception("could not read the opening positions for ESI coverage %s %s", client_id, month)
+        opening_covered = set()
     try:
         period = esi_contribution_period(month)
         # RELEASED RUNS ONLY (PAY-04). A draft run has deducted nothing and
@@ -564,11 +602,11 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
                    if r.get("month") and r["month"] < month
                    and esi_contribution_period(r["month"]) == period]
         if not earlier:
-            return set()
+            return opening_covered
         slips = (db.table("payroll_slips").select("employee_id, esi_employee_paise")
                  .in_("run_id", earlier).execute().data) or []
-        return {s["employee_id"] for s in slips
-                if int(s.get("esi_employee_paise") or 0) > 0}
+        return opening_covered | {s["employee_id"] for s in slips
+                                  if int(s.get("esi_employee_paise") or 0) > 0}
     except Exception:
         _logger.exception("could not read ESI coverage history for %s %s", client_id, month)
         return set()
@@ -1214,7 +1252,7 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
                    if r.get("month") and r["month"] < month
                    and _fy_for_month(r["month"]) == fy]
         if not earlier:
-            return {}
+            return _with_opening_positions(db, firm_id, client_id, month, fy, {})
         # gross_paise IS SELECTED. It was not, and the accumulator two lines
         # below has always read `sl.get("gross_paise")` — which on a row that
         # never carried the column is None, so every month's
@@ -1240,10 +1278,60 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
             out[sl["employee_id"]] = (tds + int(sl.get("tds_paise") or 0),
                                       months + 1,
                                       gross + int(sl.get("gross_paise") or 0))
-        return out
+        return _with_opening_positions(db, firm_id, client_id, month, fy, out)
     except Exception:
         _logger.exception("could not read YTD TDS for %s %s", client_id, month)
-        return {}
+        return _UnreadYtd()
+
+
+class _UnreadYtd(dict):
+    """A year-to-date mapping that is not the whole answer, because a read behind it failed. It behaves as the dict every caller
+    expects (empty, or the released runs without the opening positions), and `_opening_position_gap` reads the mark so a failed
+    read is named as one and never reported as "nothing is on file" (POST-A-082)."""
+    unread = True
+
+
+def _employees_whose_opening_position_covers(db, firm_id: str, client_id: str, month: str, run_id: str) -> list[str]:
+    """The names of the employees on run `run_id` whose opening position for the month's financial year starts AFTER `month`,
+    so that the position already holds this month (POST-A-082). Read failures raise: the release door must not let a run
+    through on a read it could not make, any more than it lets one through on a gap."""
+    fy = _fy_for_month(month)
+    if not fy:
+        return []
+    later = {str(r["employee_id"]) for r in _opening_positions(db, firm_id, client_id, fy)
+             if str(r.get("first_month_here"))[:7] > month[:7]}
+    if not later:
+        return []
+    on_run = {str(sl["employee_id"]) for sl in (db.table("payroll_slips").select("employee_id")
+                                                 .eq("run_id", run_id).execute().data) or []}
+    hit = on_run & later
+    if not hit:
+        return []
+    names = {str(e["id"]): e.get("name") for e in (db.table("payroll_employees").select("id, name")
+                                                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                                                    .in_("id", sorted(hit)).execute().data) or []}
+    return sorted(names.get(i) or i for i in hit)
+
+
+def _opening_positions(db, firm_id: str, client_id: str, fy: str) -> list[dict]:
+    """The client's opening positions for a financial year (migration 641), through the API's privileged client."""
+    return (db.table("payroll_opening_positions")
+            .select("id, employee_id, first_month_here, financial_year, months_paid, gross_paise, tds_paise, pf_employee_paise, pf_employer_paise, esi_employee_paise, esi_employer_paise, pt_paise, esi_contributed_earlier_in_period, source_note")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("financial_year", fy)
+            .execute().data) or []
+
+
+def _with_opening_positions(db, firm_id: str, client_id: str, month: str, fy: str, ytd: dict) -> dict:
+    """`ytd` with each employee's opening position added on, for a run month on or after the position's first month (POST-A-082).
+
+    A failed read leaves `ytd` as it was, which is the over-deducting direction (the whole year's tax is spread over the months
+    left of twelve) and is logged: it must not fail a run, and it must not be mistaken for "there is no position"."""
+    try:
+        rows = [r for r in _opening_positions(db, firm_id, client_id, fy) if opening_domain.applies(r, month)]
+    except Exception:
+        _logger.exception("could not read the opening positions for %s %s", client_id, fy)
+        return _UnreadYtd(ytd)
+    return opening_domain.add_to_ytd(ytd, {str(r["employee_id"]): opening_domain.as_opening(r) for r in rows})
 
 
 def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
@@ -2670,6 +2758,7 @@ def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
         statutory_gaps.extend(_statutory_gaps(emp, pt_covered))
         statutory_gaps.extend(
             _age_gap(emp, declarations.get(emp["id"]), fy))
+        statutory_gaps.extend(_opening_position_gap(emp, month, fy, tds_ytd))
         attendance_gaps.extend(_attendance_gap(emp, attendance is not None))
         slip["run_id"]      = run_id
         slip["employee_id"] = emp["id"]
@@ -3727,6 +3816,16 @@ def finalize_run(
     # instead of building an empty journal that the kernel rejects (would 500).
     if int(run.get("total_gross_paise") or 0) <= 0:
         raise HTTPException(status_code=400, detail="Cannot finalize an empty payroll run (no computed salary).")
+
+    # A MONTH INSIDE AN OPENING POSITION (POST-A-082). The position already counts this month's pay and tax, so releasing a
+    # slip for it here counts them twice in every later month's §192(3) spread, the projection and a settlement. The PUT that
+    # records a position refuses the same overlap the other way round (a released month before its first month).
+    clash = _employees_whose_opening_position_covers(db, firm_id, client_id, str(run.get("month") or ""), run_id)
+    if clash:
+        raise HTTPException(status_code=409, detail=(
+            f"{', '.join(clash)}: {run.get('month')} is before the first month of their opening position, so its pay and tax "
+            f"are already counted in that position; releasing this run would count them twice. Move the position's first "
+            f"month back to {run.get('month')} (and take this month out of its figures), or remove the position."))
 
     # BEFORE the journal, because a refusal after posting would be a run that is
     # not finalized carrying an entry that says it is.
@@ -5122,6 +5221,160 @@ def put_leave_balance(
         old_data=old, new_data={"employee_id": body.employee_id, "year": body.year, **allotment},
     )
     return api_response(True, row)
+
+
+#: What an opening position carries and what it does not, in words the screen shows beside the form (POST-A-082).
+_OPENING_CARRIES = ("The months already paid, the gross, the tax withheld, the employee's and employer's PF and ESI and the "
+                    "professional tax, for the part of the financial year before this product ran payroll for the client, "
+                    "as read off the old system. The tax calculation, the s.192(3) spread and the ESI coverage rule read it.")
+_OPENING_DOES_NOT_CARRY = (
+    "It is not a payroll run: nothing is posted to the ledger, no payslip is made and nothing is remitted from it. It holds no "
+    "previous-employer salary or tax (Form 12B): that is a different fact, not built yet. It holds no gratuity or leave-"
+    "encashment exemption already used. It is not yet printed in Annexure II, the 24Q source or Form 16, which still show "
+    "only the months run here. A payroll run already released keeps the figures it was computed with.")
+
+
+def _roster_all(db, firm_id: str, client_id: str) -> dict:
+    return {str(e["id"]): e for e in (db.table("payroll_employees")
+                                      .select("id, name, status, joining_date")
+                                      .eq("firm_id", firm_id).eq("client_id", client_id).execute().data) or []}
+
+
+@router.get("/opening-positions")
+def get_opening_positions(
+    client_id: str,
+    financial_year: Annotated[FYLabel, Query()],
+    current_user: dict = Depends(rbac("payroll", "read")),
+):
+    """The client's opening positions for a financial year, the employees who have none, and what a position does and does not carry."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"client_id": client_id, "financial_year": financial_year, "rows": [], "without": [],
+                                   "carries": _OPENING_CARRIES, "does_not_carry": _OPENING_DOES_NOT_CARRY})
+    roster = _roster_all(db, firm_id, client_id)
+    rows = _opening_positions(db, firm_id, client_id, financial_year)
+    have = {str(r["employee_id"]) for r in rows}
+    return api_response(True, {
+        "client_id": client_id, "financial_year": financial_year,
+        "rows": [{**r, "employee_name": (roster.get(str(r["employee_id"])) or {}).get("name")} for r in rows],
+        "without": [{"employee_id": i, "employee_name": e.get("name"), "joining_date": e.get("joining_date")}
+                    for i, e in roster.items() if i not in have and e.get("status") == "active"],
+        "carries": _OPENING_CARRIES, "does_not_carry": _OPENING_DOES_NOT_CARRY,
+    })
+
+
+@router.put("/opening-positions")
+def put_opening_positions(
+    body: OpeningPositionsIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Record (or replace) each named employee's opening position. Refused whole, with every problem at once.
+
+    Validated by `domain/payroll/opening_position.validate` against the employee's joining date, and refused for an employee who
+    already has a released payslip in a month before the first month (that month would be counted twice). Posts nothing.
+    """
+    assert_client_access(current_user, body.client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"client_id": body.client_id, "saved": len(body.rows)})
+    assert_payroll_enabled(db, firm_id, body.client_id)
+    roster = _roster_all(db, firm_id, body.client_id)
+
+    problems: list[str] = []
+    prepared: list[dict] = []
+    seen: set = set()
+    for i, r in enumerate(body.rows, start=1):
+        who = (roster.get(str(r.employee_id)) or {}).get("name") or f"row {i}"
+        if str(r.employee_id) not in roster:
+            problems.append(f"Row {i}: that employee is not on this client's roster.")
+            continue
+        fy = _fy_for_month(r.first_month_here[:7])
+        if not fy or len(r.first_month_here) != 7:
+            problems.append(f"{who}: the first month is not a month (use YYYY-MM).")
+            continue
+        if (str(r.employee_id), fy) in seen:
+            problems.append(f"{who}: named twice for {fy}.")
+            continue
+        seen.add((str(r.employee_id), fy))
+        data = r.model_dump()
+        for msg in opening_domain.validate(data, fy=fy, joining_date=roster[str(r.employee_id)].get("joining_date")):
+            problems.append(f"{who}: {msg}")
+        prepared.append({**data, "financial_year": fy, "first_month_here": f"{r.first_month_here}-01"})
+    if problems:
+        raise HTTPException(status_code=422, detail=" ".join(problems))
+
+    # A month this product has already RELEASED for the employee, before the first month, would be counted twice.
+    for fy in {p["financial_year"] for p in prepared}:
+        runs = (db.table("payroll_runs").select("id, month").eq("firm_id", firm_id).eq("client_id", body.client_id)
+                .in_("status", list(_PAYROLL_RELEASED)).execute().data) or []
+        by_run = {r["id"]: r["month"] for r in runs if r.get("month") and _fy_for_month(r["month"]) == fy}
+        if not by_run:
+            continue
+        slips = (db.table("payroll_slips").select("run_id, employee_id").in_("run_id", list(by_run)).execute().data) or []
+        for p in prepared:
+            if p["financial_year"] != fy:
+                continue
+            clash = sorted(by_run[sl["run_id"]] for sl in slips
+                           if str(sl["employee_id"]) == str(p["employee_id"]) and by_run[sl["run_id"]] < p["first_month_here"][:7])
+            if clash:
+                raise HTTPException(status_code=409, detail=(
+                    f"{roster[str(p['employee_id'])].get('name')} already has a released payslip for {', '.join(clash)}, before "
+                    f"the first month {p['first_month_here'][:7]}: those months would be counted twice. Make the first month the "
+                    f"earliest month this product ran, or leave this employee's position out."))
+
+    stamped = datetime.now(timezone.utc).isoformat()
+    for p in prepared:
+        before = (db.table("payroll_opening_positions").select("id, first_month_here, months_paid, gross_paise, tds_paise").eq("firm_id", firm_id).eq("client_id", body.client_id)
+                  .eq("employee_id", p["employee_id"]).eq("financial_year", p["financial_year"]).limit(1).execute().data) or []
+        db.table("payroll_opening_positions").upsert(
+            {"firm_id": firm_id, "client_id": body.client_id, "employee_id": p["employee_id"],
+                           "financial_year": p["financial_year"], "first_month_here": p["first_month_here"],
+                           "months_paid": p["months_paid"], "gross_paise": p["gross_paise"], "tds_paise": p["tds_paise"],
+                           "pf_employee_paise": p["pf_employee_paise"], "pf_employer_paise": p["pf_employer_paise"],
+                           "esi_employee_paise": p["esi_employee_paise"], "esi_employer_paise": p["esi_employer_paise"],
+                           "pt_paise": p["pt_paise"],
+                           "esi_contributed_earlier_in_period": p["esi_contributed_earlier_in_period"],
+                           "source_note": p["source_note"], "entered_by": current_user.get("id"), "updated_at": stamped},
+            on_conflict="firm_id,client_id,employee_id,financial_year").execute()
+        from services.audit_service import log_event
+        log_event(firm_id, "payroll_opening_position", str(p["employee_id"]), "update" if before else "create",
+                  actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+                  old_data=before[0] if before else None, new_data=p,
+                  metadata={"client_id": body.client_id, "financial_year": p["financial_year"]})
+    timeline_service.log(
+        body.client_id, "work", "Payroll Opening Positions Recorded",
+        f"{len(prepared)} payroll opening position(s) recorded", "info", firm_id=firm_id,
+        entity_type="client", entity_id=body.client_id, actor_id=current_user.get("auth_user_id"))
+    return api_response(True, {"client_id": body.client_id, "saved": len(prepared), "does_not_carry": _OPENING_DOES_NOT_CARRY})
+
+
+@router.delete("/opening-positions/{employee_id}")
+def delete_opening_position(
+    employee_id: str,
+    client_id: str,
+    financial_year: Annotated[FYLabel, Query()],
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """Take an employee's opening position back. A released run keeps what it was computed with; a draft is recomputed."""
+    assert_client_access(current_user, client_id)
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        return api_response(True, {"deleted": 0})
+    assert_payroll_enabled(db, firm_id, client_id)
+    _employee_of_client(db, current_user, employee_id, client_id)
+    gone = (db.table("payroll_opening_positions").delete().eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("employee_id", employee_id).eq("financial_year", financial_year).execute().data) or []
+    if not gone:
+        raise HTTPException(status_code=404, detail="No opening position for that employee and year")
+    from services.audit_service import log_event
+    log_event(firm_id, "payroll_opening_position", employee_id, "delete",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              old_data=gone[0], new_data=None, metadata={"client_id": client_id, "financial_year": financial_year})
+    return api_response(True, {"deleted": len(gone)})
 
 
 @router.get("/one-time-earnings")
@@ -7661,10 +7914,15 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
     # §192(3) spreads what is left over the months that remain, so that single
     # figure IS the projection for every remaining month — computing each one
     # separately would re-spread an already-spread number.
-    next_month = next((mo for mo in months if mo not in actual), None)
+    # AN OPENING POSITION covers the months before the product ran payroll for this client (POST-A-082): they are not
+    # "to come", they have no slip, and what they carried is added to what was deducted and paid.
+    opening = next((opening_domain.as_opening(r) for r in _opening_positions(db, firm_id, client_id, fy)
+                    if str(r["employee_id"]) == str(employee_id)), None)
+    opening_first = opening.first_month if opening else None
+    next_month = next((mo for mo in months if mo not in actual and (opening_first is None or mo >= opening_first)), None)
 
-    deducted = sum(a["tds_paise"] for a in actual.values())
-    months_paid = len(actual)
+    deducted = sum(a["tds_paise"] for a in actual.values()) + (opening.tds_paise if opening else 0)
+    months_paid = len(actual) + (opening.months_paid if opening else 0)
 
     projected_monthly = 0
     projected_gross = 0
@@ -7690,7 +7948,7 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
             declaration=decl,
             tds_already_deducted_paise=deducted,
             months_already_paid=months_paid,
-            gross_already_paid_paise=sum(a["gross_paise"] for a in actual.values()),
+            gross_already_paid_paise=sum(a["gross_paise"] for a in actual.values()) + (opening.gross_paise if opening else 0),
             months_employed_in_fy=_months_employed_in_fy(emp.get("joining_date"), fy),
             firm_pt_slabs=_read_firm_pt_slabs(db, firm_id),
             pt_on=date(y, m, calendar.monthrange(y, m)[1]),
@@ -7713,11 +7971,16 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
     rows = []
     for mo in months:
         a = actual.get(mo)
+        before_opening = opening_first is not None and mo < opening_first and a is None
         rows.append({
             "month": mo,
-            "actual": a is not None,
-            "gross_paise": a["gross_paise"] if a else projected_gross,
-            "tds_paise": a["tds_paise"] if a else projected_monthly,
+            "actual": a is not None or before_opening,
+            # A month before the product ran carries no figure of its own: its pay is the opening position's, IN TOTAL, so
+            # the month's own gross and tax are unknown and are sent as null, never as a paid zero. A screen shows the
+            # position's totals (`opening_position`) once, beside the months it covers.
+            "opening": before_opening,
+            "gross_paise": a["gross_paise"] if a else (None if before_opening else projected_gross),
+            "tds_paise": a["tds_paise"] if a else (None if before_opening else projected_monthly),
         })
 
     remaining = sum(1 for r in rows if not r["actual"])
@@ -7733,7 +7996,9 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
         # will withhold — NOT twelve times the monthly figure, which double
         # counts the months already run.
         "estimated_annual_tds_paise": deducted + projected_monthly * remaining,
-        "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows),
+        "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows if not r["opening"]) + (opening.gross_paise if opening else 0),
+        "opening_position": ({"first_month_here": opening.first_month, "months_paid": opening.months_paid,
+                              "gross_paise": opening.gross_paise, "tds_paise": opening.tds_paise} if opening else None),
         "gaps": gaps,
     }
 

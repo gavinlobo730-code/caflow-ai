@@ -409,7 +409,20 @@ UNFIXED: dict[str, str] = {}
 # 471 -> 470 (1-11-2026, POST-A-272): the one reader of a journal entry's state (`statutory_remittance_service.entry_states`) now serves both the
 # remittance's and the TDS challan's link, and spells its column list as a literal (a test holds it equal to the rule's columns), so the
 # challan service's own built select is gone and the two reads the remittance door and the stale-link list needed add none.
-MAX_UNREADABLE = 470
+# 470 -> 471 (POST-A-442): `routers/mca_workspace.py` `update_filing_status` writes through the privileged client in two
+# `.update(updates)` branches, one naming the row's `client_id` and one testing for a null one (`.eq("client_id", None)` is not a null
+# test to PostgREST), because the privileged-write scope guard needs each update chain to name the client itself. `updates` is assembled
+# from the status the CA moves to, as it was before, so there is still no literal to read; the second branch is the +1. The firm-level
+# trackers' new calendar routes (POST-A-208) add none: their select and insert are written as literals.
+# 470 -> 472 (17-11-2026, POST-A-437, found by running this file on its branch): `routers/fixed_assets._pass_a_nil_month` writes
+# `changed` after `_adopting_a_dead_marker`, which adds the two reversal-marker columns only when a dead marker is on the row, and
+# `_reverse_a_passed_month` writes `update`, whose `depreciation_fy` pair is added only when the reversal leaves the year. Both are the
+# shape of the posting's own `.update(changed)` above (the payload is decided at run time, so no literal exists to read), and every
+# column either can write (depreciation_posted_through, depreciation_fy, depreciation_fy_start_accum_paise, updated_at,
+# depreciation_reversal_month, depreciation_reversal_claimed_at) is named in a literal payload or filter of the same file, so the
+# columns are still checked.
+# Together (17-11-2026, both branches combined): 470 + 1 (POST-A-442) + 2 (POST-A-437) = 473.
+MAX_UNREADABLE = 473
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

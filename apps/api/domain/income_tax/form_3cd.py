@@ -242,13 +242,7 @@ CLAUSES: tuple[ClauseDefinition, ...] = (
                            "§79 shareholding-change bar; §73 speculation "
                            "loss; §73A specified-business loss", True),
     ClauseDefinition("33", "Chapter VIA / Chapter III (§10A, §10AA) "
-                           "deductions claimed, section-wise", False,
-                      "Chapter VI-A claims are the CA's own entries on the "
-                      "ITR computation workspace — reading them into this "
-                      "register would need a computation snapshot to exist "
-                      "for the year, which this register does not assume. "
-                      "See domain/income_tax/chapter_vi_a.py and the "
-                      "computation workspace for the figures."),
+                           "deductions claimed, section-wise", True),
     ClauseDefinition("34", "TDS/TCS compliance — TAN, section, nature of "
                            "payment, amounts, tax deducted/collected, "
                            "deposited, statements furnished, §201(1A)/"
@@ -287,10 +281,7 @@ CLAUSES: tuple[ClauseDefinition, ...] = (
     ClauseDefinition("40", "Turnover, gross profit/turnover, net profit/"
                            "turnover, stock-in-trade/turnover, material "
                            "consumed/finished goods produced — this year and "
-                           "the preceding year", False,
-                      "Every figure is available from the Profit & Loss for "
-                      "both years, but assembling the five named ratios into "
-                      "this clause's own row is not built yet."),
+                           "the preceding year", True),
     ClauseDefinition("41", "Demand raised or refund issued during the year "
                            "under any tax law other than the Income-tax Act "
                            "and the (repealed) Wealth-tax Act, with "
@@ -372,31 +363,41 @@ def build_register(*, client_id: str, financial_year: str,
     live figure came out of an existing module, never a value a human typed.
 
     `manual` maps a clause CODE to whatever the CA has RECORDED for a clause
-    absent from `derived` — read back so a screen can show it, but marked
+    this call derived no figure for — absent from `derived`, OR present with
+    value None — read back so a screen can show it, but marked
     `derived=False` regardless of whether it holds a value. A CA's own note
     is not a computation, and conflating the two would make a saved note
     render as a read-only "derived" figure the next time the register opens,
-    which is the one thing a manual-entry field must never do.
+    which is the one thing a manual-entry field must never do. A derived
+    figure still wins over a recorded one; but where nothing was derived
+    (clause 33 for a year with no claim on the workspace, clause 40 for a
+    year with no ledger entry) the CA's own answer is shown, with the reason
+    nothing was derived beside it. Hiding it meant the screen opened the
+    box empty and the next save of any other clause erased the answer,
+    because the checklist is saved whole.
 
-    A code absent from both, or present in `derived` with value=None, is
-    rendered with the clause's own `manual_reason` where the clause is not
-    derivable at all, or a generic "could not be resolved" note where it is
-    derivable but this call's inputs did not answer it.
+    A code absent from both, or present in `derived` with value=None and no
+    recorded answer, is rendered with the clause's own `manual_reason` where
+    the clause is not derivable at all, or the derived note (else a generic
+    "could not be resolved" one) where it is derivable but this call's inputs
+    did not answer it.
     """
     manual = manual or {}
     out: list[ClauseAnswer] = []
     for c in CLAUSES:
-        if c.code in derived:
+        if c.code in derived and (derived[c.code][0] is not None or c.code not in manual):
             value, note = derived[c.code]
             out.append(ClauseAnswer(code=c.code, heading=c.heading,
                                     derived=value is not None, value=value,
                                     note=note))
             continue
         if c.code in manual:
+            note = "Recorded by the CA on this register."
+            if c.code in derived and derived[c.code][1]:
+                note = f"{note} Nothing was derived for it: {derived[c.code][1]}"
             out.append(ClauseAnswer(
                 code=c.code, heading=c.heading, derived=False,
-                value=manual[c.code],
-                note="Recorded by the CA on this register."))
+                value=manual[c.code], note=note))
             continue
         if c.derivable:
             out.append(ClauseAnswer(

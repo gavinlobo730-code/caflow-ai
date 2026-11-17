@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from core.authz import assert_client_access
 from core.permissions import rbac
 from models.common import api_response
+from services.audit_service import log_event
 from models.fy import AYLabel, FYLabel, OptionalAYLabel
 from services import ais_computation_service, ais_service
 
@@ -69,6 +70,12 @@ def _refusal(exc: ais_service.AISRefused) -> HTTPException:
     return HTTPException(status_code=400, detail=str(exc))
 
 
+def _audit(current_user: dict, entity_id: str, action: str, data: dict) -> None:
+    """Who did what to a client's AIS working (POST-A-167): the four AIS tables carry no row-level audit trigger."""
+    log_event(current_user["firm_id"], "ais", entity_id, action,
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"), new_data=data)
+
+
 @router.post("/uploads")
 def upload_statement(
     req: UploadRequest,
@@ -81,14 +88,17 @@ def upload_statement(
             413, detail="That file is larger than any AIS statement. Check it "
                         "is the AIS JSON and not a full document download.")
     try:
-        return api_response(True, ais_service.upload_statement(
+        uploaded = ais_service.upload_statement(
             firm_id=current_user["firm_id"],
             client_id=req.client_id,
             assessment_year=req.assessment_year,
             raw=req.raw,
             file_name=req.file_name,
             uploaded_by=current_user["id"],
-        ))
+        )
+        _audit(current_user, str((uploaded or {}).get("id") or (uploaded or {}).get("upload_id") or req.client_id), "upload",
+               {"client_id": req.client_id, "assessment_year": req.assessment_year, "file_name": req.file_name})
+        return api_response(True, uploaded)
     except ais_service.AISRefused as e:
         raise _refusal(e)
     except Exception:
@@ -133,7 +143,7 @@ def save_working(
     """What the books carry for one AIS line, and what the CA concluded."""
     assert_client_access(current_user, req.client_id)
     try:
-        return api_response(True, ais_service.save_working(
+        saved = ais_service.save_working(
             firm_id=current_user["firm_id"],
             client_id=req.client_id,
             record_id=record_id,
@@ -141,7 +151,10 @@ def save_working(
             status=req.status,
             note=req.note,
             reviewed_by=current_user["id"],
-        ))
+        )
+        _audit(current_user, record_id, "save_working",
+               {"client_id": req.client_id, "books_amount_paise": req.books_amount_paise, "status": req.status})
+        return api_response(True, saved)
     except ais_service.AISRefused as e:
         raise _refusal(e)
 
@@ -154,7 +167,7 @@ def add_manual_record(
     """A line the CA knows about that the statement does not carry."""
     assert_client_access(current_user, req.client_id)
     try:
-        return api_response(True, ais_service.add_manual_record(
+        added = ais_service.add_manual_record(
             firm_id=current_user["firm_id"],
             client_id=req.client_id,
             upload_id=req.upload_id,
@@ -163,7 +176,11 @@ def add_manual_record(
             amount_paise=req.amount_paise,
             tds_deducted_paise=req.tds_deducted_paise,
             information_label=req.information_label,
-        ))
+        )
+        _audit(current_user, str((added or {}).get("id") or req.upload_id or req.client_id), "add_manual_record",
+               {"client_id": req.client_id, "transaction_type": req.transaction_type, "amount_paise": req.amount_paise,
+                "tds_deducted_paise": req.tds_deducted_paise})
+        return api_response(True, added)
     except ais_service.AISRefused as e:
         raise _refusal(e)
 
@@ -180,8 +197,9 @@ def delete_record(
             raise HTTPException(404, detail="Record not found")
         # Row-addressed, so the mount guard never fires: scope it here.
         assert_client_access(current_user, record["client_id"], detail="Record not found")
-        return api_response(True, ais_service.delete_record(
-            firm_id=current_user["firm_id"], record_id=record_id))
+        deleted = ais_service.delete_record(firm_id=current_user["firm_id"], record_id=record_id)
+        _audit(current_user, record_id, "delete_record", {"client_id": record["client_id"]})
+        return api_response(True, deleted)
     except ais_service.AISRefused as e:
         raise _refusal(e)
 
@@ -230,10 +248,13 @@ def decide_computation_line(
     """Accept or reject one line, on the figure the CA is looking at."""
     assert_client_access(current_user, req.client_id)
     try:
-        return api_response(True, ais_computation_service.decide(
+        decided = ais_computation_service.decide(
             firm_id=current_user["firm_id"], client_id=req.client_id,
             fy=req.financial_year, line_key=line_key, decision=req.decision,
-            user_id=current_user["id"]))
+            user_id=current_user["id"])
+        _audit(current_user, f"{req.client_id}:{req.financial_year}:{line_key}", "decide_computation_line",
+               {"client_id": req.client_id, "financial_year": req.financial_year, "decision": req.decision})
+        return api_response(True, decided)
     except ais_computation_service.DecisionRefused as e:
         raise HTTPException(status_code=400, detail=str(e))
 

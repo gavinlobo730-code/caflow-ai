@@ -92,15 +92,15 @@ def statement(db, firm_id: str, client_id: str, financial_year: str,
         .gte("document_date", fy_start).lte("document_date", fy_end),
         key="id", label="itc_04.challans")
 
-    # 2. Returns that came back in the year (the challan may be an earlier year's).
-    returns = fetch_all(
-        lambda: db.table("delivery_challan_returns").select(
+    # 2. Returns that came back in the year (the challan may be an earlier year's). Live lots only (a retracted one is not on the statement).
+    returns = challan_writes.read_live_lots(lambda live: fetch_all(
+        lambda: challan_writes.live_only(db.table("delivery_challan_returns").select(
             "id, challan_id, challan_line_id, returned_on, quantity_returned, "
             "quantity_lost_or_wasted, job_worker_challan_no, job_worker_challan_date, "
             "nature_of_job_work")
-        .eq("firm_id", firm_id).eq("client_id", client_id)
+        .eq("firm_id", firm_id).eq("client_id", client_id), live)
         .gte("returned_on", fy_start).lte("returned_on", fy_end),
-        key="id", label="itc_04.returns")
+        key="id", label="itc_04.returns"))
 
     # 3. What is STILL OUT, whatever year it left in. The partial index from
     #    migration 392 (`idx_delivery_challans_outstanding`) is this predicate.
@@ -132,26 +132,26 @@ def statement(db, firm_id: str, client_id: str, financial_year: str,
     # 5. Every return of an outstanding challan, whenever it came back.
     owed = {str(c["id"]) for c in outstanding}
     if owed:
-        returns = _dedupe(returns + fetch_all_in(
-            lambda: db.table("delivery_challan_returns").select(
+        returns = _dedupe(returns + challan_writes.read_live_lots(lambda live: fetch_all_in(
+            lambda: challan_writes.live_only(db.table("delivery_challan_returns").select(
                 "id, challan_id, challan_line_id, returned_on, quantity_returned, "
                 "quantity_lost_or_wasted, job_worker_challan_no, "
                 "job_worker_challan_date, nature_of_job_work")
-            .eq("firm_id", firm_id).eq("client_id", client_id),
-            "challan_id", owed, key="id", label="itc_04.outstanding_returns"))
+            .eq("firm_id", firm_id).eq("client_id", client_id), live),
+            "challan_id", owed, key="id", label="itc_04.outstanding_returns")))
 
     # A challan whose status says the goods are back and which records no day is judged on EVERY lot recorded against it (POST-A-422): the year's read above would miss the lots dated in another
     # year and name a challan that is fully itemised. Nothing is read unless there is one.
     no_day = {str(c["id"]) for c in challans if itc.is_received_back_without_a_day(c)}
     no_day_returns = returns
     if no_day:
-        no_day_returns = _dedupe(returns + fetch_all_in(
-            lambda: db.table("delivery_challan_returns").select(
+        no_day_returns = _dedupe(returns + challan_writes.read_live_lots(lambda live: fetch_all_in(
+            lambda: challan_writes.live_only(db.table("delivery_challan_returns").select(
                 "id, challan_id, challan_line_id, returned_on, quantity_returned, "
                 "quantity_lost_or_wasted, job_worker_challan_no, "
                 "job_worker_challan_date, nature_of_job_work")
-            .eq("firm_id", firm_id).eq("client_id", client_id),
-            "challan_id", no_day, key="id", label="itc_04.no_day_returns"))
+            .eq("firm_id", firm_id).eq("client_id", client_id), live),
+            "challan_id", no_day, key="id", label="itc_04.no_day_returns")))
 
     lines = fetch_all_in(
         lambda: db.table("delivery_challan_lines").select(
@@ -256,10 +256,10 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
     if problem:
         raise HTTPException(status_code=422, detail=problem)
 
-    already = (db.table("delivery_challan_returns").select(
+    already = challan_writes.read_live_lots(lambda live: (challan_writes.live_only(db.table("delivery_challan_returns").select(
         "id, quantity_returned, quantity_lost_or_wasted")
-        .eq("firm_id", firm_id).eq("client_id", client_id)
-        .eq("challan_line_id", line["id"]).execute().data) or []
+        .eq("firm_id", firm_id).eq("client_id", client_id), live)
+        .eq("challan_line_id", line["id"]).execute().data) or [])
     sent = Decimal(str(line.get("quantity") or 0))
     back = sum((Decimal(str(r.get("quantity_returned") or 0)) for r in already), Decimal(0))
     lost = sum((Decimal(str(r.get("quantity_lost_or_wasted") or 0)) for r in already), Decimal(0))
@@ -296,3 +296,25 @@ def record_return(db, firm_id: str, client_id: str, challan_id: str, payload: di
         sales_cycle_service.order_follows_goods_back(db, firm_id, challan.get("order_id"))
 
     return {**row, "challan_marked_received_back": stamped}
+
+
+def retract_lot(db, firm_id: str, client_id: str, challan_id: str, lot_id: str, reason: str, actor_id: Optional[str] = None) -> dict:
+    """Retract a lot recorded on FORM GST ITC-04 by mistake (POST-A-418, migration 651): a soft delete that keeps the row, the day, the person and the reason.
+
+    The lot must be a live lot of THIS client's challan (one fixed 404 otherwise, as the record door answers: neither is an oracle for another client's documents). The database function
+    takes the challan's lock, retracts, and puts a challan the lots had marked received back to issued with no back day when the live lots no longer bring every line back; the order the
+    challan names is derived again when it did. WHAT IT DOES NOT ASK: whether the period's ITC-04 has been filed. The product records no ITC-04 filing (it is furnished on the portal by the
+    principal), so there is nothing to ask and the screen says so. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
+    """
+    why = (reason or "").strip()
+    if not why:
+        raise HTTPException(status_code=422, detail="Say why the lot is being retracted: the reason is kept with it.")
+    ch = (db.table("delivery_challans").select("id, document_no, order_id, reason")
+          .eq("firm_id", firm_id).eq("client_id", client_id).eq("id", challan_id).limit(1).execute().data) or []
+    if not ch:
+        raise HTTPException(status_code=404, detail="That challan was not found for this client.")
+    done = challan_writes.retract_lot(db, firm_id, client_id, challan_id, lot_id, why, actor_id, document_no=ch[0].get("document_no"))
+    if done.get("challan_back_to_issued"):
+        from services import sales_cycle_service
+        sales_cycle_service.order_follows_goods_back(db, firm_id, ch[0].get("order_id"))
+    return {**(done.get("lot") or {}), "challan_back_to_issued": bool(done.get("challan_back_to_issued"))}

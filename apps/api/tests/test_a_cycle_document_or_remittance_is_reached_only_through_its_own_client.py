@@ -214,7 +214,7 @@ def test_every_handler_with_a_document_id_in_its_path_ties_the_document_to_the_c
 
 def test_the_exemptions_are_still_needed_and_the_rule_is_not_vacuous():
     covered = {r: [n for n, s in _id_handlers(r) if _calls_a_helper(s)] for r in ("sales_cycle.py", "purchase_cycle.py")}
-    assert len(covered["sales_cycle.py"]) == 8 and len(covered["purchase_cycle.py"]) == 6, covered      # 7: the challan issue door (POST-A-398) ties the challan to the client too; 8: so does the order's invoice seed (POST-A-104)
+    assert len(covered["sales_cycle.py"]) == 9 and len(covered["purchase_cycle.py"]) == 6, covered      # 9: the lot retraction door ties its challan to the client (POST-A-418); 7: the challan issue door (POST-A-398) ties the challan to the client too; 8: so does the order's invoice seed (POST-A-104)
     for (router, name) in EXEMPT:
         handlers = dict(_id_handlers(router))
         assert name in handlers and not _calls_a_helper(handlers[name]), (router, name)

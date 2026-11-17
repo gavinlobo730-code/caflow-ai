@@ -866,24 +866,32 @@ function TdsProjectionTab({ employees, fyOptions }: {
     actualTds: number;
     projectedTds: number;
     hasActual: boolean;
+    /** A month before the product ran this client's payroll (POST-A-082): its pay and tax are the opening position's, in
+     *  total, and the server sends no figure of the month's own. */
+    opening: boolean;
     cumulativeActual: number;
     cumulativeRemaining: number;
   };
 
   const projectionRows: ProjectionRow[] = [];
   {
-    let running = 0;
+    // The running total STARTS at the tax the opening position records, which "TDS Deducted So Far" above already includes,
+    // so the Cumulative TDS and Remaining Tax columns agree with it. An opening month adds nothing of its own: its tax is in
+    // that starting figure.
+    let running = proj?.opening_position?.tds_paise ?? 0;
     for (const m of proj?.months ?? []) {
-      if (m.actual) running += m.tds_paise;
+      const opening = Boolean(m.opening);
+      if (m.actual && !opening) running += m.tds_paise ?? 0;
       projectionRows.push({
         month: m.month,
-        actualGross: m.actual ? m.gross_paise : 0,
-        actualTds: m.actual ? m.tds_paise : 0,
+        actualGross: m.actual && !opening ? (m.gross_paise ?? 0) : 0,
+        actualTds: m.actual && !opening ? (m.tds_paise ?? 0) : 0,
         // A month with no released run carries the served §192(3) spread; one
         // already run carries what it actually deducted, so the Variance
         // column compares like with like.
-        projectedTds: m.actual ? m.tds_paise : (proj?.projected_monthly_paise ?? 0),
-        hasActual: m.actual,
+        projectedTds: m.actual ? (m.tds_paise ?? 0) : (proj?.projected_monthly_paise ?? 0),
+        hasActual: m.actual && !opening,
+        opening,
         cumulativeActual: running,
         cumulativeRemaining: Math.max(0, estimatedAnnualTds - running),
       });
@@ -975,7 +983,11 @@ function TdsProjectionTab({ employees, fyOptions }: {
                     >
                       <td className="py-3 px-4 font-medium text-ps-body">{formatMonthYear(r.month)}</td>
                       <td className="py-3 px-4 text-center">
-                        {r.hasActual ? (
+                        {r.opening ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-ps-muted text-ps-label">
+                            Before this product (opening position)
+                          </span>
+                        ) : r.hasActual ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
                             <CheckCircle size={10} />Processed
                           </span>
@@ -987,7 +999,7 @@ function TdsProjectionTab({ employees, fyOptions }: {
                       </td>
                       <td className="py-3 px-4 text-right font-mono">{r.hasActual ? formatPaise(r.actualGross) : "—"}</td>
                       <td className="py-3 px-4 text-right font-mono text-red-600">{r.hasActual ? formatPaise(r.actualTds) : "—"}</td>
-                      <td className="py-3 px-4 text-right font-mono text-ps-label">{formatPaise(r.projectedTds)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-ps-label">{r.opening ? "—" : formatPaise(r.projectedTds)}</td>
                       <td className={`py-3 px-4 text-right font-mono ${varianceColor}`}>
                         {r.hasActual ? `${variance >= 0 ? "+" : ""}${formatPaise(Math.abs(variance))}` : "—"}
                       </td>
@@ -1008,6 +1020,14 @@ function TdsProjectionTab({ employees, fyOptions }: {
               computation the payroll run pays from — the employee&apos;s own declaration
               and regime, that year&apos;s rates, and §192(3) spreading what is left over
               the {remainingMonths} month{remainingMonths === 1 ? "" : "s"} still to run.
+            </p>
+          )}
+          {proj?.opening_position && (
+            <p className="text-xs text-ps-hint mt-2">
+              Opening position: before {formatMonthYear(proj.opening_position.first_month_here)} this employee was paid{" "}
+              {formatPaise(proj.opening_position.gross_paise)} with {formatPaise(proj.opening_position.tds_paise)} tax withheld over{" "}
+              {proj.opening_position.months_paid} month(s), as the CA recorded it. Those months show no figure of their own; the
+              total is in TDS Deducted So Far and is where Cumulative TDS starts.
             </p>
           )}
           {(proj?.gaps ?? []).length > 0 && (

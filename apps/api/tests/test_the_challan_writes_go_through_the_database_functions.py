@@ -29,8 +29,16 @@ API = Path(__file__).resolve().parent.parent
 _SKIP = {"tests", "scripts", "migrations", "__pycache__", ".venv", "venv", "node_modules"}
 _WRITES = {"insert", "update", "upsert", "delete"}
 _DOOR = "services/delivery_challan_writes.py"
-_FUNCTIONS = {"create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic"}
-_MIGRATION = next(p for p in sorted((API / "migrations").glob("585_*.sql")) if not p.name.endswith("_rollback.sql"))
+_FUNCTIONS = {"create_delivery_challan_atomic", "record_challan_lot_atomic", "correct_draft_challan_lines_atomic", "retract_challan_lot_atomic", "issue_delivery_challan_atomic"}
+class _Migrations:
+    """Migrations 585 and 651 together (651 restates the lot function and adds the retraction), the later definition read last."""
+    _FILES = [next(p for p in sorted((API / "migrations").glob(f"{n}_*.sql")) if not p.name.endswith("_rollback.sql")) for n in ("585", "651", "652")]
+
+    def read_text(self, encoding="utf-8"):
+        return "\n".join(f.read_text(encoding=encoding) for f in self._FILES)
+
+
+_MIGRATION = _Migrations()
 
 #: The two modules that list the child tables' names as data (the tables a delete counts), never as a client.
 _CHILD_TABLE_LISTS = {"routers/service_catalogue.py", "routers/firm_hsn_library.py"}
@@ -131,8 +139,9 @@ def _declared() -> dict[str, list[str]]:
     sql = _MIGRATION.read_text(encoding="utf-8")
     out = {}
     for name in _FUNCTIONS:
-        found = re.search(rf"CREATE OR REPLACE FUNCTION public\.{name}\(([^)]*)\)", sql)
-        assert found, f"migration 585 no longer defines {name}"
+        found = list(re.finditer(rf"CREATE OR REPLACE FUNCTION public\.{name}\(([^)]*)\)", sql))
+        assert found, f"migrations 585 and 651 no longer define {name}"
+        found = found[-1]
         out[name] = [part.strip().split()[0] for part in found.group(1).split(",") if part.strip()]
     return out
 

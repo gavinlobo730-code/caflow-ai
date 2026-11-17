@@ -364,6 +364,8 @@ def table_5a(challans: list[dict], lines: list[dict], returns: list[dict],
             gaps.append({"challan_no": ch.get("document_no"), "kind": "uqc", "reason": problem})
         rows.append({
             "challan_id": ch.get("id"), "challan_line_id": ln.get("id"),
+            # The lot's own id: the one thing a retraction names (POST-A-418). A row derived from a whole-challan return below has none.
+            "lot_id": r.get("id"),
             "job_worker": worker,
             "original_challan_no": ch.get("document_no"),
             "original_challan_date": str(ch.get("document_date"))[:10],
@@ -410,6 +412,7 @@ def table_5a(challans: list[dict], lines: list[dict], returns: list[dict],
                 "uqc": _uqc.normalise(ln.get("unit")),
                 "quantity": _qty(rest), "lost_or_wasted_quantity": _qty(Decimal(0)),
                 "derived_from_whole_challan_return": True,
+                "lot_id": None,
             })
     rows.sort(key=lambda x: (x["returned_on"], str(x["original_challan_no"])))
     return {"title": TABLE_5A, "rows": rows, "count": len(rows), "gaps": gaps}

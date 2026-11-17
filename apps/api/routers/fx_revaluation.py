@@ -42,6 +42,7 @@ from domain.currency import resolve_currency_policy
 from domain.currency.fx_revaluation_service import fx_revaluation_service
 
 from models.common import api_response
+from services.audit_service import log_event
 
 _logger = logging.getLogger("caflow.fx_revaluation")
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
@@ -187,4 +188,17 @@ def run_revaluation(
     out = fx_revaluation_service.revalue(
         db, firm_id, client_id, period_end,
         {str(k).upper(): v for k, v in rates.items()}, actor=current_user)
+    # WHO REVALUED WHAT, AT WHICH RATES (POST-A-167). The run writes `fx_revaluations` and `fx_adjustments`, and neither carries the
+    # row-level audit trigger (migration 111 skipped them); the journals it posts are audited by the ledger's own trigger but the closing
+    # rates a CA chose are not, so the run records them here, once per run, as the person who ran it. A run that posted nothing is still
+    # a CA's act (it names the rates the figures were checked at), so it is recorded too, with a count of zero.
+    posted = [a for a in out.get("adjustments", []) if a.get("delta_paise")]
+    log_event(firm_id, "fx_revaluation", f"{client_id}:{out.get('period_end')}", "revalue",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              new_data={"client_id": client_id, "period_end": out.get("period_end"),
+                        "reversal_date": out.get("reversal_date"),
+                        "closing_rates": {str(k).upper(): str(v) for k, v in rates.items()},
+                        "entries_posted": len(posted),
+                        "net_delta_paise": sum(int(a["delta_paise"]) for a in posted),
+                        "journal_entry_ids": [a["journal_entry_id"] for a in posted]})
     return api_response(True, out)

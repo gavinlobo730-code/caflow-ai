@@ -984,13 +984,17 @@ export interface TaxAuditDueDates {
 export interface PayrollTdsProjection {
   financial_year: string;
   employee_id: string;
-  months: { month: string; actual: boolean; gross_paise: number; tds_paise: number }[];
+  /** `opening` (POST-A-082): a month before the product ran this client's payroll. Its pay and tax are the opening
+   *  position's, in total, so the month's own `gross_paise` and `tds_paise` are null (unknown), never a paid zero. */
+  months: { month: string; actual: boolean; opening?: boolean; gross_paise: number | null; tds_paise: number | null }[];
   deducted_so_far_paise: number;
   months_paid: number;
   projected_monthly_paise: number;
   projected_monthly_gross_paise: number;
   estimated_annual_tds_paise: number;
   estimated_annual_gross_paise: number;
+  /** What the employee had been paid and had withheld before the first month here, as the CA recorded it; null when none. */
+  opening_position?: { first_month_here: string; months_paid: number; gross_paise: number; tds_paise: number } | null;
   gaps: string[];
 }
 
@@ -4284,6 +4288,8 @@ export interface Itc04Table4Row {
 }
 
 export interface Itc04Table5aRow {
+  /** The lot's own id, which a retraction names; null for a row derived from a whole-challan return (POST-A-418). */
+  lot_id?: string | null;
   challan_id: string;
   challan_line_id: string;
   job_worker: Itc04JobWorker;
@@ -4797,6 +4803,22 @@ export const api = {
     // NOT lock its period, so the books could still move under a return
     // already at the portal, while the client GST workspace showed the same
     // return as a draft.
+    /** Every calendar row one firm-level tracker lists (POST-A-208): `gst` = GSTR-1, GSTR-3B and GSTR-9, `itr` = the income-tax return, each row
+     *  with its client's name (and GSTIN, or PAN and entity type) under `clients`. The calendar, not the obligation store. The server reads
+     *  every page and narrows to the caller's clients; the trackers used to read the table from the browser. */
+    trackerRows: (family: "gst" | "itr") => request<ApiResp<Array<Record<string, unknown>>>>(
+      `/api/compliance/calendar/tracker?family=${family}`),
+    /** Add one return to the calendar, pending (POST-A-208). Never created filed: `markFiled` records that. A second row for the same client,
+     *  return and period start is a 409 in a sentence. */
+    addCalendarEntry: (body: {
+      client_id: string;
+      compliance_type: "GSTR1" | "GSTR3B" | "GSTR9" | "ITR";
+      period_start: string;
+      period_end: string;
+      due_date: string;
+      /** The ITR form the CA picked: the calendar's type is the bare "ITR". */
+      notes?: string | null;
+    }) => request<ApiResp<Record<string, unknown>>>("/api/compliance/calendar", { method: "POST", body: JSON.stringify(body) }),
     markFiled: (recordId: string, body: { filed_date: string; arn?: string | null }) =>
       request<ApiResp<MarkFiledResult>>(
         `/api/compliance/calendar/${encodeURIComponent(recordId)}/filed`,
@@ -5104,6 +5126,24 @@ export const api = {
      *  (POST-A-291). Read the answer with `lib/mca/filingChoices.readFilingChoices`. */
     filingChoices: (clientId: string, formType: string) => request<ApiResp<unknown>>(
       `/api/mca-workspace/filing-choices?client_id=${encodeURIComponent(clientId)}&form_type=${encodeURIComponent(formType)}`),
+    /**
+     * Create an MCA filing through the route the client tab uses (POST-A-442), which asks `mca:write` and the client's access,
+     * checks the company is the client's, stores the category the Annual and Event tabs list by, and writes the audit event. The
+     * firm-level form used to insert the row straight into `mca_filings`. A filing is created Not started or Overdue, never
+     * Filed: that is `setFilingStatus`. The route answers a refusal as HTTP 200 with `{ success: false, error }`: check it.
+     */
+    createFiling: (body: {
+      client_id: string;
+      company_id?: string | null;
+      form_type: string;
+      financial_year?: string | null;
+      period?: string | null;
+      due_date: string;
+      /** The CIN as typed, read only where no company named holds one of its own. */
+      cin?: string | null;
+      status?: "not_started" | "overdue";
+      description?: string | null;
+    }) => request<ApiResp<Record<string, unknown>>>("/api/mca-workspace/filings", { method: "POST", body: JSON.stringify(body) }),
     /**
      * Record an MCA filing's status through the route that asks `mca:approve` (Manager and above) for "filed" and
      * the CA's explicit confirmation (POST-A-225). The screen used to write `status: "filed"` with the SRN and date
@@ -6047,6 +6087,18 @@ export const api = {
   // name, GSTIN and PAN to Groq and now returns 410. An unused helper that still
   // builds the URL is the thing someone wires a button to next.
   payroll: {
+    /** POST-A-082 — what each employee had been paid and had deducted this financial year BEFORE the client's payroll ran
+     *  here. A record the CA enters, not a run. The server says what it carries and what it does not. */
+    openingPositions: (clientId: string, financialYear: string) =>
+      request<ApiResp<OpeningPositions>>(
+        `/api/payroll/opening-positions?${new URLSearchParams({ client_id: clientId, financial_year: financialYear })}`),
+    saveOpeningPositions: (body: { client_id: string; rows: OpeningPositionInput[] }) =>
+      request<ApiResp<{ saved: number; does_not_carry: string }>>(
+        "/api/payroll/opening-positions", { method: "PUT", body: JSON.stringify(body) }),
+    deleteOpeningPosition: (clientId: string, employeeId: string, financialYear: string) =>
+      request<ApiResp<{ deleted: number }>>(
+        `/api/payroll/opening-positions/${encodeURIComponent(employeeId)}?${new URLSearchParams({ client_id: clientId, financial_year: financialYear })}`,
+        { method: "DELETE" }),
     /** PAY-23 — the annual statutory bonus register (Payment of Bonus Act
      *  1965). Who is owed, who is out and why, §19's due date and the
      *  employer's own §10/§11 rate. Every sentence is the server's; the
@@ -8237,6 +8289,11 @@ export const api = {
       request<ApiResp<{ id: string; challan_marked_received_back: boolean }>>(
         `/api/sales-cycle/challans/${challanId}/returns`,
         { method: "POST", body: JSON.stringify(body) }),
+    /** POST-A-418 — take back a lot recorded by mistake: a soft delete that keeps the day, the person and the reason. A write: not sent again after a dropped connection. */
+    retractChallanReturn: (challanId: string, lotId: string, clientId: string, reason: string) =>
+      request<ApiResp<{ id: string; challan_back_to_issued: boolean }>>(
+        `/api/sales-cycle/challans/${challanId}/returns/${lotId}/retract`,
+        { method: "POST", body: JSON.stringify({ client_id: clientId, reason }) }),
   },
 
   openingDocuments: {
@@ -9363,3 +9420,28 @@ export type BonusRegister = {
   } | null;
   section_9_grounds: { value: string; label: string }[];
 };
+
+
+export interface OpeningPositionInput {
+  employee_id: string;
+  first_month_here: string;
+  months_paid: number;
+  gross_paise: number;
+  tds_paise: number;
+  pf_employee_paise: number;
+  pf_employer_paise: number;
+  esi_employee_paise: number;
+  esi_employer_paise: number;
+  pt_paise: number;
+  esi_contributed_earlier_in_period: boolean | null;
+  source_note: string | null;
+}
+
+export interface OpeningPositions {
+  client_id: string;
+  financial_year: string;
+  rows: (OpeningPositionInput & { id: string; employee_name: string | null; first_month_here: string })[];
+  without: { employee_id: string; employee_name: string | null; joining_date: string | null }[];
+  carries: string;
+  does_not_carry: string;
+}

@@ -7,7 +7,7 @@ import { useSearchParams } from "next/navigation";
 import {
   Users, Plus, Play, CheckCircle,
   FileText, TrendingUp, IndianRupee, Download, Upload,
-  CreditCard, Settings, Scale, RefreshCw,
+  CreditCard, Settings, Scale, RefreshCw, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -32,6 +32,7 @@ import { MetricCardSkeleton, StatementSkeleton, TransactionListSkeleton, TableSk
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import StatutoryHandoff from "@/components/payroll/StatutoryHandoff";
 import { BonusRegisterTab } from "@/components/payroll/BonusRegister";
+import { OpeningPositionsTab } from "@/components/payroll/OpeningPositions";
 import { Callout, GapList } from "@/components/ui/callout";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
@@ -131,7 +132,7 @@ function refusalText(res: unknown): string | null {
  *  `setup` is deliberately NOT a verb and sits after them: the client's
  *  statutory registrations are a fact about the client, not a step in a month.
  */
-type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "bonus" | "setup";
+type Tab = "inputs" | "register" | "release" | "outputs" | "file" | "bonus" | "opening" | "setup";
 
 /** The server refuses a shorter reason and so does migration 328's CHECK. Not a
  *  quality bar — a floor under "ok", "-" and ".", which is what a required
@@ -2303,6 +2304,8 @@ export default function PayrollPage() {
     // panel under Outputs: §19 makes it due eight months after the year's
     // close, on a date nothing else in payroll shares.
     { id: "bonus",    label: "Bonus",    icon: Scale },
+    // OPENING — what a client that came over part-way through the year had already paid and withheld (POST-A-082).
+    { id: "opening",  label: "Opening",  icon: History },
     { id: "setup",    label: "Setup",    icon: Settings },
   ];
 
@@ -2400,6 +2403,7 @@ export default function PayrollPage() {
         {/* BONUS — the Payment of Bonus Act 1965 register for an accounting
             year. §10's minimum is a debt whether or not there is a surplus. */}
         {tab === "bonus"    && <BonusRegisterTab clientId={clientId} />}
+        {tab === "opening"  && <OpeningPositionsTab clientId={clientId} />}
         {tab === "setup"    && <StatutoryIdentityTab clientId={clientId} />}
       </div>
     </div>
