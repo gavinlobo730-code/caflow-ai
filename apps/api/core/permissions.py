@@ -166,7 +166,10 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     "accounting": {
         "read":   _AT_LEAST_EXECUTIVE,
         "write":  _AT_LEAST_MANAGER,
-        "approve": _PARTNER_ONLY,   # post/approve journal entry
+        # Reverse a posted entry, cancel a document, and, where the firm has a Partner approve every manual journal (migration 681), post
+        # one or change one on the books. Where the firm does not, `write` posts a manual journal at both doors (POST-A-456,
+        # services/journal_approval_rule).
+        "approve": _PARTNER_ONLY,
     },
     # ── Banking — deliberately looser than `accounting`, and the reason matters.
     # Categorising a bank statement is the work a practice HIRES someone to do:
@@ -176,8 +179,10 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     # statement line — 15,000 a month across 50 clients — which is not review, it
     # is rubber-stamping.
     #
-    # A MANUAL journal stays Partner-only, because that is judgement rather than
-    # clerical. That distinction is the whole point of this resource existing.
+    # A MANUAL journal is `accounting`, because that is judgement rather than
+    # clerical, and a firm may have a Partner approve every one (POST-A-456,
+    # services/journal_approval_rule). That distinction is the whole point of
+    # this resource existing.
     "banking": {
         "read":   _AT_LEAST_EXECUTIVE,
         "write":  _AT_LEAST_EXECUTIVE,   # import, categorise, match, post, exclude

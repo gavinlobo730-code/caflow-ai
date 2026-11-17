@@ -5409,6 +5409,15 @@ export const api = {
     journalsQueue: (params?: Record<string, string>) => request(`/api/accounting/journals${params ? "?" + new URLSearchParams(params) : ""}`),
     postDraftJournal: (journalId: string) => request(`/api/accounting/journals/${journalId}/post`, { method: "POST" }),
     /**
+     * Whether this firm has a Partner approve every manual journal, and what the CALLER may do under it (POST-A-456). The posting
+     * doors ask the same function, so a screen offers Post only where `may_post` is true.
+     */
+    journalApproval: () => request<ApiResp<JournalApprovalRule>>("/api/accounting/journal-approval"),
+    /** A Partner turns the firm's manual-journal approval on or off (`settings` `write`). */
+    setJournalApproval: (approvalRequired: boolean) =>
+      request<ApiResp<JournalApprovalRule>>("/api/accounting/journal-approval",
+        { method: "PUT", body: JSON.stringify({ approval_required: approvalRequired }) }),
+    /**
      * Delete a manual journal entry — a draft always, a POSTED one while its
      * period is still open (migration 275, the same gate that governs editing
      * one). The server refuses an auto-posted entry, or a period closed by a
@@ -9524,4 +9533,12 @@ export interface ItrSeasonComputePayload {
   results: ItrSeasonComputeResult[];
   tally: Record<string, number>;
   did_not: string[];
+}
+
+/** `GET /api/accounting/journal-approval` (POST-A-456): the firm's setting and what the caller may do under it. */
+export interface JournalApprovalRule {
+  approval_required: boolean;
+  may_post: boolean;
+  may_approve: boolean;
+  may_change_setting: boolean;
 }

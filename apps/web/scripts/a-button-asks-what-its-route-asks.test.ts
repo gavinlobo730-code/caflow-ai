@@ -81,12 +81,20 @@ test("the journal list offers Delete and Reverse posted only to someone their ro
   assert.match(src, /\.filter\(\(a\) => \(a\.id !== "discard" \|\| mayDeleteEntries\) && \(a\.id !== "reverse-posted" \|\| mayReverseEntries\)\)/);
 });
 
-test("the journal editor offers Post Entry on a saved draft only to someone the approval route admits", () => {
+test("the journal editor offers Post Entry only to someone the posting routes admit, and asks the firm's rule", () => {
+  // POST-A-456: both routes that put a manual journal on the books (a new entry sent as posted, a saved draft posted) ask
+  // `accounting` `write` and then the firm's rule, served by GET /api/accounting/journal-approval.
   const page = read(WEB, ...C, "accounting", "journal", "[entryId]", "edit", "_page.tsx");
-  assert.equal(gatePair(page, "mayPostDraft"), routePair(read(API, "routers", "accounting.py"), "post", "/journals/{journal_id}/post"));
-  assert.match(page, /mayPostDraft=\{mayPostDraft\}/);
+  const api = read(API, "routers", "accounting.py");
+  assert.equal(gatePair(page, "mayPost"), routePair(api, "post", "/journals/{journal_id}/post"));
+  assert.equal(routePair(api, "post", "/journal"), routePair(api, "post", "/journals/{journal_id}/post"), "the two posting doors admit different people");
+  assert.match(page, /const mayPost = usePermissions\(\)\.can\("accounting", "write"\) && postingRule\.mayPost !== false;/);
+  assert.match(page, /mayPost=\{mayPost\}/);
   const editor = read(WEB, "components", "journal", "JournalEditor.tsx");
-  assert.ok(gatedBy(editor, `onClick={() => handleSave("post")}`, "isNew || mayPostDraft"), "Post Entry is drawn on a saved draft without the gate");
+  assert.ok(gatedBy(editor, `onClick={() => handleSave("post")}`, "mayPost"), "Post Entry is drawn without the gate");
+  assert.match(editor, /const readOnly = locked \|\| !mayWrite \|\| postedHeldForApproval;/, "a posted entry is offered for correction against the rule");
+  const queue = read(WEB, ...C, "accounting", "page.tsx");
+  assert.match(queue, /const mayPost = canDo\("accounting", "write"\) && postingRule\.mayPost !== false;/);
 });
 
 test("the bill drawer draws Cancel Bill only when the page hands it the action", () => {

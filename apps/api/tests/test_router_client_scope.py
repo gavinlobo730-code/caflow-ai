@@ -978,6 +978,12 @@ EXEMPT: dict[str, str] = {
     # honour and spelling others differently, which is how nine live mappings
     # were being discarded. The write path that USES a caption —
     # PATCH /api/accounting/accounts/{id} — is client-guarded where it belongs.
+    # ── /api/accounting: the firm's manual-journal approval rule (POST-A-456) ──
+    "/api/accounting/journal-approval":
+        "firms.manual_journals_need_approval is a column on FIRMS (migration 681) and both methods scope to "
+        "`current_user['firm_id']`; the request names no client and none could be checked. The GET answers what the "
+        "CALLER may do under the rule (their own permissions, no client's data); the PUT is rbac('settings', 'write'), "
+        "a Partner's. The doors that post a journal are client-guarded where they belong.",
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",

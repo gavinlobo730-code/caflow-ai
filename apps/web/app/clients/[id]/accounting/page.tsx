@@ -1,5 +1,6 @@
 "use client";
 
+import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
@@ -3634,9 +3635,12 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 function ApprovalQueue({ clientId }: { clientId: string }) {
-  // Approve & Post asks `accounting` `approve`, which is a Partner's alone; it was offered to every member (POST-A-455).
+  // Approve & Post asks `accounting` `write` and then the firm's rule (POST-A-456): where the firm has a Partner approve every manual
+  // journal, only someone who may approve posts a draft. The rule is the server's answer for this person; while it is unknown the
+  // button is offered to someone the route admits and the server decides.
   const { can: canDo, resolved: permissionsRead } = usePermissions();
-  const mayPost = canDo("accounting", "approve");
+  const postingRule = useJournalApprovalRule();
+  const mayPost = canDo("accounting", "write") && postingRule.mayPost !== false;
   const [status, setStatus] = useState<"draft" | "posted">("draft");
   const [rows, setRows] = useState<QueueJournal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -3721,7 +3725,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
                         </Button>
                       ) : status === "draft" ? (
-                        <span className="text-ps-label">{permissionsRead ? "Awaiting someone who may approve journal entries" : ""}</span>
+                        <span className="text-ps-label">{permissionsRead ? "Awaiting someone who may post journal entries" : ""}</span>
                       ) : (
                         <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}
@@ -3735,7 +3739,12 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
       )}
 
       <p className="text-3xs text-ps-hint text-center">
-        Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement). Requires approval permission; locked financial years are blocked.
+        Approving posts the draft to the books and triggers any deferred action (e.g. bank settlement); locked financial years are blocked.{" "}
+        {postingRule.rule
+          ? (postingRule.rule.approval_required
+            ? "This firm has a Partner approve every manual journal: only someone who may approve posts a draft."
+            : "This firm lets anyone who may write the books post a draft; a Partner can require approval in Settings.")
+          : postingRule.error ?? ""}
       </p>
     </div>
   );
