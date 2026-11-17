@@ -159,7 +159,10 @@ def test_the_scan_reads_real_frontend_writes():
     # an upload). 19 - 5 = 14 exactly.
     # 14 -> 13 on 29-10-2026 (POST-A-293): app/clients/[id]/compliance/tds/page.tsx 1 -> 0, the §197 certificate insert went to
     # `POST /api/tds-workspace/lower-deduction-certificates`. 14 - 1 = 13 exactly.
-    assert len(seen) > 12, (
+    # 13 -> 10 (POST-A-208, POST-A-442): app/gst/page.tsx and app/income-tax/page.tsx 1 -> 0 each (the compliance_calendar insert
+    # went to POST /api/compliance/calendar) and app/mca/page.tsx 1 -> 0 (the mca_filings insert went to
+    # POST /api/mca-workspace/filings). 13 - 3 = 10 exactly, and the per-file tally moved on those three pages only.
+    assert len(seen) > 9, (
         f"only {len(seen)} frontend write payloads found — the scan is not "
         "reading the code it claims to")
     assert "it_notices" in seen, (

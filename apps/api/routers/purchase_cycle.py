@@ -117,6 +117,13 @@ def _audit(current_user: dict, entity: str, entity_id: str, action: str, client_
               new_data={"client_id": client_id, **data})
 
 
+def _amended(payload) -> dict:
+    """The fields an amendment APPLIED, for its audit event. In these update models None means unchanged and the service applies only
+    what is not None (`update_order`, `update_receipt`), so a field left alone, or sent as null, is not in the event: recorded as null it
+    would read as cleared, an objection date included, while the stored row still carries it. What is written is the service's, unchanged."""
+    return payload.model_dump(exclude_none=True)
+
+
 @router.post("/orders")
 def create_order(
     payload: PurchaseOrderIn,
@@ -146,7 +153,7 @@ def update_order(
         return api_response(True, {"id": order_id})
     svc.order_of_client(_db(), current_user.get("firm_id"), order_id, client_id)
     amended = svc.update_order(_db(), current_user.get("firm_id"), order_id, payload.model_dump())
-    _audit(current_user, "purchase_order", order_id, "update", client_id, payload.model_dump())
+    _audit(current_user, "purchase_order", order_id, "update", client_id, _amended(payload))
     return api_response(True, amended)
 
 
@@ -213,7 +220,7 @@ def update_receipt(
     svc.receipt_of_client(_db(), current_user.get("firm_id"), receipt_id, client_id)
     amended = svc.update_receipt(_db(), current_user.get("firm_id"), receipt_id, payload.model_dump())
     # The objection and its removal are the edit that moves a statutory date (MSMED s.2(b) Explanation), so the fields go in the event.
-    _audit(current_user, "goods_receipt", receipt_id, "update", client_id, payload.model_dump())
+    _audit(current_user, "goods_receipt", receipt_id, "update", client_id, _amended(payload))
     return api_response(True, amended)
 
 

@@ -66,3 +66,39 @@ def test_every_audit_call_names_the_actor_by_the_auth_id(module):
 def test_the_rule_can_fail():
     tree = ast.parse("def f(x):\n    return svc.write(x)\n")
     assert not (_calls(tree.body[0]) & {"log_event", "_audit"})
+
+
+@pytest.fixture
+def purchase_cycle_driven(monkeypatch):
+    """The purchase cycle's two amend routes, driven for real with the service and the audit log stood in for."""
+    import routers.purchase_cycle as pc
+    monkeypatch.setenv("SUPABASE_URL", "https://fake.supabase.test")
+    monkeypatch.setattr(pc, "assert_client_access", lambda user, cid, **k: None)
+    monkeypatch.setattr(pc, "_db", lambda: None)
+    for name in ("order_of_client", "receipt_of_client"):
+        monkeypatch.setattr(pc.svc, name, lambda *a, **k: None)
+    monkeypatch.setattr(pc.svc, "update_order", lambda db, firm, oid, patch: {"id": oid})
+    monkeypatch.setattr(pc.svc, "update_receipt", lambda db, firm, rid, patch: {"id": rid})
+    events = []
+    monkeypatch.setattr(pc, "log_event", lambda *a, **k: events.append(k["new_data"]))
+    return pc, events
+
+
+_USER = {"id": "u1", "firm_id": "firm-1", "auth_user_id": "a1", "email": "p@f.test", "role": "Partner"}
+
+
+def test_an_amended_receipt_records_what_was_changed_and_never_a_field_left_alone_as_cleared(purchase_cycle_driven):
+    """`None` means unchanged in these models and the service applies only what is not None, so a receipt whose notes alone were edited
+    (or whose objection date was sent as null) must not record its objection dates as null: the stored receipt still carries them."""
+    pc, events = purchase_cycle_driven
+    pc.update_receipt("r1", pc.GoodsReceiptUpdateIn(notes="checked"), client_id="c1", current_user=_USER)
+    pc.update_receipt("r1", pc.GoodsReceiptUpdateIn(notes="again", objection_removed_on=None), client_id="c1", current_user=_USER)
+    pc.update_receipt("r1", pc.GoodsReceiptUpdateIn(objection_raised_on="2026-05-02"), client_id="c1", current_user=_USER)
+    assert events == [{"client_id": "c1", "notes": "checked"}, {"client_id": "c1", "notes": "again"},
+                      {"client_id": "c1", "objection_raised_on": "2026-05-02"}]
+
+
+def test_an_amended_order_records_what_was_changed(purchase_cycle_driven):
+    pc, events = purchase_cycle_driven
+    pc.update_order("o1", pc.PurchaseOrderUpdateIn(notes="revised"), client_id="c1", current_user=_USER)
+    assert events == [{"client_id": "c1", "notes": "revised"}]

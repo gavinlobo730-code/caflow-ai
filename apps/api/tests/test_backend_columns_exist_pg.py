@@ -409,7 +409,12 @@ UNFIXED: dict[str, str] = {}
 # 471 -> 470 (1-11-2026, POST-A-272): the one reader of a journal entry's state (`statutory_remittance_service.entry_states`) now serves both the
 # remittance's and the TDS challan's link, and spells its column list as a literal (a test holds it equal to the rule's columns), so the
 # challan service's own built select is gone and the two reads the remittance door and the stale-link list needed add none.
-MAX_UNREADABLE = 470
+# 470 -> 471 (POST-A-442): `routers/mca_workspace.py` `update_filing_status` writes through the privileged client in two
+# `.update(updates)` branches, one naming the row's `client_id` and one testing for a null one (`.eq("client_id", None)` is not a null
+# test to PostgREST), because the privileged-write scope guard needs each update chain to name the client itself. `updates` is assembled
+# from the status the CA moves to, as it was before, so there is still no literal to read; the second branch is the +1. The firm-level
+# trackers' new calendar routes (POST-A-208) add none: their select and insert are written as literals.
+MAX_UNREADABLE = 471
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:

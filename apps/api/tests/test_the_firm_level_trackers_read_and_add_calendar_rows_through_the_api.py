@@ -6,7 +6,7 @@ WHAT WAS WRONG
     the server. The list they show did not change and is not changed here: the calendar, not the obligation store.
 
 WHAT IS HELD (through the real routes over the shared in-memory database)
-    * the GST family lists GSTR-1, GSTR-3B and GSTR-9 and nothing else, the income-tax family only the ITR, each with its own client embed;
+    * the GST family lists GSTR-1, GSTR-3B and GSTR-9 and nothing else, the income-tax family only the ITR, both with one client embed;
     * only this firm's rows, oldest due date first; a caller assigned to some clients reads only those (a Partner reads all);
     * adding a row creates it PENDING, with the form in the notes, for the caller's own client only (404 otherwise, nothing stored),
       writes an audit event naming the person by the auth id, and answers a second one for the same client, type and period in a sentence

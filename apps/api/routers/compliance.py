@@ -371,10 +371,12 @@ def calculate_due_dates(year: int, month: int,
 # obligation store (`compliance_records`), and each screen still says so and links to Deadlines. Whether they should move onto the store
 # is decided in `docs/design-record/filing-and-compliance.md`, not here.
 
-#: What each tracker lists, and the client columns its rows carry (the embed the screens always read).
+#: The return types each tracker lists. Both read one client embed (name, GSTIN, PAN, entity type: the GST screen shows the GSTIN, the
+#: income-tax one the PAN and entity type), so the select below is ONE literal that test_backend_columns_exist_pg.py can check against the
+#: real schema; a select built by concatenation is an unreadable reference whose columns are never checked.
 _TRACKER_FAMILIES = {
-    "gst": (("GSTR1", "GSTR3B", "GSTR9"), "clients(client_name, gstin)"),
-    "itr": (("ITR",), "clients(client_name, pan, entity_type)"),
+    "gst": ("GSTR1", "GSTR3B", "GSTR9"),
+    "itr": ("ITR",),
 }
 
 
@@ -392,7 +394,7 @@ def calendar_tracker_rows(
     A row's `clients` is None when the client row could not be read; the screen shows no name then, and does not guess one."""
     if _USE_MOCK:
         return api_response(True, [])
-    types, embed = _TRACKER_FAMILIES[family]
+    types = _TRACKER_FAMILIES[family]
     from core.db_paging import fetch_all_ordered
     from core.supabase_client import get_supabase
     firm_id = current_user.get("firm_id") or ""
@@ -400,7 +402,7 @@ def calendar_tracker_rows(
     rows = fetch_all_ordered(
         lambda: (db.table("compliance_calendar")
                  .select("id, firm_id, client_id, compliance_type, period_start, period_end, due_date, filing_status, filed_date, "
-                         "arn_number, notes, created_at, " + embed)
+                         "arn_number, notes, created_at, clients(client_name, gstin, pan, entity_type)")
                  .eq("firm_id", firm_id).in_("compliance_type", list(types))),
         order=[("due_date", False)], label=f"compliance.calendar_tracker.{family}")
     return api_response(True, filter_by_client(current_user, rows))
@@ -446,14 +448,16 @@ def add_calendar_entry(
     from core.db_provider import privileged_for
     from core.supabase_client import get_supabase
     db = privileged_for(get_supabase())
-    record = {
-        "firm_id": firm_id, "client_id": body.client_id, "compliance_type": body.compliance_type,
-        "period_start": body.period_start, "period_end": body.period_end, "due_date": body.due_date,
-        "filing_status": "pending", "filed_date": None,
-        "notes": (body.notes or "").strip() or None,
-    }
+    notes = (body.notes or "").strip() or None
+    # The payload is written INLINE, as `mark_calendar_entry_filed`'s is and for its reason: test_backend_columns_exist_pg.py reads column
+    # names only out of a literal dict, and an .insert(variable) is an unreadable reference whose columns are never checked.
     try:
-        rows = db.table("compliance_calendar").insert(record).execute().data or []
+        rows = db.table("compliance_calendar").insert({
+            "firm_id": firm_id, "client_id": body.client_id, "compliance_type": body.compliance_type,
+            "period_start": body.period_start, "period_end": body.period_end, "due_date": body.due_date,
+            "filing_status": "pending", "filed_date": None,
+            "notes": notes,
+        }).execute().data or []
     except Exception as exc:                                    # noqa: BLE001
         text = str(exc)
         if "23505" in text or "duplicate key" in text:
@@ -461,10 +465,11 @@ def add_calendar_entry(
                 f"This client already has a {body.compliance_type} on the calendar for the period starting {body.period_start}. "
                 "Nothing was added.")) from None
         raise
-    row = rows[0] if rows else record
+    added = {"client_id": body.client_id, "compliance_type": body.compliance_type, "period_start": body.period_start,
+             "period_end": body.period_end, "due_date": body.due_date, "notes": notes}
+    row = rows[0] if rows else {"firm_id": firm_id, **added, "filing_status": "pending", "filed_date": None}
     log_event(firm_id, "compliance_calendar", str(row.get("id") or ""), "create",
-              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
-              new_data={k: record[k] for k in ("client_id", "compliance_type", "period_start", "period_end", "due_date", "notes")})
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"), new_data=added)
     return api_response(True, row)
 
 
