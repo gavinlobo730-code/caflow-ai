@@ -199,14 +199,19 @@ def test_every_client_has_an_engagement_letter_and_the_promoters_are_in_the_rela
     from domain.demo import fixture
     from scripts.seed_demo_firm import seed
 
+    def listed():
+        got = api.get("/api/engagement-letters").get("data")
+        return got.get("engagements", got) if isinstance(got, dict) else got
+
     firm = a_firm_mock_mode_can_carry()
+    # The mock store belongs to the process, so another test's seed may already have written letters: only what THIS run added is judged.
+    before = {l["id"] for l in listed()}
     written = seed(api, firm, add_to_existing=True)
     people = fixture.promoters()
 
     assert written["engagement_letters"] == len(firm.clients)
-    letters = api.get("/api/engagement-letters").get("data")
-    letters = letters.get("engagements", letters) if isinstance(letters, dict) else letters
-    assert len(letters) >= len(firm.clients), "the letters the seeder wrote are not listed by the letters screen's own door"
+    letters = [l for l in listed() if l["id"] not in before]
+    assert len(letters) == len(firm.clients), "the letters the seeder wrote are not listed by the letters screen's own door"
     assert {l["status"] for l in letters} == {"Generated"}, "a seeded letter was sent or left a draft"
     by_client = {l["client_id"]: l for l in letters}
     assert len(by_client) == len(firm.clients), "a client has no letter, or two"
