@@ -33,6 +33,7 @@ import { isOverdue } from "@/lib/compliance/overdue";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { DateInput } from "@/components/ui/date-input";
+import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { LoadingRegion } from "@/components/ui/skeleton";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { reportOffered, type ReportId } from "@/lib/reports/offered";
@@ -583,6 +584,11 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr());
   const [fromDate, setFromDate] = useState(currentFYStart());
   const [toDate, setToDate] = useState(todayIstISO());
+  // The P&L's window. Its rows used to be read whole and cut in the browser on `transaction_date >= from && <= to`, so text that is not a
+  // date (handed up as "") read as no lower bound and as an upper bound nothing passes: an unreadable To drew a P&L of nil revenue and nil
+  // expenses as if that were the figure. The window is now the server's (`date_from`/`date_to` on /api/reports/transactions), and a box
+  // that is unreadable or blank is refused in its own sentence before anything is read (POST-A-386).
+  const dates = useDateProblems();
 
   // Load clients once
   const ensureClients = useCallback(async () => {
@@ -629,11 +635,14 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
         const summary = await getGSTSummary(selectedClientId, selectedMonth);
         setData({ client, month: selectedMonth, ...summary } as GSTSummaryData);
       } else if (reportId === "pl_statement") {
-        const txns = await getTransactions(
-          selectedClientId === "all" ? undefined : selectedClientId
-        );
-        const filtered = txns.filter(
-          (t) => t.transaction_date >= fromDate && t.transaction_date <= toDate
+        if (dates.first) { dates.refuseWith(setError); setLoading(false); return; }
+        if (!fromDate || !toDate) {
+          setError("Choose the From and To dates the statement covers.");
+          setLoading(false);
+          return;
+        }
+        const filtered = await getTransactions(
+          selectedClientId === "all" ? undefined : selectedClientId, fromDate, toDate,
         );
         const sales = filtered.filter((t) => t.transaction_type === "sales_invoice");
         const purchases = filtered.filter((t) => t.transaction_type === "purchase_invoice");
@@ -733,7 +742,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
     } finally {
       setLoading(false);
     }
-  }, [reportId, selectedClientId, selectedMonth, fromDate, toDate, clients]);
+  }, [reportId, selectedClientId, selectedMonth, fromDate, toDate, clients, dates]);
 
   const reportDef = REPORTS.find((r) => r.id === reportId)!;
   const Icon = reportDef.icon;
@@ -803,6 +812,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
                 <DateInput aria-label="Report from"
                   value={fromDate}
                   onChange={(v) => setFromDate(v)}
+                  onStateChange={dates.watch("from", "From")}
                   className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                 />
               </div>
@@ -812,6 +822,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
                   anchor={fromDate || null} notBefore={fromDate || null}
                   value={toDate}
                   onChange={(v) => setToDate(v)}
+                  onStateChange={dates.watch("to", "To")}
                   className="text-sm border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-white"
                 />
               </div>

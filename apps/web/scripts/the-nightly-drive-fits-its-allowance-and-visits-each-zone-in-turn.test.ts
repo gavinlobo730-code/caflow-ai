@@ -382,12 +382,12 @@ test("choosing a zone or a part never removes a scenario from the drive: across 
 
 test("a scenario's part is a stable function of its id, so adding or removing a scenario moves no other", () => {
   // FNV-1a over the id, modulo the count, pinned on ids so a change of the hash is a change of every part, on purpose.
-  assert.equal(SHARDS, 3, "the count of parts changed: the pins below are for three");
-  assert.deepEqual(["shipping-bill", "vendor-no-pe-declaration", "bank-account-opening-date", "a", "scenario-1"].map(shardOf), [1, 1, 0, 1, 1]);
+  assert.equal(SHARDS, 4, "the count of parts changed: the pins below are for four");
+  assert.deepEqual(["shipping-bill", "vendor-no-pe-declaration", "bank-account-opening-date", "a", "scenario-1"].map(shardOf), [3, 2, 3, 0, 1]);
   const ids = Array.from({ length: 200 }, (_, i) => `scenario-${i}`);
   const counts = Array(SHARDS).fill(0);
   for (const id of ids) counts[shardOf(id)] += 1;
-  assert.ok(Math.min(...counts) > 60, `the hash cuts 200 ids unevenly: ${counts.join(" / ")}`);
+  assert.ok(Math.min(...counts) > 40, `the hash cuts 200 ids unevenly: ${counts.join(" / ")}`);
 });
 
 // ── the report ─────────────────────────────────────────────────────────────────────────────────────────

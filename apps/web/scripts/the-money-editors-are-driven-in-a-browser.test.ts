@@ -371,6 +371,36 @@ const DRIVEN: Record<string, string[]> = {
   "components/gst/ExpiringEwayBills.tsx": ["[New valid upto]"],
   // A window or a filter that chooses what a screen reads and writes nothing: the claims are the ones of a form with the read standing where Save does.
   "app/settings/audit-log/page.tsx": ["[Audit log from date]", "[Audit log to date]"],
+  // The twentieth slice (17-11-2026, POST-A-386 closed): every other window and filter, a row of WINDOWS each, and the practice's own records, a row of EDITORS each.
+  "app/clients/[id]/accounting/page.tsx": ["[Ledger from]", "[Ledger to]"],
+  "components/banking/WorthALookTab.tsx": ["#wal-from", "#wal-to"],
+  "components/purchases/VendorStatementsTab.tsx": ["#vs-start", "#vs-end"],
+  "components/banking/BankBook.tsx": ["[Bank book from]", "[Bank book to]"],
+  "components/banking/FindMatchModal.tsx": ["[Dated from]", "[Dated to]"],
+  "components/PeriodPicker.tsx": ["[From date]", "[To date]"],
+  "components/ui/data-table.tsx": ["[${def.label} from]", "[${def.label} to]"],
+  "app/clients/[id]/reports/ageing/page.tsx": ["#ageing-as-at"],
+  "app/portal/dashboard/page.tsx": ["[Statement from]", "[Statement to]"],
+  "app/time/page.tsx": ["[Hours from]", "[Hours to]", "[Export from]", "[Export to]"],
+  "app/reports/page.tsx": ["[Report from]", "[Report to]"],
+  "app/settings/dsc-tracker/page.tsx": ["[New expiry date]", "[New issue date]", "[Issue date]", "[Expiry date]"],
+  "app/pipeline/page.tsx": ["[Last contact date]", "[Next follow-up date]"],
+  "app/tasks/page.tsx": ["[Due date]"],
+  "components/TaskFormModal.tsx": ["[Due date]"],
+  "app/tasks/templates/page.tsx": ["[Due date]"],
+  "app/clients/documents/page.tsx": ["[Expiry date (optional)]"],
+  "app/health/[client_id]/HealthDetailClient.tsx": ["[Expires at (optional)]"],
+  "app/clients/[id]/health/page.tsx": ["[Expires at (optional)]"],
+  "app/clients/[id]/lifecycle/page.tsx": ["[Renewal date]"],
+  "app/client-portal/page.tsx": ["[Needed by]"],
+  // The NRV review sheet (POST-A-111, 16-11-2026) came after the count POST-A-386 was written from; the rule below found it.
+  "components/inventory/NrvReviewPanel.tsx": ["#nrv-review-date"],
+};
+
+/** Files whose date box is driven by a scenario of its own group and not by `dates.mjs`, each with the scenario file and the text that names the box there. */
+const DRIVEN_ELSEWHERE: Record<string, { scenario: string; names: string }> = {
+  "components/fixed-assets/AssetMovements.tsx": { scenario: "assetMovements.mjs", names: "#asset-moved-on-" },
+  "components/fixed-assets/VerificationTab.tsx": { scenario: "assetVerification.mjs", names: "#count-verified-on" },
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
@@ -409,6 +439,24 @@ test("a driven editor cannot gain a date field the drive does not know about", (
     for (const named of Object.keys(NOT_YET_DRIVEN[file] ?? {})) {
       assert.ok(have.includes(named), `${file}: ${named} is named as not yet driven but is not a DateInput there`);
     }
+  }
+});
+
+test("every file that holds a date box is driven: a new DateInput anywhere needs a row (POST-A-386)", () => {
+  // The DRIVEN table used to be a list of the files somebody had driven, so a date box in any OTHER file was simply not looked at, and
+  // forty of them sat undriven for a fortnight. The rule now runs the other way: every .tsx under app/ and components/ that renders a
+  // DateInput is in DRIVEN, or in DRIVEN_ELSEWHERE with the scenario that types into it.
+  const holders = [...allFiles(join(WEB, "app")), ...allFiles(join(WEB, "components"))]
+    .filter((f) => f.endsWith(".tsx") && /<DateInput\b/.test(read(f)))
+    .map((f) => relative(WEB, f))
+    .filter((rel) => rel !== "components/ui/date-input.tsx");
+  assert.ok(holders.length >= 80, `only ${holders.length} files hold a DateInput: the scan has stopped seeing them`);
+  const undriven = holders.filter((rel) => !(rel in DRIVEN) && !(rel in DRIVEN_ELSEWHERE)).sort();
+  assert.deepEqual(undriven, [], `these files hold a date box no drive row types into: ${undriven.join(", ")}. Add a row to EDITORS or WINDOWS ` +
+    "in scripts/drive/scenarios/dates.mjs and the file to DRIVEN.");
+  for (const [rel, { scenario, names }] of Object.entries(DRIVEN_ELSEWHERE)) {
+    assert.ok(holders.includes(rel), `${rel} is named as driven elsewhere but holds no DateInput`);
+    assert.ok(read(join(SCENARIO_DIR, scenario)).includes(names), `${scenario} no longer types into ${names} of ${rel}`);
   }
 });
 
