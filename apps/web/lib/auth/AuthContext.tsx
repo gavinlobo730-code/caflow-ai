@@ -1,5 +1,6 @@
 "use client";
 
+import { bindReadCacheToUser, forgetReads } from "@/lib/cache/readCache";
 import {
   createContext,
   useContext,
@@ -381,6 +382,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
+        // A different person (or nobody) at this tab is not painted from the last one's lists (POST-A-124).
+        bindReadCacheToUser(session?.user?.id ?? null);
         // Non-blocking role + firm resolution.
         applyContext(session?.user ?? null);
         // Recompute MFA assurance on every auth transition (login, refresh, verify).
@@ -489,6 +492,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Half-typed vouchers kept in this tab for a reload (frontend_ux-23) belong
     // to the person signing out; the next person at this tab is offered none.
     clearAllDrafts(browserSessionStorage());
+    forgetReads();
     await supabase.auth.signOut();
   }, []);
 

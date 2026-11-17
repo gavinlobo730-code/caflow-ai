@@ -156,7 +156,7 @@ function allowancesNobodyUses(code: string, setters: string[], patterns: RegExp[
 // What the supplier form and the recurring invoice template say THEMSELVES in their answer, each a sentence about a box that is NOT a date (it answers a press and is withdrawn by the next). The catch of the
 // template's Save names its variable `err`, the supplier form's `e`. A sentence about a date box (unreadable, blank, after today, out of order) is not here: it is the latch's.
 const SUPPLIER_SENTENCES = [
-  /^"Name is required"$/, /^gstinIssue$/,
+  /^"Name is required"$/, /^gstinIssue$/, /^removed$/,
   /^"Opening balance must be an amount in rupees, "\s*\+\s*"e\.g\. 125000 or 125000\.50 — without commas\."$/,
   /^"TDS rate must be a percentage, e\.g\. 10 or 7\.5\."$/, /^"Treaty rate must be a percentage, e\.g\. 10 or 7\.5\."$/,
   /^"Withholding nil on business profits rests on the payee having no permanent establishment in India — tick the no-PE declaration, or choose a different nature of income\."$/,

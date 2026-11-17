@@ -63,10 +63,10 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
   useEffect(() => { void load(); }, [load]);
 
   function open(employeeId: string) {
-    const row = data?.rows.find((r) => r.employee_id === employeeId);
+    const row = (data?.rows ?? []).find((r) => r.employee_id === employeeId);
     setEditing(employeeId);
     setError(null);
-    setFirst(row ? row.first_month_here.slice(0, 7) : "");
+    setFirst(row ? (row.first_month_here ?? "").slice(0, 7) : "");
     setMonths(row ? String(row.months_paid) : "");
     const rs = (p: number | undefined) => (p === undefined ? "" : (p / 100).toFixed(2));
     setAmounts({ gross: rs(row?.gross_paise), tds: rs(row?.tds_paise), pfEe: rs(row?.pf_employee_paise), pfEr: rs(row?.pf_employer_paise),
@@ -125,8 +125,8 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
   }
 
   const names = new Map<string, string>();
-  data?.rows.forEach((r) => names.set(r.employee_id, r.employee_name ?? r.employee_id));
-  data?.without.forEach((w) => names.set(w.employee_id, w.employee_name ?? w.employee_id));
+  (data?.rows ?? []).forEach((r) => names.set(r.employee_id, r.employee_name ?? r.employee_id));
+  (data?.without ?? []).forEach((w) => names.set(w.employee_id, w.employee_name ?? w.employee_id));
 
   return (
     <div className="p-5 space-y-4">
@@ -155,7 +155,7 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
 
       {loading && !data && <LoadingRegion label="Reading the opening positions"><span /></LoadingRegion>}
       {data && (
-          data.rows.length === 0 && data.without.length === 0 ? (
+          (data.rows ?? []).length === 0 && (data.without ?? []).length === 0 ? (
             <EmptyState icon={<History size={28} />} className="py-10" title="No employees on this client's payroll yet"
               description="Add the employees on the People tab, then record what each had been paid before this product ran the payroll." />
           ) : (
@@ -167,7 +167,7 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((r) => (
+              {(data.rows ?? []).map((r) => (
                 <tr key={r.id} className="border-t">
                   <td className="py-1.5">{r.employee_name ?? r.employee_id}</td>
                   <td>{r.first_month_here.slice(0, 7)}</td><td>{r.months_paid}</td>
@@ -180,7 +180,7 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
                   </td>
                 </tr>
               ))}
-              {data.without.map((w) => (
+              {(data.without ?? []).map((w) => (
                 <tr key={w.employee_id} className="border-t text-ps-label">
                   <td className="py-1.5">{w.employee_name ?? w.employee_id}</td>
                   <td colSpan={4}>Nothing entered yet; that is not the same as nothing paid earlier</td>

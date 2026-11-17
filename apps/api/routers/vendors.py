@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ValidationError
 from models.common import api_response
 from domain.party_duplicates import possible_duplicates, same_party_sentence
-from models.parties import VendorIn, VendorUpdateIn
+from models.clearable import drop_empty, patch_dict, removed_identifier_problem
+from models.parties import NON_RESIDENT_NEEDS_COUNTRY, PARTY_IDENTIFIERS, VendorIn, VendorUpdateIn
+from domain.tds.residency import NON_RESIDENT
 from domain.tds.section_rates import threshold_class_problem
 from domain.tds.no_pe_declaration import declarant_write
 from core.authz import assert_client_access, can_access_client
@@ -702,6 +704,20 @@ def get_vendor(
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
+def _merged_residency_problem(sent: dict, stored: dict) -> Optional[str]:
+    """Why the row an edit would leave cannot be saved for want of a non-resident's country, or None (POST-A-399).
+
+    The model asks that a non-resident carries a country only of what one request sends, and the country is clearable, so a PATCH that clears it
+    alone over a stored non-resident would leave the row the model refuses (Form 27Q reports the country on every deductee row, and Rule 37BC's
+    relief from the s.206AA floor rests on it). Asked of the MERGED row, as TDS-30's limit class is, and only when the edit touches either field.
+    """
+    if "country_of_residence" not in sent and "residential_status" not in sent:
+        return None
+    status = sent.get("residential_status", stored.get("residential_status"))
+    country = sent.get("country_of_residence", stored.get("country_of_residence"))
+    return NON_RESIDENT_NEEDS_COUNTRY if status == NON_RESIDENT and not str(country or "").strip() else None
+
+
 @router.patch("/{vendor_id}")
 def update_vendor(
     vendor_id: str,
@@ -710,7 +726,10 @@ def update_vendor(
 ):
     """Partial update of vendor."""
     try:
-        payload = data.model_dump(exclude_none=True)
+        # POST-A-399. What the model names in CLEARABLE and the request sent empty is a clear (written NULL); a tax identifier sent empty over
+        # nothing writes nothing (never a stored ""), and one sent empty over a stored value is refused below, once the row is read.
+        model = data
+        payload = drop_empty(patch_dict(data), PARTY_IDENTIFIERS)
         payload["updated_at"] = datetime.now(timezone.utc).isoformat()
         # A validator only at the create door is one PATCH from being none
         # (GST-29). Editing a vendor is a place a human types a GSTIN.
@@ -724,6 +743,10 @@ def update_vendor(
         # can post a real GL journal, so the refusal must land before that fetch
         # even decides whether anything changed, let alone before the update.
         prior = _load_vendor_or_404(current_user, vendor_id)
+        # A tax identifier emptied over a stored one, or a stored non-resident left with no country (asked of the merged row, as TDS-30 below is).
+        _removed = removed_identifier_problem(model, prior, PARTY_IDENTIFIERS) or _merged_residency_problem(data, prior)
+        if _removed:
+            raise HTTPException(status_code=422, detail=_removed)
 
         # POST-A-401. A save that RECORDS the no-PE declaration (ticked and dated, changed or not yet attributed) names the
         # member who made it; one that takes the declaration off file empties the name. Asked of the stored row and the

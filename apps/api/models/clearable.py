@@ -31,7 +31,7 @@ WHAT THIS DOES
 """
 from __future__ import annotations
 
-from typing import Any, FrozenSet
+from typing import Any, FrozenSet, Iterable
 
 from pydantic import BaseModel
 
@@ -56,3 +56,33 @@ def patch_dict(model: BaseModel) -> dict[str, Any]:
         if value is None or (isinstance(value, str) and not value.strip()):
             out[name] = None
     return out
+
+
+def removed_identifier_problem(model: BaseModel, stored: dict, labels: dict[str, str]) -> str | None:
+    """The sentence refusing an edit that EMPTIES an identifier the stored row carries, or None (POST-A-399, the party masters).
+
+    A tax identifier a return reads off a party (its GSTIN and the state code that follows it, and a vendor's PAN and foreign tax number) is
+    corrected and not removed by an edit: every GST return not yet filed reads the party's GSTIN and state code LIVE for the documents already
+    issued to it (a recipient with a GSTIN is B2B, one without is B2C, and §16(2)(aa) sends the credit to whoever the GSTIN names), so emptying one
+    would silently move documents already issued between tables of a return. A customer's PAN and TAN are not passed here, because no return reads
+    them and the sentence would be untrue of them. `labels` maps each field the route refuses to empty to the words a person reads. A field the
+    request SENT empty (null or blank) over a stored value is refused; one sent empty over nothing is not this function's to refuse (the route drops
+    it, so nothing is written).
+    """
+    for name, label in labels.items():
+        if name not in model.model_fields_set:
+            continue
+        value = getattr(model, name, None)
+        if (value is None or (isinstance(value, str) and not value.strip())) and str(stored.get(name) or "").strip():
+            return (f"The {label} on file can be corrected but not removed: enter the corrected {label}. "
+                    f"Every return not yet filed reads it for the documents already issued to this party.")
+    return None
+
+
+def drop_empty(payload: dict[str, Any], names: Iterable[str]) -> dict[str, Any]:
+    """Remove each of `names` the payload carries as a blank string, so an empty box over nothing writes nothing (and never a stored "")."""
+    for name in names:
+        value = payload.get(name)
+        if isinstance(value, str) and not value.strip():
+            payload.pop(name, None)
+    return payload

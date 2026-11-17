@@ -135,7 +135,7 @@ test("the Add Challan form says which quarter a challan is recorded for", () => 
 });
 
 test("the register's own warnings are shown, in the server's words", () => {
-  assert.ok(/\{depositForClient && depositForClient\.warnings\.length > 0 && \(/.test(PAGE), "the warnings are never read, or read behind a condition that is always false");
+  assert.ok(/\{depositForClient && \(depositForClient\.warnings \?\? \[\]\)\.length > 0 && \(/.test(PAGE), "the warnings are never read, or read behind a condition that is always false");
   assert.ok(/depositForClient\.warnings\.map\(\(w, i\) => <li key=\{`\$\{w\.code\}-\$\{i\}`\}>\{w\.message\}<\/li>\)/.test(PAGE),
     "the warnings are not rendered as the server wrote them");
 });

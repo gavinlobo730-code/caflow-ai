@@ -98,8 +98,9 @@
  * --no-headers    walk WITHOUT out/_headers (the build is then not the product as served)
  * --anon          do NOT sign in, so the sign-in screens render as
  *                 themselves. Looking only — see `anon` below.
- * --shots          write a PNG per route to .smoke/ (the visual baseline —
- *                  NOT a regression gate; these are supposed to change)
+ * --shots          write a JPEG per route and a contact sheet to .smoke/ (.smoke/client/
+ *                  with --real-client), the visual baseline — NOT a regression
+ *                  gate; these are supposed to change
  * --real-client    put a UUID in /clients/:id instead of the static-export
  *                  placeholder, so the CLIENT WORKSPACE renders its own shell.
  *                  Without it every client screen wears the firm chrome and
@@ -118,6 +119,7 @@ import {
   summaryMarkdown,
 } from "./axeAudit.mjs";
 import { auditNamedScreens, slowServerScenario } from "./walkAudits.mjs";
+import { CLIENT_UUID, knownRead } from "./walkStub.mjs";
 
 
 /**
@@ -278,6 +280,7 @@ function serve(root, headerRules = []) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = decodeURIComponent(req.url.split("?")[0]);
+      const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?") + 1) : "";
       // The headers Cloudflare Pages would add to a static asset (security_privacy-05): the SAME file the
       // deploy ships, parsed by the same function the generator's tests use, applied to every static
       // response and not to the two stub prefixes (they stand in for other hosts, not for assets).
@@ -302,6 +305,11 @@ function serve(root, headerRules = []) {
         if (url.startsWith("/__supabase/rest/v1/firms")) {
           return sendJson(res, wantsObject ? FAKE_FIRM_ROW : [FAKE_FIRM_ROW]);
         }
+        // The ONE lookup keyed on the client the walk names (`clients?id=eq.<CLIENT_UUID>`), which the client
+        // workspace's gate needs before it renders a screen (POST-A-036; scripts/walkStub.mjs says why and what
+        // stays empty).
+        const known = knownRead(url, query, wantsObject);
+        if (known !== undefined) return sendJson(res, known);
         // Everything else stays EMPTY, deliberately. The no-data state is the
         // one a developer with a seeded database never looks at and the one a
         // redesign most often breaks — see the note above `serve`. This row
@@ -510,7 +518,14 @@ const anon = args.includes("--anon");
  * and the build has one page per shape, not per record.
  */
 const realClient = args.includes("--real-client");
-const CLIENT_UUID = "00000000-0000-4000-8000-000000000001";
+
+/**
+ * Where `--shots` writes. The client-workspace pass writes into a folder of its own, `.smoke/client/`, because the
+ * nightly runs it after the full walk in the same checkout and both write a contact sheet called `index.html` (and the
+ * firm-level /clients screens under the same file names): in one folder the second pass overwrote the first walk's
+ * sheet, and the failed-run artifact then showed 44 client screens and not the walk that failed.
+ */
+const shotDir = realClient ? path.join(SHOT_DIR, "client") : SHOT_DIR;
 
 /**
  * ⚠️ THE ROUTE LIST IS THE LIVE `app/` TREE, AND IT USED TO BE
@@ -705,7 +720,7 @@ if (anon) {
               (only ? "" : "  NO --only: every protected route will redirect " +
                "to the sign-in page, which is not a walk of anything."));
 }
-if (shots) fs.mkdirSync(SHOT_DIR, { recursive: true });
+if (shots) fs.mkdirSync(shotDir, { recursive: true });
 
 const broken = [];
 const timings = [];            // how long each screen took to settle, for --report
@@ -778,7 +793,7 @@ for (const route of routes) {
       // is ~150KB and every difference a design review cares about survives.
       const name = (route === "/" ? "root" : route.slice(1).replace(/[/?=&]/g, "_")) + ".jpg";
       await page.screenshot({
-        path: path.join(SHOT_DIR, name), fullPage: true, type: "jpeg", quality: 72,
+        path: path.join(shotDir, name), fullPage: true, type: "jpeg", quality: 72,
       });
       captured.push({ route, file: name });
     }
@@ -881,7 +896,7 @@ if (shots) {
   const cards = captured.map(({ route, file }) =>
     `<figure><a href="${file}"><img src="${file}" loading="lazy" alt="${route}"></a>` +
     `<figcaption>${route}</figcaption></figure>`).join("\n");
-  fs.writeFileSync(path.join(SHOT_DIR, "index.html"),
+  fs.writeFileSync(path.join(shotDir, "index.html"),
     `<!doctype html><meta charset="utf-8"><title>PracticeSync screens</title>` +
     `<style>body{font:14px system-ui;margin:0;padding:24px;background:#F8FAFC;color:#0F172A}` +
     `h1{font-size:18px;margin:0 0 4px}p{color:#64748B;margin:0 0 24px}` +
@@ -892,7 +907,7 @@ if (shots) {
     `overflow:hidden;text-overflow:ellipsis;white-space:nowrap}</style>` +
     `<h1>${captured.length} screens</h1><p>Rendered with no data, at 1440x900. ` +
     `Click a card for the full page.</p><div class="grid">${cards}</div>`);
-  console.log(`\n${captured.length} screenshots and a contact sheet in ${SHOT_DIR}`);
+  console.log(`\n${captured.length} screenshots and a contact sheet in ${shotDir}`);
 }
 // ── The accessibility verdict (frontend_ux-03; scripts/axeAudit.mjs) ─────────────────────────────────────
 //
