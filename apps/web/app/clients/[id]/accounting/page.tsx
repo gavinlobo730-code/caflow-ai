@@ -41,6 +41,7 @@ import { documentTarget, noRouteReason, sourceLabel, journalEntryHref }
 import { cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
+import { unreadColumnsSentence } from "@/lib/export/unread";
 
 
 import { formatIstLabelled } from "@/lib/dates/formatIst";
@@ -2633,7 +2634,12 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
           <BasisToggle />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "profit and loss");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns));
+            }}
             disabled={plExportDisabled}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -2991,7 +2997,12 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
           <BasisToggle />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "balance sheet");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns));
+            }}
             disabled={bsExportDisabled}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -3459,7 +3470,12 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange, ledgerSpan }
           />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "cash flow");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns));
+            }}
             disabled={!withData.length}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
