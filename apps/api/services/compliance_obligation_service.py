@@ -1087,7 +1087,7 @@ def _reconcile_stale_gst_obligations(firm_id: str, client_id: str, financial_yea
             )
             blocked_ps.add((otype, ps))
             continue
-        compliance_records_repo.soft_delete(r["id"])
+        compliance_records_repo.soft_delete(r["id"], firm_id=firm_id, client_id=client_id)
     return seen3, blocked_ps, gaps
 
 
@@ -1322,7 +1322,7 @@ def assign(firm_id: str, record_id: str, preparer_id: Optional[str] = None,
     if not updates:
         raise HTTPException(status_code=422, detail="No assignment fields supplied.")
     updates["reassigned_at" if rec.get("assigned_at") else "assigned_at"] = _now_iso()
-    updated = compliance_records_repo.update(record_id, updates)
+    updated = compliance_records_repo.update(record_id, updates, firm_id=firm_id, client_id=rec.get("client_id"))
 
     actor = actor or {}
     try:
@@ -1506,7 +1506,8 @@ def escalate(firm_id: str, today: Optional[date] = None, actor: Optional[dict] =
                 "client_id": r.get("client_id"), "due_date": due,
                 "label": r.get("period_label") or r.get("obligation_type"),
             })
-        compliance_records_repo.update(r["id"], {"last_escalated_tier": tier, "last_escalated_on": today_s})
+        compliance_records_repo.update(r["id"], {"last_escalated_tier": tier, "last_escalated_on": today_s},
+                                       firm_id=firm_id, client_id=r.get("client_id"))
         counts[tier] += 1
     # ONE mail per recipient for the whole sweep, after the loop. A practice with
     # sixty clients has sixty GSTR-3Bs reach the 7-day tier on the same morning;
