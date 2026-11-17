@@ -12,6 +12,7 @@ import { Callout } from "@/components/ui/callout";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import type { DateFieldState } from "@/lib/dates/typedDate";
+import { readTotalIncome } from "@/lib/tax/unforeseenTotalIncome";
 
 /** One income the CA has put forward for §234C(1)'s proviso. The tax is held as
  *  TEXT and parsed with the one money parser by the page that owns the rows. */
@@ -76,12 +77,17 @@ export function UnforeseenIncomePanel({
   const [kinds, setKinds] = useState(UNFORESEEN_KINDS_FALLBACK);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The year's total income, OPTIONAL (POST-A-075). Blank sends none and the server offers no surcharge and says so; a figure
+  // here is what lets the server include the surcharge at its own bracket. The screen reads the text and decides nothing else.
+  const [totalIncomeRs, setTotalIncomeRs] = useState("");
 
   async function offer() {
     if (!clientId) { setErr("Choose a client first."); return; }
+    const total = readTotalIncome(totalIncomeRs);
+    if (total.kind === "problem") { setErr(total.message); return; }
     setBusy(true); setErr(null);
     try {
-      const r = await listUnforeseenIncomeCandidates(clientId, fy);
+      const r = await listUnforeseenIncomeCandidates(clientId, fy, total.kind === "amount" ? total.paise : null);
       setCandidates(arrayOrEmpty<UnforeseenIncomeCandidate>(r.candidates));
       setOfferCaveats(arrayOrEmpty<string>(r.caveats));
       const served = arrayOrEmpty<{ key: string; label: string }>(r.kinds);
@@ -113,7 +119,14 @@ export function UnforeseenIncomePanel({
         the tax it adds to the year&apos;s tax.
       </p>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-ps-label">
+          <span className="block mb-1">Total income for the year (₹), optional</span>
+          <input type="text" inputMode="decimal" value={totalIncomeRs} id="unforeseen-total-income"
+            onChange={e => { setTotalIncomeRs(e.target.value); setCandidates(null); }}
+            placeholder="Leave blank if not known"
+            className="w-44 border border-ps-border rounded px-2 py-1.5 text-xs text-right" />
+        </label>
         <button type="button" onClick={offer} disabled={busy}
           className="text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
           {busy ? "Reading…" : "Offer this year's gains from the capital gains register"}
@@ -123,6 +136,12 @@ export function UnforeseenIncomePanel({
           <Plus size={12} /> Add an income
         </button>
       </div>
+
+      <p className="text-2xs text-ps-hint">
+        The total income is used only to find the surcharge on the gains offered below. Without it no surcharge is included, and
+        the note under the offer says so. Changing it clears the offer; offer again to see the new figures. Rows already included
+        keep the tax they were included with.
+      </p>
 
       {err && <p className="text-xs text-state-problem">{err}</p>}
 
@@ -140,6 +159,9 @@ export function UnforeseenIncomePanel({
                 <span>
                   <strong>{c.description || "Transfer"}</strong> — arose {formatDate(c.arose_on)}, gain{" "}
                   {formatPaise(c.gain_paise)}, tax about {formatPaise(c.tax_paise)}
+                  {typeof c.surcharge_paise === "number" && c.surcharge_paise > 0 && (
+                    <span> (including surcharge {formatPaise(c.surcharge_paise)})</span>
+                  )}
                   {c.is_estimate && <span className="text-ps-hint"> (estimate)</span>}
                 </span>
                 <button type="button" disabled={included} onClick={() => include(c)}
