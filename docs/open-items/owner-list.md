@@ -352,6 +352,38 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** Refusing a hand entry for the loss's own assessment year. It is accepted (it shows in the loss list and can be taken back), as is the record's stored last year.
 - **Ledger:** POST-A-368
 
+### S36. Section 192(2) and Form 12B: how a former employer's salary and tax enter the current employer's estimate
+
+- **Question:** Under section 192(2) (Form 12B), how must an employer combine a former employer's salary and tax in the current year's estimate? Is it mandatory once the employee furnishes it; are the standard deduction and other exemptions applied once across both employers; does the former employer's PF count; and how is tax already deducted credited against the remaining months? From 1-4-2026, which section and form of the Income-tax Act 2025 and its Rules replace section 192(2) and Form 12B?
+- **Needed:** Income-tax Act 1961 section 192(2) and Rule 26A with Form 12B, and their equivalents in the 2025 Act and Rules.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** The previous-employer record and its use in the section 192 projection and Annexure II.
+- **Ledger:** POST-A-084
+
+### S37. E-way bill on a delivery challan: which Rule 55 movements need one, under which document and sub-supply type
+
+- **Question:** For each Rule 55 challan reason (job work, sale on approval, liquid gas, other than by way of supply, Rule 55(4) and 55(5)), is an e-way bill required under Rule 138, and with which document type and sub-supply type? The product records an e-way bill against an invoice only and holds no reading of either.
+- **Needed:** CGST Rule 138 as amended, and the e-way bill API's master codes for document and sub-supply types.
+- **Who can supply it:** a practising CA for the reading; the e-way bill developer portal for the codes; Claude once the government sites are reachable (section 1).
+- **Stays unbuilt meanwhile:** Recording an e-way bill against a delivery challan, and offering it on the challan's screen.
+- **Ledger:** POST-A-439
+
+### S38. The filing calendar and the obligation store: which obligation type each calendar entry is
+
+- **Question:** For moving the GST and income-tax trackers and the risk register off the filing calendar onto the obligation store, how does each calendar type (GSTR1, GSTR3B, ADVANCE_TAX, TDS26Q, and an ITR with its form held in the notes) map to an obligation type in the store? It is decided together with POST-B-326.
+- **Needed:** No document beyond the POST-B-326 decision; a practising CA can confirm the mapping.
+- **Who can supply it:** the owner, or a practising CA.
+- **Stays unbuilt meanwhile:** The trackers' and the risk register's move onto the obligation store, and the production carry-over of filed rows.
+- **Ledger:** POST-A-208
+
+### S39. Salary TDS: which month the tax counts as deducted in when salary is paid after the month ends
+
+- **Question:** Section 192(1) deducts tax at the time of payment. Where a wage month's salary is paid after that month ends, is the tax deducted in the month of payment (so Rule 30(2)'s deposit date runs from that month), or in the wage month? The product keys the salary deposit obligation, and the 24Q built from payroll, on the wage month.
+- **Needed:** Income-tax Act 1961 section 192(1) and Rule 30(2), and their 2025 Act and Rules equivalents, with any CBDT circular on salary paid after the month ends.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Keying the salary deposit obligation on the month of payment; the closer records no false on-time deposit either way.
+- **Ledger:** POST-A-466
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
