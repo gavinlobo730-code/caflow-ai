@@ -19,6 +19,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { errorMessage } from "@/lib/api";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -544,7 +545,7 @@ export default function DSCTrackerPage() {
           <h2 className="text-sm font-semibold text-ps-ink">DSC Records</h2>
           <p className="text-xs text-ps-hint mt-0.5">Class 2/3 digital signatures for GST, MCA, Income Tax filings</p>
         </div>
-        {loading ? <div className="px-5 py-10 text-center text-sm text-ps-hint">Loading…</div> : (
+        {loading ? <LoadingRegion label="Loading DSC records" className="px-5 py-10 text-center text-sm text-ps-hint" noticeClassName="justify-center text-center">Loading…</LoadingRegion> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

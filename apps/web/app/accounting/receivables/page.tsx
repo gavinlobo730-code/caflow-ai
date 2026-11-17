@@ -30,6 +30,7 @@ import { Callout } from "@/components/ui/callout";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Client {
@@ -267,6 +268,14 @@ export default function ReceivablesAgingPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* A read the button starts (POST-A-449): the button keeps its own spinner, and the place the ageing will be drawn says
+          what is being read, and that the server may be waking up, while the read is out. */}
+      {loading && (
+        <LoadingRegion label="Building the ageing" className="bg-white rounded-xl border border-ps-border p-8 text-center" noticeClassName="justify-center text-center">
+          <p className="text-sm text-ps-hint">Reading the unpaid fee invoices…</p>
+        </LoadingRegion>
+      )}
 
       {/* Summary cards */}
       {generated && (

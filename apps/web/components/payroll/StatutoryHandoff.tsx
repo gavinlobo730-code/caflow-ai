@@ -54,6 +54,7 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { formatMonthYear, formatDate, todayIstISO } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type PayrollRun = { id: string; month: string; status: string };
 
@@ -922,7 +923,7 @@ export default function StatutoryHandoff({ clientId }: { clientId: string }) {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <p className="p-5 text-xs text-ps-hint">Loading…</p>;
+    return <LoadingRegion label="Loading the statutory hand-off" className="p-5 text-xs text-ps-hint">Loading…</LoadingRegion>;
   }
   if (!runs.length) {
     return (

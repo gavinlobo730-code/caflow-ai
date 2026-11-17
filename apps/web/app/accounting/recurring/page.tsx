@@ -30,6 +30,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useTakenBackWhenFixed } from "@/lib/dates/useDateProblems";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /** Said by Save over a window that ends before it starts, and taken back once it does not. */
 const END_BEFORE_START = "End date: it is before the start date.";
@@ -445,7 +446,7 @@ export default function RecurringPage() {
             </thead>
             <tbody className="divide-y divide-ps-border">
               {loading ? (
-                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint">Loading…</td></tr>
+                <tr><td colSpan={7} className="px-5 py-8 text-center text-sm text-ps-hint"><LoadingRegion label="Loading the recurring templates" noticeClassName="justify-center text-center">Loading…</LoadingRegion></td></tr>
               ) : templates.length === 0 ? (
                 <tr><td colSpan={7}>
                   <EmptyState

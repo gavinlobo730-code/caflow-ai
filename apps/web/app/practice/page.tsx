@@ -11,6 +11,7 @@ import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { EmptyStateAction } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /** What the practice client's own tax identity is, as the server holds it. */
 interface PracticeIdentity {
@@ -280,7 +281,7 @@ function PracticeOverview() {
     }
   }
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading Practice…</div>;
+  if (loading) return <LoadingRegion label="Loading the practice" className="p-8 text-sm text-gray-500">Loading Practice…</LoadingRegion>;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   if (provisioned === false) {

@@ -27,6 +27,7 @@ import { Callout, GapList, StatutoryNotes } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 export function RcmDocumentPanel({
   clientId, kind, purchaseBillId, purchasePaymentId, onClose, onIssued,
@@ -113,7 +114,7 @@ export function RcmDocumentPanel({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {error && <Callout tone="problem">{error}</Callout>}
 
-          {busy && !preview && <p className="text-xs text-ps-hint">Loading…</p>}
+          {busy && !preview && <LoadingRegion label="Loading the document" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
 
           {issued && (
             <div className="bg-state-ready-surface border border-state-ready-border rounded-lg px-3 py-2 text-xs text-state-ready flex gap-2">

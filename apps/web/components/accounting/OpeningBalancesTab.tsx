@@ -39,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Kind = "receivable" | "payable";
 type Msg = { type: "ok" | "err"; text: string } | null;
@@ -338,7 +339,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
       )}
 
       {loading ? (
-        <p className="text-xs text-ps-hint">Loading…</p>
+        <LoadingRegion label="Loading the opening documents" className="text-xs text-ps-hint">Loading…</LoadingRegion>
       ) : !listing || listing.documents.length === 0 ? (
         <p className="text-xs text-ps-hint">
           No opening documents recorded. Until they are, the opening balance

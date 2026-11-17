@@ -20,6 +20,7 @@ import { formatHours } from "@/lib/data/analytics";
 import { ANALYTICS_FY_COUNT, CUSTOM_WINDOW_ID, analyticsWindowChoices, analyticsWindowOf, customWindowProblem } from "@/lib/practice/analyticsWindow";
 import { financialYearChoices } from "@/lib/dates/periods";
 import { todayIstISO } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /**
  * Which clients make the practice money — Phase 3a-2.
@@ -289,7 +290,7 @@ export default function ProfitabilityPage() {
         </div>
       )}
 
-      {loading && <p className="text-xs text-ps-hint">Loading…</p>}
+      {loading && <LoadingRegion label="Loading profitability" className="text-xs text-ps-hint">Loading…</LoadingRegion>}
 
       {!loading && error && (
         <div className="bg-white rounded-xl border border-ps-border p-6">

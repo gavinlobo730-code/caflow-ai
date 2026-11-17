@@ -23,6 +23,7 @@ import {
   caveatFor, defaultGstin, needsPicker, optionLabel, resolveChoice,
   type Choice,
 } from "@/lib/gst/registrationChoice";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 export interface RegistrationChoiceState {
   list: ClientGstRegistration[];
@@ -91,7 +92,7 @@ export function RegistrationPicker({
   const { list, loading, failed, selected, choice } = state;
 
   if (loading) {
-    return <p className="text-xs text-ps-hint">Reading this client&apos;s registrations…</p>;
+    return <LoadingRegion label="Reading this client's registrations" className="text-xs text-ps-hint">Reading this client&apos;s registrations…</LoadingRegion>;
   }
   if (failed) {
     return (

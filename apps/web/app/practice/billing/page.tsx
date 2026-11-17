@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface Schedule {
   id: string; client_id: string; arrangement: string; cadence: string;
@@ -112,7 +113,7 @@ function Billing() {
   } finally { setRowBusy(false); }
   }
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading billing…</div>;
+  if (loading) return <LoadingRegion label="Loading billing" className="p-8 text-sm text-gray-500">Loading billing…</LoadingRegion>;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   // Where the practice's own fee invoices are checked, numbered, issued and paid.

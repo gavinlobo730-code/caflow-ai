@@ -10,6 +10,7 @@ import { formatPaise } from "@/lib/services/formatting";
 import { PartnerGuard } from "@/components/practice/PartnerGuard";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Bucket = { paise: number; count: number };
 /** One invoice in a bucket, as the server listed it (POST-A-099): the same reading the bucket's total is made of. */
@@ -73,7 +74,7 @@ function ARDashboard() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div className="p-8 text-sm text-gray-500">Loading AR aging…</div>;
+  if (loading) return <LoadingRegion label="Loading AR aging" className="p-8 text-sm text-gray-500">Loading AR aging…</LoadingRegion>;
   if (error) return <div className="p-8 text-sm text-red-600">{error}</div>;
 
   const buckets = aging?.buckets ?? {};

@@ -44,6 +44,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { VendorLookup } from "@/components/lookups/VendorLookup";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Msg = { type: "ok" | "err"; text: string } | null;
 
@@ -514,7 +515,7 @@ export default function PostDatedChequesPanel({
       )}
 
       {loading && !register ? (
-        <p className="p-4 text-sm text-ps-hint">Reading the register…</p>
+        <LoadingRegion label="Reading the post-dated cheque register" className="p-4 text-sm text-ps-hint">Reading the register…</LoadingRegion>
       ) : cheques.length === 0 ? (
         <p className="p-4 text-sm text-ps-hint">
           No post-dated cheques on the register.

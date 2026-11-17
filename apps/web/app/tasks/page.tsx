@@ -23,6 +23,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const PRIORITY_BADGE: Record<TaskPriority, string> = {
@@ -147,7 +148,7 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
       <h5 className="text-xs font-semibold text-ps-label uppercase tracking-wide">Blocked By</h5>
       {error && <p className="text-xs text-red-600">{error}</p>}
       {loading ? (
-        <p className="text-xs text-ps-hint">Loading dependencies…</p>
+        <LoadingRegion label="Loading dependencies" className="text-xs text-ps-hint">Loading dependencies…</LoadingRegion>
       ) : deps.length === 0 ? (
         <p className="text-xs text-ps-hint">No dependencies</p>
       ) : (

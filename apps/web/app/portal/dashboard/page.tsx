@@ -21,7 +21,7 @@ import type {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { hasEmployeePortalAccess } from "@/lib/portal/employeeAccess";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
-import { PageLoader } from "@/components/ui/skeleton";
+import { PageLoader, LoadingRegion } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import {
@@ -374,7 +374,7 @@ export default function PortalDashboardPage() {
     finally { setBusy(false); }
   };
 
-  if (loading || redirecting) return <div className="p-8 text-sm text-ps-label">Loading your portal…</div>;
+  if (loading || redirecting) return <LoadingRegion label="Loading your portal" className="p-8 text-sm text-ps-label">Loading your portal…</LoadingRegion>;
   if (error) {
     return (
       <div className="p-8 max-w-md">

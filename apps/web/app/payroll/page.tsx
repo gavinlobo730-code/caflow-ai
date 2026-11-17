@@ -30,6 +30,7 @@ import {
   apiErr, fmtRs,
   type Client, type PayrollRun,
 } from "@/components/payroll/shared";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ── Statutory Returns helpers ─────────────────────────────────────────────
 
@@ -342,7 +343,7 @@ function MonthQueueTab({ month, onMonthChange, clients }: {
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
-            <p className="text-center text-ps-hint py-12 text-sm">Loading the month…</p>
+            <LoadingRegion label="Loading the month" className="text-center text-ps-hint py-12 text-sm" noticeClassName="justify-center text-center">Loading the month…</LoadingRegion>
           ) : error ? (
             <div className="p-8 text-center">
               <p className="text-sm text-red-600 font-medium mb-2">{error}</p>
@@ -794,12 +795,15 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
             </div>
           )}
 
-          {clientRuns.length === 0 ? (
+          {clientRuns.length === 0 && summariesLoading ? (
+            <LoadingRegion label="Loading this client's runs" className="text-sm text-ps-hint py-6 text-center" noticeClassName="justify-center text-center">
+              Loading this client&apos;s runs…
+            </LoadingRegion>
+          ) : clientRuns.length === 0 ? (
             <p className="text-sm text-ps-hint py-6 text-center">
-              {summariesLoading ? "Loading this client's runs…"
-                : summaryError
-                  ? summaryError
-                  : "No payroll runs for this client. Run a Monthly Payroll first."}
+              {summaryError
+                ? summaryError
+                : "No payroll runs for this client. Run a Monthly Payroll first."}
             </p>
           ) : (
             <div className="space-y-3">
@@ -972,7 +976,7 @@ export default function PayrollPage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><p className="text-ps-label">Loading payroll...</p></div>;
+    return <div className="min-h-screen bg-ps-bg flex items-center justify-center"><LoadingRegion label="Loading payroll" className="text-center" noticeClassName="justify-center"><p className="text-ps-label">Loading payroll...</p></LoadingRegion></div>;
   }
 
   if (loadError) {

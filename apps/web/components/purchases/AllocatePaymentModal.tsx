@@ -48,6 +48,7 @@ import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type OpenBill = {
   id: string;
@@ -192,7 +193,7 @@ export default function AllocatePaymentModal({
         </div>
 
         <div className="p-5 space-y-3">
-          {loading ? <p className="text-xs text-ps-hint">Loading open bills…</p>
+          {loading ? <LoadingRegion label="Loading open bills" className="text-xs text-ps-hint">Loading open bills…</LoadingRegion>
             : loadFailed ? (
               <div className="flex items-center gap-3">
                 <p className="text-xs text-state-problem">

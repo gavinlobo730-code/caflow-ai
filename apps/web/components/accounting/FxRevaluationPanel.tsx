@@ -24,6 +24,7 @@ import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface PlanRow {
   currency: string;
@@ -96,7 +97,7 @@ export default function FxRevaluationPanel({
   useEffect(() => { setRates({}); setPosted(null); load({}); }, [load]);
 
   if (!plan) {
-    return loading ? <p className="text-xs text-ps-hint">Checking foreign exposure…</p> : null;
+    return loading ? <LoadingRegion label="Checking foreign exposure" className="text-xs text-ps-hint">Checking foreign exposure…</LoadingRegion> : null;
   }
   if (!plan.active) {
     return (

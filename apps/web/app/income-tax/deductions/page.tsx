@@ -31,6 +31,7 @@ import type { Client } from "@/lib/types";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { Button } from "@/components/ui/button";
+import { LoadingRegion } from "@/components/ui/skeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface S80CItems {
@@ -701,11 +702,15 @@ export default function DeductionsPage() {
           </div>
         </div>
 
-        <div className="rounded-lg px-4 py-3 text-sm font-medium bg-state-ready-surface text-state-ready">
-          {computing
-            ? "Computing…"
-            : <>Recommendation: <strong>{recommended === "new" ? "New Regime" : "Old Regime"}</strong> saves {fmtP(Math.abs(newRegimeTax - oldRegimeTax))} more in taxes.</>}
-        </div>
+        {computing ? (
+          <LoadingRegion label="Computing both regimes" className="rounded-lg px-4 py-3 text-sm font-medium bg-state-ready-surface text-state-ready">
+            Computing…
+          </LoadingRegion>
+        ) : (
+          <div className="rounded-lg px-4 py-3 text-sm font-medium bg-state-ready-surface text-state-ready">
+            Recommendation: <strong>{recommended === "new" ? "New Regime" : "Old Regime"}</strong> saves {fmtP(Math.abs(newRegimeTax - oldRegimeTax))} more in taxes.
+          </div>
+        )}
 
         <div>
           <label className="text-xs font-medium text-ps-body block mb-1">Notes</label>

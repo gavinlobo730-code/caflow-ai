@@ -10,6 +10,7 @@ import { currentFinancialYearLabel } from "@/lib/dateMath";
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/ui/page-header";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 /**
  * Where each client sits in the firm's own tax and cost distribution —
@@ -199,7 +200,7 @@ export default function BenchmarkPage() {
       {error && <ErrorState message={error} onRetry={() => void load()} />}
 
       {!error && loading && (
-        <p className="text-sm text-ps-hint">Loading the firm&apos;s distribution…</p>
+        <LoadingRegion label="Loading the firm's distribution" className="text-sm text-ps-hint">Loading the firm&apos;s distribution…</LoadingRegion>
       )}
 
       {!error && !loading && data && data.clients === 0 && (

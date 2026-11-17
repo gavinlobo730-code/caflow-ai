@@ -20,6 +20,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
 import { readinessFrom, type IssueBlocker, type ReadinessState } from "@/lib/invoices/issueReadiness";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type Field = "invoice_no" | "supply_state";
 
@@ -73,7 +74,7 @@ export function IssueReadinessPanel({ invoiceId, checkNonce, unsavedChanges, onS
       {!invoiceId ? (
         <p className="text-ps-hint">Save the invoice as a draft and this panel will check whether it can be issued.</p>
       ) : state.status === "loading" ? (
-        <p className="text-ps-hint">Checking the draft…</p>
+        <LoadingRegion label="Checking whether the draft can be issued" className="text-ps-hint">Checking the draft…</LoadingRegion>
       ) : state.status === "unknown" ? (
         <div className="space-y-1.5">
           <p className="text-state-attention">Could not check whether this draft can be issued. {state.reason}</p>

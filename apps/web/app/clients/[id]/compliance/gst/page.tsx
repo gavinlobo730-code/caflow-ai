@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import AmendmentsTab from "@/components/gst/AmendmentsTab";
 import ItcRegisterTab from "@/components/gst/ItcRegisterTab";
@@ -815,6 +815,15 @@ function GSTR1Tab({ clientId }: { clientId: string }) {
               className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
 
+          {/* A read Compute starts (POST-A-449): the button keeps its own label, and the place the result will be drawn says
+              what is being read, and that the server may be waking up, while the read is out. The result's own Save is drawn
+              only with the result, so nothing here sits beside a save. */}
+          {computing && (
+            <LoadingRegion label="Computing GSTR-1 from the books" className="border-t pt-3 text-xs text-ps-hint">
+              <p>Computing GSTR-1 from the books…</p>
+            </LoadingRegion>
+          )}
+
           {computeResult && (() => {
             const rec = computeResult.reconciliation as Record<string, unknown>;
             const netOut = rec?.net_output_gst as Record<string, number>;
@@ -1400,6 +1409,15 @@ function GSTR3BTab({ clientId }: { clientId: string }) {
             <button onClick={() => { setShowCompute(false); setComputeResult(null); setComputeError(null); setSaveComputedError(null); setFiledOn(""); }} disabled={savingComputed}
               className="px-3 py-1 border rounded text-sm disabled:opacity-50">Cancel</button>
           </div>
+
+          {/* A read Compute starts (POST-A-449): the button keeps its own label, and the place the result will be drawn says
+              what is being read, and that the server may be waking up, while the read is out. The result's own Save is drawn
+              only with the result, so nothing here sits beside a save. */}
+          {computing && (
+            <LoadingRegion label="Computing GSTR-3B from the books" className="border-t pt-3 text-xs text-ps-hint">
+              <p>Computing GSTR-3B from the books…</p>
+            </LoadingRegion>
+          )}
 
           {computeResult && (() => {
             const rec = computeResult.reconciliation as Record<string, unknown>;
@@ -2030,7 +2048,7 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
           </label>
         </div>
         )}
-        {reading && <p className="text-xs text-ps-label">Reading the file…</p>}
+        {reading && <LoadingRegion label="Reading the GSTR-2B file" className="text-xs text-ps-label">Reading the file…</LoadingRegion>}
 
         {/* WHAT THE SERVER MADE OF THE FILE. The month and the GSTIN are the
             file's and whether this client holds that registration is the

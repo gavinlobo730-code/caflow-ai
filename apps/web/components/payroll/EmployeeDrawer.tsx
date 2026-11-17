@@ -46,6 +46,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { useDirtyFields, useReportDirty } from "@/lib/forms/useDirtyFields";
 import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 export type DrawerEmployee = {
   id: string;
@@ -786,7 +787,7 @@ function RevisionsSection({ employee, clientId, onSaved, onDirtyChange }: {
         </div>
       </div>
 
-      {loading ? <p className="text-xs text-ps-hint">Loading…</p>
+      {loading ? <LoadingRegion label="Loading the salary revisions" className="text-xs text-ps-hint">Loading…</LoadingRegion>
         : rows.length === 0
           ? <p className="text-xs text-ps-hint">No revisions recorded. The employee master&apos;s own figures apply.</p>
           : (
@@ -911,7 +912,7 @@ function LoansSection({ employee, clientId, onDirtyChange }: {
         </div>
       </div>
 
-      {loading ? <p className="text-xs text-ps-hint">Loading…</p>
+      {loading ? <LoadingRegion label="Loading the loans and advances" className="text-xs text-ps-hint">Loading…</LoadingRegion>
         : rows.length === 0
           ? <p className="text-xs text-ps-hint">No loans or advances recorded.</p>
           : (

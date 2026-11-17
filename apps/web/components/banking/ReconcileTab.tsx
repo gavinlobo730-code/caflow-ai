@@ -696,7 +696,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
             <div className="bg-white rounded-xl border border-ps-border p-4 space-y-2">
               <p className="text-xs font-semibold text-ps-body">Certification history</p>
               {!history ? (
-                <p className="text-2xs text-ps-hint">Loading…</p>
+                <LoadingRegion label="Loading the certification history" className="text-2xs text-ps-hint">Loading…</LoadingRegion>
               ) : !history.current && history.superseded.length === 0 ? (
                 <p className="text-2xs text-ps-hint">
                   This reconciliation has never been completed, so there is nothing certified yet.

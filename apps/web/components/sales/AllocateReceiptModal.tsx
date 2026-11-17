@@ -38,6 +38,7 @@ import { Callout } from "@/components/ui/callout";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 type OpenInvoice = {
   id: string;
@@ -176,7 +177,7 @@ export default function AllocateReceiptModal({
         </div>
 
         <div className="p-5 space-y-3">
-          {loading ? <p className="text-xs text-ps-hint">Loading open invoices…</p>
+          {loading ? <LoadingRegion label="Loading open invoices" className="text-xs text-ps-hint">Loading open invoices…</LoadingRegion>
             : loadFailed ? (
               <div className="flex items-center gap-3">
                 <p className="text-xs text-state-problem">

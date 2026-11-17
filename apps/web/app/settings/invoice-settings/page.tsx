@@ -7,6 +7,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { api, type ApiResp } from "@/lib/api/index";
 import { PageHeader } from "@/components/ui/page-header";
 import { istToday } from "@/lib/dateMath";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface InvoiceSettings {
@@ -205,7 +206,7 @@ export default function InvoiceSettingsPage() {
           </div>
           <div className="px-5 py-4 space-y-4">
             {loading ? (
-              <div className="py-6 text-center text-sm text-ps-hint">Loading…</div>
+              <LoadingRegion label="Loading the invoice settings" className="py-6 text-center text-sm text-ps-hint" noticeClassName="justify-center text-center">Loading…</LoadingRegion>
             ) : (
               <>
                 <InvoiceNumberPreview settings={form} seq={form.starting_number} />

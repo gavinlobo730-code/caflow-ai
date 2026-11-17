@@ -16,7 +16,7 @@ import { Callout } from "@/components/ui/callout";
 import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
 import { TypedDeductionsNote } from "@/components/tds/TypedDeductionsNote";
 import { Badge } from "@/components/ui/badge";
-import { DashboardSkeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { DashboardSkeleton, TableSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { YearPicker } from "@/components/ui/year-picker";
 import { formatPaise } from "@/lib/money/format";
 import { Button } from "@/components/ui/button";
@@ -790,7 +790,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
               className="border rounded px-3 py-1.5 text-sm col-span-2" />
           </div>
           {deductorLoading && (
-            <p className="text-xs text-ps-hint">Reading the deductor details on file…</p>
+            <LoadingRegion label="Reading the deductor details on file" className="text-xs text-ps-hint">Reading the deductor details on file…</LoadingRegion>
           )}
           {deductorGaps.length > 0 && (
             <div className="text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded-lg px-3 py-2 space-y-1">

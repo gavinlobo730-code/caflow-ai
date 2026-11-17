@@ -68,6 +68,7 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1322,9 +1323,9 @@ export default function IncomeTaxPage() {
                 />
 
                 {dueDateLoading && (
-                  <p className="mt-1.5 text-xs text-ps-hint">
+                  <LoadingRegion label="Computing the due date" className="mt-1.5 text-xs text-ps-hint">
                     Computing the due date…
-                  </p>
+                  </LoadingRegion>
                 )}
 
                 {!dueDateLoading && !dueDate && !dueDateError && (
