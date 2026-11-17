@@ -1562,6 +1562,72 @@ def dashboard(firm_id: str, today: Optional[date] = None, allowed_client_ids: Op
     return {**agg, "by_client": by_client, "by_staff": by_staff, "queue": queue}
 
 
+#: The person columns of an obligation, in the order a person's part in it is named. `assigned_to` is set to the preparer by `assign`,
+#: and is the only one keyed to `users` (migration 108); all four hold the INTERNAL user id.
+_PERSON_COLUMNS = (("preparer_id", "preparer"), ("reviewer_id", "reviewer"), ("approver_id", "approver"), ("assigned_to", "preparer"))
+
+
+def my_obligations(firm_id: str, user_id: str, today: Optional[date] = None,
+                   allowed_client_ids: Optional[set] = None) -> dict:
+    """The open obligations a person is named on, as preparer, reviewer or approver (POST-A-206, first slice): the obligation half of
+    "my obligations and my tasks" on My Work.
+
+    Read from the obligation store (`compliance_records`), the list Deadlines shows, never from the filing calendar. A settled obligation
+    (Filed, Completed, Not Required) is not work and is left out. Each row says which parts the person holds (`my_roles`), whether it is
+    overdue by the one rule every reader asks (`is_overdue`), and the client's name. Confined to the firm and, for a caller who is not
+    firm-wide, to their own clients. An obligation nobody is named on is NOT anybody's: it is counted apart (`unassigned_in_scope`), so
+    an empty list is not read as "nothing to do" in a practice that has not yet named its preparers."""
+    today = today or ist_today()
+    uid = str(user_id or "")
+    rows = compliance_records_repo.find_all(firm_id=firm_id, exclude_statuses=list(SETTLED))
+    if allowed_client_ids is not None:
+        rows = [r for r in rows if str(r.get("client_id")) in allowed_client_ids]
+    mine, unassigned = [], 0
+    for r in rows:
+        roles: list[str] = []
+        for col, role in _PERSON_COLUMNS:
+            if uid and str(r.get(col) or "") == uid and role not in roles:
+                roles.append(role)
+        if not any(r.get(col) for col, _role in _PERSON_COLUMNS):
+            unassigned += 1
+        if roles:
+            mine.append((r, roles))
+    names, _staff = _dashboard_names(firm_id, {str(r.get("client_id")) for r, _ in mine if r.get("client_id")}, set())
+    out = [{
+        "id": r.get("id"), "client_id": r.get("client_id"), "client_name": names.get(str(r.get("client_id") or "")),
+        "obligation_type": r.get("obligation_type"), "compliance_type": r.get("compliance_type"),
+        "period_label": r.get("period_label"), "due_date": r.get("due_date"), "status": r.get("status"),
+        "my_roles": roles, "overdue": is_overdue(r, today),
+    } for r, roles in mine]
+    out.sort(key=lambda x: (str(x.get("due_date") or "9999"), str(x.get("id") or "")))
+    return {
+        "obligations": out,
+        "total": len(out),
+        "overdue": sum(1 for x in out if x["overdue"]),
+        "unassigned_in_scope": unassigned,
+        "as_at": today.isoformat(),
+    }
+
+
+def with_people_named(firm_id: str, rows: list[dict]) -> list[dict]:
+    """Each obligation with `preparer_name` and `reviewer_name` (POST-A-206), so Deadlines can show who prepares and who reviews it and
+    filter on it, without the browser reading `users`. The preparer is `preparer_id`, or `assigned_to` where only that is set (`assign`
+    writes both). Both keys are ALWAYS present: null where nobody is named, or where the id resolves to nobody in the firm."""
+    ids = set()
+    for r in rows:
+        for col in ("preparer_id", "assigned_to", "reviewer_id"):
+            if r.get(col):
+                ids.add(str(r[col]))
+    _clients, staff = _dashboard_names(firm_id, set(), ids)
+    out = []
+    for r in rows:
+        prep = r.get("preparer_id") or r.get("assigned_to")
+        rev = r.get("reviewer_id")
+        out.append({**r, "preparer_name": staff.get(str(prep)) if prep else None,
+                    "reviewer_name": staff.get(str(rev)) if rev else None})
+    return out
+
+
 def _dashboard_names(firm_id: str, client_ids: set, user_ids: set) -> tuple[dict, dict]:
     """id -> display name for the dashboard's clients and staff, one read each.
 
