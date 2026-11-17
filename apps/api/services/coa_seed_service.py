@@ -15,6 +15,7 @@ import os
 import logging
 from typing import Optional
 from core import db_provider
+from domain.payroll import ledger_accounts as payroll_ledgers
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.coa_seed")
@@ -98,6 +99,10 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
     # amortisation entry a working-capital movement and the statement stop reconciling). The name contains neither "Intangible
     # Assets" nor "Accumulated Depreciation", so neither pattern the engine already searches can find it.
     ("1591", "Accumulated Amortisation",     "Asset", "Intangible Fixed Asset"),   # %Accumulated Amortisation%
+    # Advances to employees recovered from pay. The payroll accrual credits it when a run recovers an advance; migration 301
+    # added it to the charts that existed then and nothing put it on the chart a new firm is given, so a firm onboarded since
+    # could not finalise a run that recovers one (POST-A-083). Code and subtype are 301's.
+    ("1240", "Employee Loans & Advances",    "Asset", "Current Asset"),            # payroll_employee_loans
     # ── Liabilities ──
     ("2001", "Trade Payables",               "Liability", "Payable"),           # %Trade Payable%
     ("2002", "GST Output Tax Payable",       "Liability", "Current Liability"),  # %GST Output%
@@ -158,6 +163,13 @@ STANDARD_COA: list[tuple[str, str, str, str]] = [
 ]
 
 
+def standard_key(code: str, name: str) -> Optional[str]:
+    """The system_account_key a standard-chart row is seeded with: the payroll ledgers' keys (POST-A-083), so a firm onboarded
+    from today finds its payroll accounts by key after a rename, and nothing else (every other key stays as it was)."""
+    ledger = payroll_ledgers.BY_CODE.get(code)
+    return ledger.key if ledger and ledger.name == name else None
+
+
 def firm_has_coa(firm_id: str) -> bool:
     if _USE_MOCK:
         return True  # mock posting is a no-op; treat as present
@@ -182,6 +194,7 @@ def seed_firm_coa(firm_id: str) -> dict:
         "firm_id": firm_id, "client_id": None,
         "account_code": code, "account_name": name,
         "account_type": atype, "account_subtype": asub, "is_active": True,
+        "system_account_key": standard_key(code, name),
     } for (code, name, atype, asub) in STANDARD_COA]
     # ON CONFLICT-safe: re-running is guarded by firm_has_coa above; insert is a
     # single batch for the firm.

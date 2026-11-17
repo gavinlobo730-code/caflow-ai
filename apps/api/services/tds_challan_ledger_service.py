@@ -61,14 +61,17 @@ import re
 from typing import Any, Mapping, Optional
 
 from core.db_provider import privileged_for
+from domain.payroll import ledger_accounts as payroll_ledgers
 from domain.payroll import remittance_match
 from domain.tds import deposit_due
 from services import statutory_remittance_service as remittances
 
 _logger = logging.getLogger("caflow.tds.challan_ledger")
 
-#: The two real accounts the chart holds. Exact names, never a pattern: "TDS Payable - Salary" contains "TDS Payable".
-SALARY_ACCOUNT = "TDS Payable - Salary"
+#: The two real accounts the chart holds. The salary one is a payroll ledger and is found the way the payroll accrual finds it
+#: (`services/payroll_ledger_accounts`, POST-A-083); the other by its exact name, never a pattern: "TDS Payable - Salary"
+#: contains "TDS Payable".
+SALARY_ACCOUNT = payroll_ledgers.TDS_PAYABLE_SALARY.name
 OTHER_ACCOUNT = "TDS Payable"
 
 
@@ -176,7 +179,11 @@ def liability_account_id(db, *, firm_id: str, client_id: str, section: Optional[
     """The id of the account a challan of `section` clears, or None when the client's chart has none (a client that never accrued TDS).
 
     A firm-level account (client_id IS NULL) is allowed on any of that firm's entries (migration 360); this client's own account wins
-    where both exist."""
+    where both exist. A salary section asks the payroll resolver, which raises `PayrollLedgerAmbiguous` when two accounts could
+    be the one; the callers say that sentence rather than "no account"."""
+    if deposit_due.is_salary(str(section or "")):
+        from services.payroll_ledger_accounts import resolve_id
+        return resolve_id(db, firm_id=firm_id, client_id=client_id, ledger=payroll_ledgers.TDS_PAYABLE_SALARY, required=False)
     rows = (db.table("chart_of_accounts").select("id, client_id")
             .eq("firm_id", firm_id).eq("account_name", account_name_for(section))
             .eq("is_active", True).execute().data) or []
@@ -199,7 +206,10 @@ def payment_candidates(db, *, firm_id: str, client_id: str, challan: dict,
         base["ledger_link"] = tied.get("ledger_link")
     if not paid_on:
         return {**base, "candidates": [], "gap": "The challan has no payment date, so there is no window to look in."}
-    account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
+    try:
+        account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
+    except payroll_ledgers.PayrollLedgerAmbiguous as exc:
+        return {**base, "candidates": [], "gap": exc.sentence}
     if not account_id:
         return {**base, "candidates": [],
                 "gap": f"This client's chart of accounts has no \"{account}\" account, so no entry can have cleared it."}
@@ -309,7 +319,10 @@ def link_payment(db, *, firm_id: str, client_id: str, challan: dict, journal_ent
     if state != LIVE:
         raise LinkRefused(_NOT_A_PAYMENT[state])
     account = account_name_for(challan.get("section"))
-    account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
+    try:
+        account_id = liability_account_id(db, firm_id=firm_id, client_id=client_id, section=challan.get("section"))
+    except payroll_ledgers.PayrollLedgerAmbiguous as exc:
+        raise LinkRefused(exc.sentence) from exc
     if not account_id:
         raise LinkRefused(f"This client's chart of accounts has no \"{account}\" account, so no entry can have cleared it.")
     debits = (db.table("journal_lines").select("debit_paise")

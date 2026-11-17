@@ -21,6 +21,7 @@ import logging
 from typing import Optional
 
 from domain.reporting.schedule_iii import classify
+from domain.payroll import ledger_accounts as _payroll_ledgers
 
 _logger = logging.getLogger("caflow.year_end_lines")
 
@@ -318,7 +319,9 @@ _GST_SYSTEM_KEYS = frozenset({
     "gst_output", "gst_input", "gst_cgst", "gst_sgst", "gst_igst",
     "gst_cess_input", "gst_cess_output",
 })
-_TDS_SYSTEM_KEYS = frozenset({"tds_payable", "tds_receivable"})
+# The payroll statutory dues carry keys of their own since migration 640 (POST-A-083), so a renamed PF Payable is still
+# on the TDS-and-statutory tab: the key is the same fact the posting resolves the account by.
+_TDS_SYSTEM_KEYS = frozenset({"tds_payable", "tds_receivable"}) | _payroll_ledgers.STATUTORY_LIABILITY_KEYS
 
 # Checked only once system_account_key has nothing to say. "tds payable" is
 # deliberately a substring of "TDS Payable - Salary" too — both belong in the
