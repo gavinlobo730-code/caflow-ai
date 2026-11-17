@@ -725,6 +725,9 @@ export default function MCAPage() {
   // with no indication anything went wrong.
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  // Add Filing posts to POST /api/mca-workspace/filings, which asks `mca` `write` (POST-A-442): offered to anyone else, the form is filled in
+  // and then refused. The empty state's own Add Filing already asks the same pair.
+  const mayAddFiling = usePermissions().can("mca", "write");
   const [filedModal, setFiledModal] = useState<{ filing: MCAFiling } | null>(null);
   const [filedForm, setFiledForm] = useState({ srn: "", filed_date: "" });
   // Text that is not a date is said in the date's own sentence and not as "Filing date is required" (frontend_ux-19).
@@ -1018,7 +1021,7 @@ export default function MCAPage() {
         subtitle="Ministry of Corporate Affairs — Companies Act 2013 compliance tracker"
         actions={
           <>
-            {activeTab === 1 && (
+            {activeTab === 1 && mayAddFiling && (
               <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 bg-brand text-white text-sm px-3 py-2 rounded-lg hover:bg-brand-dark">
                 <Plus className="w-4 h-4" /> Add Filing
               </button>

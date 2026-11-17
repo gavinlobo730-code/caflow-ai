@@ -436,7 +436,17 @@ def test_the_filter_and_write_scans_find_enough_to_be_meaningful(schema):
     # app/clients/[id]/compliance/tds/page.tsx 10 -> 0, the §197 lower-deduction certificate insert, which is now
     # `POST /api/tds-workspace/lower-deduction-certificates` (the table's tier, the client assignment, the section and the supplier
     # are asked there). 154 - 10 = 144 exactly, and the per-file tally against the previous commit moved on that one file only.
-    assert len(scan_writes(WEB)) >= 144, "write scan found too little — parser likely broke"
+    #
+    # 144 -> 120 (POST-A-208, POST-A-442), diagnosed the same way. The count stood at 150, and three screens stopped writing straight
+    # over PostgREST:
+    #
+    #   app/gst/page.tsx:         8 -> 0   (the calendar insert went to POST /api/compliance/calendar)
+    #   app/income-tax/page.tsx:  8 -> 0   (the same)
+    #   app/mca/page.tsx:        14 -> 0   (Add Filing went to POST /api/mca-workspace/filings)
+    #
+    # 8 + 8 + 14 = 30 columns, and 150 - 30 = 120 exactly. The per-file tally against the merge base, and against main of
+    # 17-11-2026, moved on these three files and nothing else.
+    assert len(scan_writes(WEB)) >= 120, "write scan found too little — parser likely broke"
 
 
 @_NEEDS_PG

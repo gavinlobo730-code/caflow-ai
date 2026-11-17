@@ -272,6 +272,10 @@ ALSO_COVERED = {
     "statutory_remittances": "payroll (490): PF, ESI and professional tax paid over",
     "epfo_ecr_filings": "payroll (490): the ECR filed for a month",
     "bonus_declarations": "payroll (490): the employer's own bonus determination for a year",
+    # The firm-level GST and income-tax trackers stopped reading and inserting this table from the browser (POST-A-208), and no
+    # migration has taken the signed-in grant away yet, so a hand-made PostgREST call still reaches it under its policies and the
+    # matrix keeps trying every actor against it, as it did for each POST-A-010 table until its revoke landed.
+    "compliance_calendar": "the firm-level GST and ITR trackers ask GET /api/compliance/calendar/tracker and POST /api/compliance/calendar since POST-A-208; the signed-in grant stays until a revoke",
 }
 
 #: rows seeded per table: label -> (firm, client). Anything else is per table.
