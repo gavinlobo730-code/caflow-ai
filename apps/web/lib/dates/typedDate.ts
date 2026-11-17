@@ -62,6 +62,22 @@
  *   typed in full that is on the wrong side is left as typed (the field gives it
  *   the `min`/`max` hint): nothing here refuses a date.
  *
+ * ── A DATE THAT IS NEAR ANOTHER, ON NO SIDE WE CAN CLAIM ────────────────────
+ *
+ *   Some dates sit beside another and may fall on either side of it: a notice's
+ *   response date (a notice can reach the firm after the date it gives), a
+ *   settlement paid before or after the last working day, an export's shipping
+ *   bill and a Form 15CA beside the document (an order nobody has read from a
+ *   primary source), and an expiry or a "needed by" kept after the fact beside
+ *   today. Claiming a side there would be claiming a fact. `near` names the date
+ *   and claims none: a day and month typed with no year are read in the year,
+ *   of the one before, the anchor's own and the one after, that puts the day
+ *   NEAREST to it (on a tie, the later), so `15/6` beside a notice received on
+ *   01/03/2026 is 15/06/2026 and not 15/06/2025, and `15/4` typed on 20 March
+ *   2027 beside today is 15/04/2027. A bare day stays in the anchor's month (a
+ *   `28` typed beside the 2nd is the 28th of that month, not of the last), and
+ *   `notBefore`/`notAfter` still apply after it (POST-A-126).
+ *
  * ── NOTHING IS GUESSED ──────────────────────────────────────────────────────
  *
  *   31/02/2026 is an error naming February 2026's 28 days. It is never March
@@ -95,6 +111,7 @@
  */
 import { MONTH_ABBREVIATIONS, formatDate, todayIstISO } from "./format.ts";
 import { financialYearOfMonth, fyRangeFor } from "./periods.ts";
+import { daysBetweenLocalISO } from "../dateMath.ts";
 
 /** The span a typed year may fall in: `lib/dates/periods` already treats
  *  1900-01-01 .. 2999-12-31 as "all time", and a year outside it is a typo for a
@@ -134,6 +151,9 @@ export interface TypedDateContext {
   /** `YYYY-MM-DD`: the date this one belongs on or before. Moves a SHORT form back
    *  to the last such day. */
   notAfter?: string | null;
+  /** `YYYY-MM-DD`: the date a day and month typed with no year is read nearest to, either side (see the header). Moves no bare day and no
+   *  typed year. */
+  near?: string | null;
   /** Injectable clock for tests, `YYYY-MM-DD`; defaults to today in IST. */
   today?: string;
 }
@@ -269,6 +289,22 @@ function stepMonth(y: number, m: number, step: 1 | -1): { y: number; m: number }
 }
 
 /**
+ * The year a day and month typed with no year is read in when `near` is asked (see the header): of `y - 1`, `y` and `y + 1`, the one whose day is
+ * nearest to `near`, the later on a tie. A day that is real in none of them stays in `y` and gets the usual sentence.
+ */
+function nearestYear(ctx: TypedDateContext, y: number, m: number, d: number): number {
+  const near = readIso(ctx.near) ? (ctx.near as string).trim() : null;
+  if (near === null) return y;
+  let best: { y: number; gap: number } | null = null;
+  for (const cy of [y - 1, y, y + 1]) {
+    if (cy < MIN_YEAR || cy > MAX_YEAR || !isRealDay(cy, m, d)) continue;
+    const gap = Math.abs(daysBetweenLocalISO(near, isoOf(cy, m, d)) ?? Infinity);
+    if (best === null || gap <= best.gap) best = { y: cy, gap };
+  }
+  return best === null ? y : best.y;
+}
+
+/**
  * Where a SHORT form lands once `notBefore` / `notAfter` are asked (see the header). `monthGiven` is whether the person typed a month: a day and a
  * month move by whole years (at most eight steps), a bare day by whole months (at most 24). A day that does not exist where it landed, or that no
  * step within those limits puts on the right side, stays where it was and gets the usual sentence or hint.
@@ -388,6 +424,8 @@ export function parseTypedDate(raw: string | null | undefined, ctx: TypedDateCon
     return { kind: "error", problem: "no_such_month", message: `There is no month ${month}: months run from 1 to 12.` };
   }
   if (year === null) year = yearInFinancialYear(fy, month);
+  // A day and month with no year, beside a date it may fall either side of, is read in the year nearest to that date.
+  if (shape.year === null && shape.month !== null) year = nearestYear(ctx, year, month, day);
   // A short form is read in the financial year; a field that belongs after (or before) another date moves it to the right side of it.
   if (shape.year === null) ({ y: year, m: month } = rollToBound(ctx, year, month, day, shape.month !== null));
   if (year < MIN_YEAR || year > MAX_YEAR) {

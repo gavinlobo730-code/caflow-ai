@@ -1436,7 +1436,7 @@ export function PurchaseBillEditor({
                 </label>
                 <DateInput id="bill-15ca-date" value={form15caFiledOn} notAfter={todayIstISO()}
                   onChange={setForm15caFiledOn} onStateChange={dates.watch("form15caFiledOn", "Form 15CA filed on", { afterMax: true })}
-                  anchor={form15caFiledOn || billDate}
+                  anchor={form15caFiledOn || billDate} near={billDate || null}
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>

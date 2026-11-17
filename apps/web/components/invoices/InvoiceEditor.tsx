@@ -1322,7 +1322,7 @@ export function InvoiceEditor({
                   <DateInput id="inv-sb-date" value={shippingBillDate}
                     notAfter={todayIstISO()}
                     onChange={setShippingBillDate} onStateChange={dates.watch("shippingBillDate", "Shipping bill date", { afterMax: true })}
-                    anchor={invoiceDate}
+                    anchor={invoiceDate} near={invoiceDate || null}
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
                 <div>

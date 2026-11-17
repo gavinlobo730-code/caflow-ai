@@ -188,6 +188,36 @@ test("a short form beside a start that falls in the next financial year is read 
   assert.equal(read("0204", { anchor: "2027-03-31", notBefore: "2027-03-31" }), "2027-04-02", "the four-digit form moves the same way");
 });
 
+// ── A date near another, on no side that can be claimed (POST-A-126) ──────────
+
+test("near: a day and month typed beside a date it may fall either side of is read in the year nearest to it", () => {
+  // A notice received on 01/03/2026 (FY 2025-26): its response date `15/6` was read in that FY, as 15/06/2025, nine months before the notice.
+  assert.equal(read("15/6", { anchor: "2026-03-01" }), "2025-06-15", "without near the anchor's FY 2025-26 is used (the old reading)");
+  assert.equal(read("15/6", { anchor: "2026-03-01", near: "2026-03-01" }), "2026-06-15");
+  // ...and a date that does fall before it is still read before it: a response date already past when the notice arrived.
+  assert.equal(read("20/2", { anchor: "2026-03-01", near: "2026-03-01" }), "2026-02-20");
+  // an expiry typed on 20 March 2027 for the coming April, beside today: April 2027, not the April that is eleven months gone.
+  assert.equal(read("15/4", { anchor: "2027-03-20", near: "2027-03-20" }), "2027-04-15");
+  assert.equal(read("1504", { anchor: "2027-03-20", near: "2027-03-20" }), "2027-04-15", "the four-digit form reads the same way");
+  // inside the anchor's own months the reading is the financial year's, as before
+  assert.equal(read("15/1", { anchor: "2026-10-08", near: "2026-10-08" }), "2027-01-15");
+  assert.equal(read("15/9", { anchor: "2026-10-08", near: "2026-10-08" }), "2026-09-15");
+});
+
+test("near: a tie goes to the later year, a bare day stays in the anchor's month, a typed year is never moved, and a bound still applies", () => {
+  // A true tie needs a span of an even number of days, which only a leap year gives: 2 July 2024 is 183 days after 1 January 2024 and 183
+  // before 1 January 2025, and the later is taken. Off the midpoint, the nearer is taken.
+  assert.equal(read("1/1", { anchor: "2024-07-02", near: "2024-07-02" }), "2025-01-01");
+  assert.equal(read("1/1", { anchor: "2024-07-01", near: "2024-07-01" }), "2024-01-01");
+  assert.equal(read("1/1", { anchor: "2025-07-03", near: "2025-07-03" }), "2026-01-01");
+  assert.equal(read("28", { anchor: "2026-03-02", near: "2026-03-02" }), "2026-03-28", "a bare day is the anchor's month, not the nearest 28th");
+  assert.equal(read("15/06/2025", { anchor: "2026-03-01", near: "2026-03-01" }), "2025-06-15", "a typed year is the person's");
+  // a shipping bill dated `2/4` beside an invoice of 31/03/2026 and no later than today (08/10/2026): April 2026, then the bound holds.
+  assert.equal(read("2/4", { anchor: "2026-03-31", near: "2026-03-31", notAfter: "2026-10-08" }), "2026-04-02");
+  // an unreadable near is no near
+  assert.equal(read("15/6", { anchor: "2026-03-01", near: "2026-02-31" }), "2025-06-15");
+});
+
 test("a short form that is already on or after the bound does not move", () => {
   const ctx = { anchor: "2026-04-01", notBefore: "2026-04-01" };
   assert.equal(read("15/6", ctx), "2026-06-15");
