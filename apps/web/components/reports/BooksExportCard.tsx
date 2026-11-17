@@ -50,14 +50,14 @@ export default function BooksExportCard({ clientId }: { clientId: string }) {
       <div className="px-5 py-4 space-y-3">
         <p className="text-2xs text-ps-label">
           <span className="font-medium">In it:</span> the chart of accounts, customers and vendors, every journal entry and line, sales invoices, purchase bills, credit and debit
-          notes, receipts and vendor payments with their lines and allocations, the TDS register, the fixed assets with their movements, verifications and capital work in
+          notes, receipts and vendor payments with their lines and allocations, the TDS register, challans and statements, the fixed assets with their movements, verifications and capital work in
           progress, the item master, godowns, batches, stock ledger, stock counts and landed costs, and the bank accounts, imported statement lines, splits, matches,
           reconciliations and matching rules. A trial balance made from the ledger files and a stock position made from the stock ledger file are included so the books can be
           checked without us. A part you are blocked from on the Team screen (the books, TDS or the bank) is left out and named in the manifest.
         </p>
         <p className="text-2xs text-ps-label">
           <span className="font-medium">Not in it yet:</span> payroll, uploaded documents and bank statement files, the audit log, GST returns, income tax, PDFs, and
-          records beside the books such as advances, loans, orders, challans and customer rate cards. The manifest lists the files that are here and says anything else is not. The files are read one request at a time, so they are a copy and not a snapshot; a client with a very large ledger is refused in words rather than
+          records beside the books such as advances, loans, orders, delivery and job-work challans and customer rate cards. The manifest lists the files that are here and says anything else is not. The files are read one request at a time, so they are a copy and not a snapshot; a client with a very large ledger is refused in words rather than
           cut short.
         </p>
         <div className="flex items-center gap-3">

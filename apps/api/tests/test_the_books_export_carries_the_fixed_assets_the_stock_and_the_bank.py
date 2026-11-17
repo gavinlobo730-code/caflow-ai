@@ -170,6 +170,11 @@ def test_the_screen_says_what_the_service_exports_and_what_it_does_not():
     assert in_it
     for exported in ("fixed assets", "stock ledger", "bank"):
         assert exported in " ".join(in_it.group(1).split()), exported
+    # The TDS tier is exported (tds_deductions, tds_challans and tds_returns), so "In it" says so in the service's own tier words, and
+    # "Not in it yet" names only the challans that are not files here (delivery and job-work), never challans in general.
+    assert svc._TIER_WORDS["tds"] in " ".join(in_it.group(1).split())
+    assert "delivery and job-work challans" in sentence
+    assert re.search(r"(?<!job-work )challans", sentence) is None, "the card says challans are left out while the TDS challans are exported"
 
 
 # ── a Partner blocked from a tier is not handed its files ────────────────────────────────────────────────────
