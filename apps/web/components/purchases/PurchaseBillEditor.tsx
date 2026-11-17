@@ -19,7 +19,7 @@ import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { purchaseServiceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
-import { estimateBaseMinor } from "@/lib/services/currencyPreview";
+import { baseTotalOfHeads } from "@/lib/services/currencyPreview";
 import { useServerTdsPreview } from "@/lib/purchases/serverTdsPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
@@ -439,7 +439,6 @@ export function PurchaseBillEditor({
   }, [isEdit, existing?.id, clientId]);
 
   const isForeign = currency !== "" && currency !== "INR";
-  const rateNum = parseFloat(exchangeRate);
   function fmtAmt(paise: number): string {
     return isForeign ? formatMoney(paise, currency, currencies.find((c) => c.code === currency)?.minor_unit) : fmt(paise);
   }
@@ -638,7 +637,15 @@ export function PurchaseBillEditor({
   }, [historyKey]);
 
   const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
-  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(vendorTotalPaise, rateNum) : vendorTotalPaise;
+  // What the save stores as the bill's INR total: each head converted at the typed rate and added, and under reverse charge
+  // the taxable value alone (routers/purchase_bills.py), through the save's own rule (lib/services/currencyPreview).
+  const baseTotal = isForeign
+    ? baseTotalOfHeads(
+        isReverseCharge
+          ? [totals.taxable_paise]
+          : [totals.taxable_paise, totals.cgst_paise, totals.sgst_paise, totals.igst_paise, totals.cess_paise],
+        exchangeRate, currencies.find((c) => c.code === currency)?.minor_unit)
+    : vendorTotalPaise;
 
   // TDS COMES FROM THE SERVER, because only the server can compute it. This was
   // `estimateForeignTds(estBaseTaxable, vendor.tds_rate_bps)` — a bare rate x
@@ -1112,7 +1119,7 @@ export function PurchaseBillEditor({
         <span>{isReverseCharge ? "Payable to Vendor" : "Grand Total"}{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(vendorTotalPaise)}</span>
       </div>
-      {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
+      {isForeign && baseTotal !== null && <Row label="INR total at this rate" value={fmt(baseTotal)} muted />}
       {selectedVendor?.tds_applicable && (
         <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
           {/* The SECTION and the RATE come back with the figure. Neither is the
