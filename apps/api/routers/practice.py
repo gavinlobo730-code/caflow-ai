@@ -22,6 +22,7 @@ from core.permissions import rbac
 from core.validators import derive_state_code, validate_state_code
 from services.internal_client_service import provision, get_internal_client_id
 from core import db_provider
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/practice", tags=["practice"])
 _logger = logging.getLogger("caflow.practice")
@@ -167,8 +168,8 @@ def update_practice_identity(
             old_data=before, new_data=update,
             metadata={"source": "practice_identity_update"},
         )
-    except Exception:  # pragma: no cover - audit must never block the update
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="practice.identity_audit", firm_id=firm_id, client_id=internal_client_id)
 
     return api_response(True, {"internal_client_id": internal_client_id, "updated": True,
                                "fields": list(update.keys())})

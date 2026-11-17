@@ -26,6 +26,7 @@ _USE_MOCK = not os.environ.get("SUPABASE_URL")
 # merge-field list the backend had never heard of.
 from domain.branding import email_template as _et
 from domain.branding import invoice_layout as _il
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/settings", tags=["branding"])
 
@@ -120,8 +121,8 @@ def _audit(firm_id, entity_id, action, current_user, *, old_data=None, new_data=
             old_data=old_data,
             new_data=new_data,
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="branding.audit", firm_id=firm_id, entity_id=entity_id)
 
 
 def _validate_color(value: Optional[str], field: str) -> Optional[str]:
@@ -275,8 +276,8 @@ def upsert_invoice_settings(body: InvoiceSettingsUpdate, current_user: dict = De
                     {"firm_id": firm_id, "last_number": new_start - 1},
                     on_conflict="firm_id",
                 ).execute()
-        except Exception:
-            pass  # Non-fatal; sequence seeding is best-effort
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="branding.invoice_sequence_seed", firm_id=firm_id)
 
     _audit(firm_id, saved.get("id", firm_id), "update", current_user, old_data=existing, new_data=updates)
     return api_response(True, {"invoice_settings": saved})

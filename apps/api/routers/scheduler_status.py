@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from models.common import api_response
 from core.authz import assert_firmwide_job
 from core.permissions import rbac
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler"])
 
@@ -40,8 +41,8 @@ def scheduler_status(current_user: dict = Depends(rbac("team", "read"))):
                 .execute()
             )
             recent_runs = result.data or []
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="scheduler_status.recent_runs", firm_id=current_user.get("firm_id"))
 
     from routers.scheduler_trigger import token_configured
 

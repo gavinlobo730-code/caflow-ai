@@ -18,6 +18,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 from core import db_provider
+from core.observability import capture_soft_failure
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.portal_access")
@@ -186,8 +187,8 @@ def _audit(firm_id, client_id, contact_id, action, actor, extra=None):
         log_event(firm_id, "client_portal_user", contact_id or client_id, action,
                   actor_id=(actor or {}).get("auth_user_id"), actor_email=(actor or {}).get("email"),
                   new_data={"client_id": client_id, **(extra or {})}, metadata={"source": "portal_access"})
-    except Exception:  # pragma: no cover - audit is best-effort
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="portal_access.audit", firm_id=firm_id, client_id=client_id)
 
 
 def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: str) -> None:
@@ -216,8 +217,8 @@ def _send_invite_email(email: str, client_id: str, firm_id: str, invite_token: s
               f'<p><a href="{link}">Set up your account</a> — you\'ll choose a password so you can '
               f'sign in any time at <a href="{portal_login_url()}">{portal_login_url()}</a>.</p>'
               f'<p>This link expires in 14 days.</p>')
-    except Exception:  # pragma: no cover - email is best-effort
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="portal_access.invite_email", firm_id=firm_id, client_id=client_id)
 
 
 # client_portal_users carries a live, single-use invite secret (invite_token),
@@ -265,8 +266,8 @@ def _enable_portal(firm_id: str, client_id: str, db) -> None:
     try:
         db.table("clients").update({"portal_enabled": True, "portal_invited_at": _now()}) \
           .eq("id", client_id).eq("firm_id", firm_id).execute()
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="portal_access.enable", firm_id=firm_id, client_id=client_id)
 
 
 def invite_contact(firm_id: str, client_id: str, email: str, name: Optional[str],
