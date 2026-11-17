@@ -58,6 +58,8 @@ BANKING_MODULE = {
 SERVICE_CLIENT = {
     "jobs/bank_trusted_rules_job.py",        # the nightly sweep, a job of the firm and not of a person
     "services/bank_draft_staleness.py",      # marks a client's open lines for re-proposal, on the privileged client, after the route's checks
+    "services/client_books_export_service.py",  # the Partner's books export (POST-A-205): `privileged_for(db)`, after firm:admin, the Partner role,
+                                             # the client scope and two-factor; a Partner blocked from banking still owns the firm's data and may take it
     "services/first_run_service.py",         # the first-day checklist, `service_db` after the access check
     "services/hub_service.py",               # the hub's tile counts, `service_db`, narrowed to the caller's clients
     "services/hub_worklist_service.py",      # the hub's worklists, `service_db`

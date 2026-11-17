@@ -27,7 +27,7 @@ from fastapi.responses import Response
 
 from core import db_provider
 from core.authz import assert_client_access, firmwide_roles_label, is_firmwide
-from core.permissions import rbac
+from core.permissions import can_user, rbac
 from domain.reporting.export_document import ExportRefused
 from services import audit_service
 from services import client_books_export_service as books
@@ -102,7 +102,9 @@ def _export(current_user: dict, firm_id: str, client_id: str, db) -> Response:
                                 actor_email=current_user.get("email"), new_data=detail, metadata={"client_id": client_id})
 
     try:
-        out = books.build(db, firm_id, client_id, exported_by=current_user.get("auth_user_id"))
+        # A Partner blocked from a tier on the Team screen is not handed that tier's files here either: the export is not a way round the block.
+        readable = frozenset(t for t in books.TIERS if can_user(current_user, t, "read"))
+        out = books.build(db, firm_id, client_id, exported_by=current_user.get("auth_user_id"), readable_tiers=readable)
     except books.ExportStopped as e:
         say("export_stopped", {"reason": str(e)})
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -116,6 +118,7 @@ def _export(current_user: dict, firm_id: str, client_id: str, db) -> Response:
         raise HTTPException(status_code=500, detail="The export failed and nothing was downloaded. It has been logged; try again, and if it keeps failing tell support.") from e
     say("export_completed", {"files": len(out.manifest["files"]), "rows": sum(f["rows"] for f in out.manifest["files"]),
                              "problems": len(out.problems), "bytes": len(out.content),
+                             "left_out_tiers": [t for t in books.TIERS if t not in readable],
                              "zip_sha256": hashlib.sha256(out.content).hexdigest()})
     headers = {"Content-Disposition": f'attachment; filename="{out.filename}"', "Cache-Control": "private, no-store"}
     if out.problems:
