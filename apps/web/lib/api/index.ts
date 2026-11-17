@@ -3899,6 +3899,40 @@ export interface Gstr2bBulkAnswer {
   results: Gstr2bBulkResult[];
   totals: Record<Gstr2bBulkStatus, number>;
   needs_attention: number;
+  /** POST-A-057: the drop this request was recorded under (the next request of
+   *  the same drop sends it back), and whether it was recorded. Absent from an
+   *  older backend, which the panel reads as "not recorded". */
+  drop_id?: string | null;
+  recorded?: boolean;
+  not_recorded?: string | null;
+}
+
+/** One row of a drop read back (POST-A-057): the answer's own row, with
+ *  `client_hidden` set when its client is not one the reader can see now
+ *  (the client and what was found are then not shown, and `reason` says so). */
+export interface Gstr2bBulkDropResult extends Gstr2bBulkResult {
+  client_hidden: boolean;
+}
+
+export interface Gstr2bBulkDrop {
+  id: string;
+  created_at: string | null;
+  file_count: number;
+  totals: Partial<Record<Gstr2bBulkStatus, number>>;
+  needs_attention: number;
+  results: Gstr2bBulkDropResult[];
+}
+
+/** The caller's own latest drops, newest first (POST-A-057). `recorded` false
+ *  means the record could not be read, never that there were no drops. */
+export interface Gstr2bBulkDrops {
+  drops: Gstr2bBulkDrop[];
+  limited_to: number;
+  more: boolean;
+  recorded: boolean;
+  not_recorded?: string | null;
+  /** What the record cannot hold: files the browser never sent. */
+  browser_only: string;
 }
 
 /**
@@ -8617,10 +8651,16 @@ export const api = {
      *  says whose it is and which month. At most five files a request — the
      *  caller sends them in turn, because this module aborts a request at 45
      *  seconds and never retries it. */
-    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[]) =>
+    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[],
+                           dropId?: string | null) =>
       request<ApiResp<Gstr2bBulkAnswer>>(
         "/api/gst-workspace/gstr2b/bulk",
-        { method: "POST", body: JSON.stringify({ files }) }),
+        { method: "POST", body: JSON.stringify(dropId ? { files, drop_id: dropId } : { files }) }),
+
+    /** POST-A-057 — what the caller's latest bulk drops did to each file, read
+     *  back from the server after the screen that sent them was closed. */
+    gstr2bBulkDrops: () =>
+      request<ApiResp<Gstr2bBulkDrops>>("/api/gst-workspace/gstr2b/bulk/drops"),
 
     /** gst-13 — a DRAFT purchase bill from a GSTR-2B document the books have no
      *  bill for. Never receives, never posts, never claims credit; the server
