@@ -372,14 +372,14 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
         <label className={LABEL}>PAN
           <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())}
             maxLength={10} aria-invalid={removedAt("pan") ? true : undefined}
-            className={`${FIELD} mt-1${removedAt("pan") ? " border-red-500" : ""} uppercase`} />
-          {removedAt("pan") && <span role="alert" className="text-3xs text-red-600">{removedAt("pan")}</span>}
+            className={`${FIELD} mt-1${removedAt("pan") ? " border-state-problem" : ""} uppercase`} />
+          {removedAt("pan") && <span role="alert" className="text-3xs text-state-problem">{removedAt("pan")}</span>}
         </label>
         <label className={LABEL}>UAN
           <input value={uan} onChange={(e) => setUan(e.target.value.replace(/[^0-9]/g, ""))}
             inputMode="numeric" maxLength={12} aria-invalid={removedAt("uan") ? true : undefined}
-            className={`${FIELD} mt-1${removedAt("uan") ? " border-red-500" : ""}`} />
-          {removedAt("uan") && <span role="alert" className="text-3xs text-red-600">{removedAt("uan")}</span>}
+            className={`${FIELD} mt-1${removedAt("uan") ? " border-state-problem" : ""}`} />
+          {removedAt("uan") && <span role="alert" className="text-3xs text-state-problem">{removedAt("uan")}</span>}
           <span className="text-3xs text-ps-hint">
             Twelve digits — the EPFO&apos;s own format. The ECR refuses anything else.
           </span>
@@ -387,8 +387,8 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
         <label className={LABEL}>ESI number
           <input value={esiNumber} onChange={(e) => setEsiNumber(e.target.value)}
             aria-invalid={removedAt("esi_number") ? true : undefined}
-            className={`${FIELD} mt-1${removedAt("esi_number") ? " border-red-500" : ""}`} />
-          {removedAt("esi_number") && <span role="alert" className="text-3xs text-red-600">{removedAt("esi_number")}</span>}
+            className={`${FIELD} mt-1${removedAt("esi_number") ? " border-state-problem" : ""}`} />
+          {removedAt("esi_number") && <span role="alert" className="text-3xs text-state-problem">{removedAt("esi_number")}</span>}
         </label>
         <label className={LABEL}>Joining date
           <DateInput id="drawer-joining-date" value={joiningDate} onChange={setJoiningDate} onStateChange={dates.watch("joining", "Joining date")}
@@ -401,14 +401,14 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
         <label className={LABEL}>Bank account number
           <input value={bankAccountNo} onChange={(e) => setBankAccountNo(e.target.value)}
             aria-invalid={removedAt("bank_account_no") ? true : undefined}
-            className={`${FIELD} mt-1${removedAt("bank_account_no") ? " border-red-500" : ""}`} />
-          {removedAt("bank_account_no") && <span role="alert" className="text-3xs text-red-600">{removedAt("bank_account_no")}</span>}
+            className={`${FIELD} mt-1${removedAt("bank_account_no") ? " border-state-problem" : ""}`} />
+          {removedAt("bank_account_no") && <span role="alert" className="text-3xs text-state-problem">{removedAt("bank_account_no")}</span>}
         </label>
         <label className={LABEL}>Bank IFSC
           <input value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
             maxLength={11} aria-invalid={removedAt("bank_ifsc") ? true : undefined}
-            className={`${FIELD} mt-1${removedAt("bank_ifsc") ? " border-red-500" : ""} uppercase`} />
-          {removedAt("bank_ifsc") && <span role="alert" className="text-3xs text-red-600">{removedAt("bank_ifsc")}</span>}
+            className={`${FIELD} mt-1${removedAt("bank_ifsc") ? " border-state-problem" : ""} uppercase`} />
+          {removedAt("bank_ifsc") && <span role="alert" className="text-3xs text-state-problem">{removedAt("bank_ifsc")}</span>}
         </label>
         <Money label="Basic" value={basic} onChange={setBasic} />
         <label className={LABEL}>HRA %

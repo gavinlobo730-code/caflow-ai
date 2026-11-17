@@ -248,7 +248,8 @@ test("a section's markSaved() runs only after its request succeeded, never in a 
 
 /** State that is not something a person typed: a request in flight, an answer,
  *  a list read from the server. Everything else in a section is a form field. */
-const NOT_TYPED = new Set(["busy", "err", "done", "loading", "result", "rows", "notes", "confirming"]);
+// `onFile` is what the server holds (as the drawer opened or was last saved), against which an emptied identifier is refused (POST-A-465).
+const NOT_TYPED = new Set(["busy", "err", "done", "loading", "result", "rows", "notes", "confirming", "onFile"]);
 
 test("no field a person types into is left out of its section's dirty baseline", () => {
   // A section that grows a new input and forgets to list it would warn about
