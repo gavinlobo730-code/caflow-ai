@@ -251,7 +251,7 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Question:** By what date must a wage month's provident-fund contribution (both shares and the administrative charges) be deposited, and does the Code on Social Security 2020, which the product already applies to the PF wage base from 21-11-2025, change the date the EPF Scheme 1952 gave? The product has the Scheme's "15th of the next month, with a short grace" only as a recollection and has not read it from a primary text. And what is the record that proves the deposit was made (the challan or TRRN and its date)?
 - **Needed:** The EPF Scheme 1952 paragraph on payment of contributions and the Code's corresponding provision, with the notification that brings it into force; EPFO's circular on the due date and on any grace.
 - **Who can supply it:** Claude once the government sites are reachable (section 1); a practising CA or payroll consultant for the reading.
-- **Stays unbuilt meanwhile:** The EPF deposit record (the ECR upload holds the return, no payment date or amount) and its obligation on the compliance calendar. The salary (section 192) deposit obligation also waits, on a month-wise challan record.
+- **Stays unbuilt meanwhile:** The EPF deposit record (the ECR upload holds the return, no payment date or amount) and its closing of the EPF obligation on the compliance calendar. (The salary, section 192, deposit no longer waits: since 17-11-2026 a salary challan names its wage month and closes it, migration 695.)
 - **Ledger:** POST-A-267
 
 ### S24. Form 27EQ (tax collected at source): the statement's due dates, and its form number from 1-4-2026

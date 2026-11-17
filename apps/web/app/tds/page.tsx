@@ -93,6 +93,7 @@ import {
 } from "@/lib/data/tds";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { NO_SECTIONS, sectionChoices, sectionOptionText, type SectionChoices } from "@/lib/tds/sectionChoices";
+import { wageMonthsOfQuarter } from "@/lib/tds/salaryChallanMonth";
 import { MINOR_HEAD_LABEL, minorHeadLabel } from "@/lib/tds/minorHead";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { YearPicker } from "@/components/ui/year-picker";
@@ -723,6 +724,11 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
   const [interestRupees, setInterestRupees] = useState("");
   const [penaltyRupees, setPenaltyRupees] = useState("");
   const [minorHead, setMinorHead] = useState<"200" | "400">("200");
+  // POST-A-267: on a salary challan (the server marks which section is one), the wage month whose tax it deposits. It is what lets
+  // the challan close that month's salary deposit on the compliance calendar; blank closes none, and the server says so.
+  const [wageMonth, setWageMonth] = useState("");
+  const isSalary = choices.challan.some((c) => c.section === section && c.salary === true);
+  const wageMonths = isSalary ? wageMonthsOfQuarter(fy, period) : [];
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
@@ -786,6 +792,9 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
         interest_paise: interestPaise,
         penalty_paise: penaltyPaise,
         minor_head: minorHead,
+        // Only a month the current quarter offers, and only on a salary challan: a month picked before the section, year or
+        // quarter changed is not sent.
+        ...(wageMonths.some((m) => m.value === wageMonth) ? { deduction_month: wageMonth } : {}),
       });
       onAdded(saved);
       onClose();
@@ -893,6 +902,21 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
               searchPlaceholder="Search sections…"
             />
           </div>
+          {isSalary && (
+            <div>
+              <label htmlFor="tds-challan-wage-month" className="text-xs font-medium text-ps-body block mb-1">Wage month this challan pays</label>
+              <select id="tds-challan-wage-month" value={wageMonths.some((m) => m.value === wageMonth) ? wageMonth : ""}
+                onChange={e => setWageMonth(e.target.value)}
+                className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="">Not stated</option>
+                {wageMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+              <p className="text-xs text-ps-hint mt-1">
+                Naming the month lets this challan close that month&apos;s salary TDS deposit on the compliance calendar, when the salary
+                challans for the month paid on time what payroll deducted. Left as not stated, it closes nothing.
+              </p>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg disabled:opacity-50">Cancel</button>

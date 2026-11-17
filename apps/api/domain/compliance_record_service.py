@@ -72,7 +72,11 @@ REOPEN_AFTERMATH: dict[str, str] = {
     "ESI_DEPOSIT": "A payment record that closed it, if there was one, is still there: retract it on the payroll hand-off if it was "
                    "wrong. Nothing closes it again by itself.",
     "EPF_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
-    "TDS_SALARY_DEPOSIT": "Nothing closes it again by itself: record it as filed when it is.",
+    "TDS_SALARY_DEPOSIT": "The salary challans that closed it are remembered on the month, so while only those same challans name "
+                          "it, recording another salary challan for the month does not close it again; a different one that pays "
+                          "it on time does, or you can mark it filed from Compliance with the date it really went. If a challan "
+                          "was recorded in error, retract it on the Challans tab first (a Manager or Partner can): that reopens "
+                          "the month it closed.",
     "TDS_NON_SALARY_DEPOSIT": "The challans that closed it are remembered on the month, so while only those same challans cover it, "
                               "recording another challan for the quarter does not close it again; a different challan covering it "
                               "does, or you can mark it filed from Compliance with the date it really went. If a challan was "

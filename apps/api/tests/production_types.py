@@ -114,6 +114,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("debit_note_lines", "blocked_credit_reason"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
     ("purchase_credit_note_lines", "itc_eligible"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
     ("purchase_credit_note_lines", "blocked_credit_reason"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
+    ("tds_challans", "deduction_month"): "migration 695 (POST-A-267): the wage month a salary challan deposits, as typed; NULL = none stated",
 }
 
 
