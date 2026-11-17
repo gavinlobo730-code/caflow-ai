@@ -128,10 +128,23 @@ export interface JournalEditorProps {
     attachments: { name: string; url: string }[];
   }) => void | boolean | Promise<boolean | void>;
   onCancel: () => void;
+  /**
+   * Whether this person may POST a draft that already exists. A new entry is posted through the create route, which asks
+   * `accounting` `write`, the same as Save Draft; a saved draft is posted through the approval route, which asks
+   * `accounting` `approve`, a Partner's alone. Post Entry on a saved draft was offered to a Manager, whose correction was
+   * saved and whose post was then refused (POST-A-455). Omitted, the button is offered.
+   */
+  mayPostDraft?: boolean;
+  /**
+   * Whether this person may write to the books at all: Save Draft, Save Correction and a new entry's Post Entry ask
+   * `accounting` `write`, and an Executive's `accounting` is read only. Without it the entry is shown to read, with a
+   * sentence saying so (POST-A-455). Omitted, the form is editable.
+   */
+  mayWrite?: boolean;
 }
 
 export function JournalEditor({
-  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel,
+  accounts, clientId, existing, saving = false, serverError = null, onSave, onCancel, mayPostDraft = true, mayWrite = true,
 }: JournalEditorProps) {
   const isNew = existing === null;
   const isPosted = !!existing?.is_posted;
@@ -139,7 +152,9 @@ export function JournalEditor({
   const lockReason = existing?.is_reversed
     ? "This entry has been reversed, so it can no longer be edited."
     : existing?.lock_reason ?? null;
-  const readOnly = !isNew && lockReason !== null;
+  const locked = !isNew && lockReason !== null;
+  // A person who may not write to the books is shown the entry to read, the same as a locked one is.
+  const readOnly = locked || !mayWrite;
   /* ACC-25, second half. The documents are a DRAFT-only edit and the control
      has to say so rather than accept a link the PATCH will refuse.
      `prevent_posted_journal_modification` lets a posted entry's header change
@@ -419,7 +434,13 @@ export function JournalEditor({
       )}
 
       {/* Why this cannot be changed — the sentence, not a disabled button. */}
-      {readOnly && (
+      {!mayWrite && !locked && (
+        <p role="status" className="text-xs text-ps-label bg-ps-bg rounded px-3 py-2">
+          Your access to this client&apos;s accounting is read only, so this entry is shown to read and nothing on it can be
+          saved or posted. Someone with write access to the books records and corrects journal entries.
+        </p>
+      )}
+      {locked && (
         <div className="bg-state-attention-surface border border-state-attention-border rounded-lg px-4 py-3 space-y-1">
           <p className="text-sm text-amber-900 font-medium">This entry can no longer be edited.</p>
           <p className="text-xs text-amber-800">{lockReason}</p>
@@ -686,11 +707,15 @@ export function JournalEditor({
                         className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-40">
                   Save Draft
                 </Button>
-                <Button variant="plain" size="none" flight={flight}
-                        onClick={() => handleSave("post")} disabled={saving || !isBalanced}
-                        className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
-                  {saving ? "Saving…" : "Post Entry"}
-                </Button>
+                {isNew || mayPostDraft ? (
+                  <Button variant="plain" size="none" flight={flight}
+                          onClick={() => handleSave("post")} disabled={saving || !isBalanced}
+                          className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
+                    {saving ? "Saving…" : "Post Entry"}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-ps-label self-center">Posting a saved draft needs permission to approve journal entries, so the button is not shown to you; it is posted from the Approvals tab.</p>
+                )}
               </>
             )}
           </div>

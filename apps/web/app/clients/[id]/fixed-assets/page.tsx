@@ -38,6 +38,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { istToday } from "@/lib/dateMath";
+import { usePermissions } from "@/lib/auth/AuthContext";
 // NO local API base and no bare fetch. Every call on this screen used to be
 // `fetch(`${API}/api/fixed-assets/...`, { credentials: "include" })`, and
 // `credentials` carries a COOKIE — which this API does not read. core/auth.py
@@ -349,6 +350,10 @@ function RegisterTab({ clientId, openDoc }:
     { clientId: string;
       /** ACC-22 — the asset a ledger drill-through arrived at. */
       openDoc?: string | null }) {
+  // Every write on this register (add, import the opening register, correct, delete, post or reverse depreciation, dispose) asks
+  // `accounting` `write`, a Manager's or a Partner's; the controls were drawn to an Executive, whose `accounting` is read only,
+  // and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed (thrown/PostgREST error) rather than the
@@ -453,10 +458,14 @@ function RegisterTab({ clientId, openDoc }:
           </button>
           {/* A migrated client's register, with the depreciation each asset
               already carries (accounting-18). Posts nothing to the ledger. */}
-          <OpeningRegisterImportButton clientId={clientId} onImported={load} />
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
-            <Plus size={12} /> Add Asset
-          </button>
+          {mayWriteBooks && (
+            <>
+              <OpeningRegisterImportButton clientId={clientId} onImported={load} />
+              <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark">
+                <Plus size={12} /> Add Asset
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -538,18 +547,22 @@ function RegisterTab({ clientId, openDoc }:
                         first, is decided by the SERVER — the refusal is shown
                         verbatim because it names the way out. */}
                     <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => setCorrecting(a)}
-                        className="text-2xs text-blue-600 hover:underline"
-                      >
-                        Correct
-                      </button>
-                      <button
-                        onClick={() => setDeleting(a)}
-                        className="text-2xs text-red-600 hover:underline ml-3"
-                      >
-                        Delete
-                      </button>
+                      {mayWriteBooks && (
+                        <>
+                          <button
+                            onClick={() => setCorrecting(a)}
+                            className="text-2xs text-blue-600 hover:underline"
+                          >
+                            Correct
+                          </button>
+                          <button
+                            onClick={() => setDeleting(a)}
+                            className="text-2xs text-red-600 hover:underline ml-3"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                   {expanded === a.id && (
@@ -1388,6 +1401,10 @@ function RemainingLifeTable({ life }: { life: RemainingLife }) {
 }
 
 function DepreciationTab({ clientId }: { clientId: string }) {
+  // Every write on this register (add, import the opening register, correct, delete, post or reverse depreciation, dispose) asks
+  // `accounting` `write`, a Manager's or a Partner's; the controls were drawn to an Executive, whose `accounting` is read only,
+  // and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed (error/timeout / success:false) rather than
@@ -1579,13 +1596,13 @@ function DepreciationTab({ clientId }: { clientId: string }) {
             value={toPeriod}
             onChange={e => setToPeriod(e.target.value)}
           />
-          <Button variant="plain" size="none"
+          {mayWriteBooks && <Button variant="plain" size="none"
             onClick={runDepreciation}
             disabled={running}
             className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
           >
             <TrendingDown size={12} /> {running ? "Running…" : "Run depreciation"}
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -1688,7 +1705,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       // as a zero: this asset has no statutory basis for a
                       // charge, so nothing is posted until a CA records one.
                       <span className="text-3xs text-state-attention">{r.statutory_gap}</span>
-                    ) : r.annual_depreciation_paise > 0 ? (
+                    ) : r.annual_depreciation_paise > 0 && mayWriteBooks ? (
                       <>
                         <Button variant="plain" size="none"
                           onClick={() => postDepreciation(r.asset_id)}
@@ -1704,7 +1721,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                           <span className="block text-3xs text-red-600 mt-1 max-w-xs">{errors[r.asset_id]}</span>
                         )}
                       </>
-                    ) : (
+                    ) : r.annual_depreciation_paise > 0 ? null : (
                       <span className="text-3xs text-ps-hint">Fully depreciated</span>
                     )}
                     {r.unfinished_reversal ? (
@@ -1714,7 +1731,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                       // the ordinary Reverse would be refused until it is.
                       <span className="block mt-1 max-w-xs" data-testid={`unfinished-reversal-${r.asset_id}`}>
                         <span className="block text-3xs text-state-attention">{r.unfinished_reversal.sentence}</span>
-                        {r.unfinished_reversal.can_finish_now && (
+                        {r.unfinished_reversal.can_finish_now && mayWriteBooks && (
                           <Button variant="plain" size="none"
                             onClick={() => reverseLastMonth(r.asset_id, r.unfinished_reversal!.month)}
                             disabled={posting === r.asset_id}
@@ -1724,7 +1741,7 @@ function DepreciationTab({ clientId }: { clientId: string }) {
                           </Button>
                         )}
                       </span>
-                    ) : r.depreciation_posted_through && (
+                    ) : r.depreciation_posted_through && mayWriteBooks && (
                       // FA-10: a month posted on a wrong cost or a wrong rate
                       // had no way back. The refusal that names it — "reverse
                       // it a month at a time" — is only actionable because of
@@ -1803,6 +1820,11 @@ const RULE_LABEL: Record<string, string> = {
 };
 
 function DisposalTab({ clientId }: { clientId: string }) {
+  // Every write on this register (add, import the opening register, correct, delete, post or reverse depreciation, dispose) asks
+  // `accounting` `write`, a Manager's or a Partner's; the controls were drawn to an Executive, whose `accounting` is read only,
+  // and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayWriteBooks = canDo("accounting", "write");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed rather than genuinely finding no disposable
@@ -1977,6 +1999,12 @@ function DisposalTab({ clientId }: { clientId: string }) {
           )}
         </div>
       )}
+      {permissionsRead && !mayWriteBooks && (
+        <p className="text-xs text-ps-label">
+          Recording a disposal needs write access to the books, so the Dispose button is not shown to you. The assets below are listed to read.
+        </p>
+      )}
+      {mayWriteBooks && (
       <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3 flex gap-2">
         <AlertCircle size={14} className="text-state-problem shrink-0 mt-0.5" />
         <div>
@@ -1987,6 +2015,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
           </p>
         </div>
       </div>
+      )}
 
       {loading ? (
         <TableSkeleton cols={5} rows={3} />
@@ -2021,12 +2050,14 @@ function DisposalTab({ clientId }: { clientId: string }) {
                     {fmt(a.purchase_cost_paise - a.accumulated_depreciation_paise)}
                   </td>
                   <td className="px-3 py-2.5">
-                    <button
-                      onClick={() => setSelected(selected?.id === a.id ? null : a)}
-                      className="text-xs text-red-600 hover:underline flex items-center gap-1"
-                    >
-                      <Trash2 size={11} /> Dispose
-                    </button>
+                    {mayWriteBooks && (
+                      <button
+                        onClick={() => setSelected(selected?.id === a.id ? null : a)}
+                        className="text-xs text-red-600 hover:underline flex items-center gap-1"
+                      >
+                        <Trash2 size={11} /> Dispose
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -2035,7 +2066,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
         </div>
       )}
 
-      {selected && (
+      {selected && mayWriteBooks && (
         <div className="bg-white rounded-xl border border-state-problem-border px-5 py-5 space-y-4">
           <p className="text-xs font-semibold text-ps-ink">Dispose: {selected.asset_name}</p>
           {error && <Callout tone="problem">{error}</Callout>}

@@ -29,6 +29,7 @@ import { toast } from "@/components/ui/use-toast";
 import { EmptyState } from "@/components/ui/states";
 import { Callout } from "@/components/ui/callout";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
+import { usePermissions } from "@/lib/auth/AuthContext";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 async function getToken(): Promise<string> {
@@ -85,6 +86,8 @@ const EMPTY_COMPANY_FORM = {
 };
 
 function CompaniesTab({ clientId }: { clientId: string }) {
+  // Adding a company asks `mca` `write` (POST-A-455).
+  const mayWrite = usePermissions().can("mca", "write");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no companies registered" — the
@@ -195,10 +198,12 @@ function CompaniesTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Company Master</h3>
-        <button onClick={openForm}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + Add Company
-        </button>
+        {mayWrite && (
+          <button onClick={openForm}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+            + Add Company
+          </button>
+        )}
       </div>
 
       {showNew && (
@@ -285,6 +290,8 @@ function CompaniesTab({ clientId }: { clientId: string }) {
 const EMPTY_DIRECTOR_FORM = { din: "", name: "", designation: "Director", date_of_appointment: "", pan: "" };
 
 function DirectorsTab({ clientId }: { clientId: string }) {
+  // Adding a director and changing a KYC status ask `mca` `write` (POST-A-455).
+  const mayWrite = usePermissions().can("mca", "write");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no directors added".
@@ -410,10 +417,12 @@ function DirectorsTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">Directors / DIN Register</h3>
-        <button onClick={openForm}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + Add Director
-        </button>
+        {mayWrite && (
+          <button onClick={openForm}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+            + Add Director
+          </button>
+        )}
       </div>
 
       {showNew && (
@@ -487,7 +496,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                   </span>
                 </td>
                 <td className="px-3 py-2">
-                  {r.kyc_status !== "active" && (
+                  {r.kyc_status !== "active" && mayWrite && (
                     <Button variant="plain" size="none" onClick={() => updateKYC(r.id as string, "active")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark KYC Active
@@ -530,6 +539,11 @@ const EMPTY_FILING_FORM = { form_type: "", financial_year: "", due_date: "", des
 const ANOTHER_YEAR = "__another__";
 
 function FilingsTab({ clientId, category }: { clientId: string; category: "annual" | "event" }) {
+  // Start asks `mca` `write` (an Executive and above) and Mark Filed asks `mca` `approve` (a Manager or a Partner); both
+  // were drawn to every member and came back refused (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayWrite = canDo("mca", "write");
+  const mayApprove = canDo("mca", "approve");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no filings of this category yet".
@@ -748,10 +762,12 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">{category === "annual" ? "Annual" : "Event"} Filings</h3>
-        <button onClick={openNew}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + New Filing
-        </button>
+        {mayWrite && (
+          <button onClick={openNew}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+            + New Filing
+          </button>
+        )}
       </div>
 
       {showNew && (
@@ -851,11 +867,14 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                   </span>
                 </td>
                 <td className="px-3 py-2 space-x-2">
-                  {r.status === "not_started" && (
+                  {r.status === "not_started" && mayWrite && (
                     <Button variant="plain" size="none" onClick={() => updateStatus(r.id as string, "in_progress")}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Start</Button>
                   )}
-                  {r.status === "in_progress" && (
+                  {r.status === "in_progress" && permissionsRead && !mayApprove && (
+                    <span className="text-xs text-ps-label">Recording the filing needs permission to approve MCA filings, so the button is not shown to you</span>
+                  )}
+                  {r.status === "in_progress" && mayApprove && (
                     <button onClick={() => openConfirmFiling(r)}
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark Filed (CA)

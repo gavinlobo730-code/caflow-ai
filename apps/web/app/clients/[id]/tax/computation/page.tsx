@@ -2725,7 +2725,11 @@ export default function TaxComputationPage() {
                     <p className="text-3xs text-ps-hint">{formatDate(s.created_at)}</p>
                   </div>
                   <div className="text-right flex items-center gap-2">
-                    {s.status !== "reviewed" && (
+                    {/* Mark reviewed asks `income_tax` `approve` (a Manager or a Partner) and was drawn to every member (POST-A-455). */}
+                    {s.status !== "reviewed" && !can("income_tax", "approve") && (
+                      <span className="text-3xs text-ps-label">Marking it reviewed needs permission to approve income-tax returns, so the button is not shown to you</span>
+                    )}
+                    {s.status !== "reviewed" && can("income_tax", "approve") && (
                       <Button variant="plain" size="none"
                         onClick={() => markSnapshotReviewed(s.id)}
                         disabled={reviewing !== null}

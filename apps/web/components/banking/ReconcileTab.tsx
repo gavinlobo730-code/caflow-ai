@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 // ── Bank Reconciliation ────────────────────────────────────────────────────
 
@@ -187,6 +188,13 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const [openingLoading, setOpeningLoading] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [reopenReason, setReopenReason] = useState("");
+  // Reopening a completed reconciliation asks `accounting` `approve`, a Partner's alone; the button was offered to everyone who
+  // can reconcile and answered a 403 (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayReopen = canDo("accounting", "approve");
+  // Setting an adjustment asks `banking` `approve`, a Manager's and above; the box and its Apply were drawn to an Executive and
+  // came back a 403 (POST-A-455).
+  const mayAdjust = canDo("banking", "approve");
   const [lineSearch, setLineSearch] = useState("");
   const [lineSort, setLineSort] = useState<"date" | "-date" | "amount" | "-amount">("date");
   // The tie-out AS IF the current selection were reconciled. Computed on the
@@ -564,12 +572,18 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               </div>
             )}
 
-            {!completed && (
-              /* An adjustment is the one figure here that can force a period to
-                 tie out, and completing freezes a certified PDF. So it asks what
-                 it IS, refuses a non-zero figure without one (the server and a
-                 DB CHECK refuse it too), and needs a Manager — the server
-                 answers 403 to anyone below, and the message says so. */
+            {/* An adjustment is the one figure here that can force a period to
+                tie out, and completing freezes a certified PDF. So it asks what
+                it IS, refuses a non-zero figure without one (the server and a
+                DB CHECK refuse it too), and is offered only to someone who may
+                set one, because the server answers 403 to anyone else. */}
+            {!completed && permissionsRead && !mayAdjust && (
+              <p className="text-3xs text-ps-hint pt-1">
+                Recording an adjustment needs permission to approve bank reconciliations, so the box is not shown to you. An adjustment
+                already recorded is in the figures above, with its reason.
+              </p>
+            )}
+            {!completed && mayAdjust && (
               <div className="pt-1 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-2xs text-ps-label">Adjustment (₹)</span>
@@ -597,8 +611,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   >Apply</button>
                 </div>
                 <p className="text-3xs text-ps-hint">
-                  A Manager or Partner records an adjustment, and the reason is printed on the
-                  reconciliation. Set it to 0 to remove one.
+                  The reason is printed on the reconciliation. Set the figure to 0 to remove an adjustment.
                 </p>
               </div>
             )}
@@ -616,12 +629,13 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               {completed && (
                 <>
                   <span className="text-2xs text-money-in ml-auto flex items-center gap-1"><CheckCircle size={12} /> Completed {report.reconciliation.completed_at ? formatDate(String(report.reconciliation.completed_at)) : ""} · locked</span>
-                  {/* The deliberate escape hatch. Partner-only server-side; a
-                      non-Partner gets a 403 and the message says so. */}
-                  <button onClick={() => setReopening(true)} disabled={busy}
-                    className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
-                    Reopen…
-                  </button>
+                  {/* The deliberate escape hatch, and a Partner's alone: it is offered only to someone the route admits. */}
+                  {mayReopen && (
+                    <button onClick={() => setReopening(true)} disabled={busy}
+                      className="text-2xs px-2.5 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-label">
+                      Reopen…
+                    </button>
+                  )}
                 </>
               )}
             </div>

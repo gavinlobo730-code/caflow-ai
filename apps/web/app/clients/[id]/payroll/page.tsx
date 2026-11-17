@@ -609,6 +609,8 @@ function RunsTab({ clientId, firmId, openDoc }:
   const [slips, setSlips] = useState<Slip[]>([]);
   const [loadingSlips, setLoadingSlips] = useState(false);
   const [finalizing, setFinalizing] = useState<string | null>(null);
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayFinalize = canDo("payroll", "finalize");                  // closed while the permissions are read
   // M17: a failed runs/slips fetch must not render as "No payroll runs yet" /
   // an empty slip table — both look identical to genuinely having no data.
   const [loadFailed, setLoadFailed] = useState(false);
@@ -870,7 +872,9 @@ function RunsTab({ clientId, firmId, openDoc }:
             </ul>
             <p className="text-2xs text-state-attention mt-1.5">
               The run is a draft — nothing is posted or paid. Fix these and create it again,
-              or finalise it if the figures are right.
+              {mayFinalize
+                ? "or finalise it if the figures are right."
+                : "or, if the figures are right, ask someone who may finalise payroll runs to finalise it."}
             </p>
             {/* PAY-15: this panel NAMED the attendance nobody had entered and
                 offered no way to enter it, so the one instruction it gave —
@@ -982,11 +986,15 @@ function RunsTab({ clientId, firmId, openDoc }:
                 <button onClick={() => loadSlips(r.id)} className="text-2xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
                   {selectedRun === r.id ? "Hide Slips" : "View Slips"}
                 </button>
-                {r.status !== "finalized" && r.status !== "paid" && (
+                {/* Finalise asks `payroll` `finalize` (Partner only); it was offered to a Manager, who was refused (POST-A-455). */}
+                {r.status !== "finalized" && r.status !== "paid" && mayFinalize && (
                   <Button variant="plain" size="none" onClick={() => finalizeRun(r.id)} disabled={finalizing === r.id}
                     className="flex items-center gap-1 text-2xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                     <CheckCircle size={11} /> {finalizing === r.id ? "Finalising…" : "Finalise"}
                   </Button>
+                )}
+                {r.status !== "finalized" && r.status !== "paid" && permissionsRead && !mayFinalize && (
+                  <span className="text-2xs text-ps-label">Finalising needs permission to finalise payroll runs, so the button is not shown to you</span>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && (
                   <span className="text-2xs text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalised"}</span>
@@ -1306,6 +1314,8 @@ function ReleaseTab({ clientId }: { clientId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [disburseRun, setDisburseRun] = useState<PayrollRun | null>(null);
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayFinalize = canDo("payroll", "finalize");                  // closed while the permissions are read
 
   const load = useCallback(async () => {
     setLoading(true); setLoadFailed(false);
@@ -1392,6 +1402,11 @@ function ReleaseTab({ clientId }: { clientId: string }) {
           {msg.text}
         </p>
       )}
+      {permissionsRead && !mayFinalize && runs.length > 0 && (
+        <p className="text-xs text-ps-label">
+          Recording a run&apos;s payment, writing its loans down and reversing it need permission to finalise payroll runs, so those buttons are not shown to you.
+        </p>
+      )}
 
       {loadFailed ? (
         <div className="bg-white rounded-xl border border-ps-border p-8 text-center">
@@ -1441,20 +1456,21 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                       {r.total_net_paise != null ? fmt(r.total_net_paise) : "—"}
                     </td>
                     <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
-                      {(finalized || paid) && r.loan_writedown_owed_at && (
+                      {/* Write loans down, Record payment and Reverse ask `payroll` `finalize` (Partner only), as Finalise does (POST-A-455). */}
+                      {(finalized || paid) && r.loan_writedown_owed_at && mayFinalize && (
                         <Button variant="plain" size="none" onClick={() => writeDownLoans(r)} disabled={busy === r.id}
                           title="This run was released but its loan balances were not all written down"
                           className="px-3 py-1 border border-state-attention-border bg-state-attention-surface text-state-attention rounded-lg disabled:opacity-50">
                           {busy === r.id ? "Writing down…" : "Write loans down"}
                         </Button>
                       )}
-                      {finalized && (
+                      {finalized && mayFinalize && (
                         <button onClick={() => setDisburseRun(r)} disabled={busy === r.id}
                           className="px-3 py-1 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                           Record payment
                         </button>
                       )}
-                      {(finalized || paid) && (
+                      {(finalized || paid) && mayFinalize && (
                         // Never primary. It is a correction to posted books.
                         <Button variant="plain" size="none" onClick={() => reverse(r)} disabled={busy === r.id}
                           className="px-3 py-1 border border-ps-border rounded-lg text-ps-label hover:bg-state-problem-hover hover:text-red-600 disabled:opacity-50">
@@ -1462,7 +1478,9 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                         </Button>
                       )}
                       {!finalized && !paid && (
-                        <span className="text-2xs text-ps-hint">Finalise it under Register</span>
+                        <span className="text-2xs text-ps-hint">
+                          {mayFinalize ? "Finalise it under Register" : "Someone who may finalise payroll runs finalises it under Register"}
+                        </span>
                       )}
                     </td>
                   </tr>

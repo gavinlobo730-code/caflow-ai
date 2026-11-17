@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { request } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
@@ -58,6 +59,8 @@ export function AssetMovements({ assetId, onMoved }: {
    *  the register's row can show it without reading the whole register again. */
   onMoved: (now: Pick<Movement, "to_location" | "to_custodian">) => void;
 }) {
+  // Recording a movement asks `accounting` `write`; a member who may only read sees the history and no button (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [read, setRead] = useState<Read>({ state: "loading" });
   const readRun = useRef(0);
   const [open, setOpen] = useState(false);
@@ -151,7 +154,7 @@ export function AssetMovements({ assetId, onMoved }: {
     <div className="mt-3 border-t border-ps-border pt-3 text-xs" data-testid={`asset-movements-${assetId}`}>
       <div className="flex items-center justify-between mb-2">
         <p className="font-medium text-ps-ink">Movements</p>
-        {read.state === "ok" && !open && (
+        {read.state === "ok" && !open && mayWriteBooks && (
           <button type="button" onClick={openForm} className="text-2xs text-blue-600 hover:underline">Record a movement</button>
         )}
       </div>

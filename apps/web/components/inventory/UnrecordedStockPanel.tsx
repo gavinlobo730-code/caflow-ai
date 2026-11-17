@@ -22,6 +22,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { formatDate } from "@/lib/dates/format";
 
 /** The words for the four kinds. The kinds themselves are the server's (`stock_effect.DOCUMENTS`); a test on the Python side holds the two lists equal. */
@@ -44,6 +45,9 @@ function whatIsMissing(d: UnrecordedStockDocument): string {
 }
 
 export function UnrecordedStockPanel({ clientId }: { clientId: string }) {
+  // Completing a document's stock asks `accounting` `write`; reading what is missing asks `accounting` `read` (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayWriteBooks = canDo("accounting", "write");
   const [found, setFound] = useState<UnrecordedStock | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -137,6 +141,7 @@ export function UnrecordedStockPanel({ clientId }: { clientId: string }) {
           <p className="px-5 pt-3 text-xs text-ps-body">
             Each document below is in the books and the return. Completing the stock moves only the lines that did not move and journals
             what has no journal; a line already recorded is never recorded twice. The server says in words when it cannot finish one.
+            {permissionsRead && !mayWriteBooks && " Completing a document's stock needs write access to the books, so the button is not shown to you."}
           </p>
           <table className="w-full text-sm">
             <thead>
@@ -154,15 +159,17 @@ export function UnrecordedStockPanel({ clientId }: { clientId: string }) {
                   <td className="px-5 py-2 text-ps-body">{d.document_date ? formatDate(d.document_date) : "—"}</td>
                   <td className="px-5 py-2 text-xs text-ps-body">{whatIsMissing(d)}</td>
                   <td className="px-5 py-2 text-right">
-                    <Button
-                      variant="plain" size="none" spinner={false} flight={flight} type="button"
-                      onClick={() => complete(d)}
-                      disabled={busy !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50"
-                    >
-                      {busy === d.document_id && <Loader2 size={12} className="animate-spin" />}
-                      Complete the stock
-                    </Button>
+                    {mayWriteBooks && (
+                      <Button
+                        variant="plain" size="none" spinner={false} flight={flight} type="button"
+                        onClick={() => complete(d)}
+                        disabled={busy !== null}
+                        className="inline-flex items-center gap-1 rounded-lg border border-ps-border px-2 py-1 text-2xs hover:bg-ps-bg disabled:opacity-50"
+                      >
+                        {busy === d.document_id && <Loader2 size={12} className="animate-spin" />}
+                        Complete the stock
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}

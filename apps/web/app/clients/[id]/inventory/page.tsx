@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { usePermissions } from "@/lib/auth/AuthContext";
 interface StockItem {
   id: string;
   name: string;
@@ -173,6 +174,9 @@ function fmtQty(v: number | string | null | undefined): string {
 
 export default function InventoryPage() {
   const { clientId } = useClientNav();
+  // Adjusting stock, writing it down to its realisable value and opening a physical count ask `accounting` `write`, a
+  // Manager's or a Partner's; they were drawn to an Executive, whose `accounting` is read only, and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(false);
   // True when the LAST load attempt failed (thrown/PostgREST error) rather than
@@ -349,7 +353,7 @@ export default function InventoryPage() {
     // that opened a modal AND a panel behind it is a click that did two things.
     { key: "actions", header: "", accessor: () => "", hideable: false, align: "right",
       render: (i) => (
-        <span className="flex items-center justify-end gap-2 whitespace-nowrap">
+        mayWriteBooks && <span className="flex items-center justify-end gap-2 whitespace-nowrap">
           <button
             onClick={(e) => { e.stopPropagation(); setRowAction({ item: i, kind: "adjust" }); }}
             className="text-2xs text-blue-600 hover:underline">Adjust</button>
@@ -430,10 +434,10 @@ export default function InventoryPage() {
               Show today
             </button>
           ) : null}
-          <Button variant="plain" size="none" onClick={startCount} disabled={openingCount}
+          {mayWriteBooks && <Button variant="plain" size="none" onClick={startCount} disabled={openingCount}
                   className="px-3 py-[7px] text-xs border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 whitespace-nowrap disabled:opacity-50">
             {openingCount ? "Opening…" : "Physical count"}
-          </Button>
+          </Button>}
           <button onClick={load} className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
@@ -550,6 +554,9 @@ function StockLedgerDrillDown({
   onClose: () => void;
   onAdjusted: () => void;
 }) {
+  // Adjusting stock, writing it down to its realisable value and opening a physical count ask `accounting` `write`, a
+  // Manager's or a Partner's; they were drawn to an Executive, whose `accounting` is read only, and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   // The financial year here only SEEDS the from/to dates below, which the user
   // then edits freely — the date pair is the filter, and it is already on this
   // panel. So the seed is the year we are actually in, rather than one carried
@@ -633,14 +640,18 @@ function StockLedgerDrillDown({
             <p className="text-2xs text-ps-hint mt-0.5">Stock movement ledger</p>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setAdjustOpen(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
-              <ClipboardEdit size={13} /> Adjust Stock
-            </button>
-            <button onClick={() => setWritedownOpen(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
-              <TrendingDown size={13} /> Write Down to NRV
-            </button>
+            {mayWriteBooks && (
+              <>
+                <button onClick={() => setAdjustOpen(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
+                  <ClipboardEdit size={13} /> Adjust Stock
+                </button>
+                <button onClick={() => setWritedownOpen(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-ps-border rounded-lg hover:bg-ps-bg text-ps-label">
+                  <TrendingDown size={13} /> Write Down to NRV
+                </button>
+              </>
+            )}
             <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Back">×</button>
           </div>
         </div>

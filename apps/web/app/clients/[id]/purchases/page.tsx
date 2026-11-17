@@ -2,6 +2,7 @@
 
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { arrayOrEmpty } from "@/lib/api/shape";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Upload, AlertCircle, AlertTriangle, CheckCircle, Trash2, X, Loader2, Paperclip, MoreHorizontal, Ban, RotateCcw, Pencil } from "lucide-react";
@@ -346,6 +347,9 @@ interface PurchaseBillRow {
 }
 
 function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
+  // Cancelling a received bill asks `accounting` `approve`, a Partner's alone (POST-A-455): the row menu and the drawer
+  // offer it only to someone who may.
+  const mayCancelBill = usePermissions().can("accounting", "approve");
   const [bills, setBills] = useState<PurchaseBillRow[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   // What GSTR-2B says about each bill, keyed by bill id. Empty until the CA
@@ -910,8 +914,9 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   ], [vendors, recon2B, reconciledPeriods]);
 
   // ── DataTable bulk actions — receive is draft-only (non-draft rows are
-  // skipped client-side); export just CSV-dumps the checked rows. ─────────
-  const bulkActions: BulkAction<PurchaseBillRow>[] = useMemo(() => [
+  // skipped client-side); export just CSV-dumps the checked rows. "Cancel received" asks the bill's cancel route, which asks
+  // `accounting` `approve` (a Partner's), so it is in the list only for someone it admits (POST-A-455). ─────────
+  const bulkActions: BulkAction<PurchaseBillRow>[] = useMemo(() => ([
     {
       id: "receive",
       label: "Receive draft(s)",
@@ -936,7 +941,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       run: handleBulkCancel,
     },
     exportSelectedAction("purchase-bills-selected.csv", billColumns),
-  ], [handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns]);
+  ] satisfies BulkAction<PurchaseBillRow>[]).filter((a) => a.id !== "cancel" || mayCancelBill), [handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns, mayCancelBill]);
 
   // "Resolve missing references" step for the product_service import column —
   // mirrors the Sales Invoices tab's own importResolvers exactly. Reads
@@ -1170,7 +1175,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
                   </button>
                 </>
               )}
-              {b.status === "received" && (
+              {b.status === "received" && mayCancelBill && (
                 <>
                   <div className="my-1 border-t border-ps-border" />
                   <Button variant="plain" size="none" onClick={() => { setMenu(null); return cancelBill(b); }}
@@ -1198,7 +1203,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
           onReceive={(id) => { setDetailId(null); return handleReceive(id); }}
           onDelete={(bill) => { setDetailId(null); setDeleteTarget(bill); }}
           onDuplicate={duplicateBill}
-          onCancelBill={cancelBill}
+          onCancelBill={mayCancelBill ? cancelBill : undefined}
           onChanged={load}
           // A toast above the drawer: the page's message line (setMsg) is drawn BEHIND the drawer's backdrop, so a refusal said there (a date, an amount,
           // the server's sentence) was away from the dialog it was about, and out of sight when the page was scrolled.
@@ -1348,6 +1353,11 @@ interface VendorDependencies {
 }
 
 function Vendors({ clientId }: { clientId: string }) {
+  // Adding, importing, editing and reactivating a vendor ask `client` `write` (a Manager or a Partner); deactivating and
+  // deleting one ask `client` `delete` (a Partner). Each was offered to every member and came back refused (POST-A-455).
+  const { can: canDo } = usePermissions();
+  const mayEditParty = canDo("client", "write");
+  const mayRemoveParty = canDo("client", "delete");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [loading, setLoading] = useState(true);
   // See PurchaseBills.loadFailed (audit M17): a failed fetch must not render as
@@ -1884,7 +1894,7 @@ function Vendors({ clientId }: { clientId: string }) {
     ] },
   ], []);
 
-  const vendorBulkActions: BulkAction<VendorRow>[] = useMemo(() => [
+  const vendorBulkActions: BulkAction<VendorRow>[] = useMemo(() => ([
     {
       id: "deactivate",
       label: "Deactivate",
@@ -1901,7 +1911,8 @@ function Vendors({ clientId }: { clientId: string }) {
       run: bulkDeletePermanentVendors,
     },
     exportSelectedAction("vendors-selected.csv", vendorColumns),
-  ], [bulkDeactivateVendors, bulkDeletePermanentVendors, vendorColumns]);
+  ] satisfies BulkAction<VendorRow>[]).filter((a) => mayRemoveParty || (a.id !== "deactivate" && a.id !== "delete-permanent")),
+  [bulkDeactivateVendors, bulkDeletePermanentVendors, vendorColumns, mayRemoveParty]);
 
   return (
     <div className="space-y-4 max-w-ps-data mx-auto">
@@ -2069,25 +2080,29 @@ function Vendors({ clientId }: { clientId: string }) {
                   own record — the create form was drop-only, so a GSTIN
                   typo, a §195 residency status or a TDS section could never
                   be corrected from this tab. */}
-              <button onClick={() => { setMenu(null); openEdit(v); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
-                <Pencil size={13} /> Edit
-              </button>
-              {v.is_active ? (
+              {mayEditParty && (
+                <button onClick={() => { setMenu(null); openEdit(v); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
+              {v.is_active && mayRemoveParty ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(v); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   <Ban size={13} /> Deactivate
                 </button>
-              ) : (
+              ) : !v.is_active && mayEditParty ? (
                 <Button variant="plain" size="none" onClick={() => { setMenu(null); return reactivateVendor(v); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-green-700">
                   <RotateCcw size={13} /> Reactivate
                 </Button>
+              ) : null}
+              {mayRemoveParty && (
+                <button onClick={() => { setMenu(null); startDelete(v); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
+                  <Trash2 size={13} /> Delete
+                </button>
               )}
-              <button onClick={() => { setMenu(null); startDelete(v); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-state-problem-hover text-red-600">
-                <Trash2 size={13} /> Delete
-              </button>
             </div>
           </>
         );
@@ -2475,7 +2490,7 @@ function Vendors({ clientId }: { clientId: string }) {
           </button>
         )}
         toolbarExtra={
-          <>
+          mayEditParty && <>
             <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-lg hover:bg-ps-bg"><Upload size={12} /> Import</button>
             <button
               onClick={() => setShowForm((s) => {
@@ -2530,6 +2545,12 @@ interface PaymentRow {
 }
 
 function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; openDoc?: string | null }) {
+  // Reversing a payment asks `accounting` `approve`, a Partner's alone (POST-A-455).
+  const { can: canDo } = usePermissions();
+  const mayReverse = canDo("accounting", "approve");
+  // Recording a payment and applying one to bills ask `accounting` `write` (a Manager or a Partner); both were drawn to an
+  // Executive, whose `accounting` is read only (POST-A-455).
+  const mayWriteBooks = canDo("accounting", "write");
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   // CGST Act s.31(3)(g). Offered on every payment and never gated here: the
   // section carries no "unregistered" limb, and whether it reaches this
@@ -3171,7 +3192,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
         toolbarExtra={
           <>
             <FinancialYearPicker value={financialYear} onChange={onFinancialYearChange} />
-            <button onClick={() => (showForm ? closePaymentForm() : openPaymentForm())} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Record Payment</button>
+            {mayWriteBooks && (
+              <button onClick={() => (showForm ? closePaymentForm() : openPaymentForm())} className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"><Plus size={12} /> Record Payment</button>
+            )}
           </>
         }
         rowActions={(p) => !p.is_reversed && (
@@ -3180,16 +3203,18 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               className="text-2xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
               Payment voucher
             </button>
-            {unallocatedOf(p) > 0 && (
+            {unallocatedOf(p) > 0 && mayWriteBooks && (
               <button onClick={() => setAllocateFor(p)}
                 className="text-2xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap">
                 Apply
               </button>
             )}
-            <Button variant="plain" size="none" onClick={() => reversePayment(p)}
-              className="text-2xs text-red-600 hover:text-red-800 hover:underline">
-              Reverse
-            </Button>
+            {mayReverse && (
+              <Button variant="plain" size="none" onClick={() => reversePayment(p)}
+                className="text-2xs text-red-600 hover:text-red-800 hover:underline">
+                Reverse
+              </Button>
+            )}
           </div>
         )}
       />

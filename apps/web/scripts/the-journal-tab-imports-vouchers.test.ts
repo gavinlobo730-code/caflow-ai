@@ -113,9 +113,9 @@ test("the button is on the Journal tab and not on the day book", () => {
   // It sits in a `!dayBook` branch of its own — the day book is a report — and
   // does NOT wrap New Journal Entry, whose own condition
   // the-book-can-be-read-not-only-posted-to reads (`!dayBook && ( <button`).
-  assert.match(page, /\{!dayBook && \(\s*<VoucherImportButton\b/,
+  assert.match(page, /\{!dayBook && mayWriteBooks && \(\s*<VoucherImportButton\b/,
     "the import button must sit in the branch the day book does not render");
-  assert.match(page, /\{!dayBook && \(\s*<button/,
+  assert.match(page, /\{!dayBook && mayWriteBooks && \(\s*<button/,
     "New Journal Entry keeps its own !dayBook branch");
   assert.match(page, /<VoucherImportButton clientId=\{clientId\} onImported=\{loadEntries\}/);
 });

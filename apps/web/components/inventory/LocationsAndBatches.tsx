@@ -37,6 +37,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 interface Godown {
   id: string;
@@ -99,6 +100,9 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
    *  to populate the Add Lot / transfer item pickers. */
   items: StockItem[];
 }) {
+  // Adding or closing a godown, adding a lot and moving stock ask `accounting` `write`, a Manager's or a Partner's; they were
+  // drawn to an Executive, whose `accounting` is read only, and came back refused (POST-A-455).
+  const mayWriteBooks = usePermissions().can("accounting", "write");
   const [godowns, setGodowns] = useState<Godown[]>([]);
   const [unallocatedMeans, setUnallocatedMeans] = useState("");
   const [detail, setDetail] = useState<DetailRow[]>([]);
@@ -214,10 +218,12 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Warehouse size={15} className="text-blue-600" /> Godowns
           </h3>
-          <button onClick={() => setAdding(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
-            <Plus size={12} /> Add godown
-          </button>
+          {mayWriteBooks && (
+            <button onClick={() => setAdding(true)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
+              <Plus size={12} /> Add godown
+            </button>
+          )}
         </div>
         {godowns.length === 0 ? (
           <EmptyState
@@ -277,17 +283,17 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
                         .reduce((t, r) => t + r.value_paise, 0))}
                     </td>
                     <td className="px-5 py-2 text-right">
-                      {g.is_active ? (
+                      {mayWriteBooks && g.is_active ? (
                         <Button variant="plain" size="none" spinner={false} onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
                           className="p-1 rounded hover:bg-state-problem-hover text-red-600">
                           <Trash2 size={12} />
                         </Button>
-                      ) : (
+                      ) : mayWriteBooks ? (
                         <Button variant="plain" size="none" spinner={false} onClick={() => reopenGodown(g)} aria-label={`Reopen ${g.name}`}
                           className="p-1 rounded hover:bg-ps-hover text-ps-label">
                           <RotateCcw size={12} />
                         </Button>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -349,10 +355,12 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
           <h3 className="text-sm font-semibold text-ps-ink flex items-center gap-2">
             <Boxes size={15} className="text-blue-600" /> Lots
           </h3>
-          <button onClick={() => setAddingBatch(true)}
-            className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
-            <Plus size={12} /> Add lot
-          </button>
+          {mayWriteBooks && (
+            <button onClick={() => setAddingBatch(true)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-brand text-white flex items-center gap-1">
+              <Plus size={12} /> Add lot
+            </button>
+          )}
         </div>
         {batches.length === 0 ? (
           <EmptyState
@@ -471,7 +479,7 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
         </div>
       )}
 
-      {godowns.filter((g) => g.is_active).length >= 2 && (
+      {godowns.filter((g) => g.is_active).length >= 2 && mayWriteBooks && (
         <TransferPanel clientId={clientId} godowns={godowns.filter((g) => g.is_active)}
           detail={detail} onDone={load} />
       )}

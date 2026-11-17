@@ -22,6 +22,7 @@ import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { formatDate } from "@/lib/dates/format";
 import { objectOrNull } from "@/lib/api/shape";
 import { openedAt } from "@/lib/accounting/sourceDocument";
+import { usePermissions } from "@/lib/auth/AuthContext";
 /** Format paise → ₹ Indian number format */
 function fmt(paise: number): string {
   if (paise === 0) return "₹0";
@@ -340,12 +341,19 @@ function AdjActions({
   adj: Adjustment;
   onAction: (action: "submit" | "approve" | "post") => void;
 }) {
+  // Approve and Post to Journal ask `year_end` `approve` (a Manager or a Partner) and were offered to an Executive, who was
+  // refused (POST-A-455). Submit asks `year_end` `write`, which every member who can open this screen holds.
+  const { can, resolved } = usePermissions();
+  const mayApprove = can("year_end", "approve");
   if (adj.status === "draft") {
     return (
       <button onClick={() => onAction("submit")} className="text-xs text-blue-600 hover:underline">
         Submit
       </button>
     );
+  }
+  if ((adj.status === "pending_review" || adj.status === "approved") && !mayApprove) {
+    return <span className="text-3xs text-ps-hint">{resolved ? "Awaiting someone who may approve" : "—"}</span>;
   }
   if (adj.status === "pending_review") {
     return (
