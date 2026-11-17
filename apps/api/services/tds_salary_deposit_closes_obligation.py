@@ -215,7 +215,7 @@ def _record_what_closed_it(record: dict, *, firm_id: str, client_id: str, coveri
     if not covering:
         return
     try:
-        compliance_records_repo.stamp_closing_tds_challans(record["id"], firm_id, sorted(covering))
+        compliance_records_repo.stamp_closing_tds_challans(record["id"], firm_id, sorted(covering), client_id=client_id)
     except Exception as exc:                                    # noqa: BLE001
         from core.observability import capture_soft_failure
         capture_soft_failure(exc, operation="tds_salary_deposit_closes_obligation.record_challans", firm_id=firm_id,

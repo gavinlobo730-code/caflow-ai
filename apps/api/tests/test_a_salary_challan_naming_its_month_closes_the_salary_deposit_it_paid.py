@@ -329,3 +329,39 @@ def test_the_served_challan_sections_say_which_is_a_salary_deposit():
         flagged = {c["section"]: c["salary"] for c in challan_sections(fy)}
         assert flagged["192"] is True
         assert [s for s, salary in flagged.items() if salary] == ["192"]
+
+
+# ── what an independent review found (17-11-2026): the stamp on the live path names the client ──────────────────────────────────────
+# Since POST-A-461 the repository refuses a database write that does not name the client, and the salary closer stamped the covering
+# challans with the firm alone, so in production every stamp raised, the soft-failure handler swallowed it, and a retraction could not
+# find the month it had closed.
+
+def test_on_the_live_path_the_stamp_of_what_closed_the_month_names_the_firm_and_the_client(monkeypatch):
+    from repositories import compliance_records_repository as crr
+    import core.observability as obs
+    log: list = []
+
+    class _Chain:
+        def __getattr__(self, name):
+            def call(*a, **k):
+                log.append((name, a, k))
+                return self
+            return call
+
+        def execute(self):
+            log.append(("execute", (), {}))
+
+            class R:
+                data = [{"id": "ob-1"}]
+            return R()
+
+    monkeypatch.setattr(crr, "_USE_MOCK", False)
+    monkeypatch.setattr(crr, "_writer", lambda: _Chain())
+    monkeypatch.setattr(crr, "_get_db", lambda: (_ for _ in ()).throw(AssertionError("a write used the caller's own client")))
+    swallowed: list = []
+    monkeypatch.setattr(obs, "capture_soft_failure", lambda exc, **k: swallowed.append(exc))
+    salary._record_what_closed_it({"id": "ob-1"}, firm_id=FIRM, client_id=CLIENT, covering=frozenset({"c2", "c1"}))
+    assert swallowed == []
+    eqs = {(a[0], a[1]) for name, a, _k in log if name == "eq"}
+    assert {("id", "ob-1"), ("firm_id", FIRM), ("client_id", CLIENT)} <= eqs
+    assert [n for n, *_r in log].count("update") == 1
