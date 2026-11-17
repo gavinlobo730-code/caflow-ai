@@ -16,6 +16,7 @@ from repositories.user_repository import user_repo
 from repositories.client_repository import client_repo
 from core.ist_clock import fy_bounds, fy_quarters, ist_fy_label, ist_today
 from core import db_provider
+from services.internal_client_service import get_internal_client_id
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -617,10 +618,17 @@ def _benchmark_rows(firm_id: str, fy: str, allowed) -> list:
     # without its name that line would read "Unknown" beside a stored row (the other three practice screens name them for the same reason).
     names = {str(k): v for k, v in client_repo.names_by_id(firm_id, include_archived=True).items()}
 
+    # THE FIRM'S OWN PRACTICE IS NOT A CLIENT TO BENCHMARK (Guardrail G2, POST-A-169). The nightly sweep no longer stores a row for it,
+    # but a row it stored before that stays in the table, and without this the practice was counted in every distribution of a
+    # Partner's benchmark (named "Unknown", because the name reader leaves it out). Asked by id, off `firms.internal_client_id`, the
+    # link the other G2 readers ask.
+    practice = get_internal_client_id(firm_id)
     stored = _client_period_metrics(firm_id, fy)
     out = []
     for r in stored:
         cid = str(r.get("client_id"))
+        if practice and cid == str(practice):
+            continue
         if allowed is not None and cid not in allowed:
             continue
         out.append(rule.ClientPeriod(

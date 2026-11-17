@@ -15,11 +15,16 @@ THE RULE
 
 WHAT THE CENSUS FOUND, 16-11-2026
     Thirteen reads. Two were `ClientRepository.find_by_pan` and `find_by_gstin`: no caller anywhere, and neither named a firm, so the
-    first caller would have read another firm's client by its PAN; they are deleted. Nine include the practice on purpose (its books,
-    its own GST and e-invoices, names for rows chosen elsewhere). Two count or list the practice among the firm's clients, which G2
-    says they should not, and are listed as open rather than changed here: the hub worklist's rows come from a database function that
-    does not leave it out either, so the count and the rows have to move together, and the risk register is the practice's own
-    exposure too, so which way it falls is a decision.
+    first caller would have read another firm's client by its PAN; they are deleted. Nine were listed as including the practice on
+    purpose (its books, its own GST and e-invoices, names for rows chosen elsewhere). Two count or list the practice among the firm's
+    clients, which G2 says they should not, and are listed as open rather than changed here: the hub worklist's rows come from a
+    database function that does not leave it out either, so the count and the rows have to move together, and the risk register is
+    the practice's own exposure too, so which way it falls is a decision. They are open work, carried by a new-findings line.
+
+AND ONE OF THE NINE WAS NOT ON PURPOSE, 17-11-2026
+    `client_metrics_service.refresh_firm` was listed with "the screens that read them choose whom they show", but its rows have one
+    reader, the benchmark (`routers/analytics._benchmark_rows`), and it did not choose: the practice was counted in every distribution
+    of a Partner's benchmark. The sweep now leaves the practice out, and the benchmark skips a practice row stored before that, by id.
 """
 from __future__ import annotations
 
@@ -41,8 +46,6 @@ PRACTICE_IN_ON_PURPOSE: dict[tuple[str, str], str] = {
         "the nightly balance heal covers every set of books, and the practice keeps books",
     ("services/reconciliation_service.py", "run_reconciliation_for_firm"):
         "the nightly ledger reconciliation covers every set of books, and the practice keeps books",
-    ("services/client_metrics_service.py", "refresh_firm"):
-        "the nightly figures are computed for every set of books; the screens that read them choose whom they show",
     ("services/gst_2b_reconciliation_service.py", "holders_of"):
         "routes a GSTR-2B file to the registration named in it, and the practice files its own returns",
     ("services/irn_worklist_service.py", "_clients"):
@@ -54,6 +57,9 @@ PRACTICE_IN_ON_PURPOSE: dict[tuple[str, str], str] = {
 }
 
 #: (module, function) -> what is open. SHRINK-ONLY: these count or list the practice among the firm's clients, which G2 says not to.
+#: They are OPEN WORK and not accepted exceptions: being named here keeps the census an equality, it does not carry the work. Each is
+#: carried by POST-A-457 in docs/open-items/new-findings.md (raised when POST-A-169 closed), and an entry is deleted in the
+#: commit that fixes its read and closes that line.
 G2_OPEN: dict[tuple[str, str], str] = {
     ("services/hub_worklist_service.py", "_client_count"):
         "counts the practice among the clients a hub worklist examined; the rows come from `hub_client_worklist`, which does not "
@@ -137,6 +143,76 @@ def test_the_census_sees_a_population_read_and_passes_a_lookup_and_a_decision():
     assert unkeyed_reads_that_never_ask(decided) == {}
     assert unkeyed_reads_that_never_ask(nested) == {"k": 1}
     assert unkeyed_reads_that_never_ask(write) == {}
+
+
+# ── the benchmark, which the census listed as choosing and which did not ─────────────────────────────────────────────────────────
+
+FIRM, PRACTICE = "firm-g2", "c-practice"
+
+
+def test_the_nightly_figures_are_not_computed_for_the_practice(monkeypatch):
+    """The sweep's rows have one reader, the benchmark, and the practice is not a client to benchmark (G2)."""
+    import datetime as dt
+
+    from services import client_metrics_service as svc
+    from tests._capped_postgrest import CappedDB
+
+    db = CappedDB({"clients": [
+        {"id": "c-one", "firm_id": FIRM, "is_internal": False},
+        {"id": PRACTICE, "firm_id": FIRM, "is_internal": True},
+        {"id": "c-elsewhere", "firm_id": "firm-other", "is_internal": False},
+    ]})
+    stored: list[str] = []
+    monkeypatch.setattr(svc, "compute_for_client", lambda _db, _rep, firm_id, client_id, fy: {"client_id": client_id})
+    monkeypatch.setattr(svc, "store", lambda _db, row: stored.append(row["client_id"]))
+
+    out = svc.refresh_firm(db, FIRM, reporting=object(), today=dt.date(2026, 11, 17))
+
+    assert set(stored) == {"c-one"}, "a figure was computed and stored for the firm's own practice"
+    assert out["clients"] == 1
+    assert all(("eq", "is_internal", False) in ops for ops in db.requests["clients"]), "the sweep's read does not ask"
+
+
+def _rows_the_benchmark_counts(monkeypatch, stored, practice, allowed=None):
+    """The practice is found the way production finds it, off `firms.internal_client_id`."""
+    import routers.analytics as an
+    import services.internal_client_service as ics
+    from tests._capped_postgrest import CappedDB
+
+    firms = CappedDB({"firms": [{"id": FIRM, "internal_client_id": practice},
+                                {"id": "firm-other", "internal_client_id": "c-one"}]})
+    monkeypatch.setattr(ics, "_USE_MOCK", False)
+    monkeypatch.setattr(ics, "_db", lambda: firms)
+    monkeypatch.setattr(an, "_client_period_metrics", lambda firm_id, fy: [{"client_id": c} for c in stored])
+    monkeypatch.setattr(an.client_repo, "names_by_id", lambda firm_id, include_archived=False: {"c-one": "One", "c-two": "Two"})
+    return [r.client_id for r in an._benchmark_rows(FIRM, "2026-27", allowed)]
+
+
+def test_a_practice_row_the_sweep_stored_before_is_not_benchmarked(monkeypatch):
+    """The rows written before the sweep left the practice out stay in the table, so the reader skips them by id."""
+    assert _rows_the_benchmark_counts(monkeypatch, ["c-one", PRACTICE, "c-two"], PRACTICE) == ["c-one", "c-two"]
+
+
+def test_the_benchmark_skips_the_practice_alongside_the_callers_scope(monkeypatch):
+    assert _rows_the_benchmark_counts(monkeypatch, ["c-one", PRACTICE, "c-two"], PRACTICE, allowed={"c-two", PRACTICE}) == ["c-two"]
+
+
+def test_a_firm_with_no_practice_provisioned_has_every_row_benchmarked(monkeypatch):
+    """No `firms.internal_client_id` is no practice to leave out, never a reason to drop a row."""
+    assert _rows_the_benchmark_counts(monkeypatch, ["c-one", "c-two"], None) == ["c-one", "c-two"]
+
+
+def test_the_benchmark_endpoint_counts_the_clients_without_the_practice(monkeypatch):
+    import core.authz as authz
+    import routers.analytics as an
+
+    monkeypatch.setattr(authz, "effective_client_ids", lambda user: None)
+    _rows_the_benchmark_counts(monkeypatch, ["c-one", PRACTICE], PRACTICE)
+
+    data = an.tax_benchmark(financial_year="2026-27", client_id=None,
+                            current_user={"id": "u1", "firm_id": FIRM, "role": "Partner"})["data"]
+
+    assert data["clients"] == 1
 
 
 def test_the_identifier_lookups_that_named_no_firm_are_gone():

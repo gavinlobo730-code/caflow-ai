@@ -318,6 +318,76 @@ def test_the_split_is_exact_so_the_declaration_reconciles(db):
     assert round(itm["ad_amt"] + itm["camt"] + itm["samt"], 2) == 1000.01
 
 
+# ── a reversed receipt is not an advance (POST-A-369) ────────────────────────
+#
+# Reversing a receipt reverses its journal, voids its allocation rows and keeps
+# the row for the audit trail (migration 215). Both readers here read it as
+# live: Table 11A declared it as money received and never invoiced, and the
+# list showed its unallocated figure, which the reversal leaves as it was.
+# What a receipt reversed AFTER its period's GSTR-1 was filed requires (Rule 51's
+# refund voucher, Table 11) is a question for a CA and is not pinned here.
+
+def _reverse(db, receipt):
+    db.table("receipts").update({"is_reversed": True}).eq("id", receipt["id"]).execute()
+    db.table("receipt_allocations").update({"is_voided": True}).eq("receipt_id", receipt["id"]).execute()
+
+
+def test_a_reversed_receipt_is_not_listed_as_an_advance(db):
+    _reverse(db, _receipt(db, "RCT-1", "2025-06-10", 1_00_000, 0))
+    _receipt(db, "RCT-2", "2025-06-12", 2_00_000, 0)
+    out = _run(db)
+    assert [a["receipt_no"] for a in out["unadjusted_advances"]] == ["RCT-2"]
+    assert out["total_unadjusted_paise"] == 2_00_000
+
+
+def test_a_reversed_advance_is_not_declared_in_11a_or_paid_in_3b(db):
+    _client(db, applicable=True)
+    _reverse(db, _adv(db, "RCT-1", "2025-06-10", 1_18_000))
+    out = _t11(db)
+    assert out["at"] == [] and out["txpd"] == []
+    assert out["paise"]["at"]["taxable_paise"] == 0, "GSTR-3B Table 3.1(a) would pay tax on it"
+
+
+def test_a_reversed_advance_with_no_rate_is_not_named_as_undeclared(db):
+    """A gap says an advance is missing from the return; a reversed receipt is not missing from it."""
+    _client(db, applicable=True)
+    _reverse(db, _adv(db, "RCT-1", "2025-06-10", 1_18_000, rate=None))
+    assert _t11(db)["gaps"] == []
+
+
+def test_a_receipt_that_was_never_reversed_is_still_declared(db):
+    """`is_reversed` false, and a row with no such key at all, are both live."""
+    _client(db, applicable=True)
+    r = _adv(db, "RCT-1", "2025-06-10", 1_18_000)
+    db.table("receipts").update({"is_reversed": False}).eq("id", r["id"]).execute()
+    _adv(db, "RCT-2", "2025-06-11", 1_18_000)                 # no key
+    assert _t11(db)["paise"]["at"]["taxable_paise"] == 2 * 1_00_000
+
+
+def test_a_voided_allocation_row_adjusts_nothing(db):
+    """Migration 571 sums a receipt's LIVE rows; Table 11 measures adjustments the same way. A row lacking the key is live."""
+    r = _adv(db, "RCT-1", "2025-06-10", 1_18_000)
+    _allocate(db, r, 40_000, "2025-06-20T00:00:00Z")          # no key
+    db.seed("receipt_allocations", {"receipt_id": r["id"], "sales_invoice_id": "inv-2",
+                                    "allocated_paise": 50_000, "created_at": "2025-06-21T00:00:00Z",
+                                    "is_voided": True})
+    db.seed("receipt_allocations", {"receipt_id": r["id"], "sales_invoice_id": "inv-3",
+                                    "allocated_paise": 10_000, "created_at": "2025-06-22T00:00:00Z",
+                                    "is_voided": False})
+    assert sorted(a for a, _ in svc._allocations_by_receipt(db, [r["id"]])[r["id"]]) == [10_000, 40_000]
+
+
+def test_a_reversed_advance_does_not_reach_the_gstr1_payload(db):
+    _client(db, applicable=True)
+    _reverse(db, _adv(db, "RCT-1", "2025-06-10", 1_18_000))
+    db.seed("customers", {"id": "CUST", "firm_id": FIRM, "client_id": CLIENT,
+                          "name": "Acme", "gstin": None, "state_code": "27",
+                          "is_active": True})
+
+    payload = grs.gstr1_from_books(db, FIRM, CLIENT, PERIOD, "27AAAAA0000A1Z2")["payload"]
+    assert "at" not in payload, "a reversed receipt was declared as an advance in the file the CA uploads"
+
+
 # ── and it has to reach the payload, not just the service ────────────────────
 
 def test_table_11_reaches_the_gstr1_payload(db):
