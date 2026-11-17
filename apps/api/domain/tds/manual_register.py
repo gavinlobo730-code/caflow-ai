@@ -125,6 +125,54 @@ def prior_manual_aggregate(
             sum(int(r.get("tds_paise") or 0) for r in earlier))
 
 
+def same_name_key(deductee_name: Optional[str]) -> Optional[str]:
+    """The typed name folded for COMPARISON only: case and runs of spaces do not tell two payees apart. None for a blank name."""
+    folded = " ".join(str(deductee_name or "").split()).casefold()
+    return folded or None
+
+
+def same_name_without_a_pan(
+    db, *, firm_id: str, client_id: str, section: str, deductee_name: Optional[str], on: date, exclude_id: Optional[str] = None,
+) -> tuple[int, int, int]:
+    """(how many, taxable, tax) of the year's earlier TYPED deductions under the same parent section that name no supplier, carry no
+    usable PAN and were typed under the same name (`same_name_key`) as this one (POST-A-078, the second decision).
+
+    THE DECISION: A NAME IS NEVER A KEY, AND A SAME-NAME PAYMENT IS NAMED, NOT ADDED. Two payees may share a name and one payee may be
+    typed under two spellings, so adding a year up by the name would push one stranger's payments over another's threshold (a wrong
+    deduction and a wrong credit, the reason `usable_pan_key` exists) and pooling by a spelling would miss the other half. The charge
+    therefore stays the first-payment charge `prior_manual_aggregate` gives a payee with no key, and these figures go to the CA in a
+    sentence, with the two ways to make the year add up: pick the supplier, or record the payee's PAN. Read only for a payee with no
+    supplier and no usable PAN; a payee with a key has its year read by the key."""
+    key = same_name_key(deductee_name)
+    if not (firm_id and client_id and section and key):
+        return 0, 0, 0
+    start, end = fy_bounds(on)
+    from domain.tds.section_rates import parent_of
+    parent = parent_of(section)
+    from core.db_paging import fetch_all
+    rows = fetch_all(lambda: (db.table("tds_deductions")
+                              .select("id, deductee_name, deductee_pan, payment_amount_paise, tds_paise, purchase_bill_id, "
+                                      "purchase_payment_id, vendor_id, section")
+                              .eq("firm_id", firm_id).eq("client_id", client_id)
+                              .gte("transaction_date", start).lte("transaction_date", end)))
+    same = [r for r in rows
+            if r.get("id") != exclude_id and not written_by_a_document(r) and not r.get("vendor_id")
+            and usable_pan_key(r.get("deductee_pan")) is None and parent_of(r.get("section") or "") == parent
+            and same_name_key(r.get("deductee_name")) == key]
+    return (len(same), sum(int(r.get("payment_amount_paise") or 0) for r in same),
+            sum(int(r.get("tds_paise") or 0) for r in same))
+
+
+def same_name_sentence(count: int, taxable_paise: int, tds_paise: int) -> str:
+    """The sentence for `GAP_SAME_NAME_WITHOUT_A_PAN`, with the figures `same_name_without_a_pan` found."""
+    from domain.money_sentence import rupee_text
+    payments = "payment" if count == 1 else "payments"
+    return (f"This financial year already holds {count} other {payments} typed under the same payee name and section with no supplier "
+            f"and no PAN, of {rupee_text(taxable_paise)} with {rupee_text(tds_paise)} withheld. They were NOT added to this payment's year, "
+            "because a name does not identify a payee: two payees can share one. If they are the same payee, pick the supplier or record "
+            "the payee's PAN on each, and the year is added up.")
+
+
 # The gaps a typed deduction can carry, reported to the caller rather than hidden. Read by routers/tds_workspace.py and surfaced on the screen.
 #: The deduction names no supplier, so its year is the other typed deductions for its PAN that name none, and no supplier's bills (POST-A-078).
 GAP_NO_SUPPLIER = "tds_deduction_names_no_supplier"
@@ -136,6 +184,9 @@ GAP_SUPPLIER_NOT_SUBJECT_TO_TDS = "tds_supplier_recorded_not_subject_to_tds"
 GAP_CAPPED_AT_THE_PAYMENT = "tds_deduction_capped_at_the_payment"
 #: The payee has no usable PAN, so the typed register could not look for the year's earlier payments to it at all (POST-A-078).
 GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN = "tds_aggregate_not_read_without_a_pan"
+#: Earlier typed payments of the year carry the same payee name with no supplier and no PAN; named with their figures and not added (POST-A-078).
+#: Its sentence carries figures, so it is `same_name_sentence` and not in `GAP_MESSAGES`.
+GAP_SAME_NAME_WITHOUT_A_PAN = "tds_same_name_payments_without_a_pan"
 GAP_MESSAGES = {
     # The bill and advance paths raise this gap too (domain/tds/residency.py has their sentence, which says "bill"); this door's is the same sentence about a deduction.
     GAP_RESIDENT_RATES_UNVERIFIED: (
