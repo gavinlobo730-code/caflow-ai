@@ -36,6 +36,7 @@ import routers.purchase_credit_notes as pcn
 import routers.sales_debit_notes as sdn
 import routers.sales_invoices as si
 from models.banking import BankAccountUpdateIn
+from models.payroll import EMPLOYEE_IDENTIFIERS, EmployeeUpdateIn
 from models.clearable import clearable_fields, patch_dict
 from models.parties import CUSTOMER_IDENTIFIERS, PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
 from models.invoices import (InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn, PurchaseBillUpdateIn, SalesInvoiceIn,
@@ -395,6 +396,7 @@ MASTER_MODELS = [
     (CustomerUpdateIn, "customers"),
     (VendorUpdateIn, "vendors"),
     (BankAccountUpdateIn, "bank_accounts"),
+    (EmployeeUpdateIn, "payroll_employees"),   # POST-A-399, third slice
 ]
 MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER = {
     "credit_limit_paise",  # "no limit recorded", against 0 which is cash only (migrations 378 and 414)
@@ -462,7 +464,8 @@ def test_the_clearable_names_are_free_text_and_never_a_date_an_amount_or_evidenc
 
 #: The identifiers each master's edit refuses to empty because a return reads them: a party's GSTIN and state code, and a vendor's PAN and foreign
 #: tax number. A customer's PAN and TAN are not among them (no return reads them off a customer) and are clearable.
-MASTER_IDENTIFIERS = {CustomerUpdateIn: set(CUSTOMER_IDENTIFIERS), VendorUpdateIn: set(PARTY_IDENTIFIERS), BankAccountUpdateIn: set()}
+MASTER_IDENTIFIERS = {CustomerUpdateIn: set(CUSTOMER_IDENTIFIERS), VendorUpdateIn: set(PARTY_IDENTIFIERS), BankAccountUpdateIn: set(),
+                      EmployeeUpdateIn: set(EMPLOYEE_IDENTIFIERS)}
 
 
 def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_identifier_a_date_or_evidence():

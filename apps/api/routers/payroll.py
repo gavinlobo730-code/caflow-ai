@@ -18,7 +18,8 @@ from pydantic import BaseModel, EmailStr, field_validator
 import logging
 
 from models.common import api_response
-from models.payroll import (EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
+from models.clearable import patch_dict, removed_identifier_problem
+from models.payroll import (EMPLOYEE_IDENTIFIER_WHY, EMPLOYEE_IDENTIFIERS, EmployeeIn, EmployeeUpdateIn, SalaryStructureIn, PayrollRunIn,
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, LeaveBalanceIn, PayrollSettingsIn, PTSlabSetIn,
@@ -2313,9 +2314,18 @@ def update_employee(
 ):
     _assert_employee_scope(_db(), current_user, employee_id)
     db = _db()
-    update = data.model_dump(exclude_none=True)
+    # POST-A-399. A designation or a department the person emptied is cleared (written NULL); every other null still reads "not sent".
+    update = patch_dict(data)
     if not db:
         return api_response(True, update)
+    # An identifier emptied over a stored one is refused in a sentence rather than kept while the screen says "saved". The row is read only when
+    # the request sent one of them empty.
+    if any(k in data.model_fields_set and not str(getattr(data, k) or "").strip() for k in EMPLOYEE_IDENTIFIERS):
+        held = (db.table("payroll_employees").select(", ".join(EMPLOYEE_IDENTIFIERS))
+                .eq("id", employee_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data) or {}
+        removed = removed_identifier_problem(data, held, EMPLOYEE_IDENTIFIERS, why=EMPLOYEE_IDENTIFIER_WHY)
+        if removed:
+            raise HTTPException(status_code=422, detail=removed)
     # The PF election (payroll-22) is judged against the row it lands on: a
     # request that switches PF off beside a recorded election, or hangs a date
     # on an election that is not made, is refused in a sentence rather than by
