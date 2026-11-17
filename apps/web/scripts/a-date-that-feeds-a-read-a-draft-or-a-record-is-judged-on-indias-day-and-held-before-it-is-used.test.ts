@@ -173,7 +173,7 @@ test("the ageing schedule starts from India's day, reads nothing for a blank or 
   // A slower answer for a date the box no longer holds is dropped, in both readings and on both paths of each (the answer and the failure).
   assert.match(load, /const mine = \+\+latestSchedule\.current;[\s\S]*?if \(!asOf\)/, "load() does not count its request before the blank guard: a request still out when the box is emptied would draw its schedule under it");
   assert.ok((load.match(/if \(mine !== latestSchedule\.current\) return;/g) ?? []).length >= 2, "load() draws an answer or a failure that is not the latest asked for");
-  assert.ok(load.indexOf("if (mine !== latestSchedule.current) return;") < load.indexOf("setSchedule(objectOrNull("), "load() checks that its answer is the latest only AFTER it has drawn it");
+  assert.ok(load.indexOf("if (mine !== latestSchedule.current) return;") < load.indexOf("setSchedule(sched)"), "load() checks that its answer is the latest only AFTER it has drawn it");
   assert.match(load, /finally \{\s*if \(mine === latestSchedule\.current\) setLoading\(false\);/, "an older request that finishes last clears the spinner of the one still out");
   assert.match(load.slice(firstGuard, firstGuard + 200), /setDetailError\(null\)/, "a blank box leaves the open documents' last failure on the screen");
   assert.ok((detail.match(/if \(mine !== latestDetail\.current\) return;/g) ?? []).length >= 2, "loadDetail() draws an answer or a failure that is not the latest asked for");

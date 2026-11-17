@@ -147,7 +147,8 @@ export default function MultiCurrencyPage() {
             {!platformOn && (
               <div className="bg-state-attention-surface border border-state-attention-border rounded-xl px-4 py-3 text-xs text-amber-900 space-y-1 max-w-2xl">
                 <p className="font-semibold">Multi-currency is off for this deployment.</p>
-                <p>{firmGates?.platform.why ?? "MULTI_CURRENCY_ENABLED is not set."}</p>
+                <p>{firmGates?.platform?.why
+                  ?? (firmGates?.platform ? "MULTI_CURRENCY_ENABLED is not set." : "The deployment's switch could not be read, so it is treated as off.")}</p>
                 <p>Nothing below takes effect until it is switched on in the environment.</p>
               </div>
             )}
@@ -201,12 +202,12 @@ export default function MultiCurrencyPage() {
                   <tbody className="divide-y divide-ps-border">
                     {rows.map(({ client, policy }) => {
                       const on = policy?.gates?.client?.on ?? false;
-                      const supported = policy?.gates.functional_currency_supported ?? true;
+                      const supported = policy?.gates?.functional_currency_supported ?? true;
                       return (
                         <tr key={client.id} className="hover:bg-ps-bg">
                           <td className="px-5 py-2.5 font-medium text-ps-ink">{label(client)}</td>
                           <td className="px-3 py-2.5 font-mono text-ps-label">
-                            {policy?.gates.functional_currency ?? "—"}
+                            {policy?.gates?.functional_currency ?? "—"}
                           </td>
                           <td className="px-3 py-2.5">
                             <label className="flex items-center gap-2 text-ps-body">
@@ -226,7 +227,7 @@ export default function MultiCurrencyPage() {
                               </span>
                             ) : !supported ? (
                               <span className="text-state-attention">
-                                Books kept in {policy?.gates.functional_currency} — not supported
+                                Books kept in {policy?.gates?.functional_currency ?? "a currency this screen could not read"} — not supported
                               </span>
                             ) : (
                               <span className="text-ps-hint">

@@ -9,8 +9,30 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { useClientEntityType } from "@/lib/clients/useClientEntityType";
 import { usesScheduleIII } from "@/lib/entityObligations";
 import { formatDate } from "@/lib/dates/format";
+import { objectOrNull } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
+
+/**
+ * A STATEMENT THE PAGE CAN DRAW, OR NONE (POST-A-360). The page reads `balance_sheet.total_assets_paise`, `comparatives.balance_sheet`
+ * and `rounding.current.balance_sheet` off a root it had only tested for being there, so `{}` (or a snapshot whose rounding block has
+ * no current period) threw on the read, and a missing balance sheet showed totals of nil. Each section the page reads is checked here,
+ * where the answer is loaded; a statement that fails is no statement and the page says it could not read it.
+ */
+function drawableStatement(data: unknown): FinancialStatementSnapshotData | null {
+  const d = objectOrNull<FinancialStatementSnapshotData>(data);
+  if (!d || !objectOrNull(d.balance_sheet) || !objectOrNull(d.profit_loss)) return null;
+  if (d.comparatives != null && (!objectOrNull(d.comparatives) || !objectOrNull(d.comparatives.balance_sheet)
+                                  || !objectOrNull(d.comparatives.profit_loss))) return null;
+  if (d.rounding != null) {
+    const r = objectOrNull<NonNullable<FinancialStatementSnapshotData["rounding"]>>(d.rounding);
+    if (!r || !objectOrNull(r.current) || !objectOrNull(r.current.balance_sheet)) return null;
+    if (r.comparative != null && (!objectOrNull(r.comparative) || !objectOrNull(r.comparative.balance_sheet))) return null;
+  }
+  return d;
+}
+
+const UNREADABLE = "The statements came back in a shape this screen cannot read, so no figure is shown. Reload to try again.";
 
 /** Format a figure already rounded to a Schedule III para 4 unit. Whole units,
  *  so no decimals and no division — dividing by 100 here would silently
@@ -292,7 +314,9 @@ export default function FinancialStatementsPage() {
         yearEndApi.financialStatements.versions(engagementId),
       ]);
       if (!liveRes.success) throw new Error(liveRes.error ?? "Failed to load statements");
-      setLiveData(liveRes.data);
+      const live = drawableStatement(liveRes.data);
+      if (!live) throw new Error(UNREADABLE);
+      setLiveData(live);
       setVersions(verRes.data ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
@@ -313,7 +337,9 @@ export default function FinancialStatementsPage() {
       try {
         const res = await yearEndApi.financialStatements.getVersion(engagementId, selectedVersionId);
         if (!res.success) throw new Error(res.error ?? "Failed to load version");
-        if (!cancelled) setVersionData((prev) => ({ ...prev, [selectedVersionId]: res.data.statement_data }));
+        const version = drawableStatement(objectOrNull<{ statement_data?: unknown }>(res.data)?.statement_data);
+        if (!version) throw new Error(UNREADABLE);
+        if (!cancelled) setVersionData((prev) => ({ ...prev, [selectedVersionId]: version }));
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load version");
       } finally {
@@ -331,7 +357,10 @@ export default function FinancialStatementsPage() {
       if (!res.success) throw new Error(res.error ?? "Failed to create snapshot");
       const { statement_data, ...versionRow } = res.data;
       setVersions((prev) => [versionRow, ...prev]);
-      setVersionData((prev) => ({ ...prev, [versionRow.id]: statement_data }));
+      // The snapshot exists whatever shape its figures came back in; a statement this page cannot draw is not kept, so selecting the
+      // version reads it again rather than drawing nil totals.
+      const snapshot = drawableStatement(statement_data);
+      if (snapshot) setVersionData((prev) => ({ ...prev, [versionRow.id]: snapshot }));
       setSelectedVersionId(versionRow.id);
       setSnapshotMsg(`Version ${versionRow.version_number} snapshot created.`);
     } catch (err) {

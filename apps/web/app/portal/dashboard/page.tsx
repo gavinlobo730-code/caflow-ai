@@ -413,7 +413,7 @@ export default function PortalDashboardPage() {
     <PortalShell
       title="Your Portal"
       subtitle="Your secure workspace with your accountant"
-      identity={dash?.contact.name ?? dash?.contact.email ?? null}
+      identity={dash?.contact?.name ?? dash?.contact?.email ?? null}
       actions={memberships.length > 1 ? (
         <label className="text-xs text-ps-label">
           <span className="sr-only">Client</span>

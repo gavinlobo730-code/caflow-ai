@@ -371,7 +371,7 @@ export default function ScheduleIIIPage() {
   // applies, the column is absent rather than blank, because a blank column
   // reads as nil.
   const showPrior = data?.comparatives?.present ?? false;
-  const priorLabel = showPrior && data?.comparatives.period?.fy_end
+  const priorLabel = showPrior && data?.comparatives?.period?.fy_end
     ? `As at 31 Mar ${data.comparatives.period.fy_end.slice(0, 4)}`
     : null;
 
@@ -600,7 +600,7 @@ export default function ScheduleIIIPage() {
             <CardContent className="pb-4 p-0">
               <ColumnHeads
                 current={`Year ended 31 Mar ${Number(fy.start.split("-")[0]) + 1}`}
-                prior={showPrior && data?.comparatives.period?.fy_end
+                prior={showPrior && data?.comparatives?.period?.fy_end
                   ? `Year ended 31 Mar ${data.comparatives.period.fy_end.slice(0, 4)}`
                   : null} />
               {/* Revenue */}

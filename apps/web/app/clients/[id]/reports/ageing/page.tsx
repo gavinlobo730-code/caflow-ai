@@ -212,7 +212,12 @@ export default function ClientAgeingSchedulePage() {
       const r = await api.accounting.scheduleIiiAgeing(clientId, asOf) as ApiResp<AgeingSchedule>;
       if (mine !== latestSchedule.current) return;
       if (!r.success) throw new Error(r.error ?? "Could not build the ageing schedule");
-      setSchedule(objectOrNull(r.data));
+      // The page reads `schedule.receivables.*` and `schedule.payables.*` (POST-A-360): a schedule without both tables is no schedule.
+      const sched = objectOrNull<AgeingSchedule>(r.data);
+      if (!sched || !objectOrNull(sched.receivables) || !objectOrNull(sched.payables)) {
+        throw new Error("The ageing schedule came back in a shape this screen cannot read.");
+      }
+      setSchedule(sched);
     } catch (e) {
       if (mine !== latestSchedule.current) return;
       setError(e instanceof Error ? e.message : "Could not build the ageing schedule");
@@ -355,7 +360,7 @@ export default function ClientAgeingSchedulePage() {
     }
   }, [load, loadDetail, invoices, bills]);
 
-  const unclassified = schedule?.payables.unclassified_vendors ?? [];
+  const unclassified = schedule?.payables?.unclassified_vendors ?? [];
 
   return (
     <div className="p-6 max-w-ps-data mx-auto space-y-5">

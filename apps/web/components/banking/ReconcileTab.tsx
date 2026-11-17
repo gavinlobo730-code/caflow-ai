@@ -13,7 +13,7 @@ import { api } from "@/lib/api";
 import { StatementSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 
 import { fmt } from "@/components/banking/shared";
-import { objectWithLists } from "@/lib/api/shape";
+import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
@@ -249,9 +249,15 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
           .catch(() => ({ success: false, data: null as unknown as Brs })),
       ]);
       if (!res.success) throw new Error("Couldn't load the reconciliation report.");
-      setReport(res.data);
-      setAdj(((res.data.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
-      setAdjReason(res.data.reconciliation.adjustments_reason || "");
+      // The screen reads `report.reconciliation.status`, `report.summary.*` and `report.counts.*` (POST-A-360): a report without them is
+      // no report, and is said to be one this screen cannot read rather than thrown on at the first read.
+      const shaped = objectWithLists<ReconReport>(res.data, "reconciled", "unreconciled", "exceptions");
+      if (!shaped || !objectOrNull(shaped.reconciliation) || !objectOrNull(shaped.summary) || !objectOrNull(shaped.counts)) {
+        throw new Error("The reconciliation report came back in a shape this screen cannot read.");
+      }
+      setReport(shaped);
+      setAdj(((shaped.reconciliation.adjustments_paise || 0) / 100).toFixed(2));
+      setAdjReason(shaped.reconciliation.adjustments_reason || "");
       setBrs(b.success ? b.data : null);
     } catch (e) {
       setReport(null);
