@@ -638,6 +638,30 @@ def create_vendors_bulk(
 # registration order, so below it `GET /ap-aging` was answered by
 # get_vendor("ap-aging") — a lookup for a vendor with that id — and the
 # payables ageing never ran (tests/test_no_route_is_shadowed_by_an_earlier_one.py).
+@router.get("/recent")
+def recent_vendors(
+    client_id: str = Query(..., description="CA client ID — required"),
+    limit: int = Query(8, ge=1, le=20),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """The vendors this client used most recently, newest first, for the top of the picker (POST-A-155).
+
+    Read off the client's own newest bills (`domain/party_recent`): ids only, each once, carried-over and deleted
+    documents left out. The picker reorders its list with them and pre-selects nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"ids": [], "documents_read": 0, "window": 0})
+    from core.supabase_client import get_supabase
+    from domain.party_recent import read_recent
+    try:
+        return api_response(True, read_recent(get_supabase(), "vendors",
+                                              current_user.get("firm_id"), client_id, limit))
+    except Exception as e:  # a failed read is said, never answered as "nobody used recently"
+        _logger.error("recent_vendors: %s", e)
+        return api_response(False, None, "The recently used suppliers could not be read.")
+
+
 @router.get("/ap-aging")
 def ap_aging(
     client_id: str = Query(..., description="CA client ID — required"),

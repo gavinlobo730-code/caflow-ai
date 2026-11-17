@@ -23,6 +23,7 @@ import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
 import { baseTotalOfHeads } from "@/lib/services/currencyPreview";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { joinSentences, stockEffectProblem } from "@/lib/documents/stockEffect";
 import { computeLineGst, discountPaise, gstRateBpsFromPercent,
@@ -166,6 +167,9 @@ export function InvoiceEditor({
   // full edit only to have it rejected on save. Cancelled invoices never reach
   // this component — the edit route redirects them away.
   const isLocked = isEdit && existing?.status !== "draft";
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, !isLocked);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
 
   const initialLines: EditorLine[] =
     existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
@@ -1135,7 +1139,7 @@ export function InvoiceEditor({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
-              <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
+              <CustomerLookup customers={customers} recent={recentCustomers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
               {/* Shown only where a limit is RECORDED. `state: "not_set"` is
                   the answer for every customer nobody has set one for, and a
