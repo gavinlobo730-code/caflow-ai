@@ -96,6 +96,11 @@ class FakeApi:
             return {"data": {"detected": 0, "items": []}}
         if path.endswith("/acknowledge"):
             return {"data": {"status": "filed", "compliance_obligation": {"state": "closed", "closed": True}}}
+        if path.startswith("/api/income-tax/worksheets/salary"):
+            # Plain data (this stage must run where the API cannot be imported): one employer's section 17(1) salary is the
+            # salary box. `test_the_worksheets_real_answer_puts_the_form_16_salary_in_the_box` holds it to the domain.
+            box = sum(e["salary_17_1_paise"] for e in body["payload"]["employers"])
+            return {"data": {"saved": True, "result": {"engine_inputs": {"gross_salary_paise": box}}}}
         return {"data": {"id": f"id-{n}"}}
 
     #: What `GET /api/income-tax/assessee-kind` answers for the entity types these tests use. Plain data, so the stage can
@@ -114,6 +119,9 @@ class FakeApi:
     def post(self, path, body):
         return self._do("POST", path, body)
 
+    def put(self, path, body):
+        return self._do("PUT", path, body)
+
     def paths(self, method="POST"):
         return [p for m, p, _ in self.calls if m == method]
 
@@ -126,7 +134,7 @@ class FakeApi:
 
 
 def _written():
-    return {k: 0 for k in ("bf_losses", "disallowances_detected", "deduction_claims", "capital_gains",
+    return {k: 0 for k in ("bf_losses", "salary_worksheets", "disallowances_detected", "deduction_claims", "capital_gains",
                            "advance_tax_instalments", "advance_tax_not_yet_due", "itr_filings", "itr_waiting",
                            "itr_filed", "itr_not_yet_filable", "obligations_closed")} | {
         "obligations_left_open": [], "returns_refused": [], "health_not_scored": []}
@@ -580,3 +588,49 @@ def test_a_deduction_is_recorded_as_claimed_on_the_clients_word_and_not_as_prove
     notes = [b["notes"] for b in api.sent_to("/api/itr/deductions")]
     assert len(notes) == 2 and all("no document is attached" in n and "Proof held" not in n for n in notes)
 
+
+
+# ── the salary worksheet (PRE-A-004, 17-11-2026) ─────────────────────────────
+
+def test_the_salaried_client_keeps_a_salary_worksheet_before_the_return_is_computed(monkeypatch):
+    api = FakeApi()
+    w = _run(api, PRIYA, monkeypatch=monkeypatch)
+    calls = [(m, p.split("?")[0]) for m, p, _ in api.calls]
+    at = calls.index(("PUT", "/api/income-tax/worksheets/salary"))
+    assert at < calls.index(("POST", "/api/income-tax/compute"))
+    (body,) = api.bodies("/api/income-tax/worksheets/salary", method="PUT")
+    assert body["financial_year"] == FY and body["use_new_regime"] is True
+    (employer,) = body["payload"]["employers"]
+    assert employer == {"key": "employer-1", "name": PRIYA.income_tax.employer_name, "tan": PRIYA.income_tax.employer_tan,
+                        "salary_17_1_paise": PRIYA.income_tax.salary_paise}
+    assert w["salary_worksheets"] == 1 and w["itr_filed"] == 1
+
+
+def test_a_worksheet_that_puts_another_figure_in_the_salary_box_is_a_finding_and_no_return_is_filed(monkeypatch):
+    api = FakeApi({("PUT", "/api/income-tax/worksheets/salary"): lambda body: {
+        "data": {"result": {"engine_inputs": {"gross_salary_paise": 1}}}}})
+    w = _run(api, PRIYA, monkeypatch=monkeypatch)
+    assert w["salary_worksheets"] == 0 and w["itr_filings"] == 0
+    assert any("salary worksheet" in r for r in w["returns_refused"]), w["returns_refused"]
+
+
+def test_a_client_with_no_salary_keeps_no_salary_worksheet(monkeypatch):
+    api = FakeApi()
+    meher = next(c for c in fixture.build(FY).clients if c.income_tax and c.income_tax.presumptive_44ad)
+    _run(api, meher, monkeypatch=monkeypatch)
+    assert not api.bodies("/api/income-tax/worksheets/salary", method="PUT")
+
+
+def test_the_worksheets_real_answer_puts_the_form_16_salary_in_the_box():
+    """The fake above answers the box with the salary it was sent; the domain is asked here, with the body the seeder sends."""
+    from services.income_tax_worksheet_service import work_out
+    api = FakeApi()
+    import core.ist_clock
+    w = _written()
+    from unittest import mock
+    with mock.patch.object(core.ist_clock, "ist_today", lambda: date(2026, 10, 19)):
+        seeder._income_tax(api, PRIYA, "cid", FY, w)
+    (body,) = api.bodies("/api/income-tax/worksheets/salary", method="PUT")
+    result = work_out("salary", body["payload"], fy=FY, use_new_regime=True)
+    assert result["engine_inputs"]["gross_salary_paise"] == PRIYA.income_tax.salary_paise
+    assert result["gaps"] == []

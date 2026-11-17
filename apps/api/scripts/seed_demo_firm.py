@@ -500,6 +500,12 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
         "client_id": client_id, "enabled": True,
         "note": "Demo practice fixture — payroll is run in-house for this client.",
     })
+    # THE EMPLOYER'S EPF AND ESIC CODES, which only a client with payroll switched on may record (the door says why). Each is
+    # marked as a seed's (`fixture.payroll_registrations`); without them the ECR and ESIC panels named both as missing.
+    registrations = fixture.payroll_registrations(c)
+    if registrations:
+        api.put("/api/payroll/statutory-identity", {"client_id": client_id, **registrations})
+        written["payroll_registrations"] += 1
 
     employee_ids = []
     for e in c.employees:
@@ -520,6 +526,11 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
             "bank_account_no": e.bank_account_no,
             "bank_ifsc": e.bank_ifsc,
             "bank_name": e.bank_name,
+            # WHETHER THE EMPLOYEE IS INSURED, and the IP number of one who is (`DemoEmployee.esi_applicable`). Left out, the door
+            # flags everybody as insured, and the ESIC return listed eleven people above the ceiling and named all twelve as
+            # having no number. None (a year the payroll registry does not hold) sends neither and the door's default stands.
+            **({"esi_applicable": e.esi_applicable, "esi_number": e.esi_number}
+               if e.esi_applicable is not None else {}),
         })))
         written["employees"] += 1
 
@@ -552,6 +563,81 @@ def _payroll(api: Api, c, client_id: str, bank_id: Optional[str],
                 "payment_reference": f"SAL/{m.month}",
             })
             written["payroll_disbursed"] += 1
+
+
+#: The ledgers a partnership's remuneration is posted to, created on the client's own chart: the expense, and a current account
+#: for each partner. Codes outside the standard chart's (`services/coa_seed_service`), which the create door requires.
+_REMUNERATION_LEDGER = ("Remuneration to Partners", "5801")
+
+
+def _partner_remuneration(api: Api, c, client_id: str, financial_year: str, written: dict) -> None:
+    """The remuneration a firm credits its partners each quarter, and the tax it withholds from it (PRE-A-004, 17-11-2026).
+
+    THE TAX IS THE ENGINE'S. Each credit is recorded first as a deduction on the TDS screen's own door under section 194T, which
+    asks the engine for the tax (the door takes no rate and no amount of tax); the journal then credits the partner's current
+    account with the remuneration less that tax, and TDS Payable with the tax, Dr Remuneration to Partners for the whole. The
+    TDS stage below deposits it with the other sections (the deposit worksheet reads the same register) and the quarter's 26Q
+    carries it as a typed deduction, which the statement reports beside the bills' tie-out and not inside it.
+
+    Written after the documents and before the GST returns, because a manual journal is refused in a period whose return is
+    filed (`journal_period_lock_reason`). A deduction answered with no tax figure, or a chart with no TDS Payable, is a finding
+    and nothing further is posted for that credit."""
+    credits = fixture.partner_remuneration_credits(c, financial_year)
+    if not credits:
+        return
+    with _a_finding_is_reported(written, c, "partner remuneration", financial_year):
+        chart = api.get(f"/api/accounting/accounts?client_id={client_id}").get("data") or []
+        tds_payable = next((a.get("id") for a in chart if a.get("account_name") == "TDS Payable" and a.get("id")), None)
+        if not tds_payable:
+            raise _NotFiled("the chart of accounts has no 'TDS Payable', so the tax withheld has nowhere to go")
+        name, code = _REMUNERATION_LEDGER
+        expense = _id(api.post(f"/api/accounting/accounts?client_id={client_id}", {
+            "name": name, "code": code, "account_type": "Expense",
+            "description": "Remuneration credited to the partners under the partnership deed"}))
+        current: dict[str, str] = {}
+        for n, p in enumerate(c.partners, start=1):
+            current[p.pan] = _id(api.post(f"/api/accounting/accounts?client_id={client_id}", {
+                "name": f"Current Account - {p.name}", "code": f"31{n:02d}", "account_type": "Equity",
+                "account_subtype": "Capital", "description": f"{p.name}'s current account with the firm"}))
+        for n, cr in enumerate(credits, start=1):
+            got = (api.post("/api/tds-workspace/deductions", {
+                "client_id": client_id, "deductee_name": cr.partner.name, "deductee_pan": cr.partner.pan,
+                "section": "194T", "payment_amount_paise": cr.amount_paise, "transaction_date": cr.on,
+                "nature_of_payment": "Remuneration to a partner of the firm",
+                "notes": "Credited to the partner's current account under the deed"}).get("data") or {})
+            tax = got.get("tds_paise")
+            if not isinstance(tax, int) or not 0 <= tax <= cr.amount_paise:
+                raise _NotFiled(f"the TDS door answered the remuneration of {cr.partner.name} on {cr.on} with no tax figure "
+                                f"({tax!r}), so it is not posted")
+            narration = f"Remuneration to {cr.partner.name} for the quarter ended {cr.on}"
+            lines = [{"account_id": expense, "debit_paise": cr.amount_paise, "credit_paise": 0, "narration": narration},
+                     {"account_id": current[cr.partner.pan], "debit_paise": 0, "credit_paise": cr.amount_paise - tax,
+                      "narration": narration}]
+            if tax:
+                lines.append({"account_id": tds_payable, "debit_paise": 0, "credit_paise": tax,
+                              "narration": f"TDS u/s 194T on {narration.lower()}"})
+            api.post("/api/accounting/journal", {
+                "client_id": client_id, "entry_date": cr.on, "reference_no": f"SEED-PARTNER-REM-{n:02d}",
+                "narration": narration, "entry_type": "Journal", "status": "posted", "lines": lines})
+            written["partner_remuneration_credits"] += 1
+
+
+def _self_invoices(api: Api, c, client_id: str, book, written: dict) -> None:
+    """The section 31(3)(f) self-invoice for each received reverse-charge bill from a supplier recorded as unregistered (PRE-A-004).
+
+    Issued through the reverse-charge documents screen's own door, which works out whether the document is due, its number in
+    the client's series and its date, and refuses one that is not due or already issued; the seeder states none of them. Written
+    straight after the documents and before any GST return is filed, because the door asks whether the period is still open: the
+    self-invoice is what the input credit on the bill rests on. A refusal is a finding, reported, and the next bill is tried."""
+    for n in sorted(book.received_bills):
+        d = c.purchases[n - 1]
+        vendor = c.vendors[d.party % len(c.vendors)]
+        if not (d.is_reverse_charge and vendor.gstin is None and vendor.registration_recorded == "unregistered"):
+            continue
+        with _a_finding_is_reported(written, c, "self-invoice", book.received_bills[n]["bill_no"]):
+            api.post("/api/rcm-documents", {"client_id": client_id, "kind": "self_invoice",
+                                            "purchase_bill_id": book.received_bills[n]["id"]})
+            written["self_invoices"] += 1
 
 
 def _engagements(api: Api, c, client_id: str, fy: str, fy_start: str,
@@ -1027,6 +1113,7 @@ def _prepare_return(api: Api, c, client_id: str, financial_year: str, it, writte
         # return, and a fixture that gives one client both is a finding.
         raise _NotFiled("a brought-forward loss is recorded but is not set off in a computation prepared here; give the "
                         "losses to a client without a return")
+    _salary_worksheet(api, client_id, financial_year, it, written)
     business, presumptive = _the_business_income(api, c, client_id, financial_year, it)
     gain = _a_sale_of_shares(api, client_id, it, written)
     for section, sub_head, amount in it.deductions:
@@ -1051,6 +1138,28 @@ def _prepare_return(api: Api, c, client_id: str, financial_year: str, it, writte
     snapshot_id = _save_snapshot(api, client_id, financial_year, ay, it, final, facts, paid)
     api.post(f"/api/itr/snapshots/{snapshot_id}/review", {})
     _walk_the_filing(api, c, client_id, financial_year, ay, it, snapshot_id, written)
+
+
+def _salary_worksheet(api: Api, client_id: str, financial_year: str, it, written: dict) -> None:
+    """The salary worksheet (Schedule S) behind the computation's salary box, the way the Salary worksheet screen keeps it: one
+    employer, the Form 16's section 17(1) salary, worked out on the regime the return is computed on.
+
+    The worksheet's answer is the SERVER's (`domain/income_tax/schedule_s`): the figure it says goes in the engine's salary box must
+    be the salary the computation below is given, or the return would rest on a figure its own working paper does not support, and
+    that is a finding rather than a return. Nothing the worksheet works out is typed here."""
+    if not it.salary_paise:
+        return
+    if not (it.employer_name and it.employer_tan):
+        raise _NotFiled("a salary is stated with no employer, so there is no Form 16 to keep a salary worksheet from")
+    out = api.put("/api/income-tax/worksheets/salary", {
+        "client_id": client_id, "financial_year": financial_year, "use_new_regime": True,
+        "payload": {"employers": [{"key": "employer-1", "name": it.employer_name, "tan": it.employer_tan,
+                                   "salary_17_1_paise": it.salary_paise}]}})
+    box = int((((out.get("data") or {}).get("result") or {}).get("engine_inputs") or {}).get("gross_salary_paise") or -1)
+    if box != it.salary_paise:
+        raise _NotFiled(f"the salary worksheet puts {box} paise in the salary box, and the computation is given "
+                        f"{it.salary_paise}")
+    written["salary_worksheets"] += 1
 
 
 def _the_business_income(api: Api, c, client_id: str, financial_year: str, it) -> tuple[int, Optional[int]]:
@@ -1681,7 +1790,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "fixed_assets": 0, "depreciation_months": 0,
                "employees": 0, "payroll_runs": 0, "payroll_finalized": 0,
                "payroll_disbursed": 0,
-               "bank_lines": 0, "bank_drafts": 0, "tans": 0,
+               "bank_lines": 0, "bank_drafts": 0, "tans": 0, "payroll_registrations": 0, "partner_remuneration_credits": 0, "self_invoices": 0,
                "engagements": 0, "obligations": 0,
                "tasks": 0, "tasks_moved": 0, "time_entries": 0, "cost_rates": 0, "fee_invoices": 0, "fee_invoices_issued": 0,
                "fee_receipts": 0, "fee_invoices_not_yet_due": 0, "fee_receipts_not_yet_due": 0, "leads": 0,
@@ -1689,7 +1798,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                "cwip_projects": 0, "cwip_tranches": 0, "cwip_tranches_skipped": 0,
                "gstr1_filed": 0, "gstr3b_filed": 0, "returns_not_yet_due": 0,
                "obligations_closed": 0, "obligations_left_open": [],
-               "bf_losses": 0, "disallowances_detected": 0, "deduction_claims": 0,
+               "bf_losses": 0, "salary_worksheets": 0, "disallowances_detected": 0, "deduction_claims": 0,
                "capital_gains": 0, "advance_tax_instalments": 0, "advance_tax_not_yet_due": 0,
                "itr_filings": 0, "itr_waiting": 0, "itr_filed": 0, "itr_not_yet_filable": 0,
                "tds_challans": 0, "tds_deposits_not_yet_due": 0, "tds_statements_not_yet_due": 0,
@@ -1849,7 +1958,7 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 # *unrecorded* and names it as a gap rather than guessing, so a
                 # demo where every vendor is classified cannot show that
                 # branch. An unregistered party (no GSTIN) is left unrecorded.
-                "gst_registration_status": "registered" if p.gstin else None,
+                "gst_registration_status": "registered" if p.gstin else p.registration_recorded,
             })))
             written["vendors"] += 1
             # ⚠️ `msme_status` IS NOT A FIELD OF `VendorIn`, and sending it
@@ -1887,9 +1996,11 @@ def seed(api: Api, firm: fixture.DemoFirm, *, add_to_existing: bool) -> dict:
                 book.purchase(step.n, step.doc)
         open_credits = book.open_credits
 
+        _self_invoices(api, c, client_id, book, written)
         _fixed_assets(api, c, client_id, bank_id, firm.financial_year, written)
         _cwip(api, c, client_id, book, written)
         _payroll(api, c, client_id, bank_id, written)
+        _partner_remuneration(api, c, client_id, firm.financial_year, written)
         engagement_ids = _engagements(api, c, client_id, firm.financial_year, fy_start, written)
         _engagement_letter(api, c, client_id, firm.financial_year, written)
         _practice(api, c, client_id, firm.financial_year, engagement_ids, written, fee_plan)

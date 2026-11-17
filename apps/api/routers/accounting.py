@@ -128,8 +128,14 @@ def create_account(
         assert_client_access(current_user, client_id)
     db = _prod_db()
     if db is None:
+        # The mock store keys an account by the TABLE's column names, as the insert below does; it was handed the model's own
+        # (`code`, `name`) and answered every create with a KeyError, a 500 (found seeding the demo firm, PRE-A-004).
         try:
-            return api_response(True, accounting_service.create_account(data.model_dump()))
+            return api_response(True, accounting_service.create_account({
+                "account_code": (data.code or "").strip(), "account_name": data.name,
+                "account_type": data.account_type.value if hasattr(data.account_type, "value") else str(data.account_type),
+                "account_subtype": (data.account_subtype or "").strip() or None, "parent_id": data.parent_id,
+                "client_id": client_id, "firm_id": current_user.get("firm_id")}))
         except ValidationError as e:
             raise HTTPException(status_code=422, detail=str(e))
     if not (data.code or "").strip():

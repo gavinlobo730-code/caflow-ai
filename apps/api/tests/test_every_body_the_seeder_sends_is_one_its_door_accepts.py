@@ -117,7 +117,8 @@ class _Recorder:
             # the seeder's correct answer and would leave their bodies
             # unchecked).
             # And the Capital Account the capital introductions credit (POST-A-269).
-            names = sorted({r.ledger for c in fixture.build().clients for r in c.bank_rules} | {"Capital Account"})
+            # And the TDS Payable a partner's remuneration credits with the tax withheld from it (PRE-A-004).
+            names = sorted({r.ledger for c in fixture.build().clients for r in c.bank_rules} | {"Capital Account", "TDS Payable"})
             return {"success": True, "error": None,
                     "data": [{"id": f"ledger-{i}", "account_name": n}
                              for i, n in enumerate(names)]}
@@ -191,6 +192,9 @@ class _Recorder:
             # receipt is a fraction of (the engagement's fee and 18% GST).
             return {"success": True, "error": None, "data": {"invoice": {
                 "id": f"fee-invoice-{self._n:05d}", "total_paise": 11_800_00, "status": "Draft"}}}
+        if path == "/api/tds-workspace/deductions":
+            # The engine's tax on a typed deduction. A plain figure, not a tax claim: the journal that follows is checked to carry it.
+            return {"success": True, "error": None, "data": {"id": f"deduction-{self._n:05d}", "tds_paise": 3_000_00}}
         if path.startswith("/api/tds-workspace/returns/") and path.endswith("/status") and body.get("status") == "filed":
             return {"success": True, "error": None, "data": {
                 "status": "filed", "compliance_obligation": {"state": "closed", "closed": True}}}
@@ -210,6 +214,12 @@ class _Recorder:
 def _income_tax_answer(path: str, body: dict):
     """What the income-tax engine answers, with every key the seeder's income-tax stage reads back, so the writes that
     follow are built and their bodies are checked. The figures are not a tax claim; None means this path is not one."""
+    if path.startswith("/api/income-tax/worksheets/"):
+        # The worksheet is worked out by the service the door calls, so the figure the seeder checks is the domain's own.
+        from services.income_tax_worksheet_service import work_out
+        kind = path.rsplit("/", 1)[-1]
+        return {"kind": kind, "saved": True, "payload": body["payload"],
+                "result": work_out(kind, body["payload"], fy=body["financial_year"], use_new_regime=body["use_new_regime"])}
     if path.startswith("/api/income-tax/book-to-tax-bridge"):
         return {"is_complete": True, "taxable_income_paise": 62_971_766, "missing": [], "reasons": []}
     if path.startswith("/api/income-tax/presumptive/44ad"):
@@ -304,13 +314,15 @@ _INCOME_TAX_DOORS = [
     "/api/itr/disallowances/auto-detect-40a3", "/api/itr/bf-losses", "/api/income-tax/book-to-tax-bridge",
     "/api/income-tax/presumptive/44ad", "/api/income-tax/capital-gains", "/api/itr/deductions",
     "/api/income-tax/compute", "/api/income-tax/advance-tax/compute", "/api/income-tax/advance-tax",
-    "/api/itr/snapshots", "/api/itr/filings",
+    "/api/itr/snapshots", "/api/itr/filings", "PUT /api/income-tax/worksheets/salary",
 ]
 
 
 @pytest.mark.parametrize("prefix", _INCOME_TAX_DOORS)
 def test_the_income_tax_stage_reaches_the_door(_run, prefix):
-    assert any(m == "POST" and p.startswith(prefix) for m, p in _run.calls), f"POST {prefix} was never called"
+    method, _, prefix = prefix.rpartition(" ")
+    method = method or "POST"
+    assert any(m == method and p.startswith(prefix) for m, p in _run.calls), f"{method} {prefix} was never called"
 
 
 #: The practice stage's doors that carry an id in the path (a task's moves, a fee invoice's issue and receipt), by method and prefix.
@@ -794,7 +806,8 @@ def test_a_vendor_is_withheld_from_only_when_it_has_a_section_and_its_client_ded
 
 def test_a_tan_is_recorded_for_every_client_that_deducts_and_for_no_other(_run):
     firm = fixture.build()
-    sent = _sent(_run, "PUT", "/api/payroll/statutory-identity")
+    # The payroll registrations go through the same door in a body of their own, which carries no TAN.
+    sent = [b for b in _sent(_run, "PUT", "/api/payroll/statutory-identity") if "tan" in b]
     assert sorted(b["tan"] for b in sent) == sorted(c.tan for c in firm.clients if c.tan)
     assert sent and all(set(b) == {"client_id", "tan"} for b in sent)
 
@@ -940,3 +953,21 @@ def test_a_payment_settles_a_fraction_of_what_is_owed_and_not_of_the_face_total(
         api = Api()
         seeder._pay(api, full, withheld, "c", "v", "bank")
         assert api.posted[0][1]["amount_paise"] <= withheld["data"]["net_payable_paise"]
+
+
+def test_the_salary_worksheet_is_kept_for_the_salaried_client_before_its_return_and_feeds_the_salary_box_it_is_computed_on(_run):
+    """PRE-A-004: the Salary worksheet screen was empty for the one salaried client, whose return was computed on a typed salary.
+    The worksheet is one employer's section 17(1) salary, kept before the computation, and the box the server's working puts
+    the salary in is the box the computation is given."""
+    firm = fixture.build()
+    salaried = [c for c in firm.clients if c.income_tax and c.income_tax.salary_paise]
+    assert salaried, "no seeded client has a salary"
+    puts = [(i, b) for i, (m, p, b) in enumerate(_run.requests) if (m, p) == ("PUT", "/api/income-tax/worksheets/salary")]
+    assert len(puts) == len(salaried)
+    for (i, body), c in zip(puts, salaried, strict=True):
+        (employer,) = body["payload"]["employers"]
+        assert employer["salary_17_1_paise"] == c.income_tax.salary_paise
+        assert (employer["name"], employer["tan"]) == (c.income_tax.employer_name, c.income_tax.employer_tan)
+        computes = [j for j, (m, p, b) in enumerate(_run.requests)
+                    if (m, p) == ("POST", "/api/income-tax/compute") and b.get("gross_salary_paise") == c.income_tax.salary_paise]
+        assert computes and min(computes) > i, "the return was computed before its salary worksheet was kept"
