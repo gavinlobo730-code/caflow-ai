@@ -163,6 +163,10 @@ NOT_FOR_THE_API = {
     # too: `repositories/compliance_effort_repository.py` reads and writes it through the privileged client naming the firm, and
     # `authenticated`, `anon` and PUBLIC hold no privilege.
     "compliance_effort_estimates",
+    # Migration 715 (POST-A-057): what a bulk GSTR-2B drop did to each file. `services/gst_2b_drop_record` reads and writes both
+    # through the privileged client naming the firm, and `authenticated`, `anon` and PUBLIC hold no privilege.
+    "gstr2b_bulk_drops",
+    "gstr2b_bulk_drop_files",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

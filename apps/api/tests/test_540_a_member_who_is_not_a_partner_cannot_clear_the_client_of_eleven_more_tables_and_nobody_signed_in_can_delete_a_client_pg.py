@@ -85,8 +85,9 @@ CHART = ("chart_of_accounts", "client_id")
 EXEMPT_FROM_THE_CATALOGUE_RULE = {"notifications": "a notification is read by its recipient; its client is a label and not an access path"}
 # the four 537 guarded, so the catalogue rule can be seen to cover the whole family
 GUARDED_BY_537 = {"engagements", "properties", "tally_migration_jobs"}      # (and customer_payment_events, whose column is payment_id)
-# migrations 505, 509 and 536 (a sandbox table nothing reads or writes); found by their grant and not by this list
-READ_ONLY_TO_THE_SIGNED_IN_ROLE = {"ai_recommendations", "workflow_instances", "demo_filings"}
+# migrations 505, 509 and 536 (a sandbox table nothing reads or writes), and 715 (a bulk GSTR-2B drop's file rows, whose client is
+# NULL for a file routed to no client; the signed-in role holds no privilege on it); found by their grant and not by this list
+READ_ONLY_TO_THE_SIGNED_IN_ROLE = {"ai_recommendations", "workflow_instances", "demo_filings", "gstr2b_bulk_drop_files"}
 
 
 def _q(value) -> str:

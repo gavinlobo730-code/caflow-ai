@@ -197,3 +197,11 @@ def _outermost(tree, call):
             if len(ast.unparse(node)) > len(ast.unparse(best)) and ast.unparse(node).count(".table(") == 1:
                 best = node
     return best
+
+
+def test_the_read_backs_projection_is_the_kept_fields():
+    """The projection is written out (so the column guard can read it), and it must stay the list the writer keeps."""
+    src = inspect.getsource(rec.read_back)
+    lit = src.split('.select("id, drop_id, seq, ', 1)[1].split(")", 1)[0]
+    cols = [c.strip() for c in "".join(p.strip().strip('"') for p in lit.splitlines()).split(",") if c.strip()]
+    assert cols == list(rec._KEPT)
