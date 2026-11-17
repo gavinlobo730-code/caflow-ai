@@ -94,6 +94,8 @@ class _Slips:
     ESI 3,250, the halves of its 24,000 and 4,000 totals.
     """
     def table(self, name):
+        # The payroll accounts are read from the chart through the one payroll resolver (POST-A-083); it is stood in for
+        # in the fixture below, so the only table this double is asked for is the slips.
         assert name == "payroll_slips", name
         return self
 
@@ -127,6 +129,7 @@ def posted(monkeypatch):
     rec = _Recorder()
     monkeypatch.setattr(svc, "_create_journal", rec)
     monkeypatch.setattr(svc, "_find_account", lambda *a, **k: "acc-x")
+    monkeypatch.setattr("services.payroll_ledger_accounts.resolve_id", lambda *a, **k: "acc-x")
     return svc, rec
 
 

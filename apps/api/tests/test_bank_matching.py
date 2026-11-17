@@ -342,6 +342,12 @@ class _Q:
     def or_(self, expr):
         return self._add(lambda r, e=expr: _or_match(r, e))
 
+    def ilike(self, k, pattern):
+        # PostgREST's case-insensitive LIKE, `%` only (the payroll resolver, POST-A-083, asks the chart this way).
+        import re as _re
+        rx = _re.compile("^" + ".*".join(_re.escape(part) for part in pattern.split("%")) + "$", _re.I)
+        return self._add(lambda r, k=k, rx=rx: bool(rx.match(str(r.get(k) or ""))))
+
     # Range + null predicates. Without these the candidate-fetch path raised
     # AttributeError, was swallowed by _candidates()'s best-effort except, and
     # every suggestion test silently exercised an empty candidate list.
