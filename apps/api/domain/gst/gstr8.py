@@ -82,8 +82,35 @@ TABLE 4 / 4.1 — AN AMENDMENT OF AN EARLIER MONTH'S ROW (POST-A-056)
     from a worksheet range its VBA text does not carry. It does not interpret
     "Add" or "Delete": the filer's choice is kept as chosen. And it checks no
     more of the utility's Table 4 rules than Table 3 checks of its own (the
-    supplier-is-not-the-collector and same-State checks, and the Enrolment ID
-    shape, are the utility's and are not applied to either table).
+    supplier-is-not-the-collector and same-State checks, the Enrolment ID shape
+    and the 13-digit amount limit are applied to every table since POST-A-458:
+    see THE ROW CHECKS ON WHO AND HOW MUCH below).
+
+THE ROW CHECKS ON WHO AND HOW MUCH (POST-A-458)
+    Each is the utility's own, read from ValidateMod.bas.txt and MainMod.bas.txt
+    in docs/compliance/sources/gst-offline-utilities/gstr8/, and each is a
+    FINDING beside the row, as the tax checks are, never a refusal:
+      * a supplier GSTIN equal to the collector's own ("Supplier GSTIN can't be
+        same as Tax collector GSTIN in Home sheet", `MainMod.DeductorCheck`),
+        on Table 3 and on both the original and revised GSTIN of Table 4;
+      * a supplier GSTIN whose first two characters differ from the
+        collector's ("Supplier State Code should be same as Tax collector State
+        Code", `MainMod.samestateCheck`, which compares `Left(..., 2)`), on the
+        same three fields;
+      * an Enrolment ID that does not match `MainMod.ES_ID_REGEX`
+        (`^[0-9]{12}[E][S][0-9a-zA-Z]{1}$`, "Please enter a valid Enrolment
+        no.") or whose first two characters differ from the collector's
+        ("Please enter same State enrolment no.", the same `samestateCheck`),
+        on Table 3.1 and on both Enrolment IDs of Table 4.1;
+      * an amount whose rupee figure has more than 13 digits before the
+        decimal point ("Amount should not be greater than 13 digits", `length1
+        = 13` on `Len(Split(value1, ".", 2)(0))`), on the columns the utility
+        loops over: Table 3's four values and its net (columns 5 to 9), Table
+        4's four values (10 to 13), Table 3.1's two (4 and 5) and Table 4.1's
+        two (8 and 9). The tax heads are not in those loops and are not checked.
+    The identity checks need the collector's own GSTIN, which the caller passes;
+    without one (`collector_gstin=None`) they are not asked and the statement
+    says nothing about them, because a check that cannot be asked is not a pass.
 
 WHAT IS DELIBERATELY NOT MODELLED
     A JSON file for the portal: this module checks what a CA recorded and the
@@ -99,6 +126,7 @@ WHAT IS DELIBERATELY NOT MODELLED
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional, Sequence
@@ -203,6 +231,50 @@ class UnregisteredSupplyRow:
     @property
     def net_liable_paise(self) -> int:
         return self.gross_value_paise - self.returns_paise
+
+
+#: MainMod.bas.txt: `Public Const ES_ID_REGEX = "^[0-9]{12}[E][S][0-9a-zA-Z]{1}$"`, the Enrolment ID the utility accepts (POST-A-458).
+ES_ID_REGEX = re.compile(r"^[0-9]{12}[E][S][0-9a-zA-Z]{1}$")
+
+#: ValidateMod.bas.txt: `length1 = 13` against `Len(Split(value1, ".", 2)(0))`, the digits of the rupee figure before the decimal point.
+AMOUNT_MAX_INTEGER_DIGITS = 13
+
+
+def _too_many_digits(paise: int) -> bool:
+    """Whether the rupee figure has more than 13 digits before the decimal point (a minus sign is not a digit here: the utility counts the
+    text before the point, and the one column that may be negative, the net, is never near the limit with one)."""
+    return len(str(abs(int(paise)) // 100)) > AMOUNT_MAX_INTEGER_DIGITS
+
+
+def _amount_problems(named: Sequence[tuple[str, int]]) -> list[str]:
+    return [f"{label} ({rupee_text(v)}) has more than {AMOUNT_MAX_INTEGER_DIGITS} digits before the decimal point, which the offline "
+            f"utility refuses." for label, v in named if _too_many_digits(v)]
+
+
+def _gstin_problems(gstin: str, collector_gstin: Optional[str], which: str) -> list[str]:
+    """MainMod.DeductorCheck and MainMod.samestateCheck on one supplier GSTIN field. Nothing when the collector's GSTIN is not known."""
+    if not collector_gstin:
+        return []
+    out: list[str] = []
+    g, c = (gstin or "").strip().upper(), collector_gstin.strip().upper()
+    if g and g == c:
+        out.append(f"The {which} GSTIN is this operator's own GSTIN; the offline utility refuses a supplier that is the tax collector.")
+    if g and g[:2] != c[:2]:
+        out.append(f"The {which} GSTIN is of State {g[:2]} and this operator's registration is of State {c[:2]}; the offline utility "
+                   "refuses a supplier of another State.")
+    return out
+
+
+def _enrolment_problems(eid: str, collector_gstin: Optional[str], which: str) -> list[str]:
+    """ES_ID_REGEX and MainMod.samestateCheck on one Enrolment ID field. The shape is asked whatever is known of the collector."""
+    e = (eid or "").strip()
+    if not ES_ID_REGEX.match(e):
+        return [f"The {which} Enrolment ID ({e or 'blank'}) is not in the form the offline utility accepts: twelve digits, then ES, "
+                "then one letter or digit."]
+    if collector_gstin and e[:2] != collector_gstin.strip()[:2]:
+        return [f"The {which} Enrolment ID is of State {e[:2]} and this operator's registration is of State "
+                f"{collector_gstin.strip()[:2]}; the offline utility refuses an Enrolment ID of another State."]
+    return []
 
 
 #: The utility's own two answers for an amendment row ("Add" / "Delete" in the sheet, `A` / `D` in the file). Kept as the filer chose; what
@@ -383,8 +455,14 @@ AMENDMENT_NOT_NETTED_NOTE = (
     "here, so the change they make to the tax payable is not in the totals above.")
 
 
-def _amendment_problems(row: AmendmentRow, statement_period: str) -> list[str]:
+def _amendment_problems(row: AmendmentRow, statement_period: str, collector_gstin: Optional[str] = None) -> list[str]:
     problems: list[str] = []
+    problems.extend(_gstin_problems(row.original_supplier_gstin, collector_gstin, "original supplier's"))
+    problems.extend(_gstin_problems(row.supplier_gstin, collector_gstin, "revised supplier's"))
+    problems.extend(_amount_problems((("The value of supplies to registered persons", row.gross_registered_paise),
+                                      ("The value returned by registered persons", row.returns_registered_paise),
+                                      ("The value of supplies to unregistered persons", row.gross_unregistered_paise),
+                                      ("The value returned by unregistered persons", row.returns_unregistered_paise))))
     ordering = original_period_problem(row.original_period, statement_period)
     if ordering:
         problems.append(ordering)
@@ -406,8 +484,12 @@ def _amendment_problems(row: AmendmentRow, statement_period: str) -> list[str]:
     return problems
 
 
-def _unregistered_amendment_problems(row: UnregisteredAmendmentRow, statement_period: str) -> list[str]:
+def _unregistered_amendment_problems(row: UnregisteredAmendmentRow, statement_period: str,
+                                     collector_gstin: Optional[str] = None) -> list[str]:
     problems: list[str] = []
+    problems.extend(_enrolment_problems(row.original_enrolment_id, collector_gstin, "original"))
+    problems.extend(_enrolment_problems(row.enrolment_id, collector_gstin, "revised"))
+    problems.extend(_amount_problems((("The gross value", row.gross_value_paise), ("The value returned", row.returns_paise))))
     ordering = original_period_problem(row.original_period, statement_period)
     if ordering:
         problems.append(ordering)
@@ -420,7 +502,8 @@ def compute_gstr8(*, period: str,
                   supply_rows: list[SupplyRow],
                   unregistered_rows: list[UnregisteredSupplyRow],
                   amendment_rows: Sequence[AmendmentRow] = (),
-                  unregistered_amendment_rows: Sequence[UnregisteredAmendmentRow] = ()) -> Gstr8Statement:
+                  unregistered_amendment_rows: Sequence[UnregisteredAmendmentRow] = (),
+                  collector_gstin: Optional[str] = None) -> Gstr8Statement:
     """The statement for one operator registration, one month.
 
     Reads what a CA has already recorded (`ecommerce_operator_supplies` /
@@ -439,19 +522,31 @@ def compute_gstr8(*, period: str,
         total_cgst += row.cgst_paise
         total_sgst += row.sgst_paise
         problems = _row_problems(row, period, pos_required)
+        # POST-A-458: the utility's checks on who the supplier is and on how long an amount may be (see the module docstring).
+        problems += _gstin_problems(row.supplier_gstin, collector_gstin, "supplier's")
+        problems += _amount_problems((("The value of supplies to registered persons", row.gross_registered_paise),
+                                      ("The value returned by registered persons", row.returns_registered_paise),
+                                      ("The value of supplies to unregistered persons", row.gross_unregistered_paise),
+                                      ("The value returned by unregistered persons", row.returns_unregistered_paise),
+                                      ("The net amount liable", row.net_liable_paise)))
         if problems:
             findings.append(RowFinding(supplier_gstin=row.supplier_gstin,
                                        problems=problems))
 
     total_unregistered_net = sum(r.net_liable_paise for r in unregistered_rows)
+    for urow in unregistered_rows:
+        problems = (_enrolment_problems(urow.enrolment_id, collector_gstin, "seller's")
+                    + _amount_problems((("The gross value", urow.gross_value_paise), ("The value returned", urow.returns_paise))))
+        if problems:
+            findings.append(RowFinding(supplier_gstin=urow.enrolment_id, problems=problems))
 
     amendment_findings: list[RowFinding] = []
     for amend in amendment_rows:
-        problems = _amendment_problems(amend, period)
+        problems = _amendment_problems(amend, period, collector_gstin)
         if problems:
             amendment_findings.append(RowFinding(supplier_gstin=amend.original_supplier_gstin, problems=problems))
     for amend_u in unregistered_amendment_rows:
-        problems = _unregistered_amendment_problems(amend_u, period)
+        problems = _unregistered_amendment_problems(amend_u, period, collector_gstin)
         if problems:
             amendment_findings.append(RowFinding(supplier_gstin=amend_u.original_enrolment_id, problems=problems))
 

@@ -1585,6 +1585,8 @@ def gstr8_statement(db, firm_id: str, client_id: str, period: str,
         ) for r in unregistered_rows],
         amendment_rows=[gstr8.AmendmentRow.from_record(r) for r in amendment_rows],
         unregistered_amendment_rows=[gstr8.UnregisteredAmendmentRow.from_record(r) for r in unregistered_amendment_rows],
+        # The registration's own GSTIN: the utility's "Home sheet" collector GSTIN its supplier checks compare against (POST-A-458).
+        collector_gstin=registration.gstin,
     )
 
     return {
