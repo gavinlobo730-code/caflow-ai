@@ -39,6 +39,7 @@ WHAT THIS DOES
 """
 from __future__ import annotations
 
+from domain.practice.compliance_overdue import is_settled
 from typing import Any, Optional
 
 from domain.gst import return_period
@@ -105,7 +106,7 @@ def close_for_filed_return(
                and str(r.get("period_end") or "")[:10] == window.end]
     if not matches:
         return _answer(NOT_ON_THE_CALENDAR, f"No {what} is on the compliance calendar, so none was closed.")
-    open_ones = [r for r in matches if r.get("status") not in ("Filed", "Completed")]
+    open_ones = [r for r in matches if not is_settled(r.get("status"))]
     if not open_ones:
         return _answer(ALREADY_FILED, f"The {what} was already recorded as filed, so it was left as it is.",
                        matches[0].get("id"))

@@ -35,9 +35,11 @@ THE RULE (`decide_instalment`, a pure function, holds it)
     sentence, which is the safe direction: nothing is closed that the full requirement did not meet.
 
     A presumptive assessee (§44AD or §44ADA) pays the whole amount by 15 March under the proviso to §211(1), and the register
-    then holds that one instalment. The calendar still carries all four obligations, and nothing here can mark the other
-    three not required (there is no such state), so when the register is presumptive the answer says that the earlier three
-    were left as they are and are the CA's to mark from Compliance.
+    then holds that one instalment. The calendar still carries all four obligations. Since POST-A-267 item 4 an obligation can
+    be recorded as NOT REQUIRED (with the CA's written reason, `compliance_record_service.mark_not_required`), and that is a
+    statement this module does not make by itself: a register holding only the March row is evidence, not the CA's decision. So
+    the answer names the earlier instalments still open and says where to record them not required; one already recorded so is
+    settled and is not named again.
 
     The obligation is closed THROUGH `mark_filed` (see `services/obligation_closure`). `mark_filed` does not ask that an
     advance-tax instalment wait for a period's end (it is lawfully paid before the due date), writes nothing to `filings`
@@ -70,6 +72,7 @@ from domain.income_tax.advance_tax_interest_engine import (
 from domain.money_sentence import rupee_text
 from repositories.compliance_records_repository import compliance_records_repo
 from services.obligation_closure import FROM_COMPLIANCE, NOT_ALLOWED, NOT_CLOSED, answer, mark_filed_and_answer
+from domain.practice.compliance_overdue import is_settled
 
 #: What the obligations are filed under on the calendar (`compliance_obligation_service._spec("ADVANCE_TAX", "Income Tax", ...)`).
 COMPLIANCE_TYPE = "Income Tax"
@@ -192,7 +195,7 @@ def close_for_saved_register(
     closable: list[tuple[Any, Decision, dict]] = []
     for inst in result.installments:
         record = obligations.get(inst.due_date.isoformat())
-        if record is None or record.get("status") in ("Filed", "Completed"):
+        if record is None or is_settled(record.get("status")):
             continue
         what = _what(inst.cumulative_required_percent, inst.due_date, financial_year)
         decision = decide_instalment(
@@ -227,14 +230,15 @@ def close_for_saved_register(
         # The three dates a general assessee would have paid on, which this one need not (§211(1) proviso).
         not_required = [obligations[d.isoformat()] for n, d in installment_schedule(financial_year)
                         if n != _PRESUMPTIVE_INSTALMENT and d.isoformat() in obligations
-                        and obligations[d.isoformat()].get("status") not in ("Filed", "Completed")]
+                        and not is_settled(obligations[d.isoformat()].get("status"))]
         if not_required:
             out.append(_with_action(answer(
                 NOT_CLOSED,
                 f"This client's register holds only the 15 March instalment (a §44AD or §44ADA assessee pays the whole "
                 f"amount by then, §211(1) proviso), so the {len(not_required)} earlier advance-tax obligation(s) of "
-                f"FY {financial_year} on the compliance calendar are not required of them. They were left as they are. "
-                f"{FROM_COMPLIANCE}")))
+                f"FY {financial_year} on the compliance calendar are not required of them. They were left as they are: "
+                f"someone with Compliance approval can record each one as not required, with the reason, from Deadlines or the "
+                f"client's Compliance tab.")))
     return out
 
 

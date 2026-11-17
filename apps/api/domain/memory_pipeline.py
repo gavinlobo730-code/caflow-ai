@@ -7,7 +7,7 @@ import logging
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 from core.ist_clock import IST, ist_now, ist_today, ist_date_of
-from domain.practice.compliance_overdue import overdue_records
+from domain.practice.compliance_overdue import is_settled, overdue_records
 from core.observability import capture_soft_failure
 
 logger = logging.getLogger("caflow.memory")
@@ -346,7 +346,7 @@ class MemoryPipeline:
         compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
         client_compliance = [c for c in compliance_items
                             if c.get("client_id") == client_id
-                            and c.get("status") not in ("Filed", "Completed")]
+                            and not is_settled(c.get("status"))]
 
         for issue in recurring:
             issue_type = issue.get("type", "")
@@ -400,7 +400,7 @@ class MemoryPipeline:
         compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
         upcoming = [c for c in compliance_items
                    if c.get("client_id") == client_id
-                   and c.get("status") not in ("Filed", "Completed")
+                   and not is_settled(c.get("status"))
                    and c.get("due_date")]
 
         for item in upcoming:

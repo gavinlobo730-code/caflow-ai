@@ -25,6 +25,7 @@ from typing import Any, Optional
 from core.exceptions import NotFoundError, ValidationError
 from core.observability import capture_soft_failure
 from repositories.compliance_records_repository import compliance_records_repo
+from domain.practice.compliance_overdue import is_filed
 
 #: The answer's `state`, one word a screen can branch on. Only CLOSED means this call moved the obligation.
 CLOSED = "closed"
@@ -67,7 +68,7 @@ def mark_filed_and_answer(
             record["id"], firm_id=firm_id, actor=actor, acknowledgement_no=arn or None, filed_date=filed_date)
     except ValidationError as refusal:
         # A refusal can arrive because the obligation was filed a moment ago by someone else; say what is true now.
-        if status_now(firm_id, client_id, compliance_type, record["id"]) in ("Filed", "Completed"):
+        if is_filed(status_now(firm_id, client_id, compliance_type, record["id"])):
             return answer(ALREADY_FILED, f"The {what} was recorded as filed just now by someone else, so it was left "
                                          "as it is.", record.get("id"))
         return answer(NOT_CLOSED, f"The {what} was left open: {str(refusal).partition(': ')[2] or refusal}",
@@ -80,7 +81,7 @@ def mark_filed_and_answer(
         # successful step put it, and the answer says where, not "nothing changed".
         capture_soft_failure(exc, operation=operation, firm_id=firm_id, client_id=client_id)
         now = status_now(firm_id, client_id, compliance_type, record["id"])
-        if now in ("Filed", "Completed"):
+        if is_filed(now):
             return answer(CLOSED, f"The {what} is now marked filed on the compliance calendar.", record.get("id"))
         return answer(NOT_CLOSED, f"The {what} could not be completed"
                                   f"{f' (it now reads {now})' if now else ''}. {FROM_COMPLIANCE}", record.get("id"))

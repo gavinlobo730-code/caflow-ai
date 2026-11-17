@@ -150,6 +150,7 @@ export const SCREENS: Screen[] = [
   // ── Income tax and TDS ────────────────────────────────────────────────────
   firm("/income-tax", "Income tax", "Income tax", ["it", "itr"]),
   firm("/income-tax/advance-tax", "Advance tax", "Income tax", ["234b", "234c", "instalments"]),
+  firm("/income-tax/season", "Filing season", "Income tax", ["itr season", "returns by stage", "bulk compute"]),
   firm("/income-tax/ais", "AIS", "Income tax", ["annual information statement", "tis"]),
   firm("/income-tax/book-to-tax", "Book to tax", "Income tax", ["reconciliation", "bridge"]),
   firm("/income-tax/capital-gains", "Capital gains", "Income tax", ["54", "54f", "112a", "111a", "ltcg", "stcg"]),
