@@ -322,14 +322,15 @@ def test_the_portal_invitation_reports_without_the_invitees_address(monkeypatch,
 
 
 def test_the_employee_portal_invitation_report_carries_no_address(monkeypatch, spy):
+    """The failure is forced on `activation_url`, a name the module itself resolves at call time. `_send` is imported
+    inside the function, so patching it on this module reached nothing, no handler ran, and the old `all(...)` over an
+    empty list passed even with the address in the report."""
     import services.employee_portal_service as mod
     seen = spy(mod)
-    monkeypatch.setattr(mod, "_send", _boom, raising=False)
-    try:
-        mod._send_invite_email("emp@example.in", "Asha", "tok")
-    except Exception:
-        pass
-    assert all("emp@example.in" not in repr(ctx) for _, ctx in seen)
+    monkeypatch.setattr(mod, "activation_url", _boom)
+    mod._send_invite_email("emp@example.in", "Asha", "tok")
+    assert seen == [("employee_portal.invite_email", {})]
+    assert "emp@example.in" not in repr(seen)
 
 
 def test_an_engagement_transition_audit_that_fails_is_reported_with_the_engagement():
