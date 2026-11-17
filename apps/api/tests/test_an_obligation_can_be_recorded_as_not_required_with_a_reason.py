@@ -124,6 +124,20 @@ def test_the_calendar_puts_it_with_the_settled_ones(world):
     assert [r["status"] for r in got["completed"]] == ["Not Required"] and got["overdue"] == []
 
 
+def test_the_spreadsheet_never_calls_a_not_required_instalment_filed(world):
+    """The calendar's settled bucket holds filings and instalments recorded as not owed. The spreadsheet's "On the calendar" column
+    used to call the whole bucket "Filed", so a file passed to a partner said a payment nobody made had been made."""
+    import csv
+    import io
+    from domain.practice import obligation_csv
+    _obl(status="Not Required", due="2025-06-15")
+    _obl(status="Filed", due="2025-09-15")
+    got = obligations.calendar("F1", today=date(2026, 11, 16))
+    body = obligation_csv.from_rows([("completed", r) for r in got["completed"]], {})
+    rows = list(csv.reader(io.StringIO(body.decode("utf-8-sig"))))[1:]
+    assert {(r[0], r[4], r[5]) for r in rows} == {("2025-06-15", "Not Required", "Not required"), ("2025-09-15", "Filed", "Filed")}
+
+
 # ── the door ─────────────────────────────────────────────────────────────────
 
 def test_an_open_instalment_is_recorded_not_required_with_the_reason_kept(world):

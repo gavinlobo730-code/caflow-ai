@@ -23,9 +23,11 @@ module counts rather than averages over.
 """
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 from typing import Optional
 
+from core import db_errors
 from core.authz import filter_by_client
 from core.db_paging import fetch_all
 from core.ist_clock import ist_today
@@ -47,6 +49,28 @@ _TASK_DONE = frozenset({"completed", "cancelled"})
 #: unpinned copy of that pair, and a status added to one and not the other would have counted an obligation as owed in the capacity forecast
 #: that the register called settled.
 _COMPLIANCE_SETTLED = SETTLED_FILING_STATUSES
+
+_logger = logging.getLogger("caflow.capacity_risk")
+
+
+def _stated_hours(firm_id: str) -> dict[str, float]:
+    """What the firm says one filing of each kind takes (POST-A-212), as hours by kind.
+
+    THE CODE DEPLOYS BEFORE ITS MIGRATION. Render serves a push to `main` while the job that applies migration 671 is still waiting on
+    the tests, so for a while this database has no `compliance_effort_estimates`. In that window the forecast answers as it did before
+    the table existed (no kind has a figure, so every obligation not worked as a task is an item without an estimate) and says so at
+    ERROR, rather than failing the whole forecast over the newer half of it. Only "the table is not there" is read that way
+    (`core.db_errors.is_missing_store`): any other failure (the database unreachable, a refusal) is raised, because an unread figure
+    is not a figure of nothing."""
+    try:
+        rows = compliance_effort_repo.find_all(firm_id=firm_id)
+    except Exception as exc:                                    # noqa: BLE001
+        if not db_errors.is_missing_store(exc):
+            raise
+        _logger.error("the filing-effort estimates are NOT read: this database has no compliance_effort_estimates (migration 671 has "
+                      "not been applied), so every obligation not worked as a task counts as an item without an estimate. %s", exc)
+        return {}
+    return obligation_estimate.hours_by_type(rows)
 
 
 def _effort_by_step(db, step_ids: list[str]) -> dict[str, float]:
@@ -140,7 +164,7 @@ def capacity_risk(db, current_user: dict, *,
     # read the difference as the forecast being short.
     # What the firm itself says one filing of each kind takes (POST-A-212, migration 671). An obligation worked as a task is counted by
     # that task's own estimate above and never here; a kind the firm has not stated stays None, which the rule counts and never averages.
-    stated = obligation_estimate.hours_by_type(compliance_effort_repo.find_all(firm_id=firm_id))
+    stated = _stated_hours(firm_id)
     folded = 0
     for o in obligations:
         linked = o.get("task_id")

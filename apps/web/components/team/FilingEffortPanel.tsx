@@ -4,7 +4,9 @@
  * FilingEffortPanel: how long one filing of each obligation type takes in THIS practice (POST-A-212, migration 671).
  *
  * The capacity forecast above counts an obligation that is worked as a task by that task's own estimate. An obligation that is not
- * worked as a task has none, so it was dated and weightless. The practice states a figure per kind of filing here; nothing is
+ * worked as a task has none, so it was dated and weightless. The forecast reads the filing calendar (`compliance_calendar`), not the
+ * obligation store Deadlines lists (`compliance_records`), and both sentences on this panel say so, so a firm whose obligations are
+ * all in the store is not told its calendar is empty of work. The practice states a figure per kind of filing here; nothing is
  * defaulted or suggested, a kind with no figure stays an unknown and the forecast says how many items carry none, and clearing a
  * figure makes the kind unknown again, never zero. The figure is whole minutes for ONE filing and changes the forecast only: no due
  * date, filing or client figure moves. The box is offered to someone who holds `workload` write, the route's own pair.
@@ -86,14 +88,18 @@ export function FilingEffortPanel({ onChanged }: { onChanged?: () => void }) {
         <div>
           <h2 className="text-sm font-semibold text-ps-ink">How long one filing takes</h2>
           <p className="text-xs text-ps-label mt-0.5">
-            Your own figure, in whole minutes for one filing of each kind. It feeds the forecast above for filings that are not worked as
-            tasks. A kind with no figure counts as an item with no estimate; nothing is assumed for it.
+            Your own figure, in whole minutes for one filing of each kind. It feeds the forecast above for the obligations in the
+            filing calendar that are not worked as tasks. A kind with no figure counts as an item with no estimate; nothing is assumed for it.
+            The obligations listed on Deadlines are kept in a second list the forecast does not read yet, so a figure here does not reach
+            them.
           </p>
         </div>
         {loadError && <p role="alert" className="text-xs text-state-problem">{loadError}</p>}
         {estimates === null && !loadError && <p className="text-xs text-ps-hint">Reading the figures…</p>}
         {estimates !== null && rows.length === 0 && (
-          <p className="text-xs text-ps-label">The calendar holds no obligations yet, so there is no kind of filing to give a figure for.</p>
+          <p className="text-xs text-ps-label">
+            The filing calendar the forecast reads holds no obligations yet, so there is no kind of filing to give a figure for here.
+          </p>
         )}
         {rows.length > 0 && (
           <ul className="divide-y divide-ps-border">

@@ -1,7 +1,7 @@
 """What a firm says one filing of each obligation type takes (POST-A-212, migration 671).
 
-Reads go through the request's client; every write goes through the privileged one, naming the firm, because a signed-in session holds
-no write on the table. Mock mode keeps rows in memory for tests and local development."""
+Every read and every write goes through the privileged client, naming the firm, because a signed-in session holds no privilege on the
+table at all (migration 671 grants it nothing). Mock mode keeps rows in memory for tests and local development."""
 from __future__ import annotations
 
 import os
@@ -39,8 +39,11 @@ class ComplianceEffortRepository(BaseRepository[dict]):
                    "created_at": self.now_iso(), **payload}
             _MOCK_ROWS.append(row)
             return dict(row)
+        # Written inline with literal keys, not a spread of `payload`, so every column it writes is checked against the real schema
+        # (tests/test_backend_columns_exist_pg.py cannot read a `**spread`).
         result = (db_provider.service_db().table("compliance_effort_estimates")
-                  .upsert({"firm_id": firm_id, "compliance_type": compliance_type, **payload}, on_conflict="firm_id,compliance_type")
+                  .upsert({"firm_id": firm_id, "compliance_type": compliance_type, "estimated_minutes": minutes,
+                           "updated_by": updated_by, "updated_at": payload["updated_at"]}, on_conflict="firm_id,compliance_type")
                   .execute())
         return (result.data or [{}])[0]
 

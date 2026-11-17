@@ -80,6 +80,11 @@ NOT_FORECAST: tuple[str, ...] = (
     "Anything about a task with no due date. It is counted in the backlog "
     "figure and falls in no week, because putting it in this week would make "
     "the first bar wrong every time somebody forgets a date.",
+    "The obligations listed on Deadlines and on each client's Compliance tab. "
+    "The forecast counts the filing calendar the firm-level GST and income-tax "
+    "trackers show; the obligations generated from an engagement are kept in a "
+    "second list it does not read yet, so they fall in no week here and no "
+    "filing time stated for their kind reaches them.",
 )
 
 

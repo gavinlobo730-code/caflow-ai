@@ -98,6 +98,65 @@ def test_an_obligation_worked_as_a_task_is_counted_once_by_the_task():
     assert w["items_due"] == 1 and w["estimated_hours"] == 0.5
 
 
+def _refused(code):
+    from postgrest.exceptions import APIError
+    return APIError({"code": code, "message": "refused", "details": None, "hint": None})
+
+
+def test_the_forecast_answers_as_before_while_the_table_is_not_there_yet(monkeypatch, caplog):
+    """Render serves the code before the job that applies migration 671 has run. In that window the forecast must not fail as a whole
+    over its newer half: no kind has a figure, so the obligation is an item without an estimate, as it was before the table existed,
+    and the gap is said at ERROR."""
+    import logging
+
+    def missing(**_kw):
+        raise _refused("PGRST205")
+
+    db = _db()
+    _obligation(db)
+    monkeypatch.setattr(compliance_effort_repo, "find_all", missing)
+    with caplog.at_level(logging.ERROR, logger="caflow.capacity_risk"):
+        w = _week0(svc.capacity_risk(db, PARTNER, today=MONDAY))
+    assert w["compliance_due"] == 1 and w["items_without_an_estimate"] == 1
+    assert any("migration 671" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize("code", ["57014", "42501", None])
+def test_any_other_failure_to_read_the_figures_is_not_read_as_no_figures(monkeypatch, code):
+    """A timeout or a refusal is not "the table is not there": an unread figure is not a figure of nothing."""
+    def failing(**_kw):
+        raise _refused(code) if code else RuntimeError("connection reset")
+
+    db = _db()
+    _obligation(db)
+    monkeypatch.setattr(compliance_effort_repo, "find_all", failing)
+    from postgrest.exceptions import APIError
+    with pytest.raises((APIError, RuntimeError)):
+        svc.capacity_risk(db, PARTNER, today=MONDAY)
+
+
+def _tables_the_forecast_reads() -> set[str]:
+    import ast
+    import inspect
+    tree = ast.parse(inspect.getsource(svc))
+    return {n.args[0].value for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "table"
+            and n.args and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str)}
+
+
+def test_the_forecast_says_it_does_not_read_the_list_deadlines_shows_for_as_long_as_it_does_not():
+    """The figures reach the obligations the forecast reads, which are the filing calendar's (`compliance_calendar`). The obligations
+    the generator writes and Deadlines lists (`compliance_records`) were never read, so on a firm whose obligations are all generated
+    no figure reaches anything, and the panel used to tell such a firm it held no obligations. The forecast now says so in its own
+    list of what it cannot see, and this holds the sentence to the code: the day the service reads the store, the sentence must go."""
+    from domain.practice import capacity_risk as forecast_rule
+    tables = _tables_the_forecast_reads()
+    assert "compliance_calendar" in tables, tables                    # the scan is reading the service, not nothing
+    reads_the_store = "compliance_records" in tables
+    says_it_does_not = any("Deadlines" in s and "does not read" in s for s in forecast_rule.NOT_FORECAST)
+    assert says_it_does_not is not reads_the_store
+
+
 @pytest.mark.parametrize("bad", [0, -5, True, 1.5, "12.5", None, rule.MAX_MINUTES + 1])
 def test_minutes_are_whole_and_above_zero(bad):
     with pytest.raises(ValueError):
