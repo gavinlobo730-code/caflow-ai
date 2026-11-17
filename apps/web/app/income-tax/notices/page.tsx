@@ -424,11 +424,13 @@ export default function ITNoticesPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
-        <select aria-label="Filter notices by client" value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
-          <option value="all">All Clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-        </select>
+        <ClientLookup ariaLabel="Filter notices by client"
+          clients={clients}
+          value={clientFilter === "all" ? "" : clientFilter}
+          onChange={id => setClientFilter(id || "all")}
+          placeholder="All Clients"
+          clearable
+        />
         <select aria-label="Filter notices by status" value={statusFilter} onChange={e => setStatusFilter(e.target.value as NoticeStatus | "all")}
           className="border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand">
           <option value="all">All Statuses</option>

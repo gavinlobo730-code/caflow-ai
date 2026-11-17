@@ -12,6 +12,7 @@ from repositories.client_repository import client_repo
 from services.task_service import is_valid_transition, group_tasks_by_status
 from services.activity_service import log_activity
 from services.audit_service import log_event
+from core.observability import capture_soft_failure
 from domain.practice import task_estimate
 import logging
 from datetime import date, datetime, timezone
@@ -192,8 +193,8 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
                 actor_email=current_user.get("email"),
                 new_data={"assigned_to": body.assigned_to},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.create_audit", firm_id=current_user.get("firm_id"), task_id=task["id"])
     try:
         from repositories.task_extras_repository import task_extras_repo
         task_extras_repo.log_event(
@@ -213,8 +214,8 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
                 actor_name=current_user.get("full_name") or current_user.get("email"),
                 new_value={"assigned_to": body.assigned_to},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.create_timeline", firm_id=current_user.get("firm_id"), task_id=task["id"])
 
     # Send notification if task is assigned
     if body.assigned_to:
@@ -224,8 +225,8 @@ def create_task(body: TaskCreate, current_user: dict = Depends(rbac("task", "wri
             assignee = user_repo.find_by_id(body.assigned_to, firm_id=current_user.get("firm_id"))
             if assignee:
                 notification_service.notify_task_assigned(task, assignee, current_user)
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="tasks.assign_notify", firm_id=current_user.get("firm_id"), task_id=task["id"])
 
     return api_response(True, {"task": task, "activity": activity})
 
@@ -296,8 +297,8 @@ def _notify_reassignment(task: dict, updated: dict, updates: dict, firm_id: str,
                 else:
                     # This is a new assignment
                     notification_service.notify_task_assigned(updated, new_assignee, current_user)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.reassign_notify", firm_id=firm_id, task_id=task.get("id"))
 
 
 @router.patch("/{task_id}")
@@ -380,8 +381,8 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
                 old_value={"priority": task.get("priority")},
                 new_value={"priority": updates["priority"]},
             )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.priority_timeline", firm_id=firm_id, task_id=task_id)
 
     # H10: immutable audit_log records for assignment + completion transitions
     # (the task_extras_repo events above write task_timeline_events, a different store).
@@ -423,8 +424,8 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
                     old_data={"status": old_status},
                     new_data={"status": updates["status"]},
                 )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="tasks.reopen_audit", firm_id=firm_id, task_id=task_id)
 
     _notify_reassignment(task, updated, updates, firm_id, current_user)
 

@@ -266,7 +266,13 @@ function DeductionsTab({ clientId }: { clientId: string }) {
                 <button onClick={load} className="mt-2 text-xs px-3 py-1 border border-ps-border rounded hover:bg-ps-bg text-ps-body">Retry</button>
               </td></tr>
             ) : rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center text-ps-hint">No deductions recorded.</td></tr>
+              <tr><td colSpan={6}>
+                <EmptyState
+                  className="py-6"
+                  title="No deductions recorded"
+                  description="A deduction is listed here when a purchase bill or vendor payment of this client carries TDS, or when one is typed on the firm's TDS screen against this client."
+                />
+              </td></tr>
             )}
           </tbody>
         </table>

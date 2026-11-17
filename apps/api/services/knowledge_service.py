@@ -27,6 +27,7 @@ from services.internal_client_service import is_internal_client
 from services.numbering import is_unique_violation
 from core import db_provider
 from core.db_paging import fetch_all, fetch_all_in
+from core.observability import capture_soft_failure
 
 _USE_MOCK = not os.environ.get("SUPABASE_URL")
 _logger = logging.getLogger("caflow.knowledge")
@@ -449,8 +450,8 @@ def _emit_article_event(current_user: dict, art: dict, event_type: str, title: s
             log_event(current_user.get("firm_id", ""), "knowledge_article", str(art.get("id", "")),
                       event_type, actor_id=current_user.get("auth_user_id"),
                       actor_email=current_user.get("email"), new_data={"title": art.get("title")})
-    except Exception:  # pragma: no cover - non-fatal
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="knowledge.article_event", firm_id=current_user.get("firm_id"), article_id=art.get("id"))
 
 
 def _emit_instruction_event(current_user: dict, row: dict, event_type: str, title: str) -> None:
@@ -460,5 +461,5 @@ def _emit_instruction_event(current_user: dict, row: dict, event_type: str, titl
                              firm_id=current_user.get("firm_id", ""),
                              entity_type="client_instruction", entity_id=row.get("id"),
                              actor_id=current_user.get("auth_user_id"))   # the timeline's actor is the sign-in id (POST-A-377)
-    except Exception:  # pragma: no cover - non-fatal
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="knowledge.instruction_event", firm_id=current_user.get("firm_id"), instruction_id=row.get("id"))

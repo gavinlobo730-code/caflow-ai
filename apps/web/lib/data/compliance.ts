@@ -69,6 +69,8 @@ const STATUS_TO_FILING_STATUS: Record<string, string> = {
   "Filed": "filed",
   "Completed": "filed",
   "Overdue": "overdue",
+  // Recorded by the CA, with a reason, as not owed by this client (POST-A-267, item 4): settled, and not a filing.
+  "Not Required": "na",
 };
 
 // `compliance_record_service.escalate()` records escalation-tier bookkeeping
@@ -80,7 +82,7 @@ const STATUS_TO_FILING_STATUS: Record<string, string> = {
 // pages separately colour red by comparing against `today` themselves.
 // Deriving it here, once, is what keeps the badge and the due-date colour in
 // agreement everywhere ComplianceEntry is read from.
-const TERMINAL_FILING_STATUSES = new Set(["filed"]);
+const TERMINAL_FILING_STATUSES = new Set(["filed", "na"]);
 
 function toEntry(raw: RawObligation): ComplianceEntry {
   const mapped = STATUS_TO_FILING_STATUS[raw.status] ?? "pending";
@@ -207,7 +209,13 @@ export async function seedComplianceCalendar(clientId: string): Promise<void> {
 /** What the server says it will reopen. A rule that could not be read is "none": the screen then offers no Reopen, which is the
  *  cautious answer. The read is tried three times, because the first request after the API has been asleep can time out and a
  *  Manager would otherwise see no Reopen button on a screen that was open all day with nothing to say why. */
-export interface ReopenRule { types: string[]; maxReasonChars: number }
+export interface ReopenRule {
+  types: string[];
+  maxReasonChars: number;
+  /** The obligation types the server will record as NOT REQUIRED of the client (POST-A-267, item 4). Empty when it could not be read
+   *  or the server is older than the field, so the screen then offers no such button. */
+  notRequirableTypes: string[];
+}
 
 const REOPEN_RULE_ATTEMPTS = 3;
 const REOPEN_RULE_PAUSE_MS = 2500;
@@ -218,12 +226,26 @@ export async function getReopenRule(): Promise<ReopenRule> {
       const res = await api.complianceOps.reopenableTypes();
       const d = objectOrNull<Record<string, unknown>>(res?.data) ?? {};
       const max = typeof d.max_reason_chars === "number" ? d.max_reason_chars : 500;
-      return { types: arrayOrEmpty<string>(d.obligation_types).filter((t) => typeof t === "string"), maxReasonChars: max };
+      return {
+        types: arrayOrEmpty<string>(d.obligation_types).filter((t) => typeof t === "string"),
+        maxReasonChars: max,
+        notRequirableTypes: arrayOrEmpty<string>(d.not_requirable_types).filter((t) => typeof t === "string"),
+      };
     } catch {
       if (attempt < REOPEN_RULE_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, REOPEN_RULE_PAUSE_MS));
     }
   }
-  return { types: [], maxReasonChars: 500 };
+  return { types: [], maxReasonChars: 500, notRequirableTypes: [] };
+}
+
+/** Records, with the CA's written reason, that an obligation is not owed by this client (`POST /obligations/{id}/not-required`,
+ *  `compliance.approve`), or takes that back (`/required-again`). Returns the server's sentence; a refusal is thrown carrying it. */
+export async function setObligationRequired(id: string, required: boolean, reason: string): Promise<string> {
+  const res = required
+    ? await api.complianceOps.requiredAgain(id, reason)
+    : await api.complianceOps.notRequired(id, reason);
+  if (!res?.success) throw new Error(res?.error ?? "The obligation could not be changed.");
+  return typeof res.data?.message === "string" ? res.data.message : "Saved.";
 }
 
 /** Takes back a recorded filing on a statutory deposit (POST-A-267, item 3). Returns the server's sentence, which says what the

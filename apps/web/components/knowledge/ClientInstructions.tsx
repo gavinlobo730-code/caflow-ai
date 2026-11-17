@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { StickyNote, Plus, Pin, Archive, RefreshCw } from "lucide-react";
 import { api, type ApiResp } from "@/lib/api";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { LoadingRegion } from "@/components/ui/skeleton";
@@ -149,7 +151,19 @@ export function ClientInstructions({
             </div>
           </div>
         ))}
-        {!pinnedOnly && visible.length === 0 && <p className="text-xs text-gray-400">No instructions yet.</p>}
+        {!pinnedOnly && visible.length === 0 && (
+          <EmptyState
+            className="py-6"
+            icon={<StickyNote size={24} />}
+            title="No instructions yet"
+            description="Note how this client wants their work handled, so everyone working on the client sees it."
+            action={canWrite ? (
+              <EmptyStateActions>
+                <EmptyStateAction requires={["client_instruction", "write"]} icon={<Plus size={14} />} label="Add an instruction" onClick={() => setShowForm(true)} />
+              </EmptyStateActions>
+            ) : undefined}
+          />
+        )}
       </div>
     </div>
   );

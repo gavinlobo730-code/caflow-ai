@@ -79,27 +79,29 @@
  * DECISION D10 (owner, 24-09-2026) — THE BUDGET IS A MEASUREMENT, NOT A
  * STYLE. The obvious saving left on the table is to drop the enumerated
  * bare-path rules and let the splats cover everything, which would take the
- * file from 98 rules to 55. THE OWNER OPENED THE CLOUDFLARE PREVIEW AND
+ * file from 99 rules to 56. THE OWNER OPENED THE CLOUDFLARE PREVIEW AND
  * CHECKED: a bare path with no rule of its own 404s, or bounces to the
  * trailing-slash form. So shapes 1 and 4 are LOAD-BEARING and the count
- * cannot be collapsed. That is the whole reason this file sits two rules
+ * cannot be collapsed. That is the whole reason this file sits one rule
  * under a cap that fails silently, rather than comfortably below one.
  *
- * Today's composition, measured rather than remembered:
+ * Today's composition, measured rather than remembered (generate-redirects.test.ts
+ * holds every figure in this block and the sentence after it to the generated file):
  *
  *     43  bare path        (shape 1) — one per dynamic page, no splat can
  *     43  bare RSC .txt    (shape 4) — express either transform
+ *      1  landing payload  (landingPayloadRules, since POST-A-148)
  *     12  splats           (shapes 2 and 3, many pages each)
  *     ──
- *     98  of a hard 100
+ *     99  of a hard 100
  *
  * **41 OF THOSE 43 ARE UNDER `/clients/`**, which is why D10's consequence
  * names that subtree specifically and is binding on the whole navigation
  * phase: **no new dynamic route under `/clients/[id]`.** A new section there
  * is a QUERY PARAMETER on an existing route — the way the year-end workspace
  * already does it — not a new path segment. Adding one page under a dynamic
- * prefix costs 2 rules and lands on 100; adding one that also opens a new
- * splat group costs 3 and lands on 101, past the cap, silently.
+ * prefix costs 2 rules and lands on 101, past the cap, silently; adding one
+ * that also opens a new splat group costs 3 and lands on 102.
  *
  * The real relief is FEWER dynamic pages, not cleverer rules. Every further
  * mechanical win has already been taken: the six create/edit merges (see the
@@ -250,11 +252,25 @@ function compareEnumeratedPaths(fromA, fromB) {
   const a = fromA.split("/");
   const b = fromB.split("/");
   const len = Math.min(a.length, b.length);
+  // A placeholder's own ".txt" rule ("/health/:client_id.txt") orders as the placeholder
+  // ("/health/:client_id") and then breaks that tie, so the comparison stays a real
+  // lexicographic order: comparing the two raw strings put ":id.txt" after ":id/x" and
+  // ":id" before ":id.txt", a cycle (POST-A-148).
+  const base = (seg) => (isDynamicSeg(seg) && seg.endsWith(".txt") ? seg.slice(0, -4) : seg);
   for (let i = 0; i < len; i++) {
     if (a[i] === b[i]) continue;
     const dynA = isDynamicSeg(a[i]);
     const dynB = isDynamicSeg(b[i]);
     if (dynA !== dynB) return dynA ? 1 : -1;
+    if (dynA && base(a[i]) === base(b[i])) {
+      // The same placeholder, one of them with ".txt": whichever ENDS here goes first, and
+      // when both end here the ".txt" rule goes first because the plain one claims its URLs.
+      const endA = a.length === i + 1;
+      const endB = b.length === i + 1;
+      if (endA && endB) return a[i].endsWith(".txt") ? -1 : 1;
+      if (endA !== endB) return endA ? -1 : 1;
+      continue;
+    }
     return a[i] < b[i] ? -1 : 1;
   }
   return a.length - b.length;
@@ -290,6 +306,32 @@ function staticLeafShadowRules(segments) {
     { from: slash, to: slash },
     { from: `${slash}index.txt`, to: `${slash}index.txt` },
   ];
+}
+
+/** The landing page of a DYNAMIC parent, when a child of it is a single placeholder.
+ *
+ * Putting "/clients/:id/year-end/:engagementId.txt" ahead of its plain sibling (see
+ * compareEnumeratedPaths) lets it claim every ".txt" request under year-end, and a
+ * placeholder matches "index.txt" as readily as an engagement id: the year-end
+ * landing page's own payload, "/clients/<real id>/year-end/index.txt", would be
+ * answered with the engagement page's. So that one URL gets a rule of its own, listed
+ * before it. Only a DYNAMIC parent needs one: a literal parent's "index.txt" is a file
+ * the export holds, and a rewrite never overrides a file; a dynamic parent's file exists
+ * only under "_placeholder", never under a real id. Each costs one dynamic rule. */
+function landingPayloadRules(allRoutes, dynamicRoutes) {
+  const have = new Set(allRoutes.map((r) => r.join("/")));
+  const seen = new Set();
+  const rules = [];
+  for (const segments of dynamicRoutes) {
+    if (!isDynamicSeg(segments[segments.length - 1])) continue;
+    const parent = segments.slice(0, -1);
+    if (!parent.some(isDynamicSeg) || !have.has(parent.join("/"))) continue;
+    const from = "/" + parent.join("/") + "/index.txt";
+    if (seen.has(from)) continue;
+    seen.add(from);
+    rules.push({ from, to: "/" + replaceDynamic(parent).join("/") + "/index.txt" });
+  }
+  return rules;
 }
 
 /** Pure — returns the generated file content without touching disk. */
@@ -349,7 +391,8 @@ export function buildRedirectsFile(appDir) {
   );
 
   const enumerated = [...dynamicRoutes.flatMap((segments) => bareRules(segments)),
-    ...shadowedStaticRoutes.flatMap((segments) => staticLeafShadowRules(segments))]
+    ...shadowedStaticRoutes.flatMap((segments) => staticLeafShadowRules(segments)),
+    ...landingPayloadRules(allRoutes, dynamicRoutes)]
     // See compareEnumeratedPaths' doc for why this can't be segment-count-tie
     // plus a raw alphabetical fallback: that version is not transitive once a
     // third, unrelated rule's path sorts (by plain string comparison) between

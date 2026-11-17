@@ -1705,6 +1705,24 @@ async function openMarkFiled(env) {
   await modalOf(page).getByRole("button", { name: "Confirm Filed", exact: true }).waitFor();
 }
 
+/** The expiring e-way bills panel on Deadlines: the one date box that records a fact the CA took on the NIC portal (an extension). */
+async function openEwayExtension(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "compute", "approve"], compliance: ["read", "write", "approve"] } }) });
+  stub.route({
+    method: "GET", re: /eway-bill\/expiring/,
+    reply: () => ok({
+      as_of: "2026-10-08", horizon_days: 2, expired: 0, expires_today: 0, expiring: 1, undeterminable: 0, caveats: [],
+      bills: [{ record_id: "ew-9", client_id: CLIENT_ID, invoice_number: "INV-0007", ewb_number: "141000000009",
+        valid_upto: "2026-10-09", source: "recorded", days_left: 1, state: "expiring", gap: null }],
+    }),
+  });
+  stub.route({ method: "POST", re: /eway-bill\/records\/ew-9\/extend$/, reply: () => ok({ id: "ew-9" }) });
+  await page.goto(`${env.base}/deadlines/`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Record extension", exact: true }).click();
+  await page.getByPlaceholder("Reason recorded on the portal").fill("Vehicle breakdown on the road");
+}
+
 async function openInvoicePayment(env) {
   const drawer = await openInvoiceDrawer(env, "issued");
   env.stub.route({ method: "POST", re: /receipts\/$/, reply: () => ok({ id: "r1" }) });
@@ -1889,6 +1907,11 @@ const EDITORS = [
     open: openSelfAssessmentChallan,
     fields: [{ box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on", key: "deposit_date", full: "15/07/2026", iso: "2026-07-15" }],
     save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/,
+  },
+  {
+    id: "eway-extension", title: "expiring e-way bills: the new valid upto an extension recorded on the portal", open: openEwayExtension,
+    fields: [{ box: (p) => p.getByLabel("New valid upto"), label: "New valid upto", key: "new_valid_upto", full: "15/10/2026", iso: "2026-10-15" }],
+    save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /eway-bill\/records\/ew-9\/extend$/,
   },
   {
     id: "mark-as-filed", shortForm: "15/01/2026", title: "Mark as Filed prompt (Deadlines)", open: openMarkFiled, heldWhileUnreadable: true,
@@ -2662,7 +2685,58 @@ const CLIENT_COMPLIANCE_FORMS = [
     refusal: TDS_COULD_NOT_CHALLAN_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
 ];
 
+
+/**
+ * A WINDOW OR A FILTER is a date box that chooses what a screen READS and writes nothing (POST-A-386). Its claims are the ones of a form, with
+ * the read standing where Save does: no native date input; 31/02/2026 is refused in the field's own sentence; a date typed in full reaches the
+ * server as the ISO date typed, in any locale and zone; and text that is not a date is NEVER sent as one (it reads as no bound, and the box says so).
+ * `reads` is the list of query-string reads the screen made, recorded by the route's own reply.
+ */
+async function driveWindow(env, spec) {
+  const { page } = env;
+  const reads = [];
+  await spec.open(env, reads);
+  assert.equal(await page.locator('input[type="date"]').count(), 0, `${spec.title}: a native <input type="date"> is on the screen`);
+  for (const [i, field] of spec.fields.entries()) {
+    const box = field.box(page);
+    await box.waitFor();
+    await typeAndLeave(box, "31/02/2026");
+    assert.equal(await box.getAttribute("aria-invalid"), "true", `${spec.title} / ${field.label}: 31/02/2026 is not marked invalid`);
+    const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+    assert.ok(alerts.includes(FEB_SENTENCE), `${spec.title} / ${field.label}: the field's own sentence is missing (alerts: ${alerts.slice(0, 200)})`);
+    await env.stub.quiet();
+    for (const r of reads) {
+      assert.notEqual(r[field.param], "31/02/2026", `${spec.title} / ${field.label}: unreadable text was sent as a date`);
+      assert.ok(!r[field.param] || /^\d{4}-\d{2}-\d{2}$/.test(r[field.param]), `${spec.title} / ${field.label}: ${r[field.param]} is not an ISO date`);
+    }
+    await typeAndLeave(box, field.full);
+    await until(() => reads.some((r) => r[field.param] === field.iso), `${spec.title} / ${field.label}: a read asked for ${field.iso} (reads: ${JSON.stringify(reads)})`);
+    assert.ok(!reads.some((r) => r[field.param] && !/^\d{4}-\d{2}-\d{2}$/.test(r[field.param])), `${spec.title}: a read carried a date that is not ISO`);
+    void i;
+  }
+}
+
+const WINDOWS = [
+  {
+    id: "audit-log-window", title: "audit log: the From and To dates",
+    open: async (env, reads) => {
+      env.stub.route({ method: "GET", re: /api\/audit(\?|$)/, reply: (req, body, url) => { reads.push(Object.fromEntries(url.searchParams)); return ok({ entries: [], next_cursor: null }); } });
+      await env.page.goto(`${env.base}/settings/audit-log/`, { waitUntil: "networkidle" });
+    },
+    fields: [
+      { box: (p) => p.getByLabel("Audit log from date"), label: "From date", param: "date_from", full: "01/07/2026", iso: "2026-07-01" },
+      { box: (p) => p.getByLabel("Audit log to date"), label: "To date", param: "date_to", full: "31/07/2026", iso: "2026-07-31" },
+    ],
+  },
+];
+
 export const scenarios = [
+  ...WINDOWS.map((spec) => ({
+    id: spec.id,
+    title: `${spec.title}: typed dates are read by the one rule and reach the read as ISO, and unreadable text is never sent`,
+    contexts: TZ_MATRIX,
+    run: (env) => driveWindow(env, spec),
+  })),
   ...EDITORS.map((spec) => ({
     id: spec.id,
     title: `${spec.title}: typed dates are read by the one rule and reach the server as ISO`,

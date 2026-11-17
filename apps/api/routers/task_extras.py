@@ -6,6 +6,7 @@ from core.authz import assert_client_access, effective_client_ids
 from core.permissions import rbac
 from repositories.task_extras_repository import task_extras_repo
 from repositories.task_repository import task_repo
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/tasks", tags=["task-extras"])
 
@@ -65,8 +66,8 @@ def add_tag(task_id: str, body: AddTagBody, current_user: dict = Depends(rbac("t
             actor_name=current_user.get("full_name") or current_user.get("email"),
             new_value={"tag": body.tag},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="task_extras.tag_timeline", firm_id=firm_id, task_id=task_id)
     return api_response(True, {"tag": tag})
 
 
@@ -126,8 +127,8 @@ def add_dependency(task_id: str, body: AddDependencyBody, current_user: dict = D
             actor_name=current_user.get("full_name") or current_user.get("email"),
             new_value={"depends_on": body.depends_on_task_id, "depends_on_title": dep_task.get("title")},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="task_extras.dependency_timeline", firm_id=current_user.get("firm_id"), task_id=task_id)
     return api_response(True, {"dependency": dep})
 
 

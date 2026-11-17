@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MarkFiledModal } from "@/components/compliance/MarkFiledModal";
 import { ReopenObligationModal } from "@/components/compliance/ReopenObligationModal";
+import { ObligationRequiredModal } from "@/components/compliance/ObligationRequiredModal";
 import Link from "next/link";
 import { formatDate } from "@/lib/services/formatting";
 import { addDaysISO } from "@/lib/sales/dateMath";
@@ -19,7 +20,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { isOverdue, isUpcoming } from "@/lib/compliance/overdue";
 import { describeFilingOutcome } from "@/lib/compliance/filingOutcome";
 import { formatRangeLabel } from "@/lib/dates/periods";
-import { getComplianceCalendar, getReopenRule, markFiled as markObligationFiled, reopenObligation } from "@/lib/data/compliance";
+import { getComplianceCalendar, getReopenRule, markFiled as markObligationFiled, reopenObligation, setObligationRequired } from "@/lib/data/compliance";
 import type { ReopenRule } from "@/lib/data/compliance";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import type { ComplianceEntry } from "@/lib/data/compliance";
@@ -144,7 +145,12 @@ function DeadlinesContent() {
   // obligation types the SERVER says it will reopen, so the browser holds no list of them.
   const { can } = usePermissions();
   const canReopen = can("compliance", "approve");
-  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500 });
+  const [reopenRule, setReopenRule] = useState<ReopenRule>({ types: [], maxReasonChars: 500, notRequirableTypes: [] });
+  // Recording an obligation as NOT REQUIRED of the client, or taking that back (POST-A-267, item 4): the same person
+  // (`compliance.approve`) and the server's own list of types.
+  const [requiredForm, setRequiredForm] = useState<(ReopenForm & { required: boolean }) | null>(null);
+  const [requiredSaving, setRequiredSaving] = useState(false);
+  const [requiredError, setRequiredError] = useState<string | null>(null);
   const [reopen, setReopen] = useState<ReopenForm | null>(null);
   const [reopening, setReopening] = useState(false);
   const [reopenError, setReopenError] = useState<string | null>(null);
@@ -220,6 +226,22 @@ function DeadlinesContent() {
       setReopenError(err instanceof Error ? err.message : "Couldn't reopen this.");
     } finally {
       setReopening(false);
+    }
+  }
+
+  async function handleRequired(reason: string) {
+    if (!requiredForm) return;
+    setRequiredSaving(true);
+    setRequiredError(null);
+    try {
+      const message = await setObligationRequired(requiredForm.id, requiredForm.required, reason);
+      setRequiredForm(null);
+      await loadData();
+      toast({ title: requiredForm.required ? "Required again" : "Recorded as not required", description: message });
+    } catch (err) {
+      setRequiredError(err instanceof Error ? err.message : "Couldn't change this.");
+    } finally {
+      setRequiredSaving(false);
     }
   }
 
@@ -531,6 +553,17 @@ function DeadlinesContent() {
           onClose={() => { setReopen(null); setReopenError(null); }}
         />
       )}
+      {requiredForm && (
+        <ObligationRequiredModal
+          required={requiredForm.required}
+          intro={requiredForm.label}
+          maxReasonChars={reopenRule.maxReasonChars}
+          busy={requiredSaving}
+          error={requiredError}
+          onConfirm={handleRequired}
+          onClose={() => { setRequiredForm(null); setRequiredError(null); }}
+        />
+      )}
       {bulkFiling && (
         <MarkFiledModal
           title={`Mark ${bulkFiling.length} filed`}
@@ -598,6 +631,17 @@ function DeadlinesContent() {
                 className="text-xs text-blue-600 hover:underline"
               >
                 Reopen
+              </button>
+            )}
+            {r.filing_status !== "filed" && canReopen && reopenRule.notRequirableTypes.includes(r.compliance_type) && (
+              <button
+                onClick={() => {
+                  setRequiredError(null);
+                  setRequiredForm({ id: r.id, label: obligationLabel(r, clientMap), required: r.filing_status === "na" });
+                }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                {r.filing_status === "na" ? "Required again" : "Not required"}
               </button>
             )}
             <Link

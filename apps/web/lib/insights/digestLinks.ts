@@ -32,6 +32,23 @@ export const DIGEST_ROUTES: Record<string, DigestRoute> = {
     section: null,
     client: (id) => `/clients/${id}/accounting?tab=verify-books`,
   },
+  // The three results the nightly check stores (POST-A-050). There is no firm-wide screen
+  // for any of them, so no section link; each client link opens the tab where a CA acts.
+  // GSTR-2B is the §16(4) radar's count, so it opens the GST screen's ITC tab where the
+  // radar is drawn, which asks only GST read: the section is gated on GST read, and the
+  // bill list asks accounting read, which a Reviewer does not hold.
+  itc_not_furnished: {
+    section: null,
+    client: (id) => `/clients/${id}/compliance/gst?tab=itc`,
+  },
+  duplicate_bills: {
+    section: null,
+    client: (id) => `/clients/${id}/purchases?tab=bills`,
+  },
+  recurring_journals_missing: {
+    section: null,
+    client: (id) => `/clients/${id}/accounting?tab=journal`,
+  },
 };
 
 export function digestClientHref(key: string, clientId: string): string {

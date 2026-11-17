@@ -22,6 +22,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
+from domain.accounting import recurring_suggestions
 from domain.money_sentence import rupee_whole_text
 from domain.practice.compliance_overdue import is_overdue, is_settled
 
@@ -270,7 +271,7 @@ def compute_journal_suggestions(
 
     today = ist_today()
     current_month = today.strftime("%Y-%m")
-    lookback_start = (today.replace(day=1) - timedelta(days=92)).isoformat()
+    lookback_start = recurring_suggestions.lookback_start(today).isoformat()
 
     entries = accounting_service.list_journal_entries(
         firm_id=firm_id, client_id=client_id, start_date=lookback_start,
@@ -281,40 +282,7 @@ def compute_journal_suggestions(
     if allowed_client_ids is not None:
         posted = [e for e in posted if str(e.get("client_id")) in allowed_client_ids]
 
-    patterns: dict[tuple, dict] = {}
-    for e in posted:
-        account_ids = tuple(sorted(ln.get("account_id", "") for ln in e.get("lines", [])))
-        key = (e.get("client_id"), (e.get("narration") or "").strip().lower(), account_ids)
-        month = str(e.get("entry_date", ""))[:7]
-        p = patterns.setdefault(key, {"months": set(), "last_entry": e})
-        p["months"].add(month)
-        if str(e.get("entry_date", "")) >= str(p["last_entry"].get("entry_date", "")):
-            p["last_entry"] = e
-
-    suggestions = []
-    for (cid, narration, _accounts), p in patterns.items():
-        prior_months = {m for m in p["months"] if m < current_month}
-        if len(prior_months) >= 2 and current_month not in p["months"]:
-            last = p["last_entry"]
-            suggestions.append({
-                "client_id": cid,
-                "narration": last.get("narration"),
-                "entry_type": last.get("entry_type", "Journal"),
-                "suggested_date": today.isoformat(),
-                "based_on_entry_id": last.get("id"),
-                "occurrences": len(prior_months),
-                "lines": [
-                    {
-                        "account_id": ln.get("account_id"),
-                        "account_name": ln.get("account_name"),
-                        "debit_paise": ln.get("debit_paise", 0),
-                        "credit_paise": ln.get("credit_paise", 0),
-                        "narration": ln.get("narration", ""),
-                    }
-                    for ln in last.get("lines", [])
-                ],
-                "reason": f"Recurring entry seen in {len(prior_months)} prior months, missing for {current_month}",
-            })
+    suggestions = recurring_suggestions.suggest(posted, today=today)
 
     return {"suggestions": suggestions, "month": current_month}
 

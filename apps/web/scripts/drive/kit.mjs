@@ -14,7 +14,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 
-export async function loadPlaywright() {
+/** The browsers the drive can run in. Chromium is the default and the one every night uses; Firefox and WebKit are what the weekly other-browsers run asks for (POST-A-387). */
+export const BROWSERS = ["chromium", "firefox", "webkit"];
+
+/** The Playwright browser type named, or exit 2 with the words for installing Playwright. */
+export async function loadBrowserType(name = "chromium") {
   const tries = [
     () => import("@playwright/test"),
     () => import("playwright"),
@@ -23,8 +27,8 @@ export async function loadPlaywright() {
   for (const attempt of tries) {
     try {
       const pw = await attempt();
-      const chromium = pw.chromium ?? pw.default?.chromium;
-      if (chromium) return chromium;
+      const type = pw[name] ?? pw.default?.[name];
+      if (type) return type;
     } catch { /* try the next place */ }
   }
   console.error(
@@ -33,6 +37,37 @@ export async function loadPlaywright() {
     "  project dependency, see scripts/smoke-walk.mjs above loadChromium() for why)\n" +
     "or point PLAYWRIGHT_MODULE at an install, e.g. /opt/node-tools/node_modules/playwright/index.mjs.");
   process.exit(2);
+}
+
+export async function loadPlaywright() {
+  return loadBrowserType("chromium");
+}
+
+/** `--browser`: one of BROWSERS, or the sentence that says which. */
+export function resolveBrowser(value) {
+  if (value === undefined) return "chromium";
+  if (!BROWSERS.includes(value)) throw new Error(`--browser ${value}: not a browser the drive runs in (${BROWSERS.join(", ")}).`);
+  return value;
+}
+
+/** The narrowest and widest window the drive is run at, in CSS pixels. 1440 is the desktop the drive was written at; 390 is a phone. */
+export const DEFAULT_WIDTH = 1440;
+export function resolveWidth(value) {
+  if (value === undefined) return DEFAULT_WIDTH;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 320 || n > 2560) throw new Error(`--width ${value}: a whole number of pixels from 320 to 2560, e.g. --width 390 for a phone.`);
+  return n;
+}
+/** A window under 600 pixels is a phone: it is taller than it is wide, as a phone is, unless DRIVE_VIEWPORT_HEIGHT says otherwise. */
+export function viewportFor(width, heightEnv) {
+  const given = Number(heightEnv);
+  return { width, height: given > 0 ? given : width < 600 ? 844 : 900 };
+}
+
+/** `--only` takes one group or id, or several separated by commas (`--only dates,keyboard`): a run is selected when ANY of them is its group, its id or the start of its id. */
+export function matchesOnly(run, only) {
+  if (!only) return true;
+  return only.split(",").map((t) => t.trim()).filter(Boolean).some((t) => run.group === t || run.id === t || run.id.startsWith(t));
 }
 
 /** The Chromium already on disk, when there is one (the walk's rule: Playwright's own download is disabled in
@@ -206,7 +241,7 @@ export function contextsFor(contexts, zone) {
 
 /** Every flag the runner knows. A "value" flag takes one, spelled `--zone rotate` or `--zone=rotate`; a "bare" flag takes none. */
 export const FLAGS = {
-  "--only": "value", "--report": "value", "--out": "value", "--zone": "value", "--shard": "value", "--stop-after": "value", "--now": "value",
+  "--only": "value", "--report": "value", "--out": "value", "--zone": "value", "--shard": "value", "--stop-after": "value", "--now": "value", "--browser": "value", "--width": "value",
   "--shots": "bare", "--no-tz-matrix": "bare", "--no-headers": "bare", "--list": "bare",
 };
 /** What a value flag says it needs when it is not given one (the first two keep the words they always had). */
@@ -218,6 +253,8 @@ const NEEDS = {
   "--shard": "all, rotate or a number, e.g. --shard 0",
   "--stop-after": "a number of minutes, e.g. --stop-after 24",
   "--now": "an instant with its zone, e.g. --now 2026-11-07T00:30:00Z",
+  "--browser": "chromium, firefox or webkit, e.g. --browser firefox",
+  "--width": "a width in pixels, e.g. --width 390 for a phone",
 };
 
 /** Read the runner's arguments into `{ flags, problem }`. It never throws: a problem is the sentence the caller prints before it exits 2. NOTHING IS IGNORED, because a run that
@@ -278,13 +315,13 @@ export function resolveNow(value, realNowMs) {
 
 /** The drive's report, as it stands at `nowMs`. `ok` needs the end to have been reached: a report written part-way is not a pass, however little had failed. `not_driven` is what had
  *  not run, named, so a cancelled or stopped run still says what it did not drive. */
-export function reportOf({ complete, stoppedAtDeadline = false, only = null, tzMatrix = true, zone, shard, stopAfter = null, chosenAtMs, csp, pinnedClock, commit = null,
+export function reportOf({ complete, stoppedAtDeadline = false, only = null, tzMatrix = true, zone, shard, stopAfter = null, chosenAtMs, csp, pinnedClock, commit = null, browser = "chromium", width = DEFAULT_WIDTH,
   selected, results, escaped = [], startedMs, nowMs }) {
   const failed = results.filter((r) => !r.ok);
   return {
     generated_at: new Date(nowMs).toISOString(),
     commit,
-    mode: { only, tz_matrix: tzMatrix, zone, shard, stop_after_minutes: stopAfter, chosen_at: new Date(chosenAtMs).toISOString() },
+    mode: { only, browser, width, tz_matrix: tzMatrix, zone, shard, stop_after_minutes: stopAfter, chosen_at: new Date(chosenAtMs).toISOString() },
     csp,
     pinned_clock: pinnedClock,
     complete,

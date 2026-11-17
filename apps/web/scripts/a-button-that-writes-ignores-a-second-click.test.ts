@@ -366,7 +366,7 @@ const BASELINE: Record<string, number> = {
   "app/workflows/page.tsx": 1,
   // ── client health, relationships, intelligence ──
   "app/clients/[id]/ai-insights/page.tsx": 1,
-  "app/clients/[id]/health/page.tsx": 4,
+  "app/clients/[id]/health/page.tsx": 3,
   "app/health/[client_id]/HealthDetailClient.tsx": 2,
   "app/health/alerts/page.tsx": 1,
   "app/health/page.tsx": 1,

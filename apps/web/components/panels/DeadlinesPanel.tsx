@@ -71,6 +71,7 @@ const FILING_WORKSPACE_ITEMS: Array<{
     label: "Income Tax",
     icon: Calculator,
     children: [
+      { href: "/income-tax/season", label: "Filing Season", icon: ClipboardCheck },
       { href: "/income-tax/advance-tax", label: "Advance Tax", icon: Wallet },
       { href: "/income-tax/book-to-tax", label: "Book to Tax", icon: ArrowLeftRight },
       { href: "/income-tax/capital-gains", label: "Capital Gains", icon: TrendingUp },

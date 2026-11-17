@@ -1,5 +1,7 @@
 "use client";
 
+import { EntityLookup } from "@/components/lookups/EntityLookup";
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Plus, Clock, AlertTriangle, RefreshCw, Trash2,
@@ -171,16 +173,18 @@ function DependenciesSection({ taskId, allTasks }: { taskId: string; allTasks: T
         </div>
       )}
       <div className="flex gap-2">
-        <select aria-label="Add a blocking task"
+        <EntityLookup ariaLabel="Add a blocking task"
+          className="flex-1"
+          size="sm"
+          items={candidates}
           value={addId}
-          onChange={e => setAddId(e.target.value)}
-          className="flex-1 border border-ps-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-brand"
-        >
-          <option value="">Add a blocking task…</option>
-          {candidates.map(t => (
-            <option key={t.id} value={t.id}>{t.title}</option>
-          ))}
-        </select>
+          onChange={setAddId}
+          getId={t => t.id}
+          getLabel={t => t.title}
+          placeholder="Add a blocking task…"
+          searchPlaceholder="Search tasks…"
+          clearable
+        />
         <button
           onClick={handleAdd}
           disabled={!addId || busy}
@@ -292,24 +296,25 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Client</label>
-                <select aria-label="Client"
+                <ClientLookup ariaLabel="Client"
+                  clients={clients}
                   value={form.client_id ?? ""}
-                  onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
-                >
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
+                  onChange={id => setForm(f => ({ ...f, client_id: id }))}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-ps-label mb-1">Assign To</label>
-                <select aria-label="Assign To"
+                <EntityLookup ariaLabel="Assign To"
+                  items={teamMembers}
                   value={form.assignee_id ?? ""}
-                  onChange={e => setForm(f => ({ ...f, assignee_id: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-brand"
-                >
-                  <option value="">Unassigned</option>
-                  {teamMembers.map(m => <option key={m.id} value={m.id}>{m.full_name ?? m.email}</option>)}
-                </select>
+                  onChange={id => setForm(f => ({ ...f, assignee_id: id }))}
+                  getId={m => m.id}
+                  getLabel={m => m.full_name ?? m.email ?? ""}
+                  getSearchFields={m => [m.full_name ?? "", m.email ?? ""]}
+                  placeholder="Unassigned"
+                  searchPlaceholder="Search team members…"
+                  clearable
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

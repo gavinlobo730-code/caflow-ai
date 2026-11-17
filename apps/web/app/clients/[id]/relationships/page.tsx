@@ -1,5 +1,6 @@
 "use client";
 
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, X, Network, Trash2, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,6 +24,8 @@ import { windowDescription } from "@/lib/lists/window";
 import { useEntityRegister } from "@/lib/relationships/useEntityRegister";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { selectAll } from "@/lib/supabase/selectAll";
 
 /**
@@ -268,10 +271,16 @@ export default function ClientRelatedPartiesPage() {
               The disclosure could not be loaded. The roles below are still current.
             </p>
           ) : included.length === 0 ? (
-            <p className="text-xs text-ps-hint">
-              No related party has been identified for this client yet. Link the
-              directors, partners or shareholders above and the note builds itself.
-            </p>
+            <EmptyState
+              className="py-6"
+              title="No related party has been identified for this client yet"
+              description="Link the directors, partners or shareholders with Link Entity and the note builds itself."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Link Entity" onClick={() => setAddRoleModal(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -329,9 +338,16 @@ export default function ClientRelatedPartiesPage() {
         <Card>
           <CardContent className="p-0">
             {roles.length === 0 ? (
-              <p className="p-5 text-xs text-ps-hint">
-                No entity is linked to this client yet.
-              </p>
+              <EmptyState
+                className="py-8"
+                title="No entity is linked to this client yet"
+                description="Link a director, partner, shareholder or group company from the firm's Entity Registry."
+                action={
+                  <EmptyStateActions>
+                    <EmptyStateAction requires={["client", "write"]} icon={<Plus size={14} />} label="Link Entity" onClick={() => setAddRoleModal(true)} />
+                  </EmptyStateActions>
+                }
+              />
             ) : (
               <table className="w-full text-xs">
                 <thead>
@@ -440,29 +456,34 @@ export default function ClientRelatedPartiesPage() {
             <div className="space-y-3">
               <div>
                 <label htmlFor="rp-entity" className="text-xs text-gray-600">Entity *</label>
-                <select
+                <EntityLookup
                   id="rp-entity"
+                  items={entities}
                   value={roleForm.entity_id}
-                  onChange={(e) => setRoleForm({ ...roleForm, entity_id: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand"
-                >
-                  <option value="">
-                    {register.loading ? "Loading the entity register…" : entities.length ? "Choose an entity…" : "No entity to choose"}
-                  </option>
-                  {entities.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.full_name}{e.pan ? ` · ${e.pan}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => setRoleForm({ ...roleForm, entity_id: id })}
+                  getId={(e) => e.id}
+                  getLabel={(e) => e.full_name}
+                  getSecondary={(e) => e.pan ?? undefined}
+                  getSearchFields={(e) => [e.full_name, e.pan ?? ""]}
+                  placeholder={register.loading ? "Loading the entity register…" : entities.length ? "Choose an entity…" : "No entity to choose"}
+                  searchPlaceholder="Search by name or PAN…"
+                  disabled={register.loading}
+                />
                 {register.error ? (
                   <p role="alert" className="mt-1 text-3xs text-state-problem">
                     The entity register could not be loaded: {register.error}
                   </p>
                 ) : !register.loading && entities.length === 0 ? (
-                  <p className="mt-1 text-3xs text-ps-hint">
-                    No entity is registered yet — add one in the firm&apos;s Entity Registry first.
-                  </p>
+                  <EmptyState
+                    className="px-2 py-3"
+                    title="No entity is registered yet"
+                    description="Add one in the firm's Entity Registry first, then link it here."
+                    action={
+                      <EmptyStateActions>
+                        <EmptyStateAction requires={["client", "write"]} label="Open the Entity Registry" href="/relationships" variant="secondary" />
+                      </EmptyStateActions>
+                    }
+                  />
                 ) : null}
                 {register.window && (
                   <ListWindowNotice

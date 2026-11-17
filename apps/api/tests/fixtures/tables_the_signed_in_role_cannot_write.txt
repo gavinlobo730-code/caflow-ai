@@ -22,6 +22,8 @@
 # 617 creates ecommerce_operator_supply_amendments and ecommerce_operator_unregistered_supply_amendments (POST-A-056, GSTR-8 Table 4 and 4.1) with no signed-in privilege at all: the API's privileged client is their one reader and writer.
 # 620 creates stock_effect_settlements (POST-A-092) with no signed-in privilege at all: the marks that a document's stock was put right by hand are written and read by the API's privileged client only.
 # 641 creates payroll_opening_positions (POST-A-082) with no signed-in privilege at all: the API's privileged client is its only reader and writer.
+# 660 creates nightly_exception_results (POST-A-050) with no signed-in write: the nightly books check, through the API's privileged client, is its one writer.
+# 671 creates compliance_effort_estimates (POST-A-212) with no signed-in write: its writer is the API's privileged client from the start.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -72,6 +74,7 @@ client_sales_invoice_lines
 client_sales_invoices
 client_statutory_identity
 client_year_locks
+compliance_effort_estimates
 credit_note_allocations
 credit_note_lines
 credit_notes
@@ -149,6 +152,7 @@ lead_contacts
 leads
 leave_balances
 login_events
+nightly_exception_results
 party_credit_balances
 party_credit_ledger
 pattern_anomalies

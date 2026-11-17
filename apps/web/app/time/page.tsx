@@ -1,5 +1,6 @@
 "use client";
 
+import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { readRateInput } from "@/lib/time/rateInput";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
@@ -32,6 +33,8 @@ import { UnbilledWorkPanel } from "@/components/time/UnbilledWorkPanel";
 import { BillingRatesPanel } from "@/components/time/BillingRatesPanel";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { windowDescription } from "@/lib/lists/window";
 import { DateInput } from "@/components/ui/date-input";
@@ -475,14 +478,13 @@ export default function TimeTrackingPage() {
         <CardContent className="py-3 flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-            <select aria-label="Client to export"
+            <ClientLookup ariaLabel="Client to export"
+              clients={clients}
               value={exportClientId}
-              onChange={e => setExportClientId(e.target.value)}
-              className="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-            >
-              <option value="">All clients</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-            </select>
+              onChange={setExportClientId}
+              placeholder="All clients"
+              clearable
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-ps-body mb-1">From</label>
@@ -525,10 +527,18 @@ export default function TimeTrackingPage() {
               </div>
             </LoadingRegion>
           ) : entries.length === 0 ? (
-            <div className="py-12 text-center text-ps-hint">
-              <Clock size={28} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No time entries yet</p>
-            </div>
+            <EmptyState
+              className="py-12"
+              icon={<Clock size={28} />}
+              title="No time entries yet"
+              description="Start a timer when you begin work for a client, or add the hours afterwards as a manual entry."
+              action={
+                <EmptyStateActions>
+                  {!isRunning && <EmptyStateAction requires={["time_entry", "write"]} icon={<Play size={14} />} label="Start Timer" onClick={() => setShowStart(true)} />}
+                  <EmptyStateAction requires={["time_entry", "write"]} icon={<Plus size={14} />} label="Manual Entry" variant="secondary" onClick={() => setShowManual(true)} />
+                </EmptyStateActions>
+              }
+            />
           ) : (
             <div className="divide-y">
               {entries.map((e) => (
@@ -614,14 +624,13 @@ export default function TimeTrackingPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                <select aria-label="Client"
+                <ClientLookup ariaLabel="Client"
+                  clients={clients}
                   value={startClientId}
-                  onChange={e => setStartClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-                >
-                  <option value="">No client</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
+                  onChange={setStartClientId}
+                  placeholder="No client"
+                  clearable
+                />
               </div>
               <EngagementPicker
                 id="start-engagement"
@@ -678,14 +687,13 @@ export default function TimeTrackingPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-ps-body mb-1">Client</label>
-                <select aria-label="Client"
+                <ClientLookup ariaLabel="Client"
+                  clients={clients}
                   value={manualClientId}
-                  onChange={e => setManualClientId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
-                >
-                  <option value="">No client</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
+                  onChange={setManualClientId}
+                  placeholder="No client"
+                  clearable
+                />
               </div>
               <EngagementPicker
                 id="manual-engagement"

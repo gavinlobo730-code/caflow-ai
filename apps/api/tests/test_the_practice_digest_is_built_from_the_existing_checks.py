@@ -450,8 +450,11 @@ def test_a_role_without_task_read_gets_no_task_section_and_is_told(world, model,
 def test_the_engines_not_included_are_named_on_every_answer(world, model):
     out = run(_digest(PARTNER))
     text = " ".join(out["gaps"])
-    for needle in ("GSTR-2B", "Rule 37A", "duplicate bills", "Recurring journal"):
-        assert needle in text, needle
+    # Only Rule 37A is still not covered: the other three are stored nightly (POST-A-050).
+    assert "Rule 37A" in text
+    for gone in ("GSTR-2B (bills missing in 2B) is not in this digest", "duplicate bills are not in this digest",
+                 "Recurring journal entries missing this month are not in this digest"):
+        assert gone not in text, gone
 
 
 def test_the_items_use_exactly_the_keys_the_browser_routes_on(world, model):
@@ -610,10 +613,35 @@ def test_every_key_the_server_can_emit_is_routed_by_the_browser():
 def test_each_route_names_a_screen_that_exists():
     app = _WEB / "app"
     assert (app / "deadlines/page.tsx").exists() and (app / "tasks/page.tsx").exists()
-    for section in ("compliance", "tasks", "accounting"):
+    for section in ("compliance", "tasks", "accounting", "purchases"):
         assert (app / "clients/[id]" / section / "page.tsx").exists(), section
     accounting = (app / "clients/[id]/accounting/page.tsx").read_text(encoding="utf-8")
     assert 'id: "verify-books"' in accounting, "the books-findings link opens a tab that exists"
+    assert 'id: "journal"' in accounting, "the recurring-journals link opens a tab that exists"
+    purchases = (app / "clients/[id]/purchases/page.tsx").read_text(encoding="utf-8")
+    assert 'id: "bills"' in purchases, "the duplicate-bill link opens a tab that exists"
+    gst = (app / "clients/[id]/compliance/gst/page.tsx").read_text(encoding="utf-8")
+    assert '{ id: "itc", label: "ITC Register" }' in gst, "the 2B link opens a tab that exists"
+    assert 'useSearchParams().get("tab")' in gst, "and the GST screen opens the tab a link names"
+
+
+def test_the_2b_link_opens_the_radar_its_section_counts_under_the_permission_it_is_gated_on():
+    # The section is shown to whoever holds GST read (`digest_service.gather`); the link must
+    # open a screen that answers them. The purchase-bill list asks accounting read, which a
+    # Reviewer lacks; the §16(4) radar, which is what the count is, asks GST read.
+    links = (_WEB / "lib/insights/digestLinks.ts").read_text(encoding="utf-8")
+    block = links[links.index("  itc_not_furnished: {"):]
+    block = block[:block.index("},") + 2]
+    assert "/compliance/gst?tab=itc" in block and "purchases" not in block
+    import inspect
+    from services import digest_service
+    assert '("gstr_2b", "gst")' in inspect.getsource(digest_service.gather)
+    from core.permissions import can_user
+    from routers import gst_workspace
+    route = next(r for r in gst_workspace.router.routes if getattr(r, "path", "").endswith("/itc/time-bar"))
+    assert 'rbac("gst", "read")' in inspect.getsource(route.endpoint)
+    reviewer = {"role": "Reviewer", "id": "u", "firm_id": "f"}
+    assert can_user(reviewer, "gst", "read") and not can_user(reviewer, "accounting", "read")
 
 
 def test_the_digest_panel_is_mounted_on_the_insights_page():

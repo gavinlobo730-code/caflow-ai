@@ -11,9 +11,10 @@
 #     the server, looked fine and `generate-redirects.test.ts` read "98 of 100".
 #     Every other check on this file is static. This one asks the site.
 #
-#     The budget now stands at 98 of 100, so ONE more dynamic route breaks it
-#     again, silently. The check catches that the day it happens, by request,
-#     instead of by a CA's bookmark.
+#     The budget now stands at 99 of 100 (since POST-A-148), so ONE more page
+#     under a dynamic prefix (two rules, 101) breaks it again, silently. The
+#     check catches that the day it happens, by request, instead of by a CA's
+#     bookmark.
 #
 # WHAT IT DOES
 #     apps/web/scripts/check-live-redirects.mjs derives one real URL per rule from

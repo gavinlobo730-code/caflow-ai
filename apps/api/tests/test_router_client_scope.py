@@ -1617,6 +1617,22 @@ EXEMPT: dict[str, str] = {
         "member can work is a property of that person, not of any client's "
         "book. Covers GET (list_capacity) and PUT (set_capacity), which "
         "share this path.",
+    # POST-A-212. The practice's own statement of how many minutes one filing of a kind takes: firm and an obligation TYPE, no client_id
+    # anywhere (migration 671). Covers PUT (set) and DELETE (clear), which share this path; its GET also lists the calendar's types and
+    # narrows that read with filter_by_client.
+    "/api/workload/obligation-estimates":
+        "compliance_effort_estimates has a firm_id and a kind of filing, and no client_id column: how long one GSTR-3B takes in this "
+        "practice is a property of the practice, not of any client's book.",
+    # POST-A-068. The filing season reads and runs for the caller's OWN clients; the narrowing is in the service
+    # (services/filing_season_service: filter_by_client on the list, effective_client_ids on the run, both asked before any row is
+    # read or computed), so no client id arrives for the route to assert.
+    "/api/itr/season":
+        "the list is the caller's own clients: services/filing_season_service narrows it with filter_by_client before counting a row, and a "
+        "test drives an assigned-only caller. There is no client_id on the request to assert.",
+    "/api/itr/season/compute":
+        "each chosen client is checked against effective_client_ids inside services/filing_season_service before its snapshot is read or "
+        "anything is computed, and one outside the caller's book is answered 'not your client'. The ids arrive as a list, which a single "
+        "assert_client_access cannot judge.",
     # analytics.py — the two routes that aggregate over STAFF, not clients.
     # intelligence.py — the one route built on the workload engine.
     "/api/intelligence/workload-insights":

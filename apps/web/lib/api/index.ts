@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { withReference } from "@/lib/api/requestReference";
 import { doingOf, errorPageSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress } from "@/lib/api/uploadWithProgress";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 import { recordsUrl } from "@/lib/einvoice/invoiceRecords";
 
@@ -3370,6 +3371,13 @@ export type ReportGSTSummary = {
   ca_review_required: true;
 };
 
+/** A multipart POST. With a progress callback it goes through `XMLHttpRequest` (the only way to see bytes sent); without one it is `fetch`, as before. Never retried either way. */
+function uploadForm(url: string, token: string | undefined, form: FormData, onProgress?: (p: UploadProgress) => void): Promise<Response> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (onProgress) return fetchUpload(url, { headers, body: form }, "write", onProgress);
+  return fetchPlain(url, { method: "POST", headers, body: form }, "write");
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -4994,14 +5002,10 @@ export const api = {
     list: (client_id?: string) => request(`/api/documents${client_id ? `?client_id=${client_id}` : ""}`),
     /** Put a file in the firm's store. Multipart, so the browser sets the
      *  boundary and Content-Type is not ours to send. */
-    upload: async (form: FormData) => {
+    upload: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/documents/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/documents/upload`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -5042,14 +5046,10 @@ export const api = {
       request<ApiResp<ClientDocumentList>>(
         `/api/client-documents?client_id=${encodeURIComponent(clientId)}${withLinks ? "&with_links=true" : ""}`),
     /** Multipart, so the browser sets the boundary and Content-Type is not ours to send. Throws the server's sentence. */
-    upload: async (form: FormData) => {
+    upload: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/client-documents/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/client-documents/upload`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<ApiResp<{ document: ClientDocumentRow }>>(res, "write");
     },
@@ -5709,15 +5709,11 @@ export const api = {
      *  expressly (the same statute services/bank_erasure.py names). */
     deleteStatement: (id: string) => request(`/api/banking/statements/${id}`, { method: "DELETE" }),
     /** Upload a CSV/XLSX statement — parsed, normalized & deduped SERVER-SIDE (B.1). */
-    uploadStatement: async (form: FormData) => {
+    uploadStatement: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/banking/statements/upload`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}/api/banking/statements/upload`, token, form, onProgress);
       // A 422 here is an answer written for the CA — the statement does not add
       // up, the format is unmappable — and it used to reach the screen as the
       // raw JSON body inside "API error 422: {...}". It now arrives as its
@@ -6023,9 +6019,20 @@ export const api = {
       request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/reopen`, {
         method: "POST", body: JSON.stringify({ reason }),
       }),
-    /** Which obligation types the reopen door accepts, so the screen offers it only on those and holds no list of its own. */
+    /** Records, with a reason, that an advance-tax obligation is not owed by the client (`compliance.approve`, POST-A-267 item 4). */
+    notRequired: (id: string, reason: string) =>
+      request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/not-required`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }),
+    /** Takes a "not required" record back, with a reason; the obligation returns to Not Started. */
+    requiredAgain: (id: string, reason: string) =>
+      request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/required-again`, {
+        method: "POST", body: JSON.stringify({ reason }),
+      }),
+    /** Which obligation types the reopen door accepts (and the not-required door, `not_requirable_types`), so the screen offers each
+     *  only on those and holds no list of its own. */
     reopenableTypes: () =>
-      request<ApiResp<{ obligation_types: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
+      request<ApiResp<{ obligation_types: string[]; not_requirable_types?: string[]; max_reason_chars: number }>>(`/api/compliance/reopenable-types`),
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
@@ -6804,6 +6811,19 @@ export const api = {
     listActive: (firmId?: string) =>
       request(`/api/lifecycle/onboarding/checklist/active${firmId ? `?firm_id=${firmId}` : ""}`),
   },
+  /* POST-A-068. The income-tax filing season at firm level: every client's return for a year by stage, and a bulk re-run of the
+     saved computations. Read-only list; the run saves DRAFT computations only and moves no return. */
+  itrSeason: {
+    list: (params: { financial_year: string; stage?: string; limit?: number; offset?: number }) => {
+      const q = new URLSearchParams({ financial_year: params.financial_year });
+      if (params.stage) q.set("stage", params.stage);
+      if (params.limit != null) q.set("limit", String(params.limit));
+      if (params.offset != null) q.set("offset", String(params.offset));
+      return request<ApiResp<ItrSeasonPayload>>(`/api/itr/season?${q.toString()}`);
+    },
+    compute: (body: { financial_year: string; chosen_clients: string[] }) =>
+      request<ApiResp<ItrSeasonComputePayload>>(`/api/itr/season/compute`, { method: "POST", body: JSON.stringify(body) }),
+  },
   workload: {
     capacityList: () => request("/api/workload/capacity"),
     setCapacity: (body: { user_id: string; weekly_capacity_hours: number; max_concurrent_tasks: number }) =>
@@ -6814,6 +6834,19 @@ export const api = {
     capacityRisk: (weeksAhead = 13) =>
       request<ApiResp<CapacityRiskPayload>>(
         `/api/workload/capacity-risk?weeks_ahead=${weeksAhead}`),
+    /** How long one filing of each obligation type takes in this practice, as the firm stated it (POST-A-212). Nothing is defaulted. */
+    obligationEstimates: () =>
+      request<ApiResp<{
+        estimates: { compliance_type: string; estimated_minutes: number; updated_at?: string | null }[];
+        types_without_an_estimate: string[];
+        max_minutes: number;
+      }>>(`/api/workload/obligation-estimates`),
+    setObligationEstimate: (body: { compliance_type: string; estimated_minutes: number }) =>
+      request<ApiResp<{ estimate: { compliance_type: string; estimated_minutes: number } }>>(
+        `/api/workload/obligation-estimates`, { method: "PUT", body: JSON.stringify(body) }),
+    clearObligationEstimate: (complianceType: string) =>
+      request<ApiResp<{ cleared: string }>>(
+        `/api/workload/obligation-estimates?compliance_type=${encodeURIComponent(complianceType)}`, { method: "DELETE" }),
   },
   /* 3b-2. Its own prefix rather than an /api/accounting/reports entry: that
      one serves the AS-3 cash flow STATEMENT (what happened), this is a
@@ -9444,4 +9477,51 @@ export interface OpeningPositions {
   without: { employee_id: string; employee_name: string | null; joining_date: string | null }[];
   carries: string;
   does_not_carry: string;
+}
+
+/** One client's row of `GET /api/itr/season`. */
+export interface ItrSeasonRow {
+  client_id: string;
+  client_name: string | null;
+  entity_type: string | null;
+  stage: string;
+  stage_label: string;
+  itr_form: string | null;
+  filing_status: string | null;
+  acknowledgement_number: string | null;
+  filing_date: string | null;
+  computation_version: number | null;
+  computation_status: string | null;
+  net_payable_paise: number | null;
+  is_refund: boolean | null;
+}
+
+export interface ItrSeasonPayload {
+  financial_year: string;
+  total_clients: number;
+  counts: Record<string, number>;
+  stage_labels: Record<string, string>;
+  matching: number;
+  limit: number;
+  offset: number;
+  rows: ItrSeasonRow[];
+  not_tracked: string[];
+  max_bulk_clients: number;
+}
+
+/** One client's answer from `POST /api/itr/season/compute`. */
+export interface ItrSeasonComputeResult {
+  client_id: string;
+  client_name: string | null;
+  state: string;
+  message: string;
+  version?: number;
+  previous_version?: number;
+}
+
+export interface ItrSeasonComputePayload {
+  financial_year: string;
+  results: ItrSeasonComputeResult[];
+  tally: Record<string, number>;
+  did_not: string[];
 }

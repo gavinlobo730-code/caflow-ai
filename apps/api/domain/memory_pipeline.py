@@ -7,7 +7,8 @@ import logging
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 from core.ist_clock import IST, ist_now, ist_today, ist_date_of
-from domain.practice.compliance_overdue import overdue_records
+from domain.practice.compliance_overdue import is_settled, overdue_records
+from core.observability import capture_soft_failure
 
 logger = logging.getLogger("caflow.memory")
 
@@ -93,8 +94,8 @@ class MemoryPipeline:
                         days = (updated - created).days
                         if 0 <= days <= 365:
                             response_times.append(days)
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError, AttributeError):
+                        continue  # one malformed stamp skips that one data point
 
             avg_response = round(sum(response_times) / len(response_times), 1) if response_times else None
             # Portal engagement = % of tasks completed on time
@@ -276,8 +277,8 @@ class MemoryPipeline:
                             stamped = stamped.astimezone(IST)
                         month = stamped.strftime("%B")
                         month_counts[month] = month_counts.get(month, 0) + 1
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError, AttributeError):
+                        continue  # one malformed stamp skips that one data point
 
             if month_counts:
                 # ⚠️ The buckets are month NAMES, so several years pool into
@@ -311,8 +312,8 @@ class MemoryPipeline:
                         # previous month. Convert an INSTANT, never a date.
                         month = datetime.fromisoformat(c["due_date"].replace("Z", "+00:00")).strftime("%B")
                         deadline_counts[month] = deadline_counts.get(month, 0) + 1
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError, AttributeError):
+                        continue  # one malformed stamp skips that one data point
             profile_data["deadline_concentration"] = deadline_counts
         except Exception as e:
             logger.warning("Workflow firm profile error: %s", e)
@@ -345,7 +346,7 @@ class MemoryPipeline:
         compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
         client_compliance = [c for c in compliance_items
                             if c.get("client_id") == client_id
-                            and c.get("status") not in ("Filed", "Completed")]
+                            and not is_settled(c.get("status"))]
 
         for issue in recurring:
             issue_type = issue.get("type", "")
@@ -399,7 +400,7 @@ class MemoryPipeline:
         compliance_items = _get_compliance_records_repo().find_all(firm_id=firm_id)
         upcoming = [c for c in compliance_items
                    if c.get("client_id") == client_id
-                   and c.get("status") not in ("Filed", "Completed")
+                   and not is_settled(c.get("status"))
                    and c.get("due_date")]
 
         for item in upcoming:
@@ -409,7 +410,9 @@ class MemoryPipeline:
                 # the `except` below swallowed that: this detector had never produced a trigger.
                 due = date.fromisoformat(str(item["due_date"])[:10])
                 days_until_due = (due - today).days
-            except Exception:
+            except Exception as swallowed:
+                capture_soft_failure(swallowed, operation="memory_pipeline.deadline_trigger_parse",
+                                     firm_id=firm_id, client_id=client_id)
                 continue
 
             # At risk if avg response time > days remaining
@@ -570,8 +573,8 @@ class MemoryPipeline:
                             continue
                         month_key = made_on.strftime("%Y-%m")
                         month_counts[month_key] = month_counts.get(month_key, 0) + 1
-                    except Exception:
-                        pass
+                    except (ValueError, TypeError, AttributeError):
+                        continue  # one malformed stamp skips that one data point
 
             if len(month_counts) >= 3:
                 values = list(month_counts.values())

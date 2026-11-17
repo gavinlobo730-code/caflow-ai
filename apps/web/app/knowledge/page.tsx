@@ -7,6 +7,8 @@ import { api, type ApiResp } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/states";
+import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate } from "@/lib/dates/format";
 
 interface Article {
@@ -165,7 +167,19 @@ function KnowledgeInner() {
 
       {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
-          {articles.length === 0 && !answered && <p className="text-xs text-ps-hint">No articles found.</p>}
+          {articles.length === 0 && !answered && (
+            <EmptyState
+              className="py-10"
+              icon={<Library size={32} />}
+              title="No articles found"
+              description="The firm's own articles are listed here. A Partner or Manager writes one with New article."
+              action={
+                <EmptyStateActions>
+                  <EmptyStateAction requires={["knowledge", "write"]} icon={<Plus size={14} />} label="New article" onClick={() => setShowForm(true)} />
+                </EmptyStateActions>
+              }
+            />
+          )}
           {articles.length === 0 && answered && (
             <p className="text-xs text-ps-hint">
               No article in this list has every word of &ldquo;{answered}&rdquo; in its title or its current text.

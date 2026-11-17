@@ -25,6 +25,7 @@
  * Section 203: Issuance of TDS certificates
  */
 
+import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
@@ -420,12 +421,14 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">TDS Section</label>
-            <select aria-label="TDS Section" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
-              {choices.deductible.length === 0 && <option value={section}>{section}</option>}
-              {choices.deductible.map(k => (
-                <option key={k} value={k}>{sectionOptionText(k, choices.labels)}</option>
-              ))}
-            </select>
+            <EntityLookup ariaLabel="TDS Section"
+              items={choices.deductible.length === 0 ? [section] : choices.deductible}
+              value={section}
+              onChange={setSection}
+              getId={k => k}
+              getLabel={k => (choices.deductible.length === 0 ? k : sectionOptionText(k, choices.labels))}
+              searchPlaceholder="Search sections…"
+            />
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Gross Payment (₹)</label>
@@ -881,10 +884,14 @@ function AddChallanModal({ clientId, choices, onClose, onAdded }: {
                 salary TDS is deposited on an ITNS 281 like any other — Payroll
                 computes it, and the CA records the challan. The deduction form
                 above deliberately excludes it. */}
-            <select aria-label="Section" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={section} onChange={e => setSection(e.target.value)}>
-              {choices.challan.length === 0 && <option value={section}>{section}</option>}
-              {choices.challan.map(c => <option key={c.section} value={c.section}>{sectionOptionText(c.section, choices.labels)}</option>)}
-            </select>
+            <EntityLookup ariaLabel="Section"
+              items={choices.challan.length === 0 ? [{ section, label: section }] : choices.challan}
+              value={section}
+              onChange={setSection}
+              getId={c => c.section}
+              getLabel={c => (choices.challan.length === 0 ? c.section : sectionOptionText(c.section, choices.labels))}
+              searchPlaceholder="Search sections…"
+            />
           </div>
         </div>
         <div className="flex gap-2">
@@ -1729,8 +1736,19 @@ export default function TDSPage() {
                   <tr><td colSpan={7}><ListNotRead loading={loading} error={listErrors.certificates} what="certificates" /></td></tr>
                 )}
                 {certificates.length === 0 && !loading && !listErrors.certificates && (
-                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-ps-hint">
-                    No certificates for this client yet. Generate a draft from the client&apos;s Compliance → TDS tab.
+                  <tr><td colSpan={7}>
+                    <EmptyState
+                      className="py-10"
+                      title={selectedClientId ? "No certificates for this client yet" : "No client chosen"}
+                      description={selectedClientId
+                        ? "The Form 16 or 16A itself is generated on TRACES. Record that it was issued on the client's Compliance → TDS tab and it is listed here."
+                        : "Choose a client above to see the certificates recorded for them."}
+                      action={selectedClientId && (
+                        <EmptyStateActions>
+                          <EmptyStateAction requires={["tds", "compute"]} label="Open the client's TDS tab" href={`/clients/${selectedClientId}/compliance/tds`} variant="secondary" />
+                        </EmptyStateActions>
+                      )}
+                    />
                   </td></tr>
                 )}
               </tbody>

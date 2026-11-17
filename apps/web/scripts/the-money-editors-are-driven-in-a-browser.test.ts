@@ -367,6 +367,10 @@ const DRIVEN: Record<string, string[]> = {
   // The eighteenth slice (6-11-2026): the two catalogue boxes that date an opening stock, which the count of what was left found beside the eight it named.
   "components/catalogue/ProductServiceFormModal.tsx": ["[Opening balance as of]"],
   "components/catalogue/ProductServiceManagerPanel.tsx": ["#catalogue-import-opening-date"],
+  // The nineteenth slice (16-11-2026): the one date box of the POST-A-386 list that records a fact taken on a government portal.
+  "components/gst/ExpiringEwayBills.tsx": ["[New valid upto]"],
+  // A window or a filter that chooses what a screen reads and writes nothing: the claims are the ones of a form with the read standing where Save does.
+  "app/settings/audit-log/page.tsx": ["[Audit log from date]", "[Audit log to date]"],
 };
 
 /** Date fields in those same editors that the drive does NOT yet drive, each with why. A table that can only
