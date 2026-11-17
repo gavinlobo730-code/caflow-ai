@@ -464,11 +464,18 @@ def _opening_position_gap(emp: dict, month: str, fy: str, tds_ytd: dict) -> list
     """A named gap for an employee this product has no earlier month for in the year and who was employed before this month
     (POST-A-082). Listed with the run like the other statutory gaps; it blocks nothing, because a client that really started the
     employee this month, or whose first run this is in April, is the ordinary case and has nothing to record. An opening position
-    of nil months is an answer and silences it. An unreadable joining date cannot rule an earlier month out, so it is named."""
-    if emp.get("id") in tds_ytd or month[5:7] == "04":
+    of nil months is an answer and silences it. An unreadable joining date cannot rule an earlier month out, so it is named.
+
+    A `tds_ytd` whose read FAILED (`_UnreadYtd`) is not "nothing on file": the earlier months or the positions may well exist, so
+    every employee who could have had an earlier month is named with what could not be read, whether or not they are in it."""
+    if month[5:7] == "04":
         return []
     joined = str(emp.get("joining_date") or "")[:7]
     if joined and joined >= month[:7] and len(joined) == 7:
+        return []
+    if getattr(tds_ytd, "unread", False):
+        return [opening_domain.unread_sentence(emp.get("name") or "An employee", month)]
+    if emp.get("id") in tds_ytd:
         return []
     return [opening_domain.gap_sentence(emp.get("name") or "An employee", month)]
 
@@ -562,6 +569,23 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
     in past the ceiling) rather than the one that over-deducts from people who
     were never covered.
     """
+    # An opening position that SAYS the employee contributed earlier in the period the position's first month falls in
+    # (POST-A-082). Only an explicit TRUE counts: an unknown is not a contribution. Read in its OWN try, so a position table
+    # that cannot be read (before migration 641 is applied, or any failure) costs only what the positions say and never the
+    # coverage the released runs below establish. And a first month of April or October opens its period, so a TRUE there
+    # describes the previous period and is not counted (the validation refuses it; this holds a row written before it did).
+    try:
+        period = esi_contribution_period(month)
+        opening_covered = {str(r["employee_id"]) for r in
+                           _opening_positions(db, firm_id, client_id, _fy_for_month(month) or "")
+                           if r.get("esi_contributed_earlier_in_period") is True
+                           and opening_domain.applies(r, month)
+                           and esi_contribution_period(str(r["first_month_here"])[:7]) == period
+                           and opening_domain.esi_answer_can_be_yes(
+                               date.fromisoformat(f"{str(r['first_month_here'])[:7]}-01"))}
+    except Exception:
+        _logger.exception("could not read the opening positions for ESI coverage %s %s", client_id, month)
+        opening_covered = set()
     try:
         period = esi_contribution_period(month)
         # RELEASED RUNS ONLY (PAY-04). A draft run has deducted nothing and
@@ -577,13 +601,6 @@ def _members_contributing_earlier_this_period(db, firm_id: str, client_id: str,
         earlier = [r["id"] for r in runs
                    if r.get("month") and r["month"] < month
                    and esi_contribution_period(r["month"]) == period]
-        # An opening position that SAYS the employee contributed earlier in the period the position's first month falls in
-        # (POST-A-082). Only an explicit TRUE counts: an unknown is not a contribution.
-        opening_covered = {str(r["employee_id"]) for r in
-                           _opening_positions(db, firm_id, client_id, _fy_for_month(month) or "")
-                           if r.get("esi_contributed_earlier_in_period") is True
-                           and opening_domain.applies(r, month)
-                           and esi_contribution_period(str(r["first_month_here"])[:7]) == period}
         if not earlier:
             return opening_covered
         slips = (db.table("payroll_slips").select("employee_id, esi_employee_paise")
@@ -1264,7 +1281,36 @@ def _tds_already_deducted_this_fy(db, firm_id: str, client_id: str,
         return _with_opening_positions(db, firm_id, client_id, month, fy, out)
     except Exception:
         _logger.exception("could not read YTD TDS for %s %s", client_id, month)
-        return {}
+        return _UnreadYtd()
+
+
+class _UnreadYtd(dict):
+    """A year-to-date mapping that is not the whole answer, because a read behind it failed. It behaves as the dict every caller
+    expects (empty, or the released runs without the opening positions), and `_opening_position_gap` reads the mark so a failed
+    read is named as one and never reported as "nothing is on file" (POST-A-082)."""
+    unread = True
+
+
+def _employees_whose_opening_position_covers(db, firm_id: str, client_id: str, month: str, run_id: str) -> list[str]:
+    """The names of the employees on run `run_id` whose opening position for the month's financial year starts AFTER `month`,
+    so that the position already holds this month (POST-A-082). Read failures raise: the release door must not let a run
+    through on a read it could not make, any more than it lets one through on a gap."""
+    fy = _fy_for_month(month)
+    if not fy:
+        return []
+    later = {str(r["employee_id"]) for r in _opening_positions(db, firm_id, client_id, fy)
+             if str(r.get("first_month_here"))[:7] > month[:7]}
+    if not later:
+        return []
+    on_run = {str(sl["employee_id"]) for sl in (db.table("payroll_slips").select("employee_id")
+                                                 .eq("run_id", run_id).execute().data) or []}
+    hit = on_run & later
+    if not hit:
+        return []
+    names = {str(e["id"]): e.get("name") for e in (db.table("payroll_employees").select("id, name")
+                                                    .eq("firm_id", firm_id).eq("client_id", client_id)
+                                                    .in_("id", sorted(hit)).execute().data) or []}
+    return sorted(names.get(i) or i for i in hit)
 
 
 def _opening_positions(db, firm_id: str, client_id: str, fy: str) -> list[dict]:
@@ -1284,7 +1330,7 @@ def _with_opening_positions(db, firm_id: str, client_id: str, month: str, fy: st
         rows = [r for r in _opening_positions(db, firm_id, client_id, fy) if opening_domain.applies(r, month)]
     except Exception:
         _logger.exception("could not read the opening positions for %s %s", client_id, fy)
-        return ytd
+        return _UnreadYtd(ytd)
     return opening_domain.add_to_ytd(ytd, {str(r["employee_id"]): opening_domain.as_opening(r) for r in rows})
 
 
@@ -3770,6 +3816,16 @@ def finalize_run(
     # instead of building an empty journal that the kernel rejects (would 500).
     if int(run.get("total_gross_paise") or 0) <= 0:
         raise HTTPException(status_code=400, detail="Cannot finalize an empty payroll run (no computed salary).")
+
+    # A MONTH INSIDE AN OPENING POSITION (POST-A-082). The position already counts this month's pay and tax, so releasing a
+    # slip for it here counts them twice in every later month's §192(3) spread, the projection and a settlement. The PUT that
+    # records a position refuses the same overlap the other way round (a released month before its first month).
+    clash = _employees_whose_opening_position_covers(db, firm_id, client_id, str(run.get("month") or ""), run_id)
+    if clash:
+        raise HTTPException(status_code=409, detail=(
+            f"{', '.join(clash)}: {run.get('month')} is before the first month of their opening position, so its pay and tax "
+            f"are already counted in that position; releasing this run would count them twice. Move the position's first "
+            f"month back to {run.get('month')} (and take this month out of its figures), or remove the position."))
 
     # BEFORE the journal, because a refusal after posting would be a run that is
     # not finalized carrying an entry that says it is.
@@ -7919,10 +7975,12 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
         rows.append({
             "month": mo,
             "actual": a is not None or before_opening,
-            # A month before the product ran carries no figure of its own: its pay is the opening position's, in total.
+            # A month before the product ran carries no figure of its own: its pay is the opening position's, IN TOTAL, so
+            # the month's own gross and tax are unknown and are sent as null, never as a paid zero. A screen shows the
+            # position's totals (`opening_position`) once, beside the months it covers.
             "opening": before_opening,
-            "gross_paise": a["gross_paise"] if a else (0 if before_opening else projected_gross),
-            "tds_paise": a["tds_paise"] if a else (0 if before_opening else projected_monthly),
+            "gross_paise": a["gross_paise"] if a else (None if before_opening else projected_gross),
+            "tds_paise": a["tds_paise"] if a else (None if before_opening else projected_monthly),
         })
 
     remaining = sum(1 for r in rows if not r["actual"])
@@ -7938,7 +7996,7 @@ def compute_tds_projection(db, *, firm_id: str, client_id: str,
         # will withhold — NOT twelve times the monthly figure, which double
         # counts the months already run.
         "estimated_annual_tds_paise": deducted + projected_monthly * remaining,
-        "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows) + (opening.gross_paise if opening else 0),
+        "estimated_annual_gross_paise": sum(r["gross_paise"] for r in rows if not r["opening"]) + (opening.gross_paise if opening else 0),
         "opening_position": ({"first_month_here": opening.first_month, "months_paid": opening.months_paid,
                               "gross_paise": opening.gross_paise, "tds_paise": opening.tds_paise} if opening else None),
         "gaps": gaps,

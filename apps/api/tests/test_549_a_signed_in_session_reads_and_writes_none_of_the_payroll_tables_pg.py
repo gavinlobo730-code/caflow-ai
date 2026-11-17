@@ -57,22 +57,35 @@ def _array_in(path: Path) -> set[str]:
     return set(re.findall(r"'([a-z_]+)'", body))
 
 
-def _payroll_prefixed_tables_the_migrations_create() -> set[str]:
-    created, dropped = set(), set()
+def _payroll_tables_by_migration() -> tuple[set[str], set[str]]:
+    """(every `payroll_` table the forward migrations create and do not drop, the ones a migration AFTER 549 creates already
+    closed to the signed-in role: REVOKE ALL ... FROM PUBLIC, anon, authenticated, and no grant back to authenticated)."""
+    created, dropped, closed = set(), set(), set()
     for path in MIGRATIONS.glob("*.sql"):
         if path.name.endswith("_rollback.sql"):
             continue
         sql = re.sub(r"--[^\n]*", "", path.read_text())
         new = set(re.findall(r"CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?(payroll_[a-z_]+)", sql))
-        # A table a LATER migration creates already closed to the signed-in role (REVOKE ALL ... authenticated, and no grant
-        # to it) has nothing for 549 to take back: payroll_opening_positions, migration 641 (POST-A-082).
         if path.name.split("_", 1)[0].isdigit() and int(path.name.split("_", 1)[0]) > 549:
-            new = {t for t in new
-                   if not (re.search(rf"REVOKE ALL ON (?:TABLE )?public\.{t} FROM PUBLIC, anon, authenticated", sql)
-                           and not re.search(rf"GRANT [A-Z, ]+ ON (?:TABLE )?public\.{t} TO authenticated", sql))}
+            closed |= {t for t in new
+                       if re.search(rf"REVOKE ALL ON (?:TABLE )?public\.{t} FROM PUBLIC, anon, authenticated", sql)
+                       and not re.search(rf"GRANT [A-Z, ]+ ON (?:TABLE )?public\.{t} TO authenticated", sql)}
         created |= new
         dropped |= set(re.findall(r"DROP TABLE (?:IF EXISTS )?(?:public\.)?(payroll_[a-z_]+)", sql))
-    return created - dropped
+    return created - dropped, closed - dropped
+
+
+def _closed_at_birth() -> set[str]:
+    """The `payroll_` tables a LATER migration creates already closed to the signed-in role. 549 has nothing to take back from
+    them, so they are not in its group; they are still payroll tables, and the database tests below hold them closed too:
+    payroll_opening_positions, migration 641 (POST-A-082)."""
+    return _payroll_tables_by_migration()[1]
+
+
+def _payroll_prefixed_tables_the_migrations_create() -> set[str]:
+    """The `payroll_` tables in 549's group: every one the migrations create, less those closed at birth."""
+    created, closed = _payroll_tables_by_migration()
+    return created - closed
 
 
 def _group() -> set[str]:
@@ -148,7 +161,9 @@ def test_the_group_exists_in_a_migrated_database_exactly_as_the_rule_says(dsn):
     present = set(_query(dsn, "SELECT relname FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r', 'p') "
                               "AND (relname LIKE 'payroll\\_%' OR relname = ANY(ARRAY["
                               + ", ".join(f"'{t}'" for t in sorted(PAYROLL_TABLES - {VIEW})) + "]))"))
-    assert present == _group(), sorted(present ^ _group())
+    # A table closed at birth exists in the database and is not 549's to revoke; it is held closed by the next test.
+    assert _closed_at_birth() <= present, sorted(_closed_at_birth() - present)
+    assert present - _closed_at_birth() == _group(), sorted((present - _closed_at_birth()) ^ _group())
     assert _query(dsn, f"SELECT relkind FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = '{VIEW}'") == ["v"]
 
 
@@ -157,6 +172,11 @@ def test_the_group_exists_in_a_migrated_database_exactly_as_the_rule_says(dsn):
 def test_no_signed_in_role_holds_any_privilege_on_a_payroll_table_or_the_view(dsn, role):
     held = {rel: verbs for rel, verbs in _privileges(dsn, role, _relations()).items() if verbs}
     assert held == {}, f"{role} still holds: {held}"
+    # And the tables left out of 549's group because a later migration created them closed ARE closed, so leaving them
+    # out of the group cannot leave a payroll table open.
+    assert _closed_at_birth(), "the exclusion found nothing: the rule that left a table out of the group no longer matches"
+    late = {rel: verbs for rel, verbs in _privileges(dsn, role, sorted(_closed_at_birth())).items() if verbs}
+    assert late == {}, f"{role} holds a payroll table a later migration created: {late}"
 
 
 @_NEEDS_PG

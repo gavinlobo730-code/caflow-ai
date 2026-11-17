@@ -10,7 +10,9 @@ and the accrual and its readers could look at two different accounts without any
 THE KEY IS THE DECISION, THE NAME IS THE FALLBACK. `chart_of_accounts.system_account_key` carries one of the keys below
 (migration 640 stamps it where exactly one firm-level active account matched and no client-level one did; a new firm's chart
 is seeded with it). An account found by its key is found after a rename. An unkeyed chart is still served by the pattern the
-posting has always used, so no firm that finalises today stops finalising.
+posting has always used, with one change: two accounts at the same level that both match it, neither named exactly as the
+standard chart names it, are refused with both names (below), where the old `limit(1)` posted to whichever came back first. A
+chart of that shape that finalises today is refused until one is renamed or deactivated; production was not counted for it.
 
 WHICH ROW, IN ORDER: the client's own row carrying the key, a firm-level row carrying the key, the client's own row matching
 the pattern, a firm-level row matching the pattern. Another client's row is never a candidate (migration 360's trigger would

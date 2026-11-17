@@ -501,7 +501,8 @@ export default function TDSReturnsPage() {
                         Ledger tie-up:{" "}
                         <strong className={result.reconciliation.matched ? "text-green-700" : "text-state-attention"}>
                           {!result.reconciliation.account_found
-                            ? "the TDS Payable control account was not found"
+                            // The server's sentence when it has one: two accounts that could each be it is not "none was found".
+                            ? (result.reconciliation.account_note || "the TDS Payable control account was not found")
                             : result.reconciliation.matched
                             ? (result.reconciliation.typed_paise
                               ? "the purchase bills and advances agree with the general ledger"

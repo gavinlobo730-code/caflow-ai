@@ -17,8 +17,11 @@
 --   2. Stamps each payroll key (domain/payroll/ledger_accounts.py is the vocabulary, and a test holds this list equal to it)
 --      on an account ONLY where exactly one ACTIVE FIRM-LEVEL account of the firm matches the pattern the posting has always
 --      used, no active client-level account of the firm matches it, the account carries no key yet, and it matches no other
---      payroll pattern. Anything less certain is left unkeyed and is still found by its name, exactly as today, so no firm
---      that finalises today stops finalising and no firm is moved onto a different account than the one it posts to now.
+--      payroll pattern. Anything less certain is left unkeyed and is found by its name as before, with one change made in
+--      the resolver and not here: where two accounts at the same level (the client's own, or firm-level) match the name and
+--      neither is named exactly as the standard chart names it, the posting is now refused with both names, where it used to
+--      post to whichever the database returned first. Such a chart that finalises today is refused until one is renamed or
+--      deactivated; production's charts were not counted for it. No firm is moved onto a different account by this migration.
 --   3. A unique index: within a firm and a scope (one client, or firm-level), a payroll key is on at most one account, so the
 --      resolver never has to choose between two keyed rows.
 --

@@ -39,6 +39,21 @@ def months_before(first_month: date, fy: str, joining_date: Optional[str]) -> Op
     return max(0, (first_month.year - begin.year) * 12 + first_month.month - begin.month)
 
 
+def esi_answer_can_be_yes(first_month: date) -> bool:
+    """Whether "contributed to ESI earlier in this contribution period" can be true of a position whose first month is
+    `first_month`. The periods are April to September and October to March (`esi_contribution_period`), so a first month of
+    April or October opens its period and has no earlier month in it: a Yes there can only describe the PREVIOUS period, and the
+    continuation the answer feeds does not cross a period boundary (`_members_contributing_earlier_this_period`)."""
+    return first_month.month not in (4, 10)
+
+
+def _esi_answer_problems(body: Mapping[str, Any], first: date) -> list[str]:
+    if body.get("esi_contributed_earlier_in_period") is True and not esi_answer_can_be_yes(first):
+        return [f"The first month {first:%Y-%m} opens an ESI contribution period (April or October), so no earlier month of "
+                f"that period exists; a contribution in the previous period does not carry over. Answer No or Not known."]
+    return []
+
+
 def validate(body: Mapping[str, Any], *, fy: str, joining_date: Optional[str]) -> list[str]:
     """Every problem with a position, in a CA's words. Empty means acceptable. `fy` is the financial year the first month falls in."""
     problems: list[str] = []
@@ -77,6 +92,7 @@ def validate(body: Mapping[str, Any], *, fy: str, joining_date: Optional[str]) -
         problems.append("The employee's own deductions (tax, PF, ESI and professional tax) add up to more than the gross paid so far.")
     if months_paid == 0 and any(body[f] for f in AMOUNT_FIELDS):
         problems.append("No month was paid, yet an amount was entered.")
+    problems.extend(_esi_answer_problems(body, first))
     note = body.get("source_note")
     if note is not None and len(str(note)) > 500:
         problems.append("The note is longer than 500 characters.")
@@ -118,3 +134,9 @@ def gap_sentence(name: str, month: str) -> str:
             f"{month} run spreads the year's tax as if nothing had been paid or withheld before it. If {name} was paid earlier "
             f"in the year elsewhere, record what was paid and withheld (Payroll, Opening positions); a figure the old system "
             f"holds is a fact, an estimate is not. This product does not know it was not.")
+
+
+def unread_sentence(name: str, month: str) -> str:
+    return (f"{name}: this financial year's earlier payroll months or its opening positions could not be read, so the {month} "
+            f"run spreads the year's tax as if nothing had been paid or withheld before it, and that may not be so. Recompute "
+            f"the run once they can be read; this is a failed read, not a finding that nothing is on file.")

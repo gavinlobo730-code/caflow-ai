@@ -984,13 +984,17 @@ export interface TaxAuditDueDates {
 export interface PayrollTdsProjection {
   financial_year: string;
   employee_id: string;
-  months: { month: string; actual: boolean; gross_paise: number; tds_paise: number }[];
+  /** `opening` (POST-A-082): a month before the product ran this client's payroll. Its pay and tax are the opening
+   *  position's, in total, so the month's own `gross_paise` and `tds_paise` are null (unknown), never a paid zero. */
+  months: { month: string; actual: boolean; opening?: boolean; gross_paise: number | null; tds_paise: number | null }[];
   deducted_so_far_paise: number;
   months_paid: number;
   projected_monthly_paise: number;
   projected_monthly_gross_paise: number;
   estimated_annual_tds_paise: number;
   estimated_annual_gross_paise: number;
+  /** What the employee had been paid and had withheld before the first month here, as the CA recorded it; null when none. */
+  opening_position?: { first_month_here: string; months_paid: number; gross_paise: number; tds_paise: number } | null;
   gaps: string[];
 }
 
