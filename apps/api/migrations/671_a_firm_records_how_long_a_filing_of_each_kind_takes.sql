@@ -12,11 +12,19 @@
 -- One table, `compliance_effort_estimates`: per firm and per obligation type (the calendar's own `compliance_type`, the word the
 -- obligation already carries), how many whole minutes one filing of that kind takes in THIS practice. The figure is the firm's own
 -- statement, never the product's: there is no default, no seed and no backfill, a type with no row has no estimate and is still
--- counted as an item without one, and nothing is averaged over it. Written by the API alone (`PUT /api/workload/obligation-estimates`,
--- `workload.write`): a signed-in session is given read only, so a row security policy is not the second lock on a write.
+-- counted as an item without one, and nothing is averaged over it. Read and written by the API alone, through its privileged client
+-- naming the firm (`GET`, `PUT` and `DELETE /api/workload/obligation-estimates`: `workload` read and write, Manager and above). A
+-- signed-in session is given NO privilege on the table, not even read: nothing in the browser reads it, and a read grant would let a
+-- member the API refuses (an Executive holds no `workload` read) read the firm's figures over PostgREST. The firm-isolation policy
+-- stays as the second lock should a grant ever be given.
 --
 -- Whole minutes MORE than zero, like a task's. No statutory figure is held: how long a filing takes is practice effort and not a date,
 -- a rate or a threshold.
+--
+-- THE API MAY DEPLOY BEFORE THIS RUNS (Render serves a push to main while this job waits on the tests). In that window the capacity
+-- forecast reads no figure and says so at ERROR (`capacity_risk_service._stated_hours`, which treats only "the table is not there" that
+-- way), so it answers as it did before this table existed; the estimates panel's own doors fail, and it says its figures could not be
+-- read, until this has run.
 --
 -- Additive; no row is written here.
 
@@ -51,7 +59,6 @@ CREATE POLICY "compliance_effort_estimates_firm_isolation" ON public.compliance_
   WITH CHECK (firm_id = (SELECT public.get_my_firm_id()));
 
 REVOKE ALL ON public.compliance_effort_estimates FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON public.compliance_effort_estimates TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.compliance_effort_estimates TO service_role;
 
 DO $$
@@ -65,7 +72,7 @@ DECLARE
     verb text;
 BEGIN
     FOREACH r IN ARRAY ARRAY['authenticated', 'anon'] LOOP
-        FOREACH verb IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] LOOP
+        FOREACH verb IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'] LOOP
             IF has_table_privilege(r, 'public.compliance_effort_estimates', verb) THEN
                 RAISE EXCEPTION 'migration 671: % still holds % on compliance_effort_estimates', r, verb;
             END IF;

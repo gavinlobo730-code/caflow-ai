@@ -12,9 +12,14 @@
 -- WHAT THIS ADDS
 --
 -- One more value in the CHECK, 'Not Required'. Nothing else: the reason a CA gives is appended to the row's existing `notes` and
--- written to the audit log by `compliance_record_service.mark_not_required`, which is the only writer of the value and accepts it on
--- ADVANCE_TAX obligations only, with a written reason, for a person holding compliance.approve. No row is changed here and no
--- figure is held: whether a client owes an instalment is the CA's statement, not the database's.
+-- written to the audit log by `compliance_record_service.mark_not_required`, which is the only door in the API that writes the value
+-- and accepts it on ADVANCE_TAX obligations only, with a written reason, for a person holding compliance.approve. No row is changed
+-- here and no figure is held: whether a client owes an instalment is the CA's statement, not the database's.
+--
+-- WHAT THIS DOES NOT ENFORCE. Those three conditions are the API door's and not the database's. `compliance_records` still takes a
+-- signed-in write from a member whose role may write the row (migration 489's write tier, an assigned Executive among them), and the
+-- API writes it as the caller, so such a member can set 'Not Required' over PostgREST with no reason and no audit row, as they can
+-- already set 'Filed'. Closing the table to signed-in writes (its writers moved to the privileged client first) is its own change.
 --
 -- WHY A CHECK WIDENING IS SAFE ON ITS OWN, AND IN EITHER ORDER WITH THE API
 --
