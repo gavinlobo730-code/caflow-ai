@@ -89,7 +89,7 @@ def record_lot(db, firm_id: str, client_id: str, challan_id: str, lot: dict, *, 
     return (got[0] if isinstance(got, list) and got else got) or {}
 
 
-def issue(db, firm_id: str, client_id: str, challan_id: str, issued_at: str, *, document_no: object) -> Optional[dict]:
+def issue_in_one_transaction(db, firm_id: str, client_id: str, challan_id: str, issued_at: str, *, document_no: object) -> Optional[dict]:
     """Returns None when the database has no `issue_delivery_challan_atomic` (migration 652 is not applied yet: raised only for the missing-function signature, so the caller can issue with the
     compare-and-set it had for the minutes between a deploy of the API and the migration, and for no other reason). Otherwise: issue a draft challan in one transaction that locks the challan and the order it names and asks the order's over-delivery rule (migration 652, POST-A-421); the challan as stored.
 
