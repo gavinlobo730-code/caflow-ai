@@ -58,15 +58,9 @@ PRACTICE_IN_ON_PURPOSE: dict[tuple[str, str], str] = {
 
 #: (module, function) -> what is open. SHRINK-ONLY: these count or list the practice among the firm's clients, which G2 says not to.
 #: They are OPEN WORK and not accepted exceptions: being named here keeps the census an equality, it does not carry the work. Each is
-#: carried by POST-A-457 in docs/open-items/new-findings.md (raised when POST-A-169 closed), and an entry is deleted in the
+#: carried by a new-findings line (POST-A-457 emptied it on 17-11-2026), and an entry is deleted in the
 #: commit that fixes its read and closes that line.
-G2_OPEN: dict[tuple[str, str], str] = {
-    ("services/hub_worklist_service.py", "_client_count"):
-        "counts the practice among the clients a hub worklist examined; the rows come from `hub_client_worklist`, which does not "
-        "leave it out either, so both move together",
-    ("services/risk_register_service.py", "build_register"):
-        "lists the practice in the firm's risk register; it is the practice's own exposure too, so which way G2 falls is decided first",
-}
+G2_OPEN: dict[tuple[str, str], str] = {}
 
 
 def _outer_functions(tree: ast.AST) -> dict[ast.AST, ast.AST]:
