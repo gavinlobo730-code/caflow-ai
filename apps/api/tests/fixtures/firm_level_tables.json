@@ -46,11 +46,6 @@
       "writes": "",
       "why": "What the firm's automation does; the firm's own rules, not any client's. The signed-in role holds no write; the server writes it."
     },
-    "compliance_effort_estimates": {
-      "category": "firm_wide",
-      "writes": "",
-      "why": "How many minutes the practice says one filing of each obligation type takes, read by the firm for its capacity forecast. The signed-in role holds no write."
-    },
     "cross_client_matches": {
       "category": "scoped",
       "writes": "awd",

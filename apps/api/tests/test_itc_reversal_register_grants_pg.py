@@ -159,6 +159,10 @@ NOT_FOR_THE_API = {
     # Migration 641 (POST-A-082): a mid-year client's payroll opening position per employee, a payroll table like the twenty-three
     # above; the API's privileged client is its only reader and writer, and `authenticated`, `anon` and PUBLIC hold no privilege.
     "payroll_opening_positions",
+    # Migration 671 (POST-A-212): how long one filing of each kind takes in this firm. Its review of 17-11-2026 took the read away
+    # too: `repositories/compliance_effort_repository.py` reads and writes it through the privileged client naming the firm, and
+    # `authenticated`, `anon` and PUBLIC hold no privilege.
+    "compliance_effort_estimates",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

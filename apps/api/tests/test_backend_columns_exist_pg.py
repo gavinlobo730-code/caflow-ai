@@ -422,7 +422,11 @@ UNFIXED: dict[str, str] = {}
 # depreciation_reversal_month, depreciation_reversal_claimed_at) is named in a literal payload or filter of the same file, so the
 # columns are still checked.
 # Together (17-11-2026, both branches combined): 470 + 1 (POST-A-442) + 2 (POST-A-437) = 473.
-MAX_UNREADABLE = 473
+# 475 (17-11-2026, POST-A-050 and POST-A-090): two more, each unreadable by construction. `nightly_exception_results_service.store`
+# inserts the rows `_row` builds, whose keys are literal there and are migration 660's columns; and the received-against-output-tax
+# check's chart read filters `or_(f"client_id.eq.{client_id},client_id.is.null")`, the interpolated client_id the other chart reads
+# use, with the select list beside it naming the columns.
+MAX_UNREADABLE = 475
 
 
 def _psql(dsn: str, sql: str) -> subprocess.CompletedProcess:
