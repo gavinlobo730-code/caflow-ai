@@ -314,7 +314,7 @@ NOT_REACHED_BY_A_SCREEN: dict[tuple[str, str], str] = {
 # allowed one more) is a visible edit of two numbers and not of one. A shuffle (one prefix allowed one more, another one fewer) still passes: that is the per-prefix budgets' job to refuse.
 # 195 -> 193 on 12-11-2026 (POST-B-321): the two staff cost-rate routes got a screen (the Profitability screen's cost-rate panel), and `/api/billing` fell 6 -> 4.
 # 193 -> 192 on 14-11-2026 (POST-A-156): `GET /api/time-entries/summary/me` got a screen, and `/api/time-entries` fell 1 -> 0.
-TOTAL_BUDGET = 192
+TOTAL_BUDGET = 187
 
 
 # ---------------------------------------------------------------------------
