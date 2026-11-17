@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { objectOrNull, arrayOrEmpty } from "@/lib/api/shape";
 import { failureSentence } from "@/lib/api/failureSentence";
+import { LoadingRegion } from "@/components/ui/skeleton";
 
 interface Estimate { compliance_type: string; estimated_minutes: number }
 
@@ -95,7 +96,7 @@ export function FilingEffortPanel({ onChanged }: { onChanged?: () => void }) {
           </p>
         </div>
         {loadError && <p role="alert" className="text-xs text-state-problem">{loadError}</p>}
-        {estimates === null && !loadError && <p className="text-xs text-ps-hint">Reading the figures…</p>}
+        {estimates === null && !loadError && <LoadingRegion label="Reading the filing-effort figures" className="text-xs text-ps-hint">Reading the figures…</LoadingRegion>}
         {estimates !== null && rows.length === 0 && (
           <p className="text-xs text-ps-label">
             The filing calendar the forecast reads holds no obligations yet, so there is no kind of filing to give a figure for here.
