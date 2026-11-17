@@ -337,7 +337,10 @@ def test_the_hub_worklist_never_shows_a_non_partner_the_internal_client(db):
     _ok(db, f"UPDATE clients SET is_internal = true WHERE id = '{CLIENT_A}'; "
             f"UPDATE firms SET internal_client_id = '{CLIENT_A}' WHERE id = '{FIRM}';")
     assert CLIENT_A not in _clients_seen("manager", db)
-    assert CLIENT_A in _clients_seen("partner", db)
+    # Since migration 706 (POST-A-457, guardrail G2) the practice is not on a hub worklist for a Partner either: it is not one of the
+    # firm's clients to count or chase. The Partner still sees every other client.
+    assert CLIENT_A not in _clients_seen("partner", db)
+    assert CLIENT_B in _clients_seen("partner", db)
 
 
 # ── privileges ───────────────────────────────────────────────────────────────
