@@ -987,6 +987,10 @@ EXEMPT: dict[str, str] = {
     "/api/accounting/schedule-iii/captions":
         "a statutory vocabulary, not data: no table, no client_id, and the same "
         "captions for every firm. The PATCH that stores one is guarded.",
+    # ── /api/accounting: the loans screen's EMI calculator (POST-A-266) ──────
+    "/api/accounting/emi":
+        "arithmetic on three numbers the caller typed (principal, rate, months): it reads no table, takes no "
+        "client_id and stores nothing, so there is no client to check. domain/loans/emi.py.",
     # ── /api/reconciliation: the check vocabulary, which holds no data ──────
     # What "Verify Books" checks, and what it deliberately does not. It reads
     # no table, takes no client_id, and returns the same sixteen entries for
