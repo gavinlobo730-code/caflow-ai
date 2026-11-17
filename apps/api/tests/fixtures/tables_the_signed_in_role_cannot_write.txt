@@ -21,6 +21,7 @@
 # 595 closes itc_reversal_register, gstr2b_uploads, gst_sync_jobs, gst_portal_snapshots, client_gst_turnover, hsn_sac_preferences and gst_challans (POST-A-008, the GST tranche): the API writes the first six with its privileged client since the change that shipped before it, and nothing writes gst_challans.
 # 617 creates ecommerce_operator_supply_amendments and ecommerce_operator_unregistered_supply_amendments (POST-A-056, GSTR-8 Table 4 and 4.1) with no signed-in privilege at all: the API's privileged client is their one reader and writer.
 # 620 creates stock_effect_settlements (POST-A-092) with no signed-in privilege at all: the marks that a document's stock was put right by hand are written and read by the API's privileged client only.
+# 641 creates payroll_opening_positions (POST-A-082) with no signed-in privilege at all: the API's privileged client is its only reader and writer.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -157,6 +158,7 @@ payroll_it_declarations
 payroll_loan_recoveries
 payroll_loans
 payroll_one_time_earnings
+payroll_opening_positions
 payroll_perquisites
 payroll_run_transitions
 payroll_runs

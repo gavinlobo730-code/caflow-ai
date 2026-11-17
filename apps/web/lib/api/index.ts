@@ -6081,6 +6081,18 @@ export const api = {
   // name, GSTIN and PAN to Groq and now returns 410. An unused helper that still
   // builds the URL is the thing someone wires a button to next.
   payroll: {
+    /** POST-A-082 — what each employee had been paid and had deducted this financial year BEFORE the client's payroll ran
+     *  here. A record the CA enters, not a run. The server says what it carries and what it does not. */
+    openingPositions: (clientId: string, financialYear: string) =>
+      request<ApiResp<OpeningPositions>>(
+        `/api/payroll/opening-positions?${new URLSearchParams({ client_id: clientId, financial_year: financialYear })}`),
+    saveOpeningPositions: (body: { client_id: string; rows: OpeningPositionInput[] }) =>
+      request<ApiResp<{ saved: number; does_not_carry: string }>>(
+        "/api/payroll/opening-positions", { method: "PUT", body: JSON.stringify(body) }),
+    deleteOpeningPosition: (clientId: string, employeeId: string, financialYear: string) =>
+      request<ApiResp<{ deleted: number }>>(
+        `/api/payroll/opening-positions/${encodeURIComponent(employeeId)}?${new URLSearchParams({ client_id: clientId, financial_year: financialYear })}`,
+        { method: "DELETE" }),
     /** PAY-23 — the annual statutory bonus register (Payment of Bonus Act
      *  1965). Who is owed, who is out and why, §19's due date and the
      *  employer's own §10/§11 rate. Every sentence is the server's; the
@@ -9397,3 +9409,28 @@ export type BonusRegister = {
   } | null;
   section_9_grounds: { value: string; label: string }[];
 };
+
+
+export interface OpeningPositionInput {
+  employee_id: string;
+  first_month_here: string;
+  months_paid: number;
+  gross_paise: number;
+  tds_paise: number;
+  pf_employee_paise: number;
+  pf_employer_paise: number;
+  esi_employee_paise: number;
+  esi_employer_paise: number;
+  pt_paise: number;
+  esi_contributed_earlier_in_period: boolean | null;
+  source_note: string | null;
+}
+
+export interface OpeningPositions {
+  client_id: string;
+  financial_year: string;
+  rows: (OpeningPositionInput & { id: string; employee_name: string | null; first_month_here: string })[];
+  without: { employee_id: string; employee_name: string | null; joining_date: string | null }[];
+  carries: string;
+  does_not_carry: string;
+}
