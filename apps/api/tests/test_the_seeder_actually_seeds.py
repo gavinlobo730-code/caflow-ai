@@ -192,6 +192,38 @@ def test_the_whole_practice_writes_through_the_doors(api):
         "Priya Sharma" in m and "bridge is incomplete" in m for m in written["returns_refused"]), written["returns_refused"]
 
 
+def test_every_client_has_an_engagement_letter_and_the_promoters_are_in_the_relationship_hub(api):
+    """PRE-A-004: the Engagement Letters screen and the Relationships hub opened empty on the demo firm. Both are written through their real
+    doors and READ BACK through the screens' own list doors, so a letter the door accepted and then lost, or a role that names no client,
+    would be found here and not by a CA."""
+    from domain.demo import fixture
+    from scripts.seed_demo_firm import seed
+
+    firm = a_firm_mock_mode_can_carry()
+    written = seed(api, firm, add_to_existing=True)
+    people = fixture.promoters()
+
+    assert written["engagement_letters"] == len(firm.clients)
+    letters = api.get("/api/engagement-letters").get("data")
+    letters = letters.get("engagements", letters) if isinstance(letters, dict) else letters
+    assert len(letters) >= len(firm.clients), "the letters the seeder wrote are not listed by the letters screen's own door"
+    assert {l["status"] for l in letters} == {"Generated"}, "a seeded letter was sent or left a draft"
+    by_client = {l["client_id"]: l for l in letters}
+    assert len(by_client) == len(firm.clients), "a client has no letter, or two"
+    for c in firm.clients:
+        want = fixture.letter_for(c, firm.financial_year)
+        got = next(l for l in letters if l["title"] == want.title and l.get("recipient_name") == want.recipient_name)
+        assert got["fee_amount_paise"] == want.fee_paise > 0
+        assert (got["start_date"], got["expiry_date"]) == (want.start_date, want.expiry_date)
+
+    assert written["entities"] == len(people) == 2
+    assert written["entity_roles"] == sum(len(p.roles) for p in people) == 4
+    assert written["relationships"] == 1, "a couple is one edge, not two"
+    assert written["cross_client_matches"] > 0, "nobody is found at two clients"
+    names = {c.name for c in firm.clients}
+    assert all(r.client_name in names for p in people for r in p.roles), "a role names a client the fixture does not hold"
+
+
 def test_the_catalogue_is_written_before_any_document_needs_it(api):
     """The ORDER is the finding, so it is asserted as an order rather than as
     a pair of counts — counts pass on a seeder that writes the catalogue

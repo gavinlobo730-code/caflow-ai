@@ -1345,6 +1345,76 @@ def engagements_for(client: "DemoClient") -> tuple[DemoEngagement, ...]:
     return tuple(out)
 
 
+# ── The engagement letters and the people behind the companies (PRE-A-004, 17-11-2026) ──────────────────────────────────────
+#
+# The Engagement Letters screen and the Relationships hub opened empty on the demo firm. A letter is the practice's own paper to its
+# own client, so it is derived from the services the practice provides that client (`engagements_for`) and from nothing else: its fee
+# is those engagements' fees stated for the year (a monthly fee twelve times, a quarterly one four times, an annual one once), so the
+# letter and the fee billing cannot disagree. Letters are left where a practice leaves them before they go out: generated, not sent
+# (a send is an email to a client, and nothing in a seed is mailed). The people below are fictitious, their PANs are built by
+# `pan()` and belong to nobody, and every figure is a stated fact of the demo, not a computed one.
+
+#: How many times in a year each billing cycle (the CHECK on `fee_engagements.billing_cycle`) is charged.
+_CYCLES_A_YEAR = {"Monthly": 12, "Quarterly": 4, "Half-Yearly": 2, "Annually": 1, "One-time": 1}
+
+
+@dataclass(frozen=True)
+class DemoLetter:
+    title: str
+    fee_paise: int
+    start_date: str
+    expiry_date: str
+    recipient_name: str
+    recipient_email: str
+
+
+def letter_for(client: "DemoClient", financial_year: str) -> "DemoLetter":
+    """The one engagement letter of the year for a client: the services it is engaged for and what they cost over the year."""
+    engagements = engagements_for(client)
+    start_year = int(financial_year[:4])
+    services = ", ".join(e.service_type for e in engagements)
+    return DemoLetter(
+        title=f"Engagement letter FY {financial_year}: {services}",
+        fee_paise=sum(e.fee_paise * _CYCLES_A_YEAR[e.billing_cycle] for e in engagements),
+        start_date=f"{start_year}-04-01",
+        expiry_date=f"{start_year + 1}-03-31",
+        recipient_name=client.legal_name,
+        recipient_email="accounts@" + "".join(ch for ch in client.name.lower() if ch.isalnum()) + ".example",
+    )
+
+
+@dataclass(frozen=True)
+class DemoRole:
+    client_name: str
+    role_type: str          # one of the values `EntityRoleIn` documents
+    ownership_percent: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class DemoPromoter:
+    """A person who stands behind more than one client. One entity, a role at each company, and (where two are related) a relationship."""
+    full_name: str
+    pan: str
+    email: str
+    roles: tuple[DemoRole, ...]
+    spouse_of: Optional[str] = None     # the full name of another promoter
+
+
+def promoters() -> tuple[DemoPromoter, ...]:
+    """Two promoters, each in two of the private companies, and married to each other: the cross-client view has a person at two clients
+    to find, and the relationship graph has an edge. Their PANs are fixture PANs (the fourth letter P is an individual's)."""
+    return (
+        DemoPromoter(
+            "Ashok Anand", pan("AJNPA", "4417", "L"), "ashok.anand@anandtextiles.example",
+            roles=(DemoRole("Anand Textiles", "Director", 60.0), DemoRole("Rathod Logistics", "Shareholder", 25.0)),
+            spouse_of="Sulochana Anand"),
+        DemoPromoter(
+            "Sulochana Anand", pan("AJNPA", "5528", "M"), "sulochana.anand@anandtextiles.example",
+            roles=(DemoRole("Anand Textiles", "Director", 40.0), DemoRole("Sunrise Foods", "Director", 30.0)),
+            spouse_of="Ashok Anand"),
+    )
+
+
 # ── The practice's own work: tasks, time, fee invoices and leads ─────────────
 #
 # The books above are the CLIENTS' books. What a practice also holds, and what its own screens (Tasks, Time, Billing,
