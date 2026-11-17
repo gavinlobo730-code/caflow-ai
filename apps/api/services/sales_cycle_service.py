@@ -27,6 +27,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from core.db_provider import privileged_for
 from core.db_paging import fetch_all, fetch_all_in
 from core.ist_clock import ist_now, ist_today
 from services import delivery_challan_writes as challan_writes
@@ -1029,9 +1030,10 @@ def _resettle_order_status(db, firm_id: str, order_id: Optional[str]) -> None:
     current = str(position["order"].get("status") or "")
     wanted = position["status_would_be"]
     if wanted != current:
-        (db.table("sales_orders")
+        # On the privileged client and naming the order's own client: the order's position was read under the firm, and the re-derivation step (`orders_whose_status_would_change`) has no caller session at all.
+        (privileged_for(db).table("sales_orders")
          .update({"status": wanted, "updated_at": ist_now().isoformat()})
-         .eq("firm_id", firm_id).eq("id", str(order_id)).execute())
+         .eq("firm_id", firm_id).eq("client_id", str(position["order"].get("client_id"))).eq("id", str(order_id)).execute())
 
 
 def update_quotation(db, firm_id: str, quotation_id: str, patch: dict) -> dict:
@@ -1434,7 +1436,7 @@ def issue_challan(db, firm_id: str, challan_id: str, *, client_id: str, consigne
     # is kept, written once and with the status (a trigger refuses a moment on a draft and any change to one that is written).
     # THE ISSUE LOCKS THE ORDER (POST-A-421, migration 652): the compare-and-set below protected this challan's row and not the quantity the order's lines hold, so two drafts of the whole order issued in
     # the same instant each passed the check above and each won its own row. The function takes the challan's lock and then the order's, asks `over_delivery`'s rule again in SQL and writes the status.
-    if challan_writes.issue(db, firm_id, client_id, challan_id, now, document_no=no) is None:
+    if challan_writes.issue_in_one_transaction(db, firm_id, client_id, challan_id, now, document_no=no) is None:
         # The API is live a few minutes before the migration that goes with it: issue as it was issued until it is (a compare-and-set on the status), and say so. Deleted once 652 has been in production.
         _logger.error("issue_challan: migration 652 is not applied to this database; issuing %s with a compare-and-set", challan_id)
         done = (db.table("delivery_challans").update({"status": dc.STATUS_ISSUED, "issued_at": now, "updated_at": now})

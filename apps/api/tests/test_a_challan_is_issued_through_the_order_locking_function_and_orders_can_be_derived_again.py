@@ -57,8 +57,8 @@ def test_an_issue_is_written_by_the_function_and_not_by_a_compare_and_set(db, mo
     order, line = _order(db)
     c = _challan(db, order, line, "10")
     called = []
-    real = writes.issue
-    monkeypatch.setattr(writes, "issue", lambda *a, **k: called.append(a[3]) or real(*a, **k))
+    real = writes.issue_in_one_transaction
+    monkeypatch.setattr(writes, "issue_in_one_transaction", lambda *a, **k: called.append(a[3]) or real(*a, **k))
     assert _issue(db, c)["status"] == "issued" and called == [c["id"]]
     stored = next(r for r in db.rows("delivery_challans") if r["id"] == c["id"])
     assert stored["status"] == "issued" and stored["issued_at"]
@@ -84,16 +84,16 @@ def test_the_door_words_what_the_function_says_when_the_api_could_not_have_seen_
     monkeypatch.setattr(writes, "privileged_for", lambda d: d)
     for word, status in (("order_over_delivered", 422), ("order_line_not_of_order", 422), ("challan_not_draft", 409), ("challan_not_found", 404)):
         with pytest.raises(HTTPException) as caught:
-            writes.issue(Boom(word), "f", "c", "x", "2026-01-01T00:00:00+00:00", document_no="DC/9")
+            writes.issue_in_one_transaction(Boom(word), "f", "c", "x", "2026-01-01T00:00:00+00:00", document_no="DC/9")
         assert caught.value.status_code == status, word
     missing = Boom("Could not find the function public.issue_delivery_challan_atomic in the schema cache")
-    assert writes.issue(missing, "f", "c", "x", "2026-01-01T00:00:00+00:00", document_no="DC/9") is None
+    assert writes.issue_in_one_transaction(missing, "f", "c", "x", "2026-01-01T00:00:00+00:00", document_no="DC/9") is None
 
 
 def test_a_database_without_the_function_issues_with_the_compare_and_set_it_had(db, monkeypatch):
     order, line = _order(db)
     c = _challan(db, order, line, "10")
-    monkeypatch.setattr(writes, "issue", lambda *a, **k: None)
+    monkeypatch.setattr(writes, "issue_in_one_transaction", lambda *a, **k: None)
     assert _issue(db, c)["status"] == "issued"
     assert next(r for r in db.rows("delivery_challans") if r["id"] == c["id"])["status"] == "issued"
 
