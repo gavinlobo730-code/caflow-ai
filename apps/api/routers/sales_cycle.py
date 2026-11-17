@@ -367,6 +367,7 @@ def retract_challan_return(
     from services import itc_04_service
     from services.audit_service import log_event
     firm_id = current_user.get("firm_id")
+    svc.row_of_client(_db(), "delivery_challans", firm_id, challan_id, payload.client_id, "delivery challan")
     row = itc_04_service.retract_lot(_db(), firm_id, payload.client_id, challan_id, lot_id, payload.reason, current_user.get("id"))
     log_event(firm_id or "", "delivery_challan_return", lot_id, "update", actor_id=current_user.get("auth_user_id"),
               actor_email=current_user.get("email"), new_data={"id": lot_id, "challan_id": challan_id, "retracted": True, "reason": payload.reason})
