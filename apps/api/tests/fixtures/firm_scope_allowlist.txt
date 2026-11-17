@@ -46,8 +46,6 @@ repositories/client_repository.py | ClientRepository.soft_delete | clients | upd
 repositories/client_repository.py | ClientRepository.update | clients | update | 1 | repository-contract
 repositories/compliance_records_repository.py | ComplianceRecordsRepository.create | compliance_records | insert | 1 | repository-contract
 repositories/compliance_records_repository.py | ComplianceRecordsRepository.find_by_id | compliance_records | read | 1 | repository-contract
-repositories/compliance_records_repository.py | ComplianceRecordsRepository.soft_delete | compliance_records | update | 1 | repository-contract
-repositories/compliance_records_repository.py | ComplianceRecordsRepository.update | compliance_records | update | 1 | repository-contract
 repositories/document_repository.py | DocumentRepository.create | documents | insert | 1 | repository-contract
 repositories/dsc_repository.py | DSCRepository.create | dsc_records | insert | 1 | repository-contract
 repositories/engagement_repository.py | EngagementRepository.create | fee_engagements | insert | 1 | repository-contract
@@ -90,7 +88,6 @@ routers/service_catalogue.py | _default_opening_balance_date | clients | read | 
 routers/service_catalogue.py | _resolve_opening_balance_date | call:_default_opening_balance_date | read | 1 | helper-of-allowlisted-call
 routers/service_catalogue.py | bulk_create_services | call:_resolve_opening_balance_date | read | 1 | gated-in-function | gate=_assert_batch_scope
 routers/service_catalogue.py | bulk_create_services | clients | read | 1 | gated-in-function | gate=_assert_batch_scope
-services/compliance_obligation_service.py | _reconcile_stale_gst_obligations | repo:compliance_records_repo.soft_delete | update | 1 | from-scoped-row | source=services/compliance_obligation_service.py::generate_for_engagement
 services/email_events_service.py | _mark_deliveries_bounced | customer_statement_deliveries | update | 1 | provider-callback | signature=process
 services/email_events_service.py | _mark_deliveries_bounced | invoice_deliveries | update | 1 | provider-callback | signature=process
 services/email_events_service.py | handle | call:_mark_deliveries_bounced | update | 1 | provider-callback | signature=process
