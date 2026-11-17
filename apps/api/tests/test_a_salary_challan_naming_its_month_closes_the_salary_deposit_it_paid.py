@@ -63,6 +63,15 @@ def test_a_month_on_a_non_salary_challan_is_refused_in_words():
 def test_a_month_outside_the_challans_quarter_is_refused_naming_the_month(month):
     got = month_problem(deduction_month=month, section="192", financial_year=FY, quarter="Q2")
     assert got and "is not in Q2 of FY 2025-26" in got
+    # The remedy names the WAGE month's own quarter and year (the rule), never "the quarter the salary was paid in".
+    expected = {"2025-06": "Q1 of FY 2025-26", "2025-10": "Q3 of FY 2025-26", "2026-07": "Q2 of FY 2026-27"}[month]
+    assert f"record it for {expected}, or check the month." in got
+    assert "paid in" not in got
+
+
+def test_march_wages_outside_the_quarter_are_sent_to_q4_of_the_year_that_ends_in_march():
+    got = month_problem(deduction_month="2026-03", section="192", financial_year="2026-27", quarter="Q1")
+    assert got and "record it for Q4 of FY 2025-26, or check the month." in got
 
 
 def test_march_belongs_to_the_fourth_quarter_of_the_year_that_ends_in_it():

@@ -105,8 +105,13 @@ def month_problem(*, deduction_month: Optional[str], section: str, financial_yea
     except (ValueError, TypeError):
         return None                                     # the quarter itself is refused by its own check
     if not (date.fromisoformat(start) <= first <= date.fromisoformat(end)):
+        # The rule is the WAGE month's quarter (the challan deposits that month's tax), so the sentence names that quarter and its year
+        # rather than the quarter the salary happened to be paid in, which for March wages paid in April is another year.
+        from core.ist_clock import ist_fy_label
+        from services.compliance_engine import tds_quarter_of_month
         return (f"{_MONTH_NAMES[mon - 1]} {year} is not in {quarter} of FY {financial_year}, the quarter this challan is recorded "
-                "for. Record it for the quarter the salary was paid in, or check the month.")
+                f"for. A salary challan is recorded for the quarter of the wage month whose tax it deposits: record it for "
+                f"{tds_quarter_of_month(mon)} of FY {ist_fy_label(first)}, or check the month.")
     return None
 
 
