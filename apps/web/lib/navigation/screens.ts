@@ -225,6 +225,7 @@ export const SCREENS: Screen[] = [
   firm("/settings/firm-hsn-library", "HSN library", "Settings", ["hsn", "sac", "rate master"]),
   firm("/settings/invoice-settings", "Invoice numbering", "Settings", ["series", "prefix", "rule 46(b)"]),
   firm("/settings/invoice-templates", "Invoice templates", "Settings", ["layout", "pdf design"]),
+  firm("/settings/journal-approval", "Journal approval", "Settings", ["manual journal", "maker checker", "approve journals"]),
   firm("/settings/multi-currency", "Multi-currency", "Settings", ["fx", "foreign currency", "as-11"]),
   firm("/settings/scheduled-reports", "Scheduled reports", "Settings", ["email reports", "subscriptions"]),
   firm("/settings/security", "Security", "Settings", ["2fa", "sessions", "password policy"]),

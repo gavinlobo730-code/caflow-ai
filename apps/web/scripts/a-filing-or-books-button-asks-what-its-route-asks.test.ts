@@ -265,7 +265,8 @@ test("the journal editor draws its saving and posting only for someone who may w
   assert.equal(gatePair(page, "mayWrite"), routePair(accounting, "patch", "/journal/{entry_id}"));
   assert.match(page, /mayWrite=\{mayWrite\}/);
   const editor = read(WEB, "components", "journal", "JournalEditor.tsx");
-  assert.match(editor, /const readOnly = locked \|\| !mayWrite;/);
+  // POST-A-456 adds a third reason: an entry on the books, to someone the firm's approval rule does not let change one.
+  assert.match(editor, /const readOnly = locked \|\| !mayWrite \|\| postedHeldForApproval;/);
   const footer = editor.indexOf(`{!readOnly && (\n          <div className="flex gap-3 justify-end pt-1">`);
   assert.ok(footer >= 0, "the footer is no longer drawn under !readOnly");
   for (const mode of ["correct", "draft", "post"]) assert.ok(editor.indexOf(`handleSave("${mode}")`) > footer, `${mode} is above the gated footer`);
