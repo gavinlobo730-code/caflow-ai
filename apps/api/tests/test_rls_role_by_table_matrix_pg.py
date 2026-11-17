@@ -1255,11 +1255,12 @@ CONTROLS = (
      "notices, health records, onboarding workflows and renewals again",
      lambda: _migration_sql("489_a_reviewer_cannot_write_the_client_level_tables_rollback.sql"),
      # `ai_insights` is not in this list since migration 507: no signed-in role holds a write on it at all, so rolling back
-     # 489 changes nothing there and the control cannot turn a cell red on it.
-     ("client_instructions", "compliance_records", "government_notices", "health_alerts",
+     # 489 changes nothing there and the control cannot turn a cell red on it. `compliance_records` left it with migration 705 for the same
+     # reason: the signed-in role holds no write on the obligation store, so its write cells read "no privilege" with 489 or without.
+     ("client_instructions", "government_notices", "health_alerts",
       "health_score_history", "health_scores", "onboarding_workflows", "renewals"),
      {("reviewer", "client_instructions", "update"),
-      ("reviewer", "compliance_records", "delete"), ("reviewer", "renewals", "insert"),
+      ("reviewer", "renewals", "insert"),
       ("reviewer", "health_scores", "update"), ("reviewer", "government_notices", "insert")}),
     ("payroll-tier-490-reopened",
      "migration 490 rolled back: every member of the firm reads salary history, loans, perquisites, settlements, "
