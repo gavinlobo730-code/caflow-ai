@@ -542,7 +542,8 @@ export async function previewTdsDeduction(body: {
   // The screen reads `explain.applies` and `explain.fy_prior_tds_paise`: a preview without its explanation is no preview (POST-A-149).
   const shaped = objectOrNull<typeof resp.data>(resp.data);
   if (!shaped || !objectOrNull(shaped.explain)) throw new Error("The deduction preview came back in a shape this screen cannot read.");
-  return shaped;
+  // `explain.gap_messages` is a list the screen maps over (POST-A-360): it is defaulted here, where the answer is read.
+  return { ...shaped, explain: { ...shaped.explain, gap_messages: Array.isArray(shaped.explain.gap_messages) ? shaped.explain.gap_messages : [] } };
 }
 
 /** Correct a hand-entered deduction; the engine re-runs on whatever changed.
