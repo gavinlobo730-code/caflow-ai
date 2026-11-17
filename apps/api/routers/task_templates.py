@@ -4,6 +4,7 @@ from typing import Optional
 from models.common import api_response
 from core.permissions import rbac
 from core.authz import assert_client_access
+from services import named_row_ownership
 from domain.practice import task_estimate
 from repositories.task_template_repository import task_template_repo
 from models.iso_date import OptionalIsoDate
@@ -118,6 +119,10 @@ def instantiate_template(
     now = datetime.now(timezone.utc).isoformat()
 
     db = get_supabase()
+    # The person named is a member of this firm (the insert below goes through the privileged client, so nothing else asks) and can
+    # open the client the task is for (POST-A-451): the mail below names the client, and they do the work inside it.
+    named_row_ownership.member_is_the_firms(db, firm_id, body.assignee_id)
+    named_row_ownership.member_reaches_client(db, firm_id, body.assignee_id, body.client_id)
     task_data = {
         "firm_id": firm_id,
         "client_id": body.client_id,

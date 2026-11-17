@@ -234,7 +234,11 @@ def _assignee_can_open_the_client(task: dict, updates: dict, firm_id: str) -> No
     """POST-A-451: the person the task will be assigned to can open the client it will belong to. Asked when either changes: a new
     assignee on the same client, or the same assignee carried to a client the task is moved to (they may not be assigned to that one).
     A person the firm no longer holds is left to the membership check above, which has already answered for a new one."""
-    if "assigned_to" not in updates and "client_id" not in updates:
+    # An assignee equal to the one already held is not a change: a form sends the whole task, and refusing a title edit because the
+    # existing assignee has since lost the assignment would stop the work on a task that already names them. `client_id` has been
+    # pruned in `_changes_in` when it is the held one, so its presence is a move.
+    assignee_changed = "assigned_to" in updates and updates["assigned_to"] != task.get("assigned_to")
+    if not assignee_changed and "client_id" not in updates:
         return
     after_assignee = updates["assigned_to"] if "assigned_to" in updates else task.get("assigned_to")
     if not after_assignee:

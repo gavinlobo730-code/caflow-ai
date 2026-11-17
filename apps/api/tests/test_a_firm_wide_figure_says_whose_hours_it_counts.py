@@ -27,6 +27,9 @@ def test_the_sentence_says_every_client_and_not_only_yours():
     from routers.workload import UTILISATION_COUNTS
     assert "every client of the practice" in UTILISATION_COUNTS
     assert "not only the clients you can open" in UTILISATION_COUNTS
+    # The figure has two bases and the sentence names both: hours for a person who logged some, open tasks for one who logged none.
+    assert "logged none" in UTILISATION_COUNTS and "open tasks against their task limit" in UTILISATION_COUNTS
+    assert "on the clients you can open" in UTILISATION_COUNTS.split("logged none")[1]
 
 
 @pytest.mark.parametrize("page", ["app/team/workload/page.tsx", "app/work/page.tsx"])

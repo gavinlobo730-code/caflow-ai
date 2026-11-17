@@ -89,8 +89,9 @@ def set_capacity(body: CapacityUpdate, current_user: dict = Depends(rbac("worklo
 #: capacity is the same whoever's client the hour was for, so the hours are every client's; a member who can open only some
 #: clients is told that rather than reading the figure as their clients' alone. No client is named in it.
 UTILISATION_COUNTS = (
-    "Counts every hour each person logged since Monday, on every client of the practice, "
-    "not only the clients you can open."
+    "For a person who logged time since Monday, counts every hour they logged, on every client of the practice, "
+    "not only the clients you can open. For a person who logged none, counts their open tasks against their task limit, "
+    "on the clients you can open."
 )
 
 

@@ -306,3 +306,153 @@ def test_the_unread_count_counts_what_the_list_shows(monkeypatch):
     monkeypatch.setattr(notifications_router, "effective_client_ids", lambda user: {A})
     _client(notifications_router, user={"id": "exec-a", "firm_id": FIRM, "role": "Executive"}).get("/api/notifications/count")
     assert seen["client_ids"] == {A}
+
+
+# ── the unread count, on the database branch ─────────────────────────────────────────────────────────────────────────────────
+class _Recorder:
+    """A chainable query double that records every filter, for the branch the mock-mode test above never reaches."""
+
+    def __init__(self):
+        self.calls: list = []
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            self.calls.append((name, args))
+            return self
+        return call
+
+    def execute(self):
+        return type("R", (), {"count": 7, "data": []})()
+
+
+def _production_count(monkeypatch, **kw):
+    import repositories.notifications_repository as nr
+    rec = _Recorder()
+    monkeypatch.setattr(nr, "_USE_MOCK", False)
+    monkeypatch.setattr(nr, "_get_db", lambda: type("D", (), {"table": staticmethod(lambda name: rec)})())
+    assert nr.notifications_repo.count_unread(**kw) == 7
+    return rec.calls
+
+
+def test_the_unread_count_filters_by_the_readers_clients_on_the_database_too(monkeypatch):
+    calls = _production_count(monkeypatch, firm_id=FIRM, user_id="exec-a", client_ids={B, A})
+    assert ("or_", (f"client_id.is.null,client_id.in.({A},{B})",)) in calls, "the ids are sorted and the unassigned rows are kept"
+    assert ("eq", ("firm_id", FIRM)) in calls and ("eq", ("user_id", "exec-a")) in calls
+    assert ("eq", ("is_read", False)) in calls and ("eq", ("is_archived", False)) in calls
+    assert ("or_", ("client_id.is.null",)) in _production_count(monkeypatch, client_ids=set()), "an empty reach counts only the rows naming no client"
+    assert not [c for c in _production_count(monkeypatch, client_ids=None) if c[0] == "or_"], "no reach asks no narrowing"
+
+
+# ── review of the batch: an unchanged assignee, the template door, the nightly mail, an unreadable reach ────────────────────────
+def test_a_task_saved_with_the_assignee_it_already_has_is_not_refused_when_that_assignee_lost_the_client(task_store):
+    client = _client(tasks_router)
+    task_store["task-1"].update({"client_id": B, "assigned_to": "exec-a"})   # exec-a is assigned to A only
+    ok = client.patch("/api/tasks/task-1", json={"title": "Renamed", "assigned_to": "exec-a"})
+    assert ok.status_code == 200, ok.text
+    assert task_store["task-1"]["title"] == "Renamed"
+    task_store["task-1"]["assigned_to"] = "partner-1"
+    _refused(client.patch("/api/tasks/task-1", json={"title": "Again", "assigned_to": "exec-a"}))
+    assert task_store["task-1"]["title"] == "Renamed", "a NEW assignee who cannot open the client is still refused"
+
+
+@pytest.fixture()
+def template_door(monkeypatch, staff):
+    import routers.task_templates as tt
+    monkeypatch.setattr(tt.task_template_repo, "find_by_id", lambda tid, firm_id=None: {"id": tid, "firm_id": FIRM, "name": "Monthly close"})
+    monkeypatch.setattr(tt, "assert_client_access", lambda *a, **k: None)
+    return tt
+
+
+def test_a_task_made_from_a_template_is_given_only_to_someone_who_can_open_its_client(staff, template_door):
+    client = _client(template_door)
+    url = "/api/task-templates/tpl-1/instantiate"
+    _refused(client.post(url, json={"client_id": B, "assignee_id": "exec-a"}))
+    assert staff.rows("tasks") == [], "nothing was stored"
+    stranger = client.post(url, json={"client_id": A, "assignee_id": "not-a-member"})
+    assert stranger.status_code == 404, stranger.text
+    assert client.post(url, json={"client_id": A, "assignee_id": "exec-a"}).status_code == 200
+    assert client.post(url, json={"client_id": B, "assignee_id": "partner-1"}).status_code == 200
+    assert client.post(url, json={"client_id": B}).status_code == 200, "no assignee asks nothing"
+    assert [t["assignee_id"] for t in staff.rows("tasks")] == ["exec-a", "partner-1", None]
+
+
+def test_the_overdue_task_mail_is_not_sent_for_a_client_the_assignee_cannot_open(staff, monkeypatch):
+    from datetime import date
+    import services.practice_mail_service as mail
+    users = {u["id"]: {**u, "email": f"{u['id']}@example.test"} for u in staff.rows("users")}
+    monkeypatch.setattr(mail, "_staff_member", lambda firm_id, uid: users.get(uid))
+    monkeypatch.setattr(mail, "_recently_mailed", lambda *a, **k: {})
+    asked = []
+    monkeypatch.setattr(mail, "client_names", lambda firm_id, ids: asked.append(sorted(str(i) for i in ids if i)) or {})
+    delivered = []
+    monkeypatch.setattr(mail, "deliver", lambda firm_id, event, person, refs, send, day=None: delivered.append((person["id"], [r.ref_id for r in refs])) or "sent")
+    task = {"firm_id": FIRM, "title": "File", "due_date": "2026-10-01", "status": "todo"}
+    tasks = [{**task, "id": "t-a", "client_id": A, "assigned_to": "exec-a"},
+             {**task, "id": "t-b", "client_id": B, "assigned_to": "exec-a"},
+             {**task, "id": "t-c", "client_id": B, "assigned_to": "partner-1"}]
+    out = mail.send_overdue_task_mails(FIRM, tasks, today=date(2026, 10, 14))
+    assert sorted(delivered) == [("exec-a", ["t-a"]), ("partner-1", ["t-c"])], "exec-a is mailed about A and not about B"
+    assert out == {"sent": 2}
+    assert asked == [[A, B]], "the client's name is read only for the tasks that will be mailed"
+    delivered.clear()
+    assert mail.send_overdue_task_mails(FIRM, [tasks[1]], today=date(2026, 10, 14)) == {} and delivered == []
+
+
+def test_an_unreadable_reach_tells_nobody_and_does_not_stop_the_sweep(staff, monkeypatch):
+    from services import compliance_obligation_service as cos
+    import repositories.notifications_repository as nr
+    import services.audit_service as audit
+
+    def unreadable(*a, **k):
+        raise RuntimeError("assignments table unreachable")
+
+    monkeypatch.setattr(cos, "_people_who_can_open", unreadable)
+    sent, audited = [], []
+    monkeypatch.setattr(nr.notifications_repo, "create", lambda row, **k: sent.append(row) or row)
+    monkeypatch.setattr(audit, "log_event", lambda *a, **k: audited.append(k))
+    rec = {"id": "rec-1", "client_id": A, "obligation_type": "GSTR3B", "period_label": "GSTR-3B October 2026",
+           "due_date": "2026-11-20", "preparer_id": "exec-a", "reviewer_id": "partner-1", "approver_id": None}
+    assert cos._notify_internal(FIRM, rec, "due_3", None, {}) == set(), "nobody unchecked is told"
+    assert sent == []
+    assert audited[-1]["metadata"]["not_told_reach_unreadable"] is True
+    assert audited[-1]["metadata"]["not_told_cannot_open_the_client"] == [], "an unread reach is not 'cannot open'"
+
+
+# ── the rule, over every route that writes a person next to a client ─────────────────────────────────────────────────────────
+_PERSON_KEYS = {"assigned_to", "assignee_id", "preparer_id"}
+
+
+def _writes_a_person(fn) -> bool:
+    """Whether the function builds a row (a dict literal, a keyword or a subscript store) with one of the person keys."""
+    for n in ast.walk(fn):
+        if isinstance(n, ast.Dict) and any(isinstance(k, ast.Constant) and k.value in _PERSON_KEYS for k in n.keys):
+            return True
+        # A keyword names a person on a row only when the call writes one; `list_tasks(assigned_to=...)` is a filter.
+        if isinstance(n, ast.Call) and any(w in (getattr(n.func, "attr", None) or getattr(n.func, "id", "")).lower()
+                                           for w in ("create", "insert", "update", "assign", "upsert", "set_")):
+            if any(k.arg in _PERSON_KEYS for k in n.keywords):
+                return True
+        if isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Store) and isinstance(n.slice, ast.Constant) and n.slice.value in _PERSON_KEYS:
+            return True
+    return False
+
+
+#: Routes that write a person key beside a `client_id` and name nobody who is handed the client's work. Each with its reason.
+NAMES_NOBODY_ON_THE_WORK: dict = {}
+
+
+def test_every_route_that_writes_an_assignee_key_next_to_a_client_asks_whether_they_can_open_it():
+    asked, missing = [], []
+    for module, fn in _route_functions():
+        if not any(isinstance(d, ast.Call) and getattr(d.func, "attr", "") in ("get", "post", "put", "patch", "delete")
+                   for d in fn.decorator_list):
+            continue
+        if not _writes_a_person(fn) or "client_id" not in ast.unparse(fn):
+            continue
+        if _calls(fn, "member_reaches_client") or _calls(fn, "_assignee_can_open_the_client"):
+            asked.append((module, fn.name))
+        elif (module, fn.name) not in NAMES_NOBODY_ON_THE_WORK:
+            missing.append((module, fn.name))
+    assert missing == [], f"these write a person next to a client and never ask whether the person can open it: {missing}"
+    assert ("task_templates.py", "instantiate_template") in asked and ("tasks.py", "update_task") in asked, asked
+    assert len(asked) >= 5, f"only {asked}: the scan is not seeing the doors"

@@ -1418,7 +1418,16 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
     # the audit row says who that was, so a reminder that did not go out is on record rather than missing without a word.
     named: set = {r for r in (rec.get("preparer_id"), rec.get("reviewer_id"),
                               rec.get("approver_id"), rec.get("assigned_to")) if r}
-    recipients: set = _people_who_can_open(firm_id, rec.get("client_id"), named, reach_cache)
+    # The reads that say who can open the client are best-effort like every other side effect here: one failed read must not stop
+    # the nightly sweep for the whole firm. It FAILS CLOSED: nobody is told this time (and the obligation is escalated again
+    # tomorrow), never somebody nobody has checked.
+    reach_unreadable = False
+    try:
+        recipients: set = _people_who_can_open(firm_id, rec.get("client_id"), named, reach_cache)
+    except Exception as exc:  # noqa: BLE001
+        from core.observability import capture_soft_failure
+        capture_soft_failure(exc, operation="compliance.escalation_reach", firm_id=firm_id)
+        recipients, reach_unreadable = set(), True
     try:
         from services.audit_service import log_event
         log_event(firm_id, "compliance_record", rec.get("id"), "escalation",
@@ -1426,7 +1435,8 @@ def _notify_internal(firm_id: str, rec: dict, tier: str, actor: Optional[dict],
                   new_data={"tier": tier, "due_date": rec.get("due_date")},
                   metadata={"recipients": [rec.get("preparer_id"), rec.get("reviewer_id"),
                                            rec.get("approver_id")],
-                            "not_told_cannot_open_the_client": sorted(str(u) for u in named - recipients)})
+                            "not_told_cannot_open_the_client": sorted(str(u) for u in named - recipients) if not reach_unreadable else [],
+                            "not_told_reach_unreadable": reach_unreadable})
     except Exception:  # pragma: no cover
         pass
     # Best-effort in-app notifications (internal). Guarded — never fatal.

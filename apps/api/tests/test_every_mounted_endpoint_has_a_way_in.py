@@ -135,7 +135,7 @@ BUDGET: dict[str, int] = {
     # CA the insights arrive "automatically", which nothing does.
     # 4 -> 3 on 01-10-2026 (ai-10): `GET /cross-client` was DELETED — it served
     # the same hardcoded sample (a director called Rajesh Mehta) to every firm.
-    "/api/memory": 7, "/api/relationships": 4, "/api/ai-insights": 3,
+    "/api/memory": 6, "/api/relationships": 4, "/api/ai-insights": 3,
     # /api/intelligence 6 -> 3 on 25-09-2026 (Phase 3a-5): all six had
     # `lib/api` methods and no screen caller. `/insights` reaches the
     # three client-facing reads — compliance risk, relationship health
@@ -162,8 +162,8 @@ BUDGET: dict[str, int] = {
     # named a column the table lacked, repaired by migration 450). It goes
     # through the API now, so that door is reached, and the new unread count and
     # mark-read endpoints are reached from the same screen.
-    "/api/automation": 5, "/api/gst-portal": 5,
-    "/api/itr": 4, "/api/lifecycle": 5, "/api/portal": 3,
+    "/api/automation": 3, "/api/gst-portal": 5,
+    "/api/itr": 4, "/api/lifecycle": 4, "/api/portal": 3,
     # /api/risks 5 -> 3 on 24-09-2026: `app/risks/page.tsx` derived its
     # whole register in the browser from six PostgREST reads and called no
     # endpoint on this prefix at all. It asks GET /register now, and the
@@ -199,7 +199,7 @@ BUDGET: dict[str, int] = {
     # since the reporting engine was built.
     "/api/reminders": 3, "/api/tds": 3, "/api/accounting": 1,
     "/api/assignments": 2, "/api/customers": 2, "/api/form-26as": 1,
-    "/api/identity": 2, "/api/insights": 2, "/api/notifications": 2,
+    "/api/identity": 2, "/api/insights": 2, "/api/notifications": 1,
     "/api/public": 2, "/api/sales-cycle": 3,
     "/api/scheduler": 2, "/api/settings": 2, "/api/vendors": 1,
     "/api/approvals": 2,

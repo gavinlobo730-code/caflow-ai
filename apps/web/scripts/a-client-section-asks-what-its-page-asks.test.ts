@@ -41,6 +41,10 @@ const SECTION_READS: Array<[string, string, string, string, string]> = [
   // The Bank section opens on its Entries tab, which lists the client's accounts (every /api/banking route asks banking read).
   ["bank", "banking.py", "/accounts", "components/banking/EntriesTab.tsx", "api.banking.listBankAccounts"],
   ["inventory", "inventory.py", "/stock-summary", "app/clients/[id]/inventory/page.tsx", "api.inventory.stockSummary"],
+  // The Sales section opens on Sales Invoices, whose panel reads the two unfinished-invoice lists (both ask accounting read). The Purchases
+  // section is NOT here: its opening tab reads its tables directly under row security and no API route that asks a pair, so there is no
+  // pair to hold it to.
+  ["sales", "sales_invoices.py", "/maintenance/posted-drafts", "components/invoices/UnfinishedInvoicesPanel.tsx", "api.salesInvoices.postedDrafts"],
   ["fixed-assets", "fixed_assets.py", "", "app/clients/[id]/fixed-assets/page.tsx", "/api/fixed-assets"],
   ["year-end", "year_end.py", "/engagements", "app/clients/[id]/year-end/page.tsx", "/year-end/engagements"],
 ];
@@ -52,12 +56,17 @@ test("each gated section asks what its first read asks, and its page still makes
   }
 });
 
+test("the Sales section's two opening reads ask the same pair, so one pair is the whole truth", () => {
+  assert.equal(routePair("sales_invoices.py", "/maintenance/unposted"), routePair("sales_invoices.py", "/maintenance/posted-drafts"));
+  assert.equal(routePair("sales_invoices.py", "/maintenance/unposted"), "accounting:read");
+});
+
 test("the reports section is offered to someone who may read the books or the bank, which is what every report reads", () => {
   assert.deepEqual(sectionPairs("reports"), { requires: null, anyOf: ["accounting:read", "banking:read"] });
 });
 
 test("a section every member of staff can read carries no pair, so it is never hidden from them", () => {
-  for (const id of ["overview", "sales", "purchases", "compliance", "tax", "documents", "tasks"]) {
+  for (const id of ["overview", "purchases", "compliance", "tax", "documents", "tasks"]) {
     assert.deepEqual(sectionPairs(id), { requires: null, anyOf: [] }, `the ${id} section`);
   }
 });

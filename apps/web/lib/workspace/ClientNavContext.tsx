@@ -79,7 +79,8 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   { id: "overview",     label: "Overview",      href: (id) => `/clients/${id}/overview/` },
   // accounting.py profit-loss / cash-flow, the dashboard's first reads → rbac("accounting", "read").
   { id: "accounting",   label: "Accounting",    href: (id) => `/clients/${id}/accounting/`, requires: ["accounting", "read"] },
-  { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/` },
+  // The Sales screen opens on Sales Invoices, whose first reads are the unfinished-invoice lists (accounting read).
+  { id: "sales",        label: "Sales",         href: (id) => `/clients/${id}/sales/`, requires: ["accounting", "read"] },
   { id: "purchases",    label: "Purchases",     href: (id) => `/clients/${id}/purchases/` },
   // Banking is its own section rather than an Accounting tab: it is a
   // sequential pipeline (import -> categorize -> post -> reconcile) done in
