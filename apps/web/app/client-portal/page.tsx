@@ -15,6 +15,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteRowAndConfirm, ROW_NOT_DELETED } from "@/lib/data/deleteRowAndConfirm";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import type { ClientDocumentList, ClientNotice, PortalUnreadSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
@@ -200,6 +202,7 @@ export default function ClientPortalPage() {
   // Distinguishes "fetch failed" from "nothing shared yet."
   const [sharedFailed, setSharedFailed] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [uploadLabel, setUploadLabel] = useState("");
   const sharedUploadRef = useRef<HTMLInputElement | null>(null);
 
@@ -494,13 +497,14 @@ export default function ClientPortalPage() {
       form.append("file", file);
       form.append("client_id", selectedClientId);
       form.append("description", label);
-      await api.clientDocuments.upload(form);
+      await api.clientDocuments.upload(form, setSent);
 
       setUploadLabel("");
       await loadSharedDocs(selectedClientId);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setUploadingDoc(false);
     }
   }
@@ -829,6 +833,7 @@ export default function ClientPortalPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
+                    {sent && <div className="mb-3"><UploadProgress progress={sent} what="the document" /></div>}
                     {sharedLoading ? (
                       <ListSkeleton rows={3} />
                     ) : sharedFailed ? (

@@ -4908,17 +4908,13 @@ export const api = {
   incomeTax: {
     /** File the notice's own document (`slot` "notice") or the reply to it ("response") against a tax notice. The server
      *  stores the file, names it and writes the path onto the notice; multipart, so the browser sets the boundary. */
-    attachToNotice: async (noticeId: string, slot: "notice" | "response", file: File) => {
+    attachToNotice: async (noticeId: string, slot: "notice" | "response", file: File, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const form = new FormData();
       form.append("file", file);
       form.append("slot", slot);
-      const res = await fetchPlain(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<ApiResp<{ slot: string; storage_path: string }>>(res, "write");
     },
@@ -5060,14 +5056,10 @@ export const api = {
      *  answers 401 without a Bearer header, so document parsing never once
      *  worked against a real deployment; the caller read `.json()` of the 401
      *  body and got {detail: …} with no `success`. */
-    parse: async (formData: FormData) => {
+    parse: async (formData: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/documents/parse`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/documents/parse`, token, formData, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -5329,15 +5321,11 @@ export const api = {
     sharedReportUrl: (sharedReportId: string) =>
       request<ApiResp<{ download_url: string; expires_in_seconds: number }>>(
         `/api/accounting/shared-reports/${sharedReportId}/download-url`),
-    shareReport: async (form: FormData) => {
+    shareReport: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/accounting/shared-reports`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}/api/accounting/shared-reports`, token, form, onProgress);
       // A 422 is a sentence written for the CA (an unknown report, an empty or
       // oversized workbook), so surface it rather than the status line.
       if (!res.ok) throw new Error(await errorMessage(res));
@@ -5766,15 +5754,11 @@ export const api = {
       return jsonPlain<UntypedJson>(res, "write");
     },
     /** Tier 3.2 — a multipart POST that returns JSON, same shape as uploadStatement. */
-    postStatementForm: async (path: string, form: FormData) => {
+    postStatementForm: async (path: string, form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}${path}`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}${path}`, token, form, onProgress);
       // A 422 here is a real answer (an unmappable file, a contradictory
       // mapping) and its message is written for the CA, so surface the body
       // rather than the status line. It is thrown as an ApiRefusal — still an
@@ -5791,11 +5775,11 @@ export const api = {
       return jsonPlain<UntypedJson>(res, "write");
     },
     /** Read a statement's header row + first rows so the CA can map the columns. */
-    inspectStatement: (form: FormData) =>
-      api.banking.postStatementForm("/api/banking/statements/inspect", form),
+    inspectStatement: (form: FormData, onProgress?: (p: UploadProgress) => void) =>
+      api.banking.postStatementForm("/api/banking/statements/inspect", form, onProgress),
     /** Parse with a mapping and show the result WITHOUT importing. */
-    previewStatement: (form: FormData) =>
-      api.banking.postStatementForm("/api/banking/statements/preview", form),
+    previewStatement: (form: FormData, onProgress?: (p: UploadProgress) => void) =>
+      api.banking.postStatementForm("/api/banking/statements/preview", form, onProgress),
     listColumnMappings: (params?: Record<string, string>) =>
       request(`/api/banking/statements/column-mappings${params ? "?" + new URLSearchParams(params) : ""}`),
     deleteColumnMapping: (id: string) =>
@@ -7669,16 +7653,12 @@ export const api = {
     get: () => request("/api/settings/branding"),
     update: (body: unknown) =>
       request("/api/settings/branding", { method: "PUT", body: JSON.stringify(body) }),
-    uploadLogo: async (file: File) => {
+    uploadLogo: async (file: File, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const form = new FormData();
       form.append("file", file);
-      const res = await fetchPlain(`${BASE_URL}/api/settings/branding/logo`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/settings/branding/logo`, token, form, onProgress);
       if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
       return jsonPlain<UntypedJson>(res, "write");
     },

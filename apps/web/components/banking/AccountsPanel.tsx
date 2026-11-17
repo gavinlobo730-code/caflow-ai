@@ -851,7 +851,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     try {
       const form = baseForm();
       form.append("bank_account_id", account.id);
-      const res = (await api.banking.inspectStatement(form)) as { success: boolean; data: StatementInspection };
+      const res = (await api.banking.inspectStatement(form, setSent)) as { success: boolean; data: StatementInspection };
       const info = res.data;
       setInspected(info);
       // A saved mapping for this exact layout wins; then the detected adapter,
@@ -863,6 +863,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       askForPassword(err);
       setError(err instanceof Error ? err.message : "Could not read the file.");
     } finally {
+      setSent(null);
       setChecking(false);
     }
   }
@@ -874,7 +875,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
     try {
       const form = baseForm();
       form.append("column_mapping", JSON.stringify(cleanMapping(mapping)));
-      const res = (await api.banking.previewStatement(form)) as { success: boolean; data: StatementPreview };
+      const res = (await api.banking.previewStatement(form, setSent)) as { success: boolean; data: StatementPreview };
       const shaped = objectWithLists<StatementPreview>(res.data, "rows");
       // The panel reads `balance_check.checked`, `.agrees` and `.reason` (POST-A-149): a preview without its balance check cannot say
       // whether the file agrees with itself, so it is not shown as one that does.
@@ -885,6 +886,7 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
       askForPassword(err);
       setError(err instanceof Error ? err.message : "Could not read the file with that mapping.");
     } finally {
+      setSent(null);
       setChecking(false);
     }
   }

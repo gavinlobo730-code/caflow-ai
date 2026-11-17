@@ -22,6 +22,8 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { failureSentence } from "@/lib/api/failureSentence";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -246,6 +248,7 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
   onUploaded: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [opening, setOpening] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   // Which slot of the notice this fills; the server names the column, so the browser never chooses one.
@@ -258,11 +261,12 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
     try {
       // The server bounds the file, checks its bytes against its type, names and stores it under the firm, client and
       // notice, and writes the path onto the notice, or removes the file again (POST-A-010).
-      await api.incomeTax.attachToNotice(noticeId, slot, file);
+      await api.incomeTax.attachToNotice(noticeId, slot, file, setSent);
       onUploaded();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -296,6 +300,7 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
             {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             {uploading ? "Uploading…" : label}
           </button>
+          {sent && <UploadProgress progress={sent} what="the file" />}
         </>
       )}
     </div>

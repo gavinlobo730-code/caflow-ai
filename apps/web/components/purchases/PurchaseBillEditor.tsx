@@ -31,7 +31,9 @@ import {
   validateBillDraft, withoutDocument, type BillDraftFields,
 } from "@/lib/purchases/billDraft";
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
-import { fetchPlain, jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 import {
@@ -350,6 +352,7 @@ export function PurchaseBillEditor({
   // desktop, because `capture` means nothing there. The camera input itself is hidden, so the visible button carries the name and the AI disclosure.
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
   // The server's arithmetic check on the extraction's own five header figures
   // (PUR-21). Computed in apps/api — domain/extraction_totals.py — because the
@@ -867,11 +870,8 @@ export function PurchaseBillEditor({
       formData.append("client_id", clientId);
       const token = await getAuthToken();
       // A reading is a proposal, not a record of a bill: what a dropped connection costs is the result, so it is told as one that did not come back.
-      const res = await fetchPlain(`${API}/api/document-intelligence-v1/extract-invoice`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "read");
+      // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
+      const res = await fetchUpload(`${API}/api/document-intelligence-v1/extract-invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData }, "read", setSent);
       const json = await jsonPlain<UntypedJson>(res, "read");
       // The uploaded file is retained server-side as ITC/audit evidence
       // regardless of whether AI extraction itself succeeded.
@@ -930,6 +930,7 @@ export function PurchaseBillEditor({
       // is not a message for a person: it says the fixed sentence, as it did. (The request keeps the uploaded file as evidence either way, so a second try keeps a second copy: harmless.)
       setError(e instanceof PlainFailure ? e.message : "AI extraction failed. Please enter the bill details manually.");
     } finally {
+      setSent(null);
       setExtracting(false);
     }
   }
@@ -1218,6 +1219,7 @@ export function PurchaseBillEditor({
                 {extracting ? "Extracting…" : "Extract"}
               </Button>
             </div>
+            <UploadProgress progress={sent} what="the invoice" />
             {/* WHO RECEIVES THE FILE, said before the button is pressed (PRE-A-006).
                 Colour is the sibling notes' own on this tinted box. */}
             <AiDisclosure id="ai-disclosure-invoice-extraction" surface="invoice_extraction" className="text-state-attention" />
