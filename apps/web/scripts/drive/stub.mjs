@@ -27,6 +27,20 @@ import path from "node:path";
 import { headersFor } from "../security-headers.mjs";
 import { FAKE_SESSION, FAKE_USER } from "./fixtures.mjs";
 
+/**
+ * What an UNROUTED `GET /api/identity/permissions` is answered with: the Partner map, the file
+ * `apps/api/scripts/write_drive_permission_fixture.py` writes from `core/permissions.py` (a Python test holds the two
+ * equal, so this is not a second copy of the matrix that can drift). A screen offers a write button only when this
+ * map admits it, and the `[]` every other unrouted read gets is not a map, so before this every scenario that did not
+ * route the endpoint itself saw a screen with no buttons. A scenario that routes it (a restricted role, a missing pair)
+ * still wins: routes are tried before this.
+ */
+const PARTNER_PERMISSIONS = JSON.parse(fs.readFileSync(new URL("./partner-permissions.json", import.meta.url), "utf8"));
+const unroutedGet = (pathname) =>
+  /\/api\/identity\/permissions$/.test(pathname)
+    ? ok({ role: "Partner", permissions: structuredClone(PARTNER_PERMISSIONS), role_defaults: structuredClone(PARTNER_PERMISSIONS), has_overrides: false })
+    : ok([]);
+
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".txt": "text/plain",
@@ -160,7 +174,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
         const out = route
           ? route.reply(req, body, url)
           // A route's `status` may be a function of the request, for a door that answers 422 for some bodies and 200 for others (a date before the period ended).
-          : ok(req.method === "GET" ? [] : { id: "new-1" });
+          : (req.method === "GET" ? unroutedGet(pathname) : ok({ id: "new-1" }));
         const status = typeof route?.status === "function" ? route.status(req, body, url) : (route?.status ?? 200);
         const delay = !isWrite ? (route?.delay ?? 0) : (route?.delay ?? writeDelayMs);
         // /health is the keep-alive's own ping and never waits.

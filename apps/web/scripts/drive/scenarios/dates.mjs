@@ -676,15 +676,17 @@ function openItrTracker(how) {
     stub.route({ method: "PATCH", re: /compliance\/calendar\/itr-1\/filed$/, reply: () => ok({
       record: { id: "itr-1", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
       period_locked_from: null, period_locked_to: null, workspace_return: null }) });
-    stub.setTable("compliance_calendar", [{
+    // The tracker reads its rows through the API (POST-A-208), each with its client under `clients`, and adds one through POST /api/compliance/calendar.
+    stub.route({ method: "GET", re: /compliance\/calendar\/tracker\?family=itr$/, reply: () => ok([{
       id: "itr-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, compliance_type: "ITR", period_start: "2025-04-01", period_end: "2026-03-31",
       due_date: "2026-07-31", filing_status: "pending", filed_date: null, arn_number: null, notes: "ITR-3",
       clients: { client_name: "Acme Traders Pvt Ltd", pan: "AAACA1234A", entity_type: "Company" },
-    }]);
+    }]) });
+    stub.route({ method: "POST", re: /\/api\/compliance\/calendar$/, reply: (_req, body) => ok({ ...JSON.parse(body), id: "itr-new", filing_status: "pending" }) });
     await page.goto(`${env.base}/income-tax/`, { waitUntil: "networkidle" });
     if (how === "add") {
       await page.getByRole("button", { name: /Add ITR Deadline/ }).first().click();
-      await page.locator("select[aria-label='Client']").selectOption({ index: 1 });
+      await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders");
       await page.locator("#itr-add-due-date").waitFor();
       await page.getByText("Stubbed: IT Act s.139(1).").waitFor();
       // The listed return is for FY 2025-26, the form's default, and a second ITR row for the same client and period is refused by the table's
@@ -717,17 +719,20 @@ function openGstTracker(how) {
       door: "422", dateKey: "filed_date", endOf: () => "2026-09-30", sentence: (e) => GSTR_BEFORE_PERIOD_SENTENCE(e.filed, e.end),
       okBody: ok({ record: { id: "gst-1", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
         period_locked_from: "2026-09-01", period_locked_to: "2026-09-30", workspace_return: null }) }) });
-    stub.setTable("compliance_calendar", [{
+    // The tracker reads its rows through the API (POST-A-208), each with its client under `clients`.
+    stub.route({ method: "GET", re: /compliance\/calendar\/tracker\?family=gst$/, reply: () => ok([{
       id: "gst-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, compliance_type: "GSTR3B", period_start: "2026-09-01", period_end: "2026-09-30",
       due_date: "2026-10-20", filing_status: "pending", filed_date: null, created_at: "2026-10-01T00:00:00Z",
       clients: { client_name: "Acme Traders Pvt Ltd", gstin: "27AAACA1234A1ZK" },
-    }]);
+    }]) });
     await page.goto(`${env.base}/gst/`, { waitUntil: "networkidle" });
     if (how === "add" || how === "add-filed") {
-      // The new row is answered as PostgREST answers an insert that asks for it back, so the page can record the filing against its id.
-      // The door reads the period the NEW row declares, as the real one does (the default period is the month of the pinned today, which cannot have ended).
+      // The new row is added through POST /api/compliance/calendar (POST-A-208), which answers with the row it made, pending, so the page can record
+      // the filing against its id. The door reads the period the NEW row declares, as the real one does (the default period is the month of the
+      // pinned today, which cannot have ended).
       let inserted = null;
-      stub.answerInserts("compliance_calendar", (row) => (inserted = { ...row, id: "gst-new", created_at: "2026-10-08T00:00:00Z" }));
+      stub.route({ method: "POST", re: /\/api\/compliance\/calendar$/, reply: (_req, body) => ok(inserted = {
+        ...JSON.parse(body), id: "gst-new", firm_id: "00000000-0000-4000-8000-0000000000f1", filing_status: "pending", filed_date: null, created_at: "2026-10-08T00:00:00Z" }) });
       stub.route({ method: "PATCH", re: /compliance\/calendar\/gst-new\/filed$/, ...answersAnEarlyFilingDate({
         door: "422", dateKey: "filed_date", endOf: () => inserted?.period_end ?? null, sentence: (e) => GSTR_BEFORE_PERIOD_SENTENCE(e.filed, e.end),
         okBody: ok({ record: { id: "gst-new", filing_status: "filed" }, filing_recorded: true, filing_not_recorded_reason: null,
@@ -768,7 +773,9 @@ function openMcaTracker(how) {
       door: "200", dateKey: "filing_date", endOf: () => "2026-03-31", sentence: () => MCA_BEFORE_YEAR_SENTENCE, okBody: ok({ id: "m-1", status: "filed" }) }) });
     stub.route({ method: "PATCH", re: /mca-workspace\/filings\/m-new\/status$/, ...answersAnEarlyFilingDate({
       door: "200", dateKey: "filing_date", endOf: () => yearEndOfFy(inserted?.period), sentence: () => MCA_BEFORE_YEAR_SENTENCE, okBody: ok({ id: "m-new", status: "filed" }) }) });
-    stub.answerInserts("mca_filings", (row) => (inserted = { ...row, id: "m-new" }));
+    // The Add Filing form creates the row through POST /api/mca-workspace/filings (POST-A-442), which answers with the filing it made.
+    stub.route({ method: "POST", re: /\/api\/mca-workspace\/filings$/, reply: (_req, body) => ok(inserted = {
+      ...JSON.parse(body), id: "m-new", firm_id: "00000000-0000-4000-8000-0000000000f1", client_name: "Acme Traders Pvt Ltd", status: "not_started", filed_date: null, srn: null }) });
     stub.setTable("mca_filings", [{
       id: "m-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, client_name: "Acme Traders Pvt Ltd", company_cin: "U12345MH2020PTC123456",
       form_type: "AOC-4", period: "FY 2025-26", due_date: "2026-10-30", filed_date: null, srn: null, status: "not_started", notes: null,
@@ -2017,7 +2024,9 @@ const EDITORS = [
   {
     id: "customer-receipt", title: "customer receipt form (Receipts tab)", open: openCustomerReceipt,
     fields: [{ box: (p) => p.locator("#receipt-date"), label: "Receipt date", key: "receipt_date", full: "15/07/2026", iso: "2026-07-15" }],
-    save: (p) => p.getByRole("button", { name: "Record Receipt", exact: true }).last(), write: /api\/receipts\/$/,
+    // The form's own button: the empty receipts list below the form offers a "Record Receipt" of its own to a member who may write the books,
+    // so the last one on the page is the empty state's, not the form's.
+    save: (p) => p.locator("div.rounded-xl", { has: p.locator("#receipt-date") }).last().getByRole("button", { name: "Record Receipt", exact: true }), write: /api\/receipts\/$/,
   },
   ...[
     { id: "sales-credit-note-editor", title: "sales credit note editor", path: "/sales/credit-notes/new/edit/", party: { label: "Customer", name: "Beta Stores" },
@@ -2211,7 +2220,7 @@ const EDITORS = [
   {
     id: "itr-add-deadline", title: "Income Tax > ITR tracker: the due date of a new ITR deadline", open: openItrTracker("add"), cleared: "No due date yet — pick a client so the due date can be computed.",
     fields: [{ box: (p) => p.locator("#itr-add-due-date"), label: "Due date", key: "due_date", full: "05/08/2026", iso: "2026-08-05" }],
-    save: (p) => p.getByRole("button", { name: "Add Deadline", exact: true }), write: /rest\/v1\/compliance_calendar/,
+    save: (p) => p.getByRole("button", { name: "Add Deadline", exact: true }), write: /\/api\/compliance\/calendar$/,
   },
   {
     id: "gst-mark-filed", shortForm: "15/01/2026", title: "GST > filing tracker: the date a return was filed (Mark as Filed)", open: openGstTracker("single"), cleared: "Filing date is required",
@@ -2226,7 +2235,7 @@ const EDITORS = [
   {
     id: "gst-add-filing", title: "GST > filing tracker: the due date of a new filing", open: openGstTracker("add"), cleared: "Due date: enter the date this return is due.",
     fields: [{ box: (p) => p.locator("#gst-add-filing-due-date"), label: "Due date", key: "due_date", full: "05/11/2026", iso: "2026-11-05" }],
-    save: (p) => p.getByRole("button", { name: "Save Filing", exact: true }), write: /rest\/v1\/compliance_calendar/,
+    save: (p) => p.getByRole("button", { name: "Save Filing", exact: true }), write: /\/api\/compliance\/calendar$/,
   },
   {
     // A filing added as Filed used to be recorded as filed TODAY, with no date box and no question (the period lock quotes the date).
@@ -2254,7 +2263,7 @@ const EDITORS = [
   {
     id: "mca-add-filing-due-date", title: "MCA > Filings > Add Filing: the date a form is due", open: openMcaTracker("add"), cleared: "Client, CIN and Due Date are required.",
     fields: [{ box: (p) => p.locator("#mca-due-date"), label: "Due date", key: "due_date", full: "30/10/2026", iso: "2026-10-30" }],
-    save: (p) => p.getByRole("button", { name: "Add Filing", exact: true }).last(), write: /rest\/v1\/mca_filings/,
+    save: (p) => p.getByRole("button", { name: "Add Filing", exact: true }).last(), write: /\/api\/mca-workspace\/filings$/,
   },
   {
     id: "mca-confirm-filing-date", shortForm: "15/01/2026", title: "A client's MCA filings > Mark Filed (CA): the day the form was filed on MCA21", open: openClientMcaConfirm, cleared: "Filing date is required",
@@ -3492,7 +3501,7 @@ export const scenarios = [
       server: { sentence: GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30") } },
     { id: "gst-add-filed", name: "GST > filing tracker > Add GST Filing recorded as Filed", open: openGstTracker("add-filed"), box: (p) => p.locator("#gst-add-filing-filed-on"), label: "Filed on",
       save: (p) => p.getByRole("button", { name: "Save Filing", exact: true }), empty: "Filed on: enter the date this return was filed on the portal.", after: "sentence",
-      write: /compliance\/calendar\/gst-new\/filed$/, insert: /rest\/v1\/compliance_calendar/ },
+      write: /compliance\/calendar\/gst-new\/filed$/, insert: /\/api\/compliance\/calendar$/ },
     { id: "mca-single", name: "MCA > Filings > Mark Filed", open: openMcaTracker("single"), box: (p) => p.locator("#mca-filed-modal-date"), label: "Date of filing",
       save: (p) => p.getByRole("button", { name: "Confirm Filing", exact: true }), empty: "Filing date is required", after: "sentence", write: /mca-workspace\/filings\/m-1\/status$/,
       server: { sentence: MCA_BEFORE_YEAR_SENTENCE, typed: "15/01/2026" } },
@@ -3501,7 +3510,7 @@ export const scenarios = [
       server: { sentence: MCA_BEFORE_YEAR_SENTENCE, typed: "15/01/2026" } },
     { id: "mca-add-filed", name: "MCA > Filings > Add Filing recorded as Filed", open: openMcaTracker("add-filed"), box: (p) => p.locator("#mca-filed-on"), label: "Filed on MCA21 on",
       save: (p) => p.getByRole("button", { name: "Add Filing", exact: true }).last(), empty: "A filing marked Filed needs its SRN and the date it was filed on MCA21.", after: "sentence",
-      write: /mca-workspace\/filings\/m-new\/status$/, insert: /rest\/v1\/mca_filings/ },
+      write: /mca-workspace\/filings\/m-new\/status$/, insert: /\/api\/mca-workspace\/filings$/ },
     { id: "client-mca-confirm", name: "A client's MCA filings > Mark Filed (CA)", open: openClientMcaConfirm, box: (p) => p.locator("#mca-confirm-filing-date"), label: "Filing date",
       save: (p) => p.getByRole("button", { name: "Confirm Filing", exact: true }), empty: "Filing date is required", after: "sentence", write: /mca-workspace\/filings\/mf-1\/status$/,
       server: { sentence: MCA_BEFORE_YEAR_SENTENCE, typed: "15/01/2026" } },
@@ -3594,7 +3603,7 @@ export const scenarios = [
       await page.getByText(GSTR_BEFORE_PERIOD_SENTENCE("2026-09-15", "2026-09-30")).first().waitFor({ timeout: 4000 });
       await page.locator("#gst-add-filing-filed-on").waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error("the dialog stayed open over a row that now exists"); });
       await stub.quiet();
-      assert.equal(stub.writesTo(/rest\/v1\/compliance_calendar/, "POST").length, 1, "the row should have been inserted once");
+      assert.equal(stub.writesTo(/\/api\/compliance\/calendar$/, "POST").length, 1, "the row should have been inserted once");
     },
   },
   // The MCA Add Filing form inserts a row and then records it as filed. A date the door refuses (HTTP 200 with success false) or a caller the door refuses (HTTP 403,
@@ -3617,7 +3626,7 @@ export const scenarios = [
       await page.getByText(c.sentence).first().waitFor({ timeout: 4000 }).catch(() => { throw new Error(`the reason was not said: "${c.sentence}"`); });
       await page.locator("#mca-filed-on").waitFor({ state: "detached", timeout: 4000 }).catch(() => { throw new Error("the dialog stayed open over a row that now exists"); });
       await stub.quiet();
-      assert.equal(stub.writesTo(/rest\/v1\/mca_filings/, "POST").length, 1, "the row should have been inserted once");
+      assert.equal(stub.writesTo(/\/api\/mca-workspace\/filings$/, "POST").length, 1, "the row should have been inserted once");
     },
   })),
   // ── STATE THAT OUTLIVED ITS SUBJECT, found by an independent read of the thirteenth slice ─────────────────────────────────────────────────────────────────────
@@ -3712,9 +3721,9 @@ export const scenarios = [
   // sentence) came back with no sentence, and Save sent it.
   ...[
     { id: "gst", name: "GST > filing tracker > Add GST Filing", open: openGstTracker("add-filed"), box: "#gst-add-filing-filed-on", select: "select[aria-label='Status']",
-      insert: /rest\/v1\/compliance_calendar/, write: /compliance\/calendar\/gst-new\/filed$/, needs: "Acknowledgement number (ARN): enter the number on the portal's receipt." },
+      insert: /\/api\/compliance\/calendar$/, write: /compliance\/calendar\/gst-new\/filed$/, needs: "Acknowledgement number (ARN): enter the number on the portal's receipt." },
     { id: "mca", name: "MCA > Filings > Add Filing", open: openMcaTracker("add-filed"), box: "#mca-filed-on", select: "select[aria-label='Status']",
-      insert: /rest\/v1\/mca_filings/, write: /mca-workspace\/filings\/m-new\/status$/, needs: "A filing marked Filed needs its SRN and the date it was filed on MCA21." },
+      insert: /\/api\/mca-workspace\/filings$/, write: /mca-workspace\/filings\/m-new\/status$/, needs: "A filing marked Filed needs its SRN and the date it was filed on MCA21." },
   ].map((f) => ({
     id: `${f.id}-add-filed-a-date-does-not-come-back-after-the-status-is-changed`,
     title: `${f.name}: a date typed for Filed (after today) is gone when Status is changed away and back, and nothing is sent`,
@@ -3749,7 +3758,7 @@ export const scenarios = [
       await page.getByRole("button", { name: "Save Filing", exact: true }).click();
       await shownInTheDialog(page, "Acknowledgement number (ARN): enter the number on the portal's receipt.", "a filing recorded as Filed without its ARN was not refused in a sentence");
       await stub.quiet();
-      assert.equal(stub.writesTo(/rest\/v1\/compliance_calendar/, "POST").length, 0, "a filing recorded as Filed with no ARN INSERTED A ROW");
+      assert.equal(stub.writesTo(/\/api\/compliance\/calendar$/, "POST").length, 0, "a filing recorded as Filed with no ARN INSERTED A ROW");
       assert.equal(stub.writesTo(/compliance\/calendar\/gst-new\/filed$/).length, 0, "a filing recorded as Filed with no ARN SENT A WRITE");
     },
   },

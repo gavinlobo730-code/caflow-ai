@@ -1,0 +1,211 @@
+{
+  "accounting": [
+    "approve",
+    "read",
+    "write"
+  ],
+  "ai": [
+    "copilot",
+    "read"
+  ],
+  "analytics": [
+    "export",
+    "read",
+    "write"
+  ],
+  "approval": [
+    "approve",
+    "read",
+    "request"
+  ],
+  "assignment": [
+    "read",
+    "write"
+  ],
+  "automation": [
+    "read",
+    "write"
+  ],
+  "banking": [
+    "approve",
+    "read",
+    "write"
+  ],
+  "billing": [
+    "read",
+    "write"
+  ],
+  "branding": [
+    "read",
+    "write"
+  ],
+  "client": [
+    "delete",
+    "read",
+    "write"
+  ],
+  "client_instruction": [
+    "read",
+    "write"
+  ],
+  "compliance": [
+    "approve",
+    "delete",
+    "read",
+    "write"
+  ],
+  "compliance_record": [
+    "approve",
+    "delete",
+    "read",
+    "write"
+  ],
+  "copilot": [
+    "read",
+    "write"
+  ],
+  "document": [
+    "approve",
+    "delete",
+    "read",
+    "write"
+  ],
+  "dsc": [
+    "delete",
+    "read",
+    "write"
+  ],
+  "einvoice": [
+    "approve",
+    "read",
+    "write"
+  ],
+  "engagement": [
+    "read",
+    "write"
+  ],
+  "eway_bill": [
+    "approve",
+    "read",
+    "write"
+  ],
+  "firm": [
+    "admin",
+    "read",
+    "write"
+  ],
+  "gst": [
+    "approve",
+    "compute",
+    "read"
+  ],
+  "identity": [
+    "write"
+  ],
+  "income_tax": [
+    "approve",
+    "compute",
+    "read",
+    "write"
+  ],
+  "invoice": [
+    "approve",
+    "delete",
+    "read",
+    "write"
+  ],
+  "knowledge": [
+    "read",
+    "write"
+  ],
+  "mca": [
+    "approve",
+    "read",
+    "write"
+  ],
+  "notification": [
+    "read",
+    "write"
+  ],
+  "payroll": [
+    "enable",
+    "finalize",
+    "read",
+    "write"
+  ],
+  "portal": [
+    "read",
+    "write"
+  ],
+  "practice": [
+    "read",
+    "write"
+  ],
+  "reminder": [
+    "read",
+    "write"
+  ],
+  "report": [
+    "export",
+    "read",
+    "write"
+  ],
+  "risk": [
+    "read",
+    "write"
+  ],
+  "settings": [
+    "read",
+    "write"
+  ],
+  "tally_migration": [
+    "approve",
+    "read",
+    "write"
+  ],
+  "task": [
+    "delete",
+    "read",
+    "write"
+  ],
+  "tds": [
+    "approve",
+    "compute",
+    "read",
+    "write"
+  ],
+  "team": [
+    "delete",
+    "read",
+    "write"
+  ],
+  "time_entry": [
+    "delete",
+    "read",
+    "report",
+    "write"
+  ],
+  "timeline": [
+    "delete",
+    "write"
+  ],
+  "workflow": [
+    "instantiate",
+    "read"
+  ],
+  "workload": [
+    "read",
+    "write"
+  ],
+  "xbrl": [
+    "approve",
+    "read",
+    "write"
+  ],
+  "year_end": [
+    "approve",
+    "final_approve",
+    "read",
+    "write"
+  ]
+}
