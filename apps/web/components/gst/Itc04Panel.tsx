@@ -427,7 +427,7 @@ export function Itc04Panel({ clientId, onChanged, refreshToken }: {
                       </label>
                       {retractError && <p role="alert" className="text-state-problem">{retractError}</p>}
                       <div className="flex gap-3">
-                        <Button type="button" size="sm" disabled={saving} onClick={() => void retract(row.challan_id, retractFor)}>
+                        <Button type="button" size="sm" disabled={saving} onClick={() => retract(row.challan_id, retractFor)}>
                           {saving ? "Retracting…" : "Retract this lot"}
                         </Button>
                         <button type="button" className="text-ps-label hover:underline" onClick={() => setRetractFor(null)}>Keep it</button>
