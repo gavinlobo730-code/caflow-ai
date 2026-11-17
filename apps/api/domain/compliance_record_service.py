@@ -504,9 +504,11 @@ class ComplianceRecordService:
         # Filed clears it (Filed to Completed is the same closure).
         if new_status == "Filed" and record.get("closing_tds_challan_ids") is not None:
             updated = compliance_records_repo.update_clearing(
-                record_id, firm_id or record.get("firm_id") or "", updates, clear=compliance_records_repo.CLEARABLE_RECORD)
+                record_id, firm_id or record.get("firm_id") or "", updates, clear=compliance_records_repo.CLEARABLE_RECORD,
+                client_id=record.get("client_id"))
         else:
-            updated = compliance_records_repo.update(record_id, updates)
+            updated = compliance_records_repo.update(record_id, updates, firm_id=firm_id or record.get("firm_id"),
+                                                     client_id=record.get("client_id"))
         if not updated:
             raise NotFoundError("ComplianceRecord", record_id)
 
@@ -562,7 +564,7 @@ class ComplianceRecordService:
         updated = compliance_records_repo.update_clearing(
             record_id, firm_id or record["firm_id"], {"status": REOPENED_STATUS, "notes": notes},
             clear=compliance_records_repo.CLEARABLE + (compliance_records_repo.CLEARABLE_RECORD if forget_what_closed_it else ()),
-            only_if_status=FILED)
+            only_if_status=FILED, client_id=record.get("client_id"))
         if not updated:
             # The row was read as filed a moment ago, so it is gone, or somebody changed it in between (reopened it, or recorded
             # it as filed again with a new date). Writing over that would erase their change.
@@ -640,7 +642,7 @@ class ComplianceRecordService:
         notes = f"{record['notes']}\n{note}" if record.get("notes") else note
         updated = compliance_records_repo.update_clearing(
             record["id"], firm_id or record["firm_id"], {"status": to_status, "notes": notes}, clear=(),
-            only_if_status=(old_status,))
+            only_if_status=(old_status,), client_id=record.get("client_id"))
         if not updated:
             if not compliance_records_repo.find_by_id(record["id"]):
                 raise NotFoundError("ComplianceRecord", record["id"])

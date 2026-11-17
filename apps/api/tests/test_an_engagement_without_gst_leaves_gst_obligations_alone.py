@@ -185,7 +185,7 @@ def test_the_reconciliation_makes_every_caller_say_whether_it_owns_the_gst_leg()
 
 def test_a_caller_that_does_not_own_the_leg_reads_and_deletes_nothing(monkeypatch):
     calls = []
-    monkeypatch.setattr(compliance_records_repo, "soft_delete", lambda rid: calls.append(rid))
+    monkeypatch.setattr(compliance_records_repo, "soft_delete", lambda rid, **_k: calls.append(rid))
     stale = {"id": "r1", "obligation_type": "GSTR1", "period_start": "2025-04-01",
              "period_end": "2025-04-30", "status": "Not Started"}
     out = ob._reconcile_stale_gst_obligations(FIRM, "meher", FY, [], [stale], owns_the_gst_leg=False)
