@@ -46,6 +46,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { useDirtyFields, useReportDirty } from "@/lib/forms/useDirtyFields";
+import { removedEmployeeIdentifiers, type EmployeeIdentifier, type IdentifierValues } from "@/lib/payroll/employeeIdentifiers";
 import { useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
@@ -289,6 +290,15 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
   const [esiNumber, setEsiNumber] = useState(employee.esi_number ?? "");
   const [bankAccountNo, setBankAccountNo] = useState(employee.bank_account_no ?? "");
   const [bankIfsc, setBankIfsc] = useState(employee.bank_ifsc ?? "");
+  // What is on file: as the drawer opened, then as last saved. A box emptied over one of these is refused at the box, in the server's words,
+  // before anything is sent (POST-A-465); the server refuses the same edit whatever is sent.
+  const [onFile, setOnFile] = useState<IdentifierValues>({
+    pan: employee.pan, uan: employee.uan, esi_number: employee.esi_number,
+    bank_account_no: employee.bank_account_no, bank_ifsc: employee.bank_ifsc,
+  });
+  const identifiersNow: IdentifierValues = { pan, uan, esi_number: esiNumber, bank_account_no: bankAccountNo, bank_ifsc: bankIfsc };
+  const removed = removedEmployeeIdentifiers(onFile, identifiersNow);
+  const removedAt = (field: EmployeeIdentifier) => removed.find((r) => r.field === field)?.sentence ?? null;
   const [joiningDate, setJoiningDate] = useState(employee.joining_date ?? "");
   const [basic, setBasic] = useState(
     employee.basic_paise != null ? String(employee.basic_paise / 100) : "");
@@ -309,6 +319,7 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
 
   async function save() {
     if (dates.first) { dates.refuseWith(setErr); return; }
+    if (removed.length) { setErr(removed[0].sentence); setDone(false); return; }
     setBusy(true); setErr(null); setDone(false);
     try {
       // A typed value not a number REFUSES here rather than being silently
@@ -343,6 +354,10 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
       });
       setDone(true);
       markSaved();
+      setOnFile({
+        pan: pan.trim().toUpperCase(), uan: uan.trim(), esi_number: esiNumber.trim(),
+        bank_account_no: bankAccountNo.trim(), bank_ifsc: bankIfsc.trim().toUpperCase(),
+      });
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "That did not save.");
@@ -356,18 +371,24 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL}>PAN
           <input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())}
-            maxLength={10} className={`${FIELD} mt-1 uppercase`} />
+            maxLength={10} aria-invalid={removedAt("pan") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("pan") ? " border-red-500" : ""} uppercase`} />
+          {removedAt("pan") && <span role="alert" className="text-3xs text-red-600">{removedAt("pan")}</span>}
         </label>
         <label className={LABEL}>UAN
           <input value={uan} onChange={(e) => setUan(e.target.value.replace(/[^0-9]/g, ""))}
-            inputMode="numeric" maxLength={12} className={`${FIELD} mt-1`} />
+            inputMode="numeric" maxLength={12} aria-invalid={removedAt("uan") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("uan") ? " border-red-500" : ""}`} />
+          {removedAt("uan") && <span role="alert" className="text-3xs text-red-600">{removedAt("uan")}</span>}
           <span className="text-3xs text-ps-hint">
             Twelve digits — the EPFO&apos;s own format. The ECR refuses anything else.
           </span>
         </label>
         <label className={LABEL}>ESI number
           <input value={esiNumber} onChange={(e) => setEsiNumber(e.target.value)}
-            className={`${FIELD} mt-1`} />
+            aria-invalid={removedAt("esi_number") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("esi_number") ? " border-red-500" : ""}`} />
+          {removedAt("esi_number") && <span role="alert" className="text-3xs text-red-600">{removedAt("esi_number")}</span>}
         </label>
         <label className={LABEL}>Joining date
           <DateInput id="drawer-joining-date" value={joiningDate} onChange={setJoiningDate} onStateChange={dates.watch("joining", "Joining date")}
@@ -379,11 +400,15 @@ function ProfileSection({ employee, onSaved, onDirtyChange }: {
         </label>
         <label className={LABEL}>Bank account number
           <input value={bankAccountNo} onChange={(e) => setBankAccountNo(e.target.value)}
-            className={`${FIELD} mt-1`} />
+            aria-invalid={removedAt("bank_account_no") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("bank_account_no") ? " border-red-500" : ""}`} />
+          {removedAt("bank_account_no") && <span role="alert" className="text-3xs text-red-600">{removedAt("bank_account_no")}</span>}
         </label>
         <label className={LABEL}>Bank IFSC
           <input value={bankIfsc} onChange={(e) => setBankIfsc(e.target.value.toUpperCase())}
-            maxLength={11} className={`${FIELD} mt-1 uppercase`} />
+            maxLength={11} aria-invalid={removedAt("bank_ifsc") ? true : undefined}
+            className={`${FIELD} mt-1${removedAt("bank_ifsc") ? " border-red-500" : ""} uppercase`} />
+          {removedAt("bank_ifsc") && <span role="alert" className="text-3xs text-red-600">{removedAt("bank_ifsc")}</span>}
         </label>
         <Money label="Basic" value={basic} onChange={setBasic} />
         <label className={LABEL}>HRA %
