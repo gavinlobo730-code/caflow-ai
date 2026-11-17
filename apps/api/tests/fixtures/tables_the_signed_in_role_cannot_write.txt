@@ -25,6 +25,7 @@
 # 660 creates nightly_exception_results (POST-A-050) with no signed-in write: the nightly books check, through the API's privileged client, is its one writer.
 # 671 creates compliance_effort_estimates (POST-A-212) with no signed-in write: its writer is the API's privileged client from the start.
 # 705 closes compliance_records (POST-A-461): the obligation store is written by the API's privileged client, naming the firm and the client, since the change that shipped before it.
+# 707 closes compliance_calendar (POST-A-208): the filing calendar is written by the API's privileged client (the add and Mark Filed), naming the firm and the client, since the change that shipped before it.
 account_group_mappings
 account_period_balances
 activity_logs
@@ -75,6 +76,7 @@ client_sales_invoice_lines
 client_sales_invoices
 client_statutory_identity
 client_year_locks
+compliance_calendar
 compliance_effort_estimates
 compliance_records
 credit_note_allocations
