@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Annotated, Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -27,7 +28,7 @@ from core.validators import validate_gstin
 from core.query_day import query_day
 from services.audit_service import log_event
 from services.timeline_service import timeline_service
-from services import gst_2b_bulk_service, gst_2b_reconciliation_service
+from services import gst_2b_bulk_service, gst_2b_drop_record, gst_2b_reconciliation_service
 from domain.gst import credit_ledger, gstr2b_intake, return_period
 from domain.gst.gstr2b import parse_gstr2b, paise as gstr2b_paise
 from services.period_validation_service import period_validation_service
@@ -200,6 +201,9 @@ class GSTR2BBulkRequest(BaseModel):
     file says whose it is and which month it is for (gst-10)."""
     files: list[GSTR2BBulkFile] = Field(
         ..., min_length=1, max_length=gst_2b_bulk_service.MAX_FILES_PER_REQUEST)
+    #: The drop this request belongs to (POST-A-057): absent on a drop's first
+    #: request, which answers the id; every later request of the drop names it.
+    drop_id: Optional[UUID] = None
 
 
 class GSTR2BUploadRequest(BaseModel):
@@ -1416,18 +1420,62 @@ def bulk_gstr2b(
         if _USE_MOCK:
             return api_response(True, gst_2b_bulk_service.without_a_database(files))
 
-        from core.supabase_client import get_supabase
+        from core.supabase_client import get_service_supabase, get_supabase
+        # WHAT THE DROP DID IS KEPT (POST-A-057, migration 715), on the
+        # privileged client naming the firm: nothing signed in reaches the two
+        # tables. A drop named that is not this member's is refused before any
+        # file is touched; one that cannot be recorded is reconciled as before
+        # and the answer says it was not recorded.
+        record_db = get_service_supabase()
+        try:
+            drop_id = gst_2b_drop_record.open_drop(
+                record_db, firm_id=firm_id, member_id=current_user.get("id"),
+                drop_id=str(body.drop_id) if body.drop_id else None)
+        except gst_2b_drop_record.DropRefused as refused:
+            return api_response(False, None, str(refused))
         out = gst_2b_bulk_service.process(
             get_supabase(), firm_id=firm_id, files=files,
             visible=effective_client_ids(current_user),
             can_access=lambda cid: can_access_client(current_user, cid),
             created_by=current_user.get("id"), timeline=timeline_service)
+        recorded = gst_2b_drop_record.record(
+            record_db, firm_id=firm_id, drop_id=drop_id, results=out["results"])
+        out = {**out, "drop_id": drop_id, "recorded": recorded,
+               "not_recorded": None if recorded else gst_2b_drop_record.NOT_RECORDED}
         return api_response(True, out)
     except HTTPException:
         raise
     except Exception:
         _logger.exception("gstr2b bulk reconciliation failed")
         return api_response(False, None, "Unable to complete GST operation. Please try again.")
+
+
+@router.get("/gstr2b/bulk/drops")
+def read_gstr2b_bulk_drops(current_user: dict = Depends(rbac("gst", "read"))):
+    """What the caller's latest bulk GSTR-2B drops did to each file (POST-A-057).
+
+    Only the caller's own drops, newest first, each file in the order the
+    server answered it. A file routed to a client the caller cannot see NOW is
+    listed with its status and nothing about the client or what was found. A
+    file the browser could not read never reached the server and is not here;
+    the answer says so. Reads only; reconciles nothing again.
+    """
+    if _USE_MOCK:
+        return api_response(True, {
+            "drops": [], "limited_to": gst_2b_drop_record.READ_BACK_DROPS, "more": False,
+            "browser_only": gst_2b_drop_record.BROWSER_ONLY, "recorded": False,
+            "not_recorded": "Running without a database: no drop is recorded."})
+    try:
+        from core.supabase_client import get_service_supabase
+        return api_response(True, gst_2b_drop_record.read_back(
+            get_service_supabase(), firm_id=current_user["firm_id"],
+            member_id=current_user.get("id"),
+            may_see=lambda cid: can_access_client(current_user, cid)))
+    except HTTPException:
+        raise
+    except Exception:
+        _logger.exception("gstr2b bulk drops read failed")
+        return api_response(False, None, "The record of your GSTR-2B drops could not be read. Please try again.")
 
 
 @router.get("/gstr2b/reconciliation")

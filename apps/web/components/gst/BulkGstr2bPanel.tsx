@@ -30,16 +30,25 @@
  * replace is refused by the server (POST-A-057) and is listed here as not
  * reconciled, in the server's own sentence.
  *
+ * WHAT A DROP DID IS KEPT ON THE SERVER (POST-A-057, migration 715). The first
+ * request of a drop answers the drop's id and every later request sends it
+ * back, so the server records each file it answered under one drop. "Your
+ * recent drops" reads them back after this page was closed: the caller's own
+ * drops, newest first, in the server's words. A file this browser could not
+ * read, or did not start, never reached the server and is not in the record,
+ * and the list says so. A drop the server could not record says that too.
+ *
  * Nothing is sent to any portal.
  */
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import type { Gstr2bBulkResult, Gstr2bBulkStatus } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
-import type { Gstr2bBulkAnswer } from "@/lib/api";
+import type { Gstr2bBulkAnswer, Gstr2bBulkDrops } from "@/lib/api";
+import { LoadingRegion } from "@/components/ui/skeleton";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import { gstPeriodLabel } from "@/lib/gst/period";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
@@ -89,11 +98,39 @@ export function BulkGstr2bPanel() {
   // Reading and reconciling a file ask `gst` `compute`, which a Reviewer's access does not hold (POST-A-455).
   const { can: canDo, resolved: permissionsRead } = usePermissions();
   const mayCompute = canDo("gst", "compute");
+  // The read-back asks `gst` `read` (its route's own pair).
+  const mayRead = canDo("gst", "read");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const stopRef = useRef(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [running, setRunning] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [notRecorded, setNotRecorded] = useState<string | null>(null);
+  const [recent, setRecent] = useState<Gstr2bBulkDrops | null>(null);
+  const [recentError, setRecentError] = useState<string | null>(null);
+  const [recentLoading, setRecentLoading] = useState(false);
+
+  const loadRecent = useCallback(async () => {
+    setRecentLoading(true);
+    try {
+      const resp = await api.gstWorkspace.gstr2bBulkDrops();
+      const data = resp.success ? objectWithLists<Gstr2bBulkDrops>(resp.data, "drops") : null;
+      if (data) {
+        setRecent(data);
+        setRecentError(null);
+      } else {
+        setRecentError(resp.error ?? "Your recent drops could not be read.");
+      }
+    } catch (e) {
+      setRecentError(e instanceof Error ? e.message : "Your recent drops could not be read.");
+    } finally {
+      setRecentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (permissionsRead && mayRead) void loadRecent();
+  }, [permissionsRead, mayRead, loadRecent]);
 
   function patch(id: number, change: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...change } : r)));
@@ -103,6 +140,10 @@ export function BulkGstr2bPanel() {
     if (running || files.length === 0) return;
     stopRef.current = false;
     setRunning(true);
+    setNotRecorded(null);
+    // The drop's id, from the server's first answer; every later file sends it back.
+    let dropId: string | null = null;
+    let unrecorded: string | null = null;
     // The flag comes down in a `finally`: a throw anywhere below must not leave
     // the drop disabled until the page is reloaded.
     try {
@@ -134,9 +175,16 @@ export function BulkGstr2bPanel() {
           patch(i, { state: "reconciling" });
           const resp = await api.gstWorkspace.reconcileGstr2bFiles([
             { name: file.name, raw_data: read.raw },
-          ]);
+          ], dropId);
           const answer = resp.success
             ? objectWithLists<Gstr2bBulkAnswer>(resp.data, "results") : null;
+          if (answer) {
+            dropId = answer.drop_id ?? dropId;
+            if (answer.recorded !== true) {
+              unrecorded = answer.not_recorded
+                ?? "What this drop did was not recorded, so it cannot be read back after this page is closed.";
+            }
+          }
           result = answer?.results[0]
             ?? failed(file.name, resp.error ?? "The server gave no answer for this file.");
         } catch (e) {
@@ -147,7 +195,9 @@ export function BulkGstr2bPanel() {
       }
     } finally {
       setRunning(false);
+      setNotRecorded(unrecorded);
       if (fileRef.current) fileRef.current.value = "";
+      if (mayRead) void loadRecent();
     }
   }
 
@@ -219,25 +269,89 @@ export function BulkGstr2bPanel() {
             )}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="text-ps-hint border-b">
-                <tr>
-                  <th className="text-left py-1.5 pr-3 font-medium">File</th>
-                  <th className="text-left py-1.5 pr-3 font-medium">Client</th>
-                  <th className="text-left py-1.5 pr-3 font-medium">Month</th>
-                  <th className="text-left py-1.5 pr-3 font-medium">Result</th>
-                  <th className="text-left py-1.5 font-medium">What it found</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <ResultRow key={r.id} row={r} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {notRecorded && (
+            <p className="text-xs text-state-attention" data-testid="bulk-gstr2b-not-recorded">{notRecorded}</p>
+          )}
+          <ResultTable rows={rows} />
         </div>
+      )}
+
+      {mayRead && (
+        <RecentDrops recent={recent} error={recentError} loading={recentLoading} />
+      )}
+    </div>
+  );
+}
+
+function ResultTable({ rows }: { rows: Row[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead className="text-ps-hint border-b">
+          <tr>
+            <th className="text-left py-1.5 pr-3 font-medium">File</th>
+            <th className="text-left py-1.5 pr-3 font-medium">Client</th>
+            <th className="text-left py-1.5 pr-3 font-medium">Month</th>
+            <th className="text-left py-1.5 pr-3 font-medium">Result</th>
+            <th className="text-left py-1.5 font-medium">What it found</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <ResultRow key={r.id} row={r} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** The caller's latest drops as the SERVER recorded them (POST-A-057). */
+function RecentDrops({ recent, error, loading }: {
+  recent: Gstr2bBulkDrops | null; error: string | null; loading: boolean;
+}) {
+  return (
+    <div className="border-t border-ps-border pt-3 space-y-2" data-testid="bulk-gstr2b-recent">
+      <h3 className="text-xs font-semibold text-ps-ink">Your recent drops</h3>
+      {error ? (
+        <p className="text-xs text-state-problem">{error}</p>
+      ) : !recent ? (
+        loading ? (
+          <LoadingRegion label="Loading your recent drops">
+            <p className="text-xs text-ps-label">Loading…</p>
+          </LoadingRegion>
+        ) : null
+      ) : !recent.recorded ? (
+        <p className="text-xs text-state-attention">
+          {recent.not_recorded ?? "Your drops could not be read, so none is listed."}
+        </p>
+      ) : recent.drops.length === 0 ? (
+        <p className="text-xs text-ps-label">
+          You have not dropped any GSTR-2B files here yet. Drop the month&apos;s files above and what each
+          one did will be listed here, even after this page is closed.
+        </p>
+      ) : (
+        <>
+          <p className="text-3xs text-ps-hint">{recent.browser_only}</p>
+          {recent.drops.map((d) => (
+            <details key={d.id} className="text-xs">
+              <summary className="cursor-pointer text-ps-body">
+                {formatIstLabelled(d.created_at, "Date not recorded")}
+                {" · "}{d.file_count} file(s)
+                {" · "}{d.totals.reconciled ?? 0} reconciled
+                {d.needs_attention > 0 ? ` (${d.needs_attention} need a look)` : ""}
+                {d.file_count - (d.totals.reconciled ?? 0) > 0
+                  ? ` · ${d.file_count - (d.totals.reconciled ?? 0)} not reconciled` : ""}
+              </summary>
+              <div className="mt-1">
+                <ResultTable rows={d.results.map((r, i) => ({ id: i, name: r.name, state: "done", result: r }))} />
+              </div>
+            </details>
+          ))}
+          {recent.more && (
+            <p className="text-3xs text-ps-hint">Only your latest {recent.limited_to} drops are listed.</p>
+          )}
+        </>
       )}
     </div>
   );

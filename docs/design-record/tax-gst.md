@@ -1486,7 +1486,38 @@ real document with wrong figures.
   `tests/test_many_clients_2b_files_are_each_routed_by_the_gstin_inside_them.py`.
   NOT done: two requests for one client and month at the same moment are not
   serialised (each reads before it writes); the job queue and a read-back of a
-  drop after the screen closes stay on POST-A-057.
+  drop after the screen closes stay on POST-A-057 (the read-back was built on
+  17-11-2026, the next entry).
+- **WHAT A BULK GSTR-2B DROP DID TO EACH FILE IS KEPT ON THE SERVER, AND THE
+  PERSON WHO MADE IT READS IT BACK AFTER THE SCREEN IS CLOSED** (POST-A-057,
+  17-11-2026; migration 715). What was wrong: the screen sends a drop one file
+  per request and the per-file answers lived only in that browser; close the tab
+  and nothing said what the drop did, and a refused or unmatched file left no
+  trace at all (`gstr2b_uploads` keeps a reconciled file only, and not the drop
+  it came in). What the fix does: `services/gst_2b_drop_record` opens a drop on
+  a drop's first request (`gstr2b_bulk_drops`, the firm and the member) and
+  answers its id; every later request of the drop sends it back and a drop that
+  is not this member's in this firm is refused in words BEFORE any file is
+  touched. Each file the server answered is kept in `gstr2b_bulk_drop_files`
+  with the answer's own fields (a reconciled row has counts, any other a
+  sentence; the CHECK holds the service's status list, a test holds the two
+  equal); the client's NAME is not stored but read at read-back.
+  `GET /api/gst-workspace/gstr2b/bulk/drops` (`gst` `read`) answers the
+  caller's own latest ten drops, files in the order answered, and a row routed to
+  a client the reader cannot see NOW carries its status and nothing about the
+  client or what was found. Both tables are the API's alone (privileged client,
+  every query naming the firm; no privilege for a signed-in role; a file row
+  names a drop of its own firm by a composite key and a client of its own firm
+  by `guard_client_firm`). Deploy order: without the tables the drop reconciles
+  as before and says it was not recorded, and the read-back says the record
+  cannot be read rather than "no drops". The panel shows "Your recent drops"
+  to whoever may read GST, and says a file the browser could not read never
+  reached the server. How verified:
+  `tests/test_a_bulk_gstr2b_drop_can_be_read_back.py` (14),
+  two route tests in the 2B routing suite, `tests/test_715_..._pg.py` (6), and
+  a browser guard; all 17 new mock, route and browser tests fail on the code
+  before. NOT done: the job queue that would go on
+  reconciling after the tab is closed.
 
 - **A GST RETURN PERIOD IS A TYPE, AND A STRING THAT IS NOT A MONTH IS A 422 AT THE DOOR** (POST-A-270, found by filing a seeded year through the workspace doors). 27 route parameters and request-model fields took a period as a plain string, four query parameters of them behind `pattern=r"^\d{6}$"`, and what a malformed one became depended on the door. Where it reached `return_period.parse_month`, which raises for anything that is not a month, `2026-04`, `4/2026` and a month 13 reached the CA as a 500 (`iff/compute?period=139999` and `=010000` both answered 500 on a real stack); where it was only a key it was not checked at all (`itc/register?period=2026-04` answered 200 with an empty register, and on the two ITC reversal bodies nothing looked at it until the register table's own CHECK refused the insert, migration 285). `models/gst_period.PeriodMMYYYY` (and `OptionalPeriodMMYYYY`, where blank means not said) applies `parse_month`'s own rule and nothing restated: six digits, a month from 01 to 12, and a year of this century (a typo bound, deliberately not a statement of when GST began, which this repository has not read from a primary source). **ASCII DIGITS ONLY**, which `parse_month` itself does not insist on (`str.isdigit` accepts Arabic-Indic and full-width digits), because the text is stored as the key a saved return is found under and a second spelling of April 2026 would open a second row. A typed required query parameter is spelled `*, period: Annotated[PeriodMMYYYY, Query(...)]` with no default: `period: PeriodMMYYYY = Query(...)` validates nothing (the metadata is dropped when `Query` sits in the default) and `= ...` makes a required parameter optional under this FastAPI (b70); the OpenAPI document was compared before and after and no parameter changed its required flag, name or description; the one difference is that the four query parameters that carried a `pattern` no longer publish it, because the type does the refusing and the document describes the string. `tests/test_gst_return_periods_are_validated.py` holds the rule from the AST (every `period` entry point in the routers and models is typed or listed in `EXEMPT` with the reason it is not a GST return period: the analytics windows, the billing and depreciation months in YYYY-MM, the portal snapshot's free label, the MCA form's period), reads the served OpenAPI document for every operation that carries a period and sends each a malformed one expecting a 422 naming `period`, and fails a stale exemption. The purchase-bill-from-2B handler's own period check was deleted: a second statement of the rule behind the type is the drift this entry exists to prevent. Deliberately NOT done: the GSTR-2B upload keeps its own cross-check that the file's period agrees with the one typed; `gst_portal` and `mca_workspace` periods are free-form and exempt.
 
