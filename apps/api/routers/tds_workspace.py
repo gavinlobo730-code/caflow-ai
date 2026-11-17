@@ -859,6 +859,13 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         has_key = manual_register.usable_pan_key(pan) is not None
         gaps.append(manual_register.GAP_NO_SUPPLIER if has_key else manual_register.GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN)
 
+    # A payee with no key is never added up by its NAME (POST-A-078): the year's earlier payments typed under the same name are NAMED with
+    # their figures, and the charge stays the first-payment charge above. `extra_gap_messages` are sentences that carry figures.
+    same_name_gaps, extra_gap_messages = _same_name_payments(
+        db, ask=register_asked and supplier is None and not has_key, firm_id=firm_id, client_id=client_id, section=section,
+        name=name, when=when, exclude_id=exclude_id)
+    gaps.extend(same_name_gaps)
+
     # THE DEDUCTION IS BOUNDED BY THE PAYMENT, as a bill's is by the bill (routers/purchase_bills.py): the year's tax falls on the payment that
     # crosses a threshold and can be many times its size. The shortfall is not lost: the next payment or bill to this payee credits what was
     # actually withheld (s.200) and charges the rest. The typed amount is the taxable value, so the cap can only be smaller than a bill's.
@@ -972,9 +979,22 @@ def _resolve_manual_deduction(db, firm_id: str, client_id: str, body: dict,
         "supplier_note": supplier_note,
         "gaps": gaps,
         "gap_messages": [manual_register.GAP_MESSAGES[g] for g in gaps
-                         if g in manual_register.GAP_MESSAGES],
+                         if g in manual_register.GAP_MESSAGES] + extra_gap_messages,
     }
     return {"row": row, "explain": explain}
+
+
+def _same_name_payments(db, *, ask: bool, firm_id: str, client_id: str, section: str, name: str, when: date,
+                        exclude_id: Optional[str]) -> tuple[list[str], list[str]]:
+    """(gaps, sentences) for the year's earlier typed payments under the same name, for a payee with no supplier and no usable PAN
+    (`ask`); nothing otherwise, and nothing when there are none (POST-A-078, `manual_register.same_name_without_a_pan`)."""
+    if not ask:
+        return [], []
+    count, taxable, tds = manual_register.same_name_without_a_pan(
+        db, firm_id=firm_id, client_id=client_id, section=section, deductee_name=name, on=when, exclude_id=exclude_id)
+    if not count:
+        return [], []
+    return [manual_register.GAP_SAME_NAME_WITHOUT_A_PAN], [manual_register.same_name_sentence(count, taxable, tds)]
 
 
 @router.post("/deductions")
