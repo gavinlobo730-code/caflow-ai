@@ -10,7 +10,11 @@
  * and still refuses what is too big.
  */
 export const EXTRACT_UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024;
-/** Leave room under the limit for the multipart envelope. */
+/**
+ * The size a REDUCTION aims for, a little under the limit so a reduced copy is not left at its edge. It is not the test of whether to reduce: the
+ * server caps the FILE's own bytes at the limit (`read_limited` in the extraction route) and the request as a whole has its own, larger cap, so a
+ * photograph at or under the limit is accepted and must be sent as taken.
+ */
 const TARGET_BYTES = EXTRACT_UPLOAD_LIMIT_BYTES - 256 * 1024;
 const STEPS: ReadonlyArray<{ edge: number; quality: number }> = [
   { edge: 3200, quality: 0.9 }, { edge: 2800, quality: 0.85 }, { edge: 2400, quality: 0.8 }, { edge: 2000, quality: 0.75 }, { edge: 1600, quality: 0.7 },
@@ -18,7 +22,7 @@ const STEPS: ReadonlyArray<{ edge: number; quality: number }> = [
 
 /** Does this file need reducing? Only a JPEG or PNG photograph over the limit does. */
 export function needsReducing(file: { type: string; size: number }): boolean {
-  return /^image\/(jpeg|png)$/i.test(file.type) && file.size > TARGET_BYTES;
+  return /^image\/(jpeg|png)$/i.test(file.type) && file.size > EXTRACT_UPLOAD_LIMIT_BYTES;
 }
 
 /** The size an image of `width` x `height` is drawn at so its longer edge is `edge` (never enlarged). */

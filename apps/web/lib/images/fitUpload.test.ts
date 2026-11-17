@@ -8,6 +8,10 @@ test("an image that fits is never touched, and only a JPEG or PNG over the limit
   assert.equal(needsReducing({ type: "image/jpeg", size: 6 * MB }), false);
   assert.equal(needsReducing({ type: "image/jpeg", size: EXTRACT_UPLOAD_LIMIT_BYTES - 300 * 1024 }), false);
   assert.equal(needsReducing({ type: "image/jpeg", size: 12 * MB }), true);
+  // The test is the server's own limit on the file's bytes, not the size a reduction aims for: a photograph the server would accept is sent as taken.
+  assert.equal(needsReducing({ type: "image/jpeg", size: EXTRACT_UPLOAD_LIMIT_BYTES - 100 * 1024 }), false, "a photograph just under the limit was reduced");
+  assert.equal(needsReducing({ type: "image/jpeg", size: EXTRACT_UPLOAD_LIMIT_BYTES }), false, "a photograph exactly at the limit was reduced");
+  assert.equal(needsReducing({ type: "image/png", size: EXTRACT_UPLOAD_LIMIT_BYTES + 1 }), true, "a photograph one byte over the limit was not reduced");
   assert.equal(needsReducing({ type: "image/png", size: 11 * MB }), true);
   assert.equal(needsReducing({ type: "application/pdf", size: 30 * MB }), false, "a PDF is not an image to shrink");
   assert.equal(needsReducing({ type: "image/webp", size: 30 * MB }), false);
