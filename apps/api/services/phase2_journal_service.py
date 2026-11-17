@@ -1331,9 +1331,16 @@ class Phase2JournalService:
             from core.supabase_client import get_supabase
             db = get_supabase()
 
-            # Payroll accounts use name matching only — no system_account_key for these
-            salary_exp_id  = self._find_account(db, firm_id, client_id, "%Salaries Expense%")
-            net_sal_id     = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            # Every payroll account through the one payroll resolver (POST-A-083): key first, so a renamed account is still
+            # found, and the same answer the 24Q tie-out and the challan and remittance registers read the account back by.
+            from domain.payroll import ledger_accounts as PL
+            from services.payroll_ledger_accounts import resolve_id as payroll_ledger
+
+            def acct(ledger):
+                return payroll_ledger(db, firm_id=firm_id, client_id=client_id, ledger=ledger)
+
+            salary_exp_id  = acct(PL.SALARIES_EXPENSE)
+            net_sal_id     = acct(PL.NET_SALARY_PAYABLE)
             # THE EMPLOYER SHARE COMES OFF THE SLIPS, not the run header.
             # `payroll_runs` stores `total_pf_paise` and `total_esi_paise`
             # COMBINED (employee + employer), and there is no column for either
@@ -1350,19 +1357,18 @@ class Phase2JournalService:
             # backfills the account rather than this failing closed.
             employer_contribution_id = None
             if employer_contribution > 0:
-                employer_contribution_id = self._find_account(
-                    db, firm_id, client_id, "%Contribution to Provident%")
+                employer_contribution_id = acct(PL.EMPLOYER_CONTRIBUTION)
             # Looked up only when there IS a recovery. _find_account raises when
             # an account is missing, and a run that recovers nothing must not
             # require a receivable account it never touches — every firm whose
             # chart predates migration 301 would otherwise fail to finalise.
             loans_id = None
             if int(run.get("total_loan_recovery_paise") or 0) > 0:
-                loans_id = self._find_account(db, firm_id, client_id, "%Employee Loans%")
-            pf_id          = self._find_account(db, firm_id, client_id, "%PF Payable%")
-            esi_id         = self._find_account(db, firm_id, client_id, "%ESI Payable%")
-            pt_id          = self._find_account(db, firm_id, client_id, "%PT Payable%")
-            tds_sal_id     = self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%")
+                loans_id = acct(PL.EMPLOYEE_LOANS)
+            pf_id          = acct(PL.PF_PAYABLE)
+            esi_id         = acct(PL.ESI_PAYABLE)
+            pt_id          = acct(PL.PT_PAYABLE)
+            tds_sal_id     = acct(PL.TDS_PAYABLE_SALARY)
 
             lines = self._build_payroll_lines(
                 {
@@ -1489,14 +1495,23 @@ class Phase2JournalService:
         try:
             from core.supabase_client import get_supabase
             db = get_supabase()
+            # The accrual's own accounts, through the same resolver (POST-A-083). The salaries debit was "%Salaries%" here
+            # and "%Salaries Expense%" on the accrual, so a chart holding both a "Salaries Payable" and a "Salaries Expense"
+            # could settle a leaver against a liability; one vocabulary makes it the account the accrual debits.
+            from domain.payroll import ledger_accounts as PL
+            from services.payroll_ledger_accounts import resolve_id as payroll_ledger
+
+            def acct(ledger):
+                return payroll_ledger(db, firm_id=firm_id, client_id=client_id, ledger=ledger)
+
             ids = {
-                "salary_exp": self._find_account(db, firm_id, client_id, "%Salaries%"),
-                "net": self._find_account(db, firm_id, client_id, "%Net Salary Payable%"),
-                "tds": self._find_account(db, firm_id, client_id, "%TDS Payable - Salary%"),
+                "salary_exp": acct(PL.SALARIES_EXPENSE),
+                "net": acct(PL.NET_SALARY_PAYABLE),
+                "tds": acct(PL.TDS_PAYABLE_SALARY),
                 # Looked up only when there IS a recovery — a firm whose chart
                 # predates migration 301 has no such account and must still be
                 # able to settle a leaver who owes nothing.
-                "loans": (self._find_account(db, firm_id, client_id, "%Employee Loans%")
+                "loans": (acct(PL.EMPLOYEE_LOANS)
                           if int(settlement.get("loan_recovery_paise") or 0) > 0 else None),
             }
             lines = self._build_settlement_lines(ids, settlement)
@@ -1536,7 +1551,9 @@ class Phase2JournalService:
         try:
             from core.supabase_client import get_supabase
             db = get_supabase()
-            net_sal_id = self._find_account(db, firm_id, client_id, "%Net Salary Payable%")
+            from domain.payroll import ledger_accounts as PL
+            from services.payroll_ledger_accounts import resolve_id as payroll_ledger
+            net_sal_id = payroll_ledger(db, firm_id=firm_id, client_id=client_id, ledger=PL.NET_SALARY_PAYABLE)
             lines = self._build_payroll_disbursement_lines(
                 net_sal_id, bank_gl_account_id, int(run.get("total_net_paise") or 0))
             return self._create_journal(

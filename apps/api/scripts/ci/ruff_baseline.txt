@@ -439,7 +439,6 @@ services/bill_of_entry_service.py :: F401 :: <module> :: 1
 services/book_to_tax_service.py :: F541 :: section_43bh_disallowance :: 4
 services/client_gst_registration_service.py :: B904 :: resolve :: 1
 services/client_gst_registration_service.py :: F401 :: <module> :: 1
-services/coa_seed_service.py :: F401 :: <module> :: 1
 services/compliance_engine.py :: F401 :: <module> :: 1
 services/cwip_service.py :: F401 :: <module> :: 1
 services/ecommerce_operator_service.py :: F401 :: <module> :: 1

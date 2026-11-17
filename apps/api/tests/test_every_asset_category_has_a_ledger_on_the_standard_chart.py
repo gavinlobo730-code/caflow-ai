@@ -116,7 +116,8 @@ def test_no_other_pattern_the_posting_engine_asks_for_finds_the_new_ledger():
     assert not offenders, (
         f"{offenders} also match the Office Equipment ledger: an asset or the "
         "other posting could land on the wrong account")
-    assert len(patterns) > 20, "the scan found almost no patterns: it is not reading the module"
+    # 20 -> 12 (POST-A-083): the eight payroll patterns moved to domain/payroll/ledger_accounts, which the payroll test holds
+    assert len(patterns) > 12, "the scan found almost no patterns: it is not reading the module"
 
 
 # ── nothing but the table decides ───────────────────────────────────────────

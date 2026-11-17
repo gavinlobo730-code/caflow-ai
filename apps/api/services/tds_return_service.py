@@ -120,6 +120,19 @@ def _find_account_by_exact_name(db, firm_id: str, client_id: str, account_name: 
     return resp.data[0]["id"] if resp.data else None
 
 
+def _salary_tds_account(db, firm_id: str, client_id: str) -> tuple[str | None, str | None, str | None]:
+    """(id, name, note) of the account salary TDS is credited to, through the payroll resolver. No account is (None, None,
+    None); two that could be it is (None, None, the sentence naming both), because a tie-out against a guessed account is a
+    tie-out nobody can rely on."""
+    from domain.payroll import ledger_accounts as PL
+    from services.payroll_ledger_accounts import resolve
+    try:
+        found = resolve(db, firm_id=firm_id, client_id=client_id, ledger=PL.TDS_PAYABLE_SALARY, required=False)
+    except PL.PayrollLedgerAmbiguous as exc:
+        return None, None, exc.sentence
+    return (found.id, found.account_name, None) if found else (None, None, None)
+
+
 def _gl_movement_for_entries(db, firm_id: str, client_id: str, account_id: str | None, journal_entry_ids: list[str]) -> int:
     """Net CREDIT movement (credit - debit) on one account, restricted to a
     specific set of journal entries — see module docstring for why this is a
@@ -1014,7 +1027,9 @@ def tds_24q_from_books(
     # carries, asked of the rows the PAYLOAD holds (26Q drops §192 rows).
     _pay_rows, _pay_notes = _payment_codes(fy, payload.deductees)
 
-    tds_salary_id = _find_account_by_exact_name(db, firm_id, client_id, "TDS Payable - Salary")
+    # The account the payroll accrual credited, found by the accrual's own resolver (POST-A-083): the exact name this read
+    # used could not see a renamed account the accrual still found by its key, and the tie-out then said "no account".
+    tds_salary_id, salary_account_name, salary_account_note = _salary_tds_account(db, firm_id, client_id)
     journal_ids = [r["journal_entry_id"] for r in runs if r.get("journal_entry_id")]
     gl_paise = _gl_movement_for_entries(db, firm_id, client_id, tds_salary_id, journal_ids)
     books_paise = payload.total_tds_deducted_paise
@@ -1077,6 +1092,8 @@ def tds_24q_from_books(
             "difference_paise": books_paise - gl_paise,
             "matched": matched,
             "account_found": tds_salary_id is not None,
+            "account_name": salary_account_name,
+            "account_note": salary_account_note,
         },
         "ca_review_required": True,
     }
