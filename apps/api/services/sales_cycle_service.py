@@ -977,6 +977,11 @@ def _refuse_over_delivery(db, firm_id: str, order_id: Optional[str],
     position = order_open_position(db, firm_id, str(order_id))
     by_id = {str(ln["order_line_id"]): ln for ln in position["lines"]}
     problems: list = []
+    # THE LINES THAT NAME ONE ORDER LINE ARE ADDED TOGETHER before the rule is asked: two lines of 6 against an order line of 10 deliver 12,
+    # though each fits on its own. A line that is not positive is refused on its own, as the rule refuses it.
+    wanted: dict = {}
+    count: dict = {}
+    open_lines: dict = {}
     for ln in priced:
         lid = str(ln.get("order_line_id") or "")
         if not lid:
@@ -987,14 +992,21 @@ def _refuse_over_delivery(db, firm_id: str, order_id: Optional[str],
                 f"{ln['description']}: that order line does not belong to this "
                 f"order.")
             continue
-        problem = oc.over_delivery(
-            oc.OpenLine(order_line_id=lid, description=row["description"],
-                        ordered_qty=Decimal(row["ordered_qty"]),
-                        delivered_qty=Decimal(row["delivered_qty"]),
-                        invoiced_qty=Decimal(row["invoiced_qty"])),
-            Decimal(str(ln["quantity"])))
+        open_lines[lid] = oc.OpenLine(order_line_id=lid, description=row["description"],
+                                      ordered_qty=Decimal(row["ordered_qty"]),
+                                      delivered_qty=Decimal(row["delivered_qty"]),
+                                      invoiced_qty=Decimal(row["invoiced_qty"]))
+        quantity = Decimal(str(ln["quantity"]))
+        if quantity <= 0:
+            problems.append(oc.over_delivery(open_lines[lid], quantity))
+            continue
+        wanted[lid] = wanted.get(lid, Decimal(0)) + quantity
+        count[lid] = count.get(lid, 0) + 1
+    for lid, quantity in wanted.items():
+        problem = oc.over_delivery(open_lines[lid], quantity)
         if problem:
-            problems.append(problem)
+            problems.append(problem + (f" ({count[lid]} lines of this challan name this order line, and their quantities are added together.)"
+                                       if count[lid] > 1 else ""))
     return problems
 
 
@@ -1187,9 +1199,9 @@ def _latest_returned_on(db, firm_id: str, client_id: str, challan_id: str) -> Op
     """The latest day goods were recorded as RETURNED on FORM GST ITC-04 against this challan (`delivery_challan_returns`), or None (POST-A-383): the day the WHOLE challan came back is
     the day its last goods did, so it cannot be before this one. A row that records only quantity lost or wasted (migration 462 allows one) is not goods returned and is not counted:
     whether scrap counts as received back for s.143 is not a judgement this product takes."""
-    rows = (db.table("delivery_challan_returns").select("returned_on, quantity_returned")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id).is_("retracted_at", "null")
-            .order("returned_on", desc=True).execute().data) or []
+    rows = challan_writes.read_live_lots(lambda live: (challan_writes.live_only(db.table("delivery_challan_returns").select("returned_on, quantity_returned")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id), live)
+            .order("returned_on", desc=True).execute().data) or [])
     for r in rows:
         raw = str(r.get("quantity_returned") or "0").strip()
         # NUMERIC(10,3) comes back as a plain decimal; a value that is not one is not goods returned (no exception handler here: the service holds exactly one, and it is not around a read).
@@ -1202,9 +1214,9 @@ def _latest_lot_recorded_on(db, firm_id: str, client_id: str, challan_id: str) -
     """The latest day ANY lot was recorded against this challan on FORM GST ITC-04 (goods returned, or lost or wasted), or None (POST-A-398). The cancel guard asks this and not
     `_latest_returned_on`: a lot of waste alone leaves the challan's balance larger (waste is never subtracted from it), and a cancelled challan's balance is not listed, so cancelling one with
     such a lot would drop a deemed supply out of the statement."""
-    rows = (db.table("delivery_challan_returns").select("returned_on")
-            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id).is_("retracted_at", "null")
-            .order("returned_on", desc=True).limit(1).execute().data) or []
+    rows = challan_writes.read_live_lots(lambda live: (challan_writes.live_only(db.table("delivery_challan_returns").select("returned_on")
+            .eq("firm_id", firm_id).eq("client_id", client_id).eq("challan_id", challan_id), live)
+            .order("returned_on", desc=True).limit(1).execute().data) or [])
     return date.fromisoformat(str(rows[0]["returned_on"])[:10]) if rows else None
 
 
