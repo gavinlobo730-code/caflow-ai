@@ -4085,6 +4085,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
 function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcActive, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; mcActive: boolean; ledgerSpan: LedgerSpan }) {
   // Which grouped report is open; null = the hub index.
   const [openReport, setOpenReport] = useState<null | "fx">(null);
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
   // Exports follow the same basis the user is viewing (URL-persisted).
   const searchParams = useSearchParams();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -4446,6 +4447,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                   <td className="px-3 py-2.5 text-ps-label font-mono text-3xs truncate max-w-[130px]">{r.file_name}</td>
                   <td className="px-4 py-2.5 text-ps-hint">{formatDate(r.created_at)}</td>
                   <td className="px-3 py-2.5">
+                    {/* The link is made only for someone the books are open to (POST-A-467); offered while permissions load. */}
+                    {(!permissionsRead || canDo("accounting", "read")) ? (
                     <button
                       disabled={openingReport}
                       onClick={async () => {
@@ -4465,6 +4468,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                     >
                       <Download size={10} /> Download
                     </button>
+                    ) : <span className="text-3xs text-ps-hint">Books access needed</span>}
                   </td>
                 </tr>
               ))}
