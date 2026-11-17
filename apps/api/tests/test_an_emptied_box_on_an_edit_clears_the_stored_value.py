@@ -475,7 +475,9 @@ def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_id
               "no_pe_declaration_on", "no_pe_declaration_ref", "no_pe_declaration_on_file", "is_active", "tds_section"}
     assert set(MASTER_IDENTIFIERS) == {m for m, _ in MASTER_MODELS}
     for model, _ in MASTER_MODELS:
-        forbidden = always | MASTER_IDENTIFIERS[model]
+        # `bank_name` is the bank ACCOUNT's own name on BankAccountUpdateIn (a NOT NULL column); on an employee it is a free-text note of where the
+        # salary is banked, nullable and read by nothing statutory, so it is clearable there.
+        forbidden = (always - {"bank_name"} if model is EmployeeUpdateIn else always) | MASTER_IDENTIFIERS[model]
         names = clearable_fields(model())
         assert names, f"{model.__name__} names nothing it may clear"
         assert not (names & forbidden), f"{model.__name__}.CLEARABLE names {sorted(names & forbidden)}"

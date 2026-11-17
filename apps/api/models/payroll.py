@@ -253,18 +253,20 @@ class EmployeeImportIn(BaseModel):
 
 
 #: The particulars an employee's edit corrects and never removes (POST-A-399, third slice), with the words a person reads: the PAN is read by the salary
-#: TDS statement, the UAN and the ESI number by the PF and ESI returns, and the bank account, IFSC and bank name by the salary payment. The route refuses
-#: an edit that empties one that is on file, in one sentence.
+#: TDS statement, the UAN and the ESI number by the PF and ESI returns, and the bank account and IFSC by the salary payment. The route refuses an edit
+#: that empties one that is on file, in one sentence. The BANK NAME is not one of them: it is free text a person typed, nothing statutory or the payment
+#: reads it (the employee portal shows it), and its column accepts NULL, so an emptied box clears it (an independent review of 17-11-2026 found the
+#: refusal's reason, "the statutory returns read it", false of it).
 EMPLOYEE_IDENTIFIERS = {"pan": "PAN", "uan": "UAN", "esi_number": "ESI number", "bank_account_no": "bank account number",
-                        "bank_ifsc": "IFSC", "bank_name": "bank name"}
+                        "bank_ifsc": "IFSC"}
 EMPLOYEE_IDENTIFIER_WHY = ("The salary TDS statement, the PF and ESI returns and the salary payment read it, so an employee who has none any more is "
                            "recorded as left or corrected, not left blank.")
 
 
 class EmployeeUpdateIn(BaseModel):
-    # POST-A-399, third slice. A designation and a department are soft particulars a person typed, so an emptied box clears them (written NULL); every
-    # other field still reads a null as "not sent", and the identifiers above are refused when emptied over a stored value.
-    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"designation", "department"})
+    # POST-A-399, third slice. A designation, a department and a bank name are soft particulars a person typed, so an emptied box clears them
+    # (written NULL); every other field still reads a null as "not sent", and the identifiers above are refused when emptied over a stored value.
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({"designation", "department", "bank_name"})
 
     name: Optional[str] = None
     employee_code: Optional[str] = None

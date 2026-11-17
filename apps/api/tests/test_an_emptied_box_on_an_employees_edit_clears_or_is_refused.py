@@ -3,8 +3,9 @@
 `update_employee` read its body with `model_dump(exclude_none=True)`, and the employee form sends an emptied box as null, so a person who emptied
 the designation, the department, the PAN, the UAN or the bank account and pressed Save was told it was saved and found the old value when the
 employee was opened again. Now:
-  * the designation and the department, soft particulars a person typed, are cleared (written NULL) when sent empty;
-  * the PAN, the UAN, the ESI number, the bank account number, the IFSC and the bank name are corrected and never removed: emptied over a value on
+  * the designation, the department and the bank name, soft particulars a person typed, are cleared (written NULL) when sent empty (the bank name is
+    read by no return and no payment, so refusing to empty it with a reason about returns was false);
+  * the PAN, the UAN, the ESI number, the bank account number and the IFSC are corrected and never removed: emptied over a value on
     file, the edit is refused in one sentence and nothing is written; emptied over nothing, nothing happens;
   * every other null still reads "not sent", so a request that names only the status changes nothing else.
 """
@@ -42,6 +43,16 @@ def _row(db):
 def test_an_emptied_designation_and_department_are_cleared(db, empty):
     pr.update_employee("e-01", EmployeeUpdateIn(designation=empty, department=empty), CALLER)
     assert (_row(db)["designation"], _row(db)["department"]) == (None, None)
+
+
+@pytest.mark.parametrize("empty", [None, "", "   "])
+def test_an_emptied_bank_name_is_cleared_and_the_bank_account_is_kept(db, empty):
+    pr.update_employee("e-01", EmployeeUpdateIn(bank_name=empty), CALLER)
+    assert (_row(db)["bank_name"], _row(db)["bank_account_no"], _row(db)["bank_ifsc"]) == (None, "000123456789", "HDFC0001234")
+
+
+def test_the_bank_name_is_not_an_identifier_the_edit_refuses_to_empty():
+    assert "bank_name" not in EMPLOYEE_IDENTIFIERS and {"bank_account_no", "bank_ifsc"} <= set(EMPLOYEE_IDENTIFIERS)
 
 
 def test_a_field_not_sent_is_left_alone(db):
