@@ -172,7 +172,11 @@ def test_every_health_swallow_names_the_operation_it_lost():
 #
 # 83 -> 57 (POST-A-021, third slice, 16-11-2026): the search router (7), the tasks router (6) and the AI copilot's context (9)
 # report through capture_soft_failure, and the memory pipeline's four per-row stamp parses name the errors they expect.
-MAX_SILENT_SWALLOWS_ELSEWHERE = 57
+#
+# 57 -> 30 (POST-A-021, fourth slice, 17-11-2026): the broad handlers in the documents, branding, DSC, engagement, practice,
+# relationship, scheduler-status, task-extras, task-template, year-end-review, portal, knowledge and AI-insight modules report;
+# the workflow engine's rule comparison and the request-token reset name what they expect.
+MAX_SILENT_SWALLOWS_ELSEWHERE = 30
 
 _SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 

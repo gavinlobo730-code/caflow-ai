@@ -28,6 +28,7 @@ from core.db_paging import fetch_window
 from core.list_window import probe, split
 from core.db_provider import privileged_for
 from models.iso_date import OptionalIsoDate, PatchIsoDate
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 
@@ -750,8 +751,8 @@ def detect_cross_client_matches(
                         "created_at":  now,
                     }).execute()
                     new_count += 1
-                except Exception:
-                    pass  # Skip duplicates
+                except Exception as swallowed:
+                    capture_soft_failure(swallowed, operation="relationships.cross_client_match_insert", firm_id=firm_id)
 
     return api_response(True, {"new_matches_detected": new_count})
 

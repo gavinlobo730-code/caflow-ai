@@ -174,8 +174,8 @@ def set_request_token(token: str | None):
 def reset_request_token(handle) -> None:
     try:
         _request_access_token.reset(handle)
-    except Exception:
-        pass
+    except (ValueError, RuntimeError):
+        pass  # the token was set in another context or already reset: nothing to restore
 
 
 def _service_client() -> Client:

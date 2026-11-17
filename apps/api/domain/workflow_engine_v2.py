@@ -256,8 +256,8 @@ class WorkflowEngineV2:
                     from datetime import date
                     due = date.fromisoformat(trigger_data["due_date"])
                     trigger_data["days_remaining"] = (due - ist_today()).days
-                except Exception:
-                    pass
+                except (ValueError, TypeError):
+                    pass  # no usable due_date: days_remaining stays absent
             return True
 
         elif trigger_type == "ai_signal":
@@ -365,8 +365,8 @@ class WorkflowEngineV2:
                 if op == "equals":      return actual_str == str(expected_raw)
                 if op == "contains":    return str(expected_raw).lower() in actual_str.lower()
                 if op == "starts_with": return actual_str.lower().startswith(str(expected_raw).lower())
-        except Exception:
-            pass
+        except (ValueError, TypeError, AttributeError):
+            return False  # a value that cannot be compared is a rule that does not match
         return False
 
     # ── Step execution ────────────────────────────────────────────────────────

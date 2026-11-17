@@ -46,6 +46,7 @@ from core.urls import frontend_base
 from core import db_provider
 from core.db_provider import privileged_for
 from services import sign_in_link
+from core.observability import capture_soft_failure
 
 # Same window the client-portal invites use. Long enough for someone on leave to
 # act on it, short enough that a forgotten invite does not stay live for months.
@@ -139,8 +140,8 @@ def _audit(firm_id, employee_id, action, actor, extra=None) -> None:
             firm_id=firm_id, entity_type="payroll_employee", entity_id=employee_id,
             action=action, actor_id=(actor or {}).get("auth_user_id"),
             actor_email=(actor or {}).get("email"), metadata=extra or {})
-    except Exception:  # audit must never block provisioning
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="employee_portal.audit", firm_id=firm_id, employee_id=employee_id)
 
 
 def activation_url(token: str) -> str:
@@ -202,8 +203,8 @@ def _send_invite_email(email: str, name: str, token: str) -> None:
                     f"and leave balance online.</p>"
                     f'<p><a href="{url}">Activate your portal access</a></p>'
                     f"<p>This link works once and expires in 14 days.</p>"))
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="employee_portal.invite_email")
 
 
 def _find_pending_by_token(token: str, db):

@@ -164,8 +164,8 @@ def upload_document(
                 new_data={"file_name": safe_name, "document_type": document_type,
                           "client_id": client_id},
             )
-        except Exception:
-            pass
+        except Exception as swallowed:
+            capture_soft_failure(swallowed, operation="documents.upload_audit_local", firm_id=firm_id, document_id=doc.get("id"))
         return api_response(True, {"document": doc, "download_url": None})
 
     # The server's client, bound to this firm's and this client's folder (POST-A-339): the route has asked who the caller is and
@@ -229,8 +229,8 @@ def upload_document(
             new_data={"file_name": safe_name, "document_type": document_type,
                       "client_id": client_id},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="documents.upload_audit", firm_id=firm_id, document_id=doc.get("id"))
 
     return api_response(True, {"document": doc, "download_url": download_url})
 
@@ -283,8 +283,8 @@ def delete_document(
             old_data={"file_name": doc.get("file_name"),
                       "client_id": doc.get("client_id")},
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="documents.delete_audit", firm_id=current_user.get("firm_id"), document_id=doc_id)
 
     return api_response(True, {"deleted": True})
 

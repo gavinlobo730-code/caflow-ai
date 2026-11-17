@@ -18,6 +18,7 @@ from models.common import api_response
 from repositories.dsc_repository import dsc_repo
 from services.audit_service import log_event
 from models.iso_date import IsoDate, OptionalIsoDate
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/dsc", tags=["dsc"])
 
@@ -96,8 +97,8 @@ def _audit(firm_id, entity_id, action, current_user, *, old_data=None, new_data=
             old_data=old_data,
             new_data=new_data,
         )
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="dsc.audit", firm_id=firm_id, entity_id=entity_id)
 
 
 def _get_owned_or_404(dsc_id: str, firm_id: str) -> dict:
