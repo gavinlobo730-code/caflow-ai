@@ -96,6 +96,25 @@ def test_an_approver_posts_a_new_entry_where_the_firm_requires_approval(allow_cl
     assert acct.create_journal_entry(_entry("posted"), current_user=user)["success"] is True
 
 
+# ── the voucher import door (an independent review, 17-11-2026: Import vouchers posted round the switch) ──────────────────────────
+def _import(status: str, dry_run: bool = False):
+    return acct.VoucherImportIn(client_id=MINE, status=status, dry_run=dry_run, legs=[
+        {"row": 2, "voucher_no": "JV-1", "date": "01-04-2025", "voucher_type": "Journal", "account": "Rent", "debit_paise": 1000},
+        {"row": 3, "voucher_no": "JV-1", "date": "01-04-2025", "voucher_type": "Journal", "account": "Bank", "credit_paise": 1000}])
+
+
+@pytest.mark.parametrize("dry_run", [False, True], ids=["import", "preview"])
+def test_a_manager_cannot_import_vouchers_as_posted_where_the_firm_requires_approval_and_may_import_them_as_drafts(
+        allow_clients, dry_run):
+    assert acct.import_vouchers_endpoint(_import("posted", dry_run), current_user=MANAGER)["success"] is True, "off: a writer posts"
+    rule.set_required(FIRM, True)
+    with pytest.raises(HTTPException) as refused:
+        acct.import_vouchers_endpoint(_import("posted", dry_run), current_user=MANAGER)
+    assert refused.value.status_code == 403 and refused.value.detail == rule.REFUSAL_TO_POST
+    assert acct.import_vouchers_endpoint(_import("draft", dry_run), current_user=MANAGER)["success"] is True
+    assert acct.import_vouchers_endpoint(_import("posted", dry_run), current_user=PARTNER)["success"] is True
+
+
 # ── the draft-post door ───────────────────────────────────────────────────────────────────────────────────────────
 def _rbac_pair(fn) -> tuple[str, str]:
     dep = inspect.signature(fn).parameters["current_user"].default.dependency
@@ -270,8 +289,9 @@ def test_only_settings_write_changes_the_switch_and_any_member_who_reads_account
 @pytest.mark.parametrize("fn, call", [
     (acct.create_journal_entry, "journal_approval_rule.assert_may_post(current_user)"),
     (acct.post_draft_journal, "journal_approval_rule.assert_may_post(current_user)"),
+    (acct.import_vouchers_endpoint, "journal_approval_rule.assert_may_post(current_user)"),
     (acct.update_journal_entry, "journal_approval_rule.assert_may_change_posted(current_user)"),
     (acct.discard_journal_entry, "journal_approval_rule.assert_may_change_posted(current_user)"),
-], ids=["create", "post-draft", "correct-posted", "delete-posted"])
+], ids=["create", "post-draft", "import-vouchers", "correct-posted", "delete-posted"])
 def test_every_door_that_puts_or_changes_a_manual_journal_on_the_books_asks_the_rule(fn, call):
     assert call in inspect.getsource(fn)

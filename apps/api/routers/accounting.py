@@ -599,6 +599,11 @@ def import_vouchers_endpoint(
     decides nothing, and it posts nothing a person could not have typed.
     """
     assert_client_access(current_user, data.client_id)
+    # An import sent as posted puts manual journals on the books, so it is the same door as a new entry sent as posted and asks the
+    # same rule (POST-A-456). Asked on a dry run too, so a preview never promises a post the real call would refuse; drafts are
+    # saved by any writer, as at the editor.
+    if data.status == "posted":
+        journal_approval_rule.assert_may_post(current_user)
     from domain.accounting import voucher_import as vi
     legs = [vi.Leg(**l.model_dump()) for l in data.legs]
     db = _prod_db()

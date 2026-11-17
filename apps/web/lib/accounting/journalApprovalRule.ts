@@ -3,8 +3,8 @@
 /**
  * WHO MAY PUT A MANUAL JOURNAL ON THE BOOKS IS THE SERVER'S ANSWER (POST-A-456).
  *
- * A firm may have a Partner approve every manual journal (`firms.manual_journals_need_approval`, migration 681). The four doors that
- * post or change a manual journal ask `services/journal_approval_rule` on the server, and `GET /api/accounting/journal-approval`
+ * A firm may have a Partner approve every manual journal (`firms.manual_journals_need_approval`, migration 681). The five doors that
+ * post or change a manual journal (the voucher import sent as posted among them) ask `services/journal_approval_rule` on the server, and `GET /api/accounting/journal-approval`
  * serves the same function's answer for the person asking. This hook reads it so the journal editor and the Approvals tab offer
  * Post only where the server will take it. Nothing is decided here.
  *

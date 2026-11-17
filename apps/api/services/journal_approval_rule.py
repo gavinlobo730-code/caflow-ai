@@ -39,7 +39,7 @@ _COLUMN = "manual_journals_need_approval"
 #: Mock mode (no SUPABASE_URL): the firm's answer, held in the process.
 _MOCK_SETTING: dict[str, bool] = {}
 
-#: The refusal, said once, so the four doors cannot word it differently.
+#: The refusal, said once, so the five doors cannot word it differently.
 REFUSAL_TO_POST = ("This firm has a Partner approve every manual journal, and you may not approve. Save the entry as a draft: it waits in "
                    "Approvals for someone who may approve it.")
 REFUSAL_TO_CHANGE_POSTED = ("This firm has a Partner approve every manual journal, and you may not approve, so you cannot change or delete "
@@ -98,7 +98,8 @@ def may_post(user: dict) -> bool:
 
 
 def assert_may_post(user: dict) -> None:
-    """The check at the two doors that put a manual journal on the books: a new entry sent as posted, and posting a saved draft."""
+    """The check at the three doors that put a manual journal on the books: a new entry sent as posted, posting a saved draft, and a
+    voucher import sent as posted (asked on its preview too)."""
     if not may_post(user):
         raise HTTPException(status_code=403, detail=REFUSAL_TO_POST)
 
