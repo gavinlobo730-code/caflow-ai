@@ -37,7 +37,7 @@ import routers.sales_debit_notes as sdn
 import routers.sales_invoices as si
 from models.banking import BankAccountUpdateIn
 from models.clearable import clearable_fields, patch_dict
-from models.parties import PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
+from models.parties import CUSTOMER_IDENTIFIERS, PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
 from models.invoices import (InvoiceLineIn, PurchaseBillIn, PurchaseBillLineIn, PurchaseBillUpdateIn, SalesInvoiceIn,
                              SalesInvoiceUpdateIn)
 from tests.e2e_harness import FakeDB, seed_standard_coa, wire_e2e
@@ -460,12 +460,19 @@ def test_the_clearable_names_are_free_text_and_never_a_date_an_amount_or_evidenc
         assert not any(n.endswith(("_date", "_paise", "_bps", "_on", "_at")) for n in names), f"{model.__name__}.CLEARABLE names a date or a figure: {sorted(names)}"
 
 
+#: The identifiers each master's edit refuses to empty because a return reads them: a party's GSTIN and state code, and a vendor's PAN and foreign
+#: tax number. A customer's PAN and TAN are not among them (no return reads them off a customer) and are clearable.
+MASTER_IDENTIFIERS = {CustomerUpdateIn: set(CUSTOMER_IDENTIFIERS), VendorUpdateIn: set(PARTY_IDENTIFIERS), BankAccountUpdateIn: set()}
+
+
 def test_a_master_clears_a_soft_particular_or_an_unstated_answer_and_never_an_identifier_a_date_or_evidence():
-    """On a party or a bank account: a tax identifier is corrected and not removed (`PARTY_IDENTIFIERS`, refused by the route), a date and the evidence
-    of a declaration are not cleared, and the only figures are those whose NULL is its own answer."""
-    forbidden = set(PARTY_IDENTIFIERS) | {"name", "bank_name", "account_type", "coa_account_id", "opening_balance_paise", "opening_balance_date",
-                                           "no_pe_declaration_on", "no_pe_declaration_ref", "no_pe_declaration_on_file", "is_active", "tds_section"}
+    """On a party or a bank account: a tax identifier a return reads is corrected and not removed (refused by the route), a date and the evidence of a
+    declaration are not cleared, and the only figures are those whose NULL is its own answer."""
+    always = {"name", "bank_name", "account_type", "coa_account_id", "opening_balance_paise", "opening_balance_date",
+              "no_pe_declaration_on", "no_pe_declaration_ref", "no_pe_declaration_on_file", "is_active", "tds_section"}
+    assert set(MASTER_IDENTIFIERS) == {m for m, _ in MASTER_MODELS}
     for model, _ in MASTER_MODELS:
+        forbidden = always | MASTER_IDENTIFIERS[model]
         names = clearable_fields(model())
         assert names, f"{model.__name__} names nothing it may clear"
         assert not (names & forbidden), f"{model.__name__}.CLEARABLE names {sorted(names & forbidden)}"

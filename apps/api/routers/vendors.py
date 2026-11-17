@@ -15,7 +15,8 @@ from pydantic import BaseModel, ValidationError
 from models.common import api_response
 from domain.party_duplicates import possible_duplicates, same_party_sentence
 from models.clearable import drop_empty, patch_dict, removed_identifier_problem
-from models.parties import PARTY_IDENTIFIERS, VendorIn, VendorUpdateIn
+from models.parties import NON_RESIDENT_NEEDS_COUNTRY, PARTY_IDENTIFIERS, VendorIn, VendorUpdateIn
+from domain.tds.residency import NON_RESIDENT
 from domain.tds.section_rates import threshold_class_problem
 from domain.tds.no_pe_declaration import declarant_write
 from core.authz import assert_client_access, can_access_client
@@ -703,6 +704,20 @@ def get_vendor(
         return api_response(False, None, "Unable to complete vendor operation. Please try again.")
 
 
+def _merged_residency_problem(sent: dict, stored: dict) -> Optional[str]:
+    """Why the row an edit would leave cannot be saved for want of a non-resident's country, or None (POST-A-399).
+
+    The model asks that a non-resident carries a country only of what one request sends, and the country is clearable, so a PATCH that clears it
+    alone over a stored non-resident would leave the row the model refuses (Form 27Q reports the country on every deductee row, and Rule 37BC's
+    relief from the s.206AA floor rests on it). Asked of the MERGED row, as TDS-30's limit class is, and only when the edit touches either field.
+    """
+    if "country_of_residence" not in sent and "residential_status" not in sent:
+        return None
+    status = sent.get("residential_status", stored.get("residential_status"))
+    country = sent.get("country_of_residence", stored.get("country_of_residence"))
+    return NON_RESIDENT_NEEDS_COUNTRY if status == NON_RESIDENT and not str(country or "").strip() else None
+
+
 @router.patch("/{vendor_id}")
 def update_vendor(
     vendor_id: str,
@@ -728,7 +743,8 @@ def update_vendor(
         # can post a real GL journal, so the refusal must land before that fetch
         # even decides whether anything changed, let alone before the update.
         prior = _load_vendor_or_404(current_user, vendor_id)
-        _removed = removed_identifier_problem(model, prior, PARTY_IDENTIFIERS)
+        # A tax identifier emptied over a stored one, or a stored non-resident left with no country (asked of the merged row, as TDS-30 below is).
+        _removed = removed_identifier_problem(model, prior, PARTY_IDENTIFIERS) or _merged_residency_problem(data, prior)
         if _removed:
             raise HTTPException(status_code=422, detail=_removed)
 

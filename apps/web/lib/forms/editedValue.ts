@@ -38,7 +38,7 @@ export function editedChoice<T>(now: T | null | undefined, onFile: T | null | un
 }
 
 /**
- * The sentence refusing an edit that EMPTIES a tax identifier on file (a party's GSTIN, PAN, TAN, state code or foreign tax number), or null (POST-A-399).
+ * The sentence refusing an edit that EMPTIES a tax identifier on file that a return reads (a party's GSTIN or state code, a vendor's PAN or foreign tax number), or null (POST-A-399).
  *
  * An identifier is corrected and not removed: every GST return not yet filed reads a party's GSTIN and state code live for the documents already issued to it, so emptying
  * one would move those documents between the tables of a return. The server refuses the same edit in the same words (`models.clearable.removed_identifier_problem`);

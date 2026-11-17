@@ -156,13 +156,12 @@ export function CustomerFormModal({
     if (panIssue) { fail(panIssue); return; }
     const tanIssue = tanProblem(tan);
     if (tanIssue) { fail(tanIssue); return; }
-    // POST-A-399. A tax identifier on file is corrected and not removed: every return not yet filed reads it for the documents already issued to this
-    // customer. The server refuses the same edit in the same words; this says it beside the button before anything is sent.
+    // POST-A-399. The GSTIN and the state code on file are corrected and not removed: every GST return not yet filed reads them for the documents
+    // already issued to this customer. The server refuses the same edit in the same words; this says it beside the button before anything is sent.
+    // The PAN and the TAN are not refused: no return reads either off a customer, so an emptied one is cleared.
     if (existing) {
       const removed = removedIdentifierProblem("GSTIN", existing.gstin, gstin)
-        ?? removedIdentifierProblem("state code", existing.state_code, stateCode)
-        ?? removedIdentifierProblem("PAN", existing.pan, pan)
-        ?? removedIdentifierProblem("TAN", existing.tan, tan);
+        ?? removedIdentifierProblem("state code", existing.state_code, stateCode);
       if (removed) { fail(removed); return; }
     }
 
@@ -197,14 +196,15 @@ export function CustomerFormModal({
         // UPDATE via the backend PATCH so an opening-balance change auto-posts
         // to the General Ledger (the backend regenerates the opening
         // journal). No direct Supabase write, no manual "post" step.
-        // POST-A-399. An emptied box that held a value is sent as null and the route clears it; an empty box over nothing is not sent. The tax
-        // identifiers are never sent empty: one emptied over a value on file was refused above, and one empty over nothing is left out.
+        // POST-A-399. An emptied box that held a value is sent as null and the route clears it (the PAN and the TAN among them); an empty box
+        // over nothing is not sent. The GSTIN and the state code are never sent empty: one emptied over a value on file was refused above, and
+        // one empty over nothing is left out.
         ? await apiCall(`/api/customers/${existing.id}`, "PATCH", {
             name: name.trim(),
             gstin: gstin.trim() || undefined,
             state_code: stateCode || undefined,
-            pan: pan.trim() || undefined,
-            tan: tan.trim() || undefined,
+            pan: editedText(pan, existing.pan),
+            tan: editedText(tan, existing.tan),
             email: editedText(email, existing.email),
             phone: editedText(phone, existing.phone),
             city: editedText(city, existing.city),
