@@ -82,3 +82,75 @@ def test_a_register_with_nothing_of_the_practice_carries_no_note_about_it():
 def test_the_practice_is_left_out_whatever_scope_names_it(scope):
     payload = service.build_register(_register_db(), FIRM, scope)
     assert P not in {r["client_id"] for r in payload["rows"]}
+
+
+# ── the firm hub's tiles agree with the worklists they open (an independent review, 17-11-2026) ─────────────────────────────────────
+# The worklist behind each of five firm-hub tiles left the practice out (above) while the tile's own figure still counted it for a Partner,
+# so a tile and the list it opens disagreed. Each of the five now equals the sum of its worklist's rows; the client hub is untouched.
+
+from services import hub_service  # noqa: E402
+
+_FIVE = ("banking", "sales", "purchases", "fixed_assets", "year_end")
+
+
+def _both_clients(tile_rows: dict[str, list[dict]]) -> Double:
+    tables: dict[str, list[dict]] = {"clients": [
+        {"id": A, "firm_id": FIRM, "client_name": "Acme", "legal_name": None, "entity_type": "LLP"},
+        {"id": P, "firm_id": FIRM, "client_name": "Our Practice", "legal_name": None, "entity_type": "Partnership", "is_internal": True},
+    ]}
+    tables.update(tile_rows)
+    return Double(tables)
+
+
+def _seed_every_tile() -> Double:
+    rows: dict[str, list[dict]] = {"bank_transactions": [], "client_sales_invoices": [], "purchase_bills": [], "fixed_assets": [],
+                                   "year_end_engagements": []}
+    n = 0
+    for cid, k in ((A, 1), (P, 3)):
+        for _ in range(k):
+            n += 1
+            rows["bank_transactions"].append({"id": f"b{n}", "firm_id": FIRM, "client_id": cid, "entry_state": "needs_you"})
+            rows["client_sales_invoices"].append({"id": f"s{n}", "firm_id": FIRM, "client_id": cid, "outstanding_paise": 1_000 * n,
+                                                  "status": "issued", "deleted_at": None})
+            rows["purchase_bills"].append({"id": f"p{n}", "firm_id": FIRM, "client_id": cid, "outstanding_paise": 700 * n,
+                                           "status": "approved", "deleted_at": None})
+            rows["fixed_assets"].append({"id": f"f{n}", "firm_id": FIRM, "client_id": cid, "depreciation_posted_through": None})
+            rows["year_end_engagements"].append({"id": f"y{n}", "firm_id": FIRM, "client_id": cid, "status": "draft"})
+    return _both_clients(rows)
+
+
+@pytest.fixture
+def hub_double(monkeypatch):
+    d = _seed_every_tile()
+    monkeypatch.setattr(hub_service, "_db", lambda: d)
+    monkeypatch.setattr(hub_worklist_service, "_db", lambda: d)
+    monkeypatch.setattr(hub_service, "effective_client_ids", lambda u: None)
+    monkeypatch.setattr(hub_worklist_service, "effective_client_ids", lambda u: None)
+    return d
+
+
+def _tile(payload: dict, tile_id: str):
+    return next(t for t in payload["tiles"] if t["id"] == tile_id)["signal"]
+
+
+@pytest.mark.parametrize("tile_id", _FIVE)
+def test_each_worklist_tile_of_the_firm_hub_equals_the_sum_of_its_worklist(hub_double, tile_id):
+    from domain.banking import entry as bank_entry
+    assert "needs_you" in bank_entry.OPEN_STATES
+    payload = hub_service.hub({"firm_id": FIRM, "role": "Partner"})
+    rows = hub_worklist_service.worklist({"firm_id": FIRM}, tile_id)["rows"]
+    assert [r["client_id"] for r in rows] == [A], "the worklist leaves the practice out"
+    assert _tile(payload, tile_id) == sum(r["signal"] for r in rows)
+
+
+@pytest.mark.parametrize("tile_id", _FIVE)
+def test_the_client_hub_of_the_practice_still_counts_the_practice(hub_double, tile_id):
+    payload = hub_service.hub({"firm_id": FIRM, "role": "Partner"}, client_id=P)
+    assert _tile(payload, tile_id) and _tile(payload, tile_id) > 0
+
+
+def test_a_tile_whose_practice_read_fails_has_no_figure_rather_than_one_that_counts_the_practice(hub_double, monkeypatch):
+    from services import hub_worklist_service as hws
+    monkeypatch.setattr(hws, "_practice_ids", lambda db, firm_id: (_ for _ in ()).throw(RuntimeError("clients unreadable")))
+    payload = hub_service.hub({"firm_id": FIRM, "role": "Partner"})
+    assert all(_tile(payload, t) is None for t in _FIVE)

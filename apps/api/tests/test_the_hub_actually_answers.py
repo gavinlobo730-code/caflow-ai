@@ -359,7 +359,12 @@ def test_the_hub_reads_no_rows_it_does_not_need(db, monkeypatch):
     monkeypatch.setattr(db, "table", spy)
     hub_service.hub(PARTNER)
 
+    # The one row read that is not a tile: which client is the firm's own practice, so the five worklist tiles can leave it out as their
+    # worklists do (POST-A-457). `clients.is_internal` is true of at most one row per firm, so it is bounded by the answer.
+    assert seen.count(("clients", "id")) <= 1
     for table, cols in seen:
+        if (table, cols) == ("clients", "id"):
+            continue
         assert cols in ("id#count", "id,outstanding_paise"), (
             f"{table} was read as {cols!r} — a hub tile reads a count or the "
             "one column it sums, never a row set."

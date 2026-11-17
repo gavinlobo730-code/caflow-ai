@@ -155,8 +155,9 @@ def _safely(name: str, fn: Callable[[], Any]) -> Any:
 
 def _count(table: str, firm_id: str, client_ids: Optional[list[str]],
            *, eq: Optional[dict] = None, in_: Optional[tuple[str, list]] = None,
-           gt: Optional[tuple[str, int]] = None, is_null: Optional[str] = None) -> int:
-    """A COUNT, never a row set.
+           gt: Optional[tuple[str, int]] = None, is_null: Optional[str] = None,
+           not_clients: Optional[list[str]] = None) -> int:
+    """A COUNT, never a row set. `not_clients` leaves those clients' rows out (the firm's own practice, see `_signals`).
 
     `select("id", count="exact").limit(1)` is the idiom this codebase settled
     on (see bank_entry_service's note on why the count is decided at the table
@@ -166,6 +167,8 @@ def _count(table: str, firm_id: str, client_ids: Optional[list[str]],
     q = _db().table(table).select("id", count="exact").eq("firm_id", firm_id)
     if client_ids is not None:
         q = q.in_("client_id", client_ids)
+    if not_clients:
+        q = q.not_.in_("client_id", not_clients)
     for col, val in (eq or {}).items():
         q = q.eq(col, val)
     if in_:
@@ -179,8 +182,9 @@ def _count(table: str, firm_id: str, client_ids: Optional[list[str]],
 
 def _sum_paise(table: str, column: str, firm_id: str,
                client_ids: Optional[list[str]], *, gt_zero: bool = True,
-               live_documents_only: bool = False) -> int:
-    """A total in paise.
+               live_documents_only: bool = False,
+               not_clients: Optional[list[str]] = None) -> int:
+    """A total in paise. `not_clients` leaves those clients' rows out (the firm's own practice, see `_signals`).
 
     PostgREST has no SUM, so this reads the column for the rows that carry a
     balance and adds them here. That is proportional to the number of OPEN
@@ -204,6 +208,8 @@ def _sum_paise(table: str, column: str, firm_id: str,
         q = _db().table(table).select(f"id,{column}").eq("firm_id", firm_id)
         if client_ids is not None:
             q = q.in_("client_id", client_ids)
+        if not_clients:
+            q = q.not_.in_("client_id", not_clients)
         if live_documents_only:
             # `.not_` is a PROPERTY on the builder, never a call — see
             # tests/test_not_is_a_property_of_a_query_and_is_never_called.py.
@@ -279,6 +285,35 @@ def _signals(firm_id: str, scope: Optional[list[str]],
     # no I/O — only submitting it to the executor below does.
     beside: dict[str, Optional[int]] = {_TDS_NOT_RECORDED: None}
 
+    # THE FIRM HUB'S FIVE WORKLIST TILES LEAVE THE FIRM'S OWN PRACTICE OUT, AS THEIR WORKLISTS DO (POST-A-457, Guardrail G2). Each of
+    # banking, sales, purchases, fixed_assets and year_end opens a per-client worklist (`hub_worklist_service`), which leaves out the
+    # practice (`clients.is_internal`); a tile that still counted it would show a figure its own list does not add up to. The practice is
+    # read once, by the worklist's own rule, on the pool beside the tiles; a tile whose practice read failed has no figure (a null, which
+    # `describe()` reads as "could not be read"), never one that quietly counts it. The client hub is untouched: it asks one client.
+    practice: dict[str, Any] = {}
+
+    def _not_practice() -> Optional[list[str]]:
+        if client_id is not None:
+            return None
+        return sorted(practice["ids"].result())
+
+    worklist_tiles = {
+        "banking": lambda: _count(
+            "bank_transactions", firm_id, scope,
+            in_=("entry_state", list(bank_entry.OPEN_STATES)), not_clients=_not_practice()),
+        "sales": lambda: _sum_paise(
+            "client_sales_invoices", "outstanding_paise", firm_id, scope,
+            live_documents_only=True, not_clients=_not_practice()),
+        "purchases": lambda: _sum_paise(
+            "purchase_bills", "outstanding_paise", firm_id, scope,
+            live_documents_only=True, not_clients=_not_practice()),
+        "fixed_assets": lambda: _count(
+            "fixed_assets", firm_id, scope, is_null="depreciation_posted_through", not_clients=_not_practice()),
+        "year_end": lambda: _count(
+            "year_end_engagements", firm_id, scope,
+            in_=("status", _outstanding("year_end_engagements", _YEAR_END_DONE)), not_clients=_not_practice()),
+    }
+
     def _tds_figure() -> int:
         undeposited, not_recorded = _tds_position(firm_id, scope)
         beside[_TDS_NOT_RECORDED] = not_recorded
@@ -296,9 +331,7 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         # `entry_state`'s own vocabulary, from `domain/banking/entry`. OPEN_STATES
         # is that module's definition of a line still needing a person, so the
         # tile cannot drift from the queue it links to.
-        "banking": lambda: _count(
-            "bank_transactions", firm_id, scope,
-            in_=("entry_state", list(bank_entry.OPEN_STATES))),
+        "banking": worklist_tiles["banking"],
         "accounting": lambda: _count(
             "journal_entries", firm_id, scope,
             in_=("status", _outstanding("journal_entries", _JOURNAL_DONE))),
@@ -308,12 +341,8 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         # still OUTSTANDING, due or not; whether to filter on `due_date` or
         # reword the question is an open owner decision, deliberately not
         # taken here.
-        "sales": lambda: _sum_paise(
-            "client_sales_invoices", "outstanding_paise", firm_id, scope,
-            live_documents_only=True),
-        "purchases": lambda: _sum_paise(
-            "purchase_bills", "outstanding_paise", firm_id, scope,
-            live_documents_only=True),
+        "sales": worklist_tiles["sales"],
+        "purchases": worklist_tiles["purchases"],
         # Deducted and NOT YET DEPOSITED, from the CHALLAN REGISTER (migration 523's `tds_deposit_position`, twin
         # `domain/tds/undeposited`). This read `tds_deductions.challan_no IS NULL`: a deduction a purchase bill writes never
         # carries it (`POST /challans` records the challan and never touches the deductions it paid), so every such deduction
@@ -330,11 +359,8 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         "income_tax": lambda: _count(
             "itr_filings", firm_id, scope,
             in_=("status", _outstanding("itr_filings", _ITR_DONE))),
-        "fixed_assets": lambda: _count(
-            "fixed_assets", firm_id, scope, is_null="depreciation_posted_through"),
-        "year_end": lambda: _count(
-            "year_end_engagements", firm_id, scope,
-            in_=("status", _outstanding("year_end_engagements", _YEAR_END_DONE))),
+        "fixed_assets": worklist_tiles["fixed_assets"],
+        "year_end": worklist_tiles["year_end"],
         # `documents.review_status`, NOT `status` — the column this guessed
         # wrong first, and PostgREST answers 42703 on a column that is not
         # there rather than nothing, so it would have been a failed tile
@@ -383,6 +409,10 @@ def _signals(firm_id: str, scope: Optional[list[str]],
         tasks["inventory"] = lambda: _reorder_count(firm_id, client_id)
 
     with ThreadPoolExecutor(max_workers=_MAX_PARALLEL_TILE_FETCHES) as ex:
+        if client_id is None:
+            # Submitted FIRST, so it is the first task a worker takes and the five tiles that wait on it cannot hold every worker.
+            from services.hub_worklist_service import _practice_ids
+            practice["ids"] = ex.submit(lambda: _practice_ids(_db(), firm_id))
         futures = {name: ex.submit(_safely, name, fn) for name, fn in tasks.items()}
         results = {name: f.result() for name, f in futures.items()}
     # The TDS read answers two things; one that could not be read left `beside` as it was, so it is no figure and no caveat, never a nil.
