@@ -421,8 +421,10 @@ def previous_reconciliation(db, *, firm_id: str, client_id: str,
     Read BEFORE a replace, so an upload that is about to supersede an earlier
     one can SAY so: a reconciliation is replaced whole, and a stale download
     dropped into a folder of sixty must not silently overwrite a newer one.
+    `gstin` is the registration that reconciliation was for: a client with two
+    holds one a month, and only the same registration's download can be older.
     """
-    rows = (db.table("gstr2b_reconciliations").select("reconciled_at, generated_on")
+    rows = (db.table("gstr2b_reconciliations").select("reconciled_at, generated_on, gstin")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .eq("return_period", period).limit(1).execute().data) or []
     return rows[0] if rows else None

@@ -538,6 +538,64 @@ def test_the_same_a_newer_or_an_undated_download_still_replaces(second_gendt):
     assert [x["invoice_number"] for x in store["gstr2a_records"]] == ["INV-2"]
 
 
+def _two_registrations():
+    second = gstin("27", "AAACA1111C")
+    reg = {"id": "r1", "firm_id": FIRM, "client_id": "c1", "gstin": second,
+           "state_code": "27", "deleted_at": None, "registration_type": "regular"}
+    return _world(registrations=[reg]), CLIENTS["c1"][1], second
+
+
+def test_another_registrations_download_is_not_refused_as_older_and_replaces_with_the_registration_caveat():
+    """A client with two registrations holds one reconciliation per month. A 2B of the OTHER registration is not a stale download of
+    the one reconciled, so comparing their dates and refusing it said something false; it takes the replace path the intake names."""
+    store, primary, second = _two_registrations()
+    _run(store, [_file("primary.json", primary, gendt="20-05-2025", number="INV-PRIMARY")])
+    _db, out = _run(store, [_file("depot.json", second, gendt="14-05-2025", number="INV-DEPOT")])
+    (r,) = out["results"]
+    assert r["status"] == "reconciled" and r["client_id"] == "c1", r.get("reason")
+    assert r["registration_caveat"] and "REPLACES" in r["registration_caveat"]
+    assert r["replaced_earlier"] and r["replaced_earlier"]["generated_on"] == "20-05-2025"
+    assert [x["invoice_number"] for x in store["gstr2a_records"]] == ["INV-DEPOT"]
+
+
+@pytest.mark.parametrize("recorded", ["same", "blank"])
+def test_an_older_download_of_the_same_registration_is_still_refused_for_a_client_with_two(recorded):
+    """The premise: the registration is what decides. The same registration's older download is refused, and so is one against a
+    reconciliation that recorded no registration, which cannot be shown to be another's."""
+    store, primary, _second = _two_registrations()
+    _run(store, [_file("newer.json", primary, gendt="20-05-2025", number="INV-NEW")])
+    if recorded == "blank":
+        for header in store["gstr2b_reconciliations"]:
+            header["gstin"] = None
+    _db, out = _run(store, [_file("stale.json", primary.lower(), gendt="14-05-2025", number="INV-OLD")])
+    (r,) = out["results"]
+    assert r["status"] == "refused" and "Nothing was replaced" in r["reason"]
+    assert [x["invoice_number"] for x in store["gstr2a_records"]] == ["INV-NEW"]
+
+
+def test_the_earlier_reconciliation_is_read_with_the_registration_it_was_for():
+    """`previous_reconciliation` is asked for the registration, or the comparison above has nothing to compare: a double that answers
+    only the columns a read selects shows it."""
+    class _Projecting(_Q):
+        def select(self, cols="*", *_a, **_k):
+            self._cols = [c.strip() for c in cols.split(",")]
+            return self
+
+        def execute(self):
+            return _R([{c: row.get(c) for c in self._cols} for row in super().execute().data])
+
+    class _ProjectingDB(_DB):
+        def table(self, name):
+            return _Projecting(self, name)
+
+    g = CLIENTS["c1"][1]
+    header = {"firm_id": FIRM, "client_id": "c1", "return_period": "042025", "gstin": g,
+              "generated_on": "20-05-2025", "reconciled_at": "2025-05-21T10:00:00+00:00"}
+    got = recon.previous_reconciliation(_ProjectingDB({"gstr2b_reconciliations": [header]}),
+                                        firm_id=FIRM, client_id="c1", period="042025")
+    assert got == {"reconciled_at": header["reconciled_at"], "generated_on": "20-05-2025", "gstin": g}
+
+
 def test_the_notes_say_which_download_is_which():
     notes = gstr2b_intake.DOWNLOAD_NOTES
     assert set(notes) == {"same", "newer", "older", "unknown"}

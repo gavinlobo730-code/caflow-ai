@@ -39,7 +39,11 @@ AN OLDER DOWNLOAD IS REFUSED, ACROSS REQUESTS TOO (POST-A-057)
     earlier day) wrote. Before replacing, the earlier reconciliation is read and
     the two downloads are compared by the date the portal generated each
     (`gstr2b_intake.download_relation`): a file generated BEFORE the one already
-    reconciled is REFUSED, naming both dates, and replaces nothing. An older
+    reconciled for the SAME registration (or for none recorded) is REFUSED,
+    naming both dates, and replaces nothing. A client with two registrations
+    holds one reconciliation a month, so the other registration's 2B is not a
+    stale download of it: it replaces it, as the intake's `registration_caveat`
+    on its answer says, and is never refused with a sentence about dates. An older
     download dropped into a folder of sixty no longer overwrites a newer one at
     all; a CA who does mean the older file uploads it from the client's own
     GSTR-2B tab, which is a deliberate act for one client and says OLDER on its
@@ -273,7 +277,12 @@ def _one(db, *, firm_id, name, raw, parsed, holders, names, visible, can_access,
         db, firm_id=firm_id, client_id=client_id, period=period)
     relation = (gstr2b_intake.download_relation(previous.get("generated_on"), parsed.generated_on)
                 if previous else None)
-    if relation == gstr2b_intake.OLDER_DOWNLOAD:
+    # Older than the reconciliation it would replace only where that one is the SAME registration's (or recorded none, so cannot be
+    # shown to be another's). A client with two registrations holds one reconciliation a month, and the other registration's 2B is a
+    # different download, not a stale one: it takes the replace path below, with the intake's registration caveat.
+    same_registration = previous is not None and gstr2b_routing.normalise(previous.get("gstin")) in (
+        "", gstr2b_routing.normalise(parsed.gstin))
+    if relation == gstr2b_intake.OLDER_DOWNLOAD and same_registration:
         # A stale download never replaces a newer reconciliation through the bulk door (see the module docstring).
         return _result(
             name, REFUSED, gstin=routing.gstin, period=period,

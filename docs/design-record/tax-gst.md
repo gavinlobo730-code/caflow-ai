@@ -140,9 +140,19 @@ section it came from. `CLAUDE.md` lists every entry's headline in its "Design re
   revised, is asked from FY 2025-26 on and is an error before it; amounts are
   not negative; and the unique index is the utility's duplicate key (original
   month + original supplier, with the original place of supply from FY 2025-26,
-  read as a value when it is NULL). They are recorded through the API's
-  privileged client alone: no signed-in role holds any privilege on either
-  table, so neither joins the list of tables a signed-in session reaches
+  read as a value when it is NULL). They are READ and recorded through the
+  API's privileged client alone: no signed-in role holds any privilege on either
+  table, not even `SELECT` (the twelve older return-workpaper tables keep it),
+  so the screen's list, the GSTR-8 build and the upsert's own lookup read them
+  with `privileged_for(db)`, naming the firm and the client, after the route has
+  asserted the caller's access to the client. A first version read them on the
+  caller's session, which every double accepted and production, with
+  `USE_USER_JWT` on, would have refused with 42501, taking the Table 3 and 3.1
+  rows of the same screen and statement down with it; found in review, and
+  `tests/test_the_return_workpaper_tables_are_written_with_the_privileged_client_only.py`
+  now holds every read of the two tables, in every module, to the privileged
+  client and its refusing double refuses a read of them as the database does.
+  Neither joins the list of tables a signed-in session reaches
   outside the matrix, and each carries the two row guards every new client
   table carries. `compute_gstr8` returns counts, a finding list naming the
   original supplier, and a server sentence, and NEVER a total: the figures an
@@ -1421,15 +1431,30 @@ real document with wrong figures.
   says so in its log, and that read is the twin. `itc_time_bar.join_furnished_later`
   then joins a `not_in_2b` bill to ONE later month's unbooked document on the
   reconciliation's own key (supplier GSTIN, number folded by
-  `itc_matching.normalise_document_number`): one row of kind `furnished_later`,
+  `itc_matching.normalise_document_number`), within the bill's own financial
+  year: one row of kind `furnished_later`,
   dated by the bill, carrying the book credit and naming the month and the tax
   that 2B carries; two bills or two documents on one key, an earlier month, a
   document 2B marks unavailable or another supplier's number join nothing, and
-  the stored reconciliation is unchanged. The screen labels the new kind and a
+  the stored reconciliation is unchanged. **The year is part of the key**:
+  CGST Rule 46(b) makes a serial number unique for a financial year and the
+  scan spans two, so a document is a candidate only when its own date can be
+  read and falls in the bill's year (by the document's date, never the month
+  whose 2B carries it, so a March invoice furnished in April's 2B still
+  joins), and one that does not is left out BEFORE the one-bill / one-document
+  test, so it neither joins nor makes the bill's own year's document
+  ambiguous, and stays unbooked. A first version compared no date and joined a
+  June 2025 bill '15' to the supplier's May 2026 invoice '15', telling the CA
+  that June 2025's credit was communicated; found in review and held by four
+  tests in `tests/test_the_16_4_radar_dates_the_credit_that_is_not_yet_claimed.py`.
+  The join is Python's alone (`itc_time_bar_candidates` returns bills, never
+  2B documents), so migration 616 did not change. The screen labels the new kind and a
   Python-side guard holds every kind the rule answers with to a label there.
   NOT done: the radar still judges each bill against its own month's 2B and
   does not move the claim to the later month's GSTR-3B; it only shows the two
-  facts as one.
+  facts as one. The BILL side of the key is not split by year: two withheld
+  bills of one supplier and number join nothing whatever their years, so the
+  late filing of one of them stays two rows (the conservative direction).
 - **A BULK GSTR-2B DROP NEVER PUTS AN OLDER DOWNLOAD OVER A NEWER
   RECONCILIATION, ACROSS REQUESTS TOO** (POST-A-057, part; no migration). What
   was wrong: the bulk door refused two files for one client and month in ONE
@@ -1440,11 +1465,18 @@ real document with wrong figures.
   fix does: before replacing, `gst_2b_bulk_service` compares the two downloads
   by the date the portal generated each (`gstr2b_intake.download_relation`,
   the rule that already wrote the after-the-fact note) and REFUSES a provably
-  older one, naming both dates, writing nothing and keeping no upload; a CA who
+  older one OF THE SAME REGISTRATION (or against a reconciliation that recorded
+  none), naming both dates, writing nothing and keeping no upload; a CA who
   means the older file uploads it from the client's own GSTR-2B tab, a
   deliberate act for one client whose answer still says OLDER. The same
   download, a newer one and one whose date cannot be read still replace and
-  say so. Verified by two new tests and a changed one in
+  say so. A client with two registrations holds one reconciliation a month
+  (`gstr2b_intake`'s `registration_caveat`), so the other registration's 2B is
+  not a stale download of the one reconciled: `previous_reconciliation` reads
+  the header's `gstin` and such a file takes the existing replace path with
+  its caveat. A first version compared the dates whatever the registration and
+  refused it with a false sentence about a stale download; found in review.
+  Verified by five new tests and a changed one in
   `tests/test_many_clients_2b_files_are_each_routed_by_the_gstin_inside_them.py`.
   NOT done: two requests for one client and month at the same moment are not
   serialised (each reads before it writes); the job queue and a read-back of a

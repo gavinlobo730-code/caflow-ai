@@ -68,7 +68,10 @@ A LATE-FURNISHED BILL IS ONE ROW, NOT TWO (POST-A-062)
     POST-A-062 the radar listed both, the same invoice twice and its credit
     counted twice in the totals. `join_furnished_later` now joins them on the
     reconciliation's own key, the supplier's GSTIN and the document number
-    folded by `itc_matching.normalise_document_number`, when exactly one later
+    folded by `itc_matching.normalise_document_number`, within the bill's own
+    financial year (Rule 46(b) makes a number unique within a year, not across
+    the two the scan spans, so a document of another year, or with a date that
+    cannot be read, is never a candidate), when exactly one later
     month's document answers exactly one withheld bill: one row of kind
     `furnished_later`, dated by the BILL (the invoice §16(4) measures from),
     carrying the book credit and saying which month's 2B communicates it and
@@ -120,10 +123,12 @@ MATCHING_IS_PER_MONTH = (
     "Each bill is judged against the GSTR-2B for its OWN month, as the "
     "reconciliation does. A supplier who files an April invoice late appears in a "
     "later month's GSTR-2B: where that later document carries the bill's supplier "
-    "GSTIN and number, and no other bill or document does, the two are shown as "
-    "one row that names the month that carries it. Otherwise the bill and the "
-    "document are listed apart: both are credit not yet claimed, and the lapse "
-    "date is the same.")
+    "GSTIN and number and is dated in the bill's own financial year (an invoice "
+    "number repeats from one year to the next), no other bill carries them and no "
+    "other document of that year does, the two are shown as one row that names "
+    "the month that carries it. Otherwise the bill and the document are listed "
+    "apart, each with the date its own credit lapses on: both are credit not yet "
+    "claimed.")
 
 
 @dataclass(frozen=True)
@@ -296,6 +301,13 @@ def _credit_of(record: dict) -> int:
     return sum(int(record.get(k) or 0) for k in ("igst_paise", "cgst_paise", "sgst_paise", "cess_paise"))
 
 
+def _financial_year_of(value: Any) -> str:
+    """'2025-26' for a readable date, '' for one that cannot be read. The label is the one window authority's (`cw.fy_label`),
+    asked through the date's own month, the way `window_of` asks it."""
+    d = _parse(value)
+    return cw.fy_label(_period_of(d)) if d is not None else ""
+
+
 def join_furnished_later(rows: list[dict], records: Iterable[dict],
                          bill_keys: dict[str, tuple[str, str]]) -> tuple[list[dict], list[dict]]:
     """(radar rows, the 2B documents still unbooked): a `not_in_2b` bill and ONE
@@ -309,6 +321,19 @@ def join_furnished_later(rows: list[dict], records: Iterable[dict],
     itself offer as `not_booked` is a candidate (an invoice or a debit note, not
     marked ITC-unavailable, carrying credit), and only from a month AFTER the
     bill's own. A key two bills share, or two documents share, joins nothing.
+
+    THE NUMBER IS ONE ONLY WITHIN A FINANCIAL YEAR. CGST Rule 46(b) makes an
+    invoice's serial number unique for a financial year, and the scan spans two,
+    so a supplier who restarts at 1 every April issues a '15' in each. A
+    document is therefore a candidate only when its own date can be read and
+    falls in the same financial year as the bill's: a June 2025 bill '15' is not
+    the supplier's May 2026 invoice '15'. The year is the DOCUMENT's date, never
+    the month whose 2B carries it (a March invoice furnished in April's 2B is
+    still March's year). A document of another year, or with no readable date,
+    is left out BEFORE the one-bill / one-document test, so it neither joins nor
+    makes the bill's own year's document ambiguous, and it stays on the
+    unbooked list. The bill side is unchanged: two withheld bills that share a
+    key join nothing, whatever their years, and both stay as they were.
     """
     from domain.gst.itc_matching import normalise_document_number
 
@@ -345,8 +370,11 @@ def join_furnished_later(rows: list[dict], records: Iterable[dict],
         j = bills[0]
         own = out[j].get("document_date") or ""
         own_period = f"{own[5:7]}{own[0:4]}" if len(own) >= 7 else ""
-        later = [i for i in offered.get(k, []) if _later(str(records[i].get("return_period") or ""), own_period)]
-        if len(offered.get(k, [])) != 1 or len(later) != 1:
+        own_year = _financial_year_of(own)
+        # Rule 46(b): the same number in another financial year is another document (see the docstring).
+        same_year = [i for i in offered.get(k, []) if own_year and _financial_year_of(records[i].get("invoice_date")) == own_year]
+        later = [i for i in same_year if _later(str(records[i].get("return_period") or ""), own_period)]
+        if len(same_year) != 1 or len(later) != 1:
             continue
         rec = records[later[0]]
         used.add(later[0])

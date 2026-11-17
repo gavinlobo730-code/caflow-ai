@@ -651,6 +651,54 @@ def test_a_document_in_an_earlier_month_than_the_bill_is_not_its_late_filing():
     assert kinds == ["not_booked", "withheld_bill"]
 
 
+def test_a_document_of_another_financial_year_that_reuses_the_bills_number_is_not_its_late_filing():
+    """Rule 46(b) keeps a number unique within ONE financial year, and the scan spans two: a June 2025 bill '15' and the supplier's
+    May 2026 invoice '15' are two documents. Joined, the CA was told the June 2025 credit is communicated when it is not."""
+    store = _world([_bill("b-15", "15", "2025-06-10")])
+    _reconcile(store, "062025", [])
+    _reconcile(store, "052026", [("15", "10-05-2026", "Y")])
+    rows = sorted((i["kind"], i["label"], i["document_date"], i["closes_on"]) for i in _radar(store)[0]["items"])
+    assert rows == [("not_booked", "15", "2026-05-10", "2027-11-30"),
+                    ("withheld_bill", "15", "2025-06-10", "2026-11-30")]
+
+
+def test_a_march_bill_furnished_in_aprils_2b_is_still_its_late_filing_because_the_year_is_the_documents():
+    """The year compared is the DOCUMENT's date, not the 2B month that carries it: a 20 March 2026 invoice furnished in April 2026's
+    GSTR-2B is FY 2025-26 on both sides, and is joined."""
+    store = _world([_bill("b-mar", "A-MAR", "2026-03-20")])
+    _reconcile(store, "032026", [])
+    _reconcile(store, "042026", [("A-MAR", "20-03-2026", "Y")])
+    (row,) = _radar(store)[0]["items"]
+    assert row["kind"] == bar.KIND_FURNISHED_LATER and row["return_period"] == "042026"
+    assert row["financial_year"] == "2025-26" and row["closes_on"] == "2026-11-30"
+
+
+def test_a_later_document_whose_date_cannot_be_read_is_not_joined_and_stays_unbooked():
+    bill = {"kind": bar.KIND_WITHHELD, "verdict": "not_in_2b", "document_id": "b-1", "document_date": "2025-04-10",
+            "credit_at_risk_paise": 18_000}
+    doc = {"document_type": "invoice", "supplier_gstin": SUPPLIER, "invoice_number": "A-1", "return_period": "062025",
+           "itc_available": "Y", "cgst_paise": 9_000, "sgst_paise": 9_000}
+    keys = {"b-1": (SUPPLIER, "A-1")}
+    for unreadable in (None, "", "10-04-2025", "not a date"):
+        rows, unbooked = bar.join_furnished_later([bill], [{**doc, "invoice_date": unreadable}], keys)
+        assert [r["kind"] for r in rows] == [bar.KIND_WITHHELD] and len(unbooked) == 1, unreadable
+    rows, unbooked = bar.join_furnished_later([bill], [{**doc, "invoice_date": "2025-04-10"}], keys)   # the premise: a date joins
+    assert [r["kind"] for r in rows] == [bar.KIND_FURNISHED_LATER] and unbooked == []
+
+
+def test_a_document_of_another_year_does_not_make_the_bills_own_years_late_filing_ambiguous():
+    """The other year's document is skipped BEFORE the one-bill/one-document test, so it neither joins nor blocks the one that does."""
+    bill = {"kind": bar.KIND_WITHHELD, "verdict": "not_in_2b", "document_id": "b-1", "document_date": "2025-06-10",
+            "credit_at_risk_paise": 18_000}
+    base = {"document_type": "invoice", "supplier_gstin": SUPPLIER, "invoice_number": "15", "itc_available": "Y",
+            "cgst_paise": 9_000, "sgst_paise": 9_000}
+    this_year = {**base, "return_period": "092025", "invoice_date": "2025-06-10"}
+    next_year = {**base, "return_period": "052026", "invoice_date": "2026-05-10"}
+    rows, unbooked = bar.join_furnished_later([bill], [next_year, this_year], {"b-1": (SUPPLIER, "15")})
+    assert [(r["kind"], r["return_period"]) for r in rows] == [(bar.KIND_FURNISHED_LATER, "092025")]
+    assert unbooked == [next_year]
+
+
 def test_a_later_document_for_less_tax_says_both_figures():
     bills = [_bill("b-late", "A-LATE", "2025-04-10", cgst=12_000, sgst=12_000)]
     store = _late_store(april_bills=bills)
