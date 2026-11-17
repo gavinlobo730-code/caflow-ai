@@ -76,6 +76,25 @@ def test_two_drafts_of_the_whole_order_the_second_issue_is_refused_in_words_and_
     assert stored["status"] == "draft" and not stored.get("issued_at")
 
 
+def test_two_lines_naming_one_order_line_are_added_together_by_the_api_and_by_the_function(db):
+    """Two lines of 6 against an order line of 10 deliver 12, though each fits on its own: the API refuses it in words (with the sum and the
+    count of lines), and the function's double, asked directly as on a race the API did not see, refuses it too. 6 and 4 fit together."""
+    order, line = _order(db, "10")
+    c = _challan(db, order, line, "6")
+    itc._line(db, c, qty="6", order_line_id=line["id"])
+    with pytest.raises(HTTPException) as caught:
+        _issue(db, c)
+    assert caught.value.status_code == 422
+    assert "12.000 is more than the 10.000" in caught.value.detail and "2 lines of this challan name this order line" in caught.value.detail
+    with pytest.raises(HTTPException) as caught:
+        writes.issue_in_one_transaction(db, itc.FIRM, itc.CLIENT, c["id"], "2026-10-09T10:00:00+05:30", document_no="DC/1")
+    assert caught.value.status_code == 422
+    assert next(r for r in db.rows("delivery_challans") if r["id"] == c["id"])["status"] == "draft"
+    fits = _challan(db, order, line, "6", no="DC/2")
+    itc._line(db, fits, qty="4", order_line_id=line["id"])
+    assert _issue(db, fits)["status"] == "issued"
+
+
 def test_the_door_words_what_the_function_says_when_the_api_could_not_have_seen_it(db, monkeypatch):
     class Boom:
         def __init__(self, word): self.word = word

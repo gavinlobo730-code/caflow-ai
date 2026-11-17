@@ -7,10 +7,11 @@
 --
 -- WHAT THIS DOES. `issue_delivery_challan_atomic(firm, client, challan, issued_at)` takes the challan's lock FOR UPDATE and then the lock of
 -- the order it names (always in that order, so two issues on one order queue and do not deadlock; a cancel and a lot lock the challan
--- alone), refuses unless the challan is a draft, asks the order rule of every line that names an order line, and only then writes
--- `status = 'issued'` and the moment of issue, in the same transaction. The rule is `order_cycle.over_delivery`: a positive quantity, and
--- no more than the line's ordered quantity less what the ISSUED challans of that order already deliver (a draft, a cancelled challan and
--- one marked received back deliver nothing: `STATUSES_THAT_DELIVER_AGAINST_AN_ORDER`). The SQL is its copy, run beside it by
+-- alone), refuses unless the challan is a draft, asks the order rule of every order line its lines name (the lines that name one order
+-- line added together), and only then writes `status = 'issued'` and the moment of issue, in the same transaction. The rule is
+-- `order_cycle.over_delivery`: a positive quantity, and no more than the line's ordered quantity less what the ISSUED challans of that
+-- order already deliver (a draft, a cancelled challan and one marked received back deliver nothing:
+-- `STATUSES_THAT_DELIVER_AGAINST_AN_ORDER`). The SQL is its copy, run beside it by
 -- `tests/test_652_issue_delivery_challan_parity_pg.py`; the API keeps asking first, in its own sentences, and reads this function's
 -- words (`order_over_delivered`, `order_line_not_of_order`, `challan_not_draft`) only for the race it could not see.
 -- It checks nothing else: Rule 55(1)'s particulars, the date and the header's arithmetic stay with the API, which asks them before.
@@ -62,7 +63,9 @@ BEGIN
         RAISE EXCEPTION 'order_line_not_of_order' USING ERRCODE = 'P0001', DETAIL = format('%s names an order line that is not on this challan''s order', v_bad.description);
     END IF;
 
-    -- order_cycle.over_delivery, per order line: the quantities this challan puts on the line, against what is left of it after the ISSUED challans.
+    -- order_cycle.over_delivery, per order line: the quantities this challan puts on the line ADDED TOGETHER (two lines of 6 against an order
+    -- line of 10 deliver 12, though each fits alone), against what is left of it after the ISSUED challans; a line that is not positive is
+    -- refused on its own.
     SELECT ol.description, ol.quantity AS ordered, sum(l.quantity) AS mine,
            coalesce((SELECT sum(d.quantity) FROM public.delivery_challan_lines d
                        JOIN public.delivery_challans dc ON dc.id = d.challan_id
@@ -74,9 +77,9 @@ BEGIN
      WHERE l.challan_id = p_challan_id
      GROUP BY ol.id, ol.description, ol.quantity
     HAVING bool_or(l.quantity <= 0)
-        OR EXISTS (SELECT 1 FROM public.delivery_challan_lines x WHERE x.challan_id = p_challan_id AND x.order_line_id = ol.id AND x.quantity > greatest(0,
-               ol.quantity - coalesce((SELECT sum(d.quantity) FROM public.delivery_challan_lines d JOIN public.delivery_challans dc ON dc.id = d.challan_id
-                                        WHERE d.order_line_id = ol.id AND dc.status = 'issued' AND dc.id <> p_challan_id), 0)))
+        OR sum(l.quantity) > greatest(0, ol.quantity - coalesce((SELECT sum(d.quantity) FROM public.delivery_challan_lines d
+                                                                   JOIN public.delivery_challans dc ON dc.id = d.challan_id
+                                                                  WHERE d.order_line_id = ol.id AND dc.status = 'issued' AND dc.id <> p_challan_id), 0))
      ORDER BY ol.id
      LIMIT 1;
     IF FOUND THEN
@@ -84,8 +87,8 @@ BEGIN
             RAISE EXCEPTION 'order_over_delivered' USING ERRCODE = 'P0001', DETAIL = format('%s: a delivery must be of a positive quantity', v_bad.description);
         END IF;
         RAISE EXCEPTION 'order_over_delivered' USING ERRCODE = 'P0001',
-            DETAIL = format('%s: more than the %s still undelivered on this order line (%s ordered, %s already delivered)',
-                            v_bad.description, greatest(0, v_bad.ordered - v_bad.delivered), v_bad.ordered, v_bad.delivered);
+            DETAIL = format('%s: %s is more than the %s still undelivered on this order line (%s ordered, %s already delivered)',
+                            v_bad.description, v_bad.mine, greatest(0, v_bad.ordered - v_bad.delivered), v_bad.ordered, v_bad.delivered);
     END IF;
 
     UPDATE public.delivery_challans

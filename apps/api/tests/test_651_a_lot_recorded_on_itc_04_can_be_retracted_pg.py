@@ -3,7 +3,7 @@
 HELD HERE: the retraction keeps the row, the day, the person and a reason (a blank reason is refused by the function and by a CHECK);
 a retracted lot no longer counts against the room a line has left, so the goods can be recorded again; a challan that the lots had
 marked received back goes back to issued with no back day when the live lots no longer bring every line back (a challan marked back by
-the whole-challan door, with no lot, is left as it is); a challan whose every lot is retracted can be cancelled and one with a live lot
+the whole-challan door, with no lot or after a part lot, is left as it is with the CA's day); a challan whose every lot is retracted can be cancelled and one with a live lot
 still cannot; a retraction is final (written once, the row not changed after); a lot of another challan or client, or one already
 retracted, is not found; the function is closed to anon/authenticated; two retractions at once act once; the migration is idempotent
 and its rollback refuses while a lot is retracted, then restores 585's functions. Negative control: after the rollback the retraction
@@ -87,6 +87,25 @@ def test_a_challan_the_lots_marked_back_goes_back_to_issued_and_one_marked_by_ha
     spare = _record(db, other, ol, back="2")
     assert _retract(db, hand, spare).returncode != 0          # a lot of another challan is not found
     assert _status(db, hand).startswith("received_back|2026-09-01")
+
+
+def test_a_challan_the_ca_marked_back_after_a_part_lot_keeps_the_cas_day_when_that_lot_is_retracted(db):
+    """The lots had not brought every line back (4 of 10), so they did not mark the challan back: the CA did, through the whole-challan door,
+    on 20 September. Retracting the part lot leaves that record alone (the rule asks the lots as they stood BEFORE the retraction)."""
+    cid, (lid,) = _challan(db, quantity=10)
+    lot = _record(db, cid, lid, back="4")
+    assert _status(db, cid) == "issued|"
+    assert _psql(db, f"UPDATE delivery_challans SET status = 'received_back', received_back_on = DATE '2026-09-20' WHERE id = '{cid}';").returncode == 0
+    out = _answer(_retract(db, cid, lot))
+    assert out["challan_back_to_issued"] is False
+    assert _status(db, cid) == "received_back|2026-09-20"
+    # Two lines, the lots bring both back and mark the challan back; retracting either puts it back to issued (the lots' own stamp goes).
+    two, (a, b) = _challan(db, no="JW/7", quantity=5, lines=2)
+    first = _record(db, two, a, back="5")
+    _record(db, two, b, back="5", on="2026-08-25")
+    assert _status(db, two) == "received_back|2026-08-25"
+    assert _answer(_retract(db, two, first))["challan_back_to_issued"] is True
+    assert _status(db, two) == "issued|"
 
 
 def test_a_challan_with_every_lot_retracted_can_be_cancelled_and_one_with_a_live_lot_cannot(db):

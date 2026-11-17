@@ -10,8 +10,9 @@
 --    and a trigger makes a retraction final: the three columns are written once, and a retracted row's figures are not changed.
 --  * `retract_challan_lot_atomic(firm, client, challan, lot, reason, by)`: takes the challan's lock first (the lock a new lot and a cancel
 --    take), refuses a lot that is not this challan's or is already retracted, retracts it and, if the challan was marked received back by
---    the lots and the live lots no longer bring every line back, puts it back to issued with no back day (the s.143 clock runs again),
---    all in one transaction.
+--    the lots (they brought every line back before this retraction) and the live lots no longer bring every line back, puts it back to
+--    issued with no back day (the s.143 clock runs again), all in one transaction. A challan the whole-challan door marked back, with a
+--    part lot or none, keeps the CA's day.
 --  * `record_challan_lot_atomic` (restated from migration 585, the last to define it) counts only live lots, for the room a line has left
 --    and for the stamp that the challan is back, and refuses to write the retraction columns through a lot.
 --  * the cancel trigger of 585 asks only about live lots, so a challan whose every lot was retracted can be cancelled.
@@ -21,8 +22,12 @@
 -- WHAT IT DOES NOT DO. It does not refuse a retraction once the period's ITC-04 is filed: the product records no ITC-04 filing (no table,
 -- obligation or route), so there is nothing to ask. The statement is prepare-only and the CA furnishes it on the portal; the screen says so.
 --
--- DEPLOY ORDER: ships with the code; the API falls back to the old readers' behaviour only by not filtering, so the code is deployed
--- with the migration (the columns must exist for the filters). SECURITY INVOKER, EXECUTE to service_role alone.
+-- DEPLOY ORDER: ships with the code, in one change. Until the migration job applies it (some minutes after the API is live) every reader
+-- of lots asks through `delivery_challan_writes.read_live_lots`, which reads again without the filter when, and only when, the database
+-- says `retracted_at` does not exist: before this migration no lot can be retracted, so every lot is live and that is the same answer.
+-- The retraction route answers a worded 503 until the function is here. The fallback goes once 651 has been in production (POST-A-421's
+-- ledger line). The boot-time schema check answers /health 503 until the columns exist, as for every migration that adds a column.
+-- SECURITY INVOKER, EXECUTE to service_role alone.
 -- Reversible: 651_..._rollback.sql refuses while a lot is retracted (it would resurrect it).
 
 BEGIN;
@@ -161,7 +166,7 @@ CREATE OR REPLACE FUNCTION public.retract_challan_lot_atomic(
     p_firm_id uuid, p_client_id uuid, p_challan_id uuid, p_lot_id uuid, p_reason text, p_by uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_catalog AS $$
 DECLARE
-    v_status text; v_reason text; v_lot jsonb; v_open bigint; v_reverted boolean := false;
+    v_status text; v_reason text; v_lot jsonb; v_open bigint; v_open_before bigint; v_reverted boolean := false;
 BEGIN
     IF btrim(coalesce(p_reason, '')) = '' THEN
         RAISE EXCEPTION 'retraction_needs_reason' USING ERRCODE = 'P0001';
@@ -183,8 +188,15 @@ BEGIN
          WHERE l.challan_id = p_challan_id
            AND l.quantity > (SELECT coalesce(sum(r.quantity_returned), 0) FROM public.delivery_challan_returns r
                               WHERE r.challan_line_id = l.id AND r.retracted_at IS NULL);
-        -- A challan marked back with no lot at all was marked by the whole-challan door and is left as it is.
-        IF v_open > 0 AND EXISTS (SELECT 1 FROM public.delivery_challan_returns WHERE challan_id = p_challan_id) THEN
+        -- The same count as it stood before this retraction (the lot being retracted still live). The LOTS marked the challan back only
+        -- when they brought every line back: a lot is recorded only on an issued challan, so once it is received back no lot is added.
+        -- A challan the whole-challan door marked back after a part lot (or with no lot at all) had a line open before this retraction,
+        -- and the CA's day stands: it is left as it is.
+        SELECT count(*) INTO v_open_before FROM public.delivery_challan_lines l
+         WHERE l.challan_id = p_challan_id
+           AND l.quantity > (SELECT coalesce(sum(r.quantity_returned), 0) FROM public.delivery_challan_returns r
+                              WHERE r.challan_line_id = l.id AND (r.retracted_at IS NULL OR r.id = p_lot_id));
+        IF v_open_before = 0 AND v_open > 0 THEN
             UPDATE public.delivery_challans SET status = 'issued', received_back_on = NULL, updated_at = now()
              WHERE id = p_challan_id AND firm_id = p_firm_id AND client_id = p_client_id AND status = 'received_back';
             v_reverted := true;

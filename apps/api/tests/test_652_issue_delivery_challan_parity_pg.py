@@ -1,6 +1,7 @@
 """Migration 652 on a real database: issuing a delivery challan locks the order it names and holds the over-delivery rule (POST-A-421, part b).
 
-HELD HERE: the SQL rule and `order_cycle.over_delivery` agree on every scenario (the parity half); a refusal writes nothing; only the ISSUED
+HELD HERE: the SQL rule and `order_cycle.over_delivery` agree on every scenario (the parity half), with the lines of one challan that name
+one order line added together, as the API adds them; a refusal writes nothing; only the ISSUED
 challans of an order deliver against it (a draft, a cancelled and a received-back challan do not); a line naming an order line of another order,
 or an order line with no order, is refused; a challan of another client is not found; TWO DRAFTS OF THE WHOLE ORDER ISSUED IN THE SAME INSTANT
 cannot both land (the second waits for the first's lock and is refused); the function is closed to the signed-in roles; the migration is
@@ -91,6 +92,46 @@ def test_the_database_and_over_delivery_agree(db, ordered, others, mine):
     python_refuses = oc.over_delivery(oc.OpenLine(order_line_id=line, description="Widget", ordered_qty=Decimal(ordered),
                                                   delivered_qty=delivered, invoiced_qty=Decimal(0)), Decimal(mine)) is not None
     cid = _challan(db, order, line, mine)
+    done = _issue(db, cid)
+    assert (done.returncode != 0) == python_refuses, (ordered, others, mine, done.stderr)
+    assert _status(db, cid) == ("draft|false" if python_refuses else "issued|true")
+    if python_refuses:
+        assert "order_over_delivered" in done.stderr
+
+
+# (ordered, [(quantity, status) of the other challans], the quantities of MY lines, every one naming the one order line)
+SPLIT = [
+    ("10", [], ["6", "6"]), ("10", [], ["6", "4"]), ("10", [("3", "issued")], ["4", "4"]), ("10", [("3", "issued")], ["4", "3"]),
+    ("10", [("3", "draft")], ["5", "5"]), ("10", [], ["5", "0"]), ("2.001", [], ["1.001", "1"]), ("2.001", [], ["1.001", "1.001"]),
+]
+
+
+def _challan_of(dsn, order, line, quantities) -> str:
+    cid = str(uuid.uuid4())
+    rows = ",\n".join(f"('{uuid.uuid4()}', '{FIRM}', '{CLIENT}', '{cid}', {i}, 'Widget', {q}, 'NOS', '{line}')" for i, q in enumerate(quantities))
+    done = _psql(dsn, f"""
+        INSERT INTO delivery_challans (id, firm_id, client_id, document_no, document_date, reason, status, order_id)
+             VALUES ('{cid}', '{FIRM}', '{CLIENT}', '{cid[:8]}', DATE '2026-05-10', 'supply_invoice_to_follow', 'draft', '{order}');
+        INSERT INTO delivery_challan_lines (id, firm_id, client_id, challan_id, line_order, description, quantity, unit, order_line_id)
+             VALUES {rows};""")
+    assert done.returncode == 0, done.stderr
+    return cid
+
+
+@pytest.mark.parametrize("ordered, others, mine", SPLIT)
+def test_the_lines_naming_one_order_line_are_added_together_as_the_api_adds_them(db, ordered, others, mine):
+    """Two lines of 6 against an order line of 10 deliver 12, though each fits alone (`sales_cycle_service._refuse_over_delivery` adds them; the
+    SQL must too). A line that is not positive is refused on its own."""
+    order, line = _world(db, ordered)
+    delivered = Decimal(0)
+    for q, status in others:
+        _challan(db, order, line, q, status=status)
+        if status == "issued":
+            delivered += Decimal(q)
+    open_line = oc.OpenLine(order_line_id=line, description="Widget", ordered_qty=Decimal(ordered), delivered_qty=delivered, invoiced_qty=Decimal(0))
+    python_refuses = (any(oc.over_delivery(open_line, Decimal(q)) for q in mine if Decimal(q) <= 0)
+                      or oc.over_delivery(open_line, sum((Decimal(q) for q in mine), Decimal(0))) is not None)
+    cid = _challan_of(db, order, line, mine)
     done = _issue(db, cid)
     assert (done.returncode != 0) == python_refuses, (ordered, others, mine, done.stderr)
     assert _status(db, cid) == ("draft|false" if python_refuses else "issued|true")

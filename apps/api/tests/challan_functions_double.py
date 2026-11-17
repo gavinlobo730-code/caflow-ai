@@ -157,14 +157,21 @@ def retract_lot(tables: dict, firm_id, client_id, challan_id, lot_id, reason, by
                     if _same(r.get("id"), lot_id) and _same(r.get("challan_id"), challan_id) and not r.get("retracted_at")), None)
         if lot is None:
             raise Refusal("lot_not_found", "P0002")
+        # The lots that were live BEFORE this retraction (the one being retracted among them), read before it is stamped.
+        before = [r for r in _rows(tables, "delivery_challan_returns") if _same(r.get("challan_id"), challan_id) and not r.get("retracted_at")]
         lot.update({"retracted_at": ist_now().isoformat(), "retracted_by": by, "retraction_reason": str(reason).strip()})
         reverted = False
         if challan.get("status") == "received_back":
-            live = [r for r in _rows(tables, "delivery_challan_returns") if _same(r.get("challan_id"), challan_id) and not r.get("retracted_at")]
+            live = [r for r in before if r is not lot]
             every = [ln for ln in _rows(tables, "delivery_challan_lines") if _same(ln.get("challan_id"), challan_id)]
-            back = lambda ln: sum((Decimal(str(r.get("quantity_returned") or 0)) for r in live if _same(r.get("challan_line_id"), ln["id"])), Decimal(0))  # noqa: E731
-            anything = any(_same(r.get("challan_id"), challan_id) for r in _rows(tables, "delivery_challan_returns"))
-            if anything and any(Decimal(str(ln.get("quantity") or 0)) > back(ln) for ln in every):
+
+            def open_lines(lots) -> int:
+                def back(ln) -> Decimal:
+                    return sum((Decimal(str(r.get("quantity_returned") or 0)) for r in lots if _same(r.get("challan_line_id"), ln["id"])), Decimal(0))
+                return sum(1 for ln in every if Decimal(str(ln.get("quantity") or 0)) > back(ln))
+
+            # The lots marked it back only when they brought every line back before this retraction; a challan the whole-challan door marked back is left as it is.
+            if open_lines(before) == 0 and open_lines(live) > 0:
                 challan.update({"status": "issued", "received_back_on": None, "updated_at": ist_now().isoformat()})
                 reverted = True
         return {"lot": dict(lot), "challan_back_to_issued": reverted}
@@ -190,12 +197,16 @@ def issue(tables: dict, firm_id, client_id, challan_id, issued_at) -> dict:
         if any(str(ln["order_line_id"]) not in order_lines for ln in mine):
             raise Refusal("order_line_not_of_order")
         issued = {str(c["id"]) for c in _rows(tables, "delivery_challans") if c.get("status") == "issued" and not _same(c.get("id"), challan_id)}
+        if any(Decimal(str(ln.get("quantity") or 0)) <= 0 for ln in mine):
+            raise Refusal("order_over_delivered")
+        wanted: dict = {}                       # the lines naming one order line, added together
         for ln in mine:
-            ol = order_lines[str(ln["order_line_id"])]
-            quantity = Decimal(str(ln.get("quantity") or 0))
+            wanted[str(ln["order_line_id"])] = wanted.get(str(ln["order_line_id"]), Decimal(0)) + Decimal(str(ln.get("quantity") or 0))
+        for lid, quantity in wanted.items():
+            ol = order_lines[lid]
             delivered = sum((Decimal(str(d.get("quantity") or 0)) for d in _rows(tables, "delivery_challan_lines")
                              if _same(d.get("order_line_id"), ol["id"]) and str(d.get("challan_id")) in issued), Decimal(0))
-            if quantity <= 0 or quantity > max(Decimal(0), Decimal(str(ol.get("quantity") or 0)) - delivered):
+            if quantity > max(Decimal(0), Decimal(str(ol.get("quantity") or 0)) - delivered):
                 raise Refusal("order_over_delivered")
         challan.update({"status": "issued", "issued_at": issued_at, "updated_at": issued_at})
         return dict(challan)

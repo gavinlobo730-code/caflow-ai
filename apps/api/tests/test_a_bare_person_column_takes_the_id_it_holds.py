@@ -119,6 +119,7 @@ DECIDED_FROM_CODE: dict[tuple[str, str], tuple[str, str]] = {
     ("compliance_records", "reviewer_id"): ("users", "checked to be a member of the firm by users.id before it is written"),
     ("compliance_records", "approver_id"): ("users", "checked to be a member of the firm by users.id before it is written"),
     ("delivery_challan_returns", "created_by"): ("users", "the goods-back route passes users.id to the lot function (migration 585)"),
+    ("delivery_challan_returns", "retracted_by"): ("users", "the retraction route passes users.id to the retraction function (migration 651)"),
     ("documents", "deleted_by"): ("users", "beside uploaded_by and reviewed_by, keys to users; the delete route is changed here (no rows held)"),
     ("fee_engagements", "assigned_to"): ("users", "checked to be a member of the firm by users.id before it is written"),
     ("fee_engagements", "reviewer_id"): ("users", "checked to be a member of the firm by users.id before it is written"),
@@ -198,6 +199,7 @@ BUILT_ELSEWHERE: dict[tuple[str, str], list[tuple[str, ...]]] = {
     ("compliance_records", "approver_id"): [("services/compliance_obligation_service.py", "generate_for_engagement"),
                                             ("services/compliance_obligation_service.py", "assign")],
     ("delivery_challan_returns", "created_by"): [("services/itc_04_service.py", "record_return")],                   # migration 585
+    ("delivery_challan_returns", "retracted_by"): [("services/delivery_challan_writes.py", "retract_lot", "p_by")],   # migration 651
     ("health_overrides", "override_by"): [("routers/health.py", "create_override")],
     ("payroll_employees", "portal_invited_by"): [("services/employee_portal_service.py", "invite_employee")],
     ("purchase_bills", "rate_selected_by"): [("routers/purchase_bills.py", "_create_purchase_bill_core")],
@@ -854,7 +856,7 @@ def test_the_map_names_the_twenty_columns_that_were_read():
 
 
 def test_every_column_decided_from_the_code_says_what_decided_it_and_no_column_is_in_two_lists():
-    assert len(DECIDED_FROM_CODE) == 61, len(DECIDED_FROM_CODE)
+    assert len(DECIDED_FROM_CODE) == 62, len(DECIDED_FROM_CODE)
     for key, (kind, why) in DECIDED_FROM_CODE.items():
         assert kind in ("auth", "users") and len(why) > 20, key
     lists = [set(READ_FROM_ROWS), set(DECIDED_FROM_CODE), set(OTHER_PRINCIPALS), NO_PERSON_WRITTEN_YET]
