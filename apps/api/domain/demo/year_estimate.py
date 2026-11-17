@@ -57,6 +57,10 @@ class YearEstimate:
     services_bought_paise: int
     payroll_paise: int
     depreciation_paise: int
+    #: What a firm credits its partners as remuneration (`fixture.partner_remuneration_credits`): an expense that moves no bank,
+    #: because it is credited to the partners' current accounts and the tax withheld from it is deposited by a challan that
+    #: posts nothing (POST-A-272).
+    partner_remuneration_paise: int
     #: The bank-statement outgoings left in the queue for a CA to pass (rent, power, bank charges).
     queued_outgoings_paise: int
     #: Cost of the fixed assets, with any tax that was capitalised.
@@ -76,7 +80,7 @@ class YearEstimate:
     def profit_before_tax_paise(self) -> int:
         """As the books are seeded: the queue not yet passed."""
         return (self.turnover_paise - self.goods_cost_paise - self.services_bought_paise
-                - self.payroll_paise - self.depreciation_paise)
+                - self.payroll_paise - self.depreciation_paise - self.partner_remuneration_paise)
 
     @property
     def profit_after_the_queue_paise(self) -> int:
@@ -219,6 +223,7 @@ def estimate(client: "F.DemoClient", financial_year: str) -> YearEstimate:
         services_bought_paise=services,
         payroll_paise=payroll,
         depreciation_paise=sum(_depreciation(a, financial_year) for a in client.assets),
+        partner_remuneration_paise=sum(cr.amount_paise for cr in F.partner_remuneration_credits(client, financial_year)),
         queued_outgoings_paise=-sum(amount for _, amount in queue),
         fixed_assets_paise=sum(a.cost_paise + _capitalised_tax(a) for a in client.assets),
         projects_paise=projects,

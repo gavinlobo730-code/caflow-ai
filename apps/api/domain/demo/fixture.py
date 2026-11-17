@@ -109,6 +109,12 @@ class DemoParty:
     #: EXCEPTION, so most vendors here carry None and one per client does not.
     msmed_agreement_days: Optional[int] = None
     tds_section: Optional[str] = None
+    #: Whether an unregistered party's registration has been RECORDED as absent (`vendors.gst_registration_status`). None for
+    #: a party nobody has asked about: `domain/gst/rcm_documents` reads that as a named gap, not as unregistered, so the
+    #: section 31(3)(f) self-invoice stays undecided. One client's reverse-charge supplier is recorded (`build`), so the
+    #: self-invoice is due and issued there, and every other unregistered party is left unrecorded so the gap is still shown.
+    #: A party with a GSTIN is registered by the GSTIN itself and never carries this.
+    registration_recorded: Optional[str] = None
 
     @property
     def pan(self) -> Optional[str]:
@@ -231,6 +237,17 @@ class DemoEmployee:
     bank_account_no: str
     bank_ifsc: str
     bank_name: str
+    #: WHETHER THE EMPLOYEE IS INSURED UNDER THE ESI ACT, and an IP number for one who is (PRE-A-004, 17-11-2026). `EmployeeIn`
+    #: defaults `esi_applicable` to True, and the ESIC return (`domain/payroll/esic.build_return`) lists every flagged employee as a
+    #: member with their whole wages, and names every flagged employee with no IP number as a problem: the seeded firm sent
+    #: neither field, so all twelve employees were flagged, eleven of them earning above the ceiling and none with a number, and
+    #: the ESIC return and the payroll exceptions list were a page of gaps. Coverage is the ESI engine's own question
+    #: (`_compute_esi`: wages above the ceiling at the start of a contribution period are not covered), answered by
+    #: `esi_covered` from the ceiling `domain/payroll/statutory` holds, and a test holds it to the engine.
+    esi_applicable: Optional[bool] = None
+    #: Ten digits, which is all `domain/payroll/esic.IP_NUMBER_RE` checks; derived from the employee's place in the roster as
+    #: the UAN is, so it is stable, and like the UAN it is a number in the issuer's shape that nobody holds.
+    esi_number: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -373,6 +390,12 @@ class DemoIncomeTax:
     itr_form: Optional[str] = None
     salary_paise: int = 0
     salary_tds_paise: int = 0
+    #: The employer behind `salary_paise`, as its Form 16 names it, for the salary worksheet (Schedule S) the computation's
+    #: salary box is fed from (PRE-A-004, 17-11-2026). Fictitious; the TAN is in the Department's shape and nobody holds it,
+    #: as `tan_for`'s is. The salary is all of it section 17(1) salary: no perquisite, exemption or professional tax is stated,
+    #: because none is a fact this fixture has.
+    employer_name: Optional[str] = None
+    employer_tan: Optional[str] = None
     other_income_paise: int = 0
     capital_gain: Optional[DemoCapitalGain] = None
     #: Elect the section 44AD presumptive scheme on the books' turnover. How that turnover was RECEIVED (a bank or a
@@ -655,6 +678,8 @@ class DemoClient:
     #: What the client's purchases cost as a share of what it sells, in basis points (`Proportions`). Its opening stock is
     #: costed at the same share.
     cost_share_bps: int = 7_000
+    #: The partners of a partnership firm, whose remuneration the firm credits each quarter (`partner_remuneration_credits`).
+    partners: tuple["DemoPartner", ...] = ()
 
     @property
     def deducts_tax(self) -> bool:
@@ -673,6 +698,19 @@ class DemoClient:
         """
         return (self.entity_type not in _OUTSIDE_THE_DUTY_TO_DEDUCT
                 and any(v.withholds_tds for v in self.vendors))
+
+
+@dataclass(frozen=True)
+class DemoPartner:
+    """A partner of a partnership firm and the remuneration the deed gives them each quarter (PRE-A-004, 17-11-2026).
+
+    Fictitious, with a PAN built by `pan()` that nobody holds. The remuneration is a fact of the partnership deed, not a
+    figure of the Act: how much of it section 40(b) lets the firm deduct turns on a limit this repository does not hold and
+    is not asked here (the firm has no computed return in the demo, see `DemoIncomeTax`). The tax withheld from it under
+    section 194T is the ENGINE's answer, asked at the TDS screen's own door, never a figure here."""
+    name: str
+    pan: str
+    remuneration_per_quarter_paise: int
 
 
 @dataclass(frozen=True)
@@ -1039,8 +1077,32 @@ def _parties(rng: random.Random, names: list[str], state: str, count: int,
     return tuple(out)
 
 
+def esi_wages_paise(basic_paise: int, hra_percent: float, special_paise: int) -> int:
+    """A full month's ESI wages for the salary structure this fixture gives an employee: basic, the HRA as a percentage of it
+    (half-rounded up, as `routers/payroll._percent_of` does) and the special allowance. Nothing else is paid to a seeded employee
+    and no one-time earning is seeded, so this is the figure `_compute_slip` tests the ceiling against in a month with no loss of
+    pay. A test holds it to the engine."""
+    hra = int((Decimal(basic_paise) * Decimal(str(hra_percent)) / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return basic_paise + hra + special_paise
+
+
+def esi_covered(basic_paise: int, hra_percent: float, special_paise: int, financial_year: str) -> Optional[bool]:
+    """Whether an employee who joined on the books' first day is insured under the ESI Act: their wages are not above the
+    ceiling `domain/payroll/statutory` holds for the year. The seeded salaries do not change during the year and loss of pay only
+    lowers a month's wages, so an employee covered in April stays covered and one above the ceiling in April never enters.
+
+    None for a year the registry does not hold: `rates_for` would answer another year's ceiling without a word, and the fixture
+    does not decide coverage on a figure nobody recorded for the year. The seeder then sends neither field and the door's own
+    default stands, which is where every year stood before."""
+    from domain.payroll.statutory import RATES_BY_FY
+    rates = RATES_BY_FY.get(financial_year)
+    if rates is None:
+        return None
+    return esi_wages_paise(basic_paise, hra_percent, special_paise) <= rates.esi.wage_ceiling_paise
+
+
 def _employees(rng: random.Random, count: int, doj: str,
-               *, code_prefix: str) -> tuple[DemoEmployee, ...]:
+               *, code_prefix: str, financial_year: str) -> tuple[DemoEmployee, ...]:
     people = [
         ("Rohan Kulkarni", "Production Supervisor", "Operations", 32_000_00),
         ("Sneha Patil", "Accounts Executive", "Finance", 28_000_00),
@@ -1063,6 +1125,8 @@ def _employees(rng: random.Random, count: int, doj: str,
     for i in range(count):
         name, desig, dept, basic = people[i % len(people)]
         letters = "".join(rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(5))
+        special = (basic * 25) // 100
+        covered = esi_covered(basic, 40.0, special, financial_year)
         out.append(DemoEmployee(
             name=name, designation=desig, department=dept,
             basic_paise=basic,
@@ -1070,7 +1134,7 @@ def _employees(rng: random.Random, count: int, doj: str,
             # and the balance as special allowance — the shape a real Indian
             # salary structure takes, and what makes the §192 working readable.
             hra_percent=40.0,
-            special_paise=(basic * 25) // 100,
+            special_paise=special,
             pan=pan(letters, f"{rng.randint(1000, 9999)}",
                     rng.choice("ABCDEFGHJKLMNPQRSTUVWXYZ")),
             doj=doj,
@@ -1082,6 +1146,8 @@ def _employees(rng: random.Random, count: int, doj: str,
             bank_account_no=f"{50100000 + i * 137:08d}{i + 1:03d}",
             bank_ifsc=ifscs[i % len(ifscs)],
             bank_name="HDFC Bank" if i % 2 == 0 else "State Bank of India",
+            esi_applicable=covered,
+            esi_number=f"3100{i + 11:03d}{i + 7:03d}" if covered else None,
         ))
     return tuple(out)
 
@@ -1303,6 +1369,55 @@ def tan_for(client: "DemoClient") -> str:
     deductor has to carry."""
     city = "MUM" if client.state_code == HOME_STATE else "BLR"
     return f"{city}{client.name[0].upper()}{client.pan[5:9]}0{client.pan[-1]}"
+
+
+def payroll_registrations(client: "DemoClient") -> dict[str, str]:
+    """The employer's own payroll registrations, as `PUT /api/payroll/statutory-identity` takes them (PRE-A-004, 17-11-2026).
+
+    The seeded firm recorded only the TAN, so the ECR and ESIC panels of every payroll client named the establishment code and the
+    employer code as missing (`domain/payroll/identity.ecr_gaps`, `esic_gaps`), and the hand-off screen could not say which
+    establishment a file belonged to. Both are numbers EPFO and ESIC issue, so each is written as a seed's and could not pass for
+    one of theirs: it starts SEED, and nothing checks its shape (`identity.normalise_code` only trims and upper-cases, by design).
+
+      * the EPF establishment code for a client that runs payroll: every seeded employee is a PF member (`EmployeeIn` defaults
+        `pf_applicable` to True and the fixture does not change it);
+      * the ESIC employer code only where an employee is insured (`DemoEmployee.esi_applicable`), because a code recorded for an
+        employer with nobody insured would say a registration the fixture has no reason to state.
+
+    Empty for a client with no payroll. Derived from the client's PAN, so two runs give the same number."""
+    if not client.employees:
+        return {}
+    out = {"epf_establishment_code": f"SEED-EPF-{client.pan}"}
+    if any(e.esi_applicable for e in client.employees):
+        out["esic_employer_code"] = f"SEED-ESIC-{client.pan}"
+    return out
+
+
+class RemunerationCredit(NamedTuple):
+    """One quarter's remuneration credited to one partner's current account."""
+    on: str                   # YYYY-MM-DD, the last day of the quarter
+    partner: "DemoPartner"
+    amount_paise: int
+
+
+def partner_remuneration_credits(client: "DemoClient", financial_year: str) -> tuple[RemunerationCredit, ...]:
+    """The remuneration a firm credits its partners, on the last day of each quarter whose months are posted (PRE-A-004).
+
+    The quarter that ends in `draft_month` is not credited: nothing in the draft month is posted, and a credit there would
+    be the one posting of that month. So a year shows three quarters credited and the last one still to come, which is
+    where the payroll and the GST returns of the same month stand. Derived and pure: the dates come from the year's own
+    months, never a clock, and the amounts are the partners' own."""
+    if not client.partners:
+        return ()
+    draft = draft_month(financial_year)
+    out = []
+    for m in _fy_months(financial_year):
+        if m.month not in (6, 9, 12, 3) or m.isoformat()[:7] == draft:
+            continue
+        last_day = (date(m.year + (m.month == 12), m.month % 12 + 1, 1) - timedelta(days=1)).isoformat()
+        for p in client.partners:
+            out.append(RemunerationCredit(last_day, p, p.remuneration_per_quarter_paise))
+    return tuple(out)
 
 
 def engagements_for(client: "DemoClient") -> tuple[DemoEngagement, ...]:
@@ -1700,6 +1815,20 @@ def _finished(client: "DemoClient", financial_year: str) -> "DemoClient":
     )
 
 
+def _recorded_where_reverse_charge_needs_it(client: "DemoClient", financial_year: str) -> "DemoClient":
+    """Record as UNREGISTERED each unregistered vendor that a posted reverse-charge bill of this client comes from (PRE-A-004).
+
+    That is the case CGST s.31(3)(f) asks a self-invoice for, and with the status left unrecorded `rcm_documents` cannot say the
+    document is due, so the seeded firm never showed one. Only those vendors: an unregistered party with no reverse-charge bill
+    stays unrecorded, which keeps the named gap on the screen. No random draw is made, so nothing else in the fixture moves."""
+    draft = draft_month(financial_year)
+    parties = {d.party % len(client.vendors) for d in client.purchases
+               if d.is_reverse_charge and d.doc_date[:7] != draft} if client.vendors else set()
+    vendors = tuple(replace(v, registration_recorded="unregistered") if i in parties and v.gstin is None else v
+                    for i, v in enumerate(client.vendors))
+    return replace(client, vendors=vendors) if vendors != client.vendors else client
+
+
 def build(financial_year: str = "2025-26") -> DemoFirm:
     """The practice, for one financial year.
 
@@ -1724,7 +1853,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                sales_per_month=(2, 5), purchases_per_month=(1, 4),
                away_every=7, rcm_every=0, employees=0, sales_tds_bps=0,
                frequency="monthly", banks=(), operating_lines=(),
-               assets=(), cwip_projects=(), income_tax=None,
+               assets=(), cwip_projects=(), income_tax=None, partners=(),
                size: Proportions) -> DemoClient:
         return _finished(_in_proportion(DemoClient(
             name=name, legal_name=legal, entity_type=entity, pan=pan_value,
@@ -1747,12 +1876,13 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
             # bills 200 → 209 on a change that added no document. Same trap
             # `_documents` records for the settlement stream, one level up.
             employees=_employees(rng, employees, f"{financial_year[:4]}-04-01",
-                                 code_prefix=f"{name[:3].upper()}-"),
+                                 code_prefix=f"{name[:3].upper()}-", financial_year=financial_year),
             banks=banks,
             bank_lines=_bank_lines(months, operating_lines) if banks else (),
             assets=assets,
             cwip_projects=cwip_projects,
             income_tax=income_tax,
+            partners=partners,
             # A month of payroll needs somebody to pay. The states the months
             # are left in are the engine's own (see _payroll_months); nothing
             # here chooses per client, because a demo in which one client's
@@ -1965,6 +2095,10 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                             "partner payment, and the firm rate the entity "
                             "registry holds",
                customers=3, vendors=3, sales_per_month=(1, 3),
+               # Two partners, each credited Rs 30,000 a quarter, the deed's figure (how much of it section 40(b) allows the
+               # firm to deduct is not asked here). The tax withheld under section 194T is the engine's.
+               partners=(DemoPartner("Suresh Deshmukh", pan("ACQPD", "4410", "H"), 30_000_00),
+                         DemoPartner("Mahesh Deshmukh", pan("ACQPD", "5521", "J"), 30_000_00)),
                banks=(DemoBankAccount("Bank of Baroda", "04410200009876",
                                       "BARB0PUNEXX",
                                       opening_balance_paise=7_00_000_00),),
@@ -1986,6 +2120,7 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                income_tax=DemoIncomeTax(
                    itr_form="ITR-3",
                    salary_paise=18_00_000_00, salary_tds_paise=2_00_000_00,
+                   employer_name="Sahyadri Analytics Private Limited", employer_tan="PNES04512K",
                    other_income_paise=85_000_00, savings_interest_paise=12_000_00,
                    capital_gain=DemoCapitalGain(
                        "Listed equity shares (demat)", "equity_shares",
@@ -2048,6 +2183,8 @@ def build(financial_year: str = "2025-26") -> DemoFirm:
                                 suspended=(10, 1)),
                )),
     )
+
+    clients = tuple(_recorded_where_reverse_charge_needs_it(c, financial_year) for c in clients)
 
     return DemoFirm(
         name="Sharma & Associates",
