@@ -18,7 +18,7 @@ from models.common import api_response
 from models.inventory import (StockAdjustmentIn, NrvWritedownIn, NrvWritedownPreviewIn,
                               NrvReviewSheetIn, NrvReviewPostIn,
                               StockCountOpenIn, StockCountSaveIn,
-                              CostingPolicyIn, StockEffectRetryIn)
+                              CostingPolicyIn, StockEffectRetryIn, StockEffectSettleIn)
 from core.permissions import rbac
 from core.authz import assert_client_access
 from core.db_paging import fetch_all_ordered
@@ -454,6 +454,101 @@ def retry_stock_effect(
         new_data={"kind": data.kind, "recorded": answer.get("recorded")},
     )
     return api_response(True, answer)
+
+
+@router.get("/stock-effects/settled")
+def documents_marked_settled(
+    client_id: str = Query(...),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The client's documents the CA marked as settled by hand (POST-A-092, migration 620), newest first, each with the reason they typed. A read that could
+    not be made is a failure, never an empty list: an empty list means no document is marked."""
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"settlements": []})
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    try:
+        rows = retry_service.settlements(get_supabase(), firm_id=current_user.get("firm_id") or "", client_id=client_id)
+    except Exception as e:
+        _logger.error("documents_marked_settled: %s", type(e).__name__)
+        return api_response(False, None, "Could not read the documents marked as settled just now. This is not the same as there being none.")
+    return api_response(True, {"settlements": rows})
+
+
+@router.post("/stock-effects/settle")
+def settle_stock_effect(
+    data: StockEffectSettleIn,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Mark ONE listed document's stock effect as settled by hand, with the reason the CA gives (POST-A-092, migration 620): the list stops offering it and
+    "Complete the stock" refuses it in words. It moves no stock and posts no journal, and it does not check the claim: it records it, with who and when.
+    A missing document and another client's are the same 404; a document that is not on the list is refused in words."""
+    from domain.inventory import stock_settlement
+    assert_client_access(current_user, data.client_id)
+    problem = stock_settlement.reason_problem(data.reason)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+    if _USE_MOCK:
+        return api_response(False, None, "A document cannot be marked in the demo without a database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    try:
+        mark = retry_service.settle(
+            get_supabase(), firm_id=firm_id, client_id=data.client_id, kind=data.kind, document_id=data.document_id, reason=data.reason,
+            # users.id is the internal id, as for every `*_by` column; the name is kept as it was when the mark was made.
+            settled_by=current_user.get("id"), settled_by_name=current_user.get("full_name") or current_user.get("email"),
+        )
+    except retry_service.NotFound:
+        raise HTTPException(status_code=404, detail="Document not found.") from None
+    except retry_service.Refused as refusal:
+        raise HTTPException(status_code=409, detail=str(refusal)) from None
+    except ValueError as bad:
+        raise HTTPException(status_code=422, detail=str(bad)) from None
+    except HTTPException:
+        raise
+    except Exception as e:
+        _logger.error("settle_stock_effect: %s", type(e).__name__)
+        return api_response(False, None, "Unable to mark this document just now. Nothing was changed.")
+    log_event(
+        firm_id, "stock_effect", data.document_id, "settle",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        new_data={"kind": data.kind, "reason": mark["reason"]},
+    )
+    return api_response(True, mark)
+
+
+@router.delete("/stock-effects/settled/{settlement_id}")
+def take_back_a_stock_settlement(
+    settlement_id: str,
+    current_user: dict = Depends(rbac("accounting", "write")),
+):
+    """Take a mark back (POST-A-092): the document is listed again if its stock is still not all recorded. The mark's own client is the one whose access is
+    proved; a missing mark, another firm's and an id that is not one are the same 404."""
+    if _USE_MOCK:
+        return api_response(False, None, "A mark cannot be taken back in the demo without a database.")
+    firm_id = current_user.get("firm_id") or ""
+    from core.supabase_client import get_supabase
+    from services import stock_effect_retry_service as retry_service
+    db = get_supabase()
+    try:
+        mark = retry_service.get_settlement(db, firm_id=firm_id, settlement_id=settlement_id)
+    except retry_service.NotFound:
+        raise HTTPException(status_code=404, detail="Mark not found.") from None
+    assert_client_access(current_user, mark["client_id"], detail="Mark not found.")
+    try:
+        retry_service.remove(db, firm_id=firm_id, client_id=mark["client_id"], settlement_id=settlement_id)
+    except Exception as e:
+        _logger.error("take_back_a_stock_settlement: %s", type(e).__name__)
+        return api_response(False, None, "Unable to take the mark off just now. Nothing was changed.")
+    log_event(
+        firm_id, "stock_effect", str(mark.get("document_id") or settlement_id), "unsettle",
+        actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+        new_data={"kind": mark.get("document_kind")},
+    )
+    from domain.inventory import stock_settlement
+    return api_response(True, {"removed": True, "message": stock_settlement.TAKEN_BACK})
 
 
 @router.post("/items/{service_catalogue_id}/writedown")

@@ -225,3 +225,9 @@ class StockEffectRetryIn(BaseModel):
         except (ValueError, AttributeError, TypeError):
             raise ValueError("document_id must be the document's id.") from None
         return str(value)
+
+
+class StockEffectSettleIn(StockEffectRetryIn):
+    """Mark one issued document's stock effect as settled by hand (POST-A-092): the same document key as a retry, and the reason the CA gives.
+    The reason is judged by `domain/inventory/stock_settlement.reason_problem` at the route, so one speaker words the refusal."""
+    reason: str
