@@ -152,6 +152,10 @@ NOT_FOR_THE_API = {
     # which is their one reader and writer (`ecommerce_operator_service`, naming the firm and the client after the route's own
     # client check); `authenticated`, `anon` and PUBLIC hold no privilege, and the deny-list test below proves it for each name.
     "ecommerce_operator_supply_amendments", "ecommerce_operator_unregistered_supply_amendments",
+    # Migration 620 (POST-A-092): the marks that a document's stock was put right by hand. Created for the API's privileged client
+    # alone, which is its one reader and writer (the stock-effect retry service, naming the firm and the client); `authenticated`,
+    # `anon` and PUBLIC hold no privilege, and the deny-list test below proves it.
+    "stock_effect_settlements",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.
