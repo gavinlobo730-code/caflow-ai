@@ -12,8 +12,10 @@ WHAT IS HELD
     * the batch posts through `apply_nrv_writedown`, one movement and one journal per line that needs one, all under the batch's
       reference, leaves a line that needs nothing alone and names it, and names a line that could not be recorded;
     * posting the same sheet twice writes nothing the second time;
-    * a line naming an item twice, an item that is not this client's good, an empty batch and more lines than one request carries are
-      each refused before anything is written;
+    * a line naming an item twice, an item that is not this client's good, an empty batch and more lines than one POSTING carries are
+      each refused before anything is written; the preview is not capped (the screen works the whole sheet out at once and posts it in
+      parts), and still refuses an item named twice;
+    * a finalised client year refuses both NRV doors before a stock row is written, as the stock-effect retry is refused;
     * one audit entry per line, the single door's event;
     * a journal that did not post behind a written-down item is said, never reported as posted.
 """
@@ -254,3 +256,98 @@ def test_the_sheet_and_the_single_preview_share_the_postings_arithmetic():
     assert "_compute_nrv_writedown(" in answer and "_round_paise" not in answer
     import services.nrv_review_service as service
     assert "apply_nrv_writedown(" in inspect.getsource(service.post_review), "the batch posts through the single door's function"
+
+
+# ── the review of POST-A-111: the preview is not capped, and a finalised client year refuses both doors ──────────────────────────────
+
+def _seed_many(db, n: int) -> list[str]:
+    ids = [f"G{i:03d}" for i in range(n)]
+    for gid in ids:
+        db.seed("service_catalogue", {"id": gid, "firm_id": FIRM, "client_id": "CLI", "name": f"Part {gid}", "kind": "good",
+                                      "gst_rate_bps": 1800})
+        _seed_stock(db, gid, "10", 10_000)
+    return ids
+
+
+def test_a_sheet_of_more_typed_lines_than_one_posting_carries_is_still_worked_out(monkeypatch):
+    """"Work out the write-downs" sends every typed line at once. While the preview shared the posting's cap, a register with more than
+    MAX_LINES typed lines was refused there and so could never be posted (the screen posts in parts, but only a sheet it has worked out)."""
+    db = _setup(monkeypatch)
+    ids = _seed_many(db, nrv_review.MAX_LINES + 5)
+    got = _sheet([(gid, 500) for gid in ids])
+    assert got["entered_count"] == nrv_review.MAX_LINES + 5
+    assert got["write_down_count"] == nrv_review.MAX_LINES + 5 and got["write_down_paise"] == (nrv_review.MAX_LINES + 5) * 5_000
+    assert nrv_review.lines_problem(ids, capped=False) is None
+
+
+def test_the_preview_still_refuses_an_item_named_twice_and_the_posting_keeps_its_cap(monkeypatch):
+    db = _setup(monkeypatch)
+    ids = _seed_many(db, nrv_review.MAX_LINES + 1)
+    with pytest.raises(HTTPException) as e:
+        _sheet([(ids[0], 500), (ids[0], 400)] + [(gid, 500) for gid in ids[1:]])
+    assert e.value.status_code == 422 and "more than once" in e.value.detail
+    with pytest.raises(HTTPException) as e:
+        _post([(gid, 500) for gid in ids])
+    assert e.value.status_code == 422 and e.value.detail.startswith("A review can post at most")
+    assert _nrv_rows(db) == []
+
+
+def test_the_screen_posts_in_parts_the_server_takes_and_works_the_whole_sheet_out_at_once():
+    """Held from the side that owns the cap: the panel's part size is within `MAX_LINES`, every posting request is one part of the
+    lines, and the preview is asked for the lines as they are."""
+    import pathlib
+    import re
+    panel = (pathlib.Path(__file__).resolve().parents[3] / "apps" / "web" / "components" / "inventory" / "NrvReviewPanel.tsx").read_text()
+    part = re.search(r"export const NRV_REVIEW_PART = (\d+);", panel)
+    assert part and 0 < int(part.group(1)) <= nrv_review.MAX_LINES
+    assert "lines: lines.slice(at, at + NRV_REVIEW_PART)" in panel
+    assert "api.inventory.nrvReview({ client_id: clientId, lines: asked })" in panel and "onClick={() => ask(lines)}" in panel
+
+
+def _close_the_clients_year(db, fy="2026-27"):
+    db.seed("client_year_locks", {"id": "LOCK", "firm_id": FIRM, "client_id": "CLI", "financial_year": fy,
+                                   "reason": "Year-end engagement finalised"})
+
+
+def test_a_finalised_client_year_refuses_the_batch_before_any_line_is_written(monkeypatch):
+    db = _setup(monkeypatch)
+    _seed_register(db)
+    _close_the_clients_year(db)
+    with pytest.raises(HTTPException) as e:
+        _post([("ROD", 1000), ("BOLT", 70_000)])
+    assert e.value.status_code == 422 and "closed for this client" in e.value.detail
+    assert _nrv_rows(db) == [] and [r for r in db.rows("journal_entries") if r.get("source_type") == "nrv_writedown"] == []
+
+
+def test_a_finalised_client_year_refuses_the_single_write_down_before_the_stock_row_is_written(monkeypatch):
+    from models.inventory import NrvWritedownIn
+    db = _setup(monkeypatch)
+    _seed_register(db)
+    _close_the_clients_year(db)
+    with pytest.raises(HTTPException) as e:
+        inv.writedown_stock_to_nrv("BOLT", NrvWritedownIn(client_id="CLI", writedown_date="2026-04-20", nrv_per_unit_paise=70_000), CALLER)
+    assert e.value.status_code == 422 and "closed for this client" in e.value.detail
+    assert _nrv_rows(db) == []
+
+
+def test_another_years_closure_does_not_refuse_either_door(monkeypatch):
+    from models.inventory import NrvWritedownIn
+    db = _setup(monkeypatch)
+    _seed_register(db)
+    _close_the_clients_year(db, fy="2025-26")
+    assert _post([("ROD", 1000)])["posted_count"] == 1
+    out = inv.writedown_stock_to_nrv("BOLT", NrvWritedownIn(client_id="CLI", writedown_date="2026-04-20", nrv_per_unit_paise=70_000), CALLER)
+    assert out["success"] is True and out["data"]
+    assert len(_nrv_rows(db)) == 2
+
+
+def test_both_doors_ask_the_clients_closures_before_they_write():
+    """The rule, not a spelling of one door: each NRV door calls `assert_not_closed` with the client and the write-down's date, after
+    the firm's own year and before `apply_nrv_writedown` or the batch."""
+    import inspect
+    for fn, writer in ((inv.writedown_stock_to_nrv, "apply_nrv_writedown("), (inv.post_nrv_review, "nrv_review_service.post_review(")):
+        src = inspect.getsource(fn)
+        ask = src.find("period_lock_service.assert_not_closed(")
+        assert ask != -1, f"{fn.__name__} does not ask the client's closures"
+        assert "data.client_id, data.writedown_date)" in src[ask:ask + 200]
+        assert src.find("validate_posting_date(") < ask < src.find(writer), f"{fn.__name__} asks in the wrong place"

@@ -1,9 +1,10 @@
 /**
  * The deductions typed on the TDS screen that a statement built from the books leaves out (POST-A-078).
  *
- * The 26Q built from the books reads posted purchase bills and withholding advances only, so a deduction a CA typed on the TDS screen (a register row that neither a
- * bill nor an advance wrote) is not on it. The server NAMES them (`excluded_typed`: how many, the tax they withheld, its own sentence and each row) and adds nothing to
- * the statement's totals. This module only READS that answer. It sums nothing, words nothing and decides nothing.
+ * The 26Q built from the books carries the deductions a CA typed on the TDS screen (register rows that neither a bill nor an advance wrote) as deductee rows, except
+ * two kinds: a row recorded for another statement, and a row naming a supplier now recorded as non-resident (which the 27Q built from the books does not carry
+ * either). The server NAMES those (`excluded_typed`: how many, the tax they withheld, its own sentence saying why and where to key them, and each row) and adds
+ * nothing to the statement's totals. This module only READS that answer. It sums nothing, words nothing and decides nothing.
  *
  * FOUR states, and they are kept apart because they are not the same fact:
  *   * `some`       a positive count and a tax the server stated: the note is drawn from them.

@@ -33,9 +33,11 @@ def _review_goods(db, firm_id: str, client_id: str) -> list[dict]:
         ("name",), label="inventory.nrv_review_items")
 
 
-def _refuse_review_lines(item_ids: list[str], goods: list[dict], *, allow_empty: bool) -> None:
+def _refuse_review_lines(item_ids: list[str], goods: list[dict], *, allow_empty: bool, capped: bool) -> None:
+    """Refuse the request's lines before anything is read: an empty batch (where one is not allowed), more lines than one posting
+    carries (where `capped`), an item named twice, or a line that is not one of this client's goods."""
     if not (allow_empty and not item_ids):
-        problem = nrv_review.lines_problem(item_ids)
+        problem = nrv_review.lines_problem(item_ids, capped=capped)
         if problem:
             raise HTTPException(status_code=422, detail=problem)
     problem = nrv_review.unknown_items_problem(item_ids, [g["id"] for g in goods])
@@ -45,12 +47,16 @@ def _refuse_review_lines(item_ids: list[str], goods: list[dict], *, allow_empty:
 
 def review_sheet(db, *, firm_id: str, client_id: str, lines: list[dict]) -> dict:
     """The review sheet with the CA's typed NRVs applied: every good that holds stock now, what it holds, and what each typed NRV
-    would write down. Reads only: no ledger row, no journal, no audit entry. An empty `lines` is the sheet as it stands."""
+    would write down. Reads only: no ledger row, no journal, no audit entry. An empty `lines` is the sheet as it stands.
+
+    NOT CAPPED AT `MAX_LINES`: the screen asks for every typed line at once, the register is read in one question whatever is asked,
+    and the lines are bounded by the client's own goods (anything else is refused below, and so is an item named twice). The cap is
+    the posting's, which the screen sends in parts."""
     from services.stock_latest_rows_service import latest_rows_for
 
     goods = _review_goods(db, firm_id, client_id)
     item_ids = [str(line["service_catalogue_id"]) for line in lines]
-    _refuse_review_lines(item_ids, goods, allow_empty=True)
+    _refuse_review_lines(item_ids, goods, allow_empty=True, capped=False)
     latest = latest_rows_for(db, firm_id, client_id, {g["id"] for g in goods})
     typed = {str(line["service_catalogue_id"]): int(line["nrv_per_unit_paise"]) for line in lines}
     return nrv_review.build_sheet(goods, latest, typed)
@@ -77,16 +83,18 @@ def post_review(db, *, firm_id: str, client_id: str, writedown_date: str, refere
          created_by: Optional[str]) -> dict:
     """Write each line's item down to the NRV the CA entered, under one reference, through the single-item door's function.
 
-    The firm's locked year is asked by the route before this runs; the posting kernel asks the client's closed and finalised years for
-    every journal. The filed-return lock is not asked, for the single door's reason: a write-down carries no GST line and reverses no
-    credit, so it cannot change what a return said."""
+    The firm's locked year and the client's finalised year are asked by the route before this runs (`period_lock_service.
+    assert_not_closed`, as the single door asks them): the posting kernel asks the same closures for every journal, but only after
+    `apply_nrv_writedown` has written the line's stock row, which would then stand in a closed year with no journal behind it. The
+    filed-return lock is not asked, for the single door's reason: a write-down carries no GST line and reverses no credit, so it
+    cannot change what a return said."""
     from domain.inventory_service import apply_nrv_writedown, nrv_writedown_answer, resolve_costing_policy
     from services.stock_latest_rows_service import latest_rows_for
 
     goods = _review_goods(db, firm_id, client_id)
     names = {str(g["id"]): g.get("name") or "" for g in goods}
     item_ids = [str(line["service_catalogue_id"]) for line in lines]
-    _refuse_review_lines(item_ids, goods, allow_empty=False)
+    _refuse_review_lines(item_ids, goods, allow_empty=False, capped=True)
 
     # What each line would do as the batch starts, read once for the sheet: it is what tells a line that needed nothing from one that
     # needed a write-down and did not get one (`apply_nrv_writedown` answers None for both, by design).

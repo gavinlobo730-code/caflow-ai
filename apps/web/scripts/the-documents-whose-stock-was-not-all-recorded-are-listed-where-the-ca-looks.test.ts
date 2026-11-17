@@ -111,13 +111,13 @@ test("the panel reads the marks, writes one and takes one back through the API c
   assert.match(api, /\/api\/inventory\/stock-effects\/settled\/\$\{encodeURIComponent\(settlementId\)\}`, \{ method: "DELETE" \}/);
 });
 
-/** The Buttons that start a write (named by what they say) that are NOT inside a `canWrite && (...)`, found in the syntax tree and not by spelling. */
+/** The Buttons that start a write (named by what they say) that are NOT inside a `mayWriteBooks && (...)`, found in the syntax tree and not by spelling. */
 function writeButtonsOutsideCanWrite(rel: string, labels: string[]): { drawn: string[]; unguarded: string[] } {
   const sf = ts.createSourceFile(rel, fs.readFileSync(path.join(WEB, rel), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const drawn: string[] = [];
   const unguarded: string[] = [];
   const visit = (node: ts.Node, guarded: boolean) => {
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && node.left.getText(sf) === "canWrite") {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && node.left.getText(sf) === "mayWriteBooks") {
       visit(node.right, true);
       return;
     }
@@ -138,15 +138,15 @@ function writeButtonsOutsideCanWrite(rel: string, labels: string[]): { drawn: st
 
 test("both buttons that write are offered only to someone the routes admit, and a reader sees the list without them", () => {
   const src = code(PANEL);
-  assert.match(src, /const \{ can \} = usePermissions\(\);/);
-  assert.match(src, /const canWrite = can\("accounting", "write"\);/);
+  assert.match(src, /const \{ can: canDo, resolved: permissionsRead \} = usePermissions\(\);/);
+  assert.match(src, /const mayWriteBooks = canDo\("accounting", "write"\);/);
   const found = writeButtonsOutsideCanWrite(PANEL, ["Complete the stock", "Mark as settled", "Take the mark off"]);
   assert.deepEqual([...new Set(found.drawn)].sort(), ["Complete the stock", "Mark as settled", "Take the mark off"], "a button is no longer drawn by the panel");
   assert.deepEqual(found.unguarded, [], "a button that writes is offered to someone the route would refuse");
 });
 
 test("self-test: the rule finds a write button drawn outside the permission", () => {
-  const spoiled = fs.readFileSync(path.join(WEB, PANEL), "utf8").replace("{canWrite && (\n                      <>", "{(\n                      <>");
+  const spoiled = fs.readFileSync(path.join(WEB, PANEL), "utf8").replace("{mayWriteBooks && (\n                      <>", "{(\n                      <>");
   assert.notEqual(spoiled, fs.readFileSync(path.join(WEB, PANEL), "utf8"), "the self-test's anchor is gone");
   const tmp = path.join(WEB, "components", "inventory", "__spoiled_unrecorded_panel.tsx");
   fs.writeFileSync(tmp, spoiled);

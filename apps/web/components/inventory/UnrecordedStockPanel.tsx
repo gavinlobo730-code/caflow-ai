@@ -31,7 +31,6 @@ import { Callout } from "@/components/ui/callout";
 import { Modal } from "@/components/ui/modal";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { useSingleFlight } from "@/lib/async/useSingleFlight";
-import { usePermissions } from "@/lib/auth/AuthContext";
 import { formatDate } from "@/lib/dates/format";
 
 /** The words for the four kinds. The kinds themselves are the server's (`stock_effect.DOCUMENTS`); a test on the Python side holds the two lists equal. */
@@ -317,7 +316,7 @@ export function UnrecordedStockPanel({ clientId }: { clientId: string }) {
           <p className="px-5 pt-3 text-xs text-ps-body">
             Each document below is in the books and the return. Completing the stock moves only the lines that did not move and journals
             what has no journal; a line already recorded is never recorded twice. The server says in words when it cannot finish one.
-            {permissionsRead && !mayWriteBooks && " Completing a document's stock needs write access to the books, so the button is not shown to you."}
+            {permissionsRead && !mayWriteBooks && " Completing a document's stock, or marking it as settled by hand, needs write access to the books, so those buttons are not shown to you."}
           </p>
           <table className="w-full text-sm">
             <thead>

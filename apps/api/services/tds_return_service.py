@@ -62,7 +62,9 @@ bill's, fills it from the quarter's challans by the same FIFO the register's own
 fill, so a statement that left them out disagreed with them about which deduction a challan paid), and gives it its payment code. It has no journal behind
 it, so the tie-out with the TDS Payable account compares the bills and advances alone (`reconciliation.books_paise`) and the typed tax is reported beside it
 (`reconciliation.typed_paise`, and `typed_on_statement`: how many, the tax, each row and a sentence that says so). A typed row recorded for another statement
-(`return_type`, the register's routing key) is not carried and is named in `excluded_typed`.
+(`return_type`, the register's routing key) is not carried and is named in `excluded_typed`. So is a typed row naming a supplier now recorded as non-resident, with
+its own sentence: it is NOT put in `excluded_non_resident`, whose note sends the CA to the 27Q built from the books, because that statement reads bills and advances
+only and the typed row would be on neither.
 
 Integer paise throughout. # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT.
 """
@@ -225,7 +227,8 @@ def _typed_deductions_in_quarter(db, firm_id: str, client_id: str, start: str, e
 
 #: The sentence the two return screens show after the count and the tax of the typed deductions the statement LEAVES OUT (the drive's copy of it is compared
 #: with this by a test). It does not repeat the lead, which the screen writes from the count and the tax: that these are the deductions typed on the TDS screen,
-#: and that they are not on the statement. Since POST-A-078 carried the typed rows, the ones left out are those whose register row names another statement.
+#: and that they are not on the statement. Since POST-A-078 carried the typed rows, this is the sentence for the ones whose register row names another statement;
+#: a typed row whose supplier is now recorded as non-resident is left out too, and `_excluded_typed_reason` words that one.
 EXCLUDED_TYPED_REASON = (
     "Their register rows are recorded for another statement, so they are not in this one's totals. Key them on the statement they are "
     "recorded for, or correct the register row if they belong on this one."
@@ -237,6 +240,32 @@ TYPED_ON_STATEMENT_REASON = (
     "Each is a deductee row under the challan that paid it, like a bill's. No journal stands behind a deduction typed on the TDS screen, so the tie-out with "
     "the TDS Payable account compares the purchase bills and advances alone, and these are outside it."
 )
+
+
+def _excluded_typed_reason(other_statement: list[dict], non_resident: list[dict], fy: str) -> str:
+    """The sentence after the lead of `excluded_typed`, for the two reasons a typed deduction is left off the 26Q: its register row is recorded for another
+    statement (`EXCLUDED_TYPED_REASON`, unchanged where it is the only reason), or the supplier it names is NOW recorded as non-resident.
+
+    THE SECOND IS NOT THE NON-RESIDENT NOTE'S (the review of POST-A-078). That note tells the CA to build the 27Q for the same quarter, and `tds_27q_from_books`
+    reads purchase bills and advances only, so a typed row moved there would be on neither statement while the screen said it was on the other. This says so: the
+    payment belongs on the non-resident statement under Rule 31A(4)(b), the one built from the books does not carry it, and the CA keys it there from the register
+    or corrects the supplier's record."""
+    if not non_resident:
+        return EXCLUDED_TYPED_REASON
+    form = _vocabulary.statement_form(_vocabulary.NON_RESIDENT, fy_label=fy)
+    one = len(non_resident) == 1
+    tail = (
+        f" now recorded as non-resident, so {'it belongs' if one else 'they belong'} on Form {form} under Rule 31A(4)(b) and not on this statement, and the "
+        f"Form {form} built from the books carries purchase bills and advances only, not deductions typed on the TDS screen. Key {'it' if one else 'them'} on "
+        f"Form {form} from the TDS register, or correct the supplier's record where the supplier is a resident.")
+    if not other_statement:
+        return ("The supplier it names is" if one else "The suppliers they name are") + tail
+    alone = len(other_statement) == 1
+    return (
+        f"{'One of them is' if alone else f'{len(other_statement)} of them are'} recorded for another statement: key "
+        f"{'it on the statement it is' if alone else 'them on the statement they are'} recorded for, or correct the register row if "
+        f"{'it belongs' if alone else 'they belong'} on this one. "
+        + ("One of them names a supplier that is" if one else f"{len(non_resident)} of them name suppliers that are") + tail)
 
 
 def _on_this_statement(row: dict) -> bool:
@@ -666,12 +695,20 @@ def tds_26q_from_books(
     # Reported, never silent: a total that quietly drops between one quarter
     # and the next is exactly the kind of thing nobody notices until a notice
     # arrives.
-    excluded_non_resident = [
-        e for e in events
-        if is_non_resident((vendors.get(e.get("vendor_id")) or {}).get("residential_status"))
-    ]
-    if excluded_non_resident:
-        excluded_ids = {e["id"] for e in excluded_non_resident}
+    #
+    # BILLS AND ADVANCES ONLY in that note. It sends the CA to the 27Q built
+    # from the books, which reads bills and advances and nothing else, so a
+    # typed row whose supplier is now recorded as non-resident is left out with
+    # the typed deductions instead (`excluded_typed`), in a sentence that says
+    # the 27Q built from the books does not carry it.
+    def _now_non_resident(e: dict) -> bool:
+        return is_non_resident((vendors.get(e.get("vendor_id")) or {}).get("residential_status"))
+
+    excluded_non_resident = [e for e in events if e["kind"] != "typed" and _now_non_resident(e)]
+    typed_non_resident_ids = {e["id"] for e in events if e["kind"] == "typed" and _now_non_resident(e)}
+    typed_non_resident = [r for r in typed_rows if r["id"] in typed_non_resident_ids]
+    excluded_ids = {e["id"] for e in excluded_non_resident} | typed_non_resident_ids
+    if excluded_ids:
         events = [e for e in events if e["id"] not in excluded_ids]
 
     # Non-salary challans only — a firm's TDS Payable challan for section 192
@@ -738,7 +775,7 @@ def tds_26q_from_books(
     )
     # The typed deductions this statement leaves out (POST-A-078) are labelled by the same call as the deductees', so a section the period's Act has no code for is
     # named once, in the same gap.
-    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees] + [r.get("section") for r in typed_left])
+    _sec_labels, _sec_gaps = _section_labels(fy, [d.section for d in deductees] + [r.get("section") for r in typed_left + typed_non_resident])
     # TDS-31: the numeric payment code each row of a 2025-Act statement
     # carries, asked of the rows the PAYLOAD holds (26Q drops §192 rows).
     _pay_rows, _pay_notes = _payment_codes(fy, payload.deductees)
@@ -837,9 +874,11 @@ def tds_26q_from_books(
               "transaction_date": e["on_date"], "payment_amount_paise": e["base_paise"], "tds_paise": e["tds_paise"]}
              for e, d in zip(events, deductees, strict=True) if e["kind"] == "typed" and e["section"] != "192"],
             _sec_labels, _typed_on_statement_reason(typed_events, fy)),
-        # WHAT THE STATEMENT LEAVES OUT THAT THE REGISTER HOLDS: the typed deductions recorded for another statement. Named with their count, tax and each row,
-        # like the non-resident payments above, because a statement that is silent about them reads as a complete one.
-        "excluded_typed": _typed_note(typed_left, _sec_labels, EXCLUDED_TYPED_REASON),
+        # WHAT THE STATEMENT LEAVES OUT THAT THE REGISTER HOLDS: the typed deductions recorded for another statement, and those naming a supplier now recorded as
+        # non-resident (which the 27Q built from the books does not carry either, and the sentence says so). Named with their count, tax and each row, like the
+        # non-resident payments above, because a statement that is silent about them reads as a complete one.
+        "excluded_typed": _typed_note(typed_left + typed_non_resident, _sec_labels,
+                                      _excluded_typed_reason(typed_left, typed_non_resident, fy)),
         "validation_errors": payload.validation_errors,
         "warnings": payload.warnings,
         "reconciliation": {

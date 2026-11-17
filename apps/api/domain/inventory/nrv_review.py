@@ -30,8 +30,12 @@ from typing import Iterable, Mapping, Optional
 
 from domain.money_sentence import rupee_text
 
-#: The most lines one request may carry. Each line is several round trips to the database when it posts, and a request that
-#: outlives the browser's wait is a request whose outcome the person cannot see; the screen sends a longer sheet in parts.
+#: The most lines one POSTING request may carry. Each line is several round trips to the database when it posts, and a request that
+#: outlives the browser's wait is a request whose outcome the person cannot see; the screen posts a longer sheet in parts.
+#: THE PREVIEW HAS NO SUCH CAP, and must not (the review of POST-A-111): the screen asks it for every typed line at once, it reads
+#: the whole register in one question whatever it is asked, and its lines are bounded already by the client's own goods (a line
+#: naming anything else is refused, and so is an item named twice). A cap there refused a register of more than 100 typed lines
+#: outright, so a sheet that size could never be worked out and so never posted.
 MAX_LINES = 100
 
 NOT_ENTERED = "not_entered"
@@ -50,15 +54,16 @@ NO_NRV_OF_OUR_OWN = (
 )
 
 
-def lines_problem(item_ids: Iterable[str]) -> Optional[str]:
+def lines_problem(item_ids: Iterable[str], *, capped: bool = True) -> Optional[str]:
     """The one refusal a request's lines can earn before anything is read: none, too many, or one item twice.
 
     An item named twice would be written down twice in one request (the second line measured on the first one's result),
-    so it is refused rather than taken as either figure."""
+    so it is refused rather than taken as either figure. `capped` is the posting's question; the preview asks with it off
+    (see `MAX_LINES`) and is still refused an item named twice."""
     ids = [str(i) for i in item_ids]
     if not ids:
         return "Enter a net realisable value for at least one item."
-    if len(ids) > MAX_LINES:
+    if capped and len(ids) > MAX_LINES:
         return f"A review can post at most {MAX_LINES} items in one request; this one names {len(ids)}."
     seen: set[str] = set()
     twice = sorted({i for i in ids if i in seen or seen.add(i)})
