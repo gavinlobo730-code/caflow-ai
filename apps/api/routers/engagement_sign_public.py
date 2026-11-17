@@ -35,6 +35,7 @@ from models.common import api_response
 from routers.engagement_letters import _log_engagement_event, _advance_lead, _revert_lead
 from core import db_provider
 from domain.engagement import expiry
+from core.observability import capture_soft_failure
 
 # ops-30: every route on this router answers a stranger holding a link, and each is a round trip to
 # Postgres. The limit is declared on the ROUTER so a route added here next year is covered by default.
@@ -260,8 +261,8 @@ def sign_letter(token: str, body: SignBody, request: Request):
                   old_data={"status": status},
                   new_data={"status": "Signed", "signed_by_name": update["signed_by_name"]},
                   metadata={"channel": "public_link", "ip": update["signed_ip"]})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagement_sign.audit", firm_id=eng.get("firm_id"), engagement_id=eng.get("id"))
 
     return api_response(True, _public_view(eng, _firm_name(db, eng.get("firm_id"))))
 

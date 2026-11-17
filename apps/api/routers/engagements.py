@@ -11,6 +11,7 @@ from models.fy import OptionalFYLabel
 from core import db_provider
 from services import named_row_ownership
 from models.iso_date import IsoDate, OptionalIsoDate, PatchIsoDate
+from core.observability import capture_soft_failure
 
 router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
@@ -271,15 +272,15 @@ def transition_engagement(
         log_event(firm_id, "engagement", engagement_id, "status_change",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   old_data={"status": old_status}, new_data={"status": body.status})
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagements.transition_audit", firm_id=firm_id, engagement_id=engagement_id)
     try:
         from services.timeline_service import timeline_service
         timeline_service.log(engagement.get("client_id", ""), "compliance", "Engagement Updated",
                              f"{engagement.get('service_type', 'Engagement')}: {old_status} → {body.status}",
                              "info", firm_id=firm_id, entity_type="engagement", entity_id=engagement_id)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        capture_soft_failure(swallowed, operation="engagements.transition_timeline", firm_id=firm_id, engagement_id=engagement_id)
     return api_response(True, {"engagement": updated})
 
 

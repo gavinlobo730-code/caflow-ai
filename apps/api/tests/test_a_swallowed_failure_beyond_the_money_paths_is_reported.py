@@ -50,6 +50,11 @@ CLEARED_FILES = (
     "routers/tasks.py",
     "domain/ai_copilot_service.py",
     "domain/memory_pipeline.py",
+    "routers/branding.py", "routers/document_intelligence_v1.py", "routers/documents.py", "routers/dsc.py",
+    "routers/engagement_sign_public.py", "routers/engagements.py", "routers/practice.py", "routers/relationships.py",
+    "routers/scheduler_status.py", "routers/task_extras.py", "routers/task_templates.py", "routers/year_end_reviews.py",
+    "domain/ai_insight_service.py", "services/employee_portal_service.py", "services/knowledge_service.py",
+    "services/portal_access_service.py",
 )
 
 
@@ -75,7 +80,7 @@ def test_every_report_names_its_operation_literally_and_none_is_shared_with_anot
             assert operation not in seen, f"{operation!r} is used at {seen[operation]} and {relative}:{call.lineno}"
             seen[operation] = f"{relative}:{call.lineno}"
     cleared = [v for v in seen.values() if v.split(":")[0] in CLEARED_FILES]
-    assert len(cleared) >= 60, f"only {len(cleared)} reports in the cleared files: the wiring has regressed"
+    assert len(cleared) >= 90, f"only {len(cleared)} reports in the cleared files: the wiring has regressed"
 
 
 # ── driven for real ─────────────────────────────────────────────────────────────────────────────────
@@ -294,3 +299,63 @@ def test_the_deadline_trigger_parse_that_once_hid_a_type_error_now_reports_it(sp
     finally:
         mod._get_compliance_records_repo = original
     assert ("memory_pipeline.deadline_trigger_parse", {"firm_id": "firm-1", "client_id": "c1"}) in seen
+
+
+# ── third batch: documents, engagements, portals, knowledge, small routers ──────────────────────
+
+def test_the_document_delete_audit_handler_reports():
+    source = ast.parse(_read("routers/documents.py"))
+    assert any(isinstance(n, ast.Call) and getattr(n.func, "id", "") == "capture_soft_failure"
+               and any(k.arg == "operation" and getattr(k.value, "value", "") == "documents.delete_audit" for k in n.keywords)
+               for n in ast.walk(source)), "the delete audit handler must report"
+
+
+def test_the_portal_invitation_reports_without_the_invitees_address(monkeypatch, spy):
+    """A failed invite mail is reported with the firm and the client, and never with the address it was sent to."""
+    import services.portal_access_service as mod
+    seen = spy(mod)
+    import core.urls as urls
+    monkeypatch.setattr(urls, "portal_activate_url", _boom)
+    mod._send_invite_email("someone@example.in", "client-1", "firm-1", "tok")
+    assert seen == [("portal_access.invite_email", {"firm_id": "firm-1", "client_id": "client-1"})]
+    assert "someone@example.in" not in repr(seen)
+
+
+def test_the_employee_portal_invitation_report_carries_no_address(monkeypatch, spy):
+    import services.employee_portal_service as mod
+    seen = spy(mod)
+    monkeypatch.setattr(mod, "_send", _boom, raising=False)
+    try:
+        mod._send_invite_email("emp@example.in", "Asha", "tok")
+    except Exception:
+        pass
+    assert all("emp@example.in" not in repr(ctx) for _, ctx in seen)
+
+
+def test_an_engagement_transition_audit_that_fails_is_reported_with_the_engagement():
+    tree = ast.parse(_read("routers/engagements.py"))
+    ops = {k.value.value for n in ast.walk(tree) if isinstance(n, ast.Call)
+           and getattr(n.func, "id", "") == "capture_soft_failure"
+           for k in n.keywords if k.arg == "operation"}
+    assert {"engagements.transition_audit", "engagements.transition_timeline"} <= ops
+
+
+def test_a_workflow_rule_that_cannot_be_compared_does_not_match_and_a_bad_due_date_is_tolerated():
+    from domain.workflow_engine_v2 import WorkflowEngineV2
+    engine = WorkflowEngineV2.__new__(WorkflowEngineV2)
+    rule = {"field": "amount", "operator": "gt", "value": "ten", "value_type": "number"}
+    assert engine._eval_rule(rule, {"amount": "5"}) is False
+    data = {"due_date": "not-a-date"}
+    engine._evaluate_trigger("compliance_deadline", data) if hasattr(engine, "_evaluate_trigger") else None
+    assert "days_remaining" not in data
+
+
+def test_resetting_a_request_token_from_another_context_is_tolerated_and_other_errors_are_not_swallowed():
+    import contextvars
+    from core import supabase_client as mod
+    handle = contextvars.Context().run(lambda: mod._request_access_token.set("t"))
+    mod.reset_request_token(handle)   # a token made in another context: ValueError, tolerated
+    tree = ast.parse(_read("core/supabase_client.py"))
+    reset = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "reset_request_token")
+    handlers = [h for h in ast.walk(reset) if isinstance(h, ast.ExceptHandler)]
+    assert handlers and all(ast.unparse(h.type) != "Exception" for h in handlers)
