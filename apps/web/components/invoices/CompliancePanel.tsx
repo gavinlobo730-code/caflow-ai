@@ -246,11 +246,11 @@ export function CompliancePanel({
             {mayRecord ? (
               <PrimaryBtn onClick={() => setModal("recordIrn")}>Record IRN</PrimaryBtn>
             ) : permissionsRead ? (
-              <p className="text-2xs text-ps-label">A Manager or a Partner records the IRN once it is generated.</p>
+              <p className="text-2xs text-ps-label">Recording the IRN once it is generated needs permission to approve GST returns, so the button is not shown to you.</p>
             ) : null}
           </div>
         ) : (
-          mayPrepare && <EligibilityBlock elig={irnElig} actionLabel="Prepare IRN" onAction={() => setModal("prepIrn")} />
+          <EligibilityBlock elig={irnElig} actionLabel="Prepare IRN" onAction={() => setModal("prepIrn")} canAct={mayPrepare} permissionsRead={permissionsRead} />
         )}
         <IrpFindings
           findings={invoice.irn_assessment?.irp_findings ?? []}
@@ -280,11 +280,11 @@ export function CompliancePanel({
             {mayRecord ? (
               <PrimaryBtn onClick={() => setModal("recordEway")}>Record E-Way Bill</PrimaryBtn>
             ) : permissionsRead ? (
-              <p className="text-2xs text-ps-label">A Manager or a Partner records the e-way bill once it is generated.</p>
+              <p className="text-2xs text-ps-label">Recording the e-way bill once it is generated needs permission to approve GST returns, so the button is not shown to you.</p>
             ) : null}
           </div>
         ) : (
-          mayPrepare && <EligibilityBlock elig={ewayElig} actionLabel="Prepare E-Way Bill" onAction={() => setModal("prepEway")} />
+          <EligibilityBlock elig={ewayElig} actionLabel="Prepare E-Way Bill" onAction={() => setModal("prepEway")} canAct={mayPrepare} permissionsRead={permissionsRead} />
         )}
       </ComplianceCard>
 
@@ -343,7 +343,12 @@ function ComplianceCard({ icon, title, state, children }: { icon: React.ReactNod
   );
 }
 
-function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: boolean; blockers: string[]; warnings: string[] }; actionLabel: string; onAction: () => unknown }) {
+/** The blockers and warnings are information and are shown to everyone who can open the card; only the button is for someone who
+ *  may prepare the record (`gst` `compute`), and a member who may not is told so in a sentence (POST-A-455). */
+function EligibilityBlock({ elig, actionLabel, onAction, canAct, permissionsRead }: {
+  elig: { eligible: boolean; blockers: string[]; warnings: string[] }; actionLabel: string; onAction: () => unknown;
+  canAct: boolean; permissionsRead: boolean;
+}) {
   return (
     <div className="space-y-2">
       {elig.blockers.map((b, i) => (
@@ -352,7 +357,12 @@ function EligibilityBlock({ elig, actionLabel, onAction }: { elig: { eligible: b
       {elig.warnings.map((w, i) => (
         <p key={`w${i}`} className="text-2xs text-amber-600 flex items-start gap-1"><AlertTriangle size={11} className="mt-0.5 flex-shrink-0" /> {w}</p>
       ))}
-      <PrimaryBtn disabled={!elig.eligible} onClick={onAction}>{actionLabel}</PrimaryBtn>
+      {canAct && (
+        <PrimaryBtn disabled={!elig.eligible} onClick={onAction}>{actionLabel}</PrimaryBtn>
+      )}
+      {!canAct && permissionsRead && (
+        <p className="text-2xs text-ps-label">Preparing this record needs permission to compute GST returns, so the button is not shown to you.</p>
+      )}
     </div>
   );
 }

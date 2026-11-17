@@ -3716,7 +3716,7 @@ function ApprovalQueue({ clientId }: { clientId: string }) {
                           {busy[j.id] ? "Posting…" : "Approve & Post"}
                         </Button>
                       ) : status === "draft" ? (
-                        <span className="text-ps-label">{permissionsRead ? "Awaiting a Partner" : ""}</span>
+                        <span className="text-ps-label">{permissionsRead ? "Awaiting someone who may approve journal entries" : ""}</span>
                       ) : (
                         <span className="text-ps-label">{formatIstLabelled(j.posted_at)}</span>
                       )}

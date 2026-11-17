@@ -353,7 +353,7 @@ function AdjActions({
     );
   }
   if ((adj.status === "pending_review" || adj.status === "approved") && !mayApprove) {
-    return <span className="text-3xs text-ps-hint">{resolved ? "Awaiting a Manager or a Partner" : "—"}</span>;
+    return <span className="text-3xs text-ps-hint">{resolved ? "Awaiting someone who may approve" : "—"}</span>;
   }
   if (adj.status === "pending_review") {
     return (

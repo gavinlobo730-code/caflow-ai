@@ -190,7 +190,11 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
   const [reopenReason, setReopenReason] = useState("");
   // Reopening a completed reconciliation asks `accounting` `approve`, a Partner's alone; the button was offered to everyone who
   // can reconcile and answered a 403 (POST-A-455).
-  const mayReopen = usePermissions().can("accounting", "approve");
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayReopen = canDo("accounting", "approve");
+  // Setting an adjustment asks `banking` `approve`, a Manager's and above; the box and its Apply were drawn to an Executive and
+  // came back a 403 (POST-A-455).
+  const mayAdjust = canDo("banking", "approve");
   const [lineSearch, setLineSearch] = useState("");
   const [lineSort, setLineSort] = useState<"date" | "-date" | "amount" | "-amount">("date");
   // The tie-out AS IF the current selection were reconciled. Computed on the
@@ -568,12 +572,18 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
               </div>
             )}
 
-            {!completed && (
-              /* An adjustment is the one figure here that can force a period to
-                 tie out, and completing freezes a certified PDF. So it asks what
-                 it IS, refuses a non-zero figure without one (the server and a
-                 DB CHECK refuse it too), and needs a Manager — the server
-                 answers 403 to anyone below, and the message says so. */
+            {/* An adjustment is the one figure here that can force a period to
+                tie out, and completing freezes a certified PDF. So it asks what
+                it IS, refuses a non-zero figure without one (the server and a
+                DB CHECK refuse it too), and is offered only to someone who may
+                set one, because the server answers 403 to anyone else. */}
+            {!completed && permissionsRead && !mayAdjust && (
+              <p className="text-3xs text-ps-hint pt-1">
+                Recording an adjustment needs permission to approve bank reconciliations, so the box is not shown to you. An adjustment
+                already recorded is in the figures above, with its reason.
+              </p>
+            )}
+            {!completed && mayAdjust && (
               <div className="pt-1 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-2xs text-ps-label">Adjustment (₹)</span>
@@ -601,8 +611,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   >Apply</button>
                 </div>
                 <p className="text-3xs text-ps-hint">
-                  A Manager or Partner records an adjustment, and the reason is printed on the
-                  reconciliation. Set it to 0 to remove one.
+                  The reason is printed on the reconciliation. Set the figure to 0 to remove an adjustment.
                 </p>
               </div>
             )}

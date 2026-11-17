@@ -35,6 +35,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import type { Gstr2bBulkResult, Gstr2bBulkStatus } from "@/lib/api";
 import { objectWithLists } from "@/lib/api/shape";
 import type { Gstr2bBulkAnswer } from "@/lib/api";
@@ -84,6 +85,9 @@ function failed(name: string, reason: string): Gstr2bBulkResult {
 }
 
 export function BulkGstr2bPanel() {
+  // Reading and reconciling a file ask `gst` `compute`, which a Reviewer's access does not hold (POST-A-455).
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayCompute = canDo("gst", "compute");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const stopRef = useRef(false);
   const [rows, setRows] = useState<Row[]>([]);
@@ -163,6 +167,12 @@ export function BulkGstr2bPanel() {
         </p>
       </div>
 
+      {permissionsRead && !mayCompute && (
+        <p className="text-xs text-ps-label">
+          Reconciling a GSTR-2B file needs permission to compute GST returns, so the file box is not shown to you.
+        </p>
+      )}
+      {mayCompute && (
       <div
         data-testid="bulk-gstr2b-dropzone"
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -184,6 +194,7 @@ export function BulkGstr2bPanel() {
             onChange={(e) => { void run(Array.from(e.target.files ?? [])); }} />
         </label>
       </div>
+      )}
 
       {rows.length > 0 && (
         <div className="space-y-2">

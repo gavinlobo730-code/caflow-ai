@@ -55,6 +55,8 @@ export default function JournalEntryPageClient() {
   const router = useRouter();
   // Posting a saved draft asks `accounting` `approve` (POST-A-455); the editor offers Post Entry on one only to a Partner.
   const mayPostDraft = usePermissions().can("accounting", "approve");
+  // Saving a draft or a correction and posting a new entry ask `accounting` `write`; an Executive's is read only.
+  const mayWrite = usePermissions().can("accounting", "write");
 
   const [accounts, setAccounts] = useState<EditorAccount[] | null>(null);
   const [entry, setEntry] = useState<JournalEntryDetail | null>(null);
@@ -232,6 +234,7 @@ export default function JournalEntryPageClient() {
         serverError={saveError}
         onSave={handleSave}
         mayPostDraft={mayPostDraft}
+        mayWrite={mayWrite}
         onCancel={() => router.push(journalListHref(clientId))}
       />
       {/* Only for an entry that EXISTS: in create mode there is no row for the

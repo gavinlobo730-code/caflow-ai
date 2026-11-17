@@ -96,6 +96,8 @@ export default function GSTR1Page() {
   // refused (POST-A-455).
   const { can: canDo, resolved: permissionsRead } = usePermissions();
   const mayApprove = canDo("gst", "approve");
+  // Building the return asks `gst` `compute`, which a Reviewer's access does not hold (POST-A-455).
+  const mayCompute = canDo("gst", "compute");
   const [clients, setClients] = useState<{ id: string; name: string; gstin: string | null }[]>([]);
   const [clientId, setClientId] = useState("");
   // Built when the screen opens, not when its code loads: a tab left open across a month end kept the old list and defaulted to the wrong month.
@@ -334,14 +336,21 @@ export default function GSTR1Page() {
             Untick to build the return without them.
           </span>
         </label>
-        <Button variant="plain" size="none"
-          onClick={handleBuild}
-          disabled={actionInFlight || !clientId || !yearMonth}
-          className="flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          <FileText className="w-4 h-4" />
-          {loading ? "Building…" : "Build GSTR-1"}
-        </Button>
+        {mayCompute && (
+          <Button variant="plain" size="none"
+            onClick={handleBuild}
+            disabled={actionInFlight || !clientId || !yearMonth}
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand hover:bg-brand-dark disabled:bg-ps-disabled text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <FileText className="w-4 h-4" />
+            {loading ? "Building…" : "Build GSTR-1"}
+          </Button>
+        )}
+        {permissionsRead && !mayCompute && (
+          <p className="text-xs text-ps-label">
+            Building a return from the books needs permission to compute GST returns, so the button is not shown to you.
+          </p>
+        )}
       </div>
 
       {error && <Callout tone="problem">{error}</Callout>}
@@ -405,7 +414,7 @@ export default function GSTR1Page() {
                 </button>
               )}
               {(filingStatus === "draft" || filingStatus === "validated" || filingStatus === "ca_approved") && permissionsRead && !mayApprove && (
-                <span className="text-xs text-ps-label">A Manager or a Partner approves this return and records the filing</span>
+                <span className="text-xs text-ps-label">Approving this return and recording the filing need permission to approve GST returns, so those buttons are not shown to you</span>
               )}
               {filingStatus === "ca_approved" && mayApprove && (
                 <button

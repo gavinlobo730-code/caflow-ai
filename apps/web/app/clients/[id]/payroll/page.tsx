@@ -609,7 +609,8 @@ function RunsTab({ clientId, firmId, openDoc }:
   const [slips, setSlips] = useState<Slip[]>([]);
   const [loadingSlips, setLoadingSlips] = useState(false);
   const [finalizing, setFinalizing] = useState<string | null>(null);
-  const mayFinalize = usePermissions().can("payroll", "finalize");   // closed while the permissions are read
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayFinalize = canDo("payroll", "finalize");                  // closed while the permissions are read
   // M17: a failed runs/slips fetch must not render as "No payroll runs yet" /
   // an empty slip table — both look identical to genuinely having no data.
   const [loadFailed, setLoadFailed] = useState(false);
@@ -871,7 +872,9 @@ function RunsTab({ clientId, firmId, openDoc }:
             </ul>
             <p className="text-2xs text-state-attention mt-1.5">
               The run is a draft — nothing is posted or paid. Fix these and create it again,
-              or finalise it if the figures are right.
+              {mayFinalize
+                ? "or finalise it if the figures are right."
+                : "or, if the figures are right, ask someone who may finalise payroll runs to finalise it."}
             </p>
             {/* PAY-15: this panel NAMED the attendance nobody had entered and
                 offered no way to enter it, so the one instruction it gave —
@@ -989,6 +992,9 @@ function RunsTab({ clientId, firmId, openDoc }:
                     className="flex items-center gap-1 text-2xs px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                     <CheckCircle size={11} /> {finalizing === r.id ? "Finalising…" : "Finalise"}
                   </Button>
+                )}
+                {r.status !== "finalized" && r.status !== "paid" && permissionsRead && !mayFinalize && (
+                  <span className="text-2xs text-ps-label">Finalising needs permission to finalise payroll runs, so the button is not shown to you</span>
                 )}
                 {(r.status === "finalized" || r.status === "paid") && (
                   <span className="text-2xs text-emerald-600 flex items-center gap-1"><CheckCircle size={11} /> {r.status === "paid" ? "Paid" : "Finalised"}</span>
@@ -1398,7 +1404,7 @@ function ReleaseTab({ clientId }: { clientId: string }) {
       )}
       {permissionsRead && !mayFinalize && runs.length > 0 && (
         <p className="text-xs text-ps-label">
-          Recording a run&apos;s payment, writing its loans down and reversing it are for a Partner, so those buttons are not shown to you.
+          Recording a run&apos;s payment, writing its loans down and reversing it need permission to finalise payroll runs, so those buttons are not shown to you.
         </p>
       )}
 
@@ -1472,7 +1478,9 @@ function ReleaseTab({ clientId }: { clientId: string }) {
                         </Button>
                       )}
                       {!finalized && !paid && (
-                        <span className="text-2xs text-ps-hint">Finalise it under Register</span>
+                        <span className="text-2xs text-ps-hint">
+                          {mayFinalize ? "Finalise it under Register" : "Someone who may finalise payroll runs finalises it under Register"}
+                        </span>
                       )}
                     </td>
                   </tr>

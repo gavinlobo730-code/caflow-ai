@@ -46,7 +46,15 @@ const ROWS: Row[] = [
     server: () => routePair(router("gst_workspace.py"), "post", "/gstr3b/{return_id}/recompute") },
   { what: "GSTR-3B Compute from Books", file: GST, anchor: "onClick={() => setShowCompute(true)}", gate: "mayCompute", nth: 2,
     server: () => routePair(router("gst_workspace.py"), "post", "/gstr3b") },
+  { what: "GSTR-2B file box (client tab)", file: GST, anchor: `data-testid="gstr2b-dropzone"`, gate: "mayCompute",
+    server: () => routePair(router("gst_workspace.py"), "post", "/gstr2b/inspect") },
+  { what: "GSTR-2B Upload & Reconcile (client tab)", file: GST, anchor: `{loading ? "Reconciling…" : "Upload & Reconcile"}`, gate: "mayCompute",
+    server: () => routePair(router("gst_workspace.py"), "post", "/gstr2b/upload") },
+  { what: "GSTR-2B files for many clients", file: ["components", "gst", "BulkGstr2bPanel.tsx"], anchor: `data-testid="bulk-gstr2b-dropzone"`, gate: "mayCompute",
+    server: () => routePair(router("gst_workspace.py"), "post", "/gstr2b/bulk") },
   // GST, the firm's return screens
+  { what: "firm GSTR-1 Build", file: ["app", "gst", "gstr1", "page.tsx"], anchor: `{loading ? "Building…" : "Build GSTR-1"}`, gate: "mayCompute",
+    server: () => routePair(router("gst.py"), "post", "/gstr1/from-books") },
   { what: "firm GSTR-1 CA Approve", file: ["app", "gst", "gstr1", "page.tsx"], anchor: "onClick={handleApprove}", gate: "mayApprove", server: gstStatus1 },
   { what: "firm GSTR-1 Mark as Filed", file: ["app", "gst", "gstr1", "page.tsx"], anchor: "onClick={() => setShowFiledModal(true)}", gate: "mayApprove", server: gstStatus1 },
   { what: "firm GSTR-3B CA Approve", file: ["app", "gst", "gstr3b", "page.tsx"], anchor: "onClick={handleApprove}", gate: "mayApprove", server: gstStatus3b },
@@ -54,6 +62,17 @@ const ROWS: Row[] = [
   { what: "firm GSTR-3B Compute", file: ["app", "gst", "gstr3b", "page.tsx"], anchor: "onClick={handleCompute}", gate: "mayCompute",
     server: () => routePair(router("gst_workspace.py"), "post", "/gstr3b") },
   // TDS
+  { what: "firm TDS Compute", file: ["app", "tds", "returns", "page.tsx"], anchor: "{loading ? \"Computing…\" : `Compute ${returnType}`}", gate: "mayCompute",
+    server: () => routePair(router("tds.py"), "post", "/26q/from-books") },
+  { what: "TDS Compute from Books", file: TDS, anchor: "            Compute from Books", gate: "mayCompute",
+    server: () => routePair(router("tds_workspace.py"), "post", "/returns") },
+  { what: "TDS + New Return", file: TDS, anchor: "+ New Return", gate: "mayCompute", server: () => routePair(router("tds_workspace.py"), "post", "/returns") },
+  { what: "TDS + New Challan", file: TDS, anchor: "+ New Challan", gate: "mayCompute", server: () => routePair(router("tds_workspace.py"), "post", "/challans") },
+  { what: "TDS + Record certificate", file: TDS, anchor: "+ Record certificate", gate: "mayCompute", server: () => routePair(router("tds_workspace.py"), "post", "/certificates") },
+  { what: "TDS 26AS Reconcile", file: TDS, anchor: `{loading ? "Reconciling…" : "Reconcile"}`, gate: "mayCompute",
+    server: () => routePair(router("tds_workspace.py"), "post", "/form26as/upload") },
+  { what: "TDS + Record Certificate (§197)", file: TDS, anchor: "+ Record Certificate", gate: "mayCompute",
+    server: () => routePair(router("tds_workspace.py"), "post", "/lower-deduction-certificates") },
   { what: "TDS statement Prepare", file: TDS, anchor: `onClick={() => updateStatus(r.id as string, "prepared")}`, gate: "mayCompute",
     server: () => routePair(router("tds_workspace.py"), "patch", "/returns/{return_id}/status") },
   { what: "TDS statement CA Approve", file: TDS, anchor: `onClick={() => updateStatus(r.id as string, "ca_approved")}`, gate: "mayApprove", server: tdsApprove },
@@ -66,7 +85,13 @@ const ROWS: Row[] = [
     server: () => innerPair(router("mca_workspace.py"), "patch", "/filings/{filing_id}/status") },
   { what: "firm MCA Mark Filed", file: ["app", "mca", "page.tsx"], anchor: "onClick={() => openMarkFiledModal(f)}", gate: "mayApprove",
     server: () => innerPair(router("mca_workspace.py"), "patch", "/filings/{filing_id}/status") },
+  { what: "MCA + Add Company", file: MCA, anchor: "+ Add Company", gate: "mayWrite", server: () => routePair(router("mca_workspace.py"), "post", "/companies") },
+  { what: "MCA + Add Director", file: MCA, anchor: "+ Add Director", gate: "mayWrite", server: () => routePair(router("mca_workspace.py"), "post", "/directors") },
+  { what: "MCA Mark KYC Active", file: MCA, anchor: "Mark KYC Active", gate: "mayWrite", server: () => routePair(router("mca_workspace.py"), "patch", "/directors/{director_id}") },
+  { what: "MCA + New Filing", file: MCA, anchor: "+ New Filing", gate: "mayWrite", server: () => routePair(router("mca_workspace.py"), "post", "/filings") },
   // ITR
+  { what: "ITR New Filing", file: [...C, "tax", "filing", "page.tsx"], anchor: "<Plus size={12} /> New Filing", gate: "mayCompute",
+    server: () => routePair(router("itr_workspace.py"), "post", "/filings") },
   { what: "ITR Move to the next status", file: [...C, "tax", "filing", "page.tsx"], anchor: "onClick={() => handleTransition(", gate: "mayApprove",
     server: () => routePair(router("itr_workspace.py"), "post", "/filings/{filing_id}/transition") },
   { what: "ITR Record Acknowledgement", file: [...C, "tax", "filing", "page.tsx"], anchor: "onClick={openAckPanel}", gate: "mayApprove",
@@ -74,14 +99,10 @@ const ROWS: Row[] = [
   { what: "ITR computation Mark reviewed", file: [...C, "tax", "computation", "page.tsx"], anchor: "onClick={() => markSnapshotReviewed(s.id)}",
     gate: `can("income_tax", "approve")`, server: () => routePair(router("itr_workspace.py"), "post", "/snapshots/{snapshot_id}/review") },
   // IRN and e-way bill
-  { what: "Prepare IRN", file: ["components", "invoices", "CompliancePanel.tsx"], anchor: `actionLabel="Prepare IRN"`, gate: "mayPrepare",
-    server: () => routePair(router("einvoice.py"), "post", "/records") },
   { what: "Record IRN", file: ["components", "invoices", "CompliancePanel.tsx"], anchor: `onClick={() => setModal("recordIrn")}`, gate: "mayRecord",
     server: () => routePair(router("einvoice.py"), "post", "/records/{record_id}/irn-generated") },
   { what: "Cancel IRN", file: ["components", "invoices", "CompliancePanel.tsx"], anchor: `onClick={() => setModal("cancelIrn")}`, gate: "mayRecord",
     server: () => routePair(router("einvoice.py"), "post", "/records/{record_id}/cancel") },
-  { what: "Prepare E-Way Bill", file: ["components", "invoices", "CompliancePanel.tsx"], anchor: `actionLabel="Prepare E-Way Bill"`, gate: "mayPrepare",
-    server: () => routePair(router("eway_bill.py"), "post", "/records") },
   { what: "Record E-Way Bill", file: ["components", "invoices", "CompliancePanel.tsx"], anchor: `onClick={() => setModal("recordEway")}`, gate: "mayRecord",
     server: () => routePair(router("eway_bill.py"), "post", "/records/{record_id}/generated") },
   { what: "Cancel E-Way Bill", file: ["components", "invoices", "CompliancePanel.tsx"], anchor: `onClick={() => setModal("cancelEway")}`, gate: "mayRecord",
@@ -91,8 +112,12 @@ const ROWS: Row[] = [
     server: () => routePair(router("customers.py"), "patch", "/{customer_id}") },
   { what: "customer Add", file: [...C, "sales", "page.tsx"], anchor: "onClick={() => { setEditCustomer(null); setShowForm(true); }}", gate: "mayEditParty",
     server: () => routePair(router("customers.py"), "post", "/") },
-  { what: "customer Deactivate", file: [...C, "sales", "page.tsx"], anchor: "setMenu(null); setDeactivateTarget(c); }}", gate: "mayRemoveParty",
-    server: () => routePair(router("customers.py"), "delete", "/{customer_id}") },
+  // The single-row Deactivate writes the table directly, under the row policy that asks `client` `write` (the same pair as the
+  // PATCH route and as Reactivate); the bulk Deactivate and Delete call DELETE /api/customers/{id} and ask `client` `delete`.
+  { what: "customer Deactivate", file: [...C, "sales", "page.tsx"], anchor: "setMenu(null); setDeactivateTarget(c); }}", gate: "mayEditParty",
+    server: () => routePair(router("customers.py"), "patch", "/{customer_id}") },
+  { what: "customer Reactivate", file: [...C, "sales", "page.tsx"], anchor: "onClick={() => { setMenu(null); return reactivateCustomer(c); }}", gate: "mayEditParty",
+    server: () => routePair(router("customers.py"), "patch", "/{customer_id}") },
   { what: "customer Delete", file: [...C, "sales", "page.tsx"], anchor: "setMenu(null); startDelete(c); }}", gate: "mayRemoveParty",
     server: () => routePair(router("customers.py"), "delete", "/{customer_id}") },
   { what: "vendor Edit", file: [...C, "purchases", "page.tsx"], anchor: "setMenu(null); openEdit(v); }}", gate: "mayEditParty",
@@ -135,6 +160,22 @@ const ROWS: Row[] = [
     server: () => routePair(router("inventory.py"), "delete", "/godowns/{godown_id}") },
   { what: "Add lot", file: ["components", "inventory", "LocationsAndBatches.tsx"], anchor: "onClick={() => setAddingBatch(true)}", gate: "mayWriteBooks",
     server: () => routePair(router("inventory.py"), "post", "/batches") },
+  { what: "New CWIP project", file: ["components", "fixed-assets", "CwipTab.tsx"], anchor: "<Plus size={12} /> New project", gate: "mayWriteBooks",
+    server: () => routePair(router("cwip.py"), "post", "") },
+  { what: "CWIP Add cost", file: ["components", "fixed-assets", "CwipTab.tsx"], anchor: "onClick={() => setCostFor(p)}", gate: "mayWriteBooks",
+    server: () => routePair(router("cwip.py"), "post", "/{cwip_id}/costs") },
+  { what: "CWIP Capitalise", file: ["components", "fixed-assets", "CwipTab.tsx"], anchor: "onClick={() => setCapitalising(p)}", gate: "mayWriteBooks",
+    server: () => routePair(router("cwip.py"), "post", "/{cwip_id}/capitalise") },
+  { what: "Record an asset movement", file: ["components", "fixed-assets", "AssetMovements.tsx"], anchor: "onClick={openForm}", gate: "mayWriteBooks",
+    server: () => routePair(router("fixed_asset_movements.py"), "post", "/{asset_id}/movements") },
+  { what: "asset Dispose", file: FA, anchor: "<Trash2 size={11} /> Dispose", gate: "mayWriteBooks",
+    server: () => routePair(router("fixed_assets.py"), "patch", "/{asset_id}/dispose") },
+  { what: "Complete the stock", file: ["components", "inventory", "UnrecordedStockPanel.tsx"], anchor: "onClick={() => complete(d)}", gate: "mayWriteBooks",
+    server: () => routePair(router("inventory.py"), "post", "/stock-effects/retry") },
+  { what: "Reopen a godown", file: ["components", "inventory", "LocationsAndBatches.tsx"], anchor: "onClick={() => reopenGodown(g)}", gate: "mayWriteBooks",
+    server: () => routePair(router("inventory.py"), "post", "/godowns/{godown_id}/reopen") },
+  { what: "bank reconciliation Adjustment", file: ["components", "banking", "ReconcileTab.tsx"], anchor: `<input aria-label="Adjustment (₹)"`, gate: "mayAdjust",
+    server: () => routePair(router("banking.py"), "put", "/reconciliations/{recon_id}/adjustment") },
   { what: "Record the cost formula", file: ["components", "inventory", "CostFormulaPanel.tsx"], anchor: "onClick={begin}", gate: "mayWriteBooks",
     server: () => routePair(router("inventory.py"), "put", "/costing-policy") },
 ];
@@ -150,7 +191,7 @@ for (const row of ROWS) {
 test("the two GST tabs, the TDS tab and the MCA tab each ask the pair their gates name", () => {
   const gst = read(WEB, ...GST);
   assert.equal((gst.match(/const mayApprove = canDo\("gst", "approve"\);/g) ?? []).length, 2, "both GST tabs ask who may approve");
-  assert.equal((gst.match(/const mayCompute = canDo\("gst", "compute"\);/g) ?? []).length, 2, "both GST tabs ask who may compute");
+  assert.equal((gst.match(/const mayCompute = canDo\("gst", "compute"\);/g) ?? []).length, 3, "the two GST tabs and the GSTR-2B tab ask who may compute");
   assert.match(read(WEB, ...TDS), /const mayApprove = canDo\("tds", "approve"\);/);
   assert.match(read(WEB, ...MCA), /const mayApprove = canDo\("mca", "approve"\);/);
 });
@@ -164,8 +205,12 @@ test("the vendor list's Deactivate and Delete permanently are offered only to so
 
 test("an ITR's loss records and an asset's disposal are drawn only for someone who may write them", () => {
   const filing = read(WEB, ...C, "tax", "filing", "page.tsx");
-  assert.match(filing, /selectedFiling\.status === "filed" && \(selectedFiling\.return_type \?\? "original"\) !== "updated" && mayApprove && \(/);
+  // The notice is shown to everyone who can open the return; only its controls are for someone who may write the records.
+  assert.match(filing, /selectedFiling\.status === "filed" && \(selectedFiling\.return_type \?\? "original"\) !== "updated" && \(/);
   assert.equal(gatePair(filing, "mayApprove"), routePair(router("itr_workspace.py"), "post", "/filings/{filing_id}/loss-records"));
+  for (const anchor of ["onClick={() => updateLossRecords(selectedFiling, null)}", "onClick={() => updateLossRecords(selectedFiling, pinChoice)}", `id="itr-pin-computation" value=`]) {
+    assert.ok(gatedBy(filing, anchor, "mayApprove"), `${anchor} is drawn without its gate`);
+  }
   const fa = read(WEB, ...FA);
   assert.match(fa, /\{selected && mayWriteBooks && \(\n\s*<div className="bg-white rounded-xl border border-state-problem-border/);
   assert.equal(gatePair(fa, "mayWriteBooks"), routePair(router("fixed_assets.py"), "patch", "/{asset_id}/dispose"));
@@ -178,4 +223,79 @@ test("the gate helper reads a same-line gate and refuses one on a neighbour's li
   const twice = `{mayA && (\n<b onClick={go} />\n)}\n{true && (\n<b onClick={go} />\n)}`;
   assert.equal(gatedBy(twice, "onClick={go}", "mayA", 0), true);
   assert.equal(gatedBy(twice, "onClick={go}", "mayA", 1), false, "the second drawing of one call is checked on its own");
+});
+
+test("Prepare IRN and Prepare E-Way Bill are drawn only for someone who may prepare, and the reasons are drawn for everyone", () => {
+  const src = read(WEB, "components", "invoices", "CompliancePanel.tsx");
+  assert.equal(gatePair(src, "mayPrepare"), routePair(router("einvoice.py"), "post", "/records"));
+  assert.equal(gatePair(src, "mayPrepare"), routePair(router("eway_bill.py"), "post", "/records"));
+  assert.ok(gatedBy(src, "<PrimaryBtn disabled={!elig.eligible} onClick={onAction}>", "canAct"), "the button is drawn without canAct");
+  assert.match(src, /actionLabel="Prepare IRN"[^\n]*canAct=\{mayPrepare\}/);
+  assert.match(src, /actionLabel="Prepare E-Way Bill"[^\n]*canAct=\{mayPrepare\}/);
+  assert.doesNotMatch(src, /mayPrepare && <EligibilityBlock/, "the blockers and warnings are information and are not hidden with the button");
+});
+
+test("the purchase bills list's bulk Cancel received is in the list only for someone the cancel route admits", () => {
+  const src = read(WEB, ...C, "purchases", "page.tsx");
+  assert.equal(gatePair(src, "mayCancelBill"), routePair(router("purchase_bills.py"), "post", "/{bill_id}/cancel"));
+  assert.match(src, /\.filter\(\(a\) => a\.id !== "cancel" \|\| mayCancelBill\), \[handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns, mayCancelBill\]/);
+  assert.match(src, /apiCall\(`\/api\/purchase-bills\/\$\{b\.id\}\/cancel`/, "the bulk action calls the cancel route");
+});
+
+test("the GSTR-3B tab's Recheck asks compute for any unfiled status and its Delete asks approve for an approved return", () => {
+  const src = read(WEB, ...GST);
+  assert.ok(gatedBy(src, "onClick={() => recheck(r.id as string)}", "mayCompute"), "Recheck is drawn without mayCompute");
+  assert.match(src, /UNFILED\.includes\(r\.status as string\) && \(r\.status === "ca_approved" \? mayApprove : mayCompute\) && \(\n\s*<Button[^\n]*onClick=\{\(\) => deleteReturn\(/);
+  const api = router("gst_workspace.py");
+  assert.equal(gatePair(src, "mayCompute"), routePair(api, "post", "/gstr3b/{return_id}/recompute"));
+  assert.match(routeBlockText(api, "/gstr3b/{return_id}/recompute"), /dry_run: bool = Query\(True/, "Recheck sends dry_run=true, which asks compute only");
+  assert.equal(gatePair(src, "mayApprove"), innerPair(api, "patch", "/gstr3b/{return_id}/status"));
+  assert.match(api, /def _approval_needed_to_change[^]*?can_user\(current_user, "gst", "approve"\)/);
+});
+function routeBlockText(src: string, path: string): string {
+  const at = src.indexOf(`@router.post("${path}"`);
+  assert.ok(at >= 0);
+  return src.slice(at, src.indexOf("@router.", at + 1));
+}
+
+test("the journal editor draws its saving and posting only for someone who may write the books", () => {
+  const page = read(WEB, ...C, "accounting", "journal", "[entryId]", "edit", "_page.tsx");
+  const accounting = router("accounting.py");
+  assert.equal(gatePair(page, "mayWrite"), routePair(accounting, "post", "/journal"));
+  assert.equal(gatePair(page, "mayWrite"), routePair(accounting, "patch", "/journal/{entry_id}"));
+  assert.match(page, /mayWrite=\{mayWrite\}/);
+  const editor = read(WEB, "components", "journal", "JournalEditor.tsx");
+  assert.match(editor, /const readOnly = locked \|\| !mayWrite;/);
+  const footer = editor.indexOf(`{!readOnly && (\n          <div className="flex gap-3 justify-end pt-1">`);
+  assert.ok(footer >= 0, "the footer is no longer drawn under !readOnly");
+  for (const mode of ["correct", "draft", "post"]) assert.ok(editor.indexOf(`handleSave("${mode}")`) > footer, `${mode} is above the gated footer`);
+  assert.match(editor, /\{!mayWrite && !locked && \(/, "a read-only reader is told why");
+});
+
+test("a sentence that says who acts names a permission and not a role", () => {
+  const files = [
+    ["app", "mca", "page.tsx"], ["app", "gst", "gstr1", "page.tsx"], ["app", "gst", "gstr3b", "page.tsx"], ["app", "tds", "returns", "page.tsx"],
+    [...C, "compliance", "gst", "page.tsx"], [...C, "compliance", "tds", "page.tsx"], MCA, [...C, "payroll", "page.tsx"],
+    [...C, "tax", "computation", "page.tsx"], [...C, "tax", "filing", "page.tsx"], [...C, "accounting", "page.tsx"],
+    [...C, "year-end", "[engagementId]", "review", "_page.tsx"], [...C, "year-end", "[engagementId]", "adjustments", "_page.tsx"],
+    ["components", "invoices", "CompliancePanel.tsx"], ["components", "journal", "JournalEditor.tsx"], ["components", "banking", "ReconcileTab.tsx"],
+  ];
+  const ROLE_SENTENCE = /(?:\bA|\ban|\bAn) (?:Manager|Partner|Executive)(?: or (?:a )?(?:Manager|Partner))? (?:approves|records|reviews|posts|moves|gives|finalises)|Awaiting a (?:Manager|Partner)|(?:are|is) for a Partner/;
+  for (const f of files) assert.doesNotMatch(read(WEB, ...f), ROLE_SENTENCE, `${f.join("/")} says who acts by role`);
+});
+
+test("a permission-gating helper refuses a wrong second declaration, a prefix, a negation, an OR and a ternary branch", () => {
+  const twice = `const mayX = canDo("gst", "compute");\nconst mayX = canDo("gst", "approve");`;
+  assert.equal(gatePair(twice, "mayX"), null, "a wrong pair in a second declaration is seen");
+  assert.equal(gatePair(`const mayX = canDo("gst", "compute");\nconst mayX = usePermissions().can("gst", "compute");`, "mayX"), "gst:compute");
+  const at = (opener: string) => `${opener}\n  <button onClick={go} />\n)}`;
+  assert.equal(gatedBy(at("{mayWriteBooks && ("), "onClick={go}", "mayWrite"), false, "a longer name is not the gate");
+  assert.equal(gatedBy(at("{!mayX && ("), "onClick={go}", "mayX"), false, "a negated gate is not the gate");
+  assert.equal(gatedBy(at("{mayX || other && ("), "onClick={go}", "mayX"), false, "one side of an OR is not the gate");
+  assert.equal(gatedBy(at(`{r.s === "a" ? mayX : mayY && (`), "onClick={go}", "mayX"), false);
+  assert.equal(gatedBy(at(`{r.s === "a" ? mayX : mayY && (`), "onClick={go}", "mayY"), false, "a ternary's branch is not the gate");
+  assert.equal(gatedBy(at("{mayX && ("), "onClick={go}", "mayX"), true);
+  assert.equal(gatedBy(`{mayX ? (\n  <b onClick={a} />\n) : (\n  <b onClick={go} />\n)}`, "onClick={go}", "mayX"), false, "the else branch is not gated by the condition");
+  assert.equal(gatedBy(`{mayX ? (\n  <b onClick={a} />\n) : (\n  <b onClick={go} />\n)}`, "onClick={a}", "mayX"), true);
+  assert.equal(gatedBy(`{c ? (\n  <b onClick={a} />\n) : mayX ? (\n  <b onClick={go} />\n) : null}`, "onClick={go}", "mayX"), true);
 });

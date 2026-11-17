@@ -1119,7 +1119,7 @@ export default function MCAPage() {
                   {mayApprove ? (
                     <button onClick={() => openMarkFiledModal(f)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Mark Filed</button>
                   ) : permissionsRead ? (
-                    <span className="text-xs text-ps-label">A Manager or a Partner records the filing</span>
+                    <span className="text-xs text-ps-label">Recording the filing needs permission to approve MCA filings, so the button is not shown to you</span>
                   ) : null}
                   {demoFlows.includes("mca") && DEMO_MCA_FORMS.includes(f.form_type) && f.client_id && (
                     <button onClick={() => setDemo({ clientId: f.client_id, filingId: f.id })}

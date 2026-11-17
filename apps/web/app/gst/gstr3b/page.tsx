@@ -407,7 +407,7 @@ export default function GSTR3BPage() {
                 </button>
               )}
               {(filingStatus === "draft" || filingStatus === "validated" || filingStatus === "ca_approved") && permissionsRead && !mayApprove && (
-                <span className="text-xs text-ps-label">A Manager or a Partner approves this return and records the filing</span>
+                <span className="text-xs text-ps-label">Approving this return and recording the filing need permission to approve GST returns, so those buttons are not shown to you</span>
               )}
               {filingStatus === "ca_approved" && mayApprove && (
                 <button

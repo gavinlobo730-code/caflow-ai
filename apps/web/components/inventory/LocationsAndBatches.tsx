@@ -283,17 +283,17 @@ export function LocationsAndBatches({ clientId, asOf, items }: {
                         .reduce((t, r) => t + r.value_paise, 0))}
                     </td>
                     <td className="px-5 py-2 text-right">
-                      {!mayWriteBooks ? null : g.is_active ? (
+                      {mayWriteBooks && g.is_active ? (
                         <Button variant="plain" size="none" spinner={false} onClick={() => closeGodown(g)} aria-label={`Close ${g.name}`}
                           className="p-1 rounded hover:bg-state-problem-hover text-red-600">
                           <Trash2 size={12} />
                         </Button>
-                      ) : (
+                      ) : mayWriteBooks ? (
                         <Button variant="plain" size="none" spinner={false} onClick={() => reopenGodown(g)} aria-label={`Reopen ${g.name}`}
                           className="p-1 rounded hover:bg-ps-hover text-ps-label">
                           <RotateCcw size={12} />
                         </Button>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}

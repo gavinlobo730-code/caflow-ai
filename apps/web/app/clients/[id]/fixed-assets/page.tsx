@@ -1823,7 +1823,8 @@ function DisposalTab({ clientId }: { clientId: string }) {
   // Every write on this register (add, import the opening register, correct, delete, post or reverse depreciation, dispose) asks
   // `accounting` `write`, a Manager's or a Partner's; the controls were drawn to an Executive, whose `accounting` is read only,
   // and came back refused (POST-A-455).
-  const mayWriteBooks = usePermissions().can("accounting", "write");
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
+  const mayWriteBooks = canDo("accounting", "write");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   // True when the LAST load failed rather than genuinely finding no disposable
@@ -1998,6 +1999,12 @@ function DisposalTab({ clientId }: { clientId: string }) {
           )}
         </div>
       )}
+      {permissionsRead && !mayWriteBooks && (
+        <p className="text-xs text-ps-label">
+          Recording a disposal needs write access to the books, so the Dispose button is not shown to you. The assets below are listed to read.
+        </p>
+      )}
+      {mayWriteBooks && (
       <div className="bg-state-problem-surface border border-red-100 rounded-xl px-4 py-3 flex gap-2">
         <AlertCircle size={14} className="text-state-problem shrink-0 mt-0.5" />
         <div>
@@ -2008,6 +2015,7 @@ function DisposalTab({ clientId }: { clientId: string }) {
           </p>
         </div>
       </div>
+      )}
 
       {loading ? (
         <TableSkeleton cols={5} rows={3} />
@@ -2042,12 +2050,14 @@ function DisposalTab({ clientId }: { clientId: string }) {
                     {fmt(a.purchase_cost_paise - a.accumulated_depreciation_paise)}
                   </td>
                   <td className="px-3 py-2.5">
-                    <button
-                      onClick={() => setSelected(selected?.id === a.id ? null : a)}
-                      className="text-xs text-red-600 hover:underline flex items-center gap-1"
-                    >
-                      <Trash2 size={11} /> Dispose
-                    </button>
+                    {mayWriteBooks && (
+                      <button
+                        onClick={() => setSelected(selected?.id === a.id ? null : a)}
+                        className="text-xs text-red-600 hover:underline flex items-center gap-1"
+                      >
+                        <Trash2 size={11} /> Dispose
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

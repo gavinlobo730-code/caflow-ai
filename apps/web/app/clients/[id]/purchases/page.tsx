@@ -914,8 +914,9 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   ], [vendors, recon2B, reconciledPeriods]);
 
   // ── DataTable bulk actions — receive is draft-only (non-draft rows are
-  // skipped client-side); export just CSV-dumps the checked rows. ─────────
-  const bulkActions: BulkAction<PurchaseBillRow>[] = useMemo(() => [
+  // skipped client-side); export just CSV-dumps the checked rows. "Cancel received" asks the bill's cancel route, which asks
+  // `accounting` `approve` (a Partner's), so it is in the list only for someone it admits (POST-A-455). ─────────
+  const bulkActions: BulkAction<PurchaseBillRow>[] = useMemo(() => ([
     {
       id: "receive",
       label: "Receive draft(s)",
@@ -940,7 +941,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
       run: handleBulkCancel,
     },
     exportSelectedAction("purchase-bills-selected.csv", billColumns),
-  ], [handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns]);
+  ] satisfies BulkAction<PurchaseBillRow>[]).filter((a) => a.id !== "cancel" || mayCancelBill), [handleBulkReceive, handleBulkDelete, handleBulkCancel, billColumns, mayCancelBill]);
 
   // "Resolve missing references" step for the product_service import column —
   // mirrors the Sales Invoices tab's own importResolvers exactly. Reads

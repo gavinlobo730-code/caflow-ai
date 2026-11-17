@@ -237,7 +237,7 @@ export default function ReviewPage() {
               offered to an Executive, who was refused (POST-A-455). */}
           {currentStatus === "in_review" && (
             <Can resource="year_end" action="approve" fallback={
-              <p className="text-xs text-ps-label py-2">A Manager or a Partner approves this review or sends it back for revision.</p>
+              <p className="text-xs text-ps-label py-2">Approving this review or sending it back for revision needs permission to approve year-end work, so those buttons are not shown to you.</p>
             }>
               <ActionButton
                 label="Approve"
@@ -258,7 +258,7 @@ export default function ReviewPage() {
               Manager and an Executive (POST-A-455). */}
           {currentStatus === "approved" && (
             <Can resource="year_end" action="final_approve" fallback={
-              <p className="text-xs text-ps-label py-2">A Partner gives the final approval, which locks the year.</p>
+              <p className="text-xs text-ps-label py-2">The final approval, which locks the year, needs permission to give it, so the button is not shown to you.</p>
             }>
               <ActionButton
                 label="Final Approve & Lock"

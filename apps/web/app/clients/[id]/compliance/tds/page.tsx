@@ -279,6 +279,8 @@ function DeductionsTab({ clientId }: { clientId: string }) {
 const EMPTY_CHALLAN_FORM = { challan_no: "", challan_date: "", bsr_code: "", section: "", amount_rupees: "", financial_year: "", quarter: "Q1" };
 
 function ChallansTab({ clientId }: { clientId: string }) {
+  // Recording a challan or a certificate and preparing a return ask `tds` `compute`; a Reviewer's is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no challans yet".
@@ -370,10 +372,12 @@ function ChallansTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Challans</h3>
-        <button onClick={openForm}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + New Challan
-        </button>
+        {mayCompute && (
+          <button onClick={openForm}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+            + New Challan
+          </button>
+        )}
       </div>
 
       {/* What recording a challan did to the compliance calendar, in the server's words; the tone is attention only for a month the server left open. */}
@@ -735,16 +739,18 @@ function ReturnsTab({ clientId }: { clientId: string }) {
       )}
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS Returns</h3>
-        <div className="flex gap-2">
-          <button onClick={() => { setShowCompute(true); loadDeductor(); }}
-            className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
-            Compute from Books
-          </button>
-          <button onClick={() => setShowNew(true)}
-            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-            + New Return
-          </button>
-        </div>
+        {mayCompute && (
+          <div className="flex gap-2">
+            <button onClick={() => { setShowCompute(true); loadDeductor(); }}
+              className="text-sm px-3 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">
+              Compute from Books
+            </button>
+            <button onClick={() => setShowNew(true)}
+              className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+              + New Return
+            </button>
+          </div>
+        )}
       </div>
 
       {showCompute && (
@@ -979,7 +985,7 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">CA Approve</Button>
                   )}
                   {r.status === "prepared" && permissionsRead && !mayApprove && (
-                    <span className="text-xs text-ps-label">A Manager or a Partner approves it</span>
+                    <span className="text-xs text-ps-label">Approving it needs permission to approve TDS statements, so the button is not shown to you</span>
                   )}
                   {/* Only on an approved statement, and only where the server says the walk-through exists — the dead-control rule. */}
                   {r.status === "ca_approved" && demoFlows.includes("tds") && (
@@ -1023,6 +1029,8 @@ function ReturnsTab({ clientId }: { clientId: string }) {
 // ── 26AS Reconciliation ────────────────────────────────────────────────────
 
 function Form26ASTab({ clientId }: { clientId: string }) {
+  // Reconciling a 26AS and recording a §197 certificate ask `tds` `compute`; a Reviewer's access is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [fy, setFy] = useState(currentFinancialYearLabel());
   const [jsonText, setJsonText] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -1111,10 +1119,12 @@ function Form26ASTab({ clientId }: { clientId: string }) {
           value={jsonText} onChange={(e) => setJsonText(e.target.value)}
           rows={8} className="w-full border rounded px-3 py-2 text-sm font-mono" />
         {error && <p className="text-state-problem text-sm">{error}</p>}
-        <Button variant="plain" size="none" onClick={upload} disabled={loading || !fy || !jsonText}
-          className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
-          {loading ? "Reconciling…" : "Reconcile"}
-        </Button>
+        {mayCompute && (
+          <Button variant="plain" size="none" onClick={upload} disabled={loading || !fy || !jsonText}
+            className="px-4 py-2 bg-brand text-white rounded text-sm disabled:opacity-50">
+            {loading ? "Reconciling…" : "Reconcile"}
+          </Button>
+        )}
       </div>
 
       {recon && (
@@ -1153,6 +1163,8 @@ function Form26ASTab({ clientId }: { clientId: string }) {
 // ── Certificates ───────────────────────────────────────────────────────────
 
 function CertificatesTab({ clientId }: { clientId: string }) {
+  // Recording a challan or a certificate and preparing a return ask `tds` `compute`; a Reviewer's is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
   // Distinguishes "fetch failed" from "no certificates generated".
@@ -1208,10 +1220,12 @@ function CertificatesTab({ clientId }: { clientId: string }) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="font-medium">TDS certificate register (Form 16/16A)</h3>
-        <button onClick={() => setShowNew(true)}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
-          + Record certificate
-        </button>
+        {mayCompute && (
+          <button onClick={() => setShowNew(true)}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark">
+            + Record certificate
+          </button>
+        )}
       </div>
       {/* The register entry is ALL this creates. No certificate document is
           produced here — Form 16 / 16A (Form 130 / 131 from FY 2026-27) are
@@ -1401,6 +1415,8 @@ export default function TDSWorkspacePage() {
  *  the four facts and shows them back.
  */
 function LowerDeductionTab({ clientId }: { clientId: string }) {
+  // Reconciling a 26AS and recording a §197 certificate ask `tds` `compute`; a Reviewer's access is read only (POST-A-455).
+  const mayCompute = usePermissions().can("tds", "compute");
   const [rows, setRows] = useState<LowerDeductionRow[]>([]);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1531,10 +1547,12 @@ function LowerDeductionTab({ clientId }: { clientId: string }) {
             check the number, the rate and the period before you save.
           </p>
         </div>
-        <button onClick={() => { setShowNew((s) => !s); setSaveError(null); }}
-          className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark whitespace-nowrap">
-          + Record Certificate
-        </button>
+        {mayCompute && (
+          <button onClick={() => { setShowNew((s) => !s); setSaveError(null); }}
+            className="text-sm px-3 py-1 bg-brand text-white rounded hover:bg-brand-dark whitespace-nowrap">
+            + Record Certificate
+          </button>
+        )}
       </div>
 
       {loadError && <p className="text-sm text-state-problem">{loadError}</p>}

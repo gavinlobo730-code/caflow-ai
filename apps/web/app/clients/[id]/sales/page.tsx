@@ -1808,7 +1808,7 @@ function SalesInvoices({
         } else if (inv.status === "cancelled") {
           failures.push(`${inv.invoice_no}: already voided`);
         } else if (!mayVoid) {
-          failures.push(`${inv.invoice_no}: voiding an issued invoice is for a Partner`);
+          failures.push(`${inv.invoice_no}: voiding an issued invoice needs permission to approve accounting entries`);
         } else {
           const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token);
           if (!result.success) throw new Error(result.error ?? "void failed");
@@ -2363,7 +2363,7 @@ function SalesInvoices({
             icon: <Trash2 size={13} />,
             variant: "danger",
             appliesTo: (rows: SalesInvoice[]) => rows.some((r) => r.status === "draft"),
-            confirm: "Delete the selected draft invoices? Voiding an issued invoice is for a Partner, so any issued invoice in the selection is left as it is.",
+            confirm: "Delete the selected draft invoices? Voiding an issued invoice needs permission to approve accounting entries, so any issued invoice in the selection is left as it is.",
             run: bulkDeleteOrVoid,
           },
           {
@@ -2964,8 +2964,10 @@ function Customers({
   clientId: string;
   onNavigate: (tab: SalesTab, custId?: string) => void;
 }) {
-  // Adding, importing, editing and reactivating a customer ask `client` `write` (a Manager or a Partner); deactivating and
-  // deleting one ask `client` `delete` (a Partner). Each was offered to every member and came back refused (POST-A-455).
+  // Adding, importing, editing, reactivating and (one row at a time, written straight to the table under the row policy that
+  // asks `client` `write`) deactivating a customer ask `client` `write`, a Manager's or a Partner's. The bulk Deactivate and
+  // Delete go through `DELETE /api/customers/{id}` and ask `client` `delete`, a Partner's. Each was offered to every member and
+  // came back refused (POST-A-455).
   const { can: canDo } = usePermissions();
   const mayEditParty = canDo("client", "write");
   const mayRemoveParty = canDo("client", "delete");
@@ -3484,8 +3486,8 @@ function Customers({
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                 <BookOpen size={13} /> View Ledger
               </button>
-              {(c.is_active ? mayRemoveParty : mayEditParty) && <div className="my-1 border-t border-ps-border" />}
-              {c.is_active && mayRemoveParty ? (
+              {mayEditParty && <div className="my-1 border-t border-ps-border" />}
+              {c.is_active && mayEditParty ? (
                 <button onClick={() => { setMenu(null); setDeactivateTarget(c); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
                   <Ban size={13} /> Deactivate

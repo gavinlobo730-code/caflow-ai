@@ -202,6 +202,8 @@ export default function ITRFilingPage() {
   // `approve` (a Manager or a Partner); each was drawn to every member and came back refused (POST-A-455).
   const { can: canDo, resolved: permissionsRead } = usePermissions();
   const mayApprove = canDo("income_tax", "approve");
+  // Starting a filing asks `income_tax` `compute`, a Reviewer's access does not hold (POST-A-455).
+  const mayCompute = canDo("income_tax", "compute");
   // Not useParams(): apps/web is a static export and Cloudflare's 200-rewrite
   // serves the pre-rendered "_placeholder" HTML for every real client URL, so
   // useParams().id was the literal string "_placeholder" — the load below bailed
@@ -653,12 +655,14 @@ export default function ITRFilingPage() {
           <h2 className="text-sm font-semibold text-ps-ink">ITR Preparation</h2>
           <p className="text-xs text-ps-hint mt-0.5">IT Act §139 — Return of Income</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
-        >
-          <Plus size={12} /> New Filing
-        </button>
+        {mayCompute && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+          >
+            <Plus size={12} /> New Filing
+          </button>
+        )}
       </div>
 
       {calendarNote && (
@@ -911,7 +915,7 @@ export default function ITRFilingPage() {
 
           {/* POST-A-368. A return recorded as filed writes, on each brought-forward loss, how much of it the return used. That happens when the
               acknowledgement is recorded; this is for the return whose write was refused, or that was made without a saved computation. */}
-          {selectedFiling.status === "filed" && (selectedFiling.return_type ?? "original") !== "updated" && mayApprove && (
+          {selectedFiling.status === "filed" && (selectedFiling.return_type ?? "original") !== "updated" && (
             <div className="rounded-lg border border-ps-border p-3 space-y-2">
               <p className="text-2xs font-medium text-ps-body">Brought-forward losses</p>
               {selectedFiling.computation_snapshot_id ? (
@@ -920,32 +924,43 @@ export default function ITRFilingPage() {
                     This return is built on a saved computation. Update the loss records to show how much of each loss it used; if they
                     already show it, nothing changes.
                   </p>
-                  <Button variant="plain" size="none" spinner={false} onClick={() => updateLossRecords(selectedFiling, null)}
-                    disabled={actionInFlight}
-                    className="text-xs px-3 py-1.5 border border-ps-border rounded-lg disabled:opacity-50 flex items-center gap-1">
-                    {savingLosses && <Loader2 size={10} className="animate-spin" />} Update the loss records from this return
-                  </Button>
+                  {mayApprove && (
+                    <Button variant="plain" size="none" spinner={false} onClick={() => updateLossRecords(selectedFiling, null)}
+                      disabled={actionInFlight}
+                      className="text-xs px-3 py-1.5 border border-ps-border rounded-lg disabled:opacity-50 flex items-center gap-1">
+                      {savingLosses && <Loader2 size={10} className="animate-spin" />} Update the loss records from this return
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>
-                  <label htmlFor="itr-pin-computation" className="text-3xs text-ps-label block">Saved computation this return is built on</label>
-                  <select id="itr-pin-computation" value={pinChoice} onChange={e => setPinChoice(e.target.value)}
-                    className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
-                    <option value="">Choose a saved computation</option>
-                    {pinChoices.map(x => (
-                      <option key={x.id} value={x.id}>{`Version ${x.version} · ${x.is_reviewed ? "reviewed" : "not yet reviewed"}`}</option>
-                    ))}
-                  </select>
+                  {mayApprove && (
+                    <>
+                      <label htmlFor="itr-pin-computation" className="text-3xs text-ps-label block">Saved computation this return is built on</label>
+                      <select id="itr-pin-computation" value={pinChoice} onChange={e => setPinChoice(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 border border-ps-border rounded-lg">
+                        <option value="">Choose a saved computation</option>
+                        {pinChoices.map(x => (
+                          <option key={x.id} value={x.id}>{`Version ${x.version} · ${x.is_reviewed ? "reviewed" : "not yet reviewed"}`}</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                   <p className="text-3xs text-ps-hint">
-                    This return was made without one, so nothing says which losses it used. Choose the computation it was built on (it
-                    cannot be changed afterwards), and the loss records are updated from it.
+                    This return was made without one, so nothing says which losses it used. Choosing the computation it was built on
+                    (it cannot be changed afterwards) updates the loss records from it.
                   </p>
-                  <Button variant="plain" size="none" spinner={false} onClick={() => updateLossRecords(selectedFiling, pinChoice)}
-                    disabled={actionInFlight || !pinChoice}
-                    className="text-xs px-3 py-1.5 border border-ps-border rounded-lg disabled:opacity-50 flex items-center gap-1">
-                    {savingLosses && <Loader2 size={10} className="animate-spin" />} Use this computation and update the loss records
-                  </Button>
+                  {mayApprove && (
+                    <Button variant="plain" size="none" spinner={false} onClick={() => updateLossRecords(selectedFiling, pinChoice)}
+                      disabled={actionInFlight || !pinChoice}
+                      className="text-xs px-3 py-1.5 border border-ps-border rounded-lg disabled:opacity-50 flex items-center gap-1">
+                      {savingLosses && <Loader2 size={10} className="animate-spin" />} Use this computation and update the loss records
+                    </Button>
+                  )}
                 </>
+              )}
+              {permissionsRead && !mayApprove && (
+                <p className="text-3xs text-ps-hint">Updating the loss records needs permission to approve income-tax returns, so the buttons are not shown to you.</p>
               )}
             </div>
           )}
@@ -953,8 +968,10 @@ export default function ITRFilingPage() {
           {transitionError && <p className="text-xs text-red-600">{transitionError}</p>}
 
           <div className="flex gap-2 flex-wrap">
-            {nextStatus(selectedFiling.status) && selectedFiling.status !== "filed" && permissionsRead && !mayApprove && (
-              <p className="text-xs text-ps-label">A Manager or a Partner moves this return on and records its acknowledgement.</p>
+            {(nextStatus(selectedFiling.status) || selectedFiling.status === "ready_for_filing") && selectedFiling.status !== "filed" && permissionsRead && !mayApprove && (
+              <p className="text-xs text-ps-label">
+                Moving this return on and recording its acknowledgement need permission to approve income-tax returns, so those buttons are not shown to you.
+              </p>
             )}
             {nextStatus(selectedFiling.status) && selectedFiling.status !== "filed" && mayApprove && (
               <Button variant="plain" size="none" spinner={false}

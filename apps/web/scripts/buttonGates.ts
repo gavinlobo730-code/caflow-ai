@@ -29,12 +29,37 @@ export function innerPair(src: string, method: string, path: string): string {
   return `${m[1]}:${m[2]}`;
 }
 
-/** The pair a gate asks in a screen's source: a variable set from a permission check, a `Can` component, or a check written inline. */
+/**
+ * The pair a gate asks in a screen's source: a variable set from a permission check, a `Can` component, or a check written inline.
+ * A variable declared in more than one component of a file (each tab asks for itself) must be declared with ONE pair: where two
+ * declarations disagree, the answer is null, so a wrong pair in the second or the third cannot hide behind a right one in the first.
+ */
 export function gatePair(src: string, gate: string): string | null {
   const inline = gate.match(/^(?:<Can resource="([a-z_]+)" action="([a-z_]+)"|can\("([a-z_]+)", "([a-z_]+)"\))/);
   if (inline) return src.includes(gate) ? `${inline[1] ?? inline[3]}:${inline[2] ?? inline[4]}` : null;
-  const m = src.match(new RegExp(`\\b${gate.replace(/^!/, "")} = [^;\\n]*can(?:Do)?\\("([a-z_]+)", "([a-z_]+)"\\)`));
-  return m ? `${m[1]}:${m[2]}` : null;
+  const declared = [...src.matchAll(new RegExp(`\\b${gate.replace(/^!/, "")} = [^;\\n]*can(?:Do)?\\("([a-z_]+)", "([a-z_]+)"\\)`, "g"))]
+    .map((m) => `${m[1]}:${m[2]}`);
+  if (declared.length === 0) return null;
+  return declared.every((d) => d === declared[0]) ? declared[0] : null;
+}
+
+/**
+ * Whether a line names the gate AS a condition of its own: the whole token (not `mayWrite` inside `mayWriteBooks`), not negated
+ * (a leading `!` unless the gate is written with one), not one side of an `||`, and not sitting in a ternary's branch
+ * (`x ? mayA : mayB`; `) : mayA ? (` is a condition of its own), where it says nothing about the button drawn under the line.
+ */
+export function namesGate(line: string, gate: string): boolean {
+  const esc = gate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const lead = /^[\w$!]/.test(gate) ? "(?<![\\w$.!])" : "";
+  const tail = /[\w$]$/.test(gate) ? "(?![\\w$])" : "";
+  for (const m of line.matchAll(new RegExp(`${lead}${esc}${tail}`, "g"))) {
+    const before = line.slice(0, m.index).trimEnd();
+    const after = line.slice((m.index ?? 0) + m[0].length).trimStart();
+    if (before.endsWith("||") || after.startsWith("||")) continue;
+    if (before.endsWith("?") || (before.endsWith(":") && before.includes(" ? "))) continue;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -43,6 +68,8 @@ export function gatePair(src: string, gate: string): string | null {
  */
 const OPENS = /&& \($|\? \($|<Can |\bif \(|^\{?[^<>]*&& </;
 /** A line that closes one: `)}`, `</tag>}`, `/>}` or `</Can>`. */
+/** The line between a ternary's two branches. */
+const ELSE = /^\)\s*:\s*\($/;
 const CLOSES = /^\)\}$|<\/[A-Za-z.]+>\}$|\/>\}$|^<\/Can>$/;
 
 /**
@@ -58,17 +85,19 @@ export function gatedBy(src: string, anchor: string, gate: string, nth = 0): boo
   }
   const lines = src.slice(0, at + anchor.length).split("\n").reverse();
   let depth = 0;
+  let inElse = false;    // the button is in the `) : (` branch of a ternary, so the opener of that ternary decides the OTHER branch
   for (const [i, line] of lines.entries()) {
     const t = line.trim();
     if (i > 40) break;
     if (t.startsWith("//") || t.startsWith("{/*") || t.startsWith("*")) continue;
     const opens = OPENS.test(t);
-    if (i === 0) { if (opens) return t.includes(gate); continue; }
+    if (i === 0) { if (opens) return namesGate(t, gate); continue; }
     if (opens && CLOSES.test(t)) continue;                 // opens and closes on one line: a neighbour
     if (opens && t.startsWith(")") && depth > 0) continue;  // `) : x ? (` between two branches of a closed neighbour
     if (CLOSES.test(t)) { depth += 1; continue; }
+    if (depth === 0 && ELSE.test(t)) { inElse = true; continue; }
     if (opens) {
-      if (depth === 0) return t.includes(gate);
+      if (depth === 0) return !(inElse && /\? \($/.test(t)) && namesGate(t, gate);
       depth -= 1;
     }
   }
