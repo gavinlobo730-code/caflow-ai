@@ -2293,12 +2293,13 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Record loan", exact: true }), write: /employees\/emp-1\/loans$/,
   },
   {
-    id: "employee-drawer-settlement-payment-date", title: "employee drawer, Full & final: the date the settlement is paid (the confirming click)", open: async (env) => {
+    id: "employee-drawer-settlement-payment-date", shortForm: "15/01/2026", title: "employee drawer, Full & final: the date the settlement is paid (the confirming click)", open: async (env) => {
       const { page, stub } = env;
       await openEmployeeDrawer("Full & final")(env);
       stub.route({ method: "POST", re: /employees\/emp-1\/settlement\/record$/, reply: () => ok({
         employee_id: "emp-1", components: [], deductions: [], totals: { gross_paise: 0, taxable_paise: 0, net_payable_paise: 0 }, gaps: [], problems: [], settlement_id: "s-1" }) });
-      // The payment date is read after the last working day (its anchor), so the last working day is in FY 2026-27 here as the short-form claim expects.
+      // The payment date may fall either side of the last working day, so it says `near` it (POST-A-126): a day and month typed with no year are
+      // read in the year nearest 30/06/2026, and 15/1 is 15/01/2026 (166 days before it) and not 15/01/2027 (199 after): the row's `shortForm`.
       await typeAndLeave(page.locator("#drawer-last-working-day"), "30/06/2026");
       await page.getByRole("button", { name: "Compute", exact: true }).click();
       await page.locator("#settlement-payment-date").waitFor();
@@ -3256,6 +3257,32 @@ export const scenarios = [
       await until(() => reads.some((r) => r.period === "range"), "Show hours to read the range");
       const asked = reads.find((r) => r.period === "range");
       assert.deepEqual([asked.date_from, asked.date_to], ["2026-10-01", "2026-10-07"], `the days did not reach the read as ISO: ${JSON.stringify(asked)}`);
+    },
+  },
+  // POST-A-126: a date that may fall either side of the one beside it says `near`, and a day and month typed with no year are read in the year
+  // nearest to it. A notice received on 01/03/2026 (FY 2025-26) was given a response date of 15/06/2025 for `15/6`; an expiry typed in March for
+  // the coming April was read as the April eleven months gone.
+  {
+    id: "a-short-date-is-read-in-the-year-nearest-the-date-beside-it",
+    title: "a notice's response date beside its received date, and a document's expiry beside today, read a day and month in the nearest year",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context } = env;
+      await openAddIncomeTaxNotice(env);
+      await typeAndLeave(page.locator("#notice-date-received"), "01/03/2026");
+      const due = page.locator("#notice-response-due");
+      await typeAndLeave(due, "15/6");
+      assert.equal(await due.inputValue(), "15/06/2026", "15/6 beside a notice received on 01/03/2026 is 15/06/2026, not the June before it");
+      await typeAndLeave(due, "20/2");
+      assert.equal(await due.inputValue(), "20/02/2026", "a response date already past when the notice arrived is still read before it");
+      // A document's optional expiry, with today 20 March 2027 in India.
+      await context.clock.setFixedTime(new Date("2027-03-20T06:00:00Z"));
+      await openUploadDocument(env);
+      const expiry = page.getByLabel("Expiry date (optional)", { exact: true });
+      await typeAndLeave(expiry, "15/4");
+      assert.equal(await expiry.inputValue(), "15/04/2027", "an expiry typed on 20/03/2027 as 15/4 is the coming April");
+      await typeAndLeave(expiry, "15/1");
+      assert.equal(await expiry.inputValue(), "15/01/2027", "15/1 typed on 20/03/2027 is the January just gone");
     },
   },
   // The two Record modals hand the write's promise back to the shared Button, which is what holds the second click of a double click.

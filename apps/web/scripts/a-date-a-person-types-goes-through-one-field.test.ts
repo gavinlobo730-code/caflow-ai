@@ -380,7 +380,7 @@ export function dateInputUses(src: string, name = "x.tsx"): Use[] {
         named: has("aria-label") || has("aria-labelledby") || inLabel || (idText !== null && htmlFors.has(idText)),
         gated: has("onStateChange"),
         anchored: has("anchor"),
-        sided: has("notBefore") || has("notAfter"),
+        sided: has("notBefore") || has("notAfter") || has("near"),
       });
     }
     ts.forEachChild(node, visit);
@@ -414,24 +414,19 @@ test("the detector tells an anchored field that says its side from one that does
   assert.deepEqual(sided(`<DateInput anchor={s} value={x} onChange={f} />`), [[true, false]]);
   assert.deepEqual(sided(`<DateInput anchor={s} notBefore={s} value={x} onChange={f} />`), [[true, true]]);
   assert.deepEqual(sided(`<DateInput anchor={s} notAfter={s} value={x} onChange={f} />`), [[true, true]]);
+  assert.deepEqual(sided(`<DateInput anchor={s} near={s} value={x} onChange={f} />`), [[true, true]], "near is a stated relation: either side, the nearest");
 });
 
 test("a <DateInput> that is anchored to another date says which side of it it belongs on", () => {
   // The anchor decides the financial year a short form is read in, so an end typed `15/6` beside a start of 01/03/2026 came out as 15/06/2025
   // and an e-way bill's valid-upto of `2/4` beside a bill of 31/03/2027 as 02/04/2026: a date a year before the one it belongs after, and the
   // field showed it without a word. `notBefore` (an end, a maturity, an expiry, a due date) and `notAfter` (a date that precedes its anchor)
-  // read a short form on the right side of it. There is no field that is anchored and has no side; one that really has none is listed here
-  // WITH the reason.
-  // file#id -> why no side of its anchor is claimed. The anchor then still chooses the financial year a short form is read in, so a short date
-  // typed beside a March document is read a year before it (named on POST-A-126). A side is claimed only where it is true by the nature of the
-  // field (an end, a maturity, an expiry, a due date), never from a statutory or portal sequence that has not been read from a primary source and
-  // never from a date that can legitimately fall on either side.
-  const NO_SIDE: Record<string, string> = {
-    "app/income-tax/notices/page.tsx#notice-response-due":
-      "a notice can reach the firm after the response date it states, and the received date defaults to today, so a due date before it is ordinary",
-    "components/payroll/EmployeeDrawer.tsx#settlement-payment-date":
-      "a settlement can be paid before the last working day (the money leaves on payment_date, which nothing orders against the leaving date), for example the day before a holiday",
-  };
+  // read a short form on the right side of it, and `near` (a date that can legitimately fall on either side, or whose order is a statutory or
+  // portal sequence nobody has read from a primary source) reads it in the year nearest the anchor without claiming a side. A side is claimed
+  // only where it is true by the nature of the field. One that can say none of the three is listed here WITH the reason.
+  // Empty since POST-A-126 (17-11-2026): the two fields that were listed here (a notice's response date, a settlement's payment date) can
+  // fall either side of their anchor, and now say `near` (a short form is read in the year nearest to it) instead of claiming a side.
+  const NO_SIDE: Record<string, string> = {};
   const uses = usesInTree();
   const anchored = Object.entries(uses).flatMap(([file, us]) => us.filter((u) => u.anchored).map((u) => ({ file, line: u.line, id: u.id, sided: u.sided })));
   assert.ok(anchored.length >= 15, `only ${anchored.length} anchored DateInputs were read — the scan is broken`);
@@ -441,7 +436,8 @@ test("a <DateInput> that is anchored to another date says which side of it it be
   assert.deepEqual(stale, [], "NO_SIDE lists a field that no longer exists, is no longer anchored, or now says a side: delete the entry");
   assert.deepEqual(unsided, [],
     "A DateInput with an `anchor` and no `notBefore` or `notAfter` reads a short form in the ANCHOR'S financial year, which is a year before " +
-    "the anchor when the anchor is in the last months of one. Say which side: notBefore={the date it belongs after} or notAfter={the date it belongs before}.");
+    "the anchor when the anchor is in the last months of one. Say which side: notBefore={the date it belongs after} or notAfter={the date it belongs before}, " +
+    "or near={the date} where it may fall on either side.");
 });
 
 // POST-A-126 (item 2). Fields that are an END by nature, and the 'to' half of a range, are anchored on the date they end after, so a short
@@ -610,3 +606,50 @@ if (process.env.PRINT_DATE_INPUTS) {
     console.log("TOTAL " + Object.values(f).reduce((a, b) => a + b, 0));
   });
 }
+
+// ── A CLEAR THAT EMPTIES A DATE BOX REMOUNTS IT (POST-A-126) ────────────────
+// A box that holds text it cannot read has already handed up "", so a parent that sets its value to "" again changes nothing the box can see,
+// and the unreadable text stays on the screen under a filter that has been cleared. The contract is a `key` the Clear bumps (the shared
+// table's and the bank book's do). This finds every inline onClick that empties a box's value and asks for the key, or a reviewed reason.
+
+/** `file#value` of each DateInput whose value an inline onClick empties, and whether the box carries a key. */
+export function clearedBoxes(src: string): Array<{ value: string; keyed: boolean }> {
+  const handlers = [...src.matchAll(/onClick=\{\s*(?:async\s*)?\(\)\s*=>\s*(\{[^{}]*\}|[^{}]*?)\s*\}/g)].map((m) => m[1]);
+  const out: Array<{ value: string; keyed: boolean }> = [];
+  for (const m of src.matchAll(/<DateInput\b((?:=>|[^>])*?)(?:\/>|>)/g)) {
+    const value = /\bvalue=\{(\w+)\}/.exec(m[1])?.[1];
+    if (!value) continue;
+    const setter = `set${value[0].toUpperCase()}${value.slice(1)}("")`;
+    if (handlers.some((h) => h.includes(setter))) out.push({ value, keyed: /\bkey=/.test(m[1]) });
+  }
+  return out;
+}
+
+test("the detector finds an inline Clear that empties a date box, and whether the box is remounted", () => {
+  assert.deepEqual(clearedBoxes(`<DateInput value={from} onChange={setFrom} /><button onClick={() => setFrom("")}>Clear</button>`), [{ value: "from", keyed: false }]);
+  assert.deepEqual(clearedBoxes(`<DateInput key={\`f-\${n}\`} value={from} onChange={setFrom} /><button onClick={() => { setFrom(""); setN((k) => k + 1); }}>Clear</button>`),
+    [{ value: "from", keyed: true }]);
+  assert.deepEqual(clearedBoxes(`<DateInput value={from} onChange={setFrom} /><button onClick={save}>Save</button>`), []);
+});
+
+test("a Clear that empties a date box remounts it with a key, or is listed with why it need not", () => {
+  // file#value -> why the box cannot be holding unreadable text when it is emptied, or is mounted afresh after.
+  const SAFE: Record<string, string> = {
+    "app/clients/[id]/compliance/gst/page.tsx#filedOn":
+      "Cancel closes the compute panel the box is drawn in (`showCompute`), so the box is unmounted with its text",
+    "app/clients/[id]/inventory/page.tsx#asAt":
+      "the 'back to now' button is offered only while the box holds a date, and a date replaced by \"\" is a value the box did not hand up, so its text is replaced",
+    "components/catalogue/ProductServiceManagerPanel.tsx#openingBalanceDate":
+      "Import empties the date and opens the import's first step, which mounts the box afresh",
+  };
+  const found: string[] = [];
+  for (const rel of SOURCES.filter((f) => f.endsWith(".tsx") && f !== COMPONENT)) {
+    for (const c of clearedBoxes(fs.readFileSync(path.join(WEB, rel), "utf8"))) {
+      if (!c.keyed) found.push(`${rel}#${c.value}`);
+    }
+  }
+  assert.deepEqual(Object.keys(SAFE).filter((k) => !found.includes(k)), [], "SAFE names a box no Clear empties any more (or that is now keyed): delete the entry");
+  assert.deepEqual(found.filter((k) => !(k in SAFE)), [],
+    "An onClick empties a date box that has no key. If the box held unreadable text it had already handed up \"\", so the text stays on screen: " +
+    "give the box key={`name-${n}`} and bump n in the same click (components/banking/BankBook.tsx does), or list it here with why it is safe.");
+});

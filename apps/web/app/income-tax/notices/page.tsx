@@ -205,7 +205,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
             </div>
             <div>
               <label htmlFor="notice-response-due" className={lbl}>Response Due Date</label>
-              <DateInput id="notice-response-due" anchor={form.dateReceived || null} value={form.responseDueDate} onChange={v => upd({ responseDueDate: v })} onStateChange={dates.watch("due", "Response due date")} className={inputCls} />
+              <DateInput id="notice-response-due" anchor={form.dateReceived || null} near={form.dateReceived || null} value={form.responseDueDate} onChange={v => upd({ responseDueDate: v })} onStateChange={dates.watch("due", "Response due date")} className={inputCls} />
             </div>
           </div>
           <div>
