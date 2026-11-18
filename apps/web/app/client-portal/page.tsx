@@ -165,6 +165,14 @@ export default function ClientPortalPage() {
   // are open to (POST-A-467). Offered while permissions are still loading, because the server is the one that refuses.
   const { can, resolved: permissionsResolved } = usePermissions();
   const booksOpen = !permissionsResolved || can("accounting", "read");
+  // Every other write on this screen is offered only to someone its route admits (POST-A-447, the portal half): a
+  // Reviewer reads the portal and may not ask for papers, withdraw a request or write to the client; only an Executive
+  // and above stores a file; only a Partner deletes one; and a shared report is removed by the reports' write tier
+  // (Manager and above, the policy of migration 261). Offered while permissions load, because the server refuses.
+  const mayWritePortal = !permissionsResolved || can("portal", "write");
+  const mayStoreFile = !permissionsResolved || can("document", "write");
+  const mayDeleteFile = !permissionsResolved || can("document", "delete");
+  const mayRemoveReport = !permissionsResolved || can("report", "write");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -358,7 +366,8 @@ export default function ClientPortalPage() {
   // they have loaded, and only when there is something unread, so an empty
   // thread makes no write.
   useEffect(() => {
-    if (activeTab !== "messages" || !selectedClientId || messagesLoading || messagesFailed) return;
+    // Marking read is a portal write (the route asks Portal write): a Reviewer reads the thread and leaves it unread.
+    if (!mayWritePortal || activeTab !== "messages" || !selectedClientId || messagesLoading || messagesFailed) return;
     if (!portalMessages.some((m) => !m.from_ca && m.is_read === false)) return;
     let live = true;
     (async () => {
@@ -370,7 +379,7 @@ export default function ClientPortalPage() {
       } catch { /* the thread stays unread, which is the honest answer */ }
     })();
     return () => { live = false; };
-  }, [activeTab, selectedClientId, messagesLoading, messagesFailed, portalMessages, loadUnread]);
+  }, [mayWritePortal, activeTab, selectedClientId, messagesLoading, messagesFailed, portalMessages, loadUnread]);
 
   async function loadPortalMessages(clientId: string) {
     setMessagesLoading(true);
@@ -506,6 +515,12 @@ export default function ClientPortalPage() {
       setSent(null);
       setUploadingDoc(false);
     }
+  }
+
+  function onSharedFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) handleSharedDocUpload(f);
+    e.target.value = "";
   }
 
   async function handleDeleteSharedDoc(doc: SharedDocument) {
@@ -721,12 +736,14 @@ export default function ClientPortalPage() {
                     <CardTitle className="text-sm flex items-center gap-2">
                       <FileText size={15} /> Document Requests
                     </CardTitle>
+                    {mayWritePortal && (
                     <button
                       onClick={() => setShowNewRequestModal(true)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-brand text-white text-xs font-medium rounded-lg hover:bg-brand-dark transition-colors"
                     >
                       <Plus size={13} /> New Request
                     </button>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {requestsLoading ? (
@@ -778,6 +795,7 @@ export default function ClientPortalPage() {
                               >
                                 {req.status === "fulfilled" ? "Fulfilled" : "Pending"}
                               </Badge>
+                              {mayWritePortal && (
                               <button
                                 onClick={() => handleDeleteRequest(req.id)}
                                 disabled={actionInFlight}
@@ -786,6 +804,7 @@ export default function ClientPortalPage() {
                               >
                                 <Trash2 size={13} />
                               </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -803,6 +822,7 @@ export default function ClientPortalPage() {
                       <FolderOpen size={15} /> Shared Documents
                       <span className="text-xs text-ps-hint font-normal ml-1">(CA → Client)</span>
                     </CardTitle>
+                    {mayStoreFile && (
                     <div className="flex items-center gap-2">
                       <input aria-label="Label for the shared document (optional)"
                         type="text"
@@ -815,11 +835,7 @@ export default function ClientPortalPage() {
                         type="file"
                         className="hidden"
                         ref={sharedUploadRef}
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleSharedDocUpload(f);
-                          e.target.value = "";
-                        }}
+                        onChange={onSharedFilePicked}
                       />
                       <button
                         onClick={() => sharedUploadRef.current?.click()}
@@ -830,6 +846,7 @@ export default function ClientPortalPage() {
                         {uploadingDoc ? "Uploading…" : "Upload"}
                       </button>
                     </div>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {sent && <div className="mb-3"><UploadProgress progress={sent} what="the document" /></div>}
@@ -876,6 +893,7 @@ export default function ClientPortalPage() {
                               >
                                 <Download size={13} />
                               </button>
+                              {mayDeleteFile && (
                               <button
                                 onClick={() => handleDeleteSharedDoc(doc)}
                                 disabled={actionInFlight}
@@ -884,6 +902,7 @@ export default function ClientPortalPage() {
                               >
                                 <Trash2 size={13} />
                               </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -945,7 +964,9 @@ export default function ClientPortalPage() {
                               ) : (
                                 <span className="text-xs text-ps-hint">Opens for someone with access to the books</span>
                               )}
+                              {mayRemoveReport && (
                               <Button variant="plain" size="none"
+                                title="Remove this shared report" aria-label="Remove this shared report"
                                 onClick={async () => {
                                   if (!(await confirmDialog({ message: "Remove this shared report?", danger: true, confirmLabel: "Remove" }))) return;
                                   const out = await deleteRowAndConfirm(getSupabaseClient(), "shared_reports", r.id);
@@ -956,6 +977,7 @@ export default function ClientPortalPage() {
                               >
                                 <Trash2 size={12} />
                               </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1131,6 +1153,10 @@ export default function ClientPortalPage() {
                         </div>
                       ))
                     )}
+                    {!mayWritePortal && (
+                      <p className="pt-2 border-t border-ps-border text-xs text-ps-label">Writing to the client needs the Portal write permission, which a Reviewer does not hold.</p>
+                    )}
+                    {mayWritePortal && (
                     <div className="pt-2 border-t border-ps-border space-y-2">
                       <textarea aria-label="Message to this client"
                         rows={2}
@@ -1150,6 +1176,7 @@ export default function ClientPortalPage() {
                         </button>
                       </div>
                     </div>
+                    )}
                   </CardContent>
                 </Card>
               )}

@@ -66,9 +66,41 @@ def _find_all_active_by_auth(auth_user_id: str, db) -> list[dict]:
         return []
     if _USE_MOCK:
         return [c for c in MOCK_PORTAL_CONTACTS
-                if c.get("auth_user_id") == auth_user_id and c.get("status") == "active"]
-    return (db.table("client_portal_users").select("*")
-            .eq("auth_user_id", auth_user_id).eq("status", "active").execute().data or [])
+                if c.get("auth_user_id") == auth_user_id and c.get("status") == "active"
+                and not _mock_client_deleted(c.get("client_id"))]
+    contacts = (db.table("client_portal_users").select("*")
+                .eq("auth_user_id", auth_user_id).eq("status", "active").execute().data or [])
+    return _of_live_clients(contacts, db)
+
+
+# A CONTACT OF A DELETED CLIENT IS NOBODY'S CONTACT (POST-A-447, the portal half). Deleting a client sets
+# `clients.deleted_at` and hides it from every staff screen, but nothing touched its `client_portal_users` rows, so
+# an active contact kept signing in to the portal of a client the practice had deleted: reading its fee invoices,
+# documents and compliance list, and posting messages that notified staff about a client none of them could open.
+# The membership is read with the client's row now, by firm and client together, and a deleted client is not a
+# membership. An ARCHIVED client is deliberately not touched here: whether a former client keeps reading its own
+# fee invoices and documents is a decision, not a defect, and it is recorded as one.
+def _mock_client_deleted(client_id) -> bool:
+    try:
+        from mock_data import CLIENT_INDEX
+    except ImportError:  # a mock store that cannot be imported holds no deleted client
+        return False
+    return bool((CLIENT_INDEX.get(client_id) or {}).get("deleted_at"))
+
+
+def _of_live_clients(contacts: list[dict], db) -> list[dict]:
+    """The contacts whose client still exists in the contact's own firm: one read of `clients` by id, with
+    `deleted_at` asked for, matched on (client, firm) so a contact row naming another firm's client is not one."""
+    ids = sorted({str(c["client_id"]) for c in contacts if c.get("client_id")})
+    if not ids:
+        return []
+    firms = sorted({str(c["firm_id"]) for c in contacts if c.get("firm_id")})
+    if not firms:
+        return []
+    live = {(str(r["id"]), str(r.get("firm_id")))
+            for r in (db.table("clients").select("id,firm_id").in_("firm_id", firms).in_("id", ids)
+                      .is_("deleted_at", "null").execute().data or [])}
+    return [c for c in contacts if (str(c.get("client_id")), str(c.get("firm_id"))) in live]
 
 
 def _legacy_client(auth_user_id: str, db) -> Optional[dict]:
@@ -77,9 +109,10 @@ def _legacy_client(auth_user_id: str, db) -> Optional[dict]:
         return None
     if _USE_MOCK:
         leg = MOCK_LEGACY_PORTAL.get(auth_user_id)
-        return dict(leg) if leg else None
+        return dict(leg) if leg and not _mock_client_deleted(leg.get("client_id")) else None
     rows = (db.table("clients").select("id,firm_id")
-            .eq("portal_user_id", auth_user_id).eq("portal_enabled", True).limit(1).execute().data or [])
+            .eq("portal_user_id", auth_user_id).eq("portal_enabled", True).is_("deleted_at", "null")
+            .limit(1).execute().data or [])
     return {"client_id": rows[0]["id"], "firm_id": rows[0]["firm_id"]} if rows else None
 
 
