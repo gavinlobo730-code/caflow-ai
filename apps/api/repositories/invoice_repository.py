@@ -224,11 +224,10 @@ class InvoiceRepository(BaseRepository[dict]):
                 inv_no = inv.get("invoice_no", "")
                 if inv_no:
                     # Extract last numeric segment regardless of prefix
-                    parts = inv_no.split("-")
-                    try:
-                        max_seq = max(max_seq, int(parts[-1]))
-                    except (ValueError, IndexError):
-                        pass
+                    tail = inv_no.split("-")[-1]
+                    # A number whose last segment is not digits is not one of this series: asked, not caught (POST-A-021).
+                    if tail.isascii() and tail.isdigit():
+                        max_seq = max(max_seq, int(tail))
             return _format(max_seq + 1)
 
         # Atomic DB sequence — prevents race conditions under concurrent invoice generation.

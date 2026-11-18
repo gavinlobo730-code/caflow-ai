@@ -76,6 +76,7 @@ from domain.tds import vocabulary as _vocabulary
 from domain.tds import deductee_payment_code as _deductee_payment_code
 
 from core.ist_clock import month_end_date
+from core.observability import capture_soft_failure
 from domain.tds import challan_mapping
 from domain.tds import keying_sheet as _keying_sheet
 from domain.tds import manual_register
@@ -1156,8 +1157,9 @@ def tds_24q_from_books(
         month_end = month or ""
         try:
             month_end = month_end_date(month)
-        except (ValueError, IndexError):
-            pass
+        except (ValueError, IndexError) as unreadable:
+            # A run's month that does not read keeps the raw month as its descriptive date (it drives no figure), and is reported (POST-A-021).
+            capture_soft_failure(unreadable, operation="tds_return.run_month_unreadable", run_id=run.get("id"), slip_id=s.get("id"))
         slip_months[s["id"]] = (month, month_end)
 
     mapping = challan_mapping.assign(
