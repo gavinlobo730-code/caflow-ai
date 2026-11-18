@@ -368,8 +368,10 @@ export function DataTable<T>({
         )}
 
         {/* No ml-auto: the search above takes the slack now, and two elements
-            both claiming the free space fight over it. */}
-        <div className="flex items-center gap-2">
+            both claiming the free space fight over it. It wraps, so on a phone a
+            screen's own extra controls do not push Columns and Export past the
+            window's edge (POST-A-131). */}
+        <div className="flex flex-wrap items-center gap-2">
           {toolbarExtra}
           <ColumnVisibility columns={columns} hidden={t.prefs.hiddenColumns} onToggle={t.toggleColumn} />
           {exportFilename && (
@@ -763,10 +765,11 @@ function FilterControl<T>({
   if (def.type === "dateRange") {
     const v = (value as { from?: string; to?: string }) ?? {};
     return (
-      <span className="inline-flex items-center gap-1" title={def.label}>
-        <DateInput aria-label={`${def.label} from`} className={sel} value={v.from ?? ""} onChange={(iso) => onChange({ ...v, from: iso })} />
+      // On a phone the two boxes share the row and shrink to it; a box's own width ran the second one past the window's edge (POST-A-131).
+      <span className="flex w-full items-center gap-1 sm:inline-flex sm:w-auto" title={def.label}>
+        <DateInput aria-label={`${def.label} from`} wrapperClassName="flex-1 sm:flex-none" className={`${sel} w-full sm:w-auto`} value={v.from ?? ""} onChange={(iso) => onChange({ ...v, from: iso })} />
         <span className="text-ps-disabled">–</span>
-        <DateInput aria-label={`${def.label} to`} anchor={v.from || null} notBefore={v.from || null} className={sel} value={v.to ?? ""} onChange={(iso) => onChange({ ...v, to: iso })} />
+        <DateInput aria-label={`${def.label} to`} wrapperClassName="flex-1 sm:flex-none" className={`${sel} w-full sm:w-auto`} anchor={v.from || null} notBefore={v.from || null} value={v.to ?? ""} onChange={(iso) => onChange({ ...v, to: iso })} />
       </span>
     );
   }
@@ -808,7 +811,9 @@ function ColumnVisibility<T>({
       <summary className={cn(btn, "cursor-pointer list-none")}>
         <Columns3 size={13} /> Columns
       </summary>
-      <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-ps-border bg-white p-1.5 shadow-lg">
+      {/* Under the button's right edge; on a phone, across the window, because right-aligned to a button near the left it opened
+          past the window's left edge (POST-A-131). */}
+      <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-ps-border bg-white p-1.5 shadow-lg max-sm:fixed max-sm:inset-x-4 max-sm:w-auto">
         {hideable.map((c) => (
           <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-ps-label hover:bg-ps-bg">
             <input type="checkbox" checked={!hidden.includes(c.key)} onChange={() => onToggle(c.key)} className="cursor-pointer accent-brand" />

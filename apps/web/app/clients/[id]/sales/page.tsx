@@ -2203,8 +2203,8 @@ function SalesInvoices({
         />
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Summary cards: stacked on a phone, where three abreast left each figure wider than its tile (POST-A-131). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {/* The query is scoped to the selected period (invoice_date between
             range.from and range.to), so these tiles are the PERIOD's figures
             and not the client's whole receivable/turnover. The label used to
