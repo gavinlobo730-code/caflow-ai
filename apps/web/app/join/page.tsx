@@ -22,6 +22,12 @@
  *      the browser he was signed in to as the Partner.)
  *   4. Once accepted, the person's membership is read again before "Go to Dashboard", or the app would still think
  *      the new member has no practice and send them to create one.
+ *   5. A person joined this way has NO PASSWORD, and the invitation's own sign-in is spent: closing the browser would
+ *      leave them with no way back in but to ask for another invitation. So the page asks them to create one before
+ *      it opens the dashboard (POST-A-481), with the same rules and the same memory as the sign-up wizard
+ *      (`lib/auth/onboardingProgress`: saving a password makes the sign-in guard unmount this page for a moment).
+ *   6. A repeat (a second click, a reload, the link on a phone after the first one joined) is answered by the server
+ *      with the person's own membership, and the page says they have already joined and carries on.
  *
  * Identity is never taken from the URL: accept-invite reads the firm and the role off the server's invite row and
  * the address off the verified session (F21).
@@ -33,7 +39,7 @@
  * the invitation could not be used (found by driving it, 16-11-2026). So the journey is kept per token outside the
  * component: a new mount waits for the journey already under way, and the button's journey replaces it.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { EmailOtpType } from "@supabase/supabase-js";
@@ -42,6 +48,11 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { FrontDoor } from "@/components/FrontDoor";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { PasswordRules } from "@/components/auth/PasswordRules";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { onboardingProgress, passwordIsSetFor } from "@/lib/auth/onboardingProgress";
+import { isSamePasswordError } from "@/lib/auth/reauth";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
 type Status = "checking" | "ready" | "other_account" | "done" | "error";
 
@@ -54,7 +65,7 @@ interface OpenedSignIn {
 
 /** Where a journey ended. */
 type Outcome =
-  | { kind: "done"; role?: string; full_name?: string }
+  | { kind: "done"; role?: string; full_name?: string; alreadyJoined?: boolean }
   | { kind: "ready" }
   | { kind: "other_account"; signedInAs: string; invitedAs: string }
   | { kind: "error"; message: string };
@@ -86,7 +97,7 @@ const journeys = new Map<string, Promise<Outcome>>();
 async function accept(token: string): Promise<Outcome> {
   const res = await api.identity.acceptInvite(token);
   if (!res.success) throw new Error(res.error ?? "Invalid or expired invite.");
-  return { kind: "done", role: res.data.role, full_name: res.data.full_name };
+  return { kind: "done", role: res.data.role, full_name: res.data.full_name, alreadyJoined: res.data.already_joined === true };
 }
 
 async function signInWith(signIn: OpenedSignIn): Promise<void> {
@@ -151,20 +162,20 @@ async function joinSignedOut(token: string): Promise<Outcome> {
 export default function JoinPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { signOut, refreshUserContext } = useAuth();
+  const { signOut, refreshUserContext, user } = useAuth();
 
   const token = searchParams.get("token") ?? "";
 
   const [status, setStatus] = useState<Status>("checking");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [result, setResult] = useState<{ role?: string; full_name?: string } | null>(null);
+  const [result, setResult] = useState<{ role?: string; full_name?: string; alreadyJoined?: boolean } | null>(null);
   const [signedInAs, setSignedInAs] = useState<string | null>(null);
   const [invitedAs, setInvitedAs] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   function show(outcome: Outcome) {
     if (outcome.kind === "done") {
-      setResult({ role: outcome.role, full_name: outcome.full_name });
+      setResult({ role: outcome.role, full_name: outcome.full_name, alreadyJoined: outcome.alreadyJoined });
       setStatus("done");
       // The app read this person's membership when they signed in, before the accept linked it; read it again.
       void refreshUserContext();
@@ -228,7 +239,43 @@ export default function JoinPage() {
     });
   }
 
+  // The password step (POST-A-481). Its memory is outside this component, for the reason in the header.
+  const progress = useSyncExternalStore(onboardingProgress.subscribe, onboardingProgress.get, () => null);
+  const passwordSet = passwordIsSetFor(progress, user?.id);
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
+
+  async function savePassword() {
+    if (pwSaving) return;
+    setPwError(null);
+    const problem = passwordProblem(pw);
+    if (problem) { setPwError(problem); return; }
+    if (pw !== pw2) { setPwError("The two passwords do not match."); return; }
+    setPwSaving(true);
+    try {
+      const { error } = await getSupabaseClient().auth.updateUser({ password: pw });
+      // The password typed IS the one already on the account: it is set, carry on.
+      if (error && !isSamePasswordError(error)) throw error;
+      // Remembered before anything else: saving makes the sign-in guard unmount this page for a moment.
+      if (user?.id) onboardingProgress.markPasswordSet(user.id);
+      setPw(""); setPw2("");
+    } catch (e) {
+      // The service asks for a fresh sign-in once the session is more than a day old. The wizard can send a code; this page cannot,
+      // so it says what can be done here: the invitation link signs the person in again.
+      const code = (e as { code?: unknown } | null)?.code;
+      setPwError(code === "reauthentication_needed"
+        ? "Your sign-in is more than a day old, so the service wants a fresh one. Open the invitation link in your email again, then set your password."
+        : authErrorMessage(e, "Could not save your password. Please try again."));
+    } finally {
+      setPwSaving(false);
+    }
+  }
+
   async function goToDashboard() {
+    onboardingProgress.clear();
     await refreshUserContext();
     router.replace("/");
   }
@@ -301,21 +348,69 @@ export default function JoinPage() {
               </svg>
             </div>
             <h2 className="text-lg font-semibold text-ps-ink">
-              Welcome to the team{result?.full_name ? `, ${result.full_name}` : ""}!
+              {result?.alreadyJoined
+                ? "You are already a member of a practice"
+                : `Welcome to the team${result?.full_name ? `, ${result.full_name}` : ""}!`}
             </h2>
             {result?.role && (
               <p className="text-sm text-ps-label">
-                You&apos;ve been added as <strong>{result.role}</strong>.
+                {result.alreadyJoined
+                  ? <>This invitation link has already been used or is no longer open. In the practice you belong to, you are a </>
+                  : "You've been added as "}<strong>{result.role}</strong>.
               </p>
             )}
-            <Button
-              variant="plain"
-              size="none"
-              onClick={() => goToDashboard()}
-              className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors"
-            >
-              Go to Dashboard →
-            </Button>
+            {!passwordSet && (
+              <div data-join-password="" className="text-left space-y-3 border-t border-ps-border pt-4">
+                <h3 className="text-sm font-semibold text-ps-ink">Create your password</h3>
+                <p className="text-xs text-ps-label">
+                  This invitation link works once. A password lets you sign in again whenever you like.
+                </p>
+                <PasswordRules password={pw} id="join-password-rules" />
+                <input
+                  aria-label="Password" aria-describedby="join-password-rules" autoComplete="new-password"
+                  type={showPw ? "text" : "password"} value={pw} onChange={(e) => setPw(e.target.value)}
+                  placeholder="Create a password"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
+                />
+                <input
+                  aria-label="Confirm password" autoComplete="new-password"
+                  type={showPw ? "text" : "password"} value={pw2} onChange={(e) => setPw2(e.target.value)}
+                  placeholder="Re-enter your password"
+                  className="w-full text-sm text-ps-ink border border-ps-border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand bg-ps-bg"
+                />
+                <label className="flex items-center gap-2 text-xs text-ps-label">
+                  <input type="checkbox" checked={showPw} onChange={(e) => setShowPw(e.target.checked)} /> Show the password
+                </label>
+                {pwError && <p role="alert" className="text-xs text-state-problem">{pwError}</p>}
+                <Button
+                  variant="plain" size="none" onClick={() => void savePassword()} disabled={pwSaving || !pw || !pw2}
+                  className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+                >
+                  {pwSaving ? "Saving…" : "Save password"}
+                </Button>
+                {/* Always offered: a person who already has a sign-in (they signed in and then opened the link) joins for the first
+                    time and must not be made to replace the password they have (found by the independent review of this page). */}
+                <button
+                  type="button" onClick={() => void goToDashboard()}
+                  className="w-full border border-ps-border text-ps-label text-sm py-2.5 rounded-lg hover:bg-ps-bg"
+                >
+                  I already have a password: go to the dashboard
+                </button>
+              </div>
+            )}
+            {passwordSet && (
+              <>
+                <p className="text-sm text-green-700">Password set. You can sign in with it next time.</p>
+                <Button
+                  variant="plain"
+                  size="none"
+                  onClick={() => goToDashboard()}
+                  className="w-full bg-brand text-white text-sm font-medium py-2.5 rounded-lg hover:bg-brand-dark transition-colors"
+                >
+                  Go to Dashboard →
+                </Button>
+              </>
+            )}
           </>
         )}
 

@@ -76,5 +76,7 @@ test("the join page signs somebody else out only from the button they pressed, t
 
 test("after joining, the membership is read again before the dashboard", () => {
   assert.match(JOIN, /void refreshUserContext\(\);/);
-  assert.match(JOIN, /async function goToDashboard\(\) \{\s*await refreshUserContext\(\);\s*router\.replace\("\/"\);/);
+  // The password step's memory is dropped first (POST-A-481); what the rule pins is that the membership is read again
+  // before the dashboard opens.
+  assert.match(JOIN, /async function goToDashboard\(\) \{\s*(?:onboardingProgress\.clear\(\);\s*)?await refreshUserContext\(\);\s*router\.replace\("\/"\);/);
 });

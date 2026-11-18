@@ -208,8 +208,44 @@ def test_accept_invite_is_single_use(_setup):
     token = _token(fake, created)
     first = _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token})
     assert first.status_code == 200
+    # POST-A-481: the person who joined, repeating it, is told they have joined and nothing is linked twice.
     replay = _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token})
-    assert replay.status_code == 404
+    assert replay.status_code == 200
+    assert replay.json()["data"]["already_joined"] is True
+    assert replay.json()["data"]["role"] == "Executive" and replay.json()["data"]["firm_id"] == "F1"
+    # ... but anybody else holding the spent token is refused, as before.
+    stranger = _jwt_client({"auth_user_id": "someone-else", "email": "stranger@evil.test"}) \
+        .post("/api/identity/accept-invite", json={"token": token})
+    assert stranger.status_code == 404
+
+
+def test_a_repeat_of_accept_invite_names_the_membership_and_nothing_else(_setup):
+    fake, _ = _setup
+    created = _client(PARTNER).post("/api/identity/users",
+        json={"full_name": "New Hire", "email": "new@f.test", "role": "Manager"}).json()["data"]
+    jwt = {"auth_user_id": "real-uid", "email": "NEW@f.test"}
+    token = _token(fake, created)
+    assert _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token}).status_code == 200
+    again = _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token})
+    assert again.status_code == 200
+    body = again.json()["data"]
+    assert body == {"firm_id": "F1", "role": "Manager", "full_name": "New Hire", "already_joined": True}
+    # even a token that never existed answers a member with their own membership (it tells them nothing about tokens)
+    assert _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": "never-existed"}).status_code == 200
+    # a sign-in that is not a member still gets the one refusal for an unknown token
+    assert _jwt_client({"auth_user_id": "nobody", "email": "nobody@f.test"}) \
+        .post("/api/identity/accept-invite", json={"token": "never-existed"}).status_code == 404
+
+
+def test_a_suspended_member_repeating_accept_invite_is_not_told_they_have_joined(_setup):
+    fake, _ = _setup
+    created = _client(PARTNER).post("/api/identity/users",
+        json={"full_name": "New Hire", "email": "new@f.test", "role": "Executive"}).json()["data"]
+    jwt = {"auth_user_id": "real-uid", "email": "new@f.test"}
+    token = _token(fake, created)
+    assert _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token}).status_code == 200
+    fake.users[created["id"]]["is_active"] = False
+    assert _jwt_client(jwt).post("/api/identity/accept-invite", json={"token": token}).status_code == 404
 
 
 def test_accept_invite_cannot_forge_firm_or_role_via_request_body(_setup):

@@ -115,6 +115,11 @@ function weakPasswordMessage(e: ErrorLike): string {
 export function knownAuthErrorMessage(err: unknown): string | null {
   const e = asErrorLike(err);
   if (!e) return null;
+  // The service's throttle on a REPEAT request ("For security purposes, you can only request this after 7
+  // seconds.") arrives with the same code as the hourly limit, so by code alone it read "too many emails in the last
+  // hour", which is untrue and sends a person away for nothing (live, 18-11-2026, POST-A-479).
+  const waitSeconds = /only request this after (\d+) seconds?/i.exec(typeof e.message === "string" ? e.message : "")?.[1];
+  if (waitSeconds) return `Please wait ${waitSeconds} seconds before asking again.`;
   const code = typeof e.code === "string" ? e.code : "";
   if (code === "weak_password") return weakPasswordMessage(e);
   // The same refusal arrives with no code at all; the message is then the only signal.

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
+import { writeSignupStash } from "@/lib/auth/signupStash";
 import { ArrowRight, Mail } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
 
@@ -14,19 +15,25 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Send it again" waits this long after each send, so a second press cannot meet the sign-in service's own
+  // throttle (it answers a repeat within seconds with a 429).
+  const [waitLeft, setWaitLeft] = useState(0);
+  useEffect(() => {
+    if (waitLeft <= 0) return;
+    const t = setTimeout(() => setWaitLeft((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [waitLeft]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!firmName.trim() || !fullName.trim() || !email.trim()) return;
+  async function sendLink(): Promise<boolean> {
+    if (!firmName.trim() || !fullName.trim() || !email.trim()) return false;
     setLoading(true);
     setError(null);
     try {
-      if (typeof window !== "undefined") {
-        localStorage.setItem(
-          "practicesync_signup",
-          JSON.stringify({ firmName: firmName.trim(), fullName: fullName.trim() })
-        );
-      }
+      // The address is kept beside the names so a link that lands already used can offer "Email me a new link"
+      // without asking for everything again (POST-A-479).
+      writeSignupStash(typeof window === "undefined" ? null : window.localStorage, {
+        firmName: firmName.trim(), fullName: fullName.trim(), email: email.trim(),
+      });
       const supabase = getSupabaseClient();
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email: email.trim(),
@@ -37,11 +44,19 @@ export default function SignupPage() {
       });
       if (otpErr) throw new Error(authErrorMessage(otpErr));
       setSent(true);
+      setWaitLeft(30);
+      return true;
     } catch (err) {
       setError(authErrorMessage(err));
+      return false;
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await sendLink();
   }
 
   return (
@@ -56,8 +71,20 @@ export default function SignupPage() {
             <p className="text-sm text-ps-label mt-2 leading-relaxed">
               We sent a magic link to <span className="text-ps-ink font-medium">{email}</span>. Click it to finish setting up your firm.
             </p>
-            <p className="text-xs text-ps-hint mt-3">Didn&apos;t receive it? Check your spam folder.</p>
+            <p className="text-xs text-ps-hint mt-3">
+              The link works once. If you have already opened it, you are signed in on that page: carry on there.
+              Didn&apos;t receive it? Check your spam folder, or send it again.
+            </p>
           </div>
+          {error && <p role="alert" className="text-sm text-state-problem">{error}</p>}
+          <button
+            type="button"
+            onClick={() => void sendLink()}
+            disabled={loading || waitLeft > 0}
+            className="text-sm font-medium text-brand hover:text-brand-dark disabled:opacity-50 disabled:cursor-not-allowed underline underline-offset-4"
+          >
+            {loading ? "Sending…" : waitLeft > 0 ? `Send it again (wait ${waitLeft}s)` : "Send it again"}
+          </button>
         </div>
       ) : (
         <>
@@ -108,7 +135,10 @@ export default function SignupPage() {
             </button>
           </form>
 
-          <p className="text-center text-sm text-ps-hint mt-5">
+          <p className="text-center text-xs text-ps-hint mt-4">
+            If this address already has an account, the link signs you in to it. It does not create a second one.
+          </p>
+          <p className="text-center text-sm text-ps-hint mt-3">
             Already have an account?{" "}
             <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium transition-colors">
               Sign in →
