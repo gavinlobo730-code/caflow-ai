@@ -172,7 +172,10 @@ function uncaughtTries(rel: string, src: string): string[] {
   return found;
 }
 
-/** The functions of a module that make a request (call `fetchPlain`) and do not hand the response to the module's reader, so what they read of it is their own. */
+/** The request doors of `lib/api/failureSentence`: `fetchPlain`, and `fetchBounded`, which is `fetchPlain` with a time limit (POST-A-470). */
+const REQUEST_DOORS = new Set(["fetchPlain", "fetchBounded"]);
+
+/** The functions of a module that make a request (call one of the REQUEST_DOORS) and do not hand the response to the module's reader, so what they read of it is their own. */
 function functionsReadingTheirOwnAnswer(rel: string, src: string, readers: string[]): string[] {
   const found: string[] = [];
   const sf = parse(rel, src);
@@ -183,7 +186,7 @@ function functionsReadingTheirOwnAnswer(rel: string, src: string, readers: strin
     let reads = false;
     walk(node.body, (n) => {
       if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
-        if (n.expression.text === "fetchPlain") makes = true;
+        if (REQUEST_DOORS.has(n.expression.text)) makes = true;
         if (readers.includes(n.expression.text)) reads = true;
       }
     });
@@ -432,7 +435,7 @@ function functionsCallingFetch(rel: string, src: string): string[] {
 function readLabelsOnAChange(rel: string, src: string): string[] {
   const found: string[] = [];
   walk(parse(rel, src), (node) => {
-    if (!(ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fetchPlain")) return;
+    if (!(ts.isCallExpression(node) && ts.isIdentifier(node.expression) && REQUEST_DOORS.has(node.expression.text))) return;
     const doing = node.arguments[2];
     const init = node.arguments[1];
     if (!doing || !ts.isStringLiteral(doing) || doing.text !== "read" || !init || !ts.isObjectLiteralExpression(init)) return;
@@ -502,7 +505,7 @@ test("the readers say what a request was: a change is never called a read, and t
   for (const dir of ["app", "components", "lib"]) {
     for (const rel of sourceFiles(dir)) {
       const src = read(rel);
-      if (!/\bfetchPlain\(/.test(src)) continue;
+      if (!/\bfetch(?:Plain|Bounded)\(/.test(src)) continue;
       assert.deepEqual(readLabelsOnAChange(rel, src), [], `${rel} calls a change a read`);
     }
   }
@@ -510,7 +513,7 @@ test("the readers say what a request was: a change is never called a read, and t
   assert.match(tax, /function readAnswer<T>\(res: Response, failed: string\): Promise<T> \{\s*return answerOf<T>\(res, failed, "read"\);/, "readAnswer no longer says it is a read");
   assert.match(tax, /function writeAnswer<T>\(res: Response, failed: string\): Promise<T> \{\s*return answerOf<T>\(res, failed, "write"\);/, "writeAnswer no longer says it is a write");
   const gst = read("lib/data/gst.ts");
-  assert.match(gst, /fetchPlain\(`\$\{API_BASE\}\$\{path\}`, \{\s*method: "POST",[\s\S]*?\}, "write"\);\s*return gstAnswer<T>\(res, "write"\);/, "the GST data layer's POST no longer says it is a write");
+  assert.match(gst, /fetch(?:Plain|Bounded)\(`\$\{API_BASE\}\$\{path\}`, \{\s*method: "POST",[\s\S]*?\}, "write"\);\s*return gstAnswer<T>\(res, "write"\);/, "the GST data layer's POST no longer says it is a write");
 });
 
 test("`lib/api` calls fetch in one function each, the wrapper and request()'s bounded fetch, and a refusal in a validation list is read twice (a page under a failed status, and the list)", () => {
@@ -656,7 +659,7 @@ test("the files POST-A-410 converted call no fetch, read no body of their own an
   assert.deepEqual(copies, [], "the purchases page keeps its own copy of a request helper the invoice screens share");
   assert.match(page, /import \{ apiCall, apiGet, getAuthToken, HELD_DIALOG_MS \} from "@\/lib\/invoices\/shared";/);
   const shared = read("lib/invoices/shared.ts");
-  assert.ok((shared.match(/fetchPlain\(/g) ?? []).length >= 2 && (shared.match(/jsonPlain</g) ?? []).length >= 2, "the shared helpers do not read through the helper module");
+  assert.ok((shared.match(/fetch(?:Plain|Bounded)\(/g) ?? []).length >= 2 && (shared.match(/jsonPlain</g) ?? []).length >= 2, "the shared helpers do not read through the helper module");
   // the uploads and the PDF say what they caught through the helper, as what they were
   for (const [rel, what] of [["components/purchases/DebitNoteEditor.tsx", '"Attachment upload failed.", "write"'], ["components/purchases/PurchaseCreditNoteEditor.tsx", '"Attachment upload failed.", "write"'], ["components/invoices/InvoiceViewDrawer.tsx", '"Unable to open PDF", "read"']] as const) {
     assert.ok(read(rel).includes(`failureSentence(e, ${what})`), `${rel}: the catch does not say what it caught through failureSentence`);
@@ -771,7 +774,7 @@ test("self-test: each rule flags a spoiled copy of the code it guards", () => {
   assert.deepEqual(functionsReadingTheirOwnAnswer("x.ts", "async function a(res: Response) { const r = await fetchPlain('/x', {}, 'read'); return readAnswer(r, 'x'); }", ["readAnswer"]), [], "a function that reads through the reader is flagged");
   assert.deepEqual(functionsReadingTheirOwnAnswer("x.ts", "async function a() { const r = await fetchPlain('/x', {}, 'read'); return r.status; }", ["readAnswer"]), ["a"], "a function with its own read is not seen");
   const incomeTax = read("lib/data/income-tax.ts");
-  assert.ok(directFetches("x.ts", incomeTax.replace(/fetchPlain\(/g, "fetch(")) > 10, "fetchPlain turned back into fetch is not seen");
+  assert.ok(directFetches("x.ts", incomeTax.replace(/fetch(?:Plain|Bounded)\(/g, "fetch(")) > 10, "fetchPlain turned back into fetch is not seen");
   assert.ok(bareJsonReads("x.ts", `${incomeTax}\nasync function f(res: Response) { return res.json(); }`).length >= 1, "a bare json read is not seen");
   assert.deepEqual(bareJsonReads("x.ts", "async function f(res: Response) { return res.clone().json(); }"), [], "a read from a copy is flagged");
   assert.ok(statusTextReads("x.ts", "const m = `Failed: ${res.statusText}`;").length === 1, "a status line is not seen");

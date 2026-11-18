@@ -12,7 +12,7 @@ import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatCroreLakh, type PaiseInput } from "@/lib/money/format";
 import { errorMessage } from "@/lib/api";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { obligationNote } from "@/lib/compliance/obligationNote";
@@ -46,7 +46,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const token = await getToken();
   // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",

@@ -21,7 +21,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -38,7 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -342,7 +342,8 @@ export default function RelationshipsPage() {
     try {
       const json: ApiResponse<{ new_matches_detected: number }> = await apiFetch(
         "/api/relationships/cross-client-matches/detect",
-        { method: "POST", body: JSON.stringify({}) }
+        // Every entity of the firm is compared in one request: the long bound (POST-A-470).
+        { method: "POST", body: JSON.stringify({}), signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS) }
       );
       if (!json.success) throw new Error(json.error ?? "Detection failed");
       setDetectToast(`Detection complete — ${json.data.new_matches_detected} match(es) found`);

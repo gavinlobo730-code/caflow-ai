@@ -11,7 +11,7 @@ import { YearPicker } from "@/components/ui/year-picker";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL (TDS-20's first half).
@@ -39,7 +39,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${BASE}${path}`, {
+  const res = await fetchBounded(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -218,6 +218,8 @@ export default function Form26ASPage() {
 
       // Parse the text
       const parseRes = await apiFetch(`/api/form-26as/uploads/${uploadId}/parse`, {
+        // It carries the whole Form 26AS text: the long bound (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ raw_text: rawText }),
       });

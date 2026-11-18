@@ -16,7 +16,7 @@ import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { todayIstISO } from "@/lib/dates/format";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
-import { doingOf, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import { TDS_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
 import { readWindow } from "@/lib/lists/readWindow";
@@ -310,7 +310,7 @@ async function authedFetch<T>(path: string, init?: RequestInit, asked?: Doing): 
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks).
   const doing = asked ?? doingOf(init?.method);
-  const res = await fetchPlain(`${API_BASE}${path}`, {
+  const res = await fetchBounded(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

@@ -29,7 +29,7 @@ import { formatRangeLabel } from "@/lib/dates/periods";
 import { useClientEntityType, offerWhenKnown } from "@/lib/clients/useClientEntityType";
 import { hasMcaObligations, mcaRegime } from "@/lib/entityObligations";
 import { api, errorMessage } from "@/lib/api";
-import { browserFailureOf, doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { browserFailureOf, doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
@@ -45,7 +45,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const token = session?.access_token ?? "";
   // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -129,6 +129,8 @@ function NoticesSection({ clientId }: { clientId: string }) {
     setExtractError(null);
     try {
       const res = await apiFetch("/api/document-intelligence-v2/notices/extract", {
+        // A model reads the notice: the long bound, so a slow reading is not cut off and one that never answers still ends (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ client_id: clientId, document_text: noticeText }),
       });

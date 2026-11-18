@@ -19,7 +19,7 @@ import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state
 import { objectOrNull } from "@/lib/api/shape";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -27,7 +27,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",

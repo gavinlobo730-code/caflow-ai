@@ -2,7 +2,7 @@ import type { IssuePreflight } from "@/lib/invoices/issueReadiness";
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { withReference } from "@/lib/api/requestReference";
-import { doingOf, errorPageSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, fetchPlain, REQUEST_BOUND_MS, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress } from "@/lib/api/uploadWithProgress";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 import { recordsUrl } from "@/lib/einvoice/invoiceRecords";
@@ -3390,7 +3390,7 @@ function sleep(ms: number): Promise<void> {
 // a Render cold start; the warm-up ping (AuthContext) usually avoids hitting it.
 async function fetchWithTimeout(path: string, options: RequestInit | undefined, token: string | undefined): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45_000);
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_BOUND_MS);
   try {
     return await fetch(`${BASE_URL}${path}`, {
       ...options,

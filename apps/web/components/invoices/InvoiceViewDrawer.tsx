@@ -11,7 +11,7 @@
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
-import { failureSentence, fetchPlain, plainFailure } from "@/lib/api/failureSentence";
+import { failureSentence, fetchBounded, plainFailure } from "@/lib/api/failureSentence";
 import { useState, useEffect, useCallback } from "react";
 import {
   CheckCircle, Download, Pencil, Send, Trash2, Copy, CreditCard, FilePlus2,
@@ -59,7 +59,7 @@ const fmtDateTime = formatDateTime;
 
 async function viewInvoicePdf(invoiceId: string): Promise<void> {
   const token = await getAuthToken();
-  const res = await fetchPlain(`${API}/api/sales-invoices/${invoiceId}/pdf`, {
+  const res = await fetchBounded(`${API}/api/sales-invoices/${invoiceId}/pdf`, {
     headers: { Authorization: `Bearer ${token}` },
   }, "read");
   // the server's own sentence for a refusal (POST-A-410); a body that stops half way is a request that got no answer too

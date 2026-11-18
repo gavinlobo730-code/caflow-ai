@@ -36,12 +36,10 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { errorMessage } from "@/lib/api/index";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-/** How long the page's JSON helper waits for an answer: the 45 seconds `lib/api` gives every JSON call. */
-const JSON_ABORT_MS = 45_000;
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
@@ -49,8 +47,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const doing = doingOf(opts?.method);
   // Bounded the way `lib/api`'s request() is (45 seconds, never retried) unless the caller brings its own signal: the dialogs below hold
   // Close and Cancel while a request is out, so an answer that never comes would otherwise keep them held until the browser gave up (POST-A-395).
-  const res = await fetchPlain(`${API}${path}`, {
-    signal: AbortSignal.timeout(JSON_ABORT_MS),
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -808,9 +805,8 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
     try {
       const { data: { session } } = await getSupabaseClient().auth.getSession();
       const token = session?.access_token ?? "";
-      const res = await fetchPlain(`${API}/api/engagement-letters/${letter.id}/pdf`, {
-        // Close is held while this is out, so it is bounded as the JSON helper is (a one-letter PDF, not an export).
-        signal: AbortSignal.timeout(JSON_ABORT_MS),
+      const res = await fetchBounded(`${API}/api/engagement-letters/${letter.id}/pdf`, {
+        // Close is held while this is out, so it keeps the JSON helper's 45-second bound (a one-letter PDF, not an export).
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       }, "read");
       if (!res.ok) throw new Error(`Couldn't download the PDF (HTTP ${res.status})`);

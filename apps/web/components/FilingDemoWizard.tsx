@@ -12,7 +12,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   // A SIMULATION: every call of this component asks (the walk-through transmits, files and records nothing, and says so on each answer), so a request that failed says that no result came
   // back, and never that something may have been recorded.
   const doing = "read" as const;
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -74,7 +74,7 @@ export async function fetchFilingDemoCapabilities(): Promise<{ enabled: boolean;
  */
 
 import { FILING_POSTURE, type FilingPosture } from "@/lib/filing/posture";
-import { fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 interface Figure { label: string; paise?: number; text?: string }
 interface Cell { text?: string; paise?: number }
