@@ -64,19 +64,23 @@
  *
  * ── A DATE THAT IS NEAR ANOTHER, ON NO SIDE WE CAN CLAIM ────────────────────
  *
- *   Some dates sit beside another and may fall on either side of it: a notice's
- *   response date (a notice can reach the firm after the date it gives), a
- *   settlement paid before or after the last working day, an export's shipping
- *   bill and a Form 15CA beside the document (an order nobody has read from a
- *   primary source), and an expiry or a "needed by" kept after the fact beside
- *   today. Claiming a side there would be claiming a fact. `near` names the date
- *   and claims none: a day and month typed with no year are read in the year,
- *   of the one before, the anchor's own and the one after, that puts the day
- *   NEAREST to it (on a tie, the later), so `15/6` beside a notice received on
- *   01/03/2026 is 15/06/2026 and not 15/06/2025, and `15/4` typed on 20 March
- *   2027 beside today is 15/04/2027. A bare day stays in the anchor's month (a
- *   `28` typed beside the 2nd is the 28th of that month, not of the last), and
- *   `notBefore`/`notAfter` still apply after it (POST-A-126).
+ *   Some dates sit beside ANOTHER date and may fall on either side of it: a
+ *   notice's response date (a notice can reach the firm after the date it
+ *   gives), a settlement paid before or after the last working day, and an
+ *   export's shipping bill and a Form 15CA beside the document (an order
+ *   nobody has read from a primary source). Claiming a side there would be
+ *   claiming a fact. `near` names the date and claims none: a day and month
+ *   typed with no year are read in whichever of near's own calendar year and
+ *   the years either side puts the day NEAREST to it (on a tie, the later), so
+ *   `15/6` beside a notice received on 01/03/2026 is 15/06/2026 and not
+ *   15/06/2025. Only within half a year (NEAR_REACH_DAYS): a 29/2 whose nearest
+ *   leap February is further off keeps the reading and the sentence it would
+ *   have had without `near`. A bare day stays in the anchor's month (a `28`
+ *   typed beside the 2nd is the 28th of that month, not of the last), and
+ *   `notBefore`/`notAfter` still apply after it (POST-A-126). An expiry or a
+ *   "needed by" beside TODAY does not take `near`: it is nearly always ahead,
+ *   and nearest-to-today would read `15/3` typed in June as the March gone,
+ *   so those keep the financial-year reading.
  *
  * ── NOTHING IS GUESSED ──────────────────────────────────────────────────────
  *
@@ -288,20 +292,28 @@ function stepMonth(y: number, m: number, step: 1 | -1): { y: number; m: number }
   return { y: Math.floor(n / 12), m: (n % 12) + 1 };
 }
 
+/** How far from `near` a day and month may be read before the reading is no longer "near": half a year. Every day and month has a date within it
+ *  of any `near` but 29 February, which outside it keeps the reading it would have had with no `near` (and its sentence when that February has
+ *  no 29th), rather than being moved silently to a leap year a year or more away. */
+const NEAR_REACH_DAYS = 183;
+
 /**
- * The year a day and month typed with no year is read in when `near` is asked (see the header): of `y - 1`, `y` and `y + 1`, the one whose day is
- * nearest to `near`, the later on a tie. A day that is real in none of them stays in `y` and gets the usual sentence.
+ * The year a day and month typed with no year is read in when `near` is asked (see the header): of the calendar year of `near` itself and the
+ * years either side of it, the one whose day is nearest to `near`, the later on a tie. The candidates are taken from `near` and not from the
+ * financial-year reading `y`, which comes from the anchor and can be years away from `near` (a date already on file). A day that is real in none
+ * of them, or only further than NEAR_REACH_DAYS away (a 29 February), stays in `y` and gets the usual sentence.
  */
 function nearestYear(ctx: TypedDateContext, y: number, m: number, d: number): number {
-  const near = readIso(ctx.near) ? (ctx.near as string).trim() : null;
+  const near = readIso(ctx.near);
   if (near === null) return y;
+  const nearIso = isoOf(near.y, near.m, near.d);
   let best: { y: number; gap: number } | null = null;
-  for (const cy of [y - 1, y, y + 1]) {
+  for (const cy of [near.y - 1, near.y, near.y + 1]) {
     if (cy < MIN_YEAR || cy > MAX_YEAR || !isRealDay(cy, m, d)) continue;
-    const gap = Math.abs(daysBetweenLocalISO(near, isoOf(cy, m, d)) ?? Infinity);
+    const gap = Math.abs(daysBetweenLocalISO(nearIso, isoOf(cy, m, d)) ?? Infinity);
     if (best === null || gap <= best.gap) best = { y: cy, gap };
   }
-  return best === null ? y : best.y;
+  return best === null || best.gap > NEAR_REACH_DAYS ? y : best.y;
 }
 
 /**

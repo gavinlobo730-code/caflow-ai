@@ -167,9 +167,9 @@ export interface DateInputProps
   /** `YYYY-MM-DD`: the date this one belongs on or before. A SHORT form that would land after it is read in an earlier year (month), and a date
    *  typed in full that is after it gets the `max` hint. */
   notAfter?: string | null;
-  /** `YYYY-MM-DD`: a date this one sits beside on NO side that can be claimed (a notice's response date beside the day it was received, an
-   *  expiry kept after the fact beside today). A day and month typed with no year is read in the year that puts it nearest. See the header of
-   *  lib/dates/typedDate.ts. */
+  /** `YYYY-MM-DD`: another date this one sits beside on NO side that can be claimed (a notice's response date beside the day it was received).
+   *  A day and month typed with no year is read in the year that puts it nearest, within half a year. Never today: an expiry or a needed-by is
+   *  nearly always ahead, and keeps the financial-year reading. See the header of lib/dates/typedDate.ts. */
   near?: string | null;
   /** Marks the box invalid for a reason the PARENT knows (the server refused the
    *  date). The field's own unreadable-text state needs no help. */

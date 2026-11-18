@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { formatDate, todayIstISO } from "@/lib/dates/format";
+import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { selectAll } from "@/lib/supabase/selectAll";
@@ -836,7 +836,6 @@ export default function ClientHealthDetailPage() {
                 <label className="text-xs text-gray-600 font-medium">Expires At (optional)</label>
                 <DateInput
                   aria-label="Expires at (optional)"
-                  near={todayIstISO()}
                   value={overrideForm.expires_at}
                   onChange={(v) => setOverrideForm({ ...overrideForm, expires_at: v })}
                   onStateChange={overrideDates.watch("expires", "Expires at")}
