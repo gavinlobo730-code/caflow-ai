@@ -654,7 +654,7 @@ test("the files POST-A-410 converted call no fetch, read no body of their own an
     if (ts.isFunctionDeclaration(node) && node.name && ["apiCall", "apiGet", "getAuthToken", "refreshedAuthToken"].includes(node.name.text)) copies.push(node.name.text);
   });
   assert.deepEqual(copies, [], "the purchases page keeps its own copy of a request helper the invoice screens share");
-  assert.match(page, /import \{ apiCall, apiGet, getAuthToken \} from "@\/lib\/invoices\/shared";/);
+  assert.match(page, /import \{ apiCall, apiGet, getAuthToken, HELD_DIALOG_MS \} from "@\/lib\/invoices\/shared";/);
   const shared = read("lib/invoices/shared.ts");
   assert.ok((shared.match(/fetchPlain\(/g) ?? []).length >= 2 && (shared.match(/jsonPlain</g) ?? []).length >= 2, "the shared helpers do not read through the helper module");
   // the uploads and the PDF say what they caught through the helper, as what they were

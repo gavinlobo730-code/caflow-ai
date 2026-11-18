@@ -405,7 +405,7 @@ function VerifyModal({ row, clientId, employeeName, onClose, onSaved }: {
     <Modal
       title={`Verify proofs — ${employeeName}`}
       note={`${row.fy} · ${row.regime === "old" ? "old regime" : "new regime"}`}
-      onClose={onClose}
+      onClose={() => { if (!saving) (onClose)(); }}
       maxWidthClass="max-w-2xl"
     >
       <div className="space-y-4">

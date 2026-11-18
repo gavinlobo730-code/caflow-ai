@@ -859,7 +859,7 @@ export default function LoansAndFDPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Add Loan</h3>
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-ps-hint hover:text-ps-label">
+              <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-ps-hint hover:text-ps-label">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -916,7 +916,7 @@ export default function LoansAndFDPage() {
               {loanError && <Callout tone="problem">{loanError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+              <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <Button variant="plain" size="none" onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {loanSaving ? "Saving…" : "Add Loan"}
               </Button>
@@ -933,7 +933,7 @@ export default function LoansAndFDPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Add Fixed Deposit</h3>
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-ps-hint hover:text-ps-label">
+              <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-ps-hint hover:text-ps-label">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1029,7 +1029,7 @@ export default function LoansAndFDPage() {
               {fdError && <Callout tone="problem">{fdError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+              <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <Button variant="plain" size="none" onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {fdSaving ? "Saving…" : "Add FD"}
               </Button>

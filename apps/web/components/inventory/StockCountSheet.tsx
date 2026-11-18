@@ -136,7 +136,8 @@ export function StockCountSheetPanel({
               </p>
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
+          {/* Held over a save or a post, not over the first read: the sheet is null until it has been read. */}
+          <button disabled={busy && sheet !== null} onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
         </div>
 
         <div className="px-5 py-4 space-y-3">

@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, RefreshCw, Clock, X, Trash2 } from "lucide-react";
 
-import { apiCall, apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { apiCall, apiGet, getAuthToken, HELD_DIALOG_MS } from "@/lib/invoices/shared";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
@@ -170,7 +170,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
     setBusy(t.id);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/recurring-purchase-bills/${t.id}/run`, "POST", undefined, token);
+      const res = await apiCall(`/api/recurring-purchase-bills/${t.id}/run`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Run failed");
       const d = res.data as { generated_count: number; skipped_count: number; failed_count: number };
       const parts = [`${d.generated_count} draft${d.generated_count === 1 ? "" : "s"} generated`];
@@ -195,7 +195,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
       const token = await getAuthToken();
       const res = await apiCall(
         `/api/recurring-purchase-bills/run?client_id=${encodeURIComponent(clientId)}`,
-        "POST", undefined, token);
+        "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Run failed");
       const d = res.data as { generated_count: number; skipped_count: number; failed_count: number };
       const parts = [`${d.generated_count} draft${d.generated_count === 1 ? "" : "s"} generated`];
@@ -224,7 +224,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
         action === "pause" ? `/api/recurring-purchase-bills/${t.id}/pause`
         : action === "resume" ? `/api/recurring-purchase-bills/${t.id}/resume`
         : `/api/recurring-purchase-bills/${t.id}/archive`;
-      const res = await apiCall(url, "POST", undefined, token);
+      const res = await apiCall(url, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Update failed");
       say("ok", `Template ${action === "resume" ? "resumed" : `${action}d`}`);
       load();
@@ -562,8 +562,8 @@ function RecurringBillEditor({
         lines: payloadLines,
       };
       const res = existing
-        ? await apiCall(`/api/recurring-purchase-bills/${existing.id}`, "PUT", body, token)
-        : await apiCall(`/api/recurring-purchase-bills`, "POST", body, token);
+        ? await apiCall(`/api/recurring-purchase-bills/${existing.id}`, "PUT", body, token, { timeoutMs: HELD_DIALOG_MS })
+        : await apiCall(`/api/recurring-purchase-bills`, "POST", body, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Save failed");
       onSaved(existing ? "Template updated" : "Template created");
     } catch (e) {
@@ -580,7 +580,7 @@ function RecurringBillEditor({
           <h3 className="text-sm font-semibold text-ps-ink">
             {existing ? "Edit recurring bill" : "New recurring bill"}
           </h3>
-          <button onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
+          <button disabled={saving} onClick={onClose} aria-label="Close"><X size={16} className="text-ps-hint" /></button>
         </div>
 
         <div className="p-5 space-y-4">
@@ -746,7 +746,7 @@ function RecurringBillEditor({
         </div>
 
         <div className="flex gap-3 justify-end px-5 py-3 border-t border-ps-border">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
+          <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
           <Button variant="plain" size="none" onClick={save} disabled={saving}

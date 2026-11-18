@@ -391,7 +391,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Add TDS Deduction</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label"><X className="w-4 h-4" /></button>
         </div>
         {err && <Callout tone="problem">{err}</Callout>}
 
@@ -526,7 +526,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
         </div>
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">Cancel</button>
           {/* The shared button, not a `disabled={saving}` flag: state reaches the page a render after the click, so two clicks made back
               to back both ran this and recorded the deduction twice (found by driving the form in a browser, PRE-A-015). */}
           <Button type="button" variant="plain" size="none" onClick={handleSubmit} disabled={saving}

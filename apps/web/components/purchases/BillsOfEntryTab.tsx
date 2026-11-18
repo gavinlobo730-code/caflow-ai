@@ -404,7 +404,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
           <div className="w-full max-w-xl h-full bg-white shadow-xl flex flex-col">
             <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <p className="text-sm font-semibold text-ps-ink">Record a Bill of Entry</p>
-              <button onClick={closeForm} aria-label="Close"
+              <button disabled={saving} onClick={closeForm} aria-label="Close"
                 className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
             </div>
 
@@ -527,7 +527,7 @@ export function BillsOfEntryTab({ clientId, openDoc }:
               <p role="alert" className="mx-5 mb-3 rounded-lg px-3 py-2 text-xs bg-state-problem-surface border border-state-problem-border text-state-problem">{msg.text}</p>
             )}
             <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-              <button onClick={closeForm}
+              <button disabled={saving} onClick={closeForm}
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>

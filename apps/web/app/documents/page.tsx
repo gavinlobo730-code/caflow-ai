@@ -170,7 +170,7 @@ function UploadModal({ clients, onClose, onUploaded }: UploadModalProps) {
         {/* Modal header */}
         <div className="flex items-center justify-between border-b border-ps-border px-6 py-4">
           <h2 className="text-base font-semibold text-ps-ink">Upload Document</h2>
-          <button
+          <button disabled={uploading}
             onClick={onClose}
             className="rounded p-1 text-ps-hint hover:bg-ps-muted hover:text-ps-label"
           >

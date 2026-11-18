@@ -262,7 +262,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end pointer-events-none">
-      <div className="absolute inset-0 pointer-events-auto" onClick={onClose} />
+      <div className="absolute inset-0 pointer-events-auto" onClick={saving ? undefined : (onClose)} />
       <div className="relative w-96 h-full bg-white border-l border-ps-border shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Panel header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">
@@ -276,7 +276,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
                 Edit
               </button>
             )}
-            <button onClick={onClose} className="p-1 rounded text-ps-hint hover:text-ps-label">
+            <button disabled={saving} onClick={onClose} className="p-1 rounded text-ps-hint hover:text-ps-label">
               <X size={16} />
             </button>
           </div>
@@ -363,7 +363,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
               </div>
               {saveError && <Callout tone="problem">{saveError}</Callout>}
               <div className="flex gap-2 pt-1">
-                <button
+                <button disabled={saving}
                   onClick={() => { setForm(task); setSaveError(null); setEditing(false); }}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-ps-body hover:bg-ps-bg"
                 >

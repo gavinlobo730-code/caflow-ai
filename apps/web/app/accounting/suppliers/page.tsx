@@ -526,7 +526,7 @@ export default function SuppliersPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h2 className="text-sm font-semibold text-ps-ink">{editingId ? "Edit Supplier" : "Add Supplier"}</h2>
-              <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
+              <button disabled={saving} onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
             </div>
             <div className="px-5 py-4 space-y-4">
               {error && <Callout tone="problem">{error}</Callout>}
@@ -668,7 +668,7 @@ export default function SuppliersPage() {
             </div>
 
             <div className="flex justify-end gap-3 px-5 py-4 border-t">
-              <Button variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
+              <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
               <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save Supplier"}</Button>
             </div>
           </div>

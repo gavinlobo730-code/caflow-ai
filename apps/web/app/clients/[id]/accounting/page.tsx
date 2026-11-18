@@ -833,7 +833,7 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => !saving && e.target === e.currentTarget && onClose()}>
       <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Account</h2>
@@ -877,7 +877,7 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
         </div>
 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Account"}
           </Button>
@@ -933,7 +933,7 @@ function EditAccountModal({ account, onClose, onSaved }: {
     // input, not just the backdrop — would otherwise bubble up to that
     // outer modal's own `onClick={onClose}` and close THE LEDGER behind it.
     <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4"
-         onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
+         onClick={(e) => { e.stopPropagation(); if (!saving && e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
         <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Edit Account</h2>
@@ -964,7 +964,7 @@ function EditAccountModal({ account, onClose, onSaved }: {
         </div>
 
         <div className="px-5 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Save Changes"}
           </Button>

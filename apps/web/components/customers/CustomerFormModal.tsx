@@ -23,6 +23,7 @@ import { Callout } from "@/components/ui/callout";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import {
   apiCall, getAuthToken, type Customer,
+  HELD_DIALOG_MS,
 } from "@/lib/invoices/shared";
 import { clearReports } from "@/lib/accounting/reportCache";
 import { panProblem, isValidPan as panIsValid } from "@/lib/identifiers/pan";
@@ -213,7 +214,7 @@ export function CustomerFormModal({
             credit_days: parseInt(creditDays) || 30,
             credit_limit_paise: editedChoice(creditLimitPaise, existing.credit_limit_paise),
             is_active: true,
-          }, token)
+          }, token, { timeoutMs: HELD_DIALOG_MS })
         : await apiCall("/api/customers/", "POST", {
             client_id: clientId,
             name: name.trim(),
@@ -228,7 +229,7 @@ export function CustomerFormModal({
             opening_balance_paise: openingBalancePaise,
             credit_days: parseInt(creditDays) || 30,
             credit_limit_paise: creditLimitPaise,
-          }, token);
+          }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success || !result.data) throw new Error(result.error ?? "Failed to save customer");
       // A create that matched an active customer by GSTIN (or PAN) RETURNED
       // that customer and saved nothing typed here — it used to close as
@@ -301,7 +302,7 @@ export function CustomerFormModal({
   }
 
   return (
-    <Modal key="form" title={existing ? "Edit Customer" : "Add Customer"} onClose={onClose} maxWidthClass="max-w-2xl">
+    <Modal key="form" title={existing ? "Edit Customer" : "Add Customer"} onClose={() => { if (!saving) (onClose)(); }} maxWidthClass="max-w-2xl">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-2 lg:col-span-1">
           <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>

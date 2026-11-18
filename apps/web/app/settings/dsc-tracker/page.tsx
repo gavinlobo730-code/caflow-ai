@@ -161,7 +161,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
               {record.holder_name} · {record.dsc_type} · expires {formatDate(record.expiry_date)}
             </p>
           </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body">
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body">
             <X size={16} />
           </button>
         </div>
@@ -202,7 +202,7 @@ function RenewDSCModal({ record, onClose, onRenewed }: {
         {err && <Callout tone="problem">{err}</Callout>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Cancel
           </button>
@@ -285,7 +285,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
               same holder, use Renew.
             </p>
           </div>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body">
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body">
             <X size={16} />
           </button>
         </div>
@@ -316,7 +316,7 @@ function CorrectDSCModal({ record, onClose, onSaved }: {
         {err && <Callout tone="problem">{err}</Callout>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
             Cancel
           </button>
@@ -388,7 +388,7 @@ function AddDSCModal({ onClose, onAdded }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Add DSC Record</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
+          <button disabled={saving} onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
         </div>
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="grid grid-cols-2 gap-3">
@@ -432,7 +432,7 @@ function AddDSCModal({ onClose, onAdded }: {
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
           <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add DSC"}
           </button>

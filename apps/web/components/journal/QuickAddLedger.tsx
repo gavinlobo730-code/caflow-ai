@@ -105,7 +105,7 @@ export function QuickAddLedger({ clientId, seedName, onCreated, onClose }: {
   }
 
   return (
-    <Modal title="Create a ledger" onClose={onClose} maxWidthClass="max-w-md"
+    <Modal title="Create a ledger" onClose={() => { if (!saving) (onClose)(); }} maxWidthClass="max-w-md"
            note="It is added to this client's chart and selected on the line you were editing.">
       <div className="space-y-3 text-xs"
            onKeyDown={(e) => { if (e.key === "Enter" && !saving) { e.preventDefault(); void save(); } }}>
