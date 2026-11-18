@@ -36,6 +36,7 @@ import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
+import { ATTENDANCE_EXPORT_NOTE, attendanceExportRows, type AttendanceExportRow } from "@/lib/payroll/attendanceExport";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import type { Column } from "@/lib/table/types";
@@ -135,24 +136,13 @@ const ATTENDANCE_IMPORT_COLUMNS = [
   { key: "earned_leaves",  label: "Earned Leaves",   required: false, hint: "e.g. 1" },
 ];
 
-type AttendanceExportRow = {
-  name: string;
-  designation: string;
-  working_days: number;
-  days_present: number;
-  casual_leaves: number;
-  sick_leaves: number;
-  earned_leaves: number;
-  lop: number;
-  net_pay_days: number;
-};
-
 /** The five attendance boxes' names, from the same columns the import reads, so a box and its column heading cannot be worded two ways. */
 const ATTENDANCE_FIELD_LABEL: Record<string, string> = Object.fromEntries(ATTENDANCE_IMPORT_COLUMNS.map(c => [c.key, c.label]));
 
 const ATTENDANCE_EXPORT_COLUMNS: Column<AttendanceExportRow>[] = [
   { key: "name",           header: "Employee",       accessor: (r) => r.name },
   { key: "designation",    header: "Designation",    accessor: (r) => r.designation },
+  { key: "status",         header: "Status",         accessor: (r) => r.status },
   { key: "working_days",   header: "Working Days",   accessor: (r) => r.working_days },
   { key: "days_present",   header: "Days Present",   accessor: (r) => r.days_present },
   { key: "casual_leaves",  header: "CL",             accessor: (r) => r.casual_leaves },
@@ -793,24 +783,9 @@ export default function AttendancePage() {
                       size="sm"
                       disabled={rosterOnScreen.length === 0}
                       onClick={() => {
-                        const exportRows: AttendanceExportRow[] = rosterOnScreen.map(emp => {
-                          const row = attendance[emp.id] ?? {
-                            employee_id: emp.id,
-                            working_days: 26, days_present: 26,
-                            casual_leaves: 0, sick_leaves: 0, earned_leaves: 0,
-                          };
-                          return {
-                            name: emp.name,
-                            designation: emp.designation,
-                            working_days: row.working_days,
-                            days_present: row.days_present,
-                            casual_leaves: row.casual_leaves,
-                            sick_leaves: row.sick_leaves,
-                            earned_leaves: row.earned_leaves,
-                            lop: calcLOP(row),
-                            net_pay_days: calcNetPayDays(row),
-                          };
-                        });
+                        // POST-A-468: a row nobody entered goes out blank and says so, never as the editor's seeded 26 of 26.
+                        const exportRows = attendanceExportRows(rosterOnScreen, attendance, entered, touched,
+                          (row) => ({ lop: calcLOP(row), net_pay_days: calcNetPayDays(row) }));
                         downloadCsv(
                           `attendance-${attClient ? `${(clientNames[attClient] ?? attClient).replace(/[^A-Za-z0-9]+/g, "-")}-` : ""}`
                           + `${attYear}-${String(attMonth).padStart(2, "0")}.csv`,
@@ -829,6 +804,7 @@ export default function AttendancePage() {
                     </Button>
                   </div>
                 </div>
+                <p className="mt-2 text-xs text-ps-label">{ATTENDANCE_EXPORT_NOTE}</p>
                 {saveMsg && (
                   <p className={`mt-3 text-sm font-medium ${saveMsg.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
                     {saveMsg}
