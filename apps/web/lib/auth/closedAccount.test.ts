@@ -40,6 +40,14 @@ test("every reason has its own words, which blame nobody and name no address", (
   assert.match(closedAccountWords("firm-suspended").body, /signed out/);
 });
 
+test("a person signed out for being idle is told so, with the limit and how to continue", () => {
+  const w = closedAccountWords("idle");
+  assert.equal(w.heading, "You were signed out for your security");
+  assert.match(w.body, /30 minutes/);
+  assert.match(w.body, /Sign in again/);
+  assert.equal(closedAccountPath("idle"), "/auth/account-closed/?why=idle");
+});
+
 test("an unknown or missing reason still says the person was signed out, and how to continue", () => {
   for (const r of [null, undefined, "", "nonsense"]) {
     const w = closedAccountWords(r);

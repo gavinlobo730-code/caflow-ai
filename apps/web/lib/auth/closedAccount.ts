@@ -12,6 +12,9 @@
 
 export type ClosedAccountReason = "firm-suspended" | "firm-unavailable" | "person-disabled" | "signed-out";
 
+/** The page also says why a person was signed out by the browser itself (POST-A-483): too long without a touch. */
+export type SignedOutReason = ClosedAccountReason | "idle";
+
 /** The reason a refusal means the account is closed, or null for any other refusal. Matched on what the server
  *  writes (`core/auth.py`), by status AND words, so an unrelated 403 or 401 never signs anybody out. */
 export function closedAccountReason(status: number, message: string | null | undefined): ClosedAccountReason | null {
@@ -54,6 +57,11 @@ export function closedAccountWords(reason: string | null | undefined): ClosedAcc
         heading: "You have been signed out",
         body: "An administrator ended your session. Sign in again to continue.",
       };
+    case "idle":
+      return {
+        heading: "You were signed out for your security",
+        body: "Nothing was touched for 30 minutes, so you were signed out to keep your practice's records safe. Sign in again to continue.",
+      };
     default:
       return {
         heading: "You have been signed out",
@@ -63,7 +71,7 @@ export function closedAccountWords(reason: string | null | undefined): ClosedAcc
 }
 
 /** The page the browser is sent to. */
-export function closedAccountPath(reason: ClosedAccountReason): string {
+export function closedAccountPath(reason: SignedOutReason): string {
   return `/auth/account-closed/?why=${encodeURIComponent(reason)}`;
 }
 

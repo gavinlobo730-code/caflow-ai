@@ -126,7 +126,9 @@ export function problemsWith(src: string): string[] {
   for (const l of labels) {
     if (!hasAttr(l, "htmlFor")) problems.push(`a <label> has no htmlFor: ${l.replace(/\s+/g, " ").slice(0, 90)}`);
   }
-  const ids = new Set(inputs.map((t) => attr(t, "id")).filter((v): v is string => v !== null));
+  // A label may name ANY input, a checkbox included (the sign-in page's "Keep me signed in"); only the boxes that take
+  // typed text owe an autocomplete token and a name, which is what `inputs` above is.
+  const ids = new Set(openingTags(src, "input").map((t) => attr(t, "id")).filter((v): v is string => v !== null));
   for (const l of labels) {
     const target = attr(l, "htmlFor");
     if (target !== null && !ids.has(target)) {
