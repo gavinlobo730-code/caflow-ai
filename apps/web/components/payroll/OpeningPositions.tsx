@@ -9,7 +9,10 @@
  * rather than reading as nil. Saving posts nothing, makes no payslip and remits nothing, and the page says so beside the form.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, History } from "lucide-react";
+import { Loader2, History, Upload } from "lucide-react";
+import CsvImportModal from "@/components/LazyCsvImportModal";
+import type { ImportRow } from "@/components/CsvImportModal";
+import { OPENING_POSITION_IMPORT_COLUMNS } from "@/lib/imports/mappers";
 import { Field, Input, Select } from "@/components/ui/field";
 import { api } from "@/lib/api";
 import type { OpeningPositions } from "@/lib/api";
@@ -45,6 +48,7 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
   const [esi, setEsi] = useState("unknown");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const load = useCallback(async () => {
     if (!clientId || !year) return;
@@ -124,6 +128,19 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
     }
   }
 
+  /** The whole file in ONE request, decided by the server (POST-A-082, part 2): one problem anywhere and nothing is recorded, and
+   *  every problem comes back keyed to the spreadsheet row. */
+  async function importFile(rows: ImportRow[]): Promise<{ imported: number; errors: string[] }> {
+    try {
+      const res = await api.payroll.importOpeningPositions(clientId, rows);
+      if (!res.success) return { imported: 0, errors: [res.error || "Nothing was recorded."] };
+      await load();
+      return { imported: res.data?.recorded ?? 0, errors: [] };
+    } catch (e) {
+      return { imported: 0, errors: [e instanceof Error ? e.message : "Nothing was recorded."] };
+    }
+  }
+
   const names = new Map<string, string>();
   (data?.rows ?? []).forEach((r) => names.set(r.employee_id, r.employee_name ?? r.employee_id));
   (data?.without ?? []).forEach((w) => names.set(w.employee_id, w.employee_name ?? w.employee_id));
@@ -138,12 +155,29 @@ export function OpeningPositionsTab({ clientId }: { clientId: string }) {
           </div>
           <p className="text-2xs text-ps-label mt-0.5">For a client that came over part-way through the year</p>
         </div>
+        <div className="flex items-end gap-2">
+        {mayWrite && (
+          <Button size="sm" variant="outline" onClick={() => setShowImport(true)} className="flex items-center gap-1.5">
+            <Upload size={13} /> Import
+          </Button>
+        )}
         <Field label="Financial year" htmlFor="opening-year" size="sm">
           <Select value={year} onChange={(e) => setYear(e.target.value)} size="sm" className="w-auto">
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </Select>
         </Field>
+        </div>
       </div>
+
+      {showImport && mayWrite && (
+        <CsvImportModal
+          title="Import opening positions"
+          columns={OPENING_POSITION_IMPORT_COLUMNS}
+          templateFilename="payroll-opening-positions-template.csv"
+          onImport={importFile}
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       {data && (
         <Callout tone="note" title="What this is, and is not">

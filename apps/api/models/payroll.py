@@ -1087,3 +1087,11 @@ class OpeningPositionsIn(BaseModel):
     month falls in."""
     client_id: str
     rows: list[OpeningPositionIn] = Field(..., min_length=1, max_length=500)
+
+
+class OpeningPositionsImportIn(BaseModel):
+    """A spreadsheet of opening positions as the browser read its cells (POST-A-082, part 2): one dict of column -> text per row.
+    Read and refused whole by `domain/payroll/opening_position_import`."""
+    client_id: str
+    rows: list[dict] = Field(..., max_length=500)
+    dry_run: bool = False
