@@ -23,6 +23,7 @@
  * each against what the document still owes on the day the cheque is converted.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { Loader2, Plus, RefreshCw, X } from "lucide-react";
 import {
   api,
@@ -116,6 +117,11 @@ export default function PostDatedChequesPanel({
   const [editing, setEditing] = useState<PostDatedCheque | null>(null);
   const [form, setForm] = useState<FormState>(BLANK);
   const [options, setOptions] = useState<PostDatedChequeOptions | null>(null);
+  const partyOptions = useMemo(
+    () => (options ? options.parties : []).map((p) => ({ id: p.id, name: p.name ?? "", gstin: p.gstin })), [options]);
+  // The parties this client used most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentPartyIds = useRecentPartyIds(direction === "received" ? api.customers.recent : api.vendors.recent, clientId, !editing);
+  const recentParties = useMemo(() => recentFirst(recentPartyIds, partyOptions), [recentPartyIds, partyOptions]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -393,7 +399,8 @@ export default function PostDatedChequesPanel({
               <span className="text-2xs text-ps-label">{words.party}</span>
               {direction === "received" ? (
                 <CustomerLookup
-                  customers={(options ? options.parties : []).map((p) => ({ id: p.id, name: p.name ?? "", gstin: p.gstin }))}
+                  customers={partyOptions}
+                  recent={recentParties}
                   value={form.partyId}
                   onChange={pickParty}
                   disabled={!!editing}
@@ -402,7 +409,8 @@ export default function PostDatedChequesPanel({
                 />
               ) : (
                 <VendorLookup
-                  vendors={(options ? options.parties : []).map((p) => ({ id: p.id, name: p.name ?? "", gstin: p.gstin }))}
+                  vendors={partyOptions}
+                  recent={recentParties}
                   value={form.partyId}
                   onChange={pickParty}
                   disabled={!!editing}

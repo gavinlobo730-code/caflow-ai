@@ -16,6 +16,7 @@ import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
 import PostDatedChequesPanel from "@/components/banking/PostDatedChequesPanel";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { api } from "@/lib/api";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
@@ -2582,6 +2583,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
    *  Singapore-to-Mumbai round trip this codebase keeps removing. */
   const [allocateFor, setAllocateFor] = useState<PaymentRow | null>(null);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, true);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const [openBills, setOpenBills] = useState<{
     id: string; our_reference: string; bill_no: string | null; net_payable_paise: number;
     // What is STILL PAYABLE — migration 278's generated column, read rather
@@ -3000,6 +3004,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup
                 vendors={vendors}
+                recent={recentVendors}
                 value={vendorId}
                 onChange={(id) => { setVendorId(id); if (id) loadOpenBills(id); }}
                 ariaLabel="Vendor"

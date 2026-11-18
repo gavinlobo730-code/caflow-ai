@@ -28,6 +28,7 @@
 import { EntityLookup } from "@/components/lookups/EntityLookup";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { useState, useEffect, useMemo, useRef } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import Link from "next/link";
 import {
   IndianRupee, Calendar, AlertCircle, Plus, X, FileText, Award, Upload, ArrowRight,
@@ -264,6 +265,9 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
   // remuneration, a landowner are not suppliers); the server then looks for the one active supplier holding the PAN and says what it found.
   const [vendorId, setVendorId] = useState("");
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, true);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const [vendorsErr, setVendorsErr] = useState<string | null>(null);
   const picked = vendorId ? vendors.find((v) => v.id === vendorId) ?? null : null;
   const [grossRupees, setGrossRupees] = useState("");
@@ -398,7 +402,7 @@ function AddDeductionModal({ clientId, choices, onClose, onAdded }: {
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label htmlFor="tds-supplier" className="text-xs font-medium text-ps-body block mb-1">Supplier (optional)</label>
-            <VendorLookup id="tds-supplier" vendors={vendors} value={vendorId} onChange={setVendorId} onSelect={onPickSupplier}
+            <VendorLookup id="tds-supplier" vendors={vendors} recent={recentVendors} value={vendorId} onChange={setVendorId} onSelect={onPickSupplier}
               ariaLabel="Supplier (optional)" placeholder="Not a supplier, or not chosen" clearable />
             <p className="text-3xs text-ps-label mt-1">
               {picked

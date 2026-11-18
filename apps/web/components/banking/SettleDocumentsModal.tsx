@@ -6,7 +6,8 @@
 // The 4,964-line page was the reason small changes went unreviewed; each tab
 // is its own file now. Behaviour here is unchanged by the move.
 
-import { useEffect, useState, ReactNode } from "react";
+import { useEffect, useMemo, useState, ReactNode } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
@@ -58,6 +59,9 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
   const docLabel = isCredit ? "invoice" : "bill";
 
   const [parties, setParties] = useState<SplitParty[]>([]);
+  // The parties this client used most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentPartyIds = useRecentPartyIds(isCredit ? api.customers.recent : api.vendors.recent, clientId, true);
+  const recentParties = useMemo(() => recentFirst(recentPartyIds, parties), [recentPartyIds, parties]);
   const [partyId, setPartyId] = useState(prefill?.partyId ?? "");
   const [docs, setDocs] = useState<SplitDoc[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -253,9 +257,9 @@ export function MultiInvoiceMatchModal({ txn, clientId, prefill, onClose, onDone
         <div>
           <label className="block text-xs font-medium text-ps-label mb-1">{isCredit ? "Customer" : "Vendor"} *</label>
           {isCredit ? (
-            <CustomerLookup customers={parties} value={partyId} onChange={setPartyId} ariaLabel="Customer" placeholder={`Select customer…`} />
+            <CustomerLookup customers={parties} recent={recentParties} value={partyId} onChange={setPartyId} ariaLabel="Customer" placeholder={`Select customer…`} />
           ) : (
-            <VendorLookup vendors={parties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
+            <VendorLookup vendors={parties} recent={recentParties} value={partyId} onChange={setPartyId} ariaLabel="Vendor" placeholder={`Select vendor…`} />
           )}
           <p className="text-3xs text-ps-hint mt-1">All selected {docLabel}s must belong to this one {isCredit ? "customer" : "vendor"}.</p>
         </div>
