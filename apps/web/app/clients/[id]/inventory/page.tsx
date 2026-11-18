@@ -639,11 +639,13 @@ function StockLedgerDrillDown({
 
   useEffect(() => { load(); }, [load]);
 
+  // Escape closes the ledger only when no dialog of its own is open over it: a dialog owns Escape while it is open (and ignores it while
+  // its write is out), so Escape never unmounts a dialog over a posting still in flight (POST-A-395, the second review).
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !adjustOpen && !writedownOpen) onClose(); }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, adjustOpen, writedownOpen]);
 
   return (
     <div className="fixed inset-0 bg-brand-dark/60 z-[100] flex items-center justify-center p-4" onClick={onClose}>
@@ -792,6 +794,15 @@ function StockLedgerDrillDown({
   );
 }
 
+/** A dialog over the ledger closes on Escape, except while its write is out. */
+function useEscapeUnlessSaving(onClose: () => void, saving: boolean) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !saving) onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, saving]);
+}
+
 function AdjustStockModal({
   clientId, item, onClose, onSaved,
 }: {
@@ -809,6 +820,7 @@ function AdjustStockModal({
   const [referenceNo, setReferenceNo] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  useEscapeUnlessSaving(onClose, saving);
   const [error, setError] = useState<string | null>(null);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
   const dates = useDateProblems();
@@ -859,7 +871,8 @@ function AdjustStockModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : (onClose)}>
+    // Drawn inside the ledger's own click-to-close backdrop: the click is stopped here always, so it can never reach the ledger behind.
+    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
           <p className="text-sm font-semibold text-ps-ink">Adjust Stock — {item.name}</p>
@@ -952,6 +965,7 @@ function NrvWritedownModal({
   const [referenceNo, setReferenceNo] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  useEscapeUnlessSaving(onClose, saving);
   const [error, setError] = useState<string | null>(null);
   // Text that is not a date reads as blank to the form (frontend_ux-19).
   const dates = useDateProblems();
@@ -1015,7 +1029,8 @@ function NrvWritedownModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : (onClose)}>
+    // Drawn inside the ledger's own click-to-close backdrop: the click is stopped here always, so it can never reach the ledger behind.
+    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
           <p className="text-sm font-semibold text-ps-ink">Write Down to NRV — {item.name}</p>

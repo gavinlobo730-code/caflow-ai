@@ -1193,7 +1193,7 @@ export default function ClientPortalPage() {
               </label>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button disabled={actionInFlight}
+              <button disabled={savingRequest}
                 onClick={() => {
                   setShowNewRequestModal(false);
                   setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });

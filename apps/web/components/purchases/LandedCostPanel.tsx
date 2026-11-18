@@ -117,7 +117,9 @@ export function LandedCostPanel({
       setError("Say what the charge is and what it came to.");
       return;
     }
+    // The panel is held while the WRITE is out and let go when it returns; the re-read that follows is not a write (POST-A-395).
     setSaving(true); setError("");
+    let written = false;
     try {
       const token = await getAuthToken();
       const res = await apiCall(`/api/purchase-bills/${billId}/landed-costs`, "POST", {
@@ -125,37 +127,41 @@ export function LandedCostPanel({
       }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Couldn't record the charge.");
       setDescription(""); setAmount("");
-      await load();
-      onChanged?.();
+      written = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't record the charge.");
     } finally {
       setSaving(false);
     }
+    if (written) { await load(); onChanged?.(); }
   }
 
   async function remove(charge: Charge) {
+    // The panel is held while the WRITE is out and let go when it returns; the re-read that follows is not a write (POST-A-395).
     setSaving(true); setError("");
+    let written = false;
     try {
       const token = await getAuthToken();
       const res = await apiCall(
         `/api/purchase-bills/${billId}/landed-costs/${charge.id}?client_id=${encodeURIComponent(clientId)}`,
         "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Couldn't remove the charge.");
-      await load();
-      onChanged?.();
+      written = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't remove the charge.");
     } finally {
       setSaving(false);
     }
+    if (written) { await load(); onChanged?.(); }
   }
 
   /** `scope` says which row is being written: the client's accounting policy,
    *  or this one consignment. An empty basis clears the BILL override only —
    *  the server refuses to un-record a client policy, and says why. */
   async function setBasis(basis: string, scope: "client" | "bill") {
+    // The panel is held while the WRITE is out and let go when it returns; the re-read that follows is not a write (POST-A-395).
     setSaving(true); setError("");
+    let written = false;
     try {
       const token = await getAuthToken();
       const res = await apiCall(`/api/purchase-bills/landed-cost-basis`, "PUT", {
@@ -164,12 +170,13 @@ export function LandedCostPanel({
         bill_id: scope === "bill" ? billId : null,
       }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Couldn't record the basis.");
-      await load();
+      written = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't record the basis.");
     } finally {
       setSaving(false);
     }
+    if (written) await load();
   }
 
   const received = data?.bill_status === "received"

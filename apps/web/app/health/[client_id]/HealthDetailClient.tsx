@@ -790,7 +790,8 @@ export default function ClientHealthDetailPage() {
               <h2 className="text-sm font-semibold text-brand">Add Score Override</h2>
               <button
                 onClick={() => setOverrideModalOpen(false)}
-                className="text-gray-400 hover:text-gray-700"
+                disabled={savingOverride}
+                className="text-gray-400 hover:text-gray-700 disabled:opacity-50"
               >
                 <X size={16} />
               </button>
@@ -847,7 +848,8 @@ export default function ClientHealthDetailPage() {
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => setOverrideModalOpen(false)}
-                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50"
+                disabled={savingOverride}
+                className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>

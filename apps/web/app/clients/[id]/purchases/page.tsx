@@ -73,6 +73,7 @@ import { removedDateProblem } from "@/lib/dates/removedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { apiCall, apiGet, getAuthToken, HELD_DIALOG_MS } from "@/lib/invoices/shared";
+import { failureSentence } from "@/lib/api/failureSentence";
 // The page's request helpers are the invoice screens' (lib/invoices/shared): one place reads a refusal, and a request that gets no answer says the product's sentence
 // (POST-A-410). This page held a copy that read a failed status its own way and called `fetch` itself.
 
@@ -621,7 +622,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     const results: ReceiveResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<ReceiveResult> => {
       try {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
         if (result.success) return { ok: true, notes: registerNotesFrom(result.data), data: result.data };
         return { ok: false, reason: result.error ?? "Failed to receive bill" };
       } catch (e) {
@@ -678,7 +679,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     type DeleteResult = { ok: true } | { ok: false; reason: string };
     const results: DeleteResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<DeleteResult> => {
       try {
-        const result = await apiCall(`/api/purchase-bills/${b.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/purchase-bills/${b.id}`, "DELETE", undefined, token);
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to delete bill" };
       } catch (e) {
@@ -727,7 +728,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     type CancelResult = { ok: true } | { ok: false; reason: string };
     const results: CancelResult[] = await mapWithConcurrency(receivedRows, 8, async (b): Promise<CancelResult> => {
       try {
-        const result = await apiCall(`/api/purchase-bills/${b.id}/cancel`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/purchase-bills/${b.id}/cancel`, "POST", undefined, token);
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to cancel bill" };
       } catch (e) {
@@ -1752,17 +1753,25 @@ function Vendors({ clientId }: { clientId: string }) {
   async function confirmDeactivate() {
     if (!deactivateTarget) return;
     setDeactivating(true);
-    const token = await getAuthToken();
-    const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
-    setDeactivating(false);
-    if (!result.success) {
-      setMsg({ type: "err", text: result.error ?? "Failed to deactivate vendor" });
+    // The request is bounded and so may throw (no answer in 45 seconds, a dropped connection): the dialog is let go in the finally, and the
+    // thrown sentence says it is not known whether the vendor was deactivated (POST-A-395, the second review).
+    try {
+      const token = await getAuthToken();
+      const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+      if (!result.success) {
+        setMsg({ type: "err", text: result.error ?? "Failed to deactivate vendor" });
+        setDeactivateTarget(null);
+        return;
+      }
+      setMsg({ type: "ok", text: "Vendor deactivated." });
       setDeactivateTarget(null);
-      return;
+      load();
+    } catch (e) {
+      setMsg({ type: "err", text: failureSentence(e, "Failed to deactivate vendor", "write") });
+      setDeactivateTarget(null);
+    } finally {
+      setDeactivating(false);
     }
-    setMsg({ type: "ok", text: "Vendor deactivated." });
-    setDeactivateTarget(null);
-    load();
   }
 
   async function reactivateVendor(v: VendorRow) {
@@ -1820,7 +1829,7 @@ function Vendors({ clientId }: { clientId: string }) {
     const failures: string[] = [];
     await Promise.all(targets.map(async (v) => {
       try {
-        const result = await apiCall(`/api/vendors/${v.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/vendors/${v.id}`, "DELETE", undefined, token);
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -1846,7 +1855,7 @@ function Vendors({ clientId }: { clientId: string }) {
     const failures: string[] = [];
     await Promise.all(rows.map(async (v) => {
       try {
-        const result = await apiCall(`/api/vendors/${v.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/vendors/${v.id}?permanent=true`, "DELETE", undefined, token);
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -3383,7 +3392,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/debit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/debit-notes/", "POST", note, token);
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -3460,7 +3469,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     const results = await Promise.all(
       rows.map(async (d) => {
         try {
-          const result = await apiCall(`/api/debit-notes/${d.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const result = await apiCall(`/api/debit-notes/${d.id}`, "DELETE", undefined, token);
           return result.success;
         } catch {
           return false;
@@ -3491,7 +3500,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (d): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/debit-notes/${d.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/debit-notes/${d.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue debit note" };
       } catch (e) {
@@ -3868,7 +3877,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/purchase-credit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/purchase-credit-notes/", "POST", note, token);
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -3933,7 +3942,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     const results = await Promise.all(
       rows.map(async (d) => {
         try {
-          const result = await apiCall(`/api/purchase-credit-notes/${d.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const result = await apiCall(`/api/purchase-credit-notes/${d.id}`, "DELETE", undefined, token);
           return result.success;
         } catch {
           return false;
@@ -3964,7 +3973,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     type IssueResult = { ok: true } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (d): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/purchase-credit-notes/${d.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/purchase-credit-notes/${d.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to issue credit note" };
       } catch (e) {

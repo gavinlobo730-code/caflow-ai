@@ -621,7 +621,7 @@ export default function RecurringPage() {
               <h3 className="text-sm font-semibold text-ps-ink">
                 {editing ? "Edit" : "New"} recurring journal
               </h3>
-              <button onClick={() => setModalOpen(false)} className="text-ps-hint hover:text-ps-label" aria-label="Close">
+              <button onClick={() => setModalOpen(false)} disabled={busyId === "save"} className="text-ps-hint hover:text-ps-label disabled:opacity-50" aria-label="Close">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -766,7 +766,7 @@ export default function RecurringPage() {
             {formError && <p className="text-2xs text-red-600">{formError}</p>}
 
             <div className="flex gap-2 pt-1">
-              <button onClick={() => setModalOpen(false)} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
+              <button onClick={() => setModalOpen(false)} disabled={busyId === "save"} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg disabled:opacity-50">
                 Cancel
               </button>
               <Button variant="plain" size="none"

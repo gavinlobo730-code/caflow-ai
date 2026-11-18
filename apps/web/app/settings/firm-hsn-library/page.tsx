@@ -495,7 +495,7 @@ function EditCodeModal({ row, onClose, onSaved, onError }: {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={saving ? undefined : (onClose)} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/40" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }} aria-hidden="true" />
       <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl p-4 space-y-3">
         <h3 className="text-sm font-semibold text-ps-ink">Edit {row.hsn_code}</h3>
         <label className="block space-y-1">

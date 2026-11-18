@@ -833,11 +833,11 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => !saving && e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => { e.stopPropagation(); if (!saving && e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Account</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
+          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50"><span className="text-lg">×</span></button>
         </div>
 
         <div className="flex-1 px-6 py-5 space-y-4 text-xs">
@@ -898,6 +898,12 @@ function EditAccountModal({ account, onClose, onSaved }: {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Escape closes the editor, except while its save is out (the ledger behind leaves Escape to it while it is open).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !saving) onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, saving]);
   const submittingRef = useRef(false);
 
   async function save() {
@@ -937,7 +943,7 @@ function EditAccountModal({ account, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
         <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Edit Account</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-ink"><span className="text-lg">×</span></button>
+          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-ink disabled:opacity-50"><span className="text-lg">×</span></button>
         </div>
 
         <div className="px-5 py-4 space-y-4 text-xs">
@@ -1535,11 +1541,13 @@ function LedgerDrillDown({
   // A different account or window is a different ledger — page one of it.
   useEffect(() => { setPage(0); }, [accountId, startDate, endDate]);
 
+  // Escape closes the ledger only when the account editor is not open over it: the editor owns Escape while it is open and ignores it
+  // while its save is out, so Escape never unmounts it over a save still in flight (POST-A-395, the second review).
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape" && !editing) onClose(); }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, editing]);
 
   // The side is the SERVER's (`is_debit` on the ledger page), not the sign's:
   // a bank overdraft is a credit balance on an asset ledger.

@@ -341,7 +341,10 @@ export default function CapitalGainsPage() {
   const [sectionInfo, setSectionInfo] = useState<ReinvestmentSectionInfo[]>([]);
   const [exemptFor, setExemptFor] = useState<CapitalGainsRecord | null>(null);
   const [exemption, setExemption] = useState<CapitalGainExemption | null>(null);
-  const [exemptBusy, setExemptBusy] = useState(false);
+  // The working's READ (on opening, and again after a write) and its WRITES are two flags: the dialog is held only while a write is out, so a
+  // slow read never traps the person in it, and the write's flag is let go when the write returns, before the read that follows (POST-A-395).
+  const [exemptLoading, setExemptLoading] = useState(false);
+  const [exemptSaving, setExemptSaving] = useState(false);
   const [exemptError, setExemptError] = useState("");
   // Both dates in a reinvestment claim are optional and read as "not given" when blank: unreadable text is refused instead (frontend_ux-19).
   const claimDates = useDateProblems();
@@ -356,7 +359,7 @@ export default function CapitalGainsPage() {
   }, []);
 
   const loadExemption = useCallback(async (recordId: string) => {
-    setExemptBusy(true);
+    setExemptLoading(true);
     try {
       setExemption(await getCapitalGainExemption(recordId));
       setExemptError("");
@@ -364,7 +367,7 @@ export default function CapitalGainsPage() {
       setExemption(null);
       setExemptError(e instanceof Error ? e.message : "Couldn't load the exemption working.");
     } finally {
-      setExemptBusy(false);
+      setExemptLoading(false);
     }
   }, []);
 
@@ -385,7 +388,8 @@ export default function CapitalGainsPage() {
       setExemptError("Describe what was bought.");
       return;
     }
-    setExemptBusy(true);
+    setExemptSaving(true);
+    let saved = false;
     try {
       await addReinvestment(exemptFor.id, {
         section: claimForm.section,
@@ -401,25 +405,28 @@ export default function CapitalGainsPage() {
           claimForm.agri_use === "" ? null : claimForm.agri_use === "yes",
       });
       setClaimForm({ ...BLANK_CLAIM });
-      await loadExemption(exemptFor.id);
+      saved = true;
     } catch (e) {
       setExemptError(e instanceof Error ? e.message : "Couldn't record the claim.");
     } finally {
-      setExemptBusy(false);
+      setExemptSaving(false);
     }
+    if (saved) await loadExemption(exemptFor.id);
   }
 
   async function removeClaim(claimId: string) {
     if (!exemptFor) return;
-    setExemptBusy(true);
+    setExemptSaving(true);
+    let removed = false;
     try {
       await deleteReinvestment(exemptFor.id, claimId);
-      await loadExemption(exemptFor.id);
+      removed = true;
     } catch (e) {
       setExemptError(e instanceof Error ? e.message : "Couldn't delete the claim.");
     } finally {
-      setExemptBusy(false);
+      setExemptSaving(false);
     }
+    if (removed) await loadExemption(exemptFor.id);
   }
 
   const [regPreview, setRegPreview] = useState<CapitalGainsComputeResult | null>(null);
@@ -995,7 +1002,7 @@ export default function CapitalGainsPage() {
                       Reinvestment exemption — {exemptFor.asset_description}
                     </h2>
                   </div>
-                  <button disabled={exemptBusy} onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
+                  <button disabled={exemptSaving} onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
                     <X className="w-4 h-4 text-ps-hint" />
                   </button>
                 </div>
@@ -1058,7 +1065,7 @@ export default function CapitalGainsPage() {
                         <p key={`c${i}`} className="text-2xs text-ps-label italic">{v}</p>
                       ))}
                       {c.id && (
-                        <Button variant="plain" size="none" onClick={() => removeClaim(c.id as string)} disabled={exemptBusy}
+                        <Button variant="plain" size="none" onClick={() => removeClaim(c.id as string)} disabled={exemptSaving || exemptLoading}
                                 className="text-2xs text-ps-hint hover:text-state-problem transition-colors">
                           Delete this claim
                         </Button>
@@ -1183,8 +1190,8 @@ export default function CapitalGainsPage() {
                     )}
 
                     <div className="flex justify-end gap-2">
-                      <Button size="sm" onClick={saveClaim} disabled={exemptBusy}>
-                        {exemptBusy ? "Saving…" : "Record claim"}
+                      <Button size="sm" onClick={saveClaim} disabled={exemptSaving || exemptLoading}>
+                        {exemptSaving ? "Saving…" : "Record claim"}
                       </Button>
                     </div>
                   </div>
