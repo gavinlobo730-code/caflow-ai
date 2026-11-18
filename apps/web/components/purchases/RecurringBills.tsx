@@ -16,7 +16,9 @@
  * that actually runs.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { Plus, RefreshCw, Clock, X, Trash2 } from "lucide-react";
 
 import { apiCall, apiGet, getAuthToken } from "@/lib/invoices/shared";
@@ -458,6 +460,9 @@ function RecurringBillEditor({
   onSaved: (msg: string) => void;
 }) {
   const [vendorId, setVendorId] = useState(existing?.vendor_id ?? "");
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !existing);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState<Frequency>(existing?.frequency ?? "monthly");
@@ -589,7 +594,7 @@ function RecurringBillEditor({
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="col-span-2 lg:col-span-1">
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={setVendorId} ariaLabel="Vendor" />
+              <VendorLookup vendors={vendors} recent={recentVendors} value={vendorId} onChange={setVendorId} ariaLabel="Vendor" />
             </div>
             <div className="col-span-2 lg:col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Name *</label>

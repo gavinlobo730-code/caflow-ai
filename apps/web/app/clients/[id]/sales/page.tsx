@@ -4,6 +4,8 @@ import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { taxablePaise } from "@/lib/money/gstLine";
 import { templateBasePaise } from "@/lib/recurring/templateBase";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { pruneSelection } from "@/lib/table/pruneSelection";
 import { createPortal } from "react-dom";
 import {
@@ -765,6 +767,9 @@ function RecurringEditor({
   onSaved: (msg: string) => void;
 }) {
   const [customerId, setCustomerId] = useState(existing?.customer_id ?? "");
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, !existing);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [frequency, setFrequency] = useState(existing?.frequency ?? "monthly");
@@ -896,6 +901,7 @@ function RecurringEditor({
               <label className="block text-xs font-medium text-ps-label mb-1">Customer</label>
               <CustomerLookup
                 customers={customers}
+                recent={recentCustomers}
                 value={customerId}
                 onChange={setCustomerId}
                 disabled={!!existing}
@@ -3866,6 +3872,9 @@ function ReceiptForm({
 }) {
   const today = todayIstISO();
   const [customerId, setCustomerId] = useState("");
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, true);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
   const [receiptDate, setReceiptDate] = useState(today);
   // A date typed as text that is not a date reads as blank to the form; the
   // save has to know which it was (frontend_ux-19).
@@ -4142,6 +4151,7 @@ function ReceiptForm({
           <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
           <CustomerLookup
             customers={customers}
+            recent={recentCustomers}
             value={customerId}
             onChange={setCustomerId}
             ariaLabel="Customer"

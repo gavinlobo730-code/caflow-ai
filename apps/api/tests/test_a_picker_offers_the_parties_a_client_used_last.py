@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -125,17 +126,35 @@ def test_the_route_is_declared_before_the_one_that_takes_an_id():
         assert src.index('@router.get("/recent")') < src.index(f"@router.get({idroute})"), f
 
 
-def test_the_invoice_and_bill_pickers_take_the_recent_parties_and_preselect_nothing():
+#: Party pickers that choose what a LIST shows, not the party of a document or record, so recent-first does not apply.
+#: (file, how many such pickers it holds): the customer statement chooser and the invoice list's customer filter.
+NOT_A_DOCUMENTS_PARTY = {"app/clients/[id]/sales/page.tsx": 2}
+
+
+def _party_pickers(src: str) -> list[str]:
+    out = []
+    for m in re.finditer(r"<(CustomerLookup|VendorLookup)\b", src):
+        end = src.index("/>", m.end())
+        out.append(src[m.start(): end + 2])
+    return out
+
+
+def test_every_party_picker_on_a_document_or_record_takes_the_recent_parties():
     web = ROOT / "apps/web"
-    inv = (web / "components/invoices/InvoiceEditor.tsx").read_text(encoding="utf-8")
-    bill = (web / "components/purchases/PurchaseBillEditor.tsx").read_text(encoding="utf-8")
-    assert "useRecentPartyIds(api.customers.recent" in inv and "recent={recentCustomers}" in inv
-    assert "useRecentPartyIds(api.vendors.recent" in bill and "recent={recentVendors}" in bill
-    for f, read, prop in (("components/sales/SalesDebitNoteEditor.tsx", "customers", "recentCustomers"),
-                          ("components/sales/SalesCreditNoteEditor.tsx", "customers", "recentCustomers"),
-                          ("components/purchases/DebitNoteEditor.tsx", "vendors", "recentVendors"),
-                          ("components/purchases/PurchaseCreditNoteEditor.tsx", "vendors", "recentVendors")):
-        src = (web / f).read_text(encoding="utf-8")
-        assert f"useRecentPartyIds(api.{read}.recent" in src and f"recent={{{prop}}}" in src, f
-    helper = (web / "lib/lookups/recentParties.ts").read_text(encoding="utf-8")
-    assert "onChange" not in helper and "setCustomerId" not in helper, "the helper orders a list and chooses nothing"
+    missing, seen = [], 0
+    for path in sorted(list((web / "app").rglob("*.tsx")) + list((web / "components").rglob("*.tsx"))):
+        rel = path.relative_to(web).as_posix()
+        if rel.startswith("components/lookups/"):
+            continue
+        pickers = _party_pickers(path.read_text(encoding="utf-8"))
+        seen += len(pickers)
+        without = [p for p in pickers if "recent={" not in p]
+        if len(without) != NOT_A_DOCUMENTS_PARTY.get(rel, 0):
+            missing.append(f"{rel}: {len(without)} picker(s) without recent=, {NOT_A_DOCUMENTS_PARTY.get(rel, 0)} allowed")
+    assert seen >= 15, f"only {seen} party pickers found: the scan has gone blind"
+    assert missing == [], missing
+
+
+def test_the_helper_orders_a_list_and_chooses_nothing():
+    helper = (ROOT / "apps/web/lib/lookups/recentParties.ts").read_text(encoding="utf-8")
+    assert "onChange" not in helper and "setCustomerId" not in helper

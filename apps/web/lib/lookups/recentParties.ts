@@ -15,7 +15,8 @@ export function recentFirst<T extends { id: string }>(ids: readonly string[], li
   return out;
 }
 
-/** The recent ids for a client, or none while loading, when off, or when the read failed (the list keeps its own order). */
+/** The recent ids for a client, or none while loading, when off, or when the read failed (the list keeps its own order).
+ *  `read` is a stable `api.customers.recent` / `api.vendors.recent`; a different one reads again. */
 export function useRecentPartyIds(
   read: (clientId: string) => Promise<{ success: boolean; data?: { ids?: unknown } | null }>,
   clientId: string | null | undefined,
@@ -33,7 +34,6 @@ export function useRecentPartyIds(
       })
       .catch(() => { if (!cancelled) setIds([]); });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId, enabled]);
+  }, [read, clientId, enabled]);
   return ids;
 }
