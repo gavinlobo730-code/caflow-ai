@@ -40,14 +40,22 @@ READ_BACK_DROPS = 10
 _KEPT = ("name", "status", "reason", "gstin", "period", "client_id", "needs_attention", "summary", "problems",
          "registration_caveat", "replaced_earlier")
 
-NOT_RECORDED = ("What this drop did was not recorded, so it cannot be read back after this page is closed. The files above "
-                "were reconciled exactly as listed.")
+NOT_RECORDED = ("What the server did with this file was not recorded, so it will not be listed under your recent drops after "
+                "this page is closed. The result shown on this page is the server's answer.")
 DROP_NOT_FOUND = ("The drop this file was sent as part of is not one of yours. Nothing was reconciled. Drop the files again to "
                   "start a new one.")
 NOT_SEEN_NOW = ("This file was routed to a client you cannot see now, so the client and what the reconciliation found are not "
                 "shown.")
 BROWSER_ONLY = ("A file the browser could not read, or that was not started because the drop was stopped, never reached the "
                 "server and is not listed here.")
+
+
+def unrecorded_sentence(n: int) -> str:
+    """What the read-back says about files of a drop that reached the server and whose answer is not in the record."""
+    files = "file" if n == 1 else "files"
+    return (f"{n} {files} of this drop reached the server, but what was done with "
+            f"{'it' if n == 1 else 'them'} could not be recorded, so {'it is' if n == 1 else 'they are'} not listed here. "
+            "Open the client's GSTR-2B tab to see what is reconciled now.")
 
 
 class DropRefused(Exception):
@@ -96,7 +104,10 @@ def _row(firm_id: str, drop_id: str, result: dict) -> dict:
 
 
 def record(db, *, firm_id: str, drop_id: Optional[str], results: Sequence[dict]) -> bool:
-    """Keep what the drop did to these files. True when written; never raises (the reconciliations are already written)."""
+    """Keep what the drop did to these files. True when written; never raises (the reconciliations are already written).
+
+    A failed write is COUNTED on the drop (`count_unrecorded`), so the read-back says how many files are missing from it rather
+    than reading as complete."""
     if not drop_id:
         return False
     if not results:
@@ -104,10 +115,33 @@ def record(db, *, firm_id: str, drop_id: Optional[str], results: Sequence[dict])
     try:
         written = (db.table("gstr2b_bulk_drop_files")
                    .insert([_row(firm_id, drop_id, r) for r in results]).execute().data) or []
-        return len(written) == len(results)
+        if len(written) == len(results):
+            return True
+        missing = len(results) - len(written)
     except Exception as exc:                                    # noqa: BLE001
         capture_soft_failure(exc, operation="gst2b.drop.record", firm_id=firm_id, drop_id=drop_id)
-        return False
+        missing = len(results)
+    count_unrecorded(db, firm_id=firm_id, drop_id=drop_id, n=missing)
+    return False
+
+
+def count_unrecorded(db, *, firm_id: str, drop_id: Optional[str], n: int) -> None:
+    """Add `n` to the drop's count of files that reached the server and are not in its file rows. Never raises.
+
+    A read then a write: a drop's requests are sent one after another by one browser, so two never race on one drop. If this write
+    fails too, the shortfall is reported and the drop reads as it stands."""
+    if not drop_id or n <= 0:
+        return
+    try:
+        rows = (db.table("gstr2b_bulk_drops").select("unrecorded_files")
+                .eq("firm_id", firm_id).eq("id", drop_id).limit(1).execute().data) or []
+        if not rows:
+            return
+        (db.table("gstr2b_bulk_drops")
+         .update({"unrecorded_files": int(rows[0].get("unrecorded_files") or 0) + int(n)})
+         .eq("firm_id", firm_id).eq("id", drop_id).execute())
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="gst2b.drop.count_unrecorded", firm_id=firm_id, drop_id=drop_id)
 
 
 def _client_names(db, firm_id: str, ids: Sequence[str]) -> dict[str, str]:
@@ -144,7 +178,7 @@ def read_back(db, *, firm_id: str, member_id: Optional[str], may_see: Callable[[
     if not member_id:
         return {**empty, "recorded": True}
     try:
-        drops = (db.table("gstr2b_bulk_drops").select("id, created_at")
+        drops = (db.table("gstr2b_bulk_drops").select("id, created_at, unrecorded_files")
                  .eq("firm_id", firm_id).eq("created_by", member_id)
                  .order("created_at", desc=True).order("id", desc=True)
                  .limit(READ_BACK_DROPS + 1).execute().data) or []
@@ -182,10 +216,16 @@ def read_back(db, *, firm_id: str, member_id: Optional[str], may_see: Callable[[
     out = []
     for d in drops:
         results = by_drop.get(str(d["id"]), [])
+        unrecorded = int(d.get("unrecorded_files") or 0)
+        if not results and not unrecorded:
+            # Opened and never answered a file (its first request failed before any answer): nothing happened to list.
+            continue
         totals: dict[str, int] = {}
         for r in results:
             totals[str(r["status"])] = totals.get(str(r["status"]), 0) + 1
         out.append({"id": str(d["id"]), "created_at": d.get("created_at"), "file_count": len(results),
+                    "unrecorded_files": unrecorded,
+                    "unrecorded": unrecorded_sentence(unrecorded) if unrecorded else None,
                     "totals": totals, "needs_attention": sum(1 for r in results if r["needs_attention"]),
                     "results": results})
     return {**empty, "drops": out, "more": more, "recorded": True}

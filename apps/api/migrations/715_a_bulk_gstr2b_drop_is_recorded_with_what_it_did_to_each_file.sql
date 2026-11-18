@@ -12,8 +12,8 @@
 -- WHAT THIS DOES
 -- ═════════════════════════════════════════════════════════════════
 -- Two tables, written by the API's privileged client only:
---   * `gstr2b_bulk_drops`: one row per drop, the firm and the member who made it. The first request of a drop creates it and every later
---     request of the same drop names it.
+--   * `gstr2b_bulk_drops`: one row per drop, the firm and the member who made it, and how many files of it reached the server and are
+--     NOT in the file rows (`unrecorded_files`). The first request of a drop creates it and every later request of the same drop names it.
 --   * `gstr2b_bulk_drop_files`: one row per file the server answered, with the status, the sentence, the GSTIN the file named, the month,
 --     the client it was routed to (NULL where it was routed to none), whether it needs a look, the counts, the problems, the registration
 --     caveat and what it replaced, exactly as the answer carried them. A client's name is not stored: it is read when the drop is read back.
@@ -40,7 +40,11 @@ CREATE TABLE IF NOT EXISTS public.gstr2b_bulk_drops (
   firm_id     UUID        NOT NULL REFERENCES public.firms(id) ON DELETE CASCADE,
   created_by  UUID        REFERENCES public.users(id) ON DELETE SET NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT gstr2b_bulk_drops_id_firm UNIQUE (id, firm_id)
+  -- Files of this drop that reached the server and whose answer is NOT in gstr2b_bulk_drop_files: the file rows' write failed, or the
+  -- request failed after the drop was opened. The read-back says how many, so a drop is never shown as complete when it is not.
+  unrecorded_files INTEGER NOT NULL DEFAULT 0,
+  CONSTRAINT gstr2b_bulk_drops_id_firm UNIQUE (id, firm_id),
+  CONSTRAINT gstr2b_bulk_drops_unrecorded_is_a_count CHECK (unrecorded_files >= 0)
 );
 
 COMMENT ON TABLE public.gstr2b_bulk_drops IS

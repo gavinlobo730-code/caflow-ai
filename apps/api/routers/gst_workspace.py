@@ -1433,11 +1433,18 @@ def bulk_gstr2b(
                 drop_id=str(body.drop_id) if body.drop_id else None)
         except gst_2b_drop_record.DropRefused as refused:
             return api_response(False, None, str(refused))
-        out = gst_2b_bulk_service.process(
-            get_supabase(), firm_id=firm_id, files=files,
-            visible=effective_client_ids(current_user),
-            can_access=lambda cid: can_access_client(current_user, cid),
-            created_by=current_user.get("id"), timeline=timeline_service)
+        try:
+            out = gst_2b_bulk_service.process(
+                get_supabase(), firm_id=firm_id, files=files,
+                visible=effective_client_ids(current_user),
+                can_access=lambda cid: can_access_client(current_user, cid),
+                created_by=current_user.get("id"), timeline=timeline_service)
+        except Exception:
+            # The request failed after its drop was opened: these files reached
+            # the server and nothing says what became of them, so the drop
+            # counts them rather than reading as complete.
+            gst_2b_drop_record.count_unrecorded(record_db, firm_id=firm_id, drop_id=drop_id, n=len(files))
+            raise
         recorded = gst_2b_drop_record.record(
             record_db, firm_id=firm_id, drop_id=drop_id, results=out["results"])
         out = {**out, "drop_id": drop_id, "recorded": recorded,
