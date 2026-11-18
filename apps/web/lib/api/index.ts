@@ -3920,7 +3920,12 @@ export interface Gstr2bBulkDropResult extends Gstr2bBulkResult {
 export interface Gstr2bBulkDrop {
   id: string;
   created_at: string | null;
+  /** Files the record holds. */
   file_count: number;
+  /** Files of the drop that reached the server and are NOT in the record, and
+   *  the server's sentence for them (null when there are none). */
+  unrecorded_files: number;
+  unrecorded: string | null;
   totals: Partial<Record<Gstr2bBulkStatus, number>>;
   needs_attention: number;
   results: Gstr2bBulkDropResult[];

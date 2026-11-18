@@ -168,3 +168,11 @@ def test_the_migration_runs_twice_and_its_rollback_removes_both_tables_which_the
     _run(dsn, MIGRATION)
     _ok(dsn, f"INSERT INTO {DROPS} (id, firm_id, created_by) VALUES ('{DROP}', '{FIRM}', '{ME}');")
     assert _file(dsn).returncode == 0
+
+
+def test_a_drop_counts_its_unrecorded_files_from_nil_and_never_below(dsn):
+    assert _val(dsn, f"SELECT unrecorded_files FROM {DROPS} WHERE id = '{DROP}'") == "0"
+    _ok(dsn, f"UPDATE {DROPS} SET unrecorded_files = unrecorded_files + 2 WHERE id = '{DROP}';")
+    assert _val(dsn, f"SELECT unrecorded_files FROM {DROPS} WHERE id = '{DROP}'") == "2"
+    r = _psql(dsn, f"UPDATE {DROPS} SET unrecorded_files = -1 WHERE id = '{DROP}';")
+    assert r.returncode != 0 and "gstr2b_bulk_drops_unrecorded_is_a_count" in r.stderr

@@ -1516,8 +1516,21 @@ real document with wrong figures.
   `tests/test_a_bulk_gstr2b_drop_can_be_read_back.py` (14),
   two route tests in the 2B routing suite, `tests/test_715_..._pg.py` (6), and
   a browser guard; all 17 new mock, route and browser tests fail on the code
-  before. NOT done: the job queue that would go on
-  reconciling after the tab is closed.
+  before. THE REVIEW OF 18-11-2026 FOUND THREE SHORTFALLS AND ALL ARE CLOSED:
+  a file the server answered whose row could not be written, and the files of a
+  request that failed after its drop was opened, were silently missing from the
+  read-back while it said only browser-side files can be missing; they are now
+  counted on the drop (`unrecorded_files`, in 715 itself, which had not merged)
+  and the read-back says how many, and a drop with nothing answered and
+  nothing counted is not listed as "0 file(s)". The page's not-recorded
+  sentence pointed "above" from above the table and spoke of the whole drop
+  when one request was not recorded; it now sits below the table and names the
+  files not recorded where others were (`lib/gst/bulkDropRecord`). The empty
+  read-back invited a drop from a reader who may not make one; it says so only
+  to someone with `gst` `compute`. 13 more tests (6 mock, 1 real Postgres, 2
+  browser source, 4 browser unit), all but the Postgres one failing on the code
+  before. NOT done: the job queue that would go on reconciling after the tab is
+  closed.
 
 - **A GST RETURN PERIOD IS A TYPE, AND A STRING THAT IS NOT A MONTH IS A 422 AT THE DOOR** (POST-A-270, found by filing a seeded year through the workspace doors). 27 route parameters and request-model fields took a period as a plain string, four query parameters of them behind `pattern=r"^\d{6}$"`, and what a malformed one became depended on the door. Where it reached `return_period.parse_month`, which raises for anything that is not a month, `2026-04`, `4/2026` and a month 13 reached the CA as a 500 (`iff/compute?period=139999` and `=010000` both answered 500 on a real stack); where it was only a key it was not checked at all (`itc/register?period=2026-04` answered 200 with an empty register, and on the two ITC reversal bodies nothing looked at it until the register table's own CHECK refused the insert, migration 285). `models/gst_period.PeriodMMYYYY` (and `OptionalPeriodMMYYYY`, where blank means not said) applies `parse_month`'s own rule and nothing restated: six digits, a month from 01 to 12, and a year of this century (a typo bound, deliberately not a statement of when GST began, which this repository has not read from a primary source). **ASCII DIGITS ONLY**, which `parse_month` itself does not insist on (`str.isdigit` accepts Arabic-Indic and full-width digits), because the text is stored as the key a saved return is found under and a second spelling of April 2026 would open a second row. A typed required query parameter is spelled `*, period: Annotated[PeriodMMYYYY, Query(...)]` with no default: `period: PeriodMMYYYY = Query(...)` validates nothing (the metadata is dropped when `Query` sits in the default) and `= ...` makes a required parameter optional under this FastAPI (b70); the OpenAPI document was compared before and after and no parameter changed its required flag, name or description; the one difference is that the four query parameters that carried a `pattern` no longer publish it, because the type does the refusing and the document describes the string. `tests/test_gst_return_periods_are_validated.py` holds the rule from the AST (every `period` entry point in the routers and models is typed or listed in `EXEMPT` with the reason it is not a GST return period: the analytics windows, the billing and depreciation months in YYYY-MM, the portal snapshot's free label, the MCA form's period), reads the served OpenAPI document for every operation that carries a period and sends each a malformed one expecting a 422 naming `period`, and fails a stale exemption. The purchase-bill-from-2B handler's own period check was deleted: a second statement of the rule behind the type is the drift this entry exists to prevent. Deliberately NOT done: the GSTR-2B upload keeps its own cross-check that the file's period agrees with the one typed; `gst_portal` and `mca_workspace` periods are free-form and exempt.
 

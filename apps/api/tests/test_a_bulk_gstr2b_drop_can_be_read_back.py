@@ -205,3 +205,64 @@ def test_the_read_backs_projection_is_the_kept_fields():
     lit = src.split('.select("id, drop_id, seq, ', 1)[1].split(")", 1)[0]
     cols = [c.strip() for c in "".join(p.strip().strip('"') for p in lit.splitlines()).split(",") if c.strip()]
     assert cols == list(rec._KEPT)
+
+
+# ── a file the server answered and could not record is counted, never silently absent (review of 18-11-2026) ──
+
+
+def _failing_file_rows(db, monkeypatch):
+    real = db.table
+
+    def table(name):
+        if name == "gstr2b_bulk_drop_files":
+            raise RuntimeError("transient")
+        return real(name)
+    monkeypatch.setattr(db, "table", table)
+
+
+def test_a_failed_file_row_write_is_counted_on_the_drop_and_said_on_the_read_back(db, monkeypatch):
+    drop = rec.open_drop(db, firm_id=FIRM, member_id=ME, drop_id=None)
+    with monkeypatch.context() as m:
+        _failing_file_rows(db, m)
+        assert rec.record(db, firm_id=FIRM, drop_id=drop, results=[_reconciled("june.json")]) is False
+    assert rec.record(db, firm_id=FIRM, drop_id=drop, results=[_refused("b.json")]) is True
+    _number(db)
+
+    assert db.rows("gstr2b_bulk_drops")[0]["unrecorded_files"] == 1
+    out = rec.read_back(db, firm_id=FIRM, member_id=ME, may_see=lambda cid: True)
+    d = out["drops"][0]
+    assert d["file_count"] == 1 and d["unrecorded_files"] == 1
+    assert d["unrecorded"].startswith("1 file of this drop reached the server") and "could not be recorded" in d["unrecorded"]
+
+
+def test_counts_add_up_across_requests(db, monkeypatch):
+    drop = rec.open_drop(db, firm_id=FIRM, member_id=ME, drop_id=None)
+    _failing_file_rows(db, monkeypatch)
+    rec.record(db, firm_id=FIRM, drop_id=drop, results=[_reconciled("a.json"), _reconciled("b.json")])
+    rec.record(db, firm_id=FIRM, drop_id=drop, results=[_reconciled("c.json")])
+    assert db.rows("gstr2b_bulk_drops")[0]["unrecorded_files"] == 3
+
+
+def test_a_drop_with_nothing_answered_and_nothing_counted_is_not_listed_as_zero_files(db):
+    rec.open_drop(db, firm_id=FIRM, member_id=ME, drop_id=None)
+    out = rec.read_back(db, firm_id=FIRM, member_id=ME, may_see=lambda cid: True)
+    assert out["drops"] == []
+
+
+def test_a_drop_whose_only_request_failed_is_listed_with_its_count(db):
+    drop = rec.open_drop(db, firm_id=FIRM, member_id=ME, drop_id=None)
+    rec.count_unrecorded(db, firm_id=FIRM, drop_id=drop, n=2)
+    d = rec.read_back(db, firm_id=FIRM, member_id=ME, may_see=lambda cid: True)["drops"][0]
+    assert d["file_count"] == 0 and d["unrecorded"].startswith("2 files of this drop")
+
+
+def test_the_route_counts_a_request_that_failed_after_its_drop_opened():
+    from routers import gst_workspace
+    src = inspect.getsource(gst_workspace.bulk_gstr2b)
+    body = src.split("gst_2b_bulk_service.process(", 1)[1].split("gst_2b_drop_record.record(", 1)[0]
+    assert "count_unrecorded(record_db, firm_id=firm_id, drop_id=drop_id, n=len(files))" in body
+    assert "raise" in body
+
+
+def test_the_not_recorded_sentence_points_at_no_position_on_the_page():
+    assert "above" not in rec.NOT_RECORDED and "below" not in rec.NOT_RECORDED

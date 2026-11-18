@@ -50,6 +50,7 @@ import { objectWithLists } from "@/lib/api/shape";
 import type { Gstr2bBulkAnswer, Gstr2bBulkDrops } from "@/lib/api";
 import { LoadingRegion } from "@/components/ui/skeleton";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
+import { notRecordedSentence } from "@/lib/gst/bulkDropRecord";
 import { gstPeriodLabel } from "@/lib/gst/period";
 import { formatIstLabelled } from "@/lib/dates/formatIst";
 import { formatPaise } from "@/lib/money/format";
@@ -143,7 +144,10 @@ export function BulkGstr2bPanel() {
     setNotRecorded(null);
     // The drop's id, from the server's first answer; every later file sends it back.
     let dropId: string | null = null;
-    let unrecorded: string | null = null;
+    // Which answered files the server did NOT record, and whether any it did:
+    // the sentence names the files when the rest of the drop can be read back.
+    const unrecordedNames: string[] = [];
+    let anyRecorded = false;
     // The flag comes down in a `finally`: a throw anywhere below must not leave
     // the drop disabled until the page is reloaded.
     try {
@@ -180,10 +184,8 @@ export function BulkGstr2bPanel() {
             ? objectWithLists<Gstr2bBulkAnswer>(resp.data, "results") : null;
           if (answer) {
             dropId = answer.drop_id ?? dropId;
-            if (answer.recorded !== true) {
-              unrecorded = answer.not_recorded
-                ?? "What this drop did was not recorded, so it cannot be read back after this page is closed.";
-            }
+            if (answer.recorded === true) anyRecorded = true;
+            else unrecordedNames.push(file.name);
           }
           result = answer?.results[0]
             ?? failed(file.name, resp.error ?? "The server gave no answer for this file.");
@@ -195,7 +197,7 @@ export function BulkGstr2bPanel() {
       }
     } finally {
       setRunning(false);
-      setNotRecorded(unrecorded);
+      setNotRecorded(notRecordedSentence(unrecordedNames, anyRecorded));
       if (fileRef.current) fileRef.current.value = "";
       if (mayRead) void loadRecent();
     }
@@ -269,15 +271,15 @@ export function BulkGstr2bPanel() {
             )}
           </div>
 
+          <ResultTable rows={rows} />
           {notRecorded && (
             <p className="text-xs text-state-attention" data-testid="bulk-gstr2b-not-recorded">{notRecorded}</p>
           )}
-          <ResultTable rows={rows} />
         </div>
       )}
 
       {mayRead && (
-        <RecentDrops recent={recent} error={recentError} loading={recentLoading} />
+        <RecentDrops recent={recent} error={recentError} loading={recentLoading} mayCompute={mayCompute} />
       )}
     </div>
   );
@@ -307,8 +309,10 @@ function ResultTable({ rows }: { rows: Row[] }) {
 }
 
 /** The caller's latest drops as the SERVER recorded them (POST-A-057). */
-function RecentDrops({ recent, error, loading }: {
+function RecentDrops({ recent, error, loading, mayCompute }: {
   recent: Gstr2bBulkDrops | null; error: string | null; loading: boolean;
+  /** Whether this person may drop files: the empty state invites a drop only then. */
+  mayCompute: boolean;
 }) {
   return (
     <div className="border-t border-ps-border pt-3 space-y-2" data-testid="bulk-gstr2b-recent">
@@ -327,8 +331,9 @@ function RecentDrops({ recent, error, loading }: {
         </p>
       ) : recent.drops.length === 0 ? (
         <p className="text-xs text-ps-label">
-          You have not dropped any GSTR-2B files here yet. Drop the month&apos;s files above and what each
-          one did will be listed here, even after this page is closed.
+          {mayCompute
+            ? "You have not dropped any GSTR-2B files here yet. Drop the month's files above and what each one did will be listed here, even after this page is closed."
+            : "None of your GSTR-2B drops is recorded."}
         </p>
       ) : (
         <>
@@ -342,8 +347,10 @@ function RecentDrops({ recent, error, loading }: {
                 {d.needs_attention > 0 ? ` (${d.needs_attention} need a look)` : ""}
                 {d.file_count - (d.totals.reconciled ?? 0) > 0
                   ? ` · ${d.file_count - (d.totals.reconciled ?? 0)} not reconciled` : ""}
+                {d.unrecorded_files > 0 ? ` · ${d.unrecorded_files} not recorded` : ""}
               </summary>
               <div className="mt-1">
+                {d.unrecorded && <p className="text-state-attention mb-1">{d.unrecorded}</p>}
                 <ResultTable rows={d.results.map((r, i) => ({ id: i, name: r.name, state: "done", result: r }))} />
               </div>
             </details>

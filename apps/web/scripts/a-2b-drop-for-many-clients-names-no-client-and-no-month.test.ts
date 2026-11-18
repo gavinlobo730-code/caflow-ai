@@ -131,7 +131,7 @@ test("a drop is recorded under the id the server answered, and read back by the 
   assert.match(PANEL, /dropId = answer\.drop_id \?\? dropId;/);
   assert.match(PANEL, /let dropId: string \| null = null;/);
   // A drop the server did not record says so, never silently.
-  assert.match(PANEL, /answer\.recorded !== true/);
+  assert.match(PANEL, /answer\.recorded === true/);
   // The read-back is offered only to someone its route admits.
   assert.match(PANEL, /const mayRead = canDo\("gst", "read"\);/);
   assert.match(PANEL, /\{mayRead && \(\s*<RecentDrops/);
@@ -139,4 +139,19 @@ test("a drop is recorded under the id the server answered, and read back by the 
   assert.match(method, /"\/api\/gst-workspace\/gstr2b\/bulk\/drops"/);
   // A record that could not be read is not "no drops".
   assert.match(PANEL, /!recent\.recorded \?/);
+});
+
+test("the not-recorded sentence sits below the table it speaks of, and counts each request (review of 18-11-2026)", () => {
+  const table = PANEL.indexOf("<ResultTable rows={rows} />");
+  const note = PANEL.indexOf('data-testid="bulk-gstr2b-not-recorded"');
+  assert.ok(table > 0 && note > table, "the sentence is rendered after the table");
+  assert.match(PANEL, /if \(answer\.recorded === true\) anyRecorded = true;\s*else unrecordedNames\.push\(file\.name\);/);
+  assert.match(PANEL, /setNotRecorded\(notRecordedSentence\(unrecordedNames, anyRecorded\)\)/);
+});
+
+test("the read-back invites a drop only from someone who may drop files, and says what was not recorded", () => {
+  assert.match(PANEL, /<RecentDrops [^>]*mayCompute=\{mayCompute\}/);
+  assert.match(PANEL, /\{mayCompute\s*\?\s*"You have not dropped any GSTR-2B files here yet\. Drop the month's files above/);
+  assert.match(PANEL, /: "None of your GSTR-2B drops is recorded\."/);
+  assert.match(PANEL, /\{d\.unrecorded && <p/);
 });
