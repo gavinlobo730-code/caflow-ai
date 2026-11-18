@@ -148,10 +148,12 @@ export default function ApprovalsPage() {
       ) : !error ? (
         <div className="space-y-2">
           {items.map((r) => (
-            <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
+            // On a phone the request's words take the row and its actions wrap under them; side by side the summary was squeezed
+            // to its first few letters (POST-A-131).
+            <div key={r.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1 basis-56">
                 <p className="text-sm font-medium text-brand truncate">{r.summary || r.request_type}</p>
-                <p className="text-2xs text-ps-hint mt-0.5">
+                <p className="text-2xs text-ps-hint mt-0.5 break-words">
                   <span className="font-mono">{r.request_type}</span>
                   {r.requested_by_email ? ` · by ${r.requested_by_email}` : ""}
                   {r.reason ? ` · ${r.reason}` : ""}
