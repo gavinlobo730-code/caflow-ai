@@ -15,7 +15,7 @@ import { errorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { arrayOrEmpty } from "@/lib/api/shape";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 // Same shape and field set as the "Add Entity" form on the Entity Registry
 // list (apps/web/app/relationships/page.tsx) — kept as its own copy here
@@ -61,7 +61,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",

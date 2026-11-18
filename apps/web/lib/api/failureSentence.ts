@@ -146,6 +146,7 @@ export function browserFailureOf(e: unknown): BrowserFailure | null {
  */
 export function failureSentence(e: unknown, fallback: string, doing: Doing = "write"): string {
   const kind = browserFailureOf(e);
+  if (timedOut(e)) return timedOutSentence(doing);
   if (kind === "no_answer") return noAnswerSentence(doing);
   if (kind === "not_ours") return notOursSentence(doing);
   if (e instanceof Error && e.message.trim()) return e.message;
@@ -166,20 +167,49 @@ export class PlainFailure extends Error {
   }
 }
 
+/** Whether `e` is a request given up on because its bound ran out (`AbortSignal.timeout` rejects with a "TimeoutError"; the upload door rejects with the same name). */
+export function timedOut(e: unknown): boolean {
+  const like = asErrorLike(e);
+  return like !== null && like.name === "TimeoutError";
+}
+
 /** `e`, or a PlainFailure saying the plain sentence in its place (the browser's error kept as `cause`) when `e` is the browser's own report. */
 export function plainFailure(e: unknown, doing: Doing): unknown {
   const kind = browserFailureOf(e);
   if (!kind) return e;
+  // A request given up on at its bound is told as one that did not answer IN TIME, and a write says it is not known whether it went through (POST-A-470).
+  if (timedOut(e)) return new PlainFailure(kind, timedOutSentence(doing), e);
   return new PlainFailure(kind, kind === "no_answer" ? noAnswerSentence(doing) : notOursSentence(doing), e);
 }
 
-/** `fetch`, whose rejection is already a sentence for a person. */
+/**
+ * How long a request may go unanswered before the screen gives up on it (POST-A-470). `lib/api`'s `request()` gives every JSON call
+ * REQUEST_BOUND_MS (a Render cold start fits inside it) and never retries; a screen that makes its own request uses the same figure.
+ * LONG_REQUEST_BOUND_MS is for a request whose answer can honestly take longer: an upload on a slow line, a model reading a document,
+ * an export or a firm-wide recalculation. It is a bound so that an answer that never comes ends, not a target, and it is long enough
+ * that a genuine slow upload is not cut off. A bulk import through `lib/api` and `apiCall` stays unbounded by decision: it may run longer
+ * than either figure, and cutting it off would leave a CA not knowing how much of a file went in.
+ */
+export const REQUEST_BOUND_MS = 45_000;
+export const LONG_REQUEST_BOUND_MS = 300_000;
+
+/** `fetch`, whose rejection is already a sentence for a person. Unbounded: outside `lib/api` use `fetchBounded`, and a rule over the tree names each exception. */
 export async function fetchPlain(input: RequestInfo | URL, init: RequestInit | undefined, doing: Doing): Promise<Response> {
   try {
     return await fetch(input, init);
   } catch (e) {
     throw plainFailure(e, doing);
   }
+}
+
+/**
+ * `fetchPlain` that gives up after `boundMs` (REQUEST_BOUND_MS unless the caller says otherwise), so a request that never answers
+ * ends with the timed-out sentence instead of holding the screen until the browser gives up. A `signal` in `init` wins: a caller that
+ * carries a longer request through a shared helper passes `signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS)`. The bound covers reading
+ * the body too, since the same signal aborts the stream.
+ */
+export async function fetchBounded(input: RequestInfo | URL, init: RequestInit | undefined, doing: Doing, boundMs: number = REQUEST_BOUND_MS): Promise<Response> {
+  return fetchPlain(input, { signal: AbortSignal.timeout(boundMs), ...(init ?? {}) }, doing);
 }
 
 /** What `Response.json()` itself hands back (the browser types it `any`), for the screens that read an answer's fields without a type of their own. */

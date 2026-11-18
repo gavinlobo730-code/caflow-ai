@@ -6,8 +6,8 @@
 // refusal and the failure sentence exactly as it did with `fetch`.
 //
 // What it keeps from `fetch`'s path: NO retry (an upload that may have reached the server is never sent twice),
-// no abort timer of its own (the 45-second abort belongs to `request`, which JSON calls go through and uploads
-// never did), and a browser failure becomes the same sentence `fetchPlain` gives. What it says and does not:
+// no abort timer unless the caller passes `timeoutMs` (a screen's own upload passes the long bound; `lib/api`'s
+// bulk imports pass none), and a browser failure becomes the same sentence `fetchPlain` gives. What it says and does not:
 // progress is bytes SENT. When the last byte has left, the server still reads and checks the file, and the
 // screen says so ("Processing…") and never "done".
 import { plainFailure, type Doing } from "./failureSentence.ts";
@@ -22,7 +22,7 @@ export function percentSent(p: UploadProgress): number | null {
 
 export function fetchUpload(
   url: string,
-  init: { headers?: Record<string, string>; body: FormData },
+  init: { headers?: Record<string, string>; body: FormData; timeoutMs?: number },
   doing: Doing,
   onProgress?: (p: UploadProgress) => void,
 ): Promise<Response> {
@@ -31,6 +31,8 @@ export function fetchUpload(
     xhr.open("POST", url);
     for (const [k, v] of Object.entries(init.headers ?? {})) xhr.setRequestHeader(k, v);
     xhr.responseType = "text";
+    // A screen's own upload passes LONG_REQUEST_BOUND_MS, so an answer that never comes ends (POST-A-470); `lib/api`'s bulk imports pass none and stay unbounded.
+    if (init.timeoutMs) xhr.timeout = init.timeoutMs;
     if (onProgress) {
       xhr.upload.onprogress = (e) => onProgress({ loaded: e.loaded, total: e.lengthComputable ? e.total : 0 });
     }
@@ -47,6 +49,8 @@ export function fetchUpload(
     // The same word `fetch` rejects with, so `plainFailure` reads it as the browser's own failure.
     xhr.onerror = () => reject(plainFailure(new TypeError("Failed to fetch"), doing));
     xhr.onabort = () => reject(plainFailure(new TypeError("Failed to fetch"), doing));
+    // The same name `AbortSignal.timeout` rejects with, so the sentence is the timed-out one and a write says it is not known whether it went through.
+    xhr.ontimeout = () => reject(plainFailure(new DOMException("The upload was given up on: the server did not answer in time.", "TimeoutError"), doing));
     xhr.send(init.body);
   });
 }

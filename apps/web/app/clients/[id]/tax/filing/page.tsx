@@ -22,7 +22,7 @@ import { obligationNote } from "@/lib/compliance/obligationNote";
 import { lossRecordAnswer, lossRecordNote } from "@/lib/tax/lossRecordNote";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { usePermissions } from "@/lib/auth/AuthContext";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -40,7 +40,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${BASE}${path}`, {
+  const res = await fetchBounded(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",

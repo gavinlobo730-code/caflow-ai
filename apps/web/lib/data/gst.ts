@@ -24,7 +24,7 @@
  */
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api, errorMessage } from "@/lib/api";
-import { fetchPlain, jsonPlain, type Doing } from "@/lib/api/failureSentence";
+import { fetchBounded, jsonPlain, type Doing } from "@/lib/api/failureSentence";
 import { obligationNote } from "@/lib/compliance/obligationNote";
 import type { CreditLedgerBlock } from "@/lib/api";
 import { getFirmId } from "./getFirmId";
@@ -708,7 +708,7 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
   // unauthenticated POST is a 401 — which this helper omitted entirely. Alongside
   // the dropped `transactions` table that made this path doubly non-functional.
   const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const res = await fetchPlain(`${API_BASE}${path}`, {
+  const res = await fetchBounded(`${API_BASE}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -721,7 +721,7 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
 async function apiGet<T>(path: string): Promise<T> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
-  const res = await fetchPlain(`${API_BASE}${path}`, {
+  const res = await fetchBounded(`${API_BASE}${path}`, {
     headers: session?.access_token
       ? { Authorization: `Bearer ${session.access_token}` }
       : {},

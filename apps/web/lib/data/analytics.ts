@@ -1,14 +1,14 @@
 import { formatWhole } from "@/lib/money/format";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { TeamWorkload, ApiResponse } from "@/lib/types";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const doing = doingOf(init?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

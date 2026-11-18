@@ -95,7 +95,7 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { typedDateText } from "@/lib/dates/typedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
-import { failureSentence, fetchPlain } from "@/lib/api/failureSentence";
+import { failureSentence, fetchBounded, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
@@ -1305,8 +1305,9 @@ function Statements({ clientId }: { clientId: string }) {
     const on = shown();
     if (!on) return;
     const token = await getAuthToken();
-    const res = await fetchPlain(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${on.customer_id}&start_date=${on.start_date}&end_date=${on.end_date}`,
-      { headers: { Authorization: `Bearer ${token}` } }, "read");
+    const res = await fetchBounded(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${on.customer_id}&start_date=${on.start_date}&end_date=${on.end_date}`,
+      // a statement over a whole period, drawn as a PDF: an export, so the long bound (POST-A-470)
+      { headers: { Authorization: `Bearer ${token}` } }, "read", LONG_REQUEST_BOUND_MS);
     if (!res.ok) { setError("PDF download failed."); return; }
     const blob = await res.blob();
     window.open(URL.createObjectURL(blob), "_blank");

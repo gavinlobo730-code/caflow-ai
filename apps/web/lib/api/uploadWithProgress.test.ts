@@ -11,6 +11,8 @@ class FakeXhr {
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   onabort: (() => void) | null = null;
+  ontimeout: (() => void) | null = null;
+  timeout = 0;
   status = 200; statusText = "OK"; responseText = "{\"success\":true}"; responseType = "";
   opened: [string, string] | null = null; sent = 0;
   constructor() { FakeXhr.last = this; }
@@ -57,6 +59,22 @@ test("a refusal keeps its status and body, and a dropped connection becomes the 
   const b = fetchUpload("https://x/api/u", { body: new FormData() }, "write");
   FakeXhr.last.onerror?.();
   await assert.rejects(b, (e: Error) => /write|saved|answer|connection|went through/i.test(e.message) && !/Failed to fetch/.test(e.message));
+});
+
+test("an upload given a bound sets it on the request and, when it runs out, says a write is not known to have gone through; without one it has none (POST-A-470)", async () => {
+  (globalThis as unknown as { XMLHttpRequest: unknown }).XMLHttpRequest = FakeXhr;
+  const bounded = fetchUpload("https://x/api/u", { body: new FormData(), timeoutMs: 1234 }, "write");
+  assert.equal(FakeXhr.last.timeout, 1234);
+  FakeXhr.last.ontimeout?.();
+  await assert.rejects(bounded, (e: Error) => {
+    assert.match(e.message, /did not answer in time, so it is not known whether the request went through/);
+    return true;
+  });
+  const read = fetchUpload("https://x/api/u", { body: new FormData(), timeoutMs: 1234 }, "read");
+  FakeXhr.last.ontimeout?.();
+  await assert.rejects(read, (e: Error) => /didn't respond in time/.test(e.message));
+  void fetchUpload("https://x/api/u", { body: new FormData() }, "write");
+  assert.equal(FakeXhr.last.timeout, 0, "an upload with no bound (a bulk import through lib/api) was given one");
 });
 
 const WEB = path.resolve(import.meta.dirname, "../..");

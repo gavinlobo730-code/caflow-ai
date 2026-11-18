@@ -15,7 +15,7 @@ import {
 } from "@/lib/health/vocabulary";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -23,7 +23,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -177,7 +177,9 @@ export default function HealthPage() {
     setRecalculating(true);
     try {
       const json: ApiResponse<{ updated: number; failed?: number }> = await apiFetch(
-        "/api/health/recalculate-all", { method: "POST" }
+        "/api/health/recalculate-all",
+        // Every client of the firm is scored in one request: the long bound (POST-A-470).
+        { method: "POST", signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS) }
       );
       if (!json.success) throw new Error(json.error ?? "Recalculation failed");
       await loadHealthData();
