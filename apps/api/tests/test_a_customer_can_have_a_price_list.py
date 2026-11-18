@@ -459,7 +459,9 @@ def test_no_database_is_a_503_not_a_silent_nothing(monkeypatch):
 # ═════════════════════════════════════════════════════════════════════════════
 
 _OWN_FILES = {"domain/sales/price_list.py", "services/price_list_service.py",
-              "routers/price_lists.py", "main.py"}
+              "routers/price_lists.py", "main.py",
+              # The books export (POST-A-205, slice 3) copies the price-list tables to CSV as rows; it prices nothing and posts nothing.
+              "services/client_books_export_service.py"}
 
 
 def _code_files():

@@ -1,4 +1,4 @@
-"""A Partner's export of ONE client's books as a ZIP of CSV files with a manifest (POST-A-205, slices 1 and 2).
+"""A Partner's export of ONE client's books as a ZIP of CSV files with a manifest (POST-A-205, slices 1 to 3).
 
 WHAT IT IS, AND WHAT IT IS NOT
     "What happens if you shut down?" is the question a firm asks before it moves its practice here, and the honest answer used to be "take the per-report PDFs".
@@ -8,7 +8,11 @@ WHAT IT IS, AND WHAT IT IS NOT
     Slice 2 (17-11-2026) added the registers beside the ledger: fixed assets with their movements, physical verifications and capital work in progress; the
     item master (the service catalogue), godowns, batches, the stock ledger, stock counts, landed costs and hand settlements, with a stock position computed from
     the stock ledger file; and the bank's accounts, imported statements and lines, splits, matches, reconciliations and matching rules.
-    It is NOT the whole client. Payroll, document bytes, the audit log, GST return JSON, income tax, PDFs and the whole-firm scope are not
+    Slice 3 (18-11-2026) added the records beside the books (cost centres, advances and credits, loans, deposits and related-party loans, FX revaluations, price
+    lists, recurring templates, quotations and orders with their lines, delivery and job-work challans with the lots returned, goods receipts, bills of entry and
+    post-dated cheques) and, under the GST permission, the registrations, the returns with their JSON, GST challans, GSTR-2B lines and reconciliations, the ITC
+    reversal register, reverse-charge documents and the e-invoice and e-way bill records.
+    It is NOT the whole client. Payroll, document bytes, the audit log, income tax, PDFs and the whole-firm scope are not
     in it, and `manifest.json` and `README.txt` say so in words, because an export that looks complete and is not is worse than none.
 
 WHY THE SHAPE
@@ -52,7 +56,7 @@ from domain.reporting.export_document import ExportRefused
 
 _logger = logging.getLogger("caflow.data_export")
 
-SCHEMA = "practicesync-books-export/2"
+SCHEMA = "practicesync-books-export/3"
 
 #: Refused above this many journal entries (the largest client measured has 12,836) or this many rows in all.
 MAX_JOURNAL_ENTRIES = 25_000
@@ -162,6 +166,82 @@ _SECTIONS: tuple[Section, ...] = (
         lambda db, f, c, **kw: db.table("purchase_bill_landed_costs").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
     Section("stock_effect_settlements.csv", (
         lambda db, f, c, **kw: db.table("stock_effect_settlements").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    # ── beside the books (slice 3, 18-11-2026): cost centres, advances and credits, loans and deposits, FX revaluations, rate cards, recurring templates,
+    #    quotations, orders, delivery and job-work challans with the lots that came back, goods receipts, bills of entry and post-dated cheques ──
+    Section("cost_centres.csv", (
+        lambda db, f, c, **kw: db.table("cost_centres").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("party_credit_balances.csv", (
+        lambda db, f, c, **kw: db.table("party_credit_balances").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("party_credit_ledger.csv", (
+        lambda db, f, c, **kw: db.table("party_credit_ledger").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("loans.csv", (
+        lambda db, f, c, **kw: db.table("loans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fixed_deposits.csv", (
+        lambda db, f, c, **kw: db.table("fixed_deposits").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("related_party_loans.csv", (
+        lambda db, f, c, **kw: db.table("related_party_loans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fx_revaluations.csv", (
+        lambda db, f, c, **kw: db.table("fx_revaluations").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("fx_adjustments.csv", (
+        lambda db, f, c, **kw: db.table("fx_adjustments").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("price_lists.csv", (
+        lambda db, f, c, **kw: db.table("price_lists").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("price_list_items.csv", (
+        lambda db, f, c, **kw: db.table("price_list_items").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("recurring_journal_templates.csv", (
+        lambda db, f, c, **kw: db.table("recurring_journal_templates").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("recurring_invoice_templates.csv", (
+        lambda db, f, c, **kw: db.table("recurring_invoice_templates").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("recurring_purchase_bill_templates.csv", (
+        lambda db, f, c, **kw: db.table("recurring_purchase_bill_templates").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_quotations.csv", (
+        lambda db, f, c, **kw: db.table("sales_quotations").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_quotation_lines.csv", (
+        lambda db, f, c, **kw: db.table("sales_quotation_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_orders.csv", (
+        lambda db, f, c, **kw: db.table("sales_orders").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("sales_order_lines.csv", (
+        lambda db, f, c, **kw: db.table("sales_order_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("purchase_orders.csv", (
+        lambda db, f, c, **kw: db.table("purchase_orders").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("purchase_order_lines.csv", (
+        lambda db, f, c, **kw: db.table("purchase_order_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("delivery_challans.csv", (
+        lambda db, f, c, **kw: db.table("delivery_challans").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("delivery_challan_lines.csv", (
+        lambda db, f, c, **kw: db.table("delivery_challan_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("delivery_challan_returns.csv", (
+        lambda db, f, c, **kw: db.table("delivery_challan_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("goods_receipt_notes.csv", (
+        lambda db, f, c, **kw: db.table("goods_receipt_notes").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("goods_receipt_lines.csv", (
+        lambda db, f, c, **kw: db.table("goods_receipt_lines").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("bills_of_entry.csv", (
+        lambda db, f, c, **kw: db.table("bills_of_entry").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    Section("post_dated_cheques.csv", (
+        lambda db, f, c, **kw: db.table("post_dated_cheques").select("*", **kw).eq("firm_id", f).eq("client_id", c),)),
+    # ── GST (slice 3, 18-11-2026): the registrations, the returns as the product built them (payload_json is the return's JSON), the GST challans, the
+    #    GSTR-2B lines and reconciliations, the ITC reversal register, the reverse-charge documents and the e-invoice and e-way bill records ──
+    Section("client_gst_registrations.csv", (
+        lambda db, f, c, **kw: db.table("client_gst_registrations").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr1_returns.csv", (
+        lambda db, f, c, **kw: db.table("gstr1_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr3b_returns.csv", (
+        lambda db, f, c, **kw: db.table("gstr3b_returns").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gst_challans.csv", (
+        lambda db, f, c, **kw: db.table("gst_challans").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr2a_records.csv", (
+        lambda db, f, c, **kw: db.table("gstr2a_records").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("gstr2b_reconciliations.csv", (
+        lambda db, f, c, **kw: db.table("gstr2b_reconciliations").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("itc_reversal_register.csv", (
+        lambda db, f, c, **kw: db.table("itc_reversal_register").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("rcm_documents.csv", (
+        lambda db, f, c, **kw: db.table("rcm_documents").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("einvoice_records.csv", (
+        lambda db, f, c, **kw: db.table("einvoice_records").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
+    Section("eway_bill_records.csv", (
+        lambda db, f, c, **kw: db.table("eway_bill_records").select("*", **kw).eq("firm_id", f).eq("client_id", c),), tier="gst"),
     # ── the bank (slice 2): accounts, imported statements and their lines, splits, matches, reconciliations and the matching rules. These tables are closed to a
     #    signed-in session (POST-A-339), so each is read on the privileged client, visibly, after the door's Partner, client-scope and two-factor checks ──
     Section("bank_accounts.csv", (
@@ -181,12 +261,14 @@ _SECTIONS: tuple[Section, ...] = (
 )
 
 #: The tiers the sections belong to, and what a person blocked from one is not handed, in words.
-TIERS: tuple[str, ...] = ("accounting", "tds", "banking")
+TIERS: tuple[str, ...] = ("accounting", "tds", "banking", "gst")
 _TIER_WORDS = {
-    "accounting": "the books, fixed assets and stock (the chart, parties, journal, documents, receipts and payments, the asset and stock registers, and the "
-                  "trial balance and stock position made from them)",
+    "accounting": "the books, fixed assets and stock (the chart, parties, journal, documents, receipts and payments, the asset and stock registers, the "
+                  "records beside the books, and the trial balance and stock position made from them)",
     "tds": "the TDS register, challans and statements",
     "banking": "the bank (accounts, imported statements and lines, splits, matches, reconciliations and matching rules)",
+    "gst": "GST (registrations, returns with their JSON, GST challans, GSTR-2B lines and reconciliations, the ITC reversal register, reverse-charge "
+           "documents, and e-invoice and e-way bill records)",
 }
 
 #: What this export does not hold, said in the manifest and the README. Kept as data so a test can hold the list against the claim in the screen.
@@ -199,24 +281,22 @@ NOT_INCLUDED: tuple[str, ...] = (
     "and the foreign-currency bank balances.",
     "Uploaded documents themselves (the files); only the books' own records are here.",
     "The audit log (it is the firm's, not the client's, and holds no client column).",
-    "GST returns and their JSON, e-invoice and e-way bill records, and the GSTR-2B reconciliation.",
+    "GST: the GST portal's own snapshots and sync jobs, the annual reconciliation (GSTR-9C) working tables, the GSTR-4 and e-commerce operator tables, and "
+    "the GSTR-2B files as uploaded (their lines are in gstr2a_records.csv). A return here is the one the product built and the CA recorded; what was filed on "
+    "the portal is the portal's.",
     "Income tax: computations, ITR filings, tax audit, losses and advance tax.",
     "The depreciation schedule as a report and the income-tax blocks of assets (the depreciation postings themselves are journal entries, and each asset's "
     "accumulated depreciation and written-down value are columns of fixed_assets.csv).",
-    "Delivery challans, job-work challans, bills of entry and stock transfers as documents (a stock movement they caused is a row of inventory_stock_ledger.csv, "
-    "and its source_type and source_id name the document).",
     "Statements and reports as PDF or Excel (use the report exports for those).",
     "Other clients, and the firm's own settings (this is one client's books).",
-    "Records that sit beside the books and are not in these files: customer and vendor advances and credits, loans, deposits and related-party loans, "
-    "foreign-currency revaluations, cost centres, customer rate cards, recurring templates, orders and quotations.",
+    "Records that sit beside the books and are not in these files: budgets, late-payment interest charges, the MSME supplier tracker, customer payment "
+    "links and statement deliveries, and saved narrations.",
 )
 
 #: Columns in the exported files that point at a table this export does not carry, so a recipient is not left holding an id that leads nowhere.
 REFERENCES_NOT_EXPORTED: tuple[str, ...] = (
-    "journal_lines.cost_centre_id (cost centres)",
-    "inventory_stock_ledger.source_id where source_type names a challan, a transfer or another document that is not a file here",
-    "purchase_bill_landed_costs.bill_of_entry_id (bills of entry)",
-    "purchase_bill_lines.expense_account_id and purchase_order_line_id (the first is a chart_of_accounts id and is here; the second is an order line and is not)",
+    "inventory_stock_ledger.source_id where source_type names a document that is not a file here",
+    "any column naming a payroll run, a payslip or an employee (payroll is not in this export)",
 )
 
 _PLAIN_NUMBER = re.compile(r"[-+]?[0-9]+(\.[0-9]+)?", re.ASCII)
@@ -572,7 +652,7 @@ def build(db, firm_id: str, client_id: str, *, exported_by: Optional[str] = None
     read, and the manifest and README say what was left out and why; the derived trial balance and stock position need the books, so they go with `accounting`."""
     readable = frozenset(TIERS) if readable_tiers is None else frozenset(readable_tiers) & frozenset(TIERS)
     if not readable:
-        raise ExportRefused("You are blocked from the books, TDS and the bank for this firm, so there is nothing of this client's that this export may hand you.")
+        raise ExportRefused("You are blocked from the books, TDS, the bank and GST for this firm, so there is nothing of this client's that this export may hand you.")
     sections = tuple(sec for sec in _SECTIONS if sec.tier in readable)
     left_out = [f"Left out because the person who took this export is blocked from it: {_TIER_WORDS[t]}." for t in TIERS if t not in readable]
     clock = _Clock(deadline_seconds, now)
