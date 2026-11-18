@@ -9,7 +9,7 @@ import { getFirmId } from "./getFirmId";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
-import { fetchPlain, jsonPlain, type Doing } from "@/lib/api/failureSentence";
+import { fetchBounded, jsonPlain, type Doing } from "@/lib/api/failureSentence";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -160,7 +160,7 @@ export interface TaxPlanningRecord {
 export async function computeITR(req: ComputeITRRequest): Promise<ITRComputeResult> {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token;
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/compute`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/compute`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -188,7 +188,7 @@ export async function computeHRAExemption(
   // Depends(rbac("income_tax", "compute")), and core/auth.py answers 401 when
   // there is no Bearer header. This was the one call in this file that sent
   // none, so the HRA calculator could not compute against a real deployment.
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/hra/compute?${params}`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/hra/compute?${params}`, {
     method: "POST", headers: await _authHeaders(),
   }, "read");
   return readAnswer<{ exemption_paise: number; taxable_hra_paise: number }>(res, "HRA computation error");
@@ -345,7 +345,7 @@ async function _authHeaders(): Promise<Record<string, string>> {
  * A refusal of the request model (a 422) or of the route (a 4xx) is FastAPI's `{"detail": …}` and has no `error` key, so a read of `error` with the status line as its fallback
  * showed the CA "Unprocessable Entity" over the sentence the server wrote (a challan with a six-digit BSR code, a deposit dated tomorrow sent by another caller), and fourteen of
  * the module's functions still did. A status that is not a success is read by lib/api's `errorMessage`, the one reader of it; the house envelope's `{success: false, error}` under a
- * 200 keeps its own `error`. A request that gets no answer, and an answer that is not JSON, are said in the product's words by `fetchPlain` and `jsonPlain` (POST-A-406) and never in the
+ * 200 keeps its own `error`. A request that gets no answer, and an answer that is not JSON, are said in the product's words by `fetchBounded` and `jsonPlain` (POST-A-406) and never in the
  * browser's. `readAnswer` and `writeAnswer` differ only in what that sentence says is known: a read has no result, a write may or may not have gone through.
  */
 async function answerOf<T>(res: Response, failed: string, doing: Doing): Promise<T> {
@@ -367,14 +367,14 @@ function writeAnswer<T>(res: Response, failed: string): Promise<T> {
 
 /** Stateless capital-gains estimator — computes only, never persists. */
 export async function computeCapitalGains(req: ComputeCapitalGainsRequest): Promise<CapitalGainsComputeResult> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/compute`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/capital-gains/compute`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   }, "read");
   return readAnswer<CapitalGainsComputeResult>(res, "Capital gains compute failed.");
 }
 
 export async function listCapitalGains(clientId: string): Promise<CapitalGainsRecord[]> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains?client_id=${encodeURIComponent(clientId)}`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/capital-gains?client_id=${encodeURIComponent(clientId)}`, {
     headers: await _authHeaders(),
   }, "read");
   return (await readAnswer<CapitalGainsRecord[] | null>(res, "Failed to load capital gains.")) ?? [];
@@ -395,14 +395,14 @@ export interface CreateCapitalGainRequest extends ComputeCapitalGainsRequest {
 /** Computes AND persists a register entry — gain_type/tax_rate_percent/
  * indexed_cost_paise are computed server-side, never sent by the caller. */
 export async function createCapitalGain(req: CreateCapitalGainRequest): Promise<CapitalGainsRecord> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/capital-gains`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   }, "write");
   return writeAnswer<CapitalGainsRecord>(res, "Failed to save capital gain.");
 }
 
 export async function deleteCapitalGain(id: string): Promise<void> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(id)}`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(id)}`, {
     method: "DELETE", headers: await _authHeaders(),
   }, "write");
   await writeAnswer<unknown>(res, "Failed to delete capital gain.");
@@ -412,7 +412,7 @@ export async function deleteCapitalGain(id: string): Promise<void> {
  * backend so the reference display can never drift from the table the
  * engine actually computes with (see capital_gains_engine.py). */
 export async function getCiiTable(): Promise<{ ciiByFy: Record<string, number>; latestVerifiedFy: string }> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/cii-table`, { headers: await _authHeaders() }, "read");
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/capital-gains/cii-table`, { headers: await _authHeaders() }, "read");
   const table = await readAnswer<{ cii_by_fy: Record<string, number>; latest_verified_fy: string }>(res, "Failed to load CII table.");
   return { ciiByFy: table.cii_by_fy, latestVerifiedFy: table.latest_verified_fy };
 }
@@ -486,7 +486,7 @@ export async function getReinvestmentSections(): Promise<{
   asset_natures: TransferredAssetNature[];
   acquisition_kinds: AcquisitionKind[];
 }> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/capital-gains/sections`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/capital-gains/sections`, {
     headers: await _authHeaders(),
   }, "read");
   const answer = await readAnswer<unknown>(res, "Failed to load the s.54 sections.");
@@ -500,7 +500,7 @@ export async function getReinvestmentSections(): Promise<{
 }
 
 export async function getCapitalGainExemption(recordId: string): Promise<CapitalGainExemption> {
-  const res = await fetchPlain(
+  const res = await fetchBounded(
     `${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/exemption`,
     { headers: await _authHeaders() }, "read");
   const answer = await readAnswer<unknown>(res, "Failed to load the exemption working.");
@@ -511,7 +511,7 @@ export async function getCapitalGainExemption(recordId: string): Promise<Capital
 }
 
 export async function addReinvestment(recordId: string, req: ReinvestmentInput): Promise<{ id: string }> {
-  const res = await fetchPlain(
+  const res = await fetchBounded(
     `${API_BASE}/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments`,
     { method: "POST", headers: await _authHeaders(), body: JSON.stringify(req) }, "write");
   return writeAnswer<{ id: string }>(res, "Failed to record the claim.");
@@ -522,7 +522,7 @@ export async function deleteReinvestment(recordId: string, claimId: string): Pro
   // path as written, and a URL split across a concatenation reads to it as an
   // endpoint no screen calls.
   const path = `/api/income-tax/capital-gains/${encodeURIComponent(recordId)}/reinvestments/${encodeURIComponent(claimId)}`;
-  const res = await fetchPlain(`${API_BASE}${path}`,
+  const res = await fetchBounded(`${API_BASE}${path}`,
     { method: "DELETE", headers: await _authHeaders() }, "write");
   await writeAnswer<unknown>(res, "Failed to delete the claim.");
 }
@@ -672,7 +672,7 @@ export interface SaveAdvanceTaxResult {
 
 /** Stateless Section 234C interest estimator — computes only, never persists. */
 export async function computeAdvanceTaxInterest(req: ComputeAdvanceTaxRequest): Promise<AdvanceTaxComputeResult> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax/compute`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/advance-tax/compute`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   }, "read");
   return readAnswer<AdvanceTaxComputeResult>(res, "Advance tax compute failed.");
@@ -693,7 +693,7 @@ export async function listUnforeseenIncomeCandidates(
 }> {
   const params = new URLSearchParams({ client_id: clientId, fy });
   if (totalIncomePaise !== null) params.set("total_income_paise", String(totalIncomePaise));
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax/unforeseen-income?${params}`,
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/advance-tax/unforeseen-income?${params}`,
     { headers: await _authHeaders() }, "read");
   const answer = await readAnswer<unknown>(res, "Failed to load the register's gains.");
   const data = (answer ?? {}) as { kinds?: unknown; candidates?: unknown; caveats?: unknown };
@@ -770,7 +770,7 @@ export interface Section234ABResult {
  *  compliance_obligation_service.itr_due_date_for_client, the one authority for
  *  it, and comes back with its own basis. */
 export async function computeSection234ABInterest(req: Section234ABRequest): Promise<Section234ABResult> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/interest/234ab`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/interest/234ab`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   }, "read");
   const answer = await readAnswer<unknown>(res, "234A/234B compute failed.");
@@ -789,7 +789,7 @@ export async function computeSection234ABInterest(req: Section234ABRequest): Pro
 
 export async function listAdvanceTaxPayments(clientId: string, fy: string): Promise<AdvanceTaxRecord[]> {
   const params = new URLSearchParams({ client_id: clientId, fy });
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax?${params}`, { headers: await _authHeaders() }, "read");
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/advance-tax?${params}`, { headers: await _authHeaders() }, "read");
   return (await readAnswer<AdvanceTaxRecord[] | null>(res, "Failed to load advance tax payments.")) ?? [];
 }
 
@@ -800,7 +800,7 @@ export async function listAdvanceTaxPayments(clientId: string, fy: string): Prom
  * The answer also says what became of the client's advance-tax obligations
  * on the compliance calendar (POST-A-267). */
 export async function saveAdvanceTaxPayments(req: SaveAdvanceTaxRequest): Promise<SaveAdvanceTaxResult> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/advance-tax`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/advance-tax`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   }, "write");
   return writeAnswer<SaveAdvanceTaxResult>(res, "Failed to save advance tax payments.");
@@ -893,19 +893,19 @@ export async function getSelfAssessmentPosition(
   if (dues?.taxDuePaise !== undefined) params.set("tax_due_paise", String(dues.taxDuePaise));
   if (dues?.interestDuePaise !== undefined) params.set("interest_due_paise", String(dues.interestDuePaise));
   if (dues?.feeDuePaise !== undefined) params.set("fee_due_paise", String(dues.feeDuePaise));
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/self-assessment?${params}`, { headers: await _authHeaders() }, "read");
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/self-assessment?${params}`, { headers: await _authHeaders() }, "read");
   return readAnswer<SelfAssessmentPosition>(res, "Failed to load self-assessment challans.");
 }
 
 export async function createSelfAssessmentChallan(req: SelfAssessmentChallanInput): Promise<SelfAssessmentChallan> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/self-assessment`, {
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/self-assessment`, {
     method: "POST", headers: await _authHeaders(), body: JSON.stringify(req),
   }, "write");
   return writeAnswer<SelfAssessmentChallan>(res, "Failed to record the challan.");
 }
 
 export async function deleteSelfAssessmentChallan(challanId: string): Promise<void> {
-  const res = await fetchPlain(`${API_BASE}/api/income-tax/self-assessment/${challanId}`,
+  const res = await fetchBounded(`${API_BASE}/api/income-tax/self-assessment/${challanId}`,
     { method: "DELETE", headers: await _authHeaders() }, "write");
   await writeAnswer<unknown>(res, "Failed to remove the challan.");
 }
@@ -985,10 +985,10 @@ async function _worksheetCall<R>(
 ): Promise<WorksheetResponse<R>> {
   const base = `${API_BASE}/api/income-tax/worksheets/${kind}`;
   const res = method === "GET"
-    ? await fetchPlain(`${base}?${new URLSearchParams({
+    ? await fetchBounded(`${base}?${new URLSearchParams({
         client_id: clientId, financial_year: fy, use_new_regime: String(useNewRegime),
       })}`, { headers: await _authHeaders() }, "read")
-    : await fetchPlain(base, {
+    : await fetchBounded(base, {
         method: "PUT", headers: await _authHeaders(),
         body: JSON.stringify({
           client_id: clientId, financial_year: fy, use_new_regime: useNewRegime, payload,
@@ -1050,7 +1050,7 @@ export async function getAisComputationLines(
   if (typed.other_income_paise !== undefined) {
     params.set("typed_other_income_paise", String(typed.other_income_paise));
   }
-  const res = await fetchPlain(`${API_BASE}/api/ais/computation-lines?${params}`,
+  const res = await fetchBounded(`${API_BASE}/api/ais/computation-lines?${params}`,
     { headers: await _authHeaders() }, "read");
   return readAnswer<AisComputationLines>(res, "Failed to load the AIS lines.");
 }
@@ -1060,7 +1060,7 @@ export async function decideAisComputationLine(
   clientId: string, fy: string, lineKey: string,
   decision: "accepted" | "rejected" | "undecided",
 ): Promise<AisComputationLine> {
-  const res = await fetchPlain(
+  const res = await fetchBounded(
     `${API_BASE}/api/ais/computation-lines/${encodeURIComponent(lineKey)}/decision`, {
       method: "PUT", headers: await _authHeaders(),
       body: JSON.stringify({ client_id: clientId, financial_year: fy, decision }),

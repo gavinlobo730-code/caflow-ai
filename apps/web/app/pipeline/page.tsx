@@ -31,7 +31,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
 import { readWindow } from "@/lib/lists/readWindow";
 import { LEAD_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { errorMessage } from "@/lib/api";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -39,7 +39,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",

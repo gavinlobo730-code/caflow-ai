@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/dates/format";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // FROM THE CLOCK, NOT A LITERAL. This list ended at a year that is now in the
@@ -30,7 +30,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${BASE}${path}`, {
+  const res = await fetchBounded(`${BASE}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",

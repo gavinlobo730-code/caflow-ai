@@ -44,7 +44,7 @@ import { promptDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
-import { doingOf, errorPageSentence, failureSentence, fetchPlain, looksLikeMarkup, notOursSentence, plainFailure, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, failureSentence, fetchBounded, looksLikeMarkup, notOursSentence, plainFailure, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
 import { istToday } from "@/lib/dateMath";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -56,7 +56,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ data:
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const doing = doingOf(options?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",

@@ -35,7 +35,7 @@ import { cessPayload } from "@/lib/invoices/lineItemPayload";
 import { blockedCreditFromStored, blockedCreditPayload } from "@/lib/purchases/noteBlockedCredit";
 import { NoteLineBlockedCredit } from "@/components/purchases/NoteLineBlockedCredit";
 import { editedText } from "@/lib/forms/editedValue";
-import { failureSentence, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { failureSentence, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -316,7 +316,7 @@ export function DebitNoteEditor({
       formData.append("client_id", clientId);
       const token = await getAuthToken();
       // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
-      const res = await fetchUpload(`${API}/api/debit-notes/upload`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData }, "write", setSent);
+      const res = await fetchUpload(`${API}/api/debit-notes/upload`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData, timeoutMs: LONG_REQUEST_BOUND_MS }, "write", setSent);
       const json = await jsonPlain<UntypedJson>(res, "write");
       if (json.success && json.data?.document_url) {
         setDocumentUrl(json.data.document_url as string);

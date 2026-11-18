@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, AlertCircle, FileText, XCircle } from "lucide-react";
 import { formatDateTime } from "@/lib/dates/format";
 import { FrontDoor } from "@/components/FrontDoor";
-import { PlainFailure, failureSentence, fetchPlain, notOursSentence } from "@/lib/api/failureSentence";
+import { PlainFailure, failureSentence, fetchBounded, notOursSentence } from "@/lib/api/failureSentence";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -75,7 +75,7 @@ export default function SignPage() {
     }
     setToken(t);
     // A dropped connection said "Failed to fetch" to the CLIENT on this public page (POST-A-406): the product's sentence is said instead.
-    fetchPlain(`${API}/api/public/engagement-letters/${encodeURIComponent(t)}`, undefined, "read")
+    fetchBounded(`${API}/api/public/engagement-letters/${encodeURIComponent(t)}`, undefined, "read")
       .then(async (r) => {
         const j = await r.json().catch(() => null);
         // A body that is not JSON is a gateway's page (the API waking, a proxy), not an answer about THIS link: a client holding a valid link was told that it was invalid or had expired.
@@ -97,7 +97,7 @@ export default function SignPage() {
     setSubmitting(true);
     setActionErr(null);
     try {
-      const r = await fetchPlain(`${API}/api/public/engagement-letters/${encodeURIComponent(token)}${path}`, {
+      const r = await fetchBounded(`${API}/api/public/engagement-letters/${encodeURIComponent(token)}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
