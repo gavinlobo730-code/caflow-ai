@@ -33,7 +33,7 @@ SECTIONS = [
 NEW_FINDINGS = ("new-findings.md", "everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total")
 PARKED = ("post-demo-parked.md", "after the demo: parked until someone asks or the work is sized down; NOT counted as open")
 OTHERS = [
-    ("decisions-and-strategy.md", "the 15 owner decisions with the items each gates, what is parked until after the demo, the 30 Sep strategy and staged roadmap"),
+    ("decisions-and-strategy.md", "the 15 owner decisions with the items each gates, what was parked until after the demo (now ordinary items), the 30 Sep strategy and staged roadmap"),
     ("checked-closed.md", "what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it"),
     ("deletion-plan.md", "which audit and plan documents can be deleted, which must stay and why, and what must be done first"),
     ("progress.md", "the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days)"),
@@ -110,12 +110,13 @@ def render_block(ledger: Path = LEDGER) -> str:
             new_a_kinds[kind_of_a_line(head)] += 1
     rows.append(f"| [{NEW_FINDINGS[0]}]({NEW_FINDINGS[0]}) | {new_total} | {NEW_FINDINGS[1]} |")
     parked = sum(1 for _ in read_items(ledger / PARKED[0]))
-    rows.append(f"| [{PARKED[0]}]({PARKED[0]}) | {parked} | {PARKED[1]} |")
+    parked_text = PARKED[1] if parked else "retired on 18 November 2026: every item that was parked is now an ordinary item in its own letter file"
+    rows.append(f"| [{PARKED[0]}]({PARKED[0]}) | {parked} | {parked_text} |")
     for name, desc in OTHERS:
         rows.append(f"| [{name}]({name}) | — | {desc} |")
     lines = [START, "", "| file | items | what it holds |", "|---|---|---|", *rows, "",
              f"**THE BACKLOG: {total} open items** ({pre} before the demo, {total - pre} after); {high} after-demo items are `high` priority; {unsure} are UNSURE. "
-             f"A further **{parked} items are parked** (not counted above).",
+             + (f"A further **{parked} items are parked** (not counted above)." if parked else "Nothing is parked."),
              "",
              f"**Who must act (backlog).** {by_letter['A']} items are Claude's by their letter. Of those, **{a_kinds['alone']} need no help and can be built now**; "
              f"{a_kinds['documents']} wait on the owner for a document or a statutory reading (written in [owner-list.md](owner-list.md)), "
