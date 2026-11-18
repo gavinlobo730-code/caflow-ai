@@ -464,6 +464,7 @@
  "GET /api/relationships/roles",
  "GET /api/report-exports/{report}",
  "GET /api/reports/gst-summary",
+ "GET /api/reports/party-totals",
  "GET /api/reports/transactions",
  "GET /api/risks",
  "GET /api/risks/register",
