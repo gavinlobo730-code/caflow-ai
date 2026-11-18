@@ -112,6 +112,31 @@ def list_accounts(
     return api_response(True, q.order("account_code").execute().data or [])
 
 
+@router.get("/accounts/recent")
+def recent_accounts(
+    client_id: str = Query(..., description="CA client ID — required"),
+    used_on: Literal["journal", "bill"] = Query(..., description="journal: a journal line's picker; bill: a bill line's"),
+    limit: int = Query(8, ge=1, le=20),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The accounts this client used most recently on a manual journal or a bill line, newest first, for the top of
+    the account picker (POST-A-155).
+
+    Read off the client's own newest documents (`domain/account_recent`): ids only, each once. The picker reorders
+    its list with them and pre-selects nothing.
+    """
+    assert_client_access(current_user, client_id)
+    db = _prod_db()
+    if db is None:
+        return api_response(True, {"ids": [], "documents_read": 0, "window": 0})
+    from domain.account_recent import read_recent_accounts
+    try:
+        return api_response(True, read_recent_accounts(db, used_on, current_user["firm_id"], client_id, limit))
+    except Exception as e:  # noqa: BLE001 — a failed read is said, never answered as "nothing used recently"
+        _logger.error("recent_accounts: %s", e)
+        return api_response(False, None, "The recently used accounts could not be read.")
+
+
 @router.post("/accounts")
 def create_account(
     data: AccountIn,

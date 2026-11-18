@@ -282,6 +282,9 @@ export function PurchaseBillEditor({
   // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
   const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !isEdit);
   const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
+  // ...and the expense accounts on its newest bills to the top of each line's account picker, again choosing nothing.
+  const recentAccountIds = useRecentPartyIds(api.accounting.recentBillAccounts, clientId, true);
+  const recentAccounts = useMemo(() => recentFirst(recentAccountIds, accounts), [recentAccountIds, accounts]);
   const initialLines: EditorLine[] =
     existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
     : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
@@ -1665,7 +1668,7 @@ export function PurchaseBillEditor({
                           size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <AccountLookup accounts={accounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
+                        <AccountLookup accounts={accounts} recent={recentAccounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
                         {/* ai-23. A PROPOSAL from this supplier's earlier bills,
                             with its evidence, shown only while the account is
                             blank. The field is NOT filled in: a click is what
