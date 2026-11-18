@@ -1,5 +1,6 @@
 "use client";
 
+import { forgetCustomerLists, forgetVendorLists } from "@/lib/data/partyLists";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Loader2, AlertTriangle, Database, CheckCircle, XCircle } from "lucide-react";
@@ -278,6 +279,7 @@ export default function MigrationPage() {
       // `call` throws on a 200 {success: false} as well as on a non-2xx, so a
       // rollback the server declined is never reported as done.
       await call(`/api/tally-migration/jobs/${j.id}/rollback`, { method: "POST" });
+      forgetCustomerLists(); forgetVendorLists();  // the rollback removes the masters the import wrote (POST-A-124)
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't roll the import back.");
@@ -505,6 +507,8 @@ export default function MigrationPage() {
         method: "POST",
         body: JSON.stringify({ is_dry_run: isDryRun }),
       }));
+      // The import writes customer and supplier masters: the cached lists of both are forgotten (POST-A-124).
+      forgetCustomerLists(); forgetVendorLists();
       if (!report) throw new Error("The server did not report on the import.");
       setStep("import");
       if (report.is_dry_run) {

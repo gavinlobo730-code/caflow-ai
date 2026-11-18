@@ -54,6 +54,7 @@ import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { Combobox } from "@/components/ui/combobox";
 import { getClients } from "@/lib/data/clients";
 import { api, type Vendor, type VendorWrite } from "@/lib/api";
+import { forgetVendorLists } from "@/lib/data/partyLists";
 import { listTdsSections, computeTdsAmount, type TDSSection, type TDSAmountResult } from "@/lib/data/tds";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { InterestThresholdClassSelect } from "@/components/tds/InterestThresholdClassSelect";
@@ -360,6 +361,7 @@ export default function SuppliersPage() {
       const res = editingId
         ? await api.vendors.update(editingId, body)
         : await api.vendors.create({ ...body, client_id: selectedClientId });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) throw new Error(res.error ?? "Couldn't save the supplier.");
       const dup = res.data as { duplicate?: boolean; duplicate_reason?: string } | null;
       if (!editingId && dup?.duplicate) {
@@ -389,6 +391,7 @@ export default function SuppliersPage() {
     setError(null);
     try {
       const res = await api.vendors.update(v.id, { is_active: !v.is_active });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) throw new Error(res.error ?? "Couldn't change the supplier's status.");
       await loadVendors();
     } catch (e) {

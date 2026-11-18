@@ -20,6 +20,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { readAtText } from "@/lib/cache/readCache";
+import { forgetCustomerLists, readCustomerList } from "@/lib/data/partyLists";
 import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
@@ -2983,6 +2985,8 @@ function Customers({
   // See SalesInvoices.loadFailed (audit M17): a failed fetch must not render as
   // an empty customer list.
   const [loadFailed, setLoadFailed] = useState(false);
+  /** When the list on screen was read, while it is the last answer painted ahead of the real read (POST-A-124); null once the real one lands. */
+  const [paintedFrom, setPaintedFrom] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
@@ -3003,25 +3007,31 @@ function Customers({
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
+    let painted = false;
     try {
-      // Load all customers; active/inactive scoping is a client-side DataTable filter.
-      const { data, error } = await selectAll(() =>
-        supabase
-          .from("customers")
-          .select(
-            "id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
-          )
-          .eq("client_id", clientId)
-          .order("name")
-          .order("id"),
-      );
-      if (error) throw error;
-      setCustomers((data as Customer[]) ?? []);
+      // Load all customers; active/inactive scoping is a client-side DataTable filter. The last answer is painted at once from the shared
+      // read cache and the real read always follows (POST-A-124); a failed read throws, so it is never stored.
+      const data = await readCustomerList<Customer>(clientId, async () => {
+        const { data, error } = await selectAll(() =>
+          supabase
+            .from("customers")
+            .select(
+              "id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
+            )
+            .eq("client_id", clientId)
+            .order("name")
+            .order("id"),
+        );
+        if (error) throw error;
+        return (data as Customer[]) ?? [];
+      }, (last, readAt) => { painted = true; setCustomers(last); setPaintedFrom(readAt); setLoading(false); });
+      setCustomers(data);
+      setPaintedFrom(null);
       setLoadFailed(false);
     } catch {
       // Was swallowed: a failed fetch rendered as "no customers", which on this
-      // tab invites the CA to re-create customers that already exist.
-      setCustomers([]);
+      // tab invites the CA to re-create customers that already exist. A list painted from the last read stays up and says it is not current.
+      if (!painted) setCustomers([]);
       setLoadFailed(true);
     } finally {
       setLoading(false);
@@ -3047,6 +3057,7 @@ function Customers({
       .from("customers")
       .update({ is_active: false })
       .eq("id", deactivateTarget.id);
+    forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     setDeactivating(false);
     if (error) {
       // A request that got no answer may have gone through: it is said as that, not as a failure (POST-A-414).
@@ -3064,6 +3075,7 @@ function Customers({
   async function reactivateCustomer(c: Customer) {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from("customers").update({ is_active: true }).eq("id", c.id);
+    forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (error) { showToast(failureSentence(error, "Failed to reactivate customer", "write"), "error"); return; }
     showToast("Customer reactivated", "success");
     load();
@@ -3088,6 +3100,7 @@ function Customers({
     try {
       const token = await getAuthToken();
       const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) {
         showToast(res.error ?? "Failed to delete customer", "error");
         return;
@@ -3166,6 +3179,7 @@ function Customers({
     let imported = 0;
     if (toCreate.length > 0) {
       const result = await apiCall("/api/customers/bulk", "POST", { customers: toCreate }, token);
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (result.success) {
         const data = result.data as {
           created: unknown[];
@@ -3201,6 +3215,7 @@ function Customers({
     await Promise.all(targets.map(async (c) => {
       try {
         const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -3228,6 +3243,7 @@ function Customers({
     await Promise.all(selected.map(async (c) => {
       try {
         const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -3515,6 +3531,14 @@ function Customers({
         );
       })()}
 
+      {/* A list painted ahead of the real read says when it was read, and says so again if the real read failed (POST-A-124). */}
+      {paintedFrom !== null && (
+        <p role="status" className="text-xs text-ps-hint">
+          {loadFailed
+            ? `Showing the list as it was read at ${readAtText(paintedFrom)}. It could not be refreshed, so it may not be current.`
+            : `Showing the list as it was read at ${readAtText(paintedFrom)} while the current one loads…`}
+        </p>
+      )}
       {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={customers}
