@@ -47,6 +47,8 @@ const SECTION_READS: Array<[string, string, string, string, string]> = [
   ["sales", "sales_invoices.py", "/maintenance/posted-drafts", "components/invoices/UnfinishedInvoicesPanel.tsx", "api.salesInvoices.postedDrafts"],
   ["fixed-assets", "fixed_assets.py", "", "app/clients/[id]/fixed-assets/page.tsx", "/api/fixed-assets"],
   ["year-end", "year_end.py", "/engagements", "app/clients/[id]/year-end/page.tsx", "/year-end/engagements"],
+  // The Payroll section opens on its dashboard, which lists the client's runs (POST-A-447).
+  ["payroll", "payroll.py", "/runs", "app/clients/[id]/payroll/page.tsx", "api.payroll.listRuns"],
 ];
 
 test("each gated section asks what its first read asks, and its page still makes that read", () => {
