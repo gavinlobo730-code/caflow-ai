@@ -449,7 +449,7 @@ export default function ClientRelatedPartiesPage() {
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-sm font-semibold text-brand">Link an entity to this client</h2>
-              <button disabled={actionInFlight} onClick={() => setAddRoleModal(false)} className="text-gray-400 hover:text-gray-700">
+              <button disabled={savingRole} onClick={() => setAddRoleModal(false)} className="text-gray-400 hover:text-gray-700">
                 <X size={16} />
               </button>
             </div>
@@ -532,7 +532,7 @@ export default function ClientRelatedPartiesPage() {
               </div>
             </div>
             <div className="flex gap-2 mt-5">
-              <button disabled={actionInFlight}
+              <button disabled={savingRole}
                 onClick={() => setAddRoleModal(false)}
                 className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50"
               >

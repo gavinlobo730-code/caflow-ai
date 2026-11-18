@@ -187,7 +187,7 @@ test("the firm-level page's question does not outlive what it asked about: it is
   assert.match(filed[1], /finally \{\s*setFiling\(false\);\s*\}/, "the hold is not released in a finally");
   assert.match(page, /actionInFlight = approving \|\| loading \|\| filing;/, "the page's one-action-at-a-time rule does not count the filing");
   assert.match(page, /<button onClick=\{\(\) => setShowFiledModal\(false\)\} disabled=\{filing\}/, "Cancel is live while the filing is being recorded");
-  assert.match(page, /onClick=\{\(\) => \{ if \(!filing\) setShowFiledModal\(false\); \}\}/, "the backdrop closes the dialog while the filing is being recorded");
+  assert.match(page, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); if \(!filing\) setShowFiledModal\(false\); \}\}/, "the backdrop closes the dialog while the filing is being recorded, or does not stop its click");
   assert.match(page, /<RecordAnywayAsk sentence=\{heldBack\.sentence\} what="filed" busy=\{filing\}/, "the filing question does not say it is busy while the request is out");
   // the dialog grew by a question: on a short screen its buttons would leave the page if it did not scroll
   assert.match(page, /relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 max-h-\[90vh\] overflow-y-auto/, "the Mark as Filed dialog does not scroll on a short screen");

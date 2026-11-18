@@ -134,7 +134,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
                 setTimeout(() => setCopied(false), 2000);
               }}>{copied ? "Copied" : "Copy"}</Button>
             </div>
-            <Button onClick={onClose}>Done</Button>
+            <Button onClick={onClose} disabled={busy}>Done</Button>
           </div>
         ) : (
           <div>

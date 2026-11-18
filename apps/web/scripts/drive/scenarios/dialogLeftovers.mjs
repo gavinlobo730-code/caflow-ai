@@ -21,7 +21,7 @@
  */
 import assert from "node:assert/strict";
 import { until } from "../kit.mjs";
-import { ok, refuse } from "../stub.mjs";
+import { notJson, ok, refuse } from "../stub.mjs";
 import { CLIENT_ID, VENDOR } from "../fixtures.mjs";
 import {
   atClientMca, openAdvanceTaxRegister, openGstTracker, openMcaTracker, openNewEngagementLetter, openStatutoryValues, openStockLocations, typeAndLeave,
@@ -205,6 +205,92 @@ export const scenarios = [
       assert.equal(stub.writesTo(t.write).length, 1, `${t.tracker}: the filing was not recorded exactly once`);
     },
   })),
+  // ── the second review (18-11-2026) ─────────────────────────────────────────────────────────────────────────────────────────────
+  {
+    id: "a-dialog-over-the-stock-ledger-is-not-closed-by-escape-or-a-backdrop-click-while-its-posting-is-out",
+    title: "Inventory > an item's ledger > Adjust Stock > Save: while the posting is out, Escape and a click on either backdrop close neither the dialog nor the ledger",
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "GET", re: /api\/inventory\/items\?/, reply: () => ok([{ id: "sc1", name: "Copier paper", description: null, hsn_sac: "4802", unit: "NOS", is_active: true,
+        stock_qty_units: 40, avg_cost_paise: 25000, stock_value_paise: 1000000 }]) });
+      stub.route({ method: "GET", re: /api\/inventory\/items\/sc1\/ledger\?/, reply: () => ok({ item: null, lines: [], opening: null, closing: null }) });
+      stub.route({ method: "POST", re: /api\/inventory\/items\/sc1\/adjust$/, delay: 3000, reply: () => ok({ id: "mv-1" }) });
+      await page.goto(env.at("/inventory/"), { waitUntil: "networkidle" });
+      await page.getByText("Copier paper").first().click();
+      await page.getByText("Stock movement ledger").waitFor();
+      await page.getByRole("button", { name: /Adjust Stock/ }).click();
+      await page.getByLabel("Quantity", { exact: true }).fill("2");
+      await page.getByRole("button", { name: /Save Adjustment/ }).click();
+      await until(async () => await page.getByRole("button", { name: /Save Adjustment/ }).isDisabled(), "the adjustment to be out", 3000);
+      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);   // the dialog's backdrop, over the ledger's
+      assert.equal(await page.getByText(/Adjust Stock — Copier paper/).count(), 1, "Escape or a backdrop click closed the adjustment dialog over its posting");
+      assert.equal(await page.getByText("Stock movement ledger").count(), 1, "Escape or a backdrop click reached the ledger behind and closed it over the posting");
+      await stub.quiet({ timeoutMs: 15_000 });
+      assert.equal(stub.writesTo(/api\/inventory\/items\/sc1\/adjust$/, "POST").length, 1, "the adjustment was not posted exactly once");
+    },
+  },
+  {
+    id: "a-vendor-deactivation-that-throws-lets-the-dialog-go-and-says-so",
+    title: "Purchases > Vendors > Deactivate, answered with a page that is not the product's: the dialog is let go and the sentence is shown, not held for good",
+    async run(env) {
+      const { page, stub } = env;
+      stub.setTable("vendors", [VENDOR]);
+      stub.route({ method: "DELETE", re: /api\/vendors\/v1$/, ...notJson() });
+      await page.goto(env.at("/purchases/?tab=vendors"), { waitUntil: "networkidle" });
+      await page.locator("tr", { hasText: "Gamma Supplies" }).getByRole("button").last().click();
+      await page.getByRole("button", { name: "Deactivate", exact: true }).first().click();
+      await page.getByRole("heading", { name: "Deactivate Vendor?" }).waitFor();
+      await page.getByRole("button", { name: "Deactivate", exact: true }).last().click();
+      await until(async () => (await page.getByRole("heading", { name: "Deactivate Vendor?" }).count()) === 0, "the dialog to be let go after the request threw", 6000);
+      await page.getByText(/not known whether|did not get an answer|not the product|could not be read/i).first().waitFor({ timeout: 4000 }).catch(async () => {
+        throw new Error(`no sentence for the failed deactivation; the page says ${(await page.locator("main").innerText()).replace(/\s+/g, " ").slice(0, 500)}`);
+      });
+    },
+  },
+  {
+    id: "the-add-account-drawers-x-and-backdrop-are-held-while-its-save-is-out",
+    title: "Accounting > Chart of accounts > Add Account > save: while it is out, the drawer's × (named Close) is held and a click on the backdrop does not close it",
+    async run(env) {
+      const { page, stub } = env;
+      stub.route({ method: "POST", re: /api\/accounting\/accounts(\?|$)/, delay: 3000, reply: () => ok({ id: "acc-new" }) });
+      await page.goto(env.at("/accounting/?tab=coa"), { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: "Add Account" }).first().click();
+      await page.getByPlaceholder("e.g. HDFC Bank — Current A/c").fill("Petty Cash — Branch");
+      await page.getByPlaceholder("1001").fill("1099");
+      await page.getByRole("button", { name: "Add Account", exact: true }).last().click();
+      const drawer = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "Add Account" }) }).last();
+      await until(async () => await drawer.getByRole("button", { name: "Close", exact: true }).isDisabled(), "the drawer's × to be held while the save is out", 3000);
+      await page.mouse.click(5, 5);
+      assert.equal(await page.getByRole("heading", { name: "Add Account" }).count(), 1, "a click on the backdrop closed the drawer over its save");
+      await stub.quiet({ timeoutMs: 15_000 });
+    },
+  },
+  {
+    id: "the-exemption-dialog-can-be-left-while-it-is-only-reading",
+    title: "Capital gains > a record > Exemption: while the working is only being READ, the dialog's Close is offered (a read never traps the person)",
+    async run(env) {
+      const { page, stub } = env;
+      const record = { id: "cg-1", client_id: CLIENT_ID, asset_description: "Flat 402", asset_type: "property", purchase_date: "2019-04-01", sale_date: "2026-05-10",
+        purchase_cost_paise: 50_00_000_00, improvement_cost_paise: 0, sale_value_paise: 90_00_000_00, indexed_cost_paise: null, gain_type: "LTCG",
+        tax_rate_percent: 12.5, transferred_asset_nature: null, is_listed_security: null, fmv_31_01_2018_paise: null, created_at: "2026-10-31T00:00:00Z" };
+      stub.route({ method: "GET", re: /api\/clients$/, reply: () => ok({ clients: [{ id: CLIENT_ID, client_name: "Acme Traders Pvt Ltd" }], total: 1 }) });
+      stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\?/, reply: () => ok([record]) });
+      stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\/sections$/, reply: () => ok({ sections: [], asset_natures: [], acquisition_kinds: [] }) });
+      stub.route({ method: "GET", re: /api\/income-tax\/capital-gains\/cg-1\/exemption$/, delay: 4000, reply: () => ok({
+        gain_paise: 40_00_000_00, total_exemption_paise: 0, taxable_gain_paise: 40_00_000_00, claims: [], gaps: [], caveats: [] }) });
+      await page.goto(`${env.base}/income-tax/capital-gains/`, { waitUntil: "networkidle" });
+      await page.getByRole("button", { name: "Register", exact: true }).click();
+      await page.locator('button[aria-label="Client"]').click();
+      await page.locator("[role=listbox] [role=option]", { hasText: "Acme Traders" }).first().click();
+      await page.getByRole("button", { name: "Exemption", exact: true }).first().click();
+      const close = page.getByRole("button", { name: "Close", exact: true }).last();
+      await close.waitFor();
+      assert.equal(await close.isDisabled(), false, "the exemption dialog's only way out is held while it is merely reading");
+      await close.click();
+      await until(async () => (await page.getByRole("button", { name: "Record claim" }).count()) === 0, "the dialog to close while it was reading");
+    },
+  },
   {
     id: "the-advance-tax-register-says-a-dates-sentence-once-after-save",
     title: "Income tax > Advance tax: an unreadable paid-on date, then Save: its sentence is drawn once, not by both the working and the save",

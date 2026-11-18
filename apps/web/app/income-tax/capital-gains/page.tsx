@@ -39,7 +39,7 @@
  */
 
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Calculator, Info, BookOpen, Plus, X, Trash2, ShieldCheck, AlertTriangle } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -341,7 +341,10 @@ export default function CapitalGainsPage() {
   const [sectionInfo, setSectionInfo] = useState<ReinvestmentSectionInfo[]>([]);
   const [exemptFor, setExemptFor] = useState<CapitalGainsRecord | null>(null);
   const [exemption, setExemption] = useState<CapitalGainExemption | null>(null);
-  const [exemptBusy, setExemptBusy] = useState(false);
+  // The working's READ (on opening, and again after a write) and its WRITES are two flags: the dialog is held only while a write is out, so a
+  // slow read never traps the person in it, and the write's flag is let go when the write returns, before the read that follows (POST-A-395).
+  const [exemptLoading, setExemptLoading] = useState(false);
+  const [exemptSaving, setExemptSaving] = useState(false);
   const [exemptError, setExemptError] = useState("");
   // Both dates in a reinvestment claim are optional and read as "not given" when blank: unreadable text is refused instead (frontend_ux-19).
   const claimDates = useDateProblems();
@@ -355,20 +358,29 @@ export default function CapitalGainsPage() {
       .catch(() => { /* the labels above stand in until the server answers */ });
   }, []);
 
+  // The dialog can be closed while its read is out, so a late answer can belong to a record that is no longer the open one. Each read takes
+  // a number, closing takes the next, and only the latest read's answer is shown: otherwise record A's gain and claims landed in record B's
+  // dialog (found by the independent review of the change that stopped holding this dialog over its read).
+  const exemptionSeq = useRef(0);
   const loadExemption = useCallback(async (recordId: string) => {
-    setExemptBusy(true);
+    const seq = ++exemptionSeq.current;
+    setExemptLoading(true);
     try {
-      setExemption(await getCapitalGainExemption(recordId));
+      const answer = await getCapitalGainExemption(recordId);
+      if (seq !== exemptionSeq.current) return;
+      setExemption(answer);
       setExemptError("");
     } catch (e) {
+      if (seq !== exemptionSeq.current) return;
       setExemption(null);
       setExemptError(e instanceof Error ? e.message : "Couldn't load the exemption working.");
     } finally {
-      setExemptBusy(false);
+      if (seq === exemptionSeq.current) setExemptLoading(false);
     }
   }, []);
 
   async function openExemption(r: CapitalGainsRecord) {
+    setExemption(null);
     setExemptFor(r);
     setClaimForm({ ...BLANK_CLAIM });
     setExemptError("");
@@ -385,7 +397,8 @@ export default function CapitalGainsPage() {
       setExemptError("Describe what was bought.");
       return;
     }
-    setExemptBusy(true);
+    setExemptSaving(true);
+    let saved = false;
     try {
       await addReinvestment(exemptFor.id, {
         section: claimForm.section,
@@ -401,25 +414,28 @@ export default function CapitalGainsPage() {
           claimForm.agri_use === "" ? null : claimForm.agri_use === "yes",
       });
       setClaimForm({ ...BLANK_CLAIM });
-      await loadExemption(exemptFor.id);
+      saved = true;
     } catch (e) {
       setExemptError(e instanceof Error ? e.message : "Couldn't record the claim.");
     } finally {
-      setExemptBusy(false);
+      setExemptSaving(false);
     }
+    if (saved) await loadExemption(exemptFor.id);
   }
 
   async function removeClaim(claimId: string) {
     if (!exemptFor) return;
-    setExemptBusy(true);
+    setExemptSaving(true);
+    let removed = false;
     try {
       await deleteReinvestment(exemptFor.id, claimId);
-      await loadExemption(exemptFor.id);
+      removed = true;
     } catch (e) {
       setExemptError(e instanceof Error ? e.message : "Couldn't delete the claim.");
     } finally {
-      setExemptBusy(false);
+      setExemptSaving(false);
     }
+    if (removed) await loadExemption(exemptFor.id);
   }
 
   const [regPreview, setRegPreview] = useState<CapitalGainsComputeResult | null>(null);
@@ -995,7 +1011,7 @@ export default function CapitalGainsPage() {
                       Reinvestment exemption — {exemptFor.asset_description}
                     </h2>
                   </div>
-                  <button disabled={exemptBusy} onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
+                  <button disabled={exemptSaving} onClick={() => { exemptionSeq.current += 1; setExemptFor(null); setExemption(null); setExemptLoading(false); }} aria-label="Close">
                     <X className="w-4 h-4 text-ps-hint" />
                   </button>
                 </div>
@@ -1058,7 +1074,7 @@ export default function CapitalGainsPage() {
                         <p key={`c${i}`} className="text-2xs text-ps-label italic">{v}</p>
                       ))}
                       {c.id && (
-                        <Button variant="plain" size="none" onClick={() => removeClaim(c.id as string)} disabled={exemptBusy}
+                        <Button variant="plain" size="none" onClick={() => removeClaim(c.id as string)} disabled={exemptSaving || exemptLoading}
                                 className="text-2xs text-ps-hint hover:text-state-problem transition-colors">
                           Delete this claim
                         </Button>
@@ -1183,8 +1199,8 @@ export default function CapitalGainsPage() {
                     )}
 
                     <div className="flex justify-end gap-2">
-                      <Button size="sm" onClick={saveClaim} disabled={exemptBusy}>
-                        {exemptBusy ? "Saving…" : "Record claim"}
+                      <Button size="sm" onClick={saveClaim} disabled={exemptSaving || exemptLoading}>
+                        {exemptSaving ? "Saving…" : "Record claim"}
                       </Button>
                     </div>
                   </div>
