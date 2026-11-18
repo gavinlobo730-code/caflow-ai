@@ -111,7 +111,7 @@ test("the roster on screen is derived once, and the export reads the same list",
     "one derivation, so the table, the export and the empty state cannot disagree");
   // The three consumers. `employees` may still be read for the client PICKER
   // and for the leave-balance tab, which are firm-wide by nature.
-  assert.match(src, /exportRows: AttendanceExportRow\[\] = rosterOnScreen\.map/,
+  assert.match(src, /exportRows = attendanceExportRows\(rosterOnScreen,/,
     "the CSV must export what is on screen — an export carrying the whole firm "
     + "while the table shows one client is a leak between clients");
   assert.match(src, /\{rosterOnScreen\.map\(emp => \{/,
