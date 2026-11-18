@@ -751,22 +751,22 @@ export default function EntityDetailPage() {
                       <td className="px-5 py-3 text-right">
                         {match.status === "pending" && (
                           <div className="flex items-center justify-end gap-2">
-                            <button
+                            <Button variant="plain" size="none" spinner={false}
                               onClick={() => handleMatchAction(match.id, "confirm")}
                               disabled={processingMatchId === match.id}
                               className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 disabled:opacity-50"
                               title="Confirm"
                             >
                               <CheckCircle size={14} />
-                            </button>
-                            <button
+                            </Button>
+                            <Button variant="plain" size="none" spinner={false}
                               onClick={() => handleMatchAction(match.id, "dismiss")}
                               disabled={processingMatchId === match.id}
                               className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
                               title="Dismiss"
                             >
                               <XCircle size={14} />
-                            </button>
+                            </Button>
                           </div>
                         )}
                       </td>

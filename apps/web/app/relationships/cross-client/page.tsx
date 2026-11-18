@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { Copy, CheckCircle, XCircle, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -203,22 +204,22 @@ export default function CrossClientMatchesPage() {
 
                   {m.is_confirmed === null && (
                     <div className="flex gap-2 shrink-0">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={updating === m.id}
                         onClick={() => handleReview(m.id, true)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-medium transition-colors disabled:opacity-50 border border-emerald-200"
                       >
                         <CheckCircle className="w-3.5 h-3.5" />
                         Confirm
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={updating === m.id}
                         onClick={() => handleReview(m.id, false)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-state-problem-surface text-red-600 hover:bg-red-100 text-xs font-medium transition-colors disabled:opacity-50 border border-state-problem-border"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         Reject
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
