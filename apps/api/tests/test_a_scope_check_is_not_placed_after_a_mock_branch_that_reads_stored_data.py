@@ -44,7 +44,8 @@ SERVICES = API_ROOT / "services"
 SEED_CHECKS = frozenset({"assert_client_access", "can_access_client", "assert_partner_for_internal_id"})
 NARROWERS = frozenset({"effective_client_ids", "filter_by_client", "_scoped_client_ids"})
 _MOCK_WORDS = ("MOCK", "mock", "db is None", "not db", "sb is None", "client is None", "_USE_MOCK")
-_INERT_CALLS = frozenset({"api_response", "model_dump", "dict", "list", "str", "int", "len"})
+#: `patch_dict` reads the request's own model and nothing stored (models/clearable.py, POST-A-399), as `model_dump` does.
+_INERT_CALLS = frozenset({"api_response", "model_dump", "patch_dict", "dict", "list", "str", "int", "len"})
 
 
 def _call_name(node: ast.Call):

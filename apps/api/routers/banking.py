@@ -2870,11 +2870,14 @@ def update_rule(
     fields change. client_id is NOT editable — moving a rule between clients
     would silently re-target every suggestion it has ever made."""
     db = _db()
+    # POST-A-399. The rule form sends an emptied box as null (a narration phrase, an amount bound, the proposed ledger, category, narration or
+    # GST rate), and the route read its body with `exclude_none`, so none of them could be taken away while the screen said "Rule saved".
+    # `patch_dict` writes NULL for the fields MatchingRuleUpdateIn names in CLEARABLE; every other null still reads "not sent".
     if not db:
-        return api_response(True, {"id": rule_id, **data.model_dump(exclude_none=True)})
+        return api_response(True, {"id": rule_id, **patch_dict(data)})
     rule = _rule_or_404(db, current_user["firm_id"], rule_id)
     assert_client_access(current_user, rule["client_id"])
-    fields = data.model_dump(exclude_none=True)
+    fields = patch_dict(data)
     # TRUSTED is the one place the product acts without a click (migration
     # 322, 09-bank-entries.md). Promoting needs banking.approve — a Manager or
     # Partner — and records WHO, because that person is the journal's
@@ -2897,15 +2900,16 @@ def update_rule(
         else:
             fields["trusted_by"] = None
             fields["trusted_at"] = None
-    # exclude_none means a null normally reads as "field omitted", so no field on
-    # this endpoint can be cleared. For the GST rate that is not survivable: a
-    # rule stamped 18% by mistake would keep proposing an input credit forever,
-    # and 0 is NOT the escape hatch (0 positively means "this charge carries no
-    # GST"). An EXPLICIT null clears it; an omitted one still means "leave it".
-    if "suggested_gst_rate_bps" in data.model_fields_set and data.suggested_gst_rate_bps is None:
-        fields["suggested_gst_rate_bps"] = None
+    # An EXPLICIT null clears a CLEARABLE field (the GST rate among them: a rule stamped 18% by mistake would otherwise keep proposing an
+    # input credit forever, and 0 is NOT the escape hatch, it positively means "this charge carries no GST"); an omitted one still means
+    # "leave it".
     if not fields:
         return api_response(True, rule)
+    # A TRUSTED rule must keep naming a ledger, which only promotion used to ask: emptying the ledger box of one is refused (POST-A-399).
+    if "suggested_account_id" in fields and not fields["suggested_account_id"] and fields.get("is_trusted", rule.get("is_trusted")):
+        raise HTTPException(status_code=422, detail=(
+            "A trusted rule must name a ledger — it cannot pass an entry without one. Stop trusting the rule first, or choose a ledger."))
+    _refuse_a_cleared_rule_that_no_longer_holds(rule, fields)
     # The GST-rate/account pairing can only be judged against the MERGED rule —
     # the model sees the patch alone, and "rate supplied, account already stored"
     # is perfectly valid. Same rule as MatchingRuleIn and migration 254's CHECK:
@@ -2943,6 +2947,26 @@ def update_rule(
                                  "flags_tds_decision")):
         bank_entry_service.mark_stale(db, current_user["firm_id"], rule["client_id"])
     return api_response(True, (row.data or [{}])[0])
+
+
+def _refuse_a_cleared_rule_that_no_longer_holds(rule: dict, fields: dict) -> None:
+    """A clear is judged against the MERGED rule by the create door's own shape (POST-A-399).
+
+    Taking a box away can leave a rule the create door would never have accepted: no condition at all (it would fire on every line, and a
+    trusted one would post them), nothing proposed, or a GST rate with no ledger. (A TRUSTED rule keeping its ledger is asked in
+    `update_rule` itself, the one edit-side reader of the trusted flag.) Asked only when the edit clears something, so a rule stored before a check existed stays editable otherwise.
+    """
+    if not any(v is None for k, v in fields.items() if k in MatchingRuleUpdateIn.CLEARABLE):
+        return
+    from types import SimpleNamespace
+    from models.banking import _validate_rule_shape
+    merged = {**rule, **fields}
+    keys = ("description_pattern", "description_patterns", "amount_min_paise", "amount_max_paise", "txn_type", "suggested_category",
+            "suggested_account_id", "suggested_narration", "suggested_gst_rate_bps")
+    try:
+        _validate_rule_shape(SimpleNamespace(**{k: merged.get(k) for k in keys}))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
 def _refuse_an_unresolvable_party(rule: dict) -> None:

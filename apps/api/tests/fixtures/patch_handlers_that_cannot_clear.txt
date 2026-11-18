@@ -4,7 +4,7 @@
 #
 # The list ONLY SHRINKS: a handler that moves to `models.clearable.patch_dict` (naming the fields a person may clear in its model's CLEARABLE) is DELETED from it in the same commit, and
 # a new PATCH handler that drops nulls fails the test unless it is added here with its reason in the pull request. The first slice converted the sales invoice, the purchase bill and the
-# four notes, the second the customer, the vendor and the bank account; the rest are the next slices, and each needs the per-field decision (a GSTIN or a PAN typed on a party is identity, and a date is corrected and not emptied).
+# four notes, the second the customer, the vendor and the bank account, the third the employee, the fourth the bank matching rule; the rest are the next slices, and each needs the per-field decision (a GSTIN or a PAN typed on a party is identity, and a date is corrected and not emptied).
 #
 # Two handlers already clear a few named columns by their own means: routers/service_catalogue.py update_service (two columns, through `model_fields_set`; listed all the same, because
 # every other field of its drops its null) and routers/tasks.py update_task, which is not listed because it hands its body to a helper the scan does not see (it keeps the explicit
@@ -12,7 +12,6 @@
 routers/accounting.py::update_account
 routers/accounting.py::update_journal_entry
 routers/banking.py::update_reconciliation
-routers/banking.py::update_rule
 routers/bills_of_entry.py::update_bill_of_entry
 routers/clients.py::update_client
 routers/compliance_records.py::update_compliance_record
