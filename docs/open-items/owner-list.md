@@ -397,6 +397,14 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Stays unbuilt meanwhile:** moving the fixed-deposit maturity estimate on the loans page to a server answer. It stays a labelled browser estimate, and the deposit receipt is the document of record.
 - **Ledger:** POST-A-266
 
+### S41. Which well-formed PANs, such as AAAAA0000A, must not key a payee's year?
+
+- **Question:** A deduction typed on the TDS screen is added up over the payee's financial year by the PAN typed with it (`usable_pan_key`), so every payee typed under the same PAN counts as one person: two strangers' payments can push each other over a section's yearly threshold, and tax withheld from one is credited to the other. A blank, the two placeholders (PANNOTAVBL, PANAPPLIED) and text not shaped like a PAN are already refused as a key. A PAN in the right shape that names nobody, such as AAAAA0000A or ABCDE1234F typed to get past a required box, is still a key. Which well-formed PANs cannot be a real person's (for example, is the fourth character limited to a fixed set of entity letters such as P, C, H, F, A, T, B, L, J, G, and does the fifth character or the four digits carry any rule that makes a PAN impossible), and is there a published list of dummy or test PANs the department treats as not furnished? This is a different question from S28, which asks whether text NOT shaped like a PAN counts as "not furnished" for section 206AA.
+- **Needed:** The Income-tax Department's published PAN structure (the meaning of the fourth and fifth characters and the entity letters allowed), Rule 114 of the Income-tax Rules 1962 and its 2025 Rules equivalent, and any CBDT or TRACES guidance on dummy or invalid PANs in a TDS statement, read by a practising CA.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Any rule that refuses a well-formed but impossible or dummy PAN as a key for a payee's year; such a PAN keeps adding up as it does today.
+- **Ledger:** POST-A-078
+
 ## 5. Wait-until-asked items the goal probably needs
 
 Because the goal is to replace every platform, some items I decided to leave until a client asks will probably be needed. They stay parked, and you do not have to answer; this is the list to pull from. Say the word and I move any of them to the front. My default: build them in the order a pilot firm or the demo audience asks, after the base is solid.
