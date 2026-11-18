@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { Bell, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -102,13 +103,13 @@ export default function HealthAlertsPage() {
                   <p className="text-sm text-gray-800">{a.message}</p>
                   <p className="text-xs text-gray-500 mt-1">Client: {a.client_id.slice(0,12)}… · {formatDate(a.created_at)}</p>
                 </div>
-                <button
+                <Button variant="plain" size="none" spinner={false}
                   onClick={() => handleResolve(a.id)}
                   disabled={resolving === a.id}
                   className="shrink-0 text-xs text-emerald-700 border border-emerald-300 px-2.5 py-1 rounded hover:bg-emerald-50 disabled:opacity-50"
                 >
                   {resolving === a.id ? "…" : "Resolve"}
-                </button>
+                </Button>
               </CardContent>
             </Card>
           ))}
