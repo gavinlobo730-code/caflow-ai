@@ -653,6 +653,7 @@ LITERAL_INVENTORY = {
     "services/intelligence_service.py": (3, "invoices (a job writes 'Overdue' onto an invoice)"),
     "services/invoice_lifecycle_service.py": (1, "the job that writes it onto an invoice"),
     "services/practice_mail_service.py": (3, "headings in a mail"),
+    "services/obligation_task.py": (1, "a stored status a linked task's completion walks the obligation FROM, through VALID_TRANSITIONS"),
 }
 
 

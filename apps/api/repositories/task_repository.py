@@ -112,6 +112,22 @@ class TaskRepository(BaseRepository[dict]):
 
         return fetch_all(open_query, label="tasks.find_open")
 
+    def find_open_linked_to_obligations(self, firm_id: str) -> list[dict]:
+        """The firm's open tasks that work a compliance obligation (`compliance_record_id` set, not completed), every page (POST-A-206).
+
+        One row per task with the columns the obligation list needs: which obligation, who the task is assigned to, its status."""
+        if _USE_MOCK:
+            return [t for t in MOCK_TASKS if t.get("firm_id") == firm_id and t.get("compliance_record_id")
+                    and t.get("status") != "completed" and not t.get("deleted_at")]
+        from core.db_paging import fetch_all
+
+        def linked_query():
+            return (_get_db().table("tasks").select("id, status, assigned_to, compliance_record_id, client_id")
+                    .eq("firm_id", firm_id).not_.is_("compliance_record_id", "null")
+                    .neq("status", "completed").is_("deleted_at", None))
+
+        return fetch_all(linked_query, label="tasks.find_open_linked_to_obligations")
+
     def find_overdue(self, firm_id: Optional[str] = None) -> list[dict]:
         """Overdue (past-due, not completed) tasks. firm_id is optional and
         defaults to None (every firm) only for backward compatibility with

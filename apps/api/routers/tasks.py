@@ -429,7 +429,21 @@ def update_task(task_id: str, body: TaskUpdate, current_user: dict = Depends(rba
 
     _notify_reassignment(task, updated, updates, firm_id, current_user)
 
-    return api_response(True, {"task": updated})
+    return api_response(True, _with_its_obligation(task, updated, updates, current_user))
+
+
+def _with_its_obligation(task: dict, updated: Optional[dict], updates: dict, current_user: dict) -> dict:
+    """The PATCH's answer, plus what became of the compliance obligation a task works when this change completed it (POST-A-206): the
+    obligation is taken to review. Never fails the PATCH."""
+    answer: dict = {"task": updated}
+    if updates.get("status") == "completed" and task.get("compliance_record_id"):
+        from core.permissions import can_user
+        from services import obligation_task
+        moved = obligation_task.after_task_completed({**task, **(updated or {})}, current_user,
+                                                     may_write_compliance=can_user(current_user, "compliance", "write"))
+        if moved is not None:
+            answer["compliance_obligation"] = moved
+    return answer
 
 
 

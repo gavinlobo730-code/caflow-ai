@@ -1592,12 +1592,20 @@ def my_obligations(firm_id: str, user_id: str, today: Optional[date] = None,
             unassigned += 1
         if roles:
             mine.append((r, roles))
+    # An obligation the person is working as THEIR OWN task is on My Work once, as the task (POST-A-206); one worked as somebody
+    # else's task stays here and names the task, so a reviewer still sees what is coming to them.
+    from services.obligation_task import linked_open_tasks
+    tasks = linked_open_tasks(firm_id) if mine else {}
+    as_my_task = [r for r, _roles in mine if str((tasks.get(str(r.get("id"))) or {}).get("assigned_to") or "") == uid]
+    shown_ids = {id(r) for r in as_my_task}
+    mine = [(r, roles) for r, roles in mine if id(r) not in shown_ids]
     names, _staff = _dashboard_names(firm_id, {str(r.get("client_id")) for r, _ in mine if r.get("client_id")}, set())
     out = [{
         "id": r.get("id"), "client_id": r.get("client_id"), "client_name": names.get(str(r.get("client_id") or "")),
         "obligation_type": r.get("obligation_type"), "compliance_type": r.get("compliance_type"),
         "period_label": r.get("period_label"), "due_date": r.get("due_date"), "status": r.get("status"),
         "my_roles": roles, "overdue": is_overdue(r, today),
+        "task_id": (tasks.get(str(r.get("id"))) or {}).get("id"),
     } for r, roles in mine]
     out.sort(key=lambda x: (str(x.get("due_date") or "9999"), str(x.get("id") or "")))
     return {
@@ -1605,6 +1613,7 @@ def my_obligations(firm_id: str, user_id: str, today: Optional[date] = None,
         "total": len(out),
         "overdue": sum(1 for x in out if x["overdue"]),
         "unassigned_in_scope": unassigned,
+        "worked_as_your_task": len(as_my_task),
         "as_at": today.isoformat(),
     }
 

@@ -332,6 +332,25 @@ def reopenable_obligation_types(current_user: dict = Depends(rbac("compliance", 
                                "max_reason_chars": MAX_REOPEN_REASON_CHARS})
 
 
+@router.post("/obligations/{record_id}/task")
+def work_obligation_as_task(record_id: str, current_user: dict = Depends(rbac("compliance", "write"))):
+    """Put an open obligation on a task list (POST-A-206): ONE task linked to it, titled and dated from the obligation, assigned to its
+    preparer when they can open the client. An obligation already worked as a task answers that task. Needs task write access too,
+    asked per person, because it makes a task. Completing the task moves the obligation to Ready For Review."""
+    from core.permissions import can_user
+    from services import obligation_task
+    _assert_obligation_scope(current_user, record_id)
+    if not can_user(current_user, "task", "write"):
+        raise HTTPException(status_code=403, detail="Making a task needs permission to write tasks, which your access does not include.")
+    try:
+        out = obligation_task.work_as_task(current_user["firm_id"], record_id, actor=current_user)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.message) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail="Compliance obligation not found.") from e
+    return api_response(True, out)
+
+
 @router.get("/obligations/mine")
 def my_obligations(current_user: dict = Depends(rbac("compliance", "read"))):
     """The caller's own open obligations, the ones they are named on as preparer, reviewer or approver (POST-A-206), for My Work.
