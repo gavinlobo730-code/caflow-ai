@@ -3259,15 +3259,14 @@ export const scenarios = [
       assert.deepEqual([asked.date_from, asked.date_to], ["2026-10-01", "2026-10-07"], `the days did not reach the read as ISO: ${JSON.stringify(asked)}`);
     },
   },
-  // POST-A-126: a date that may fall either side of the one beside it says `near`, and a day and month typed with no year are read in the year
-  // nearest to it. A notice received on 01/03/2026 (FY 2025-26) was given a response date of 15/06/2025 for `15/6`; an expiry typed in March for
-  // the coming April was read as the April eleven months gone.
+  // POST-A-126: a date that may fall either side of ANOTHER date says `near`, and a day and month typed with no year are read in the year nearest
+  // to it, within half a year. A notice received on 01/03/2026 (FY 2025-26) was given a response date of 15/06/2025 for `15/6`.
   {
     id: "a-short-date-is-read-in-the-year-nearest-the-date-beside-it",
-    title: "a notice's response date beside its received date, and a document's expiry beside today, read a day and month in the nearest year",
+    title: "a notice's response date is read in the year nearest its received date, and a 29/2 a year from it is refused as before",
     contexts: TZ_MATRIX,
     async run(env) {
-      const { page, context } = env;
+      const { page } = env;
       await openAddIncomeTaxNotice(env);
       await typeAndLeave(page.locator("#notice-date-received"), "01/03/2026");
       const due = page.locator("#notice-response-due");
@@ -3275,14 +3274,50 @@ export const scenarios = [
       assert.equal(await due.inputValue(), "15/06/2026", "15/6 beside a notice received on 01/03/2026 is 15/06/2026, not the June before it");
       await typeAndLeave(due, "20/2");
       assert.equal(await due.inputValue(), "20/02/2026", "a response date already past when the notice arrived is still read before it");
-      // A document's optional expiry, with today 20 March 2027 in India.
-      await context.clock.setFixedTime(new Date("2027-03-20T06:00:00Z"));
+      // The nearest 29 February to a notice received on 01/03/2025 is 366 days before it: not near, so the usual refusal stands.
+      await typeAndLeave(page.locator("#notice-date-received"), "01/03/2025");
+      await typeAndLeave(due, "29/2");
+      assert.equal(await due.getAttribute("aria-invalid"), "true", "29/2 beside a notice of 01/03/2025 was read as a date a year away");
+      const alerts = (await page.locator("[role=alert]").allInnerTexts()).join(" | ");
+      assert.match(alerts, /Feb 2025 has only 28 days\..*Type the year in full/, `the 29/2 refusal is not the usual sentence: ${alerts.slice(0, 200)}`);
+    },
+  },
+  {
+    id: "form-15ca-short-date-is-read-near-the-bill-not-the-date-on-file",
+    title: "Form 15CA on file as 15/06/2023 on a bill of 01/06/2026, retyped 15/6, is 15/06/2026 (the year nearest the bill, not near the old date)",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, stub } = env;
+      stub.setTable("vendors", [{ ...VENDOR, tds_applicable: true, tds_section: "195", tds_rate_bps: 2000 }]);
+      stub.route({ method: "POST", re: /purchase-bills\/tds-preview/, reply: () => ok(TDS_195_PREVIEW) });
+      const bill = { ...billRow("draft", "b9"), bill_date: "2026-06-01", due_date: "2026-07-01", form_15ca_ack_no: "ACK-0042", form_15ca_filed_on: "2023-06-15", form_15cb_udin: null };
+      stub.route({ method: "GET", re: /purchase-bills\/b9$/, reply: () => ok(bill) });
+      await page.goto(env.at("/purchases/bills/b9/edit/"), { waitUntil: "networkidle" });
+      const box = page.locator("#bill-15ca-date");
+      await box.waitFor({ timeout: 10000 });
+      assert.equal(await box.inputValue(), "15/06/2023", "the date on file is not shown as it was");
+      await typeAndLeave(box, "15/6");
+      assert.equal(await box.inputValue(), "15/06/2026", "15/6 beside a bill of 01/06/2026 is 15/06/2026");
+    },
+  },
+  // An expiry or a needed-by beside TODAY takes no `near` (POST-A-126 review): it is nearly always ahead, and nearest-to-today read `15/3` typed in
+  // June as the March gone, so the document was shown as already expired and a health override as ignored.
+  {
+    id: "an-expiry-typed-in-june-for-march-is-the-march-to-come",
+    title: "a document's expiry typed 15/3 on 17 June and a health override's expiry typed 31/3 on 15 September are read in the March to come",
+    contexts: TZ_MATRIX,
+    async run(env) {
+      const { page, context } = env;
+      await context.clock.setFixedTime(new Date("2026-06-17T06:00:00Z"));
       await openUploadDocument(env);
       const expiry = page.getByLabel("Expiry date (optional)", { exact: true });
-      await typeAndLeave(expiry, "15/4");
-      assert.equal(await expiry.inputValue(), "15/04/2027", "an expiry typed on 20/03/2027 as 15/4 is the coming April");
-      await typeAndLeave(expiry, "15/1");
-      assert.equal(await expiry.inputValue(), "15/01/2027", "15/1 typed on 20/03/2027 is the January just gone");
+      await typeAndLeave(expiry, "15/3");
+      assert.equal(await expiry.inputValue(), "15/03/2027", "15/3 typed on 17/06/2026 is 15/03/2027, not three months gone");
+      await context.clock.setFixedTime(new Date("2026-09-15T06:00:00Z"));
+      await openHealthOverride(env, env.at("/health/"));
+      const override = page.getByLabel("Expires at (optional)", { exact: true });
+      await typeAndLeave(override, "31/3");
+      assert.equal(await override.inputValue(), "31/03/2027", "31/3 typed on 15/09/2026 is 31/03/2027, not six months gone");
     },
   },
   // The two Record modals hand the write's promise back to the shared Button, which is what holds the second click of a double click.

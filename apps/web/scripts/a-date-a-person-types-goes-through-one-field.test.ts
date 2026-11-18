@@ -653,3 +653,13 @@ test("a Clear that empties a date box remounts it with a key, or is listed with 
     "An onClick empties a date box that has no key. If the box held unreadable text it had already handed up \"\", so the text stays on screen: " +
     "give the box key={`name-${n}`} and bump n in the same click (components/banking/BankBook.tsx does), or list it here with why it is safe.");
 });
+
+test("no date box reads a short form nearest TODAY: an expiry or a needed-by keeps the financial-year reading (POST-A-126 review)", () => {
+  // `near` beside today read `15/3` typed in June as the March gone, and a document's expiry or a health override then counted as past.
+  // `near` is for a date beside ANOTHER date whose order may not be claimed; a date beside today is nearly always ahead.
+  const nearToday = /<DateInput\b(?:=>|[^>])*?\bnear=\{\s*(?:todayIstISO\(\)|today\b|istToday\(\))/;
+  assert.equal(nearToday.test(`<DateInput near={todayIstISO()} value={x} onChange={f} />`), true, "the detector no longer sees near={todayIstISO()}");
+  assert.equal(nearToday.test(`<DateInput near={issued || null} value={x} onChange={f} />`), false);
+  const found = SOURCES.filter((f) => f.endsWith(".tsx") && nearToday.test(fs.readFileSync(path.join(WEB, f), "utf8")));
+  assert.deepEqual(found, [], "these read a short form nearest today: leave `near` off a date whose only companion is today");
+});

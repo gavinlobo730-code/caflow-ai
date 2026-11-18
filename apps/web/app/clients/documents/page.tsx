@@ -138,7 +138,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
           </div>
           <div>
             <label className="text-xs font-medium text-ps-body block mb-1">Expiry Date (optional)</label>
-            <DateInput aria-label="Expiry date (optional)" near={todayIstISO()} value={expiryDate} onChange={setExpiryDate}
+            <DateInput aria-label="Expiry date (optional)" value={expiryDate} onChange={setExpiryDate}
               onStateChange={dates.watch("expiry", "Expiry date")}
               className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm outline-none focus:border-brand" />
           </div>

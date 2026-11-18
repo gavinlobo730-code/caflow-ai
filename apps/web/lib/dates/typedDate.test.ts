@@ -196,9 +196,7 @@ test("near: a day and month typed beside a date it may fall either side of is re
   assert.equal(read("15/6", { anchor: "2026-03-01", near: "2026-03-01" }), "2026-06-15");
   // ...and a date that does fall before it is still read before it: a response date already past when the notice arrived.
   assert.equal(read("20/2", { anchor: "2026-03-01", near: "2026-03-01" }), "2026-02-20");
-  // an expiry typed on 20 March 2027 for the coming April, beside today: April 2027, not the April that is eleven months gone.
-  assert.equal(read("15/4", { anchor: "2027-03-20", near: "2027-03-20" }), "2027-04-15");
-  assert.equal(read("1504", { anchor: "2027-03-20", near: "2027-03-20" }), "2027-04-15", "the four-digit form reads the same way");
+  assert.equal(read("1506", { anchor: "2026-03-01", near: "2026-03-01" }), "2026-06-15", "the four-digit form reads the same way");
   // inside the anchor's own months the reading is the financial year's, as before
   assert.equal(read("15/1", { anchor: "2026-10-08", near: "2026-10-08" }), "2027-01-15");
   assert.equal(read("15/9", { anchor: "2026-10-08", near: "2026-10-08" }), "2026-09-15");
@@ -216,6 +214,32 @@ test("near: a tie goes to the later year, a bare day stays in the anchor's month
   assert.equal(read("2/4", { anchor: "2026-03-31", near: "2026-03-31", notAfter: "2026-10-08" }), "2026-04-02");
   // an unreadable near is no near
   assert.equal(read("15/6", { anchor: "2026-03-01", near: "2026-02-31" }), "2025-06-15");
+});
+
+test("near: the years tried are near's own, not the anchor's, so a date on file years earlier does not pull the reading back", () => {
+  // A Form 15CA filed on 15/06/2023 is on file for a bill dated 01/06/2026; the box's anchor is the date on file, its `near` the bill. Retyped
+  // `15/6`, the years tried used to be those around the anchor's financial-year reading (2022 to 2024), and 15/06/2024 was the nearest of them.
+  assert.equal(read("15/6", { anchor: "2023-06-15", near: "2026-06-01" }), "2026-06-15");
+  assert.equal(read("15/6", { anchor: "2023-06-15", near: "2026-06-01", notAfter: "2026-10-08" }), "2026-06-15", "a bound after it still holds");
+});
+
+test("near: a 29/2 is moved to a leap February only within half a year of near, and otherwise keeps the usual sentence", () => {
+  // A notice received on 01/03/2025: the nearest 29 February is 29/02/2024, 366 days before it. Without near the text is refused
+  // (February 2025 has 28 days, type the year); with near it was read silently as 2024. It is refused again.
+  assert.equal(read("29/2", { anchor: "2025-03-01" }), "error:no_such_day");
+  assert.equal(read("29/2", { anchor: "2025-03-01", near: "2025-03-01" }), "error:no_such_day");
+  const said = parseTypedDate("29/2", { anchor: "2025-03-01", near: "2025-03-01" });
+  assert.ok(said.kind === "error" && /Type the year in full/.test(said.message), "the refusal no longer says to type the year");
+  // Beside 20/01/2028 the 29th of February 2028 is 40 days on: read there, though the anchor's own February (2027) has no 29th.
+  assert.equal(read("29/2", { anchor: "2027-03-10", near: "2028-01-20" }), "2028-02-29");
+});
+
+test("an expiry or a needed-by beside today keeps the financial-year reading: 15/3 typed in June is the March to come", () => {
+  // These boxes take no `near` (POST-A-126 review): nearest-to-today read `15/3` typed on 17/06/2026 as 15/03/2026, three months gone,
+  // and a document's expiry or a health override's then counted as already past.
+  assert.equal(read("15/3", { today: "2026-06-17" }), "2027-03-15");
+  assert.equal(read("31/3", { today: "2026-09-15" }), "2027-03-31");
+  assert.equal(read("15/3", { today: "2026-06-17", near: "2026-06-17" }), "2026-03-15", "what `near` beside today would have read, which is why it is not used there");
 });
 
 test("a short form that is already on or after the bound does not move", () => {

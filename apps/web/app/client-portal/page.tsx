@@ -29,7 +29,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/states";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { todayIstISO } from "@/lib/dates/format";
 type PortalTab = "requests" | "shared" | "reports" | "filings" | "dues" | "messages";
 
 const PORTAL_TABS: { id: PortalTab; label: string; icon: React.ElementType }[] = [
@@ -1176,7 +1175,6 @@ export default function ClientPortalPage() {
                 <label className="block text-xs font-medium text-ps-label mb-1">Needed by</label>
                 <DateInput
                   aria-label="Needed by"
-                  near={todayIstISO()}
                   value={newRequest.due_date}
                   onChange={(v) => setNewRequest((p) => ({ ...p, due_date: v }))}
                   onStateChange={requestDates.watch("needed", "Needed by")}
