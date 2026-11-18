@@ -5241,6 +5241,12 @@ export const api = {
     createAccount: (data: unknown, clientId?: string) => request(
       `/api/accounting/accounts${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`,
       { method: "POST", body: JSON.stringify(data) }),
+    /** The accounts this client used most recently on a manual journal (`journal`) or a bill line (`bill`), newest first: ids
+     *  only, for the top of the account picker (POST-A-155). */
+    recentJournalAccounts: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/accounting/accounts/recent?${new URLSearchParams({ client_id: clientId, used_on: "journal" })}`),
+    recentBillAccounts: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/accounting/accounts/recent?${new URLSearchParams({ client_id: clientId, used_on: "bill" })}`),
     updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     /** The Day Book: every POSTED entry of one client in a period, one page of it, newest first by default
      *  (POST-A-091). The page is cut in the database and the PDF and Excel files read the same function, so
