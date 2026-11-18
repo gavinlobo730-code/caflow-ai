@@ -581,6 +581,13 @@ class MatchingRuleIn(BaseModel):
 class MatchingRuleUpdateIn(BaseModel):
     """Partial edit of an existing rule. Every field is optional; only the ones
     supplied are written. `client_id` is deliberately absent — see the router."""
+    # POST-A-399. What a person may take away on the rule form, each a column whose NULL is its own answer: no narration phrase, no amount
+    # bound, no proposed ledger, category or narration, no GST split. The router judges the merged rule by the create door's shape after a
+    # clear, so a rule is never left with no condition, nothing proposed, a rate with no ledger, or trusted with no ledger.
+    CLEARABLE: ClassVar[FrozenSet[str]] = frozenset({
+        "description_pattern", "amount_min_paise", "amount_max_paise", "suggested_account_id", "suggested_category",
+        "suggested_narration", "suggested_gst_rate_bps"})
+
     rule_name: Optional[str] = None
     description_pattern: Optional[str] = None
     amount_min_paise: Optional[int] = None
