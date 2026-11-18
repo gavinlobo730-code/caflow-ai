@@ -736,6 +736,27 @@ def _answered_with_the_obligation(current_user: dict, filing: dict) -> dict:
     return filing if obligation is None else {**filing, "compliance_obligation": obligation}
 
 
+def _answered_with_the_reopening(current_user: dict, filing: dict, new_status: str) -> dict:
+    """`filing`, plus what became of its compliance obligation now that it was moved back out of Filed (POST-A-267, item 3), when
+    its form stands for one. NEVER FAILS THE CHANGE: the filing has moved and the CA asked for it. The obligation is reopened
+    through the calendar's own reopen (`compliance.approve`, asked per person); whatever stops it is said in the answer."""
+    from core.observability import capture_soft_failure
+    from services import mca_filing_closes_obligation as closes
+    firm_id = current_user["firm_id"]
+    try:
+        obligation = closes.reopen_for_unfiled_filing(
+            firm_id=firm_id, client_id=filing.get("client_id") or "", form_type=filing.get("form_type"),
+            financial_year=closes.filing_year(filing), new_status=new_status, actor=current_user,
+            may_reopen=can_user(current_user, "compliance", "approve"))
+    except Exception as exc:                                    # noqa: BLE001
+        capture_soft_failure(exc, operation="mca_workspace.reopen_the_obligation",
+                             firm_id=firm_id, client_id=filing.get("client_id"))
+        obligation = {"state": "not_closed", "closed": False, "reopened": False, "obligation_id": None,
+                      "message": "The filing was moved back, but the compliance calendar could not be updated just now: its "
+                                 "obligation may still read Filed. Reopen it from Compliance."}
+    return filing if obligation is None else {**filing, "compliance_obligation": obligation}
+
+
 #: The annual forms that describe a financial year, and so cannot have been filed before it ended. ADT-1 is filed within days of an
 #: appointment and an event form has no year to wait for, so neither is judged. MGT-7A is not asked (POST-C-209).
 _FILED_ONLY_AFTER_THE_YEAR_ENDS = frozenset({"AOC-4", "MGT-7"})
@@ -865,6 +886,8 @@ def update_filing_status(
                 title=f"MCA {rec.get('form_type', '')} filed — SRN: {body.srn or 'N/A'}",
             )
             return api_response(True, _answered_with_the_obligation(current_user, rec))
+        if existing.get("status") == "filed":
+            return api_response(True, _answered_with_the_reopening(current_user, rec, body.status))
         return api_response(True, rec)
     except HTTPException:
         raise

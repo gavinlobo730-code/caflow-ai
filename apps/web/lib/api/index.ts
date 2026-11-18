@@ -6051,8 +6051,9 @@ export const api = {
           filed_date: opts.filedDate ?? null,
         }),
       }),
-    /** Takes back a recorded filing on a statutory DEPOSIT (`POST /obligations/{id}/reopen`, `compliance.approve`). The reason is
-     *  required by the server. A refusal (422 for a type with a filing record behind it, 403 without the right) is thrown as an
+    /** Takes back a recorded filing on a statutory DEPOSIT, or on an MCA obligation no workspace filing stands behind
+     *  (`POST /obligations/{id}/reopen`, `compliance.approve`). The reason is required by the server. A refusal (422 for a type
+     *  with a filing record behind it, 403 without the right) is thrown as an
      *  Error carrying the server's sentence. */
     reopen: (id: string, reason: string) =>
       request<ApiResp<{ obligation: Record<string, unknown>; message: string }>>(`/api/compliance/obligations/${id}/reopen`, {

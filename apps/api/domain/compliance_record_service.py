@@ -43,6 +43,19 @@ REOPENABLE_OBLIGATION_TYPES = frozenset({
 #: A reopened obligation goes back to the step before Filed, from which the ordinary mark-filed move records it again.
 REOPENED_STATUS = "Ready To File"
 
+#: The obligations whose filing record is an MCA workspace filing (`mca_filings`), which an approver can take back out of Filed
+#: there (POST-A-267, item 3). One of these is reopened when NO filing stands behind it any more
+#: (`services.mca_filing_closes_obligation.filing_record_stands`): taken back in the workspace, which reopens it by itself, or
+#: marked filed from Compliance with no workspace filing at all. While the filing stands it is refused, naming the workspace,
+#: because reopening only the calendar line would leave the two saying different things. A GST return (its `filings` row is the
+#: period lock), an ITR (Filed is terminal there) and a TDS statement (it stays filed) have no door that takes the record back
+#: without that lock or that rule, so they stay refused.
+REOPENABLE_WHEN_NO_FILING_STANDS = frozenset({"MCA_AOC4", "MCA_MGT7", "MCA_ADT1"})
+
+#: Every type the reopen door may accept, for the screen that offers it (the server still refuses an MCA one in words while its
+#: filing stands).
+OFFERED_FOR_REOPENING = REOPENABLE_OBLIGATION_TYPES | REOPENABLE_WHEN_NO_FILING_STANDS
+
 MAX_REOPEN_REASON_CHARS = 500
 
 #: The obligations a CA may record as NOT REQUIRED of the client (POST-A-267, item 4). Advance tax alone: the calendar generates all four
@@ -82,6 +95,9 @@ REOPEN_AFTERMATH: dict[str, str] = {
                               "does, or you can mark it filed from Compliance with the date it really went. If a challan was "
                               "recorded in error, retract it on the Challans tab first (a Manager or Partner can): that reopens "
                               "exactly the months it closed.",
+    "MCA_AOC4": "Recording the AOC-4 as filed in the MCA workspace again closes it again.",
+    "MCA_MGT7": "Recording the MGT-7 as filed in the MCA workspace again closes it again.",
+    "MCA_ADT1": "Recording the ADT-1 as filed in the MCA workspace again closes it again.",
     "ADVANCE_TAX": "The tax that closed it is still in the advance-tax register, and the next save of that register closes the "
                    "instalment again if the tax recorded there still covers it, so correct the register entry first.",
 }
@@ -548,12 +564,24 @@ class ComplianceRecordService:
         if not is_filed(record["status"]):
             raise ValidationError("status", f"This obligation is {record['status']}, not filed, so there is nothing to reopen.")
         otype = str(record.get("obligation_type") or "")
-        if otype not in REOPENABLE_OBLIGATION_TYPES:
+        if otype in REOPENABLE_WHEN_NO_FILING_STANDS:
+            from services import mca_filing_closes_obligation as mca
+            year = mca.year_of_obligation(record)
+            if year and mca.filing_record_stands(firm_id or record.get("firm_id") or "", record.get("client_id") or "", otype,
+                                                 year):
+                form = mca.FORM_FOR_OBLIGATION[otype]
+                raise ValidationError(
+                    "obligation_type",
+                    f"The {form} for FY {year} is recorded as filed in the MCA workspace, so this obligation is not reopened "
+                    f"on its own: that would leave the two saying different things. Take the {form} filing back out of Filed "
+                    "in the MCA workspace (someone who may approve MCA filings can), and this obligation reopens with it.")
+        elif otype not in REOPENABLE_OBLIGATION_TYPES:
             raise ValidationError(
                 "obligation_type",
                 f"{record.get('period_label') or otype or 'This obligation'} cannot be reopened from here. Only the statutory "
-                "deposits (PF, ESI, tax deducted at source and advance tax) can be: a return or a filing is kept as it was "
-                "recorded, because reopening only the calendar line would leave it saying something else.")
+                "deposits (PF, ESI, tax deducted at source and advance tax) and an MCA filing taken back in the MCA workspace "
+                "can be: a return is kept as it was recorded, because reopening only the calendar line would leave it saying "
+                "something else.")
         old = {"status": record["status"], "filed_date": record.get("filed_date"),
                "acknowledgement_no": record.get("acknowledgement_no"), "completed_at": record.get("completed_at"),
                "last_escalated_tier": record.get("last_escalated_tier"), "last_escalated_on": record.get("last_escalated_on")}

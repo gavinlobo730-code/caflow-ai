@@ -23,7 +23,7 @@ from services import compliance_obligation_service as obligations
 from services import named_row_ownership
 from core import db_provider
 from domain.compliance_record_service import (
-    MAX_REOPEN_REASON_CHARS, NOT_REQUIRABLE_OBLIGATION_TYPES, REOPEN_AFTERMATH, REOPENABLE_OBLIGATION_TYPES, REOPENED_STATUS,
+    MAX_REOPEN_REASON_CHARS, NOT_REQUIRABLE_OBLIGATION_TYPES, OFFERED_FOR_REOPENING, REOPEN_AFTERMATH, REOPENED_STATUS,
     REQUIRED_AGAIN_STATUS, clean_filed_date,
     compliance_record_service,
 )
@@ -263,7 +263,8 @@ def reopen_obligation(record_id: str, body: ReopenBody,
     undoes a statement the calendar made about the client's statutory position. It moves the obligation back to Ready To File,
     clears the filing date and acknowledgement number and keeps the reason on the row and in the audit log. It does NOT retract a
     payment record that closed it (that is retracted where it was recorded, and the answer says so), and it refuses in words an
-    obligation that has a filing record behind it. Nothing is filed anywhere by this: CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT."""
+    obligation that has a filing record behind it, except an MCA obligation no workspace filing stands behind any more
+    (POST-A-267, item 3: `REOPENABLE_WHEN_NO_FILING_STANDS`; taking the filing back in the MCA workspace reopens it by itself). Nothing is filed anywhere by this: CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT."""
     _assert_obligation_scope(current_user, record_id)
     try:
         updated = compliance_record_service.reopen_record(
@@ -326,7 +327,7 @@ def obligation_required_again(record_id: str, body: ReopenBody,
 def reopenable_obligation_types(current_user: dict = Depends(rbac("compliance", "read"))):
     """Which obligation types the reopen door accepts, so a screen offers it only on those and holds no list of its own; and which
     ones the not-required door accepts (`not_requirable_types`), for the same reason."""
-    return api_response(True, {"obligation_types": sorted(REOPENABLE_OBLIGATION_TYPES),
+    return api_response(True, {"obligation_types": sorted(OFFERED_FOR_REOPENING),
                                "not_requirable_types": sorted(NOT_REQUIRABLE_OBLIGATION_TYPES),
                                "max_reason_chars": MAX_REOPEN_REASON_CHARS})
 

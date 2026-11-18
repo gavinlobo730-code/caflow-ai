@@ -23,6 +23,7 @@ import { chosenCompany, preselectedYear } from "@/lib/mca/filingChoices";
 import { panProblem } from "@/lib/identifiers/pan";
 import { dinProblem } from "@/lib/identifiers/din";
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { toast } from "@/components/ui/use-toast";
@@ -589,6 +590,8 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
   // What the server said about the compliance calendar when a filing was recorded as filed and its obligation was not
   // closed by the same click (POST-A-267). The sentence is the server's; the page decides nothing about the state.
   const [calendarNote, setCalendarNote] = useState<string | null>(null);
+  /** What became of the compliance obligation when a filing was taken back out of Filed: the server's own sentence. */
+  const [reopenNote, setReopenNote] = useState<string | null>(null);
 
   const annualForms = ["AOC-4", "MGT-7", "ADT-1"];
   const eventForms = ["DIR-12", "INC-22", "SH-7", "CHG-1", "CHG-4"];
@@ -700,6 +703,41 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       load();
     } catch (e) {
       setStatusError(failureSentence(e, "The filing's status was not changed.", "write"));
+    }
+  }
+
+  // A filing recorded as filed in error is taken back to In progress (POST-A-267, item 3). The route asks `mca:approve` for a
+  // filing that is filed, which is who is offered the button; the server reopens the calendar's obligation for the form and
+  // year when nothing else still stands behind it and the person may approve compliance, and says in words what it did.
+  async function takeBack(row: Record<string, unknown>) {
+    const form = String(row.form_type ?? "filing");
+    const ok = await confirmDialog({
+      title: "Take this filing back out of Filed?",
+      message: `Use this when the ${form} was recorded as filed in error. It goes back to In progress, and its obligation on the `
+        + "compliance calendar is reopened too where nothing else still records it as filed and you may approve compliance; the "
+        + "answer says which. The SRN and filing date stay on the filing until it is recorded as filed again. Nothing is "
+        + "changed on MCA21.",
+      confirmLabel: "Take back",
+      danger: true,
+    });
+    if (!ok) return;
+    setStatusError(null);
+    setReopenNote(null);
+    try {
+      const res = await apiFetch(`/api/mca-workspace/filings/${row.id as string}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "in_progress", ca_approved: true }),
+      });
+      if (!res?.success) {
+        setStatusError(res?.error ?? "The filing was not taken back.");
+        return;
+      }
+      const answer = (res.data as { compliance_obligation?: { message?: unknown } } | null)?.compliance_obligation;
+      setReopenNote(typeof answer?.message === "string" && answer.message.trim()
+        ? answer.message : "The filing is back at In progress.");
+      load();
+    } catch (e) {
+      setStatusError(failureSentence(e, "The filing was not taken back.", "write"));
     }
   }
 
@@ -843,6 +881,12 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
       )}
 
       {statusError && <p role="alert" className="text-xs text-state-problem">{statusError}</p>}
+      {reopenNote && (
+        <Callout tone="note" title="Taken back to In progress.">
+          <span>{reopenNote}</span>{" "}
+          <button onClick={() => setReopenNote(null)} className="underline">Dismiss</button>
+        </Callout>
+      )}
 
       {loading ? <TableSkeleton cols={5} bare /> : (
         <table className="w-full text-sm border-collapse">
@@ -879,6 +923,10 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
                       className="text-xs px-2 py-0.5 border rounded hover:bg-state-ready-surface text-state-ready">
                       Mark Filed (CA)
                     </button>
+                  )}
+                  {r.status === "filed" && mayApprove && (
+                    <Button variant="plain" size="none" onClick={() => takeBack(r)}
+                      className="text-xs px-2 py-0.5 border rounded hover:bg-ps-muted">Take back</Button>
                   )}
                   {/* Annual forms not yet filed, and only where the server
                       says the walk-through exists — the dead-control rule. */}
