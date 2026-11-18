@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { getTasks, getTasksWindow, getTaskCounts } from "@/lib/data/tasks";
 import { getTeamWorkload } from "@/lib/data/analytics";
 import { getUserProfile } from "@/lib/data/getFirmId";
-import { getMyObligations, type MyObligations } from "@/lib/data/compliance";
+import { getMyObligations, workObligationAsTask, type MyObligations } from "@/lib/data/compliance";
 import { usePermissions } from "@/lib/auth/AuthContext";
 import type { Task, TaskStatus, TeamWorkload } from "@/lib/types";
 import type { TaskCounts } from "@/lib/data/tasks";
@@ -98,7 +98,27 @@ const ROLE_WORD: Record<string, string> = { preparer: "Preparer", reviewer: "Rev
 /** The obligation half of "my obligations and my tasks" (POST-A-206): the returns and deposits the person is named on, from the
  *  obligation store Deadlines shows. It says what it read and what it did not: an obligation nobody is named on is on nobody's list,
  *  and a failed read is said in words, never shown as "none". */
-function MyObligationsCard({ data, error }: { data: MyObligations | null; error: string | null }) {
+function MyObligationsCard({ data, error, mayMakeTasks, onChanged }: {
+  data: MyObligations | null; error: string | null;
+  /** Whether the person may use "Work as a task" (`compliance` write and `task` write, the door's own pairs). */
+  mayMakeTasks: boolean;
+  /** Re-reads the obligations and the tasks after a task was made. */
+  onChanged: () => void;
+}) {
+  const [note, setNote] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  // POST-A-206: one task linked to the obligation, made by the server; the answer is its own sentence.
+  async function workAsTask(id: string) {
+    setNote(null);
+    setFailed(null);
+    try {
+      const out = await workObligationAsTask(id);
+      setNote(out.message);
+      onChanged();
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : "The task was not made.");
+    }
+  }
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -131,12 +151,26 @@ function MyObligationsCard({ data, error }: { data: MyObligations | null; error:
               <p className={`shrink-0 text-2xs ${o.overdue ? "text-state-problem font-medium" : "text-ps-hint"}`}>
                 {o.dueDate ? formatDate(o.dueDate) : "No due date"}{o.overdue ? " · overdue" : ""}
               </p>
+              {o.taskId ? (
+                <span className="shrink-0 text-2xs text-ps-hint">Worked as a task</span>
+              ) : mayMakeTasks ? (
+                <Button variant="outline" size="sm" className="shrink-0 h-6 text-2xs px-2" onClick={() => workAsTask(o.id)}>
+                  Work as a task
+                </Button>
+              ) : null}
             </div>
           ))
         )}
         {data && data.total > MY_OBLIGATIONS_SHOWN && (
           <p className="text-2xs text-ps-hint text-center py-1">
             {data.total - MY_OBLIGATIONS_SHOWN} more not shown here. The rest are on <Link href="/deadlines" className="underline">Deadlines</Link>.
+          </p>
+        )}
+        {note && <p role="status" className="text-2xs text-state-ready text-center py-1">{note}</p>}
+        {failed && <p role="alert" className="text-2xs text-state-problem text-center py-1">{failed}</p>}
+        {data && data.workedAsYourTask > 0 && (
+          <p className="text-2xs text-ps-hint text-center py-1">
+            {data.workedAsYourTask} of your obligations {data.workedAsYourTask === 1 ? "is" : "are"} being worked as your own {data.workedAsYourTask === 1 ? "task" : "tasks"}, so {data.workedAsYourTask === 1 ? "it is" : "they are"} shown once, among your tasks. Completing the task moves the obligation to Ready For Review.
           </p>
         )}
         {data && data.unassigned > 0 && (
@@ -181,6 +215,10 @@ export default function WorkPage() {
   const [myObligations, setMyObligations] = useState<MyObligations | null>(null);
   const [obligationsError, setObligationsError] = useState<string | null>(null);
 
+  // "Work as a task" asks the door's own pairs: `compliance` write behind the route, `task` write inside it.
+  const mayMakeTasks = resolved && can("compliance", "write") && can("task", "write");
+  const [obligationsRead, setObligationsRead] = useState(0);
+
   useEffect(() => {
     if (!mayReadObligations) return;
     let live = true;
@@ -189,7 +227,7 @@ export default function WorkPage() {
       .then((d) => { if (live) setMyObligations(d); })
       .catch((e: unknown) => { if (live) setObligationsError(e instanceof Error ? e.message : "the server did not answer"); });
     return () => { live = false; };
-  }, [mayReadObligations]);
+  }, [mayReadObligations, obligationsRead]);
 
   const load = useCallback(async () => {
     setLoadingTasks(true);
@@ -331,7 +369,8 @@ export default function WorkPage() {
             </Card>
           </div>
 
-          {mayReadObligations && <MyObligationsCard data={myObligations} error={obligationsError} />}
+          {mayReadObligations && <MyObligationsCard data={myObligations} error={obligationsError} mayMakeTasks={mayMakeTasks}
+            onChanged={() => { setObligationsRead((n) => n + 1); void load(); }} />}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Due Today */}

@@ -6076,6 +6076,11 @@ export const api = {
     runEscalations: () => request("/api/compliance/run-escalations", { method: "POST" }),
     /** The caller's own open obligations, the ones they are named on as preparer, reviewer or approver (POST-A-206). */
     mine: () => request<ApiResp<Record<string, unknown>>>(`/api/compliance/obligations/mine`),
+    /** Put an open obligation on a task list: ONE task linked to it (`compliance` write and task write). A second press answers
+     *  the same task. Completing the task moves the obligation to Ready For Review (POST-A-206). */
+    workAsTask: (id: string) =>
+      request<ApiResp<{ task: Record<string, unknown>; created: boolean; message: string }>>(
+        `/api/compliance/obligations/${encodeURIComponent(id)}/task`, { method: "POST" }),
   },
   // R3.13c — canonical client health engine (Product Bible Ch.16, routers/health.py).
   // Replaces the frontend's direct-Supabase health-score-compute.ts.

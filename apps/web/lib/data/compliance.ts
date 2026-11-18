@@ -160,6 +160,8 @@ export interface MyObligation {
   status: string | null;
   roles: string[];
   overdue: boolean;
+  /** The open task working this obligation, when somebody else is working it as a task; null when none is. */
+  taskId: string | null;
 }
 
 export interface MyObligations {
@@ -168,6 +170,8 @@ export interface MyObligations {
   overdue: number;
   /** Open obligations in the caller's reach with nobody named on them: nobody's list carries them. */
   unassigned: number;
+  /** The caller's obligations they are working as their own task: shown once, as the task, so not in `obligations`. */
+  workedAsYourTask: number;
 }
 
 /** The open obligations the caller is named on as preparer, reviewer or approver, soonest due first (POST-A-206). Read from the
@@ -187,6 +191,7 @@ export async function getMyObligations(): Promise<MyObligations> {
     status: str(o.status),
     roles: arrayOrEmpty<string>(o.my_roles).filter((r) => typeof r === "string"),
     overdue: o.overdue === true,
+    taskId: str(o.task_id),
   }));
   const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
   return {
@@ -194,7 +199,16 @@ export async function getMyObligations(): Promise<MyObligations> {
     total: num(d.total, obligations.length),
     overdue: num(d.overdue, obligations.filter((o) => o.overdue).length),
     unassigned: num(d.unassigned_in_scope, 0),
+    workedAsYourTask: num(d.worked_as_your_task, 0),
   };
+}
+
+/** Put an obligation on a task list (POST-A-206). Answers the server's sentence; a refusal THROWS with the server's words. */
+export async function workObligationAsTask(id: string): Promise<{ created: boolean; message: string }> {
+  const res = await api.complianceOps.workAsTask(id);
+  if (!res?.success) throw new Error(res?.error ?? "The task was not made.");
+  const d = objectOrNull<Record<string, unknown>>(res.data) ?? {};
+  return { created: d.created === true, message: typeof d.message === "string" ? d.message : "The task was made." };
 }
 
 /** Fetches compliance obligations (assignment-scoped server-side), optionally
