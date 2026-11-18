@@ -114,7 +114,7 @@ import { fileURLToPath } from "node:url";
 import { screenRoutes } from "./refresh-screen-snapshot.js";
 import { headersFor, parseHeadersFile } from "./security-headers.mjs";
 import {
-  AXE_PACKAGE_VERSION, NAMED_ROUTE_PATHS, auditPage, axeMode, compareToBaseline, describeFailure,
+  AXE_PACKAGE_VERSION, NAMED_ROUTE_KEYS, NAMED_ROUTE_PATHS, auditPage, axeRouteKey, axeMode, compareToBaseline, describeFailure,
   initialBaseline, loadAxeBuilder, parseBaseline, planShrink, serialiseBaseline, settleVerdict,
   summaryMarkdown,
 } from "./axeAudit.mjs";
@@ -780,10 +780,12 @@ for (const route of routes) {
       // The accessibility scan, on the page as it stands: only where it STAYED PUT (a redirect is the
       // destination's page, scanned under its own route) and not on a route a named screen covers (that scan is
       // stricter and its own).
-      if (scanRoutes && text && !NAMED_ROUTE_PATHS.has(trim(routePath))) {
+      // A real client's screen is keyed `/clients/{client}/…` (POST-A-036), so the baseline names the screen and not the stub's id.
+      const axeKey = axeRouteKey(trim(routePath), realClient ? CLIENT_UUID : null);
+      if (scanRoutes && text && !NAMED_ROUTE_PATHS.has(trim(routePath)) && !NAMED_ROUTE_KEYS.has(axeKey)) {
         const scan = await auditPage(axeLoaded.AxeBuilder, page);
-        if (scan.error) axeUnaudited.push({ route: trim(routePath), error: scan.error });
-        else axeFound.set(trim(routePath), scan.findings);
+        if (scan.error) axeUnaudited.push({ route: axeKey, error: scan.error });
+        else axeFound.set(axeKey, scan.findings);
       }
     }
     if (shots) {
@@ -816,7 +818,10 @@ for (const route of routes) {
 // sign-in screens). They are scanned whatever the route walk did, and a screen that did not land where it was
 // asked is a failure, not a clean row.
 let axeNamed = [];
-if (axe.run) {
+// The client-workspace pass (`--real-client`) runs after the full walk, which has already scanned the six named screens with the
+// same stub client, so it does not scan them again: they are judged once a night, and the pass's minutes are the nightly's slack.
+if (axe.run && realClient) console.log("\naxe: the six named screens are scanned by the full walk, not by this client-workspace pass.");
+if (axe.run && !realClient) {
   process.stdout.write("\n\naxe: scanning the six named screens … ");
   axeNamed = await auditNamedScreens({
     browser, AxeBuilder: axeLoaded.AxeBuilder, port: PORT, clientId: CLIENT_UUID, viewport: VIEWPORT,

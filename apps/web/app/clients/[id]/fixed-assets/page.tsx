@@ -453,7 +453,7 @@ function RegisterTab({ clientId, openDoc }:
           {loading ? "Loading…" : `${assets.length} asset${assets.length !== 1 ? "s" : ""}`}
         </p>
         <div className="flex gap-2">
-          <button onClick={load} className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
+          <button onClick={load} aria-label="Reload" title="Reload" className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
           {/* A migrated client's register, with the depreciation each asset

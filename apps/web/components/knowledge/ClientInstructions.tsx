@@ -119,7 +119,7 @@ export function ClientInstructions({
           </div>
           <div className="flex items-center gap-3">
             {canWrite && <button onClick={() => setShowForm((v) => !v)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-brand text-white"><Plus size={12} /> Add</button>}
-            <button onClick={load} className="text-gray-400 hover:text-brand"><RefreshCw size={13} /></button>
+            <button onClick={load} aria-label="Reload" title="Reload" className="text-gray-400 hover:text-brand"><RefreshCw size={13} aria-hidden="true" /></button>
           </div>
         </div>
       )}

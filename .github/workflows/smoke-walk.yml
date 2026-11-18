@@ -275,14 +275,15 @@ jobs:
       # `--real-client` puts a UUID in the address and the stub answers the one lookup keyed on that client
       # (`scripts/walkStub.mjs`), so the gate lets the screens through and the client shell is the chrome. It walks only
       # /clients (the rest of the product is the walk above), keeps MAX_ROUTES_PER_DIGEST at 5, and runs even when the
-      # first walk found a broken screen. The accessibility scan is off for this pass until its baseline exists
-      # (`apps/web/scripts/axe-baseline.json` is keyed on the placeholder routes and would call every client screen new):
-      # the item that remains says so. Like the walk it is no check anything waits on.
+      # first walk found a broken screen. The accessibility scan runs on this pass too: a client screen is judged and
+      # baselined as `/clients/{client}/…` (scripts/axeAudit.mjs `axeRouteKey`), and the six named screens are left to the
+      # walk above, which scans them with the same stub client. Like the walk it is no check anything waits on.
       #
       # IT RUNS LAST, AND IS BOUNDED (review of POST-A-036). The drive's deadline above is sized on what ran before the
       # drive when it was measured (17 minutes, the slowest night seen) and on what runs after it (a minute of uploads):
       # 17 + 24 + 1.5 + 1 = 43.5 of 45. This pass is about two minutes (44 routes at the walk's 1.7 s a route, plus the
-      # pictures), so before the drive it would have spent the slack that keeps the drive's report from being lost to a
+      # pictures; the scan of its 43 routes added about 20 seconds when it was first run with the scan (83 s against 64 s), since the named
+      # screens are not scanned again), so before the drive it would have spent the slack that keeps the drive's report from being lost to a
       # cancelled job. After the drive's report and the walk's pictures are kept, a slow night can cut only this pass and
       # what it leaves. `timeout-minutes` bounds a client screen that never goes quiet (the walk waits up to 30 s a
       # route). Its pictures and contact sheet go to .smoke/client/, so they never overwrite the first walk's.
@@ -291,7 +292,7 @@ jobs:
         if: always() && steps.build.outcome == 'success'
         timeout-minutes: 5
         working-directory: apps/web
-        run: node scripts/smoke-walk.mjs --only /clients --real-client --no-axe --no-slow-server --report .smoke/client-report.json --shots
+        run: node scripts/smoke-walk.mjs --only /clients --real-client --no-slow-server --report .smoke/client-report.json --shots
 
       - name: Keep the client-workspace report
         if: always()

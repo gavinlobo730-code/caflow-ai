@@ -144,7 +144,7 @@ export default function ClientKnowledgePage() {
                 <Plus size={13} /> New article
               </button>
             )}
-            <button onClick={() => load(query)} className="text-gray-400 hover:text-brand"><RefreshCw size={14} /></button>
+            <button onClick={() => load(query)} aria-label="Reload" title="Reload" className="text-gray-400 hover:text-brand"><RefreshCw size={14} aria-hidden="true" /></button>
           </div>
         }
         className="mb-4"
@@ -167,9 +167,9 @@ export default function ClientKnowledgePage() {
       )}
       {loading ? <PageLoader onRetry={() => { void load(query); }} /> : (
         <div className="space-y-2">
-          {articles.length === 0 && !answered && <p className="text-xs text-gray-400">No client-scoped articles.</p>}
+          {articles.length === 0 && !answered && <p className="text-xs text-gray-600">No client-scoped articles.</p>}
           {articles.length === 0 && answered && (
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-600">
               No article of this client has every word of &ldquo;{answered}&rdquo; in its title or its current text.
             </p>
           )}
