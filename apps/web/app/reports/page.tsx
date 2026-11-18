@@ -591,7 +591,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   const [toDate, setToDate] = useState(todayIstISO());
   // The P&L's window. Its rows used to be read whole and cut in the browser on `transaction_date >= from && <= to`, so text that is not a
   // date (handed up as "") read as no lower bound and as an upper bound nothing passes: an unreadable To drew a P&L of nil revenue and nil
-  // expenses as if that were the figure. The window is now the server's (`date_from`/`date_to` on /api/reports/transactions), and a box
+  // expenses as if that were the figure. The window is now the server's (`date_from`/`date_to` on /api/reports/party-totals, which also does the sums, POST-A-469), and a box
   // that is unreadable or blank is refused in its own sentence before anything is read (POST-A-386).
   const dates = useDateProblems();
 
