@@ -13,6 +13,7 @@ import jwt
 
 _logger = logging.getLogger("caflow.auth")
 from jwt import PyJWKClient
+from core import auth_time
 from core.env import env_or_default
 from core.supabase_client import get_service_supabase
 from core.request_actor import bind as bind_actor
@@ -271,6 +272,10 @@ def decode_supabase_jwt(token: str) -> dict:
     )
 
 
+def _token_predates_revocation(payload: dict, revoked_epoch: float) -> bool:
+    return auth_time.issued_before_revocation(payload, revoked_epoch)
+
+
 def _instant_epoch(value) -> float:
     """A stored timestamp as POSIX seconds. Raises on anything it cannot read.
 
@@ -389,7 +394,9 @@ def get_current_user(
     if revoked_at:
         try:
             revoked_epoch = _instant_epoch(revoked_at)
-            issued_before_revocation = float(payload["iat"]) < revoked_epoch
+            # By `iat` AND by when the session began (core/auth_time.py): a renewed token has a
+            # new `iat` and would otherwise walk straight back past a revocation.
+            issued_before_revocation = _token_predates_revocation(payload, revoked_epoch)
         except Exception:                                    # noqa: BLE001
             _logger.error(
                 "sessions_revoked_at for user %s could not be compared with the "
@@ -466,7 +473,12 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
     if not auth_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing sub claim")
 
-    return {"auth_user_id": auth_user_id, "email": payload.get("email", ""), "aal": payload.get("aal", "aal1")}
+    return {
+        "auth_user_id": auth_user_id, "email": payload.get("email", ""), "aal": payload.get("aal", "aal1"),
+        # When an authenticator code was last entered in this session (POST-A-484): the platform admin's destructive
+        # actions ask for one entered in the last five minutes.
+        "last_authenticator_code_at": auth_time.last_authenticator_code_epoch(payload),
+    }
 
 
 def require_mfa(current_user: dict = Header(default=None)) -> dict:  # pragma: no cover - thin wrapper

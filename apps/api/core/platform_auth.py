@@ -10,7 +10,9 @@ Platform endpoints are cross-tenant BY DESIGN and use the service-role client;
 access is gated to the vetted allowlist and every mutating action is audited.
 """
 import logging
+import time
 from fastapi import Depends, HTTPException, status
+from core import auth_time
 from core.auth import get_jwt_user
 
 _logger = logging.getLogger("caflow.platform")
@@ -50,10 +52,17 @@ def require_platform_admin(jwt_user: dict = Depends(get_jwt_user)) -> dict:
 
 
 def require_platform_admin_mfa(admin: dict = Depends(require_platform_admin)) -> dict:
-    """Destructive actions (suspend / delete) require a fresh MFA (aal2) token."""
+    """Destructive actions (suspend, soft delete, permanent delete) need a session that passed the second factor
+    AND an authenticator code entered in the last five minutes (POST-A-484).
+
+    `aal2` alone is true for the whole life of a session that passed the second factor once, so a left-open platform
+    page could suspend, delete or purge a firm hours later. The token carries when the code was entered
+    (`core/auth_time`); the page asks for a fresh one when it is refused with FRESH_CODE_SENTENCE."""
     if admin.get("aal") != "aal2":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Multi-factor authentication is required for this action. Enrol at Settings → Security.",
         )
+    if not auth_time.authenticator_code_is_fresh(admin.get("last_authenticator_code_at"), time.time()):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=auth_time.FRESH_CODE_SENTENCE)
     return admin
