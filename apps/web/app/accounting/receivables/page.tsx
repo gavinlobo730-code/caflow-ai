@@ -124,6 +124,9 @@ export default function ReceivablesAgingPage() {
     if (!firmId) return;
     setLoading(true);
     setError(null);
+    // The rows of an earlier report (another client, or another day) are not this one: a read that fails leaves nothing to export (POST-A-464).
+    setRows([]);
+    setGenerated(false);
     const sb = getSupabaseClient();
     const today = todayIstISO();
 
@@ -229,7 +232,7 @@ export default function ReceivablesAgingPage() {
         actions={
           <>
             {generated && (
-              <Button variant="outline" size="sm" onClick={exportExcel} className="flex items-center gap-1">
+              <Button variant="outline" size="sm" onClick={exportExcel} disabled={!generated || !!error || loading} className="flex items-center gap-1">
                 <Download className="w-4 h-4" /> Export CSV
               </Button>
             )}
