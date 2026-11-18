@@ -76,6 +76,7 @@ frontend UI on the Purchases page.)*
 | `09-bank-entries.md` | A bank statement line becomes a voucher: Receipt, Payment or Contra |
 | `10-payroll.md` | Payroll, the bureau model (a design record, partly superseded; read its status box) |
 | `11-revenue-ops-and-knowledge.md` | The practice's own revenue loop (the internal client, billing schedules, collections, time capture) and the knowledge base, written from the code |
+| `12-what-each-role-is-offered.md` | What each staff role is offered in the menus and the client workspace, by role template: generated from the permission table and the menus, and held current by a test |
 
 ## Current phase
 
