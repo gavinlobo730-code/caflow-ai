@@ -615,7 +615,7 @@ def _partner_remuneration(api: Api, c, client_id: str, financial_year: str, writ
                       "narration": narration}]
             if tax:
                 lines.append({"account_id": tds_payable, "debit_paise": 0, "credit_paise": tax,
-                              "narration": f"TDS u/s 194T on {narration.lower()}"})
+                              "narration": f"TDS u/s 194T on the remuneration to {cr.partner.name} for the quarter ended {cr.on}"})
             api.post("/api/accounting/journal", {
                 "client_id": client_id, "entry_date": cr.on, "reference_no": f"SEED-PARTNER-REM-{n:02d}",
                 "narration": narration, "entry_type": "Journal", "status": "posted", "lines": lines})
@@ -1155,10 +1155,15 @@ def _salary_worksheet(api: Api, client_id: str, financial_year: str, it, written
         "client_id": client_id, "financial_year": financial_year, "use_new_regime": True,
         "payload": {"employers": [{"key": "employer-1", "name": it.employer_name, "tan": it.employer_tan,
                                    "salary_17_1_paise": it.salary_paise}]}})
-    box = int((((out.get("data") or {}).get("result") or {}).get("engine_inputs") or {}).get("gross_salary_paise") or -1)
+    from domain.money_sentence import rupee_text
+    box = ((((out.get("data") or {}).get("result") or {}).get("engine_inputs") or {}).get("gross_salary_paise"))
+    # A figure the answer does not carry is not a figure: it is never read as nil or as anything else.
+    if not isinstance(box, int) or isinstance(box, bool):
+        raise _NotFiled(f"the worksheet's answer carries no salary-box figure, and the computation is given "
+                        f"{rupee_text(it.salary_paise)}")
     if box != it.salary_paise:
-        raise _NotFiled(f"the salary worksheet puts {box} paise in the salary box, and the computation is given "
-                        f"{it.salary_paise}")
+        raise _NotFiled(f"the salary worksheet puts {rupee_text(box)} in the salary box, and the computation is given "
+                        f"{rupee_text(it.salary_paise)}")
     written["salary_worksheets"] += 1
 
 

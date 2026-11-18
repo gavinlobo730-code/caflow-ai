@@ -202,7 +202,11 @@ class AccountingService:
             "account_type": data["account_type"],
             "account_subtype": data.get("account_subtype"),
             "parent_id": data.get("parent_id"),
-            "is_active": True,
+            # The rest of what the real insert writes, so a mock create keeps what it was given (PRE-A-004 review).
+            "parent_group": data.get("parent_group"),
+            "sub_group": data.get("sub_group"),
+            "schedule_iii_mapping": data.get("schedule_iii_mapping"),
+            "is_active": data.get("is_active", True),
             "client_id": data.get("client_id"),
             "firm_id": data.get("firm_id"),
         }

@@ -59,8 +59,8 @@ resync the register on issue, which its own docstring always claimed happened
 THE REGISTER'S TYPED ROWS ARE ON A 26Q, OUTSIDE THE TIE-OUT (POST-A-078). A deduction a CA typed on the TDS screen is a register row that neither a bill nor an
 advance wrote. It is a deduction the deductor made, so the statement of the quarter's deductions carries it: `tds_26q_from_books` makes it a deductee row like a
 bill's, fills it from the quarter's challans by the same FIFO the register's own readers use (`deposit_due.mapping_from_register` has always put typed rows in that
-fill, so a statement that left them out disagreed with them about which deduction a challan paid), and gives it its payment code. It has no journal behind
-it, so the tie-out with the TDS Payable account compares the bills and advances alone (`reconciliation.books_paise`) and the typed tax is reported beside it
+fill, so a statement that left them out disagreed with them about which deduction a challan paid), and gives it its payment code. Nothing records which
+journal, if any, carries it (one may have been passed by hand), so the tie-out with the TDS Payable account compares the bills and advances alone (`reconciliation.books_paise`) and the typed tax is reported beside it
 (`reconciliation.typed_paise`, and `typed_on_statement`: how many, the tax, each row and a sentence that says so). A typed row recorded for another statement
 (`return_type`, the register's routing key) is not carried and is named in `excluded_typed`. So is a typed row naming a supplier now recorded as non-resident, with
 its own sentence: it is NOT put in `excluded_non_resident`, whose note sends the CA to the 27Q built from the books, because that statement reads bills and advances
@@ -215,8 +215,8 @@ def _typed_deductions_in_quarter(db, firm_id: str, client_id: str, start: str, e
     """The deductions a CA TYPED on the TDS screen for this quarter that withheld tax: `tds_deductions` rows that neither a purchase bill nor a vendor advance wrote
     (`manual_register.written_by_a_document`), except salary (a typed section 192 is refused at the door and belongs to 24Q).
 
-    They are deductions the deductor made, so the 26Q carries them as deductee rows (POST-A-078). They have no journal behind them (the typed register is a book of
-    its own), so the statement keeps them out of the tie-out with the TDS Payable control account that `reconciliation` reports and says so.
+    They are deductions the deductor made, so the 26Q carries them as deductee rows (POST-A-078). Nothing records which journal, if any, carries them (the typed
+    register is a book of its own, and a journal passed by hand names no row of it), so the statement keeps them out of the tie-out with the TDS Payable control account that `reconciliation` reports and says so.
 
     A row that withheld nothing is not one: a statement reports DEDUCTIONS (bills are read with `tds_paise > 0` and advances are dropped when they withheld nothing),
     and a payment recorded below its section's limit is a register entry that counts toward the year's total, not tax to key.
@@ -250,8 +250,8 @@ EXCLUDED_TYPED_REASON = (
 #: The sentence the two return screens show after the count and the tax of the typed deductions the statement CARRIES (POST-A-078). The lead, from the count and
 #: the tax, says they are on the statement; this says what is different about them.
 TYPED_ON_STATEMENT_REASON = (
-    "Each is a deductee row under the challan that paid it, like a bill's. No journal stands behind a deduction typed on the TDS screen, so the tie-out with "
-    "the TDS Payable account compares the purchase bills and advances alone, and these are outside it."
+    "Each is a deductee row under the challan that paid it, like a bill's. Nothing records which journal, if any, carries a deduction typed on the TDS screen, so "
+    "the tie-out with the TDS Payable account compares the purchase bills and advances alone, and these are outside it, as is any journal passed by hand for them."
 )
 
 
@@ -796,8 +796,9 @@ def tds_26q_from_books(
     tds_payable_id = _find_account_by_exact_name(db, firm_id, client_id, "TDS Payable")
     journal_ids = [e["journal_entry_id"] for e in events if e.get("journal_entry_id")]
     gl_paise = _gl_movement_for_entries(db, firm_id, client_id, tds_payable_id, journal_ids)
-    # THE TIE-OUT IS THE DOCUMENTS' (POST-A-078). A typed deduction has no journal behind it, so the books side of the tie-out is the bills and advances on the
-    # statement, and the typed tax is reported beside it. Adding it in would make every quarter with a typed deduction fail to match a ledger that never held it.
+    # THE TIE-OUT IS THE DOCUMENTS' (POST-A-078). Nothing records which journal, if any, carries a typed deduction, so the books side of the tie-out is the bills and
+    # advances on the statement, and the typed tax is reported beside it. Adding it in would compare it with journals this reads none of (a journal passed by hand
+    # for a typed row is not among `journal_ids`), so the typed tax would read as a difference whether or not a journal carries it.
     typed_paise = sum(e["tds_paise"] for e in typed_events if e["section"] != "192")
     books_paise = payload.total_tds_deducted_paise - typed_paise
     matched = tds_payable_id is not None and books_paise == gl_paise
@@ -847,7 +848,7 @@ def tds_26q_from_books(
                 # deduction and raises a §201(1)/§201(1A) demand.
                 "is_lower_deduction": d.is_lower_deduction,
                 "lower_deduction_cert": d.lower_deduction_cert,
-                # What recorded the deduction: a purchase bill, an advance, or the TDS register (typed on the TDS screen, no journal behind it; POST-A-078).
+                # What recorded the deduction: a purchase bill, an advance, or the TDS register (typed on the TDS screen, carried by no journal the product records; POST-A-078).
                 "recorded_by": _by,
             }
             for d, _pc, _by in zip(payload.deductees, _pay_rows, recorded_by, strict=True)

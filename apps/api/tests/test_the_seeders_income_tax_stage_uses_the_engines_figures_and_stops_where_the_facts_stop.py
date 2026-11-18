@@ -634,3 +634,22 @@ def test_the_worksheets_real_answer_puts_the_form_16_salary_in_the_box():
     result = work_out("salary", body["payload"], fy=FY, use_new_regime=True)
     assert result["engine_inputs"]["gross_salary_paise"] == PRIYA.income_tax.salary_paise
     assert result["gaps"] == []
+
+
+@pytest.mark.parametrize("answer,said", [
+    ({}, "carries no salary-box figure"),
+    ({"gross_salary_paise": None}, "carries no salary-box figure"),
+    ({"gross_salary_paise": "1800000"}, "carries no salary-box figure"),
+    ({"gross_salary_paise": 0}, "puts ₹0.00 in the salary box"),
+    ({"gross_salary_paise": 17_99_999_00}, "puts ₹17,99,999.00 in the salary box"),
+])
+def test_a_worksheet_answer_with_no_figure_is_said_apart_from_a_different_figure_and_both_are_in_rupees(monkeypatch, answer, said):
+    """The review of PRE-A-004: `int(... or -1)` invented -1 for a missing figure and turned a real nil into -1, and the
+    sentence named paise. A figure the answer does not carry is said as such; a figure it carries is said in rupees."""
+    api = FakeApi({("PUT", "/api/income-tax/worksheets/salary"): lambda body: {"data": {"result": {"engine_inputs": answer}}}})
+    w = _run(api, PRIYA, monkeypatch=monkeypatch)
+    (finding,) = [r for r in w["returns_refused"] if "salary" in r]
+    assert said in finding, finding
+    assert "-1" not in finding and "paise" not in finding, finding
+    assert "₹18,00,000.00" in finding, "the computation's salary is not said in rupees"
+    assert w["itr_filings"] == 0

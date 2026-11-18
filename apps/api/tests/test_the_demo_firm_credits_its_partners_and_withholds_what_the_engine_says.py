@@ -112,6 +112,8 @@ def test_each_journal_follows_its_deduction_balances_and_withholds_exactly_what_
         assert debits == credits == d["payment_amount_paise"]
         tax_lines = [ln for ln in jb["lines"] if "194T" in ln["narration"]]
         assert [ln["credit_paise"] for ln in tax_lines] == [3_000_00], "the TDS credit is not the door's answer"
+        # The partner's name is written as the partner writes it, in every line (the review: the tax line lower-cased it).
+        assert all(d["deductee_name"] in ln["narration"] for ln in jb["lines"]), jb["lines"]
         assert jb["entry_date"] == d["transaction_date"] and jb["status"] == "posted"
 
 
@@ -172,3 +174,27 @@ def test_the_mock_chart_door_creates_an_account(dev_header_auth):
     assert got.status_code == 200, got.text
     assert got.json()["data"]["account_name"] == "Remuneration to Partners"
     assert got.json()["data"]["account_code"] == "5801"
+
+
+def test_a_mock_account_with_no_code_is_refused_as_production_refuses_it(dev_header_auth):
+    """The review of PRE-A-004: the mock branch stored a blank code that the real branch refuses with a 422."""
+    from fastapi.testclient import TestClient
+    from main import app
+    for code in (None, "", "   "):
+        body = {"name": "No code", "account_type": "Expense", **({} if code is None else {"code": code})}
+        got = TestClient(app).post("/api/accounting/accounts", json=body)
+        assert got.status_code == 422, (code, got.text)
+        assert "account code is required" in got.text
+
+
+def test_a_mock_account_keeps_what_it_was_given_as_the_real_insert_does(dev_header_auth):
+    """The review of PRE-A-004: the mock branch forced `is_active` to True and dropped the group, sub-group and caption."""
+    from fastapi.testclient import TestClient
+    from main import app
+    got = TestClient(app).post("/api/accounting/accounts", json={
+        "name": "Dormant ledger", "code": "5802", "account_type": "Expense", "is_active": False,
+        "parent_group": "Indirect Expenses", "sub_group": "Partners", "schedule_iii_mapping": ""})
+    assert got.status_code == 200, got.text
+    data = got.json()["data"]
+    assert data["is_active"] is False
+    assert (data["parent_group"], data["sub_group"], data["schedule_iii_mapping"]) == ("Indirect Expenses", "Partners", None)
