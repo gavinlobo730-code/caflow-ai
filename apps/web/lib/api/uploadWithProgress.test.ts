@@ -132,29 +132,75 @@ test("no multipart POST in the browser goes round the upload door", () => {
   assert.deepEqual(offenders, [], "send a FormData through fetchUpload (or a lib/api method built on uploadForm) so the screen can show what has been sent");
 });
 
+/** A call's top-level arguments (commas inside brackets, braces, parentheses or quotes do not split). */
+function splitArgs(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0, quote: string | null = null, cur = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) { cur += ch; if (ch === "\\") { cur += text[++i] ?? ""; } else if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === "'" || ch === "`") { quote = ch; cur += ch; continue; }
+    if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) depth--;
+    if (ch === "," && depth === 0) { out.push(cur.trim()); cur = ""; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** Every lib/api method that takes a progress callback, as `group.method`, with the callback's parameter position. */
+function uploadMethods(api: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const re = /^ {4}(\w+): (?:async )?\(([^)]*?)onProgress\?: \(p: UploadProgress\) => void\)/gm;
+  for (const m of api.matchAll(re)) {
+    const group = [...api.slice(0, m.index).matchAll(/^ {2}(\w+): \{\s*$/gm)].pop()?.[1];
+    if (!group) continue;
+    out.set(`${group}.${m[1]}`, splitArgs(m[2]).length);
+  }
+  return out;
+}
+
 test("every uploadForm call hands on a progress callback, and every screen calling such a method passes one", () => {
   const api = fs.readFileSync(path.join(WEB, "lib/api/index.ts"), "utf8");
   const calls = [...api.matchAll(/\buploadForm\(/g)].map((m) => argsAt(api, m.index! + m[0].length - 1));
   assert.ok(calls.length >= 9, "the scan found the upload methods");
   for (const a of calls.slice(1)) assert.match(a, /,\s*onProgress\s*$/, `uploadForm(${a}) drops the callback`);
-  const methods = [...api.matchAll(/(\w+): (?:async )?\([^)]*onProgress\?: \(p: UploadProgress\) => void\)/g)].map((m) => m[1]);
-  for (const m of ["upload", "uploadStatement", "inspectStatement", "previewStatement", "shareReport", "attachToNotice", "uploadLogo"]) {
-    assert.ok(methods.includes(m), `${m} takes a progress callback`);
+  const methods = uploadMethods(api);
+  for (const [m, at] of [["documents.upload", 1], ["clientDocuments.upload", 1], ["banking.uploadStatement", 1],
+    ["banking.inspectStatement", 1], ["banking.previewStatement", 1], ["accounting.shareReport", 1],
+    ["incomeTax.attachToNotice", 3], ["branding.uploadLogo", 1]] as const) {
+    assert.equal(methods.get(m), at, `${m} takes a progress callback as argument ${at + 1}`);
   }
+  // Each call to such a method must reach the callback's own position, and the argument there must be a callback
+  // (a setter or a passed-on onProgress), whatever its other arguments are (a notice's id comes first, not a file).
   const missing: string[] = [];
+  let seen = 0;
   for (const [rel, src] of sourceFiles()) {
     if (!rel.startsWith("app/") && !rel.startsWith("components/")) continue;
-    const forms = formDataNames(src);
-    for (const name of new Set(methods)) {
-      for (const m of src.matchAll(new RegExp(`\\bapi\\.\\w+\\.${name}\\(`, "g"))) {
-        const a = argsAt(src, m.index! + m[0].length - 1);
-        // A method of the same name that takes rows as JSON (the AIS import's `upload`) is not a file upload.
-        const first = /^\s*(\w+)/.exec(a)?.[1];
-        if (first && /^(file|form|formData)$/.test(first) === false && !forms.has(first)) continue;
-        if (!first) continue;
-        if (!/,\s*(set\w+|onProgress)\s*$/.test(a)) missing.push(`${rel}: ${name}(${a})`);
+    for (const [name, at] of methods) {
+      for (const m of src.matchAll(new RegExp(`\\bapi\\.${name.replace(".", "\\.")}\\(`, "g"))) {
+        seen++;
+        const args = splitArgs(argsAt(src, m.index! + m[0].length - 1));
+        if (args.length !== at + 1 || !/^(set\w+|onProgress)$/.test(args[at])) missing.push(`${rel}: ${name}(${args.join(", ")})`);
       }
     }
   }
+  assert.ok(seen >= 10, `only ${seen} upload calls found on screens: the scan has gone blind`);
   assert.deepEqual(missing, [], "a screen that uploads a file says how much of it has been sent");
+});
+
+test("every direct fetchUpload on a screen passes its progress callback as the fourth argument", () => {
+  const missing: string[] = [];
+  let seen = 0;
+  for (const [rel, src] of sourceFiles()) {
+    if (!rel.startsWith("app/") && !rel.startsWith("components/")) continue;
+    for (const m of src.matchAll(/\bfetchUpload\(/g)) {
+      seen++;
+      const args = splitArgs(argsAt(src, m.index! + m[0].length - 1));
+      if (args.length !== 4 || !/^(set\w+|onProgress)$/.test(args[3])) missing.push(`${rel}: fetchUpload(${args.join(", ")})`);
+    }
+  }
+  assert.ok(seen >= 3, `only ${seen} direct fetchUpload calls found: the scan has gone blind`);
+  assert.deepEqual(missing, [], "the fourth argument is what lets the screen say how much has been sent");
 });
