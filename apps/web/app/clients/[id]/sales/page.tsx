@@ -1,5 +1,6 @@
 "use client";
 
+import { rowMenuAt, type RowMenuPlace } from "@/lib/ui/rowMenuPosition";
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { taxablePaise } from "@/lib/money/gstLine";
 import { templateBasePaise } from "@/lib/recurring/templateBase";
@@ -1531,10 +1532,9 @@ function SalesInvoices({
   // lives here so the actions column reads as one button, not a strip of
   // mixed icon/text buttons. Anchored to the viewport (mirrors the Customers
   // tab's own menu below) since the table scrolls/clips an in-flow dropdown.
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   function openMenuFor(e: React.MouseEvent, inv: SalesInvoice) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: inv.id, top: r.bottom + 4, left: Math.max(8, r.right - 192) });
+    setMenu({ id: inv.id, ...rowMenuAt(e, 192) });
   }
 
   // FY / date-window selector that SCOPES THE SERVER QUERY (which rows load).
@@ -2253,7 +2253,7 @@ function SalesInvoices({
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-48 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(inv.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -2982,7 +2982,7 @@ function Customers({
   const [deactivateTarget, setDeactivateTarget] = useState<Customer | null>(null);
   const [deactivating, setDeactivating] = useState(false);
   // Row actions overflow menu (anchored to the viewport to avoid table clipping).
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   // Permanent-delete flow: target + the dependency report that gates it.
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteDeps, setDeleteDeps] = useState<CustomerDependencies | null>(null);
@@ -3097,10 +3097,9 @@ function Customers({
   }
 
   // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
-  // in-flow dropdown would be cut off). Right-align a 176px menu under the button.
+  // in-flow dropdown would be cut off). Right-align a 176px menu under the button, or above it near the foot of the window (lib/ui/rowMenuPosition).
   function openMenuFor(e: React.MouseEvent, c: Customer) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: c.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: c.id, ...rowMenuAt(e, 176) });
   }
 
   /** Bulk-import customers through /api/customers/bulk — one request for the
@@ -3470,7 +3469,7 @@ function Customers({
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               {mayEditParty && (
                 <button onClick={() => { setMenu(null); setEditCustomer(c); setShowForm(true); }}
@@ -4433,7 +4432,7 @@ function CreditNotes({
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "warning" } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -4533,8 +4532,7 @@ function CreditNotes({
   }
 
   function openMenuFor(e: React.MouseEvent, cn: CreditNote) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: cn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: cn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueCreditNote(id: string) {
@@ -4713,7 +4711,7 @@ function CreditNotes({
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(c.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -4884,7 +4882,7 @@ function SalesDebitNotes({
   const [loadFailed, setLoadFailed] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -4981,8 +4979,7 @@ function SalesDebitNotes({
   }
 
   function openMenuFor(e: React.MouseEvent, dn: SalesDebitNote) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: dn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: dn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueDebitNote(id: string) {
@@ -5143,7 +5140,7 @@ function SalesDebitNotes({
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">

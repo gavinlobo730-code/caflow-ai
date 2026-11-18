@@ -270,7 +270,7 @@ function CompaniesTab({ clientId }: { clientId: string }) {
                 <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{c.company_category as string}</span>
               </div>
               <p className="text-xs text-ps-label font-mono">{c.cin as string}</p>
-              {!!c.incorp_date && <p className="text-xs text-ps-label">Incorporated: {c.incorp_date as string}</p>}
+              {!!c.incorp_date && <p className="text-xs text-ps-label">Incorporated: {formatDate(c.incorp_date as string)}</p>}
               <div className="flex gap-6 text-xs text-ps-label mt-2">
                 <span>Auth. Capital: {formatCroreLakh(c.authorized_capital_paise as PaiseInput)}</span>
                 <span>Paid-up: {formatCroreLakh(c.paid_up_capital_paise as PaiseInput)}</span>
@@ -489,7 +489,7 @@ function DirectorsTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 font-mono text-xs">{r.din as string}</td>
                 <td className="px-3 py-2">{r.director_name as string}</td>
                 <td className="px-3 py-2 text-xs">{r.designation as string}</td>
-                <td className="px-3 py-2 text-xs">{r.date_of_appointment as string}</td>
+                <td className="px-3 py-2 text-xs">{formatDate(r.date_of_appointment as string | null)}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${KYC_COLORS[r.kyc_status as string] ?? ""}`}>
                     {r.kyc_status as string}
@@ -860,7 +860,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
               <tr key={r.id as string} className="border-b hover:bg-ps-bg">
                 <td className="px-3 py-2 font-medium">{r.form_type as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string ?? "—"}</td>
-                <td className="px-3 py-2 text-xs">{r.due_date as string ?? "—"}</td>
+                <td className="px-3 py-2 text-xs">{formatDate(r.due_date as string | null)}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${FILING_STATUS_COLORS[r.status as string] ?? ""}`}>
                     {(r.status as string)?.replace("_", " ")}
@@ -979,7 +979,7 @@ function FilingHistoryTab({ clientId }: { clientId: string }) {
                 <td className="px-3 py-2 font-medium">{r.form_type as string}</td>
                 <td className="px-3 py-2">{r.financial_year as string ?? "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.srn as string ?? "—"}</td>
-                <td className="px-3 py-2 text-xs">{r.filed_date as string ?? "—"}</td>
+                <td className="px-3 py-2 text-xs">{formatDate(r.filed_date as string | null)}</td>
                 <td className="px-3 py-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${FILING_STATUS_COLORS[r.status as string] ?? ""}`}>
                     {r.status as string}

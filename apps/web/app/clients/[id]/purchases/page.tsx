@@ -1,5 +1,6 @@
 "use client";
 
+import { rowMenuAt, type RowMenuPlace } from "@/lib/ui/rowMenuPosition";
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -521,7 +522,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   // the Sales Invoices tab's own menu pattern. Anchored to the viewport since
   // the table scrolls/clips an in-flow dropdown.
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   // The s.31(3)(f) / s.31(3)(g) panel. One piece of state for both kinds,
   // because the panel takes the kind and the server decides everything else.
   const [rcmDoc, setRcmDoc] = useState<
@@ -533,8 +534,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   const [landedCostBillId, setLandedCostBillId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBillRow | PurchaseBillDetail | null>(null);
   function openMenuFor(e: React.MouseEvent, bill: PurchaseBillRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: bill.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: bill.id, ...rowMenuAt(e, 176) });
   }
 
   async function deleteBill(bill: PurchaseBillRow | PurchaseBillDetail) {
@@ -1138,7 +1138,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(b.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -1449,7 +1449,7 @@ function Vendors({ clientId }: { clientId: string }) {
   // accounting records).
   const [deactivateTarget, setDeactivateTarget] = useState<VendorRow | null>(null);
   const [deactivating, setDeactivating] = useState(false);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VendorRow | null>(null);
   const [deleteDeps, setDeleteDeps] = useState<VendorDependencies | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1547,6 +1547,8 @@ function Vendors({ clientId }: { clientId: string }) {
    * would be the exact second-write-path CLAUDE.md's PUR-16 already warns
    * against. */
   function openEdit(v: VendorRow) {
+    // While a Save is out the form is not swapped for another vendor: the first save's success would close the form just opened (POST-A-395).
+    if (saving) return;
     setEditOpened((n) => n + 1);
     setEditingVendor(v);
     setDeclarant(null);
@@ -1806,10 +1808,9 @@ function Vendors({ clientId }: { clientId: string }) {
   }
 
   // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
-  // in-flow dropdown would be cut off). Right-align a 176px menu under the button.
+  // in-flow dropdown would be cut off). Right-align a 176px menu under the button, or above it near the foot of the window (lib/ui/rowMenuPosition).
   function openMenuFor(e: React.MouseEvent, v: VendorRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: v.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: v.id, ...rowMenuAt(e, 176) });
   }
 
   const bulkDeactivateVendors = useCallback(async (rows: VendorRow[]): Promise<boolean> => {
@@ -2091,15 +2092,15 @@ function Vendors({ clientId }: { clientId: string }) {
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               {/* apex-sales-purchases-05: the only way back into a vendor's
                   own record — the create form was drop-only, so a GSTIN
                   typo, a §195 residency status or a TDS section could never
                   be corrected from this tab. */}
               {mayEditParty && (
-                <button onClick={() => { setMenu(null); openEdit(v); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
+                <button onClick={() => { setMenu(null); openEdit(v); }} disabled={saving}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body disabled:opacity-50">
                   <Pencil size={13} /> Edit
                 </button>
               )}
@@ -2143,7 +2144,7 @@ function Vendors({ clientId }: { clientId: string }) {
         <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ps-ink">{editingVendor ? `Edit ${editingVendor.name}` : "New Vendor"}</h3>
-            <button onClick={() => { setShowForm(false); setEditingVendor(null); }}><X size={16} className="text-ps-hint" /></button>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X size={16} className="text-ps-hint" /></button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -2463,7 +2464,7 @@ function Vendors({ clientId }: { clientId: string }) {
           {/* The answer to the last press of Save, beside it. What the last press said wins over the sentence about a box: it is the newer. */}
           {(formError || noPeRefusal.shown) && <p role="alert" className="text-xs text-state-problem text-right">{formError || noPeRefusal.shown}</p>}
           <div className="flex gap-3 justify-end">
-            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} disabled={saving} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
             <Button variant="plain" size="none" onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
               {saving ? "Saving…" : editingVendor ? "Save Changes" : "Add Vendor"}
             </Button>
@@ -2517,7 +2518,8 @@ function Vendors({ clientId }: { clientId: string }) {
                 if (!s) setEditingVendor(null);
                 return !s;
               })}
-              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+              disabled={saving}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
             >
               <Plus size={12} /> Add Vendor
             </button>
@@ -3308,7 +3310,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   // A sentence names a document of the client it was shown for: switching client clears them.
   useEffect(() => { setStockNotes([]); }, [clientId]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -3390,8 +3392,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   }
 
   function openMenuFor(e: React.MouseEvent, dn: DebitNoteRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: dn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: dn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueDebitNote(id: string) {
@@ -3640,7 +3641,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -3797,7 +3798,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -3876,8 +3877,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   }
 
   function openMenuFor(e: React.MouseEvent, pcn: PurchaseCreditNoteRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: pcn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: pcn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueCreditNote(id: string) {
@@ -4105,7 +4105,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">

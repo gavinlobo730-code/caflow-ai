@@ -387,7 +387,7 @@ test("a scenario's part is a stable function of its id, so adding or removing a 
   const ids = Array.from({ length: 200 }, (_, i) => `scenario-${i}`);
   const counts = Array(SHARDS).fill(0);
   for (const id of ids) counts[shardOf(id)] += 1;
-  assert.ok(Math.min(...counts) > 40, `the hash cuts 200 ids unevenly: ${counts.join(" / ")}`);
+  assert.ok(Math.min(...counts) > 200 / SHARDS * 0.8, `the hash cuts 200 ids unevenly: ${counts.join(" / ")}`);
 });
 
 // ── the report ─────────────────────────────────────────────────────────────────────────────────────────

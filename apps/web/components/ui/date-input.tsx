@@ -275,7 +275,9 @@ export const DateInput = React.forwardRef<HTMLInputElement, DateInputProps>(
     // The bounds the parent was last told about the box against (by the mount, a value of its own, a keystroke or a commit).
     const toldAgainst = React.useRef<{ min: string | undefined; max: string | undefined }>({ min, max });
 
-    React.useEffect(() => {
+    // A value the parent changes is taken in BEFORE the paint (a layout effect): taken in after it, a dialog opened again over a value its parent reset in an
+    // effect drew the last day it held for one frame (POST-A-395).
+    React.useLayoutEffect(() => {
       if (value === handedUp.current) return;
       handedUp.current = value;
       const next = boxFor(value, min, max);

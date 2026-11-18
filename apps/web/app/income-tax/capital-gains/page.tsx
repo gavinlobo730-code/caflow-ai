@@ -951,7 +951,7 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <span className={`text-xs font-semibold ${gain >= 0 ? "text-state-ready" : "text-state-problem"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
-                              <Button variant="plain" size="none" onClick={() => handleDeleteRecord(r.id)} className="text-ps-disabled hover:text-state-problem transition-colors">
+                              <Button variant="plain" size="none" onClick={() => handleDeleteRecord(r.id)} aria-label={`Delete ${r.asset_description}`} className="text-ps-disabled hover:text-state-problem transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </Button>
                             </div>

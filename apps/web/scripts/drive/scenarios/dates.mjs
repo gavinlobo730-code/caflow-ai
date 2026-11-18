@@ -35,13 +35,18 @@ import { openBillDrawer, openInvoiceDrawer, openTdsChallanForm, openTdsDeduction
 import { ok, refuse } from "../stub.mjs";
 import { CLIENT_ID, CLIENT_ROW, CUSTOMER, ITEM, PAYROLL_RUN, VENDOR, billRow, invoiceDetail, invoiceRow } from "../fixtures.mjs";
 import { atTheEntry } from "./bankDialogs.mjs";
+import fs from "node:fs";
+
+/** The GST routes' whole answers, written from the builders by apps/api/scripts/write_drive_gst_answers.py and held to them by
+ *  apps/api/tests/test_the_drives_gst_answers_have_the_routes_shape.py (POST-A-396): an opener overrides the period and the GSTIN and nothing else. */
+const GST_ANSWERS = JSON.parse(fs.readFileSync(new URL("../gst-answers.json", import.meta.url), "utf8"));
 
 export const group = "dates";
 
 const FEB_SENTENCE = "Feb 2026 has only 28 days.";
 
 /** Type into a date box the way a person does, and leave it: the value is committed on blur. */
-async function typeAndLeave(box, text) {
+export async function typeAndLeave(box, text) {
   await box.fill("");
   await box.pressSequentially(text);
   await box.press("Tab");
@@ -202,7 +207,7 @@ async function openReceivedBillWithDueDate(env) {
 }
 
 /** The advance-tax register with an estimate typed, so the four instalments (and their paid-on dates) are drawn. */
-async function openAdvanceTaxRegister(env) {
+export async function openAdvanceTaxRegister(env) {
   const { page, stub } = env;
   stub.route({ method: "POST", re: /api\/income-tax\/advance-tax(\?|$)/, reply: () => ok({ installments: [], compliance_obligations: [] }) });
   await page.goto(`${env.base}/income-tax/advance-tax/?client_id=${CLIENT_ID}`, { waitUntil: "networkidle" });
@@ -588,7 +593,7 @@ function openStatutoryHandoff(scheme, { twoMonths = false } = {}) {
 }
 
 /** The Tax Computation screen with the house-property worksheet open on one SELF-OCCUPIED property, whose loan and completion dates are the two boxes. */
-async function openHousePropertyWorksheet(env) {
+export async function openHousePropertyWorksheet(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { income_tax: ["read", "compute", "write"] } }) });
   stub.route({ method: "GET", re: /income-tax\/financial-years$/,
@@ -709,7 +714,7 @@ function openItrTracker(how) {
 }
 
 /** The GST filing tracker with one pending GSTR-3B listed: `how` is "single" (its own Mark Filed prompt), "batch" (the bulk prompt, one row ticked), "add" (the Add GST Filing prompt, with the engine's due date in the box) or "add-filed" (the same prompt with Status set to Filed, which asks the day it was filed). */
-function openGstTracker(how) {
+export function openGstTracker(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { compliance_record: ["read", "write", "approve"], gst: ["read", "write"] } }) });
@@ -763,7 +768,7 @@ function openGstTracker(how) {
 }
 
 /** The MCA tracker's Filings tab with one pending AOC-4 listed: `how` is "single" (its own Mark Filed prompt, an SRN typed), "batch" (the bulk prompt, one row ticked, an SRN typed), "add" (the Add Filing form with a client and the CIN typed: only the due date is left) or "add-filed" (the same form with a due date, Status Filed and an SRN: only the day it was filed is left). */
-function openMcaTracker(how) {
+export function openMcaTracker(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { mca: ["read", "write", "approve"], compliance_record: ["read", "write", "approve"] } }) });
@@ -825,7 +830,7 @@ async function openClientMcaConfirm(env, { two = false } = {}) {
 
 /** A client's MCA compliance page, ready for a tab to be clicked. The lists it reads answer with what the forms below have made so far (`env.made`), so a record that
  *  was saved can be looked for in its list. The four forms are the page's own (not the tracker's). */
-async function atClientMca(env) {
+export async function atClientMca(env) {
   const { page, stub } = env;
   const made = { filings: [], directors: [] };
   env.made = made;
@@ -912,7 +917,7 @@ async function openClientTdsChallan(env) {
 
 /** Settings > Statutory values, "Record a notification" open on a state, a reference and one band's tax: only the two dates are left. The write is answered with the state, the day and the
  *  number of bands, as the real route answers it; the list the page reads again afterwards is a stub that always says no set is recorded (the real list would show the set stored). */
-async function openStatutoryValues(env) {
+export async function openStatutoryValues(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { payroll: ["read", "write"], settings: ["read", "write"] } }) });
   stub.route({ method: "GET", re: /api\/payroll\/statutory-values$/, reply: () => ok({
@@ -929,7 +934,7 @@ async function openStatutoryValues(env) {
 const engagementDialog = (page) => page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: "New Engagement Letter" }) });
 
 /** Engagements with "New Engagement" open on a title: only the two dates (both optional) are left. */
-async function openNewEngagementLetter(env) {
+export async function openNewEngagementLetter(env) {
   const { page, stub } = env;
   const made = [];
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { engagements: ["read", "write"], billing: ["read", "write"] } }) });
@@ -962,7 +967,7 @@ const transferDateBox = (page) => transferPanel(page).locator("label").filter({ 
 /** The inventory page's stock-locations block with two godowns and one item held in the first. `how` is "transfer" (the Move stock panel, with the item and a quantity typed)
  *  or "lot" (the New lot dialog, with the item and a lot number typed). The stub is LIGHTER than the real routes (routers/inventory.py): the reads leave out default_godown_id, kind,
  *  as_of, total_value_paise, same_registration and gaps, the transfer and lot writes answer {id} and not the real body, and the routes' own refusals (for example "Only X is held…") are not driven. */
-function openStockLocations(how) {
+export function openStockLocations(how) {
   return async (env) => {
     const { page, stub } = env;
     stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { inventory: ["read", "write"], accounting: ["read", "write"] } }) });
@@ -1271,28 +1276,34 @@ function gstStatusReply(form, periodEnd = "2026-09-30") {
     if (b.status === "submitted") {
       if (!String(b.filed_date ?? "").trim()) return refusal(GSTR_FILED_SENTENCE(form));
       if (b.filed_date < periodEnd) return refusal(GSTR_BEFORE_PERIOD_SENTENCE(b.filed_date, periodEnd));
+      // A return recorded as filed is answered with what became of its compliance obligation, in the server's words (gst-answers.json, POST-A-396).
+      return ok({ status: b.status, filed_date: b.filed_date, arn: b.arn ?? null,
+        compliance_obligation: GST_ANSWERS[form === "GSTR-1" ? "gstr1_submitted_obligation" : "gstr3b_submitted_obligation"][periodEnd === "2026-08-31" ? "082026" : "092026"] });
     }
     return ok({ status: b.status });
   };
+}
+
+/** GST > GSTR-1 with the client chosen and its build, approval and filing answered: nothing pressed yet. */
+export async function atGstr1(env) {
+  const { page, stub } = env;
+  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
+  stub.setTable("clients", [{ ...CLIENT_ROW, name: CLIENT_ROW.client_name, gstin: GSTIN_OF_THE_CLIENT }]);
+  // The route's whole answer, amendments block included, as the builder writes it (gst-answers.json, POST-A-396): only the period and the GSTIN are this request's.
+  stub.route({ method: "POST", re: /api\/gst\/gstr1\/from-books$/, reply: (_req, raw) => ok({ ...GST_ANSWERS.gstr1_from_books,
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { ...GST_ANSWERS.gstr1_from_books.payload, gstin: GSTIN_OF_THE_CLIENT, fp: JSON.parse(raw).period } }) });
+  // The saved row the approval and the filing look up (the build's own save is a PostgREST write the stub answers, and reads answer these rows).
+  stub.setTable("gstr1_returns", [{ id: "g1-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, period: "092026", gstin: GSTIN_OF_THE_CLIENT, status: "validated" }]);
+  stub.route({ method: "PATCH", re: /gst-workspace\/gstr1\/g1-1\/status$/, reply: gstStatusReply("GSTR-1") });
+  await page.goto(`${env.base}/gst/gstr1/`, { waitUntil: "networkidle" });
+  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
 }
 
 /** GST > GSTR-1 built for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. The opener's own writes
  *  (the build's save, the approval) are forgotten, so a row counts what the prompt writes. */
 async function openGstr1MarkFiled(env) {
   const { page, stub } = env;
-  stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
-  stub.setTable("clients", [{ ...CLIENT_ROW, name: CLIENT_ROW.client_name, gstin: GSTIN_OF_THE_CLIENT }]);
-  stub.route({ method: "POST", re: /api\/gst\/gstr1\/from-books$/, reply: (_req, raw) => ok({
-    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { gstin: GSTIN_OF_THE_CLIENT, fp: JSON.parse(raw).period, b2b: [] },
-    summary: { counts: { b2b: 3, b2cs_rate_groups: 1, b2cl: 0, credit_notes_registered: 0, credit_notes_unregistered: 0 },
-      totals_rupees: { taxable: 10000, cgst: 900, sgst: 900, igst: 0 } },
-    invoice_count: 4, taxable_total_paise: 1000000, tax_total_paise: 180000, reconciliation: {},
-    validation_errors: [], validation_warnings: [], payload_gaps: [] }) });
-  // The saved row the approval and the filing look up (the build's own save is a PostgREST write the stub answers, and reads answer these rows).
-  stub.setTable("gstr1_returns", [{ id: "g1-1", firm_id: "00000000-0000-4000-8000-0000000000f1", client_id: CLIENT_ID, period: "092026", gstin: GSTIN_OF_THE_CLIENT, status: "validated" }]);
-  stub.route({ method: "PATCH", re: /gst-workspace\/gstr1\/g1-1\/status$/, reply: gstStatusReply("GSTR-1") });
-  await page.goto(`${env.base}/gst/gstr1/`, { waitUntil: "networkidle" });
-  await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
+  await atGstr1(env);
   await page.getByRole("button", { name: "Build GSTR-1", exact: true }).click();
   await page.getByRole("button", { name: "CA Approve", exact: true }).click();
   await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
@@ -1303,27 +1314,13 @@ async function openGstr1MarkFiled(env) {
 }
 
 /** GST > GSTR-3B computed for a client and period, approved, with "Mark as Filed" open on an ARN: only the date is left. */
-async function openGstr3bMarkFiled(env) {
+export async function openGstr3bMarkFiled(env) {
   const { page, stub } = env;
-  const zero = { igst_paise: 0, cgst_paise: 0, sgst_paise: 0 };
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
   stub.setTable("clients", [{ ...CLIENT_ROW, name: CLIENT_ROW.client_name, gstin: GSTIN_OF_THE_CLIENT }]);
-  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({
-    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { gstin: GSTIN_OF_THE_CLIENT, ret_period: JSON.parse(raw).period },
-    working: {
-      outward: { taxable_value_paise: 1800000, taxable_igst_paise: 0, taxable_cgst_paise: 900000, taxable_sgst_paise: 900000, zero_rated_paise: 0, zero_rated_igst_paise: 0, nil_exempt_paise: 0 },
-      rcm_inward: { ...zero },
-      itc: { ...zero, avail_igst_paise: 0, avail_cgst_paise: 100000, avail_sgst_paise: 100000, net_igst_paise: 0, net_cgst_paise: 100000, net_sgst_paise: 100000 },
-      itc_reversal: { permanent_paise: { ...zero, cess_paise: 0 }, reclaimable_paise: { ...zero, cess_paise: 0 }, reasons: [] },
-      net_payable: { ...zero, cgst_paise: 800000, sgst_paise: 800000, total_paise: 1600000, rcm_cash_paise: 0, challan_total_paise: 1600000 },
-      rule_36_4: { gstr2a_record_count: 0, gstr2a_igst_paise: 0, gstr2a_cgst_paise: 0, gstr2a_sgst_paise: 0, cap_applied: false, compared: false,
-        self_assessed_igst_paise: 0, self_assessed_cgst_paise: 0, self_assessed_sgst_paise: 0,
-        per_document: { applied: false, allowed_igst_paise: 0, allowed_cgst_paise: 0, allowed_sgst_paise: 0, allowed_cess_paise: 0,
-          withheld_igst_paise: 0, withheld_cgst_paise: 0, withheld_sgst_paise: 0, withheld_cess_paise: 0, withheld_total_paise: 0, withheld: [], not_assessed: [], notes: [] } },
-      itc_utilisation: { available_paise: 200000, consumed_paise: 200000, carried_forward_paise: 0 },
-    },
-    validation_warnings: [], late_filing: { available: false, reason: "No filing date was given." }, undeclarable_rows: [], bank_line_caveats: [],
-    registration_caveat: null, gstr1_tie_out: null, reconciliation: { reconciled: true }, months_without_gstr2b: [] }) });
+  // The route's whole answer, the credit ledger and the set-off workings included, as the builder writes it (gst-answers.json, POST-A-396).
+  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({ ...GST_ANSWERS.gstr3b_from_books,
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { ...GST_ANSWERS.gstr3b_from_books.payload, gstin: GSTIN_OF_THE_CLIENT, ret_period: JSON.parse(raw).period } }) });
   // The three side reports (Rule 37, 37A and 43) are asked for after the build and may fail without failing the return: they are refused here,
   // which the page shows as "not checked" beside the figures, so no fixture of their large shapes is carried.
   stub.route({ method: "GET", re: /gst-workspace\/itc\/rule/, ...refuse("The ITC working is not worked in this drive.") });
@@ -1368,10 +1365,8 @@ async function openClientGstr3bCompute(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { gst: ["read", "approve", "compute"] } }) });
   stub.route({ method: "GET", re: /api\/gst-workspace\/returns\?/, reply: () => ok({ gstr1: [], gstr3b: [] }) });
-  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({
-    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: {}, working: {}, tax_liability_paise: 180000, itc_claimed_paise: 100000,
-    net_tax_paise: 80000, cash_payable_paise: 80000, itc_carried_forward_paise: 0,
-    reconciliation: { reconciled: true, output_gst: { ledger_paise: 180000, computed_paise: 180000 }, itc: { ledger_paise: 100000, computed_paise: 100000 } } }) });
+  stub.route({ method: "POST", re: /api\/gst\/gstr3b\/from-books$/, reply: (_req, raw) => ok({ ...GST_ANSWERS.gstr3b_from_books,
+    period: JSON.parse(raw).period, gstin: GSTIN_OF_THE_CLIENT, payload: { ...GST_ANSWERS.gstr3b_from_books.payload, gstin: GSTIN_OF_THE_CLIENT, ret_period: JSON.parse(raw).period } }) });
   await page.goto(env.at("/compliance/gst/"), { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "GSTR-3B", exact: true }).click();
   await page.getByRole("button", { name: "Compute from Books", exact: true }).first().click();   // the header's; the empty list offers one too
@@ -1380,8 +1375,8 @@ async function openClientGstr3bCompute(env) {
 
 const TDS_BEFORE_QUARTER_SENTENCE = "A statement for Q2 FY 2026-27 cannot have been filed before the quarter ended on 2026-09-30. Check the date on the receipt.";
 
-/** TDS > Returns computed for a client and quarter, approved, with "Mark as Filed" open on a PRN: only the date is left. */
-async function openTdsReturnMarkFiled(env) {
+/** TDS > Returns with the client chosen on Q2 and its compute, save, approval and filing answered: nothing pressed yet. */
+export async function atTdsReturns(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /identity\/permissions$/, reply: () => ok({ role: "Partner", permissions: { tds: ["read", "write", "approve", "compute"] } }) });
   stub.route({ method: "POST", re: /api\/tds\/26q\/from-books$/, reply: (_req, raw) => ok({
@@ -1399,6 +1394,12 @@ async function openTdsReturnMarkFiled(env) {
   await pick(page, page.locator('button[aria-label="Client"]'), "Acme Traders Pvt Ltd");
   // Q2 of FY 2026-27 has ended at the pinned 8 October 2026; the page's default quarter (Q3) has not, and the route refuses to approve it.
   await page.getByLabel("Quarter", { exact: true }).selectOption("Q2");
+}
+
+/** TDS > Returns computed for a client and quarter, approved, with "Mark as Filed" open on a PRN: only the date is left. */
+async function openTdsReturnMarkFiled(env) {
+  const { page, stub } = env;
+  await atTdsReturns(env);
   await page.getByRole("button", { name: "Compute 26Q", exact: true }).click();
   await page.getByRole("button", { name: "CA Approve", exact: true }).click();
   await page.getByRole("button", { name: "Mark as Filed", exact: true }).click();
@@ -1798,7 +1799,7 @@ const CG_RESULT = {
 };
 
 /** The capital-gains screen on its Register tab with a client chosen (the screen opens on the calculator, and the register is a client's). */
-async function openCapitalGainsRegisterTab(env) {
+export async function openCapitalGainsRegisterTab(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/clients$/, reply: () => ok({ clients: [CLIENT_ROW], total: 1 }) });
   await page.goto(`${env.base}/income-tax/capital-gains/`, { waitUntil: "networkidle" });
@@ -2916,7 +2917,7 @@ const CLIENT_COMPLIANCE_FORMS = [
     dateBox: "#mca-director-appointment", dateKey: "date_of_appointment", typedDate: "01/04/2025", typedLabel: "Full Name", typedValue: "Asha Rao", listShows: "Asha Rao", optionalDate: true,
     refusal: MCA_DUPLICATE_DIN_SENTENCE, httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-mca-new-filing", name: "A client's MCA > Annual Filings > New Filing", open: openClientMcaNewFiling, add: "+ New Filing", write: /mca-workspace\/filings$/,
-    dateBox: "#mca-new-filing-due-date", dateKey: "due_date", typedDate: "30/10/2026", typedLabel: "Financial year (for example 2025-26)", typedValue: "2025-26", listShows: "2026-10-30", optionalDate: false,
+    dateBox: "#mca-new-filing-due-date", dateKey: "due_date", typedDate: "30/10/2026", typedLabel: "Financial year (for example 2025-26)", typedValue: "2025-26", listShows: "30 Oct 2026", optionalDate: false,
     askedFor: "Due date: enter the date this form is due.",
     refusal: MCA_COULD_NOT_SENTENCE("save the filing"), httpRefusal: CLIENT_NOT_FOUND_SENTENCE },
   { id: "client-tds-challan", name: "A client's TDS > Challans > New Challan", open: openClientTdsChallan, add: "+ New Challan", write: /api\/tds-workspace\/challans$/,
@@ -5019,7 +5020,7 @@ export const scenarios = [
   //   stays : the form copies a date's sentence into its own error, where it stays until the next Save (the purchase bill editor does this for every one of its dates)
   ...[
     { id: "advance-tax-paid-on", name: "Income Tax > Advance tax: an instalment's paid-on date", open: openAdvanceTaxRegister, box: (p) => p.getByLabel("Instalment 1 paid on"), label: "Instalment 1 paid on",
-      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/ },
+      save: (p) => p.getByRole("button", { name: "Save", exact: true }), write: /api\/income-tax\/advance-tax(\?|$)/, saidLive: true },
     { id: "self-assessment-deposit", name: "Income Tax > Advance tax > §140A challan: the day it was deposited", open: openSelfAssessmentChallan, box: (p) => p.locator("#sa-deposit-date"), label: "Deposited on",
       save: (p) => p.getByRole("button", { name: "Record challan" }), write: /api\/income-tax\/self-assessment$/ },
     { id: "cgas-deposit", name: "Income Tax > Capital gains > reinvestment claim: the CGAS deposit date", open: onAShortScreen(openReinvestmentClaim), box: (p) => p.getByLabel("CGAS deposit date"), label: "CGAS deposit date",
@@ -5054,13 +5055,14 @@ export const scenarios = [
       await f.open(env);
       const said = `${f.label}: ${AFTER_TODAY_SENTENCE}`;
       await typeAndLeave(f.box(page), "15/10/2026");
-      // The advance-tax page also draws a date's sentence live (it recomputes the estimate 400 ms after a date is left), so the sentence may already be on the page: Save's own refusal is the
-      // one that ADDS to it.
+      // The advance-tax page also draws a date's sentence live (it recomputes the estimate 400 ms after a date is left), so the sentence may already be on the page. Elsewhere Save's own
+      // refusal is the one that ADDS to it; there (`saidLive`) Save's refusal takes the live line's place, because the page draws one sentence once (POST-A-395), so Save must leave it said.
       await stub.quiet();
       await page.waitForTimeout(700);
       const already = await page.getByText(said).count();
       await f.save(page).click();
-      await until(async () => (await page.getByText(said).count()) >= already + 1, `${f.name}: Save did not say the date's sentence (it was on the page ${already} time(s) before)`, 5000);
+      const needed = f.saidLive ? Math.max(already, 1) : already + 1;
+      await until(async () => (await page.getByText(said).count()) >= needed, `${f.name}: Save did not say the date's sentence (it was on the page ${already} time(s) before)`, 5000);
       await shownInTheDialog(page, said, `${f.name}: a date after today was not refused in a sentence`);
       await stub.quiet();
       assert.equal(stub.writesTo(f.write).length, 0, `${f.name}: a date after today SENT A WRITE`);

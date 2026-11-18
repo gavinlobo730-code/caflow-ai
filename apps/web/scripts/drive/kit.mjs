@@ -165,7 +165,9 @@ export const TZ_MATRIX = [
 
 /** How many parts the date group is cut into for a night. THREE since POST-A-399 (7-11-2026): with two, the worst night was estimated at 21.1 minutes of the 21 its deadline leaves, once that
  *  change added ten browser scenarios that every night runs, so the date group is cut finer instead of the allowance being raised (the allowance is the owner's money). FOUR since
- *  POST-A-386 (17-11-2026), for the same reason: its 25 date rows put the worst night at 21.3 minutes of 21, and each (zone, part) pair now comes round every twelve nights. */
+ *  POST-A-386 (17-11-2026), for the same reason: its 25 date rows put the worst night at 21.3 minutes of 21, and each (zone, part) pair now comes round every twelve nights.
+ *  FOUR since POST-A-395 and POST-A-396 (17-11-2026) as well: their twenty scenarios, which every night runs, took the worst night from about 20.4 to 21.0
+ *  minutes of the 21 before the date rows of POST-A-386 were added, so the cut to four answers both. */
 export const SHARDS = 4;
 
 const DAY_MS = 86_400_000;
@@ -181,7 +183,7 @@ export function indianDayNumber(epochMs) {
 }
 
 /** What the run of the given instant drives when it drives a part: a zone and a shard. The zone changes every day and the shard every
- *  three, so nine consecutive days (three zones, three shards) cover each (zone, shard) pair exactly once. */
+ *  three, so twelve consecutive days (three zones, four shards) cover each (zone, shard) pair exactly once. */
 export function partOfTheNight(epochMs) {
   const day = indianDayNumber(epochMs);
   return { zone: TZ_MATRIX[day % TZ_MATRIX.length].timezoneId, shard: Math.floor(day / TZ_MATRIX.length) % SHARDS, day };

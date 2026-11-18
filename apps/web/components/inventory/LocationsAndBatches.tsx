@@ -757,11 +757,12 @@ function BatchModal({ clientId, items, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl">
+      {/* The card is bounded by the window and its body scrolls, so on a short window the buttons stay on the screen (POST-A-395). */}
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] flex flex-col">
         <div className="px-5 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">New lot</h3>
         </div>
-        <div className="px-5 py-4 space-y-3">
+        <div className="px-5 py-4 space-y-3 overflow-y-auto">
           {(refusal.shown ?? error) && <Callout tone="problem">{refusal.shown ?? error}</Callout>}
           <label className="block text-xs">
             <span className="block text-ps-hint mb-1">Item</span>

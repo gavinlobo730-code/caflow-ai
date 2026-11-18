@@ -448,7 +448,7 @@ export default function StatutoryValuesPage() {
                         <input aria-label={`Band ${i + 1}: tax (₹)`} value={band.amount} placeholder="Tax ₹"
                           onChange={e => setBands(b => b.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
                           className="border border-ps-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-brand" />
-                        <button type="button" disabled={bands.length === 1}
+                        <button type="button" disabled={bands.length === 1} aria-label={`Remove band ${i + 1}`}
                           onClick={() => setBands(b => b.filter((_, j) => j !== i))}
                           className="text-ps-hint hover:text-red-600 disabled:opacity-30">
                           <Trash2 size={14} />
