@@ -3183,9 +3183,11 @@ export const scenarios = [
     async run(env) {
       const { page } = env;
       const reads = [];
-      recordApiReads(env, /api\/reports\/transactions(\?|$)/, reads, ok({ transactions: [
-        { id: "t1", transaction_type: "sales_invoice", transaction_date: "2026-07-20", party_name: "Beta Stores", taxable_amount_paise: 1000000, client_id: CLIENT_ID },
-      ] }));
+      // The P&L's sums are the server's since POST-A-469 (GET /api/reports/party-totals): the screen reads them in the window typed and adds nothing.
+      recordApiReads(env, /api\/reports\/party-totals(\?|$)/, reads, ok({
+        revenue: [{ party_id: "cu1", party_name: "Beta Stores", total_paise: 1000000, documents: 1 }], expenses: [],
+        revenue_total_paise: 1000000, expense_total_paise: 0, net_paise: 1000000, sales_documents: 1, purchase_documents: 0,
+      }));
       await page.goto(`${env.base}/reports/`, { waitUntil: "networkidle" });
       await page.getByRole("button", { name: /P&L Statement/ }).first().click();
       assert.equal(await page.locator('input[type="date"]').count(), 0, "a native <input type=\"date\"> is on the screen");
@@ -3206,7 +3208,7 @@ export const scenarios = [
           throw new Error(`Generate over an unreadable ${label} did not say "${label}: ${FEB_SENTENCE}"`);
         });
         await env.stub.quiet();
-        assert.equal(reads.length, 0, `Generate over an unreadable ${label} READ the transactions: ${JSON.stringify(reads)}`);
+        assert.equal(reads.length, 0, `Generate over an unreadable ${label} READ the statement: ${JSON.stringify(reads)}`);
         assert.equal(await page.getByText("Total Revenue").count(), 0, `a P&L was drawn over an unreadable ${label}`);
       }
       // A blank box is not "no bound": the statement says the dates it covers, so both are asked for.
@@ -3220,6 +3222,7 @@ export const scenarios = [
       await until(() => reads.length === 1, "Generate over two dates to read the transactions once");
       assert.deepEqual([reads[0].date_from, reads[0].date_to], ["2026-07-01", "2026-07-31"], `the window did not reach the read as ISO days: ${JSON.stringify(reads[0])}`);
       await page.getByText(/01 Jul 2026.*31 Jul 2026/).first().waitFor({ timeout: 4000 });
+      await page.getByText("Beta Stores").first().waitFor({ timeout: 4000 });
     },
   },
   // Time Tracking's "Your hours for: A range of days" (POST-A-386): Show hours is HELD while a box is unreadable (an unreadable box hands up "",
