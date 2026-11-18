@@ -70,9 +70,10 @@ WHERE THE MARKETING GUARDS LIVE, AND WHAT THEY STILL CANNOT SEE (POST-A-119, 16-
 
   What is still unseen, by either:
 
-  1. A SENTENCE ASSEMBLED AT RUN TIME. `"a " + b`, a template with a `${}` hole and JSX
-     text broken by an expression are read as the fragments around the join; a capability
-     sentence written that way reaches no guard. Nothing enforces writing it whole.
+  1. A SENTENCE BUILT FROM PIECES IN DIFFERENT PLACES. JSX text broken by `{value}` and a `+`
+     join of literals and values are read joined since 18-11-2026 (`_marketing_copy`, POST-A-119),
+     with `…` where the value goes; a sentence put together by a function from pieces that are not
+     side by side in the source is still read as its pieces.
   2. TEXT IN A PICTURE. The hero artwork (public/hero/space-earth.webp, with its feature
      cards baked in) and the share image (public/og.jpg) are read by nothing; nor is a PDF.
   3. THE REDRAWN PRODUCT SCREENS ARE EXEMPT BY FOLDER (`_marketing_vocabulary.EXEMPT_PREFIXES`).
@@ -84,11 +85,8 @@ WHERE THE MARKETING GUARDS LIVE, AND WHAT THEY STILL CANNOT SEE (POST-A-119, 16-
      a layout that breaks at a phone width. `.github/workflows/marketing-quality.yml`
      (Lighthouse and axe, started by hand, POST-A-122) is the one place the pages are
      rendered, and it records what it finds without failing on it.
-  5. THE DEMO FORM'S BEHAVIOUR UNDER NODE. The clocks half of
-     `test_the_demo_form_does_not_look_dead_while_the_api_wakes.py` SKIPS where Node cannot
-     strip TypeScript (22.6 and later can). The backend job sets up no Node of its own, so
-     whether that half runs there depends on the runner image's Node; Marketing CI pins Node
-     22, and moving that half into the marketing runner is the way to make it always run.
+  5. (closed 18-11-2026) The demo form's behaviour under Node runs in the marketing runner,
+     `apps/marketing/lib/demoRequestWait.test.ts`, and no longer depends on the backend job's Node.
   6. A CLAIM IN WORDS THE VOCABULARY DOES NOT LIST, as said above.
 """
 from __future__ import annotations
