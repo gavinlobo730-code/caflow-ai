@@ -34,11 +34,11 @@ These are POST-A-447, 468, 469, 470, 471, 472, 473 and 474. Most are already bui
 
 ## 4. Thursday and Friday: the deck for the CAs (after the before-demo items are done)
 
-**Scope and status.** The deck covers the whole platform, filing and live bank feeds included. Each feature on a slide is badged one of three, taken from the ledger and the coming-soon register **as they stand on the day the deck is made, not from memory**:
+**Scope and status.** The deck covers the whole platform, real filing included. **A live bank feed is not shown as coming**: the Account Aggregator route is closed and no other route is promised (statement upload is the way in), so it appears only as "statement upload", LIVE. Each feature on a slide is badged one of three, taken from the ledger and the coming-soon register **as they stand on the day the deck is made, not from memory**:
 
 - **LIVE:** built and in production; shown with a real screen of the seeded firm; safe to demonstrate.
 - **PREPARE-ONLY:** the platform prepares and the CA files on the government portal and records it here; any filing walk-through is a simulation and says so.
-- **WIP:** not built yet; shown as a concept slide, never as a screenshot of a screen that does not exist, with what gates it where the register says (real filing and live bank feeds need registrations only the owner can obtain).
+- **WIP:** not built yet; shown as a concept slide, never as a screenshot of a screen that does not exist, with what gates it where the register says (real filing needs registrations only the owner can obtain).
 
 The demonstration guide shows only LIVE features and the labelled simulations. Where a competitor slide touches a WIP feature the deck claims nothing better; it says what the competitor does (sourced) and that ours is WIP. Replacing Tally is the direction and is badged WIP: today the platform runs beside Tally and the importer writes customer and vendor masters only.
 
@@ -64,7 +64,7 @@ Make it in Claude Code: start from the slides type (`Artifact` quickstart with i
 - **Notices:** intake from a file, a rule-derived due date and a reply draft (POST-A-049, held by the owner's rule).
 - **Returns:** the ITR e-verify clock (POST-B-120), the Form 16 and 130 importer (POST-C-086), attributing each document to a GST registration for multi-GSTIN clients (POST-B-091).
 - **Trust:** a whole-firm data export in open formats (POST-A-205, partly built), a published security page.
-- **The big one, last:** real filing and live bank feeds, which wait on registrations only the owner can obtain.
+- **The big one, last:** real filing, which waits on registrations only the owner can obtain. **Not on this list: a live bank feed.** The Account Aggregator route is closed; the one open route is a per-bank agreement the owner would have to open (POST-C-162), with no bank approached, so it is not a roadmap promise.
 
 ## 6. The message to paste into the next chat
 
