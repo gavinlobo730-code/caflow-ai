@@ -14,6 +14,7 @@
  * derives its own toast text from the returned record.
  */
 import { useState } from "react";
+import { forgetCustomerLists } from "@/lib/data/partyLists";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { editedChoice, editedText, removedIdentifierProblem } from "@/lib/forms/editedValue";
@@ -230,6 +231,7 @@ export function CustomerFormModal({
             credit_days: parseInt(creditDays) || 30,
             credit_limit_paise: creditLimitPaise,
           }, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!result.success || !result.data) throw new Error(result.error ?? "Failed to save customer");
       // A create that matched an active customer by GSTIN (or PAN) RETURNED
       // that customer and saved nothing typed here — it used to close as

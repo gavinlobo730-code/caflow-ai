@@ -33,6 +33,8 @@ import { useClientNav, getCurrentFinancialYear } from "@/lib/workspace/ClientNav
 import FinancialYearPicker from "@/components/FinancialYearPicker";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { readAtText } from "@/lib/cache/readCache";
+import { forgetVendorLists, readVendorList } from "@/lib/data/partyLists";
 import { paiseFromRupeeInput, bpsFromPercentInput } from "@/lib/money/rupeeInput";
 import { editedChoice, removedIdentifierProblem } from "@/lib/forms/editedValue";
 import { formatPaise, formatMoney } from "@/lib/services/formatting";
@@ -1366,6 +1368,8 @@ function Vendors({ clientId }: { clientId: string }) {
   // "no vendors yet", which on this tab reads as an invitation to re-create
   // vendors that already exist.
   const [loadFailed, setLoadFailed] = useState(false);
+  /** When the list on screen was read, while it is the last answer painted ahead of the real read (POST-A-124); null once the real one lands. */
+  const [paintedFrom, setPaintedFrom] = useState<number | null>(null);
   // PUR-32 — active vendors of this client whose name the new one resembles.
   const [resemblances, setResemblances] = useState<PossibleDuplicate[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -1462,23 +1466,29 @@ function Vendors({ clientId }: { clientId: string }) {
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
+    let painted = false;
     try {
       // Fetch active AND inactive vendors — active/inactive scoping is a
       // client-side DataTable filter (mirrors Customers) so a deactivated
-      // vendor stays visible (and reactivatable) instead of vanishing.
-      const { data, error } = await selectAll(() => supabase
-        .from("vendors")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("name")
-        .order("id"));
-      if (error) throw error;
-      setVendors((data as VendorRow[]) ?? []);
+      // vendor stays visible (and reactivatable) instead of vanishing. The last answer is painted at once from the shared read cache and
+      // the real read always follows (POST-A-124); a failed read throws, so it is never stored.
+      const data = await readVendorList<VendorRow>(clientId, async () => {
+        const { data, error } = await selectAll(() => supabase
+          .from("vendors")
+          .select("*")
+          .eq("client_id", clientId)
+          .order("name")
+          .order("id"));
+        if (error) throw error;
+        return (data as VendorRow[]) ?? [];
+      }, (last, readAt) => { painted = true; setVendors(last); setPaintedFrom(readAt); setLoading(false); });
+      setVendors(data);
+      setPaintedFrom(null);
       setLoadFailed(false);
     } catch {
       // Was swallowed entirely: a failed fetch rendered as "no vendors yet",
-      // which on this tab is an invitation to re-create vendors that exist.
-      setVendors([]);
+      // which on this tab is an invitation to re-create vendors that exist. A list painted from the last read stays up and says so.
+      if (!painted) setVendors([]);
       setLoadFailed(true);
     } finally {
       setLoading(false);
@@ -1521,6 +1531,7 @@ function Vendors({ clientId }: { clientId: string }) {
     let imported = 0;
     const skippedDetail: string[] = [];
     const result = await apiCall("/api/vendors/bulk", "POST", { vendors: records }, token);
+    forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (result.success) {
       const data = result.data as {
         created: unknown[];
@@ -1708,6 +1719,7 @@ function Vendors({ clientId }: { clientId: string }) {
       const result = editingVendor
         ? await apiCall(`/api/vendors/${editingVendor.id}`, "PATCH", fields, token, { timeoutMs: HELD_DIALOG_MS })
         : await apiCall("/api/vendors/", "POST", { client_id: clientId, ...fields }, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!result.success) throw new Error(result.error ?? (editingVendor ? "Failed to save vendor" : "Failed to add vendor"));
       if (!editingVendor) {
         // A vendor already holding this GSTIN (or, with no GSTIN, this PAN)
@@ -1755,6 +1767,7 @@ function Vendors({ clientId }: { clientId: string }) {
     setDeactivating(true);
     const token = await getAuthToken();
     const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+    forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     setDeactivating(false);
     if (!result.success) {
       setMsg({ type: "err", text: result.error ?? "Failed to deactivate vendor" });
@@ -1769,6 +1782,7 @@ function Vendors({ clientId }: { clientId: string }) {
   async function reactivateVendor(v: VendorRow) {
     const token = await getAuthToken();
     const result = await apiCall(`/api/vendors/${v.id}`, "PATCH", { is_active: true }, token, { timeoutMs: HELD_DIALOG_MS });
+    forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (!result.success) { setMsg({ type: "err", text: result.error ?? "Failed to reactivate vendor" }); return; }
     setMsg({ type: "ok", text: "Vendor reactivated." });
     load();
@@ -1793,6 +1807,7 @@ function Vendors({ clientId }: { clientId: string }) {
     try {
       const token = await getAuthToken();
       const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) {
         setMsg({ type: "err", text: res.error ?? "Failed to delete vendor" });
         return;
@@ -1822,6 +1837,7 @@ function Vendors({ clientId }: { clientId: string }) {
     await Promise.all(targets.map(async (v) => {
       try {
         const result = await apiCall(`/api/vendors/${v.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -1848,6 +1864,7 @@ function Vendors({ clientId }: { clientId: string }) {
     await Promise.all(rows.map(async (v) => {
       try {
         const result = await apiCall(`/api/vendors/${v.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        forgetVendorLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -2473,6 +2490,14 @@ function Vendors({ clientId }: { clientId: string }) {
         </div>
       )}
 
+      {/* A list painted ahead of the real read says when it was read, and says so again if the real read failed (POST-A-124). */}
+      {paintedFrom !== null && (
+        <p role="status" className="text-xs text-ps-hint">
+          {loadFailed
+            ? `Showing the list as it was read at ${readAtText(paintedFrom)}. It could not be refreshed, so it may not be current.`
+            : `Showing the list as it was read at ${readAtText(paintedFrom)} while the current one loads…`}
+        </p>
+      )}
       {/* Vendors table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={vendors}
