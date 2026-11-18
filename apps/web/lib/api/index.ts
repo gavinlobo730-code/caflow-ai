@@ -2243,6 +2243,15 @@ export type ReportTransaction = {
   is_interstate: boolean; place_of_supply?: string | null; status: string;
 };
 
+// Answer of GET /api/reports/party-totals: the P&L Statement of /reports, summed by the server (POST-A-469).
+// `party_name` is null when the document names no party the firm holds a name for; a screen says so in words.
+export type ReportPartyLine = { party_id: string | null; party_name: string | null; total_paise: number; documents: number };
+export type ReportPartyTotals = {
+  revenue: ReportPartyLine[]; expenses: ReportPartyLine[];
+  revenue_total_paise: number; expense_total_paise: number; net_paise: number;
+  sales_documents: number; purchase_documents: number;
+};
+
 // ── The Schedule III ageing schedules ────────────────────────────────────────
 // MCA Notification G.S.R. 207(E) of 24 March 2021, Division I. Every amount is
 // integer paise. The two tables have DIFFERENT columns — receivables age in five
@@ -8573,6 +8582,14 @@ export const api = {
       const qs = q.toString();
       return request<ApiResp<{ transactions: ReportTransaction[] }>>(
         `/api/reports/transactions${qs ? `?${qs}` : ""}`);
+    },
+    partyTotals: (clientId?: string, dateFrom?: string, dateTo?: string) => {
+      const q = new URLSearchParams();
+      if (clientId) q.set("client_id", clientId);
+      if (dateFrom) q.set("date_from", dateFrom);
+      if (dateTo) q.set("date_to", dateTo);
+      const qs = q.toString();
+      return request<ApiResp<ReportPartyTotals>>(`/api/reports/party-totals${qs ? `?${qs}` : ""}`);
     },
     gstSummary: (clientId: string, month: string) =>
       request<ApiResp<ReportGSTSummary>>(
