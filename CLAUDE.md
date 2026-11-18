@@ -104,7 +104,7 @@ asked for again. Where one of them differs from a default, this section wins.
   launched on 10 October 2026 was stopped within minutes because every agent re-reads code and
   this container ran two at a time, and it would have cost far more than the owner expected. If
   a task would need more than five agents, tell the owner the rough cost first and wait. Say
-  plainly when credits look low.
+  plainly when credits look low. Emergency mode: docs/operations/emergency-mode.md.
 - **Telling the owner.** Plain English, with no file paths or function names: the owner has
   chartered-accountant domain knowledge and does not read code. All times in IST. Report
   faithfully what was verified, what was not and what is waiting on whom. The owner's list
