@@ -770,7 +770,8 @@ export default function CompliancePage() {
               </button>
               <button
                 onClick={() => downloadCsv("compliance-calendar.csv", toCsv(filtered, complianceExportColumns))}
-                disabled={filtered.length === 0}
+                // After a failed reload the calendar on screen is the earlier read's (POST-A-464).
+                disabled={filtered.length === 0 || !!loadError}
                 className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-2.5 py-1 rounded-md hover:bg-ps-bg disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Download size={12} /> Export

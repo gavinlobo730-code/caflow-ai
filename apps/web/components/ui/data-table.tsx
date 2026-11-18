@@ -376,7 +376,8 @@ export function DataTable<T>({
             <button
               className={btn}
               onClick={() => downloadCsv(exportFilename, toCsv(t.filtered, t.visibleColumns))}
-              disabled={page.total === 0}
+              // A table showing a read error holds the rows of an EARLIER read, or none: they are not exported as this one (POST-A-464).
+              disabled={page.total === 0 || !!error}
               title="Export the current filtered view to CSV"
             >
               <Download size={13} /> Export
@@ -444,6 +445,8 @@ export function DataTable<T>({
             {bulkActions!
               // Only what this selection can actually do — see BulkAction.appliesTo.
               .filter((a) => !a.appliesTo || a.appliesTo(t.selectedRows))
+              // Nor is a selection of them (POST-A-464).
+              .filter((a) => !(error && a.id === "export-selected"))
               .map((a) => (
               <button
                 key={a.id}

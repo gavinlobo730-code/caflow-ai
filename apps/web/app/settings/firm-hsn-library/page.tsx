@@ -273,7 +273,8 @@ export default function FirmHsnLibraryPage() {
               </button>
               <button
                 onClick={() => downloadCsv("firm-hsn-sac-library.csv", toCsv(items, EXPORT_COLUMNS))}
-                disabled={items.length === 0}
+                // After a failed read the codes on screen are an earlier filter's (POST-A-464).
+                disabled={items.length === 0 || error || loading}
                 className="flex items-center gap-1.5 text-sm border border-ps-border text-ps-label px-3.5 py-2 rounded-lg hover:bg-ps-bg whitespace-nowrap disabled:opacity-50"
               >
                 <Download size={15} /> Export

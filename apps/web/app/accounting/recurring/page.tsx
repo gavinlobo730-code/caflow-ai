@@ -141,6 +141,8 @@ export default function RecurringPage() {
       if (!res.success) throw new Error(res.error ?? "Failed to load templates");
       setTemplates(res.data ?? []);
     } catch (e) {
+      // A list that could not be read is not the earlier list: nothing is left to export (POST-A-464).
+      setTemplates([]);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
