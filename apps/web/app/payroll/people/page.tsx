@@ -40,7 +40,7 @@ import {
   apiErr,
   type Client, type Employee,
 } from "@/components/payroll/shared";
-import { EMPLOYEE_IMPORT_COLUMNS as SERVER_COLUMNS } from "@/lib/imports/mappers";
+import { EMPLOYEE_IMPORT_COLUMNS as SERVER_COLUMNS, EMPLOYEE_REIMPORT_NOTE } from "@/lib/imports/mappers";
 import { AddEmployeeModal } from "@/components/payroll/AddEmployeeModal";
 import { PortalAccessModal } from "@/components/payroll/PortalAccessModal";
 import { ExceptionIndexTab } from "@/components/payroll/ExceptionIndex";
@@ -223,7 +223,7 @@ export default function PayrollPeoplePage() {
       imported: created,
       errors,
       skipped: updated,
-      skippedDetail: updated > 0 ? [`${updated} existing employee(s) updated from their employee code`] : undefined,
+      skippedDetail: updated > 0 ? [`${updated} existing employee(s) updated from their employee code`, EMPLOYEE_REIMPORT_NOTE] : undefined,
     };
   }
 

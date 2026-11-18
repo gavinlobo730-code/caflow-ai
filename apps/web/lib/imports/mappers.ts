@@ -626,8 +626,12 @@ export function buildReceipts(
 // the server is the authority; a column added here and not there is simply
 // ignored, which is the safe direction.
 
+/** What an update from a re-import did and did not change, said beside the count (POST-A-472): the server's rule, worded once. */
+export const EMPLOYEE_REIMPORT_NOTE =
+  "An updated employee keeps what is on file for every column the file leaves out and for a blank cell, except a blank designation, department or bank name, which is cleared.";
+
 export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
-  { key: "employee_code", label: "Employee Code", required: false, hint: "Your own code, e.g. EMP001 — re-importing a row with the same code UPDATES that employee instead of adding a second one" },
+  { key: "employee_code", label: "Employee Code", required: false, hint: "Your own code, e.g. EMP001 — re-importing a row with the same code UPDATES that employee instead of adding a second one. On an update a column the file leaves out, or a blank cell, keeps what is on file; a blank designation, department or bank name clears it, and a blank PAN, UAN, ESIC number, bank account or IFSC over one on file refuses the file" },
   { key: "name", label: "Name", required: true, hint: "Employee full name" },
   { key: "pan", label: "PAN", required: false, hint: "10-char PAN (optional)" },
   { key: "date_of_birth", label: "Date of Birth", required: false, hint: "YYYY-MM-DD or DD/MM/YYYY — decides the old-regime slab at 60 and 80" },
@@ -636,8 +640,8 @@ export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "department", label: "Department", required: false, hint: "e.g. Accounts (optional)" },
   { key: "joining_date", label: "Joining Date", required: false, hint: "YYYY-MM-DD or DD/MM/YYYY" },
   { key: "basic", label: "Basic Salary (₹/month)", required: true, hint: "Monthly basic in rupees, e.g. 25000" },
-  { key: "hra_percent", label: "HRA %", required: false, hint: "Defaults to 40 if blank" },
-  { key: "da_percent", label: "DA %", required: false, hint: "Defaults to 0 if blank" },
+  { key: "hra_percent", label: "HRA %", required: false, hint: "Defaults to 40 for a new employee if blank" },
+  { key: "da_percent", label: "DA %", required: false, hint: "Defaults to 0 for a new employee if blank" },
   { key: "other_allowances", label: "Other Allowances (₹)", required: false, hint: "Monthly, in rupees" },
   { key: "lta", label: "LTA (₹)", required: false, hint: "Monthly, in rupees" },
   { key: "medical", label: "Medical (₹)", required: false, hint: "Monthly, in rupees" },
@@ -645,12 +649,12 @@ export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "uan", label: "UAN", required: false, hint: "12 digits — the ECR rejects anything else" },
   { key: "esi_number", label: "ESIC IP Number", required: false, hint: "The employee's ESIC insurance number" },
   { key: "aadhaar", label: "Aadhaar", required: false, hint: "12-digit Aadhaar (optional) — only the last 4 digits are stored" },
-  { key: "pf_applicable", label: "PF Applicable", required: false, hint: "yes / no (default yes)" },
-  { key: "esi_applicable", label: "ESI Applicable", required: false, hint: "yes / no (default yes)" },
-  { key: "pt_applicable", label: "PT Applicable", required: false, hint: "yes / no (default no)" },
+  { key: "pf_applicable", label: "PF Applicable", required: false, hint: "yes / no (default yes for a new employee)" },
+  { key: "esi_applicable", label: "ESI Applicable", required: false, hint: "yes / no (default yes for a new employee)" },
+  { key: "pt_applicable", label: "PT Applicable", required: false, hint: "yes / no (default no for a new employee)" },
   { key: "pt_state", label: "PT State", required: false, hint: "Two-letter state code, e.g. MH" },
-  { key: "eps_eligible", label: "EPS 1995 Member", required: false, hint: "yes / no (default yes) — no only where GSR 609(E) excludes them: first joined EPF on or after 01-09-2014 with pay above the wage ceiling. It decides whether 8.33% is diverted to EPS on the ECR" },
-  { key: "gratuity_act_covered", label: "Gratuity Act Applies", required: false, hint: "yes / no (default yes) — Payment of Gratuity Act 1972 §1(3). It decides which limb of IT Act §10(10) exempts a leaver's gratuity" },
+  { key: "eps_eligible", label: "EPS 1995 Member", required: false, hint: "yes / no (default yes for a new employee) — no only where GSR 609(E) excludes them: first joined EPF on or after 01-09-2014 with pay above the wage ceiling. It decides whether 8.33% is diverted to EPS on the ECR" },
+  { key: "gratuity_act_covered", label: "Gratuity Act Applies", required: false, hint: "yes / no (default yes for a new employee) — Payment of Gratuity Act 1972 §1(3). It decides which limb of IT Act §10(10) exempts a leaver's gratuity" },
   { key: "bank_account_no", label: "Bank Account No", required: false, hint: "For the salary advice" },
   { key: "bank_ifsc", label: "Bank IFSC", required: false, hint: "e.g. HDFC0001234" },
   { key: "bank_name", label: "Bank Name", required: false },

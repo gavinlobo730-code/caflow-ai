@@ -2199,13 +2199,22 @@ def import_employees(
     # ONE query for every code already on file, not one per row — the whole
     # reason this endpoint exists is that the per-row shape crossed a region
     # boundary fifty times.
-    existing = (db.table("payroll_employees").select("id, employee_code")
+    # The identifiers come in the same read, so a row that would empty one on file is refused without a second query (POST-A-472).
+    existing = (db.table("payroll_employees").select("id, employee_code, " + ", ".join(EMPLOYEE_IDENTIFIERS))
                 .eq("firm_id", current_user["firm_id"])
                 .eq("client_id", data.client_id).execute().data) or []
     existing_by_code = {str(r["employee_code"]).lower(): r["id"]
                         for r in existing if r.get("employee_code")}
 
     result = importer.validate(data.rows, existing_by_code=existing_by_code)
+    # An update row is the edit of an employee, so a blank cell over an identifier on file is refused in the edit's own sentence, keyed to
+    # the spreadsheet row, and the whole file with it (POST-A-472). A column the file does not carry is not written at all (the importer).
+    stored_by_id = {r["id"]: r for r in existing}
+    for n, employee_id, emptied in result.emptied_identifiers:
+        removed = removed_identifier_problem(EmployeeUpdateIn.model_construct(**{k: None for k in emptied}),
+                                             stored_by_id.get(employee_id) or {}, EMPLOYEE_IDENTIFIERS, why=EMPLOYEE_IDENTIFIER_WHY)
+        if removed:
+            result.problems.append(f"Row {n}: {removed}")
     if not result.ok:
         # 422, not 400: the request is well-formed and the CONTENT is what is
         # refused. Every problem comes back at once, keyed to the row number the
