@@ -176,7 +176,16 @@ def test_every_health_swallow_names_the_operation_it_lost():
 # 57 -> 30 (POST-A-021, fourth slice, 17-11-2026): the broad handlers in the documents, branding, DSC, engagement, practice,
 # relationship, scheduler-status, task-extras, task-template, year-end-review, portal, knowledge and AI-insight modules report;
 # the workflow engine's rule comparison and the request-token reset name what they expect.
-MAX_SILENT_SWALLOWS_ELSEWHERE = 30
+#
+# 30 -> 16 (POST-A-021, fifth slice, 18-11-2026): fourteen narrow `except ...: pass` handlers were triaged. A stored date or month that
+# does not read is reported where a figure falls back on it (credit terms, collections, overdue status, late-filing history, the
+# payslip and TDS return month); a check is asked instead of an exception caught where the absence is ordinary (an impossible date
+# in a notice's text, a trigger's due date, a mock invoice number); sales_invoices' private copy of the credit-terms rule delegates
+# to services/credit_terms; and an always-importable mock store is imported without a guard.
+# tests/test_a_narrow_swallow_is_triaged.py holds those files at zero. Left: the compliance builder's nine (taken when its item
+# closes) and seven that run inside an error path by design (core/exceptions 3, the AI gateway's error-body parses 2, the mail
+# transport 1, the request-token reset 1).
+MAX_SILENT_SWALLOWS_ELSEWHERE = 16
 
 _SCAN_DIRS = ("routers", "services", "domain", "repositories", "jobs", "core")
 
