@@ -61,6 +61,15 @@ NEEDS_HANDS = " · live session"
 HELD = " · held"
 
 
+#: An item that carries a POST- or new-finding id but is before the demo. Ids are never renumbered, so the 15 items triaged on
+#: 2 October 2026 are the PRE- ids and every item moved before the demo since carries this header token instead.
+BEFORE_DEMO = " · before demo"
+
+
+def is_before_demo(name: str, head: str) -> bool:
+    return name.startswith("pre-") or head.startswith("- **PRE-") or BEFORE_DEMO in head
+
+
 def kind_of_a_line(head: str) -> str:
     """The one reason a line lettered A is not buildable by Claude alone right now, or "alone". The kinds are disjoint and a
     document wins over hands, hands over held, so the four counts always add up to the lines lettered A."""
@@ -75,6 +84,8 @@ def kind_of_a_line(head: str) -> str:
 
 def render_block(ledger: Path = LEDGER) -> str:
     rows, total, pre, high, unsure = [], 0, 0, 0, 0
+    before_kinds = {"alone": 0, "documents": 0, "hands": 0, "held": 0, "B": 0, "C": 0}
+    before_new = 0
     by_letter = {"A": 0, "B": 0, "C": 0}
     a_kinds = {"alone": 0, "documents": 0, "hands": 0, "held": 0}
     for name, desc in SECTIONS:
@@ -89,9 +100,11 @@ def render_block(ledger: Path = LEDGER) -> str:
                 unsure += 1
             if letter == "A":
                 a_kinds[kind_of_a_line(head)] += 1
+            if is_before_demo(name, head):
+                pre += 1
+                before_kinds[kind_of_a_line(head) if letter == "A" else letter] += 1
         total += n
         by_letter[letter] += n
-        pre += n if name.startswith("pre-") else 0
         rows.append(f"| [{name}]({name}) | {n} | {desc} |")
     new_total, new_pre, new_high, new_unsure = 0, 0, 0, 0
     new_a_kinds = {"alone": 0, "documents": 0, "hands": 0, "held": 0}
@@ -101,7 +114,10 @@ def render_block(ledger: Path = LEDGER) -> str:
         head = line.split(" — **", 1)[0]
         letter = re.search(r"-([ABC])-", head)[1]
         new_by_letter[letter] += 1
-        new_pre += 1 if head.startswith("- **PRE-") else 0
+        if is_before_demo(NEW_FINDINGS[0], head):
+            new_pre += 1
+            before_new += 1
+            before_kinds[kind_of_a_line(head) if letter == "A" else letter] += 1
         if m and m["prio"] == "high":
             new_high += 1
         if " · UNSURE" in head:
@@ -130,6 +146,12 @@ def render_block(ledger: Path = LEDGER) -> str:
              f"{new_a_kinds['hands']} need the owner's hands, {new_a_kinds['held']} are held), "
              f"{new_by_letter['B']} need the owner to decide first and {new_by_letter['C']} only the owner or someone outside this container can do. "
              f"The day by day numbers are in [progress.md](progress.md).",
+             "",
+             f"**BEFORE THE DEMO (the list to start from).** {pre + new_pre} open items are before the demo ({pre} of the backlog, {new_pre} of the new findings; "
+             f"the 15 triaged on 2 October 2026 carry a `PRE-` id and every item moved before the demo since carries the header token `before demo`, because ids are never renumbered). "
+             f"Of these, **{before_kinds['alone']} Claude can do alone**, {before_kinds['documents']} are Claude's but wait on the owner for a document or reading, "
+             f"{before_kinds['hands']} need the owner's hands, {before_kinds['held']} are held, {before_kinds['B']} need the owner to decide first and {before_kinds['C']} only the owner or someone outside this container can do. "
+             f"To list them: every line of the three `pre-demo-` files, and `grep -n \"· before demo\" docs/open-items/post-demo-*.md docs/open-items/new-findings.md`.",
              "", END]
     return "\n".join(lines)
 
