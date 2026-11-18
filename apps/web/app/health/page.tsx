@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useMemo } from "react";
 import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -310,14 +311,14 @@ export default function HealthPage() {
         title="Client Health Monitor"
         subtitle={<>{clients.length} clients tracked</>}
         actions={
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleRecalculateAll}
             disabled={recalculating}
             className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 px-3 py-1.5 rounded-md hover:bg-emerald-50 disabled:opacity-50"
           >
             <RefreshCw size={13} className={recalculating ? "animate-spin" : ""} />
             {recalculating ? "Recalculating…" : "Recalculate All"}
-          </button>
+          </Button>
         }
       />
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import { readWindow } from "@/lib/lists/readWindow";
 import { ENTITY_REGISTER_WINDOW_MAX } from "@/lib/lists/window";
@@ -396,13 +397,13 @@ export default function RelationshipsPage() {
         }
         actions={
           <div className="flex items-center gap-2">
-            <button
+            <Button variant="plain" size="none" spinner={false}
               onClick={handleDetectMatches}
               disabled={actionInFlight}
               className="text-sm text-brand border border-brand/30 px-3 py-1.5 rounded-md hover:bg-brand-light/20 disabled:opacity-50"
             >
               {detectLoading ? "Detecting…" : "Detect Matches"}
-            </button>
+            </Button>
             <button
               onClick={() => {
                 setForm(EMPTY_FORM);
