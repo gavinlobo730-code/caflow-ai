@@ -562,7 +562,8 @@ def test_the_keying_sheet_says_which_typed_deductions_it_holds_and_which_it_does
     assert len(named) == 2
     held = next(g for g in named if "are on this sheet" in g)
     assert held.startswith("2 deduction(s) typed on the TDS screen for this quarter, with ₹10,800.00 of tax withheld, are on this sheet")
-    assert "No journal stands behind a typed deduction" in held
+    assert "Nothing records which journal, if any, carries a typed deduction" in held
+    assert "No journal stands behind" not in held, "the sheet says a journal cannot stand behind a typed row, which a hand-passed one can"
     left = next(g for g in named if "are not on this sheet" in g)
     assert left.startswith("1 deduction(s) typed on the TDS screen for this quarter, with ₹2,000.00 of tax withheld, are not on this sheet")
     assert "another statement" in left
@@ -619,3 +620,15 @@ def test_the_drives_copy_of_the_note_sentence_is_the_servers():
 def test_the_drives_copies_of_the_two_gap_sentences_are_the_servers():
     assert _drive_literal("GAP_NO_PAN") == GAP_MESSAGES[GAP_AGGREGATE_NOT_READ_WITHOUT_A_PAN]
     assert _drive_literal("GAP_NO_SUPPLIER") == GAP_MESSAGES[GAP_NO_SUPPLIER]
+
+
+def test_the_carried_rows_sentence_does_not_say_no_journal_can_stand_behind_a_typed_row():
+    """The review of PRE-A-004: the demo's partnership passes a journal behind each section 194T row it types, so "No journal
+    stands behind a deduction typed on the TDS screen" was contradicted by the seeded books. What the product knows is that
+    nothing records WHICH journal, if any, carries one, so the tie-out leaves the typed rows out, hand-passed journals included."""
+    from services.tds_return_service import TYPED_ON_STATEMENT_REASON
+    from domain.tds.keying_sheet import TYPED_DEDUCTIONS_ON_THIS_SHEET
+    for sentence in (TYPED_ON_STATEMENT_REASON, TYPED_DEDUCTIONS_ON_THIS_SHEET):
+        assert "No journal stands behind" not in sentence
+        assert "Nothing records which journal, if any, carries" in sentence
+        assert "passed by hand" in sentence

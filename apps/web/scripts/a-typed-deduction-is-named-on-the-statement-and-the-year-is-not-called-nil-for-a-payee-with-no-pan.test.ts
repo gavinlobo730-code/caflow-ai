@@ -254,3 +254,13 @@ test("self-test: the rules fail on a spoiled copy of each file", () => {
   assert.ok(formProblems(spoil(form, "const shown = quoting ? null : quote;", "const shown = quote;")).length, "a form that shows a quote that has just been typed over");
   assert.ok(formProblems(spoil(form, "{shown?.explain.rate_basis && (", "{quote?.explain.rate_basis && (")).length, "a form that reads the unsettled quote in one place");
 });
+
+test("neither screen says a typed deduction has no journal: it says nothing records which journal, if any, carries one", () => {
+  // The review of PRE-A-004: the demo partnership passes a journal behind each typed s.194T row, so "has no journal" was false of the
+  // seeded books. What the product knows is that it records no link from a typed row to a journal, so the tie-out leaves the row out.
+  for (const rel of [PAGE, TAB]) {
+    const src = fs.readFileSync(path.join(WEB, rel), "utf8");
+    assert.ok(!/has no journal/.test(src), `${rel} says a typed deduction has no journal`);
+    assert.match(src, /nothing records which journal, if any, carries it/, `${rel} does not say what the product knows`);
+  }
+});

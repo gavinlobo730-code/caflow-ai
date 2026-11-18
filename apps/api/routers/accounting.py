@@ -126,24 +126,29 @@ def create_account(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    db = _prod_db()
-    if db is None:
-        # The mock store keys an account by the TABLE's column names, as the insert below does; it was handed the model's own
-        # (`code`, `name`) and answered every create with a KeyError, a 500 (found seeding the demo firm, PRE-A-004).
-        try:
-            return api_response(True, accounting_service.create_account({
-                "account_code": (data.code or "").strip(), "account_name": data.name,
-                "account_type": data.account_type.value if hasattr(data.account_type, "value") else str(data.account_type),
-                "account_subtype": (data.account_subtype or "").strip() or None, "parent_id": data.parent_id,
-                "client_id": client_id, "firm_id": current_user.get("firm_id")}))
-        except ValidationError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+    # Asked before either store is written, so mock mode refuses what production refuses.
     if not (data.code or "").strip():
         raise HTTPException(
             status_code=422,
             detail="An account code is required — it is what the chart is ordered "
                    "and matched by, and UNIQUE (firm_id, client_id, account_code) "
                    "enforces it.")
+    db = _prod_db()
+    if db is None:
+        # The mock store keys an account by the TABLE's column names and is handed the same fields the insert below writes; it was
+        # handed the model's own (`code`, `name`) and answered every create with a KeyError, a 500 (found seeding the demo firm, PRE-A-004).
+        try:
+            return api_response(True, accounting_service.create_account({
+                "account_code": data.code.strip(), "account_name": data.name,
+                "account_type": data.account_type.value if hasattr(data.account_type, "value") else str(data.account_type),
+                "account_subtype": (data.account_subtype or "").strip() or None, "parent_id": data.parent_id,
+                "parent_group": (data.parent_group or "").strip() or None,
+                "sub_group": (data.sub_group or "").strip() or None,
+                "schedule_iii_mapping": (data.schedule_iii_mapping or "").strip() or None,
+                "is_active": data.is_active,
+                "client_id": client_id, "firm_id": current_user.get("firm_id")}))
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     try:
         # Payload written INLINE with literal keys — see
         # services/ageing_schedule_service._write for why.

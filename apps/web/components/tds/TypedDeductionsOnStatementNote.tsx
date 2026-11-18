@@ -4,7 +4,7 @@
  * The deductions typed on the TDS screen that this statement CARRIES (POST-A-078).
  *
  * A 26Q built from the books carries the deductions typed on the TDS screen beside the purchase bills and advances, each as a deductee row under the challan that
- * paid it. No journal stands behind a typed deduction, so the statement's tie-out with the TDS Payable account compares the bills and advances alone: a screen that
+ * paid it. Nothing records which journal, if any, carries a typed deduction, so the statement's tie-out with the TDS Payable account compares the bills and advances alone: a screen that
  * says "reconciled to the General Ledger" over a total that holds typed tax would read as a claim about all of it. This note says how many typed deductions the
  * statement carries, how much tax they withheld, and, in the server's own sentence, that they are outside the tie-out (and, where it applies, which name no supplier,
  * whose payee's residence is not recorded, or which look like a bill on the statement), and (folded away) which they are.

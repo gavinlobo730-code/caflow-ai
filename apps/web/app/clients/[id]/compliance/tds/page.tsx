@@ -837,10 +837,10 @@ function ReturnsTab({ clientId }: { clientId: string }) {
                       : "⚠ Couldn't find the TDS Payable control account in the Chart of Accounts — reconciliation skipped.")
                     : matched ? (rec.typed_paise ? "✓ The purchase bills and advances reconcile to the General Ledger" : "✓ Reconciled to the General Ledger")
                     : "⚠ Does not reconcile to the General Ledger — review before saving"}
-                  {/* The server's own figure (POST-A-078): typed deductions are in the totals below and in no journal, so they are outside this check. */}
+                  {/* The server's own figure (POST-A-078): typed deductions are in the totals below, and nothing records which journal, if any, carries them, so they are outside this check. */}
                   {accountFound && Boolean(rec.typed_paise) && (
                     <span className="block mt-1 text-xs">
-                      The {rupees(rec.typed_paise as number)} of tax on deductions typed on the TDS screen has no journal behind it and is outside this check.
+                      The {rupees(rec.typed_paise as number)} of tax on deductions typed on the TDS screen is outside this check: nothing records which journal, if any, carries it.
                     </span>
                   )}
                   {accountFound && !matched && (
