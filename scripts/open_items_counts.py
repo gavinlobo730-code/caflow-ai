@@ -54,7 +54,7 @@ def read_items(path: Path):
 #: owner-list.md and the line stays lettered A, because ids are never renumbered.
 WAITS_ON_OWNER = " · waits on owner"
 #: A line lettered A that Claude cannot finish alone because it needs the owner's hands: a real Firefox, Safari or phone, a step on
-#: the live database, a program this container is refused, or rehearsals only the owner can hold. It is the existing `live session`
+#: the live database, a program this container is refused, a working session with the owner, or rehearsals only the owner can hold. It is the existing `live session`
 #: token; the line stays lettered A because ids are never renumbered.
 NEEDS_HANDS = " · live session"
 #: A line lettered A that the owner has told Claude to leave until later (until the demo is final, or until a firm asks).
@@ -136,7 +136,7 @@ def render_block(ledger: Path = LEDGER) -> str:
              "",
              f"**Who must act (backlog).** {by_letter['A']} items are Claude's by their letter. Of those, **{a_kinds['alone']} need no help and can be built now**; "
              f"{a_kinds['documents']} wait on the owner for a document or a statutory reading (written in [owner-list.md](owner-list.md)), "
-             f"{a_kinds['hands']} need the owner's hands (a real browser or phone, a step on the live database, or something this container is refused) "
+             f"{a_kinds['hands']} need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) "
              f"and {a_kinds['held']} are held by the owner's own rule. "
              f"{by_letter['B']} need the owner to decide first and {by_letter['C']} only the owner "
              f"or someone outside this container can do. In all **{by_letter['B'] + by_letter['C'] + a_kinds['documents'] + a_kinds['hands'] + a_kinds['held']} of the {total} need the owner.**",
