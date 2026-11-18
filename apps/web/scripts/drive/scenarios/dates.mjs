@@ -3262,10 +3262,11 @@ export const scenarios = [
   },
   // POST-A-126: a date that may fall either side of ANOTHER date says `near`, and a day and month typed with no year are read in the year nearest
   // to it, within half a year. A notice received on 01/03/2026 (FY 2025-26) was given a response date of 15/06/2025 for `15/6`.
+  // No `contexts`: this scenario sets no clock and reads no "today", so the browser's zone cannot change what it reads and it runs once, not under the
+  // three zones. (Putting it under all three took the whole matrix to 97.2 minutes of the 97 its deadline leaves; the whole-matrix guard failed on it.)
   {
     id: "a-short-date-is-read-in-the-year-nearest-the-date-beside-it",
     title: "a notice's response date is read in the year nearest its received date, and a 29/2 a year from it is refused as before",
-    contexts: TZ_MATRIX,
     async run(env) {
       const { page } = env;
       await openAddIncomeTaxNotice(env);
@@ -3283,10 +3284,11 @@ export const scenarios = [
       assert.match(alerts, /Feb 2025 has only 28 days\..*Type the year in full/, `the 29/2 refusal is not the usual sentence: ${alerts.slice(0, 200)}`);
     },
   },
+  // No `contexts`: this scenario sets no clock and reads no "today", so the browser's zone cannot change what it reads and it runs once, not under the
+  // three zones. (Putting it under all three took the whole matrix to 97.2 minutes of the 97 its deadline leaves; the whole-matrix guard failed on it.)
   {
     id: "form-15ca-short-date-is-read-near-the-bill-not-the-date-on-file",
     title: "Form 15CA on file as 15/06/2023 on a bill of 01/06/2026, retyped 15/6, is 15/06/2026 (the year nearest the bill, not near the old date)",
-    contexts: TZ_MATRIX,
     async run(env) {
       const { page, stub } = env;
       stub.setTable("vendors", [{ ...VENDOR, tds_applicable: true, tds_section: "195", tds_rate_bps: 2000 }]);
