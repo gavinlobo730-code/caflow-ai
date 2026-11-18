@@ -135,7 +135,7 @@ def render_block(ledger: Path = LEDGER) -> str:
              + (f"A further **{parked} items are parked** (not counted above)." if parked else "Nothing is parked."),
              "",
              f"**Who must act (backlog).** {by_letter['A']} items are Claude's by their letter. Of those, **{a_kinds['alone']} need no help and can be built now**; "
-             f"{a_kinds['documents']} wait on the owner for a document or a statutory reading (written in [owner-list.md](owner-list.md)), "
+             f"{a_kinds['documents']} wait on the owner for a document, a statutory reading or a decision of theirs (written in [owner-list.md](owner-list.md)), "
              f"{a_kinds['hands']} need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) "
              f"and {a_kinds['held']} are held by the owner's own rule. "
              f"{by_letter['B']} need the owner to decide first and {by_letter['C']} only the owner "
