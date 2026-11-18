@@ -51,6 +51,7 @@ Pure: no database, no model call. `today` is injectable for the tests.
 """
 from __future__ import annotations
 
+import calendar
 from datetime import date, datetime
 import re
 from typing import Optional
@@ -307,10 +308,9 @@ def _dates_in(text: str) -> list[date]:
     out: list[date] = []
 
     def add(y: int, m: int, d: int) -> None:
-        try:
+        # A text names dates that do not exist (31/02/2026); a day is taken only when the calendar has it, asked rather than caught.
+        if 1 <= m <= 12 and 1 <= y <= 9999 and 1 <= d <= calendar.monthrange(y, m)[1]:
             out.append(date(y, m, d))
-        except ValueError:
-            pass
 
     for d_, m_, y_ in _NAMED.findall(text):
         add(int(y_), _MONTHS[m_.lower()], int(d_))

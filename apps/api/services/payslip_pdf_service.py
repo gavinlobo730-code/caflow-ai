@@ -29,6 +29,7 @@ from domain.reporting.amount_words import amount_in_words
 from domain.reporting.pdf_money import rupees_paise
 from services.pdf_page_furniture import numbered
 from core.db_provider import privileged_for
+from core.observability import capture_soft_failure
 
 logger = logging.getLogger("caflow.services")
 
@@ -250,8 +251,10 @@ def _pay_period(slip: dict, run: dict) -> tuple[str, int, int]:
         try:
             mi, yi = int(m), int(y)
             return f"{_MONTH_NAMES[mi]} {yi}", mi, yi
-        except (ValueError, IndexError):
-            pass
+        except (ValueError, IndexError) as unreadable:
+            # A run's month is stored 'YYYY-MM'; one that does not read falls back to the slip's own month and year below, and the log
+            # says the run's was not used (POST-A-021).
+            capture_soft_failure(unreadable, operation="payslip_pdf.run_month_unreadable", run_id=(run or {}).get("id"))
     mi = int(slip.get("month") or 0)
     yi = int(slip.get("year") or 0)
     label = f"{_MONTH_NAMES[mi]} {yi}" if 1 <= mi <= 12 and yi else (month_str or "")

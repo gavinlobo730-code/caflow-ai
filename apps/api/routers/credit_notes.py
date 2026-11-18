@@ -302,16 +302,14 @@ def create_credit_note(
         if _USE_MOCK:
             # Mock: if sales_invoice_id given, look it up
             if data.get("sales_invoice_id"):
-                try:
-                    from routers.sales_invoices import MOCK_SALES_INVOICES  # mock store, table is client_sales_invoices in DB
-                    original_invoice = next(
-                        (i for i in MOCK_SALES_INVOICES if i["id"] == data["sales_invoice_id"]),
-                        None
-                    )
-                    if original_invoice:
-                        is_interstate = original_invoice.get("is_interstate", False)
-                except ImportError:
-                    pass
+                # The mock store is a module of this package: it is always importable, so there is no failure to swallow (POST-A-021).
+                from routers.sales_invoices import MOCK_SALES_INVOICES  # mock store, table is client_sales_invoices in DB
+                original_invoice = next(
+                    (i for i in MOCK_SALES_INVOICES if i["id"] == data["sales_invoice_id"]),
+                    None
+                )
+                if original_invoice:
+                    is_interstate = original_invoice.get("is_interstate", False)
         else:
             from core.supabase_client import get_supabase
             db = get_supabase()
