@@ -6,7 +6,9 @@ service-catalogue pickers had them and these did not, so a client with two hundr
 picker in alphabetical order every time. The answer is derived, never stored: the newest documents of the client,
 read in a bounded window (the answer is a handful of ids, so the read is sized to that and not to the ledger), each
 party once, in the order of its most recent document. A carried-over opening document is not a use of the party in
-this product (it was issued elsewhere), and a deleted one is not a use at all. Nothing is pre-selected: the list is
+this product (it was issued elsewhere), and a deleted one is not a use at all; both are left out IN THE QUERY, before
+the window is cut, because a filter applied after it lets them use up the window (a client migrated with two hundred
+opening invoices would otherwise get no recent customers at all). Nothing is pre-selected: the list is
 reordered and the person still chooses, because a party chosen for them is how an invoice goes to the wrong customer.
 """
 from __future__ import annotations
@@ -20,14 +22,11 @@ DEFAULT_LIMIT = 8
 
 
 def recent_party_ids(rows: Iterable[dict], key: str, limit: int = DEFAULT_LIMIT) -> list[str]:
-    """Distinct `key` values in the order the rows come (newest first), skipping carried-over and deleted rows."""
-    from domain.accounting.opening_documents import carried_over
-
+    """Distinct `key` values in the order the rows come (newest first). The rows are already the client's live,
+    non-opening documents: `read_recent` asks the database for exactly those."""
     out: list[str] = []
     seen: set[str] = set()
     for r in rows or []:
-        if carried_over(r) or r.get("deleted_at"):
-            continue
         pid = r.get(key)
         if not pid or pid in seen:
             continue
@@ -54,6 +53,9 @@ def read_recent(db, kind: str, firm_id: str, client_id: str, limit: int = DEFAUL
     resp = (
         q.eq("firm_id", firm_id)
         .eq("client_id", client_id)
+        # Both before the window: is_opening is NOT NULL (migration 391), deleted_at is NULL on a live row (100, 205).
+        .eq("is_opening", False)
+        .is_("deleted_at", "null")
         .order("created_at", desc=True)
         .order("id", desc=True)
         .limit(WINDOW)
