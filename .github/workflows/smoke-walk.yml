@@ -38,12 +38,13 @@
 #     runs under three zones, and 157 of the others); the tree this was written on has 1,048 (891 and 157). On this
 #     runner a date run costs about 4.9 s and any other run about 1.7 s (read off the step times of the nights of
 #     4 and 5 November: 216 runs took 9 min 18 s and 342 took 19 min 38 s), so the whole drive is about 77 minutes.
-#     THE ALLOWANCE IS THE OWNER'S MONEY AND IS NOT RAISED. A NIGHT drives ONE zone of the three and ONE third of
-#     the date group, taken in turn by the INDIAN day (`--zone rotate`), so over nine nights every zone sees every
+#     THE ALLOWANCE IS THE OWNER'S MONEY AND IS NOT RAISED. A NIGHT drives ONE zone of the three and ONE quarter of
+#     the date group, taken in turn by the INDIAN day (`--zone rotate`), so over twelve nights every zone sees every
 #     date scenario once and none is left out; the other groups run in full. That was 315 or 320 runs and about 18
 #     minutes of drive when the group was cut in two. On 7 November 2026 (POST-A-399) the drive held 583 scenarios and the
 #     worst night was estimated at 21.1 minutes against the 21 that its deadline leaves, so the group is cut in three and the
-#     worst night is about 16.5 (the allowance is still not raised). The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
+#     worst night is about 16.5 (the allowance is still not raised). On 17 November 2026 (POST-A-395, POST-A-396) twenty more scenarios that every
+#     night runs took the worst night to 21.0 again, so the group is cut in four (the allowance is still not raised). The rotation is keyed on the Indian day because GitHub runs this job hours after its 02:00
 #     IST schedule (its drive step began between 05:10 and 08:08 IST in the eight nights before this was written),
 #     which straddles UTC midnight (05:30 IST): keyed on the UTC day those eight nights drove one zone twice
 #     running and left another undriven for five.
@@ -124,7 +125,7 @@ on:
   workflow_dispatch:
     inputs:
       zones:
-        description: "Which part of the drive's date scenarios to run: the night's zone and third of the group (about 17 minutes of drive), or every zone and the whole group (about 85 minutes of drive, a cap of 120 minutes)"
+        description: "Which part of the drive's date scenarios to run: the night's zone and quarter of the group (about 17 minutes of drive), or every zone and the whole group (about 85 minutes of drive, a cap of 120 minutes)"
         type: choice
         options: ["rotate", "all"]
         default: "rotate"
@@ -239,7 +240,7 @@ jobs:
       # it is not in the required checks. `--shots` keeps a picture of a scenario that failed, in the .smoke/
       # folder the failed-run artifact below uploads.
       #
-      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones and ONE third of the date group, by the Indian day, with a
+      # THE PART OF THE DRIVE AND ITS DEADLINE (POST-A-397). `rotate` is the night's choice and the label's: ONE of the three zones and ONE quarter of the date group, by the Indian day, with a
       # deadline of 24 minutes. An on-demand run takes what it is asked for: `rotate`, or `all` (every zone, the whole group, a deadline of 98 minutes under the job's 120). The runner STOPS
       # ITSELF at the deadline and exits 1 (its report says what it did not drive), because a job that times out is cancelled and the steps after this one never run.
       - name: Drive the money editors

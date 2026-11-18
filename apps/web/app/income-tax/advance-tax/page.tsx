@@ -524,7 +524,8 @@ export default function AdvanceTaxPage() {
 
       {/* The newest answer is the one shown: every attempt clears `error` before it refuses a date, so an answer that is here came after the date's sentence. */}
       {(error || advRefusal.shown) && <Callout tone="problem">{error || advRefusal.shown}</Callout>}
-      {computeError && <Callout tone="problem">{computeError}</Callout>}
+      {/* The live working says a wrong date in that date's own sentence, and so does Save's refusal: the same sentence is drawn once (POST-A-395). */}
+      {computeError && computeError !== (error || advRefusal.shown) && <Callout tone="problem">{computeError}</Callout>}
       {saveMsg && <div className="bg-state-ready-surface text-state-ready rounded-lg px-5 py-2 text-sm">{saveMsg}</div>}
       {/* What saving did to the compliance calendar, in the server's words. The live region is always on the page, so that what
           is put in it is announced; the tone is attention only for an obligation the server left open or could not touch. */}

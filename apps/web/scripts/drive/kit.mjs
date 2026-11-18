@@ -158,14 +158,15 @@ export const TZ_MATRIX = [
 // ── Which part of the drive a run drives (`--zone`, `--shard`) ────────────────────────────────────────────────────────────────────
 // The date scenarios run under all three zones of the matrix, which is two thirds of the drive's length and more than a night's allowance
 // on a GitHub runner (the run of 6 November 2026 was cancelled at its limit, 28 minutes into the drive). The NIGHTLY run therefore drives
-// ONE zone and ONE third of the date group, taken in turn, so that over any nine consecutive nights every zone sees every date scenario
+// ONE zone and ONE quarter of the date group, taken in turn, so that over any twelve consecutive nights every zone sees every date scenario
 // once and none is ever left out; the other groups (they run in no zone) run in full every night. An on-demand run says `all`. The rule
 // is here, pure, so a test holds it: a rotation written in the workflow's shell could not be tried. THE ALLOWANCE IS NOT RAISED: it is
 // the owner's money, so the drive was cut to fit it.
 
 /** How many parts the date group is cut into for a night. THREE since POST-A-399 (7-11-2026): with two, the worst night was estimated at 21.1 minutes of the 21 its deadline leaves, once that
- *  change added ten browser scenarios that every night runs, so the date group is cut finer instead of the allowance being raised (the allowance is the owner's money). */
-export const SHARDS = 3;
+ *  change added ten browser scenarios that every night runs, so the date group is cut finer instead of the allowance being raised (the allowance is the owner's money). FOUR since POST-A-395
+ *  and POST-A-396 (17-11-2026), for the same reason: their twenty scenarios, which every night runs, took the worst night from about 20.4 to 21.0 minutes of the 21. */
+export const SHARDS = 4;
 
 const DAY_MS = 86_400_000;
 /** Five hours thirty minutes: the Indian day starts at 18:30 UTC. */
@@ -180,7 +181,7 @@ export function indianDayNumber(epochMs) {
 }
 
 /** What the run of the given instant drives when it drives a part: a zone and a shard. The zone changes every day and the shard every
- *  three, so nine consecutive days (three zones, three shards) cover each (zone, shard) pair exactly once. */
+ *  three, so twelve consecutive days (three zones, four shards) cover each (zone, shard) pair exactly once. */
 export function partOfTheNight(epochMs) {
   const day = indianDayNumber(epochMs);
   return { zone: TZ_MATRIX[day % TZ_MATRIX.length].timezoneId, shard: Math.floor(day / TZ_MATRIX.length) % SHARDS, day };

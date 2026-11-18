@@ -106,7 +106,8 @@ export function MarkFiledModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"
+            disabled={busy}
+            className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white disabled:opacity-50"
           >
             Cancel
           </button>
