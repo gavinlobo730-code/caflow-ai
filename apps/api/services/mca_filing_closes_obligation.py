@@ -41,18 +41,23 @@ WHAT THIS DOES
         answer and to the error reporter, and the CA can still mark it from Compliance;
       * a date earlier than the year the filing declares has ended is refused by `mark_filed` and said in the answer; the
         filing keeps the date the CA typed.
-    Moving a filing back out of Filed does not reopen its obligation: that is a decision for the CA, and a closed
-    obligation can only go on to Completed today (the reopening path is on the ledger).
+    MOVING A FILING BACK OUT OF FILED REOPENS ITS OBLIGATION (POST-A-267, item 3; `reopen_for_unfiled_filing`), when the
+    client no longer has the form recorded as filed for the year (`filing_record_stands`) and the person may reopen an
+    obligation (`compliance.approve`, the reopen door's own tier), through `ComplianceRecordService.reopen_record`, so the
+    audit row, the note on the obligation and the timeline are that door's. The reason kept is the workspace's own sentence
+    about what was moved back. The other way round, the reopen door on the calendar refuses an MCA obligation while the
+    filing behind it still stands, and names the workspace, so the two records cannot be made to disagree from either side.
     # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT: this records a filing the CA has already made on MCA21. It transmits
     nothing.
 """
 from __future__ import annotations
 
 import re
-from domain.practice.compliance_overdue import SETTLED, is_settled
+from domain.practice.compliance_overdue import SETTLED, is_filed, is_settled
 from typing import Any, Collection, Iterable, Optional, Sequence
 
 from datetime import date
+import os
 
 from core.ist_clock import fy_bounds, ist_fy_label, normalise_fy_label
 from repositories.compliance_records_repository import compliance_records_repo
@@ -258,3 +263,123 @@ def close_for_filed_filing(
     return mark_filed_and_answer(
         record, what=what, operation="mca_filing_closes_obligation.mark_filed", firm_id=firm_id, client_id=client_id,
         compliance_type=COMPLIANCE_TYPE, filed_date=filed_date, arn=srn, actor=actor)
+
+
+# ── taking a filing back out of Filed (POST-A-267, item 3) ──────────────────────────────────────────────────────────────────
+
+#: The answer's `state` when a filing goes back out of Filed. Only REOPENED means this call moved the obligation.
+REOPENED = "reopened"
+NOT_FILED_ON_THE_CALENDAR = "not_filed_on_the_calendar"
+STILL_FILED_IN_THE_WORKSPACE = "still_filed_in_the_workspace"
+
+#: The obligation type -> the form whose filing stands behind it (the inverse of `OBLIGATION_FOR_FORM`).
+FORM_FOR_OBLIGATION = {otype: form for form, otype in OBLIGATION_FOR_FORM.items()}
+
+
+def _client_rows(firm_id: str, client_id: str, form_type: str) -> tuple[list[dict], list[dict]]:
+    """The client's ACTIVE companies and its filings of `form_type` recorded as filed, read for this firm and client only.
+
+    The mock deployment keeps both in the MCA router's own dictionaries (no database is configured there), which is where
+    that router writes them; the database is read otherwise, with the privileged client naming the firm and the client."""
+    if not os.environ.get("SUPABASE_URL"):
+        from routers import mca_workspace as mw    # lazy: the mock store lives in the router that writes it
+        companies = [c for c in mw._MOCK_COMPANIES.values()
+                     if c.get("firm_id") == firm_id and c.get("client_id") == client_id and c.get("is_active", True)]
+        filed = [f for f in mw._MOCK_FILINGS.values()
+                 if f.get("firm_id") == firm_id and f.get("client_id") == client_id and f.get("form_type") == form_type
+                 and f.get("status") == "filed"]
+        return companies, filed
+    from core.supabase_client import get_supabase
+    from core.db_provider import privileged_for
+    db = privileged_for(get_supabase())
+    companies = (db.table("mca_companies").select("id,company_name,cin").eq("firm_id", firm_id)
+                 .eq("client_id", client_id).eq("is_active", True).execute().data) or []
+    filed = (db.table("mca_filings").select("id,company_id,company_cin,cin,financial_year,period").eq("firm_id", firm_id)
+             .eq("client_id", client_id).eq("form_type", form_type).eq("status", "filed").execute().data) or []
+    return companies, filed
+
+
+def filing_record_stands(firm_id: str, client_id: str, obligation_type: str, financial_year: Optional[str]) -> bool:
+    """Whether the MCA workspace still records, for this client and year, the filing the obligation stands for.
+
+    True when a filing of the obligation's form for the year is recorded as filed and, for a client with several active
+    companies, every one of them has one (the closer's own test for closing it). False for a type that is not an MCA one,
+    a year that is not a year, or a client with no such filing: then reopening the calendar line leaves no record saying
+    otherwise. A filing whose company cannot be placed among several counts for none, as in the closer."""
+    form = FORM_FOR_OBLIGATION.get(obligation_type)
+    if not form or not client_id:
+        return False
+    try:
+        year = normalise_fy_label(financial_year)
+    except ValueError:
+        return False
+    companies, filed = _client_rows(firm_id, client_id, form)
+    for_the_year = [f for f in filed if filing_year(f) == year]
+    if not for_the_year:
+        return False
+    if len(companies) <= 1:
+        return True
+    placed = companies_that_filed(for_the_year, year, companies)
+    return all(str(c.get("id")) in placed for c in companies)
+
+
+def year_of_obligation(record: dict) -> Optional[str]:
+    """The financial year an MCA obligation's window is, or None when its window is not a year's own first and last day (the
+    closer never matches a filing to such an obligation, so none stands behind it)."""
+    return _year_of_window(record.get("period_start"), record.get("period_end"))
+
+
+def reopen_for_unfiled_filing(
+    *, firm_id: str, client_id: str, form_type: Optional[str], financial_year: Optional[str], new_status: str,
+    actor: Optional[dict], may_reopen: bool,
+) -> Optional[dict[str, Any]]:
+    """Reopen the client's obligation for `form_type` and `financial_year` after a filing of it was moved back out of Filed,
+    if it should be, and say what became of it; None for a form that stands for no obligation (an event form, MGT-7A).
+
+    Returns `{state, closed: False, reopened, obligation_id, message}`. The obligation is reopened only when it is recorded
+    as filed, the client no longer has the form recorded as filed for the year (another filing of the same company, or the
+    companies still filed, keep it), and the person may reopen an obligation. Everything else is a state with a sentence; an
+    unexpected failure propagates and the router reports it without failing the change to the filing."""
+    if form_type not in OBLIGATION_FOR_FORM:
+        return None
+    from domain.compliance_record_service import compliance_record_service, REOPENED_STATUS
+    from core.exceptions import ValidationError
+
+    def said(state: str, message: str, obligation_id: Optional[str] = None) -> dict[str, Any]:
+        return {**answer(state, message, obligation_id), "reopened": state == REOPENED}
+
+    if not firm_id or not client_id:
+        return said(NOT_CLOSED, "The filing names no client, so no obligation on the compliance calendar was matched to it.")
+    try:
+        year = normalise_fy_label(financial_year)
+        start, end = fy_bounds(year)
+    except ValueError:
+        return said(NOT_CLOSED, f"The filing names no financial year this can match to the calendar, so no {form_type} "
+                                "obligation was reopened.")
+    what = f"{form_type} obligation for FY {year}"
+    wanted = OBLIGATION_FOR_FORM[form_type]
+    filed_ones = [r for r in compliance_records_repo.find_all(firm_id=firm_id, client_id=client_id,
+                                                              compliance_type=COMPLIANCE_TYPE)
+                  if r.get("obligation_type") == wanted
+                  and str(r.get("period_start") or "")[:10] == start and str(r.get("period_end") or "")[:10] == end
+                  and is_filed(r.get("status"))]
+    if not filed_ones:
+        return said(NOT_FILED_ON_THE_CALENDAR, f"The {what} is not recorded as filed on the compliance calendar, so there was "
+                                               "nothing to reopen.")
+    record = filed_ones[0]
+    if filing_record_stands(firm_id, client_id, wanted, year):
+        return said(STILL_FILED_IN_THE_WORKSPACE,
+                    f"Another {form_type} filing of this client for FY {year} is still recorded as filed, so the {what} "
+                    "stays filed.", record.get("id"))
+    if not may_reopen:
+        return said(NOT_ALLOWED, f"The {what} is still recorded as filed on the compliance calendar. Reopening it needs "
+                                 "approval for Compliance, which your access does not include: someone who has it can reopen "
+                                 "it from Compliance.", record.get("id"))
+    reason = f"The {form_type} filing for FY {year} was moved back to {new_status.replace('_', ' ')} in the MCA workspace."
+    try:
+        compliance_record_service.reopen_record(record["id"], reason, firm_id=firm_id, actor=actor)
+    except ValidationError as refusal:
+        return said(NOT_CLOSED, f"The {what} was left as it is: {getattr(refusal, 'message', None) or refusal}",
+                    record.get("id"))
+    return said(REOPENED, f"The {what} was reopened on the compliance calendar: it is back at {REOPENED_STATUS}, with this "
+                          "change kept as the reason.", record.get("id"))

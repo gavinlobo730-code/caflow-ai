@@ -336,13 +336,16 @@ def test_a_filing_without_the_cas_confirmation_closes_nothing(world):
     assert _now(obligation)["status"] == OPEN
 
 
-def test_moving_a_filing_back_out_of_filed_does_not_reopen_the_obligation(world):
+def test_moving_a_filing_back_out_of_filed_reopens_the_obligation_it_closed(world):
+    """POST-A-267, item 3: the workspace's own door takes the filing back, and the obligation follows it (the full rule is
+    `test_an_mca_filing_taken_back_out_of_filed_reopens_its_obligation.py`)."""
     obligation = _obligation()
     f = _filing(world)
     _file(f)
     out = mw.update_filing_status(f["id"], mw.UpdateFilingStatusRequest(status="in_progress", ca_approved=True), current_user=USER)
     assert out["success"] is True and out["data"]["status"] == "in_progress"
-    assert _now(obligation)["status"] == "Filed", "reopening is the CA's decision, as with the GST and ITR workspaces"
+    assert _answer(out)["state"] == "reopened"
+    assert _now(obligation)["status"] == "Ready To File"
 
 
 # ── several companies under one client ──────────────────────────────────────

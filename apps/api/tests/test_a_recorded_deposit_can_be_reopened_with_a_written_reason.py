@@ -178,7 +178,8 @@ def test_the_generators_emit_the_five_deposits_and_a_good_many_other_types():
 def test_every_other_obligation_type_the_generators_emit_is_refused_and_left_as_it_was(world):
     """Not a list typed here: the types are read off the generators, so a type added later is refused until it is decided on."""
     client, _state, audited, _timeline = world
-    refused = sorted(_emitted_types() - crs.REOPENABLE_OBLIGATION_TYPES)
+    # The MCA obligations are reopened when no workspace filing stands behind them, and are held by their own test file.
+    refused = sorted(_emitted_types() - crs.OFFERED_FOR_REOPENING)
     assert refused
     for otype in refused:
         rec = _obl(otype, compliance_type="Other")
@@ -256,7 +257,7 @@ def test_the_server_serves_the_reopenable_types_and_the_reason_limit(world):
     client, state, _audited, _timeline = world
     state["user"] = _user("Executive")                     # reading the list is read access, not approve
     data = client.get("/api/compliance/reopenable-types").json()["data"]
-    assert data["obligation_types"] == sorted(crs.REOPENABLE_OBLIGATION_TYPES)
+    assert data["obligation_types"] == sorted(crs.REOPENABLE_OBLIGATION_TYPES | crs.REOPENABLE_WHEN_NO_FILING_STANDS)
     assert data["max_reason_chars"] == crs.MAX_REOPEN_REASON_CHARS
 
 
@@ -278,7 +279,7 @@ def test_no_type_with_a_filing_record_is_in_the_set():
 # ── what the reopen says it did not touch ────────────────────────────────────
 
 def test_every_reopenable_type_says_what_becomes_of_the_record_that_closed_it():
-    assert set(crs.REOPEN_AFTERMATH) == set(crs.REOPENABLE_OBLIGATION_TYPES), "a type needs its own sentence before it is reopenable"
+    assert set(crs.REOPEN_AFTERMATH) == set(crs.OFFERED_FOR_REOPENING), "a type needs its own sentence before it is reopenable"
 
 
 @pytest.mark.parametrize("otype,expected", [
