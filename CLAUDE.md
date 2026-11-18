@@ -104,7 +104,7 @@ asked for again. Where one of them differs from a default, this section wins.
   launched on 10 October 2026 was stopped within minutes because every agent re-reads code and
   this container ran two at a time, and it would have cost far more than the owner expected. If
   a task would need more than five agents, tell the owner the rough cost first and wait. Say
-  plainly when credits look low.
+  plainly when credits look low. Emergency mode: docs/operations/emergency-mode.md.
 - **Telling the owner.** Plain English, with no file paths or function names: the owner has
   chartered-accountant domain knowledge and does not read code. All times in IST. Report
   faithfully what was verified, what was not and what is waiting on whom. The owner's list
@@ -1717,12 +1717,14 @@ communicated to the recipient, and **GSTR-2B is that communication**.
 
 _Longer design records for this area were moved to `docs/design-record/tax-gst.md`, `docs/design-record/tax-tds.md`; see the Design record index._
 
-## Bank data — the Account Aggregator is the only way in
+## Bank data — statement upload is the way in; the Account Aggregator route is closed
 
 Statement upload (CSV/XLSX, parsed server-side in `domain/banking/normalizer.py`)
-is how bank data enters the platform today, and it is not going away. When a live
-bank feed is built, it goes through India's **Account Aggregator** framework and
-nothing else.
+is how bank data enters the platform, and it is not going away. **A live bank feed
+is NOT promised anywhere**: the Account Aggregator route is closed (an FIU must be
+registered with a financial regulator, and no purpose code covers keeping a client's
+books; `docs/design-record/banking.md`, `docs/compliance/05` §7, grade `[S]`).
+The rest of this section is the shape any feed would have to take if it reopens.
 
 **The DPDP duties over bank data are live NOW and do not wait for AA.** An
 uploaded statement holds the client's account number and, in every narration, the
@@ -1986,8 +1988,8 @@ Tally migration, and prepare-only e-invoice/e-way/XBRL rails.
 
 **What the goal still needs.** The target scope is everything a practice and its clients use in India, enough to
 replace every platform on the market (see Goal and context). `docs/open-items/README.md` is the live list of what is
-still missing; the list above is only what exists. The last stage is real filing through the portals and live bank
-feeds (next section), which wait on registrations only the owner can obtain.
+still missing; the list above is only what exists. The last stage is real filing through the portals (next section), which waits on
+registrations only the owner can obtain. A live bank feed has no route today.
 
 The list above describes what exists. It is not a statement of what may be built: what to build, and in what order,
 is decided under the standing instructions at the top of this file. Two things are held back by name, in the next
@@ -2104,24 +2106,15 @@ its period**. It now PATCHes, and checks `res.success` — the GST workspace
 router answers refusals as HTTP 200 with `{success: false}`, so an unchecked
 call showed "Filed" for a request the server had declined.
 
-### Live bank feeds through the Account Aggregator
+### Live bank feeds
 
-Fully specified already — see **"Bank data — the Account Aggregator is the only
-way in"** above. Nothing about it has been built: statement upload is the only
-path in today, and it stays at parity for years regardless.
-
-Restated here only so this list is complete: register as an FIU, go via a TSP,
-the consent is the CLIENT's and is time-bound and revocable, and **never
-screen-scrape net banking**. Read that section before touching any of it.
-
-**The consent flow's SHAPE is written down and nothing is built** —
-`docs/compliance/05-…` §6. It exists so a first attempt does not put an "I agree"
-control on our own page: the request, the tokenised link, the expiry and the
-audit all follow `routers/engagement_sign_public.py`, and the ONE step that does
-not transfer is the approval, which happens at the AA. Six refusals are recorded
-there, including never render the approval, never touch an OTP, never treat a
-consent as durable (the client can revoke without telling the CA), and never
-declare purpose code 102.
+Not built, and not promised. The Account Aggregator route is CLOSED (see the Bank data
+section above): there is no FIU licence to apply for, and a partner or a bought
+registration fails on purpose. Net-banking screen-scraping is never an option and
+**never declare purpose code 102**. Statement upload stays the way in, at parity. The one
+open route is a per-bank agreement the owner would have to open (POST-C-162); nothing
+is built until a bank relationship exists. The consent flow's shape is kept in
+`docs/compliance/05-…` §6 for the day any route reopens.
 
 _Longer design records for this area were moved to `docs/design-record/filing-and-compliance.md`; see the Design record index._
 
