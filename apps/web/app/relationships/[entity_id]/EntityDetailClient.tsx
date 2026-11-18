@@ -121,7 +121,7 @@ function EntityFormModal({
       <div className="bg-ps-surface border border-ps-border rounded-xl shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-sm font-semibold text-brand">{title}</h2>
-          <button onClick={onCancel} className="text-ps-hint hover:text-ps-body">
+          <button disabled={saving} onClick={onCancel} className="text-ps-hint hover:text-ps-body">
             <X size={16} />
           </button>
         </div>
@@ -196,7 +196,7 @@ function EntityFormModal({
         </div>
         {saveError && <Callout tone="problem">{saveError}</Callout>}
         <div className="flex gap-2 mt-5">
-          <button
+          <button disabled={saving}
             onClick={onCancel}
             className="flex-1 text-sm text-ps-label border border-ps-border-strong py-2 rounded-md hover:bg-ps-hover"
           >

@@ -59,7 +59,8 @@ export function MarkFiledModal({
   const dates = useDateProblems();
 
   return (
-    <Modal title={title} onClose={onClose} maxWidthClass="max-w-md"
+    // Escape, a click on the backdrop and the header's X all reach Modal's onClose: none of them closes the prompt over filings still out (POST-A-395).
+    <Modal title={title} onClose={() => { if (!busy) onClose(); }} maxWidthClass="max-w-md"
       note={intro}>
       <div className="space-y-3">
         <div>

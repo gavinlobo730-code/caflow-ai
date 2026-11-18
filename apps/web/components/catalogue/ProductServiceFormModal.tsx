@@ -123,7 +123,7 @@ export function ProductServiceFormModal({
   }
 
   return (
-    <Modal title={existing ? "Edit Product/Service" : "New Product/Service"} onClose={onClose} maxWidthClass="max-w-md">
+    <Modal title={existing ? "Edit Product/Service" : "New Product/Service"} onClose={() => { if (!saving) (onClose)(); }} maxWidthClass="max-w-md">
         <Field label="Name" error={attempted ? v.errors.name : undefined}>
           <input autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Statutory Audit, Steel Rod" className={inputCls} />
         </Field>

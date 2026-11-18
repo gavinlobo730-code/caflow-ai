@@ -1237,7 +1237,7 @@ export default function IncomeTaxPage() {
               <h3 className="text-base font-semibold text-ps-ink">
                 Add ITR Deadline
               </h3>
-              <button
+              <button disabled={actionInFlight}
                 onClick={() => setShowAddModal(false)}
                 className="text-ps-hint hover:text-ps-label transition-colors"
               >
@@ -1349,7 +1349,7 @@ export default function IncomeTaxPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button
+              <button disabled={actionInFlight}
                 onClick={() => setShowAddModal(false)}
                 className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
               >
@@ -1381,7 +1381,7 @@ export default function IncomeTaxPage() {
               <h3 className="text-base font-semibold text-ps-ink">
                 Mark ITR as Filed
               </h3>
-              <button
+              <button disabled={actionInFlight}
                 onClick={() => setFiledModal(null)}
                 className="text-ps-hint hover:text-ps-label transition-colors"
               >
@@ -1448,7 +1448,7 @@ export default function IncomeTaxPage() {
             </div>
 
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button
+              <button disabled={actionInFlight}
                 onClick={() => setFiledModal(null)}
                 className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
               >

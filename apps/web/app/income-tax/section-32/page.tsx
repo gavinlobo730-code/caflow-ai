@@ -490,7 +490,7 @@ function AddBlockDialog({ clientId, fy, itrRows, onClose, onSaved }: {
   const input = "w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-light";
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-brand-dark/50 z-50 flex items-center justify-center p-4" onClick={saving ? undefined : (onClose)}>
       <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Add a §32 block — FY {fy}</h3>
@@ -561,7 +561,7 @@ function AddBlockDialog({ clientId, fy, itrRows, onClose, onSaved }: {
         {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 justify-end pt-1">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <Button size="sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save block"}</Button>
         </div>
       </div>

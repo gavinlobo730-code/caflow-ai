@@ -49,7 +49,7 @@ export function MatchChallanToLedgerModal({
   const tied = answer?.journal_entry_id ?? null;
 
   return (
-    <Modal title="Match this challan to the ledger" onClose={onClose} maxWidthClass="max-w-xl" note={intro}>
+    <Modal title="Match this challan to the ledger" onClose={() => { if (!busy) (onClose)(); }} maxWidthClass="max-w-xl" note={intro}>
       <div className="space-y-3">
         <p className="text-xs text-ps-body">
           This records which ledger entry paid the challan. It posts nothing: the entry is the one the bank statement line was passed
@@ -130,7 +130,7 @@ export function MatchChallanToLedgerModal({
         )}
 
         <div className="flex justify-end pt-1">
-          <button
+          <button disabled={busy}
             type="button"
             onClick={onClose}
             className="text-xs px-3 py-1.5 border border-ps-border rounded-md hover:bg-ps-muted bg-white"

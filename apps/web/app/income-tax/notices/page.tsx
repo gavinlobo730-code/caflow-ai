@@ -166,7 +166,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">Add IT Notice</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={saving} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
@@ -228,7 +228,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
           </div>
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Add Notice"}
           </button>

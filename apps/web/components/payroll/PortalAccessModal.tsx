@@ -112,7 +112,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
           <div>
             <p className="text-sm text-green-700 mb-4">Portal access is active.</p>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose}>Close</Button>
+              <Button disabled={busy} variant="outline" onClick={onClose}>Close</Button>
               <Button onClick={revoke} disabled={busy}
                       className="bg-red-600 hover:bg-red-700 text-white">
                 {busy ? "Removing…" : "Remove access"}
@@ -151,7 +151,7 @@ export function PortalAccessModal({ employee, onClose, onChanged }: {
               </p>
             )}
             <div className="flex gap-2 mt-3">
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button disabled={busy} variant="outline" onClick={onClose}>Cancel</Button>
               <Button onClick={invite} disabled={busy || !email.trim().includes("@")}>
                 {busy ? "Sending…" : status?.invite_pending ? "Send a new invitation" : "Send invitation"}
               </Button>

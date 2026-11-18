@@ -74,6 +74,7 @@ import {
   outstandingOf,
   type Customer, type SalesInvoice,
   type CurrencyOption, type InvoiceStatus,
+  HELD_DIALOG_MS,
 } from "@/lib/invoices/shared";
 import { partyCreditsApi, type PartyCreditDetail } from "@/lib/api/partyCredits";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -521,7 +522,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   async function runNow(t: RecurringTemplate) {
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/recurring-invoices/${t.id}/run`, "POST", undefined, token);
+      const res = await apiCall(`/api/recurring-invoices/${t.id}/run`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Run failed");
       const d = res.data as { generated_count: number; skipped_count: number };
       showToast(`Generated ${d.generated_count} draft${d.generated_count === 1 ? "" : "s"}`
@@ -533,7 +534,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
   async function changeStatus(t: RecurringTemplate, action: "pause" | "resume" | "archive") {
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
+      const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Update failed");
       showToast(`Template ${action === "resume" ? "resumed" : action + "d"}`, "success");
       load();
@@ -569,7 +570,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       const failures: string[] = [];
       await Promise.all(eligible.map(async (t) => {
         try {
-          const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
+          const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
           if (!res.success) throw new Error(res.error ?? "failed");
           ok++;
         } catch (e) {
@@ -875,10 +876,10 @@ function RecurringEditor({
       };
       let res;
       if (existing) {
-        res = await apiCall(`/api/recurring-invoices/${existing.id}`, "PUT", body, token);
+        res = await apiCall(`/api/recurring-invoices/${existing.id}`, "PUT", body, token, { timeoutMs: HELD_DIALOG_MS });
       } else {
         body.client_id = clientId; body.customer_id = customerId;
-        res = await apiCall(`/api/recurring-invoices`, "POST", body, token);
+        res = await apiCall(`/api/recurring-invoices`, "POST", body, token, { timeoutMs: HELD_DIALOG_MS });
       }
       if (!res.success) throw new Error(res.error ?? "Save failed");
       onSaved(existing ? "Template updated" : "Template created");
@@ -894,7 +895,7 @@ function RecurringEditor({
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-ps-ink">{existing ? "Edit" : "New"} Recurring Template</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -1036,7 +1037,7 @@ function RecurringEditor({
 
           {(error || refusal.shown) && <Callout tone="problem">{error || refusal.shown}</Callout>}
           <div className="flex gap-3 justify-end">
-            <button type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button disabled={saving} type="button" onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
             <button type="submit" disabled={saving}
               className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
               {saving ? "Saving…" : existing ? "Save changes" : "Create template"}
@@ -1326,7 +1327,7 @@ function Statements({ clientId }: { clientId: string }) {
     try {
       const token = await getAuthToken();
       const res = await apiCall("/api/customer-statements/email", "POST",
-        { client_id: clientId, customer_id: on.customer_id, start_date: on.start_date, end_date: on.end_date, to_email: emailTo || undefined }, token);
+        { client_id: clientId, customer_id: on.customer_id, start_date: on.start_date, end_date: on.end_date, to_email: emailTo || undefined }, token, { timeoutMs: HELD_DIALOG_MS });
       if (res.success) { setEmailModal(false); setEmailMsg(null); setDeliveryRefresh((k) => k + 1); }
       else { setEmailMsg(res.error ?? "Email failed."); setDeliveryRefresh((k) => k + 1); }
     } catch (e) { setEmailMsg(e instanceof Error ? e.message : "Email failed."); }
@@ -1439,7 +1440,7 @@ function Statements({ clientId }: { clientId: string }) {
       {customerId && <StatementDeliveryLog clientId={clientId} customerId={customerId} refreshKey={deliveryRefresh} />}
 
       {emailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setEmailModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={actionInFlight ? undefined : (() => setEmailModal(false))}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-ps-ink">Email statement to customer</h3>
             <label className="block">
@@ -1449,7 +1450,7 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {emailMsg && <Callout tone="problem">{emailMsg}</Callout>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={actionInFlight} onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</Button>
             </div>
           </div>
@@ -1457,7 +1458,7 @@ function Statements({ clientId }: { clientId: string }) {
       )}
 
       {applyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setApplyModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={actionInFlight ? undefined : (() => setApplyModal(false))}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-ps-ink">Apply credit to an invoice</h3>
             <p className="text-xs text-ps-label">
@@ -1483,7 +1484,7 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {applyError && <Callout tone="problem">{applyError}</Callout>}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={actionInFlight} onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
                 className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
@@ -1733,7 +1734,7 @@ function SalesInvoices({
     try {
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
       const token = await getAuthToken();
-      const result = await apiCall(`/api/sales-invoices/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/sales-invoices/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue invoice");
       // POST-A-092: the server says on this response when the invoice's stock effect was not all recorded.
       const issued = issuedMessage("Invoice issued successfully", result.data);
@@ -1776,7 +1777,7 @@ function SalesInvoices({
 
   async function deleteInvoice(inv: SalesInvoice) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
+    const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to delete invoice");
     showToast(`Invoice ${inv.invoice_no} deleted`, "success");
     setDeleteTarget(null);
@@ -1788,7 +1789,7 @@ function SalesInvoices({
     const endpoint = isResend
       ? `/api/sales-invoices/${inv.id}/resend`
       : `/api/sales-invoices/${inv.id}/send`;
-    const result = await apiCall(endpoint, "POST", { to_email: toEmail || null }, token);
+    const result = await apiCall(endpoint, "POST", { to_email: toEmail || null }, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to send invoice");
     showToast(`Invoice ${inv.invoice_no} sent to ${toEmail}`, "success");
     setSendModal(null);
@@ -1808,7 +1809,7 @@ function SalesInvoices({
     await Promise.all(selected.map(async (inv) => {
       try {
         if (inv.status === "draft") {
-          const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
+          const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
           if (!result.success) throw new Error(result.error ?? "delete failed");
           deleted++;
         } else if (inv.status === "cancelled") {
@@ -1816,7 +1817,7 @@ function SalesInvoices({
         } else if (!mayVoid) {
           failures.push(`${inv.invoice_no}: voiding an issued invoice needs permission to approve accounting entries`);
         } else {
-          const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token);
+          const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
           if (!result.success) throw new Error(result.error ?? "void failed");
           voided++;
         }
@@ -1854,7 +1855,7 @@ function SalesInvoices({
         return false;
       }
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token);
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token, { timeoutMs: HELD_DIALOG_MS });
         if (!result.success) throw new Error(result.error ?? "send failed");
         return true;
       } catch (e) {
@@ -1896,7 +1897,7 @@ function SalesInvoices({
       const cust = customers.find((c) => c.id === inv.customer_id);
       if (!cust?.email) return { ok: false, reason: "no email on file" };
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token);
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to send reminder" };
       } catch (e) {
@@ -1938,7 +1939,7 @@ function SalesInvoices({
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (inv): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token);
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue invoice" };
       } catch (e) {
@@ -1982,7 +1983,7 @@ function SalesInvoices({
   // the modal surfaces the error; reloads to refresh reminder_count on success.
   async function remindInvoice(inv: SalesInvoice) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token);
+    const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to send reminder");
     showToast(`Payment reminder sent for ${inv.invoice_no}`, "success");
     setRemindModal(null);
@@ -2499,7 +2500,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
     setBusy(true); setMsg(null);
     try {
       const token = await getAuthToken();
-      const res = await apiCall("/api/payments/links", "POST", { invoice_id: invoice.id }, token);
+      const res = await apiCall("/api/payments/links", "POST", { invoice_id: invoice.id }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Could not create link");
       setMsg({ text: "Payment link ready", type: "success" });
       await load();
@@ -2517,7 +2518,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
     setBusy(true); setMsg(null);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/payments/links/${linkId}/send`, "POST", undefined, token);
+      const res = await apiCall(`/api/payments/links/${linkId}/send`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Could not send");
       const d = res.data as { sent: boolean; to: string };
       setMsg({ text: d.sent ? `Payment link emailed to ${d.to}` : "Email not sent (check customer email / mail config)", type: d.sent ? "success" : "error" });
@@ -2526,11 +2527,11 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={busy ? undefined : (onClose)}>
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
+          <button disabled={busy} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         {gatewayOn && (
           <p className="text-2xs text-ps-hint mb-4">
@@ -2618,7 +2619,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
         )}
 
         <div className="flex justify-end mt-5 pt-4 border-t border-ps-border">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
+          <button disabled={busy} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Close</button>
         </div>
       </div>
     </div>
@@ -2665,7 +2666,7 @@ function SendInvoiceModal({
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-ps-ink">Send Invoice {invoice.invoice_no}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
+          <button disabled={sending} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -2689,7 +2690,7 @@ function SendInvoiceModal({
           </p>
           {error && <Callout tone="problem">{error}</Callout>}
           <div className="flex gap-3 justify-end">
-            <button
+            <button disabled={sending}
               type="button"
               onClick={onClose}
               className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
@@ -2744,7 +2745,7 @@ function RemindInvoiceModal({
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-md shadow-xl">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-ps-ink">Send Payment Reminder</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
+          <button disabled={sending} onClick={onClose} className="text-ps-hint hover:text-ps-body"><X size={14} /></button>
         </div>
         <div className="space-y-3 text-xs">
           <div className="rounded-lg bg-ps-bg border border-ps-border p-3 space-y-1">
@@ -2783,7 +2784,7 @@ function RemindInvoiceModal({
           {error && <Callout tone="problem">{error}</Callout>}
         </div>
         <div className="flex gap-3 justify-end mt-4">
-          <button
+          <button disabled={sending}
             type="button"
             onClick={onClose}
             className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
@@ -2938,7 +2939,7 @@ function DeleteInvoiceModal({
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={deleting} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           {/* A Button, not a raw <button>: `handle` AWAITS the caller's delete, which the same-file analysis
               cannot see, so a second click in the same tick sent a second DELETE. */}
           <Button
@@ -3086,7 +3087,7 @@ function Customers({
     setDeleteBusy(true);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+      const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) {
         showToast(res.error ?? "Failed to delete customer", "error");
         return;
@@ -3199,7 +3200,7 @@ function Customers({
     const failures: string[] = [];
     await Promise.all(targets.map(async (c) => {
       try {
-        const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token);
+        const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -3226,7 +3227,7 @@ function Customers({
     const failures: string[] = [];
     await Promise.all(selected.map(async (c) => {
       try {
-        const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token);
+        const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -3350,7 +3351,7 @@ function Customers({
             <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
-                disabled={deactivating}
+                disabled={(deactivating) || actionInFlight}
                 className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
@@ -3445,7 +3446,7 @@ function Customers({
                   </p>
                 </div>
                 <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
-                  <button
+                  <button disabled={actionInFlight}
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
                   >
@@ -3679,7 +3680,7 @@ function Receipts({
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/receipts/${r.id}/reverse`, "POST",
-        { reversal_date: todayIstISO() }, token);
+        { reversal_date: todayIstISO() }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to reverse receipt");
       showToast(`${r.receipt_no} reversed — journal and allocations rolled back`, "success");
       load();
@@ -3694,7 +3695,7 @@ function Receipts({
     const token = await getAuthToken();
     let imported = 0;
     for (const rec of records) {
-      const result = await apiCall("/api/receipts/", "POST", rec, token);
+      const result = await apiCall("/api/receipts/", "POST", rec, token, { timeoutMs: HELD_DIALOG_MS });
       if (result.success) imported++;
       else errors.push(`Receipt for "${rec.customer_id}" on ${rec.receipt_date}: ${result.error ?? "failed to create"}`);
     }
@@ -4127,7 +4128,7 @@ function ReceiptForm({
             : {}),
         },
         token
-      );
+      , { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to record receipt");
 
       onSaved();
@@ -4533,7 +4534,7 @@ function CreditNotes({
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/credit-notes/", "POST", note, token);
+      const result = await apiCall("/api/credit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -4550,7 +4551,7 @@ function CreditNotes({
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/credit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/credit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue credit note");
       // CGST §34(2), decided by the server against the ORIGINAL SUPPLY's
       // financial year. Issuing is the moment the reduction reaches the ledger
@@ -4582,7 +4583,7 @@ function CreditNotes({
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete credit note");
       showToast(`${cn.credit_note_no || "Credit note"} deleted`, "success");
       load();
@@ -4610,7 +4611,7 @@ function CreditNotes({
     const failures: string[] = [];
     await Promise.all(selected.map(async (cn) => {
       try {
-        const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token);
+        const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -4637,7 +4638,7 @@ function CreditNotes({
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (cn): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token);
+        const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue credit note" };
       } catch (e) {
@@ -4980,7 +4981,7 @@ function SalesDebitNotes({
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/sales-debit-notes/", "POST", note, token);
+      const result = await apiCall("/api/sales-debit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -4997,7 +4998,7 @@ function SalesDebitNotes({
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/sales-debit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/sales-debit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue debit note");
       showToast("Debit note issued", "success");
       load();
@@ -5019,7 +5020,7 @@ function SalesDebitNotes({
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete debit note");
       showToast(`${dn.debit_note_no || "Debit note"} deleted`, "success");
       load();
@@ -5046,7 +5047,7 @@ function SalesDebitNotes({
     const failures: string[] = [];
     await Promise.all(selected.map(async (dn) => {
       try {
-        const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token);
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -5073,7 +5074,7 @@ function SalesDebitNotes({
     type IssueResult = { ok: true } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (dn): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/sales-debit-notes/${dn.id}/issue`, "POST", undefined, token);
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to issue debit note" };
       } catch (e) {

@@ -106,7 +106,7 @@ export function RcmDocumentPanel({
               {preview?.section} · {preview?.rule}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-ps-muted text-ps-label">
+          <button disabled={issuing} onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-ps-muted text-ps-label">
             <X size={16} />
           </button>
         </div>
@@ -241,7 +241,7 @@ export function RcmDocumentPanel({
             Check the particulars before issuing. Nothing is sent to any portal.
           </p>
           <div className="flex gap-2">
-            <button onClick={onClose}
+            <button disabled={issuing} onClick={onClose}
               className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
               Close
             </button>

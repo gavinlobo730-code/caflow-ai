@@ -556,7 +556,7 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
           <h3 className="text-base font-semibold text-ps-ink">
             Mark {rows.length} Filing{rows.length > 1 ? "s" : ""} as Filed
           </h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label transition-colors">
+          <button onClick={onClose} disabled={submitting} aria-label="Close" className="text-ps-hint hover:text-ps-label transition-colors disabled:opacity-50">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -617,7 +617,8 @@ function BatchMarkFiledModal({ selected, onClose, onSuccess }: BatchMarkFiledMod
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
+            disabled={submitting}
+            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

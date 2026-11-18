@@ -26,7 +26,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { X, Truck, Trash2, Lock } from "lucide-react";
-import { apiGet, apiCall, getAuthToken, fmt } from "@/lib/invoices/shared";
+import { apiGet, apiCall, getAuthToken, fmt, HELD_DIALOG_MS } from "@/lib/invoices/shared";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { Callout, GapList } from "@/components/ui/callout";
 import { objectWithLists } from "@/lib/api/shape";
@@ -122,7 +122,7 @@ export function LandedCostPanel({
       const token = await getAuthToken();
       const res = await apiCall(`/api/purchase-bills/${billId}/landed-costs`, "POST", {
         client_id: clientId, description: description.trim(), amount_paise: paise,
-      }, token);
+      }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Couldn't record the charge.");
       setDescription(""); setAmount("");
       await load();
@@ -140,7 +140,7 @@ export function LandedCostPanel({
       const token = await getAuthToken();
       const res = await apiCall(
         `/api/purchase-bills/${billId}/landed-costs/${charge.id}?client_id=${encodeURIComponent(clientId)}`,
-        "DELETE", undefined, token);
+        "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Couldn't remove the charge.");
       await load();
       onChanged?.();
@@ -162,7 +162,7 @@ export function LandedCostPanel({
         client_id: clientId,
         basis: basis || null,
         bill_id: scope === "bill" ? billId : null,
-      }, token);
+      }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Couldn't record the basis.");
       await load();
     } catch (e) {
@@ -188,7 +188,7 @@ export function LandedCostPanel({
               AS-2 par. 6 · {data?.bill_no ? `Bill ${data.bill_no}` : "This bill"}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close"
+          <button disabled={saving} onClick={onClose} aria-label="Close"
             className="p-1 rounded hover:bg-ps-muted text-ps-label">
             <X size={16} />
           </button>
@@ -378,7 +378,7 @@ export function LandedCostPanel({
         </div>
 
         <div className="px-5 py-3 border-t border-ps-border flex justify-end">
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="px-3 py-1.5 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">
             Close
           </button>

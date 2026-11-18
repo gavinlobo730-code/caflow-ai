@@ -257,11 +257,11 @@ export function AddEmployeeModal({
     // inside it and closes on Escape.
     <Modal
       title={isEdit ? "Edit Employee" : "Add Employee"}
-      onClose={onClose}
+      onClose={() => { if (!saving) (onClose)(); }}
       maxWidthClass="max-w-lg"
       footer={(
         <div className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={save} disabled={saving}>{saving ? "Saving..." : isEdit ? "Update Employee" : "Add Employee"}</Button>
         </div>
       )}

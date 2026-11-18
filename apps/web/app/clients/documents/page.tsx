@@ -119,7 +119,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Upload Document</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={uploading} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
@@ -158,7 +158,7 @@ function UploadModal({ onClose, onUploaded, clientId }: UploadModalProps) {
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
+          <button disabled={uploading} onClick={onClose}
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>

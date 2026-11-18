@@ -412,7 +412,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
               <p className="text-sm font-semibold text-ps-ink">
                 Add an opening {kind === "receivable" ? "invoice" : "bill"}
               </p>
-              <button onClick={closeForm} aria-label="Close"
+              <button disabled={saving} onClick={closeForm} aria-label="Close"
                 className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
             </div>
 
@@ -479,7 +479,7 @@ export default function OpeningBalancesTab({ clientId }: { clientId: string }) {
                 it was issued.
               </p>
               <div className="flex gap-2">
-                <button onClick={closeForm}
+                <button disabled={saving} onClick={closeForm}
                   className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                   Cancel
                 </button>

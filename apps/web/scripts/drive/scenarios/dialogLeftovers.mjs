@@ -7,7 +7,8 @@
  *   3. the icon-only buttons have names a screen reader says: the template and detail dialogs' Close, a band's remove on the statutory values screen;
  *   4. the New lot card scrolls, so on a window 320 pixels tall its Create button is on the screen;
  *   5. the GST and MCA trackers' Add Filing forms keep Save on a window 700 pixels tall (measured, where the ledger had it from the CSS);
- *   6. a bulk Mark Filed on Deadlines holds its Cancel while the filings are out, and one that fails for one row comes back narrowed to that row, with the
+ *   6. a bulk Mark Filed on Deadlines holds its Cancel, Escape, the backdrop and its X while the filings are out (and the GST and MCA trackers'
+ *      own batch prompts their named Close and Cancel), and one that fails for one row comes back narrowed to that row, with the
  *      server's sentence and the date it was tried with (the date was found kept already: the row holds it);
  *   7. the advance-tax register says a date's sentence once after Save, not twice;
  *   9. a recurring journal's history opens the generated entry, not the client's whole journal list;
@@ -155,9 +156,17 @@ export const scenarios = [
       await page.getByRole("button", { name: "Mark Filed", exact: true }).first().click();
       const prompt = page.getByRole("dialog").last();
       await typeAndLeave(prompt.locator("#mark-filed-date"), "07/10/2026");
+      // The filings are held three seconds, long enough to try every way out while they are out.
+      stub.setWriteDelay(3000);
       await prompt.getByRole("button", { name: "Confirm Filed", exact: true }).click();
       // The prompt's Cancel is held while the filings are out: pressed, it closed the prompt over requests that then landed on nothing.
       await until(async () => await prompt.getByRole("button", { name: "Cancel", exact: true }).isDisabled(), "the prompt's Cancel to be held while Confirm Filed is out", 3000);
+      // And so are the shared Modal's other three ways out (the review of 18-11-2026): Escape, a click on the backdrop and the header's X.
+      await page.keyboard.press("Escape");
+      await page.mouse.click(5, 5);
+      await prompt.getByRole("button", { name: "Close dialog" }).click();
+      assert.equal(await page.getByRole("dialog").count(), 1, "Escape, the backdrop or the X closed the prompt while the filings were out");
+      stub.setWriteDelay(700);
       await stub.quiet();
       await until(async () => (await page.getByRole("dialog").last().getByText("This return is already recorded as filed on another obligation.").count()) > 0,
         "the narrowed prompt to say the server's sentence");
@@ -172,6 +181,30 @@ export const scenarios = [
       assert.equal(JSON.parse(retried[0].body).filed_date, "2026-10-07", "the retry did not send the date it was tried with");
     },
   },
+  ...[
+    { tracker: "GST", open: openGstTracker("batch"), box: "#gst-batch-filed-date", write: /compliance\/calendar\/gst-1\/filed$/ },
+    { tracker: "MCA", open: openMcaTracker("batch"), box: "#mca-batch-filed-date", write: /mca-workspace\/filings\/m-1\/status$/ },
+  ].map((t) => ({
+    id: `the-${t.tracker.toLowerCase()}-trackers-batch-mark-filed-holds-its-close-and-cancel-while-it-is-out`,
+    title: `${t.tracker} tracker > Mark Filed (several) > Confirm: while it is out, the prompt's named Close and its Cancel are held`,
+    async run(env) {
+      const { page, stub } = env;
+      await t.open(env);
+      await typeAndLeave(page.locator(t.box), "07/10/2026");
+      // Found by its heading: its Confirm reads "Saving…" while it is out.
+      const prompt = page.locator("div.fixed").filter({ has: page.getByRole("heading", { name: /^Mark .* as Filed$/ }) }).last();
+      stub.setWriteDelay(3000);
+      await prompt.getByRole("button", { name: /^Confirm \d+ Filings?$/ }).click();
+      const close = prompt.getByRole("button", { name: "Close", exact: true });
+      const cancel = prompt.getByRole("button", { name: "Cancel", exact: true });
+      await until(async () => (await close.isDisabled()) && (await cancel.isDisabled()), `${t.tracker}: the batch prompt's named Close and its Cancel to be held while it is out`, 3000);
+      await page.keyboard.press("Escape");
+      assert.equal(await prompt.count(), 1, `${t.tracker}: Escape closed the batch prompt while it was out`);
+      stub.setWriteDelay(700);
+      await stub.quiet({ timeoutMs: 15_000 });
+      assert.equal(stub.writesTo(t.write).length, 1, `${t.tracker}: the filing was not recorded exactly once`);
+    },
+  })),
   {
     id: "the-advance-tax-register-says-a-dates-sentence-once-after-save",
     title: "Income tax > Advance tax: an unreadable paid-on date, then Save: its sentence is drawn once, not by both the working and the save",

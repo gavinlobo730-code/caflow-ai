@@ -171,7 +171,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Add Fee Engagement</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={saving} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
@@ -216,7 +216,7 @@ function AddEngagementModal({ clients, onClose, onSaved }: {
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>
@@ -284,7 +284,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Record Receipt</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={saving} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="space-y-3">
@@ -328,7 +328,7 @@ function AddReceiptModal({ invoices, onClose, onSaved }: {
           </div>
         </div>
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="flex-1 border border-ps-border text-ps-body rounded-lg py-2 text-sm hover:bg-ps-bg">
             Cancel
           </button>

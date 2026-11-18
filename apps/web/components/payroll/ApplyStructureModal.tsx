@@ -139,7 +139,7 @@ export default function ApplyStructureModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4"
-      onClick={onClose}>
+      onClick={busy === "apply" ? undefined : (onClose)}>
       <div className="w-full max-w-[720px] max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-xl"
         onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
@@ -150,7 +150,7 @@ export default function ApplyStructureModal({
               Months already released keep the figures they were paid on.
             </p>
           </div>
-          <button onClick={onClose}
+          <button disabled={busy === "apply"} onClick={onClose}
             className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>

@@ -859,11 +859,11 @@ function AdjustStockModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : (onClose)}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
           <p className="text-sm font-semibold text-ps-ink">Adjust Stock — {item.name}</p>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>
         <div className="p-5 space-y-3">
           <p className="text-2xs text-ps-hint">
@@ -1015,11 +1015,11 @@ function NrvWritedownModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : (onClose)}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
           <p className="text-sm font-semibold text-ps-ink">Write Down to NRV — {item.name}</p>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-body text-xl leading-none" aria-label="Close">×</button>
         </div>
         <div className="p-5 space-y-3">
           <p className="text-2xs text-ps-hint">

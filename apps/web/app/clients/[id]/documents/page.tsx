@@ -332,7 +332,7 @@ export default function DocumentsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-ps-ink">Upload Document</h3>
-              <button
+              <button disabled={actionInFlight}
                 onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
                 className="text-ps-hint hover:text-ps-label"
               >
@@ -366,7 +366,7 @@ export default function DocumentsPage() {
               {uploadError && <Callout tone="problem">{uploadError}</Callout>}
             </div>
             <div className="flex gap-3 justify-end">
-              <button
+              <button disabled={actionInFlight}
                 onClick={() => { setShowUploadModal(false); setUploadFile(null); setUploadLabel(""); }}
                 className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg"
               >

@@ -540,7 +540,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">{editing ? "Edit Bank Account" : "Add Bank Account"}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="space-y-3">
           <div>
@@ -609,7 +609,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
         {/* The form's own answer to the press comes first: with a balance and no date the older sentence is the true one, and two alerts would say it twice. */}
         {!error && openingRefusal.shown && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{openingRefusal.shown}</p>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Saving…" : editing ? "Save Changes" : "Add Account"}
           </Button>

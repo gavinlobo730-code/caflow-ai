@@ -414,7 +414,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">{target ? "Edit Tax Audit" : "Add Tax Audit"}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {(error || dateRefusal.shown) && <Callout tone="problem">{error ?? dateRefusal.shown}</Callout>}
@@ -592,7 +592,7 @@ function AuditModal({ clients, editAudit, presetClientId, onClose, onSaved }: {
           </div>
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
           <Button variant="plain" size="none" onClick={handleSave} disabled={saving || lockedForYou} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : target ? "Update" : "Add Audit"}
           </Button>

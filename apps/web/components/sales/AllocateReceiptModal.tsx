@@ -155,7 +155,7 @@ export default function AllocateReceiptModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4" onClick={saving ? undefined : (onClose)}>
       <div className="w-full max-w-[720px] max-h-[88vh] overflow-y-auto bg-white rounded-xl shadow-xl"
         onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-ps-border px-5 py-3 flex items-start justify-between gap-3">
@@ -170,7 +170,7 @@ export default function AllocateReceiptModal({
                 : ""}
             </p>
           </div>
-          <button onClick={onClose}
+          <button disabled={saving} onClick={onClose}
             className="text-xs text-ps-label border border-ps-border rounded-lg px-2.5 py-1 hover:bg-ps-bg shrink-0">
             Close
           </button>
@@ -249,7 +249,7 @@ export default function AllocateReceiptModal({
               )}
             </span>
             <div className="flex gap-2">
-              <button onClick={onClose}
+              <button disabled={saving} onClick={onClose}
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg text-ps-body hover:bg-ps-bg">
                 Cancel
               </button>
