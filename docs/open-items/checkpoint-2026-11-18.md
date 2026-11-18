@@ -49,7 +49,7 @@ The owner's rule is that no half-finished work is merged. Wave 2 was built by fi
 
 - **Combination of F1, F3, F4 and F5: branch `claude/days-sized-ledger-items-u16ekt-train7`** (head `b7621d9b`, sixteen commits on `a0e0ea4a`). It cherry-picked cleanly and the combination check found no conflict markers or foreign lines. It is **based on the pre-squash head, not on `main`**, so it has to be rebuilt on `main`: take each batch's commits again onto `main` and resolve the ledger files, and never stage everything and continue a failed pick by hand (the conflict markers that way once reached a commit and were caught before a push). F2 is not in it.
 - **Migration numbers reserved** for the batches: F1 740 to 744, F2 745 to 749, F3 750 to 754, F4 755 to 759, F5 760 to 764. Which numbers each branch actually used is in its commits. Migration 715 is the last one on `main`; check `ls apps/api/migrations/` rather than trusting either figure.
-- **Owner-list numbers reserved:** S42 for F1, S43 to S46 for the others. S40 and S41 are written. The next free number is S47 and the next free finding id is POST-A-476 (POST-A-473, 474 and 475 are written).
+- **Owner-list numbers reserved:** S42 for F1, S43 to S46 for the others. S40 and S41 are written. The next free number is S47 and the next free finding id is POST-A-477 (POST-A-473 to 476 are written).
 
 ## 4. What to do first on resuming, in order
 
