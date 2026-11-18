@@ -153,7 +153,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           </label>
         </div>
         <div className="px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-1.5 border border-ps-border text-ps-label text-sm rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="px-4 py-1.5 border border-ps-border text-ps-label text-sm rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={handleCreate} disabled={saving} className="px-4 py-1.5 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Creating…" : "Create Template"}
           </button>

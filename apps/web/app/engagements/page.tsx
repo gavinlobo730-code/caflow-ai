@@ -40,12 +40,17 @@ import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } fro
 import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+/** How long the page's JSON helper waits for an answer: the 45 seconds `lib/api` gives every JSON call. */
+const JSON_ABORT_MS = 45_000;
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
+  // Bounded the way `lib/api`'s request() is (45 seconds, never retried) unless the caller brings its own signal: the dialogs below hold
+  // Close and Cancel while a request is out, so an answer that never comes would otherwise keep them held until the browser gave up (POST-A-395).
   const res = await fetchPlain(`${API}${path}`, {
+    signal: AbortSignal.timeout(JSON_ABORT_MS),
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -503,7 +508,7 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
           <h2 className="text-base font-semibold text-ps-ink">
             {initial ? "Edit Template" : "New Template"}
           </h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
+          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
             <X size={18} />
           </button>
         </div>
@@ -559,7 +564,8 @@ function TemplateModal({ open, onClose, initial, onSaved }: TemplateModalProps) 
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+              disabled={saving}
+              className="flex-1 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
@@ -803,6 +809,8 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
       const { data: { session } } = await getSupabaseClient().auth.getSession();
       const token = session?.access_token ?? "";
       const res = await fetchPlain(`${API}/api/engagement-letters/${letter.id}/pdf`, {
+        // Close is held while this is out, so it is bounded as the JSON helper is (a one-letter PDF, not an export).
+        signal: AbortSignal.timeout(JSON_ABORT_MS),
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       }, "read");
       if (!res.ok) throw new Error(`Couldn't download the PDF (HTTP ${res.status})`);
@@ -834,7 +842,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
           </div>
           <div className="flex items-center gap-3">
             <StatusBadge status={shownStatus(letter)} />
-            <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
+            <button onClick={onClose} disabled={actionLoading} aria-label="Close" className="text-ps-hint hover:text-ps-label disabled:opacity-50">
               <X size={18} />
             </button>
           </div>
@@ -981,7 +989,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                       {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                       Send Now
                     </button>
-                    <button onClick={() => setShowSendInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                    <button onClick={() => setShowSendInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                       Cancel
                     </button>
                   </div>
@@ -1080,7 +1088,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Save &amp; Resend
                       </button>
-                      <button onClick={() => setShowRecipientInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      <button onClick={() => setShowRecipientInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1111,7 +1119,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                         Generate &amp; Email
                       </button>
-                      <button onClick={() => setShowRegenConfirm(false)} className="rounded-lg border border-ps-border bg-white px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      <button onClick={() => setShowRegenConfirm(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border bg-white px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1136,7 +1144,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
                         Confirm Signed
                       </button>
-                      <button onClick={() => setShowSignInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      <button onClick={() => setShowSignInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>
@@ -1161,7 +1169,7 @@ function DetailModal({ letter, onClose, onUpdated, onDeleted }: DetailModalProps
                         {actionLoading ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
                         Confirm Reject
                       </button>
-                      <button onClick={() => setShowRejectInput(false)} className="rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
+                      <button onClick={() => setShowRejectInput(false)} disabled={actionLoading} className="disabled:opacity-50 rounded-lg border border-ps-border px-3 py-2 text-sm text-ps-label hover:bg-ps-bg">
                         Cancel
                       </button>
                     </div>

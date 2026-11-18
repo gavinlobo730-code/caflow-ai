@@ -171,6 +171,8 @@ export function writingClientMethods(): ReadonlySet<string> {
       let hit = false;
       const walk = (n: ts.Node): void => {
         if (hit) return;
+        // A multipart upload is a POST by construction (lib/api/uploadWithProgress, `uploadForm`): it carries no method literal.
+        if (ts.isCallExpression(n) && (tail(n.expression) === "uploadForm" || tail(n.expression) === "fetchUpload")) { hit = true; return; }
         if (ts.isStringLiteralLike(n) && MUTATING_METHOD.test(n.text) && n.parent) {
           const p = n.parent;
           // `{ method: "POST" }`, or `apiCall(url, "POST", body)` / `fetch(url, "POST")`

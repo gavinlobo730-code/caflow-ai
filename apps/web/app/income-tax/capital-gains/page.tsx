@@ -951,7 +951,7 @@ export default function CapitalGainsPage() {
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <span className={`text-xs font-semibold ${gain >= 0 ? "text-state-ready" : "text-state-problem"}`}>{gain >= 0 ? "+" : ""}{fmtRs(gain)}</span>
-                              <Button variant="plain" size="none" onClick={() => handleDeleteRecord(r.id)} className="text-ps-disabled hover:text-state-problem transition-colors">
+                              <Button variant="plain" size="none" onClick={() => handleDeleteRecord(r.id)} aria-label={`Delete ${r.asset_description}`} className="text-ps-disabled hover:text-state-problem transition-colors">
                                 <Trash2 className="w-3 h-3" />
                               </Button>
                             </div>
@@ -995,7 +995,7 @@ export default function CapitalGainsPage() {
                       Reinvestment exemption — {exemptFor.asset_description}
                     </h2>
                   </div>
-                  <button onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
+                  <button disabled={exemptBusy} onClick={() => { setExemptFor(null); setExemption(null); }} aria-label="Close">
                     <X className="w-4 h-4 text-ps-hint" />
                   </button>
                 </div>
@@ -1207,7 +1207,7 @@ export default function CapitalGainsPage() {
               <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between px-5 py-4 border-b">
                   <h2 className="text-sm font-semibold text-ps-ink">Add Capital Gains Transaction</h2>
-                  <button onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
+                  <button disabled={saving} onClick={() => setShowModal(false)}><X className="w-4 h-4 text-ps-hint" /></button>
                 </div>
                 <div className="px-5 py-4 space-y-4">
                   {regError && <Callout tone="problem">{regError}</Callout>}
@@ -1388,7 +1388,7 @@ export default function CapitalGainsPage() {
                   )}
                 </div>
                 <div className="flex justify-end gap-3 px-5 py-4 border-t">
-                  <Button variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
+                  <Button disabled={saving} variant="outline" size="sm" onClick={() => setShowModal(false)}>Cancel</Button>
                   <Button size="sm" onClick={handleSaveRecord} disabled={saving}>{saving ? "Saving…" : "Save Transaction"}</Button>
                 </div>
               </div>

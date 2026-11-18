@@ -1,0 +1,156 @@
+{
+ "_about": "Pins apps/web/lib/services/currencyPreview.ts to apps/api/domain/currency/conversion.to_base_minor (POST-A-266). Both suites read it. 'documents' converts each head and adds the results, as the sales invoice and purchase bill saves do; 'one_conversion_of_the_total' is what the old preview did, kept to show the two differ.",
+ "conversions": [
+  {
+   "txn_minor": 10000,
+   "rate": "83",
+   "txn_minor_unit": 2,
+   "base_minor": 830000
+  },
+  {
+   "txn_minor": 10000,
+   "rate": "83.25",
+   "txn_minor_unit": 2,
+   "base_minor": 832500
+  },
+  {
+   "txn_minor": 333,
+   "rate": "1.005",
+   "txn_minor_unit": 2,
+   "base_minor": 335
+  },
+  {
+   "txn_minor": 1,
+   "rate": "0.5",
+   "txn_minor_unit": 2,
+   "base_minor": 1
+  },
+  {
+   "txn_minor": 3,
+   "rate": "0.5",
+   "txn_minor_unit": 2,
+   "base_minor": 2
+  },
+  {
+   "txn_minor": -3,
+   "rate": "0.5",
+   "txn_minor_unit": 2,
+   "base_minor": -2
+  },
+  {
+   "txn_minor": -1,
+   "rate": "0.5",
+   "txn_minor_unit": 2,
+   "base_minor": -1
+  },
+  {
+   "txn_minor": 1000,
+   "rate": "0.56",
+   "txn_minor_unit": 0,
+   "base_minor": 56000
+  },
+  {
+   "txn_minor": 1000,
+   "rate": "0.5555",
+   "txn_minor_unit": 0,
+   "base_minor": 55550
+  },
+  {
+   "txn_minor": 12345,
+   "rate": "275.123456",
+   "txn_minor_unit": 3,
+   "base_minor": 339640
+  },
+  {
+   "txn_minor": 7,
+   "rate": "0.071",
+   "txn_minor_unit": 3,
+   "base_minor": 0
+  },
+  {
+   "txn_minor": 999999999,
+   "rate": "83.4567",
+   "txn_minor_unit": 2,
+   "base_minor": 83456699917
+  },
+  {
+   "txn_minor": 118000,
+   "rate": "83.11",
+   "txn_minor_unit": 2,
+   "base_minor": 9806980
+  },
+  {
+   "txn_minor": 9000,
+   "rate": "83.11",
+   "txn_minor_unit": 2,
+   "base_minor": 747990
+  },
+  {
+   "txn_minor": 4500,
+   "rate": "83.11",
+   "txn_minor_unit": 2,
+   "base_minor": 373995
+  },
+  {
+   "txn_minor": 4500,
+   "rate": "83.11",
+   "txn_minor_unit": 2,
+   "base_minor": 373995
+  },
+  {
+   "txn_minor": 0,
+   "rate": "83",
+   "txn_minor_unit": 2,
+   "base_minor": 0
+  },
+  {
+   "txn_minor": 25,
+   "rate": "0.02",
+   "txn_minor_unit": 2,
+   "base_minor": 1
+  },
+  {
+   "txn_minor": 5,
+   "rate": "0.1",
+   "txn_minor_unit": 2,
+   "base_minor": 1
+  }
+ ],
+ "documents": [
+  {
+   "heads": [
+    100000,
+    9000,
+    9000,
+    0,
+    0
+   ],
+   "rate": "83.115",
+   "txn_minor_unit": 2,
+   "base_total": 9807570,
+   "one_conversion_of_the_total": 9807570
+  },
+  {
+   "heads": [
+    12345,
+    0,
+    0,
+    2222,
+    111
+   ],
+   "rate": "0.6789",
+   "txn_minor_unit": 0,
+   "base_total": 996490,
+   "one_conversion_of_the_total": 996489
+  },
+  {
+   "heads": [
+    50
+   ],
+   "rate": "1.01",
+   "txn_minor_unit": 2,
+   "base_total": 51,
+   "one_conversion_of_the_total": 51
+  }
+ ]
+}

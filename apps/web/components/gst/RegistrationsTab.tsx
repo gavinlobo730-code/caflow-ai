@@ -513,7 +513,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
           <div className="w-full max-w-md h-full bg-white shadow-xl flex flex-col">
             <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between">
               <p className="text-sm font-semibold text-ps-ink">Add a GST registration</p>
-              <button onClick={() => setShowForm(false)} aria-label="Close"
+              <button disabled={busy} onClick={() => setShowForm(false)} aria-label="Close"
                 className="p-1 rounded hover:bg-ps-muted text-ps-label"><X size={16} /></button>
             </div>
 
@@ -623,7 +623,7 @@ export default function RegistrationsTab({ clientId }: { clientId: string }) {
             </div>
 
             <div className="px-5 py-3 border-t border-ps-border flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)}
+              <button disabled={busy} onClick={() => setShowForm(false)}
                 className="px-3 py-1.5 text-xs border border-ps-border rounded-lg hover:bg-ps-bg">
                 Cancel
               </button>

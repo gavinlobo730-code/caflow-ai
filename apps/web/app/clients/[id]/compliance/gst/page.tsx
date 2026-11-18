@@ -222,6 +222,10 @@ function GSTR3BDetailDrawer({
 
   useEffect(() => {
     let cancelled = false;
+    // Another line's or period's rows are not this one's: a read that fails leaves nothing to export (POST-A-464).
+    setRows(null);
+    setTotals(null);
+    setError(null);
     (async () => {
       try {
         const r = await apiFetch(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useJournalApprovalRule } from "@/lib/accounting/journalApprovalRule";
+import { deleteActsOn, deleteAppliesTo, POSTED_LEFT_ALONE } from "@/lib/accounting/journalDeleteScope";
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Plus, RefreshCw, CheckCircle, Printer, Download, Share2, Trash2, Undo2 } from "lucide-react";
@@ -24,6 +25,8 @@ import {
   type ReconciliationCheck,
   type ReconciliationCheckCatalogue,
 } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { cachedReport, reportKey } from "@/lib/accounting/reportCache";
 import {
   bankCountDecision, readingFromAnswer, unmatchedBankTile, type UnmatchedBankReading,
@@ -40,6 +43,7 @@ import { documentTarget, noRouteReason, sourceLabel, journalEntryHref }
 import { cfUnion, cfAmount, aggregateCashFlow, cashFlowTiesOut, mapWithLimit, type CFData, type CFSection, type CFColumn } from "@/lib/accounting/cashFlowMatrix";
 import { TableSkeleton, StatementSkeleton, MetricCardSkeleton, LoadingRegion } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/use-toast";
+import { unreadColumnsSentence } from "@/lib/export/unread";
 
 
 import { formatIstLabelled } from "@/lib/dates/formatIst";
@@ -833,7 +837,7 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 bg-brand-dark/60 z-50 flex justify-end" onClick={(e) => !saving && e.target === e.currentTarget && onClose()}>
       <div className="bg-white w-[440px] h-full overflow-y-auto shadow-2xl flex flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Account</h2>
@@ -877,7 +881,7 @@ function AddAccountModal({ clientId, onClose, onSaved }: {
         </div>
 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Account"}
           </Button>
@@ -933,7 +937,7 @@ function EditAccountModal({ account, onClose, onSaved }: {
     // input, not just the backdrop — would otherwise bubble up to that
     // outer modal's own `onClick={onClose}` and close THE LEDGER behind it.
     <div className="fixed inset-0 bg-brand-dark/60 z-[110] flex items-center justify-center p-4"
-         onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}>
+         onClick={(e) => { e.stopPropagation(); if (!saving && e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col">
         <div className="px-5 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Edit Account</h2>
@@ -964,7 +968,7 @@ function EditAccountModal({ account, onClose, onSaved }: {
         </div>
 
         <div className="px-5 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Save Changes"}
           </Button>
@@ -1009,6 +1013,9 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
   // New Journal Entry and the voucher import write the books too (`accounting` `write`), and were drawn to an Executive.
   const mayWriteBooks = canDo("accounting", "write");
   const mayReverseEntries = canDo("accounting", "approve");
+  // Where the firm has a Partner approve every manual journal, a posted entry is deleted only by someone who may approve
+  // (POST-A-462): the server's own answer for this person (`may_post`), never a copy of the rule.
+  const deleteRule = useJournalApprovalRule();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(true);
   const [entriesError, setEntriesError] = useState<string | null>(null);
@@ -1283,11 +1290,13 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
       label: "Delete",
       icon: <Trash2 size={13} />,
       variant: "danger",
+      // Not offered for a selection of posted entries alone when the server says this person may not change them (POST-A-462).
+      appliesTo: (rows) => deleteAppliesTo(deleteRule.mayPost, rows),
       // Drafts always; a MANUAL posted entry while its period is open
       // (migration 275, the same gate that governs editing one). The server
       // decides — an auto-posted entry, a locked year or a filed return each
       // come back with a sentence naming the reason, which runBulk shows.
-      confirm:
+      confirm: deleteRule.mayPost === false ? POSTED_LEFT_ALONE :
         "Delete the selected entries? Drafts go immediately. A posted entry goes " +
         "only if you typed it yourself and its period is still open — anything " +
         "auto-posted or covered by a filed return is refused and named. An entry " +
@@ -1296,10 +1305,11 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
         "report, and stay in Settings → Audit Log with their lines.",
       run: (rows) => runBulk(
         rows,
-        // No client-side eligibility rule beyond "not already gone". Deciding
-        // here which posted entries qualify would be a second copy of the
-        // period gate, and the two would drift.
-        () => true,
+        // No client-side eligibility rule beyond "not already gone" and the
+        // server's own answer on posted entries (POST-A-462). Deciding here
+        // which posted entries qualify would be a second copy of the period
+        // gate, and the two would drift.
+        deleteActsOn(deleteRule.mayPost),
         // with_pair, because the confirm above said so. Half a pair is still
         // refused by the server either way round — it would strand the other.
         (e) => api.accounting.discardJournalEntry(e.id, true),
@@ -1334,7 +1344,7 @@ function JournalList({ clientId, financialYear, onFinancialYearChange, mode = "m
     },
     exportSelectedAction("journal.csv", journalColumns),
   ] satisfies BulkAction<JournalEntry>[]).filter((a) => (a.id !== "discard" || mayDeleteEntries) && (a.id !== "reverse-posted" || mayReverseEntries)),
-  [runBulk, journalColumns, mayDeleteEntries, mayReverseEntries]);
+  [runBulk, journalColumns, mayDeleteEntries, mayReverseEntries, deleteRule.mayPost]);
 
   return (
     <div className="space-y-2">
@@ -2626,7 +2636,12 @@ function ProfitAndLoss({ clientId, financialYear, onFinancialYearChange, onDrill
           <BasisToggle />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "profit and loss");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`profit-and-loss-${financialYear}.csv`, toCsv(buildPlExportRows(), plExportColumns));
+            }}
             disabled={plExportDisabled}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -2984,7 +2999,12 @@ function BalanceSheet({ clientId, financialYear, onFinancialYearChange, onDrillD
           <BasisToggle />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "balance sheet");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`balance-sheet-${financialYear}.csv`, toCsv(buildBsExportRows(), bsExportColumns));
+            }}
             disabled={bsExportDisabled}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -3452,7 +3472,12 @@ function CashFlow({ clientId, financialYear, onFinancialYearChange, ledgerSpan }
           />
           <button disabled={loading} onClick={() => load(true)} className="disabled:opacity-40 p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"><RefreshCw size={13} className={loading ? "animate-spin" : ""} /></button>
           <button
-            onClick={() => downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns))}
+            onClick={() => {
+              // A period whose read failed is refused in words, never written as 0.00 (POST-A-464).
+              const refused = unreadColumnsSentence(columns, "cash flow");
+              if (refused) { toast({ title: refused, variant: "destructive" }); return; }
+              downloadCsv(`cash-flow-${overall.start}-to-${overall.end}.csv`, toCsv(buildCfExportRows(), cfExportColumns));
+            }}
             disabled={!withData.length}
             className="p-1.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label"
             title="Export CSV"
@@ -4085,6 +4110,7 @@ function VerifyBooks({ clientId }: { clientId: string }) {
 function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcActive, ledgerSpan }: { clientId: string; financialYear: string; onFinancialYearChange: (fy: string) => void; mcActive: boolean; ledgerSpan: LedgerSpan }) {
   // Which grouped report is open; null = the hub index.
   const [openReport, setOpenReport] = useState<null | "fx">(null);
+  const { can: canDo, resolved: permissionsRead } = usePermissions();
   // Exports follow the same basis the user is viewing (URL-persisted).
   const searchParams = useSearchParams();
   const basis = (searchParams.get("basis") as "accrual" | "cash") ?? "accrual";
@@ -4096,6 +4122,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
   const [loadingShared, setLoadingShared] = useState(true);
   const [exporting, setExporting] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   // A report's link is being fetched: one at a time, so a second click does not open a second tab.
   const [openingReport, setOpeningReport] = useState(false);
   const [shareSuccess, setShareSuccess] = useState<string | null>(null);
@@ -4271,7 +4298,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
       form.append("report_id", reportType);
       form.append("report_label", label);
       form.append("financial_year", financialYear);
-      const res = await api.accounting.shareReport(form);
+      const res = await api.accounting.shareReport(form, setSent);
       if (!res?.success) throw new Error(res?.error || "Share failed");
 
       setShareSuccess(reportType);
@@ -4280,6 +4307,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Share failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setSharing(null);
     }
   }
@@ -4333,6 +4361,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-ps-ink">{r.label}</p>
                 <p className="text-3xs text-ps-hint mt-0.5">{r.description}</p>
+                {sharing === r.id && sent && <UploadProgress progress={sent} what="the workbook" />}
               </div>
               <div className="flex items-center gap-2">
                 {/* No print button on these rows (PRE-A-016). It called window.print(),
@@ -4446,6 +4475,8 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                   <td className="px-3 py-2.5 text-ps-label font-mono text-3xs truncate max-w-[130px]">{r.file_name}</td>
                   <td className="px-4 py-2.5 text-ps-hint">{formatDate(r.created_at)}</td>
                   <td className="px-3 py-2.5">
+                    {/* The link is made only for someone the books are open to (POST-A-467); offered while permissions load. */}
+                    {(!permissionsRead || canDo("accounting", "read")) ? (
                     <button
                       disabled={openingReport}
                       onClick={async () => {
@@ -4465,6 +4496,7 @@ function FinancialReports({ clientId, financialYear, onFinancialYearChange, mcAc
                     >
                       <Download size={10} /> Download
                     </button>
+                    ) : <span className="text-3xs text-ps-hint">Books access needed</span>}
                   </td>
                 </tr>
               ))}

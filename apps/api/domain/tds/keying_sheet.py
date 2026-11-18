@@ -128,10 +128,11 @@ ORPHAN_CHALLAN_ROWS = (
 )
 
 #: POST-A-078. The statement carries the deductions a CA typed on the TDS screen as deductee rows beside the purchase bills' and advances', so they are on this
-#: sheet; no journal stands behind them, so the sheet says which tax the tie-out with the TDS Payable account does not hold.
+#: sheet; nothing records which journal, if any, carries them, so the sheet says which tax the tie-out with the TDS Payable account does not hold.
 TYPED_DEDUCTIONS_ON_THIS_SHEET = (
     "{count} deduction(s) typed on the TDS screen for this quarter, with {tds} of tax withheld, are on this sheet as deductee rows, like the purchase bills' and "
-    "advances'. No journal stands behind a typed deduction, so their tax is outside the tie-out with the TDS Payable account."
+    "advances'. Nothing records which journal, if any, carries a typed deduction, so their tax, and any journal passed by hand for it, is outside the tie-out "
+    "with the TDS Payable account."
 )
 
 #: POST-A-078. A typed deduction whose register row is recorded for another statement, or whose supplier is now recorded as non-resident, is not carried here, and

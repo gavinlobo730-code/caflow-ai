@@ -684,7 +684,7 @@ export function BankReconciliation({ clientId, onGoToEntries }: {
                   {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
                 </div>
                 <div className="flex gap-2 justify-end px-5 py-4 border-t border-ps-border">
-                  <button onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
+                  <button disabled={busy} onClick={() => { setReopening(false); setReopenReason(""); setError(null); }}
                     className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
                   <Button variant="plain" size="none" onClick={doReopen} disabled={busy || reopenReason.trim().length < 10}
                     className="text-xs px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-40">

@@ -74,8 +74,9 @@ export interface GSTSummary {
  * on `transaction_type` themselves afterwards, and a server-side filter nobody
  * used was one more thing to keep in step.
  */
-export async function getTransactions(clientId?: string): Promise<Transaction[]> {
-  const res = await api.reports.transactions(clientId);
+/** `dateFrom`/`dateTo` bound the transaction date on the SERVER (inclusive, ISO days); absent, no bound. */
+export async function getTransactions(clientId?: string, dateFrom?: string, dateTo?: string): Promise<Transaction[]> {
+  const res = await api.reports.transactions(clientId, dateFrom, dateTo);
   if (!res.success) throw new Error(res.error ?? "Failed to load transactions");
   return res.data.transactions;
 }

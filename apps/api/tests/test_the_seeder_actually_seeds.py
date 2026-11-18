@@ -190,6 +190,12 @@ def test_the_whole_practice_writes_through_the_doors(api):
     assert written["bf_losses"] == 2 and written["itr_waiting"] == 1
     assert [m for m in written["returns_refused"]] and all(
         "Priya Sharma" in m and "bridge is incomplete" in m for m in written["returns_refused"]), written["returns_refused"]
+    # The individual's salary worksheet is kept before the bridge is asked, through the real door and the domain's working (PRE-A-004).
+    assert written["salary_worksheets"] == 1
+    # The partnership's remuneration: each quarter's deduction through the TDS door, which asked the engine for the tax, and the journal
+    # that carries it, through the real posting door (a refusal would be in `returns_refused`, which names only the individual above).
+    assert written["partner_remuneration_credits"] == sum(
+        len(fixture.partner_remuneration_credits(c, firm.financial_year)) for c in firm.clients) == 6
 
 
 def test_every_client_has_an_engagement_letter_and_the_promoters_are_in_the_relationship_hub(api):

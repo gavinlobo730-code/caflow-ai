@@ -70,7 +70,7 @@ export interface TDSDeductee {
   is_lower_deduction?: boolean;
   lower_deduction_cert?: string;
   /** What recorded the deduction, as the server says (a from-books 26Q only): a purchase bill, an advance, or the TDS register (a deduction typed on the TDS
-   *  screen, with no journal behind it; POST-A-078). A statement saved before the field existed has none. */
+   *  screen, carried by no journal the product records; POST-A-078). A statement saved before the field existed has none. */
   recorded_by?: "purchase_bill" | "advance" | "tds_register";
 }
 
@@ -188,7 +188,7 @@ export interface TDSReturnPayload {
     difference_paise: number;
     matched: boolean;
     account_found: boolean;
-    /** POST-A-078. The tax of the deductions typed on the TDS screen that the statement carries: no journal stands behind them, so the tie-out above does not
+    /** POST-A-078. The tax of the deductions typed on the TDS screen that the statement carries: nothing records which journal, if any, carries them, so the tie-out above does not
      *  compare it. Absent from a statement built before the field existed. */
     typed_paise?: number;
     /** The account the tie-out read (24Q: the payroll resolver's answer, POST-A-083). */

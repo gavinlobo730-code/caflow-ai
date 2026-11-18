@@ -48,7 +48,8 @@ test("the deadlines page renders the confirmation through a dialog", () => {
 test("the shared prompt renders through the shared Modal, not a static Card", () => {
   const src = read(PROMPT);
   assert.match(src, /import\s*\{\s*Modal\s*\}\s*from\s*"@\/components\/ui\/modal"/);
-  assert.match(src, /<Modal\b[^>]*\bonClose=\{onClose\}/);
+  // Escape, the backdrop and the X reach this onClose, so it ignores them while the filing is out (POST-A-395).
+  assert.match(src, /<Modal\b[^>]*\bonClose=\{\(\) => \{ if \(!busy\) onClose\(\); \}\}/);
   assert.doesNotMatch(src, /<Card\b/);
 });
 

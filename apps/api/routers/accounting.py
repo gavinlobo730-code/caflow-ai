@@ -126,18 +126,29 @@ def create_account(
     """
     if client_id:
         assert_client_access(current_user, client_id)
-    db = _prod_db()
-    if db is None:
-        try:
-            return api_response(True, accounting_service.create_account(data.model_dump()))
-        except ValidationError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+    # Asked before either store is written, so mock mode refuses what production refuses.
     if not (data.code or "").strip():
         raise HTTPException(
             status_code=422,
             detail="An account code is required — it is what the chart is ordered "
                    "and matched by, and UNIQUE (firm_id, client_id, account_code) "
                    "enforces it.")
+    db = _prod_db()
+    if db is None:
+        # The mock store keys an account by the TABLE's column names and is handed the same fields the insert below writes; it was
+        # handed the model's own (`code`, `name`) and answered every create with a KeyError, a 500 (found seeding the demo firm, PRE-A-004).
+        try:
+            return api_response(True, accounting_service.create_account({
+                "account_code": data.code.strip(), "account_name": data.name,
+                "account_type": data.account_type.value if hasattr(data.account_type, "value") else str(data.account_type),
+                "account_subtype": (data.account_subtype or "").strip() or None, "parent_id": data.parent_id,
+                "parent_group": (data.parent_group or "").strip() or None,
+                "sub_group": (data.sub_group or "").strip() or None,
+                "schedule_iii_mapping": (data.schedule_iii_mapping or "").strip() or None,
+                "is_active": data.is_active,
+                "client_id": client_id, "firm_id": current_user.get("firm_id")}))
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=str(e))
     try:
         # Payload written INLINE with literal keys — see
         # services/ageing_schedule_service._write for why.
@@ -196,6 +207,32 @@ def _assert_account_scope(current_user: dict, account_id: str) -> dict:
     if not can_access_client(current_user, account.get("client_id")):
         raise HTTPException(status_code=404, detail="Account not found.")
     return account
+
+
+@router.get("/emi")
+def loan_emi(
+    principal_paise: Annotated[int, Query(gt=0, le=10**15)],
+    annual_rate_bps: Annotated[int, Query(ge=0, le=100_000)],
+    months: Annotated[int, Query(gt=0, le=1200)],
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The loans screen's EMI calculator, worked here and not in the browser (POST-A-266).
+
+    A guide, not a figure anything is built from: nothing stores it, and the screen says the loan agreement's
+    instalment is the one to record. `domain/loans/emi.py` holds the arithmetic and says what it does not know.
+    """
+    from domain.loans.emi import emi_paise
+    try:
+        emi = emi_paise(principal_paise, annual_rate_bps, months)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return api_response(True, {
+        "emi_paise": emi,
+        "principal_paise": principal_paise,
+        "annual_rate_bps": annual_rate_bps,
+        "months": months,
+        "basis": "Reducing balance, interest monthly at the annual rate over 12, rounded to the paisa once.",
+    })
 
 
 @router.get("/schedule-iii/captions")

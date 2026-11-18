@@ -139,7 +139,7 @@ function SetRetainerModal({
           <h3 className="text-sm font-semibold text-ps-ink">
             {existing ? "Edit" : "Set"} Retainer — {client.client_name}
           </h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label" aria-label="Close">
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label" aria-label="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -217,7 +217,7 @@ function SetRetainerModal({
         {error && <p className="text-2xs text-red-600">{error}</p>}
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
+          <button disabled={saving} onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg hover:bg-ps-bg">
             Cancel
           </button>
           <Button variant="plain" size="none"

@@ -672,7 +672,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
   }
 
   return (
-    <Drawer open onClose={leave} ariaLabel={`Correct ${asset.asset_code ?? asset.asset_name}`} widthClass="sm:max-w-md">
+    <Drawer open onClose={() => { if (!saving) (leave)(); }} ariaLabel={`Correct ${asset.asset_code ?? asset.asset_name}`} widthClass="sm:max-w-md">
       <div className="p-6 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Correct {asset.asset_code ?? asset.asset_name}</h3>
@@ -713,7 +713,7 @@ function CorrectAssetDrawer({ asset, onClose, onSaved }: { asset: Asset; onClose
         {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 pt-2">
-          <button onClick={leave} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={leave} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Save correction"}
           </Button>
@@ -1032,7 +1032,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
   }
 
   return (
-    <Drawer open onClose={leave} ariaLabel="Add fixed asset" widthClass="sm:max-w-[440px]">
+    <Drawer open onClose={() => { if (!saving) (leave)(); }} ariaLabel="Add fixed asset" widthClass="sm:max-w-[440px]">
       <div className="flex min-h-full flex-col">
         <div className="px-6 py-4 border-b border-ps-border flex items-center justify-between shrink-0">
           <h2 className="text-sm font-semibold text-ps-ink">Add Fixed Asset</h2>
@@ -1334,7 +1334,7 @@ function AddAssetDrawer({ clientId, onClose, onSaved }: { clientId: string; onCl
         </div>
 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 shrink-0">
-          <button onClick={leave} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={leave} className="flex-1 py-2 rounded-lg border border-ps-border text-xs text-ps-label hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-brand text-white text-xs font-medium hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Asset"}
           </Button>

@@ -406,7 +406,7 @@ function AddLeadModal({ open, onClose, onSave, initial }: ModalProps) {
           <h2 className="text-base font-semibold text-ps-ink">
             {initial ? "Edit Lead" : "Add Lead"}
           </h2>
-          <button aria-label="Close"
+          <button disabled={saving} aria-label="Close"
             onClick={onClose}
             className="text-ps-hint hover:text-ps-label"
           >

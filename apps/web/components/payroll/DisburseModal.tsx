@@ -89,7 +89,7 @@ export function DisburseModal({ run, onClose, onDone }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Mark Payroll Paid — {run.month}</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="bg-ps-bg rounded-lg px-3 py-2 text-xs text-ps-label">
           Posts <span className="font-medium">Dr Net Salary Payable / Cr Bank</span> for the net pay
@@ -124,7 +124,7 @@ export function DisburseModal({ run, onClose, onDone }: {
         )}
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           <Button variant="plain" size="none" onClick={save} disabled={saving || loadingAccts || accounts.length === 0} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
             {saving ? "Recording…" : "Confirm Payment"}
           </Button>

@@ -22,6 +22,8 @@ import { TableSkeleton } from "@/components/ui/skeleton";
 import { formatPaise } from "@/lib/services/formatting";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { api } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { failureSentence } from "@/lib/api/failureSentence";
 import { deleteRowAndConfirm } from "@/lib/data/deleteRowAndConfirm";
 import { getFirmId } from "@/lib/data/getFirmId";
@@ -164,7 +166,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white flex items-center justify-between px-6 py-4 border-b border-ps-border">
           <h3 className="text-sm font-semibold text-ps-ink">Add IT Notice</h3>
-          <button aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
+          <button disabled={saving} aria-label="Close" onClick={onClose} className="text-ps-hint hover:text-ps-label"><X size={16} /></button>
         </div>
         <div className="px-6 py-4 space-y-3">
           {error && <Callout tone="problem">{error}</Callout>}
@@ -205,7 +207,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
             </div>
             <div>
               <label htmlFor="notice-response-due" className={lbl}>Response Due Date</label>
-              <DateInput id="notice-response-due" anchor={form.dateReceived || null} value={form.responseDueDate} onChange={v => upd({ responseDueDate: v })} onStateChange={dates.watch("due", "Response due date")} className={inputCls} />
+              <DateInput id="notice-response-due" anchor={form.dateReceived || null} near={form.dateReceived || null} value={form.responseDueDate} onChange={v => upd({ responseDueDate: v })} onStateChange={dates.watch("due", "Response due date")} className={inputCls} />
             </div>
           </div>
           <div>
@@ -226,7 +228,7 @@ function AddModal({ clients, presetClientId, onClose, onAdded }: {
           </div>
         </div>
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-ps-border flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="px-4 py-2 text-sm text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg">Cancel</button>
           <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-60">
             {saving ? "Saving…" : "Add Notice"}
           </button>
@@ -246,6 +248,7 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
   onUploaded: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [opening, setOpening] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   // Which slot of the notice this fills; the server names the column, so the browser never chooses one.
@@ -258,11 +261,12 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
     try {
       // The server bounds the file, checks its bytes against its type, names and stores it under the firm, client and
       // notice, and writes the path onto the notice, or removes the file again (POST-A-010).
-      await api.incomeTax.attachToNotice(noticeId, slot, file);
+      await api.incomeTax.attachToNotice(noticeId, slot, file, setSent);
       onUploaded();
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -296,6 +300,7 @@ function UploadDocButton({ noticeId, field, label, currentPath, onUploaded }: {
             {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             {uploading ? "Uploading…" : label}
           </button>
+          {sent && <UploadProgress progress={sent} what="the file" />}
         </>
       )}
     </div>

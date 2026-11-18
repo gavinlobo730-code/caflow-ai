@@ -14,6 +14,9 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { deleteRowAndConfirm, ROW_NOT_DELETED } from "@/lib/data/deleteRowAndConfirm";
 import { api } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { UploadProgress } from "@/components/ui/upload-progress";
+import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import type { ClientDocumentList, ClientNotice, PortalUnreadSummary } from "@/lib/api";
 import { arrayOrEmpty, objectOrNull, objectWithLists } from "@/lib/api/shape";
 import type { Client } from "@/lib/types";
@@ -158,6 +161,10 @@ function formatFileSize(bytes: number | null): string {
 }
 
 export default function ClientPortalPage() {
+  // A shared report is the client's P&L, Balance Sheet or Trial Balance, and its link is made only for someone the books
+  // are open to (POST-A-467). Offered while permissions are still loading, because the server is the one that refuses.
+  const { can, resolved: permissionsResolved } = usePermissions();
+  const booksOpen = !permissionsResolved || can("accounting", "read");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -194,6 +201,7 @@ export default function ClientPortalPage() {
   // Distinguishes "fetch failed" from "nothing shared yet."
   const [sharedFailed, setSharedFailed] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [uploadLabel, setUploadLabel] = useState("");
   const sharedUploadRef = useRef<HTMLInputElement | null>(null);
 
@@ -488,13 +496,14 @@ export default function ClientPortalPage() {
       form.append("file", file);
       form.append("client_id", selectedClientId);
       form.append("description", label);
-      await api.clientDocuments.upload(form);
+      await api.clientDocuments.upload(form, setSent);
 
       setUploadLabel("");
       await loadSharedDocs(selectedClientId);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Upload failed", variant: "destructive" });
     } finally {
+      setSent(null);
       setUploadingDoc(false);
     }
   }
@@ -823,6 +832,7 @@ export default function ClientPortalPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
+                    {sent && <div className="mb-3"><UploadProgress progress={sent} what="the document" /></div>}
                     {sharedLoading ? (
                       <ListSkeleton rows={3} />
                     ) : sharedFailed ? (
@@ -913,6 +923,7 @@ export default function ClientPortalPage() {
                               </p>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
+                              {booksOpen ? (
                               <button
                                 disabled={actionInFlight}
                                 onClick={async () => {
@@ -931,6 +942,9 @@ export default function ClientPortalPage() {
                               >
                                 <Download size={12} /> Download
                               </button>
+                              ) : (
+                                <span className="text-xs text-ps-hint">Opens for someone with access to the books</span>
+                              )}
                               <Button variant="plain" size="none"
                                 onClick={async () => {
                                   if (!(await confirmDialog({ message: "Remove this shared report?", danger: true, confirmLabel: "Remove" }))) return;
@@ -1193,7 +1207,7 @@ export default function ClientPortalPage() {
               </label>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button
+              <button disabled={actionInFlight}
                 onClick={() => {
                   setShowNewRequestModal(false);
                   setNewRequest({ title: "", description: "", is_urgent: false, due_date: "" });

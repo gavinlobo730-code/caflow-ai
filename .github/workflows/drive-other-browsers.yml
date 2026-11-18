@@ -85,7 +85,7 @@ jobs:
         run: pnpm smoke:build
 
       # The groups the ledger line names: the typed dates, the same-tick double click, the keyboard and the dialogs. One zone of the three
-      # and one third of the date group a week (`--zone rotate`), as the nightly does, with the same deadline.
+      # and one quarter of the date group a week (`--zone rotate`), as the nightly does, with the same deadline.
       - name: Drive the money editors
         if: steps.build.outcome == 'success'
         working-directory: apps/web

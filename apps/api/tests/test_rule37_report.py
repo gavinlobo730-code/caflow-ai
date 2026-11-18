@@ -398,3 +398,101 @@ def test_a_client_with_nothing_overdue_gets_nil_totals_and_the_caveat(db):
     assert out["interest_totals"] == {"from_availment_paise": 0,
                                       "from_expiry_paise": 0}
     assert len(out["interest_caveats"]) == 1
+
+
+# ── s.17(5) blocked credit is never reversed (POST-A-463) ────────────────────
+#
+# A bill line marked blocked under CGST Act s.17(5) posts its tax to the cost,
+# not to GST Input (migration 240), and since POST-A-459 a purchase note does
+# the same (migration 685). Rule 37(1) reverses the credit AVAILED, so tax that
+# was never credit has nothing to reverse. The report read the whole tax of the
+# bill and of each note and so reported blocked tax as due for reversal.
+
+
+def _blocked(row, *, cgst=0, sgst=0, igst=0):
+    row.update({"ineligible_itc_cgst_paise": cgst, "ineligible_itc_sgst_paise": sgst,
+                "ineligible_itc_igst_paise": igst})
+    return row
+
+
+def test_a_bills_blocked_tax_is_not_reversed(db):
+    """₹1,18,000 bill, ₹18,000 tax of which ₹6,000 (₹3,000 + ₹3,000) is on a
+    blocked line, nothing paid: ₹12,000 of credit was availed and reverses."""
+    _blocked(_bill(db, "B-1"), cgst=3_000_00, sgst=3_000_00)
+
+    item = _report(db)["bills"][0]
+
+    assert item["reversal"]["cgst_paise"] == 6_000_00
+    assert item["reversal"]["sgst_paise"] == 6_000_00
+    assert item["reversal"]["total_paise"] == 12_000_00
+    assert item["blocked_itc_paise"] == 6_000_00
+
+
+def test_a_bill_whose_whole_tax_is_blocked_is_not_reported(db):
+    _blocked(_bill(db, "B-1"), cgst=9_000_00, sgst=9_000_00)
+
+    assert _report(db)["bill_count"] == 0
+
+
+def test_a_part_paid_bill_with_blocked_lines_reverses_the_unpaid_share_of_its_credit(db):
+    """Half the supply unpaid: half of the ₹12,000 availed reverses, not half
+    of the ₹18,000 charged."""
+    _blocked(_bill(db, "B-1", paid=59_000_00), cgst=3_000_00, sgst=3_000_00)
+
+    assert _report(db)["bills"][0]["reversal"]["total_paise"] == 6_000_00
+
+
+def test_a_return_of_blocked_goods_takes_back_no_credit(db):
+    """The bill's blocked line is returned on a debit note whose line is also
+    marked blocked (the note moved no credit): the ₹12,000 availed on the rest
+    is still availed, and the ₹59,000 still owed is the whole of what is left."""
+    bill = _blocked(_bill(db, "B-1", debited=59_000_00), cgst=3_000_00, sgst=3_000_00)
+    _blocked(_debit_note(db, bill["id"], total=59_000_00, cgst=3_000_00, sgst=3_000_00),
+             cgst=3_000_00, sgst=3_000_00)
+
+    item = _report(db)["bills"][0]
+
+    assert item["reversal"]["total_paise"] == 12_000_00
+    assert item["blocked_itc_paise"] == 0
+
+
+def test_a_debit_note_nets_only_its_creditable_tax(db):
+    """A note carrying ₹4,500 + ₹4,500 of which ₹1,500 + ₹1,500 is blocked
+    moved GST Input by ₹6,000; that is what comes off the bill's credit."""
+    bill = _bill(db, "B-1", debited=59_000_00)
+    _blocked(_debit_note(db, bill["id"], total=59_000_00, cgst=4_500_00, sgst=4_500_00),
+             cgst=1_500_00, sgst=1_500_00)
+
+    item = _report(db)["bills"][0]
+
+    # credit still availed 18,000 - 6,000 = 12,000, all of the 59,000 unpaid.
+    assert item["reversal"]["total_paise"] == 12_000_00
+
+
+def test_an_undercharge_note_adds_only_its_creditable_tax(db):
+    bill = _bill(db, "B-1", credit_note=11_800_00)
+    _blocked(_purchase_credit_note(db, bill["id"], total=11_800_00, cgst=900_00,
+                                   sgst=900_00), cgst=900_00, sgst=900_00)
+
+    item = _report(db)["bills"][0]
+
+    assert item["reversal"]["total_paise"] == 18_000_00
+    assert item["blocked_itc_paise"] == 1_800_00
+
+
+def test_a_blocked_figure_larger_than_its_head_never_turns_credit_negative(db):
+    _blocked(_bill(db, "B-1"), cgst=50_000_00)
+
+    item = _report(db)["bills"][0]
+
+    assert item["reversal"]["cgst_paise"] == 0
+    assert item["reversal"]["sgst_paise"] == 9_000_00
+
+
+def test_the_report_reads_the_blocked_heads_of_all_three_documents():
+    """The filter reads the key off the row, so a projection that omits a
+    blocked column silently treats blocked tax as credit."""
+    import inspect
+    src = inspect.getsource(svc)
+    for head in ("cgst", "sgst", "igst"):
+        assert src.count(f"ineligible_itc_{head}_paise") >= 3, head

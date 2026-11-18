@@ -44,8 +44,11 @@ export function editedChoice<T>(now: T | null | undefined, onFile: T | null | un
  * one would move those documents between the tables of a return. The server refuses the same edit in the same words (`models.clearable.removed_identifier_problem`);
  * this says it beside the button before anything is sent.
  */
-export function removedIdentifierProblem(label: string, onFile: string | null | undefined, now: string | null | undefined): string | null {
+export function removedIdentifierProblem(label: string, onFile: string | null | undefined, now: string | null | undefined,
+                                         why?: string): string | null {
   if ((now ?? "").trim() || !(onFile ?? "").trim()) return null;
+  // `why` replaces the second sentence where the reader is not a return about documents issued to a party, as the server's own `why` does
+  // (an employee's PAN, UAN, ESI number and bank account, POST-A-465).
   return `The ${label} on file can be corrected but not removed: enter the corrected ${label}. `
-    + "Every return not yet filed reads it for the documents already issued to this party.";
+    + (why ?? "Every return not yet filed reads it for the documents already issued to this party.");
 }

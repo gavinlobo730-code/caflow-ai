@@ -120,7 +120,8 @@ test("EditAccountModal sends only the fields that actually changed", () => {
 
 test("editing a nested modal cannot close the ledger drill-down behind it", () => {
   const body = componentBody(page, "EditAccountModal");
-  assert.match(body, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); if \(e\.target === e\.currentTarget\) onClose\(\); \}\}/,
+  // While its save is out the backdrop does not close it (POST-A-395), and the click is still stopped from reaching the ledger behind.
+  assert.match(body, /onClick=\{\(e\) => \{ e\.stopPropagation\(\); if \(!saving && e\.target === e\.currentTarget\) onClose\(\); \}\}/,
     "EditAccountModal renders as a sibling of LedgerDrillDown's own content " +
     "box, not inside it — without stopPropagation on every click (not only " +
     "backdrop clicks), typing in this form bubbles up to the ledger modal's " +

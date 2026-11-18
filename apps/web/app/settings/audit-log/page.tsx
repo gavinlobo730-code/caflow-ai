@@ -319,7 +319,8 @@ function AuditLogContent() {
         </button>
         <button
           onClick={handleExport}
-          disabled={filtered.length === 0}
+          // After a failed read the rows on screen are an earlier filter's (POST-A-464).
+          disabled={filtered.length === 0 || !!error || loading}
           className="flex items-center gap-1.5 text-xs border border-ps-border text-ps-label px-3 py-1.5 rounded-md hover:bg-ps-bg disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Download size={13} /> Export CSV

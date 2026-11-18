@@ -31,6 +31,7 @@ import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useTakenBackWhenFixed } from "@/lib/dates/useDateProblems";
 import { LoadingRegion } from "@/components/ui/skeleton";
+import { journalEntryHref } from "@/lib/accounting/sourceDocument";
 
 /** Said by Save over a window that ends before it starts, and taken back once it does not. */
 const END_BEFORE_START = "End date: it is before the start date.";
@@ -120,6 +121,8 @@ export default function RecurringPage() {
   const dates = useDateProblems();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  /** The client of the template whose history is open: its generated entries open on that client's journal entry screen. */
+  const historyClientId = templates.find(t => t.id === historyFor)?.client_id ?? "";
   /** The next few dates this template will generate on, from
    *  `GET /{id}/preview`. `domain/recurrence` is the one cadence engine and
    *  its month-end clamp is against the ORIGINAL day, so a 31 January
@@ -141,6 +144,8 @@ export default function RecurringPage() {
       if (!res.success) throw new Error(res.error ?? "Failed to load templates");
       setTemplates(res.data ?? []);
     } catch (e) {
+      // A list that could not be read is not the earlier list: nothing is left to export (POST-A-464).
+      setTemplates([]);
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
@@ -595,8 +600,9 @@ export default function RecurringPage() {
                             </span>}
                       </td>
                       <td className="px-5 py-2 text-xs">
-                        {r.journal_entry_id
-                          ? <Link href={`/clients/${templates.find(t => t.id === historyFor)?.client_id ?? ""}/accounting?tab=journal`} className="text-blue-600 hover:underline inline-flex items-center gap-1">
+                        {/* The entry the occurrence generated, on the journal entry's own screen (a draft opens for editing), and not the client's whole journal list (POST-A-395). */}
+                        {r.journal_entry_id && historyClientId
+                          ? <Link href={journalEntryHref(historyClientId, r.journal_entry_id)} className="text-blue-600 hover:underline inline-flex items-center gap-1">
                               Open <ExternalLink size={11} />
                             </Link>
                           : <span className="text-ps-disabled">—</span>}

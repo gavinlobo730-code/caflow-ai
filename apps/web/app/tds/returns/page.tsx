@@ -509,8 +509,8 @@ export default function TDSReturnsPage() {
                               : "books agree with the general ledger")
                             : `books and ledger differ by ${r(Math.abs(result.reconciliation.difference_paise))}`}
                         </strong>
-                        {/* The server's own figure (POST-A-078): the typed deductions' tax is in the totals and in no journal, so it is outside this check. */}
-                        {result.reconciliation.typed_paise ? <> · the {r(result.reconciliation.typed_paise)} of tax on typed deductions has no journal and is outside it</> : null}
+                        {/* The server's own figure (POST-A-078): the typed deductions' tax is in the totals, and nothing records which journal, if any, carries it, so it is outside this check. */}
+                        {result.reconciliation.typed_paise ? <> · the {r(result.reconciliation.typed_paise)} of tax on typed deductions is outside it: nothing records which journal, if any, carries it</> : null}
                       </p>
                     )}
                   </div>

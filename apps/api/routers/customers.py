@@ -590,6 +590,30 @@ def bulk_create_customers(
         return api_response(False, None, "Unable to complete customer operation. Please try again.")
 
 
+@router.get("/recent")
+def recent_customers(
+    client_id: str = Query(..., description="CA client ID — required"),
+    limit: int = Query(8, ge=1, le=20),
+    current_user: dict = Depends(rbac("client", "read")),
+):
+    """The customers this client used most recently, newest first, for the top of the picker (POST-A-155).
+
+    Read off the client's own newest invoices (`domain/party_recent`): ids only, each once, carried-over and deleted
+    documents left out. The picker reorders its list with them and pre-selects nothing.
+    """
+    assert_client_access(current_user, client_id)
+    if _USE_MOCK:
+        return api_response(True, {"ids": [], "documents_read": 0, "window": 0})
+    from core.supabase_client import get_supabase
+    from domain.party_recent import read_recent
+    try:
+        return api_response(True, read_recent(get_supabase(), "customers",
+                                              current_user.get("firm_id"), client_id, limit))
+    except Exception as e:  # a failed read is said, never answered as "nobody used recently"
+        _logger.error("recent_customers: %s", e)
+        return api_response(False, None, "The recently used customers could not be read.")
+
+
 @router.get("/outstanding")
 def get_outstanding_summary(
     client_id: str = Query(...),

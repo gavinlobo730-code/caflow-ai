@@ -367,7 +367,7 @@ function AddFilingModal({ clients, onClose, onAdded }: {
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-ps-ink">Add MCA Filing</h3>
-          <button onClick={onClose}><X className="w-4 h-4 text-ps-hint" /></button>
+          <button onClick={onClose} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X className="w-4 h-4 text-ps-hint" /></button>
         </div>
         {err && <Callout tone="problem">{err}</Callout>}
         <div className="space-y-3">
@@ -489,8 +489,9 @@ function AddFilingModal({ clients, onClose, onAdded }: {
             <input aria-label="Notes" className="w-full border border-ps-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional" />
           </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg">Cancel</button>
+        {/* Pinned to the foot of the card while it scrolls, so Add Filing is in view on a short window (POST-A-395). */}
+        <div className="sticky -bottom-6 -mx-6 px-6 py-3 bg-white border-t border-ps-border flex gap-2">
+          <button onClick={onClose} disabled={saving} className="flex-1 border border-ps-border text-ps-label text-sm py-2 rounded-lg disabled:opacity-50">Cancel</button>
           <Button variant="plain" size="none" onClick={handleSubmit} disabled={saving || choices.kind === "loading"} className="flex-1 bg-brand text-white text-sm py-2 rounded-lg hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : "Add Filing"}
           </Button>
@@ -598,7 +599,7 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
           <h3 className="text-base font-semibold text-ps-ink">Mark ROC Filings as Filed</h3>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label transition-colors">
+          <button onClick={onClose} disabled={saving} aria-label="Close" className="text-ps-hint hover:text-ps-label transition-colors disabled:opacity-50">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -671,7 +672,8 @@ function BatchMarkFiledModal({ filings, firmId, tableError, onClose, onFiled }: 
         <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors"
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-ps-bg transition-colors disabled:opacity-50"
           >
             Cancel
           </button>

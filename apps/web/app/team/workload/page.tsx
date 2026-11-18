@@ -84,7 +84,7 @@ function CapacityModal({ member, onClose, onSaved }: {
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-ps-ink">Edit Capacity — {member.user_name}</h2>
-          <button onClick={onClose} className="text-ps-hint hover:text-ps-label">
+          <button disabled={saving} onClick={onClose} className="text-ps-hint hover:text-ps-label">
             <X size={18} />
           </button>
         </div>
@@ -110,7 +110,7 @@ function CapacityModal({ member, onClose, onSaved }: {
           </div>
         </div>
         <div className="flex gap-2 justify-end pt-1">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} variant="outline" size="sm" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="animate-spin mr-1" size={13} /> : null}
             Save

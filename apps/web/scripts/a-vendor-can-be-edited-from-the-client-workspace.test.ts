@@ -65,8 +65,9 @@ test("saving with a vendor being edited PATCHes /api/vendors/{id}, not POST /api
   const m = /const result = editingVendor([\s\S]*?);\s*\n\s*if \(!result\.success\)/.exec(SRC);
   assert.ok(m, "the create/edit branch in handleSave was not found");
   const branch = m[1];
-  assert.match(branch, /\? await apiCall\(`\/api\/vendors\/\$\{editingVendor\.id\}`, "PATCH", fields, token\)/);
-  assert.match(branch, /: await apiCall\("\/api\/vendors\/", "POST", \{ client_id: clientId, \.\.\.fields \}, token\)/);
+  // Bounded, because the form holds Close and Cancel while it is out (POST-A-395).
+  assert.match(branch, /\? await apiCall\(`\/api\/vendors\/\$\{editingVendor\.id\}`, "PATCH", fields, token, \{ timeoutMs: HELD_DIALOG_MS \}\)/);
+  assert.match(branch, /: await apiCall\("\/api\/vendors\/", "POST", \{ client_id: clientId, \.\.\.fields \}, token, \{ timeoutMs: HELD_DIALOG_MS \}\)/);
 });
 
 test("VendorRow carries the §195 fields the row-driven prefill needs (already fetched by select(\"*\"))", () => {

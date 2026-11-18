@@ -1,5 +1,6 @@
 "use client";
 
+import { rowMenuAt, type RowMenuPlace } from "@/lib/ui/rowMenuPosition";
 import { PAYMENT_MODES } from "@/lib/payments/modes";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { usePermissions } from "@/lib/auth/AuthContext";
@@ -15,6 +16,7 @@ import PurchaseCycleTab from "@/components/purchases/PurchaseCycleTab";
 import PostDatedChequesPanel from "@/components/banking/PostDatedChequesPanel";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import { api } from "@/lib/api";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import type { PurchaseBillDetail } from "@/components/purchases/PurchaseBillEditor";
 import { writePurchaseBillDuplicateSeed } from "@/lib/purchases/duplicateSeed";
 import { registerNotesFrom, topLevelNotesFrom, dedupeRegisterNotes, type RegisterNote } from "@/lib/purchases/registerNotes";
@@ -71,7 +73,7 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
-import { apiCall, apiGet, getAuthToken } from "@/lib/invoices/shared";
+import { apiCall, apiGet, getAuthToken, HELD_DIALOG_MS } from "@/lib/invoices/shared";
 // The page's request helpers are the invoice screens' (lib/invoices/shared): one place reads a refusal, and a request that gets no answer says the product's sentence
 // (POST-A-410). This page held a copy that read a failed status its own way and called `fetch` itself.
 
@@ -495,7 +497,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     try {
       const token = await getAuthToken();
       // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-      const result = await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token);
+      const result = await apiCall(`/api/purchase-bills/${billId}/receive`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to receive purchase bill");
       setMsg({ type: "ok", text: "Purchase bill received" });
       // PUR-14. Receiving a bill writes its TDS deduction into the register,
@@ -521,7 +523,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   // the Sales Invoices tab's own menu pattern. Anchored to the viewport since
   // the table scrolls/clips an in-flow dropdown.
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   // The s.31(3)(f) / s.31(3)(g) panel. One piece of state for both kinds,
   // because the panel takes the kind and the server decides everything else.
   const [rcmDoc, setRcmDoc] = useState<
@@ -533,13 +535,12 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
   const [landedCostBillId, setLandedCostBillId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PurchaseBillRow | PurchaseBillDetail | null>(null);
   function openMenuFor(e: React.MouseEvent, bill: PurchaseBillRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: bill.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: bill.id, ...rowMenuAt(e, 176) });
   }
 
   async function deleteBill(bill: PurchaseBillRow | PurchaseBillDetail) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/purchase-bills/${bill.id}`, "DELETE", undefined, token);
+    const result = await apiCall(`/api/purchase-bills/${bill.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) throw new Error(result.error ?? "Failed to delete purchase bill");
     setMsg({ type: "ok", text: `${bill.bill_no || "Purchase bill"} deleted` });
     setDeleteTarget(null);
@@ -571,7 +572,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/purchase-bills/${bill.id}/cancel`, "POST", undefined, token);
+      const result = await apiCall(`/api/purchase-bills/${bill.id}/cancel`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to cancel purchase bill");
       setMsg({ type: "ok", text: `${bill.bill_no || "Purchase bill"} cancelled — journal and stock reversed` });
       load();
@@ -621,7 +622,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     const results: ReceiveResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<ReceiveResult> => {
       try {
         // CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT
-        const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token);
+        const result = await apiCall(`/api/purchase-bills/${b.id}/receive`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true, notes: registerNotesFrom(result.data), data: result.data };
         return { ok: false, reason: result.error ?? "Failed to receive bill" };
       } catch (e) {
@@ -678,7 +679,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     type DeleteResult = { ok: true } | { ok: false; reason: string };
     const results: DeleteResult[] = await mapWithConcurrency(draftRows, 8, async (b): Promise<DeleteResult> => {
       try {
-        const result = await apiCall(`/api/purchase-bills/${b.id}`, "DELETE", undefined, token);
+        const result = await apiCall(`/api/purchase-bills/${b.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to delete bill" };
       } catch (e) {
@@ -727,7 +728,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
     type CancelResult = { ok: true } | { ok: false; reason: string };
     const results: CancelResult[] = await mapWithConcurrency(receivedRows, 8, async (b): Promise<CancelResult> => {
       try {
-        const result = await apiCall(`/api/purchase-bills/${b.id}/cancel`, "POST", undefined, token);
+        const result = await apiCall(`/api/purchase-bills/${b.id}/cancel`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to cancel bill" };
       } catch (e) {
@@ -1138,7 +1139,7 @@ function PurchaseBills({ clientId, financialYear, onFinancialYearChange, openDoc
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(b.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -1285,7 +1286,7 @@ function DeleteBillModal({
         </div>
         {error && <Callout tone="problem">{error}</Callout>}
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+          <button disabled={deleting} onClick={onClose} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
           {/* A Button, not a raw <button>: `handle` AWAITS the caller's delete, which the same-file analysis
               cannot see, so a second click in the same tick sent a second DELETE. */}
           <Button
@@ -1449,7 +1450,7 @@ function Vendors({ clientId }: { clientId: string }) {
   // accounting records).
   const [deactivateTarget, setDeactivateTarget] = useState<VendorRow | null>(null);
   const [deactivating, setDeactivating] = useState(false);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VendorRow | null>(null);
   const [deleteDeps, setDeleteDeps] = useState<VendorDependencies | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1547,6 +1548,8 @@ function Vendors({ clientId }: { clientId: string }) {
    * would be the exact second-write-path CLAUDE.md's PUR-16 already warns
    * against. */
   function openEdit(v: VendorRow) {
+    // While a Save is out the form is not swapped for another vendor: the first save's success would close the form just opened (POST-A-395).
+    if (saving) return;
     setEditOpened((n) => n + 1);
     setEditingVendor(v);
     setDeclarant(null);
@@ -1703,8 +1706,8 @@ function Vendors({ clientId }: { clientId: string }) {
       };
 
       const result = editingVendor
-        ? await apiCall(`/api/vendors/${editingVendor.id}`, "PATCH", fields, token)
-        : await apiCall("/api/vendors/", "POST", { client_id: clientId, ...fields }, token);
+        ? await apiCall(`/api/vendors/${editingVendor.id}`, "PATCH", fields, token, { timeoutMs: HELD_DIALOG_MS })
+        : await apiCall("/api/vendors/", "POST", { client_id: clientId, ...fields }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? (editingVendor ? "Failed to save vendor" : "Failed to add vendor"));
       if (!editingVendor) {
         // A vendor already holding this GSTIN (or, with no GSTIN, this PAN)
@@ -1751,7 +1754,7 @@ function Vendors({ clientId }: { clientId: string }) {
     if (!deactivateTarget) return;
     setDeactivating(true);
     const token = await getAuthToken();
-    const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token);
+    const result = await apiCall(`/api/vendors/${deactivateTarget.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
     setDeactivating(false);
     if (!result.success) {
       setMsg({ type: "err", text: result.error ?? "Failed to deactivate vendor" });
@@ -1765,7 +1768,7 @@ function Vendors({ clientId }: { clientId: string }) {
 
   async function reactivateVendor(v: VendorRow) {
     const token = await getAuthToken();
-    const result = await apiCall(`/api/vendors/${v.id}`, "PATCH", { is_active: true }, token);
+    const result = await apiCall(`/api/vendors/${v.id}`, "PATCH", { is_active: true }, token, { timeoutMs: HELD_DIALOG_MS });
     if (!result.success) { setMsg({ type: "err", text: result.error ?? "Failed to reactivate vendor" }); return; }
     setMsg({ type: "ok", text: "Vendor reactivated." });
     load();
@@ -1789,7 +1792,7 @@ function Vendors({ clientId }: { clientId: string }) {
     setDeleteBusy(true);
     try {
       const token = await getAuthToken();
-      const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token);
+      const res = await apiCall(`/api/vendors/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) {
         setMsg({ type: "err", text: res.error ?? "Failed to delete vendor" });
         return;
@@ -1806,10 +1809,9 @@ function Vendors({ clientId }: { clientId: string }) {
   }
 
   // Anchor the overflow menu to the viewport (the table scrolls/clips, so an
-  // in-flow dropdown would be cut off). Right-align a 176px menu under the button.
+  // in-flow dropdown would be cut off). Right-align a 176px menu under the button, or above it near the foot of the window (lib/ui/rowMenuPosition).
   function openMenuFor(e: React.MouseEvent, v: VendorRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: v.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: v.id, ...rowMenuAt(e, 176) });
   }
 
   const bulkDeactivateVendors = useCallback(async (rows: VendorRow[]): Promise<boolean> => {
@@ -1819,7 +1821,7 @@ function Vendors({ clientId }: { clientId: string }) {
     const failures: string[] = [];
     await Promise.all(targets.map(async (v) => {
       try {
-        const result = await apiCall(`/api/vendors/${v.id}`, "DELETE", undefined, token);
+        const result = await apiCall(`/api/vendors/${v.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -1845,7 +1847,7 @@ function Vendors({ clientId }: { clientId: string }) {
     const failures: string[] = [];
     await Promise.all(rows.map(async (v) => {
       try {
-        const result = await apiCall(`/api/vendors/${v.id}?permanent=true`, "DELETE", undefined, token);
+        const result = await apiCall(`/api/vendors/${v.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -1964,7 +1966,7 @@ function Vendors({ clientId }: { clientId: string }) {
             <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
               <button
                 onClick={() => setDeactivateTarget(null)}
-                disabled={deactivating}
+                disabled={(deactivating) || actionInFlight}
                 className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg disabled:opacity-50"
               >
                 Cancel
@@ -2061,7 +2063,7 @@ function Vendors({ clientId }: { clientId: string }) {
                   </p>
                 </div>
                 <div className="px-6 py-4 border-t border-ps-border flex justify-end gap-2">
-                  <button
+                  <button disabled={actionInFlight}
                     onClick={() => { setDeleteTarget(null); setDeleteDeps(null); }}
                     className="px-4 py-2 text-sm text-ps-label rounded-lg border border-ps-border hover:bg-ps-bg"
                   >
@@ -2091,15 +2093,15 @@ function Vendors({ clientId }: { clientId: string }) {
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               {/* apex-sales-purchases-05: the only way back into a vendor's
                   own record — the create form was drop-only, so a GSTIN
                   typo, a §195 residency status or a TDS section could never
                   be corrected from this tab. */}
               {mayEditParty && (
-                <button onClick={() => { setMenu(null); openEdit(v); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
+                <button onClick={() => { setMenu(null); openEdit(v); }} disabled={saving}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body disabled:opacity-50">
                   <Pencil size={13} /> Edit
                 </button>
               )}
@@ -2143,7 +2145,7 @@ function Vendors({ clientId }: { clientId: string }) {
         <div className="bg-white rounded-xl border border-ps-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-ps-ink">{editingVendor ? `Edit ${editingVendor.name}` : "New Vendor"}</h3>
-            <button onClick={() => { setShowForm(false); setEditingVendor(null); }}><X size={16} className="text-ps-hint" /></button>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} disabled={saving} aria-label="Close" className="disabled:opacity-50"><X size={16} className="text-ps-hint" /></button>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -2463,7 +2465,7 @@ function Vendors({ clientId }: { clientId: string }) {
           {/* The answer to the last press of Save, beside it. What the last press said wins over the sentence about a box: it is the newer. */}
           {(formError || noPeRefusal.shown) && <p role="alert" className="text-xs text-state-problem text-right">{formError || noPeRefusal.shown}</p>}
           <div className="flex gap-3 justify-end">
-            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditingVendor(null); }} disabled={saving} className="text-xs px-4 py-2 border border-ps-border rounded-lg hover:bg-ps-bg disabled:opacity-50">Cancel</button>
             <Button variant="plain" size="none" onClick={handleSave} disabled={actionInFlight} className="text-xs px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
               {saving ? "Saving…" : editingVendor ? "Save Changes" : "Add Vendor"}
             </Button>
@@ -2517,7 +2519,8 @@ function Vendors({ clientId }: { clientId: string }) {
                 if (!s) setEditingVendor(null);
                 return !s;
               })}
-              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark"
+              disabled={saving}
+              className="flex items-center gap-1.5 text-xs bg-brand text-white px-3 py-1.5 rounded-lg hover:bg-brand-dark disabled:opacity-50"
             >
               <Plus size={12} /> Add Vendor
             </button>
@@ -2580,6 +2583,9 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
    *  Singapore-to-Mumbai round trip this codebase keeps removing. */
   const [allocateFor, setAllocateFor] = useState<PaymentRow | null>(null);
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, true);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const [openBills, setOpenBills] = useState<{
     id: string; our_reference: string; bill_no: string | null; net_payable_paise: number;
     // What is STILL PAYABLE — migration 278's generated column, read rather
@@ -2832,7 +2838,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
           exchange_rate: isForeign ? exchangeRate : undefined,
         },
         token
-      );
+      , { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to record payment");
 
       // SAY WHAT WAS WITHHELD, IN THE ENGINE'S OWN WORDS. The server decides
@@ -2881,7 +2887,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
     try {
       const token = await getAuthToken();
       const result = await apiCall(`/api/purchase-payments/${p.id}/reverse`, "POST",
-        { reversal_date: toDate() }, token);
+        { reversal_date: toDate() }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to reverse payment");
       setMsg({ type: "ok", text: `${p.payment_no} reversed — journal and bill outstanding rolled back` });
       load();
@@ -2998,6 +3004,7 @@ function Payments({ clientId, financialYear, onFinancialYearChange, openDoc }: {
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
               <VendorLookup
                 vendors={vendors}
+                recent={recentVendors}
                 value={vendorId}
                 onChange={(id) => { setVendorId(id); if (id) loadOpenBills(id); }}
                 ariaLabel="Vendor"
@@ -3308,7 +3315,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   // A sentence names a document of the client it was shown for: switching client clears them.
   useEffect(() => { setStockNotes([]); }, [clientId]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -3381,7 +3388,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/debit-notes/", "POST", note, token);
+      const result = await apiCall("/api/debit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -3390,8 +3397,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
   }
 
   function openMenuFor(e: React.MouseEvent, dn: DebitNoteRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: dn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: dn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueDebitNote(id: string) {
@@ -3399,7 +3405,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/debit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/debit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue debit note");
       // POST-A-378: the server's own sentence when the CA said no goods went back to the supplier, so stock was left alone on purpose.
       const left = stockNotMovedSentence(result.data);
@@ -3430,7 +3436,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/debit-notes/${dn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/debit-notes/${dn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete debit note");
       setMsg({ type: "ok", text: `${dn.debit_note_no || "Debit note"} deleted` });
       load();
@@ -3459,7 +3465,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     const results = await Promise.all(
       rows.map(async (d) => {
         try {
-          const result = await apiCall(`/api/debit-notes/${d.id}`, "DELETE", undefined, token);
+          const result = await apiCall(`/api/debit-notes/${d.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
           return result.success;
         } catch {
           return false;
@@ -3490,7 +3496,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (d): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/debit-notes/${d.id}/issue`, "POST", undefined, token);
+        const result = await apiCall(`/api/debit-notes/${d.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue debit note" };
       } catch (e) {
@@ -3640,7 +3646,7 @@ function DebitNotes({ clientId, financialYear, onFinancialYearChange, openDoc }:
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">
@@ -3797,7 +3803,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [registerNotes, setRegisterNotes] = useState<RegisterNote[]>([]);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [menu, setMenu] = useState<({ id: string } & RowMenuPlace) | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -3867,7 +3873,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/purchase-credit-notes/", "POST", note, token);
+      const result = await apiCall("/api/purchase-credit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -3876,8 +3882,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
   }
 
   function openMenuFor(e: React.MouseEvent, pcn: PurchaseCreditNoteRow) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setMenu({ id: pcn.id, top: r.bottom + 4, left: Math.max(8, r.right - 176) });
+    setMenu({ id: pcn.id, ...rowMenuAt(e, 176) });
   }
 
   async function issueCreditNote(id: string) {
@@ -3885,7 +3890,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     setIssuingId(id);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/purchase-credit-notes/${id}/issue`, "POST", undefined, token);
+      const result = await apiCall(`/api/purchase-credit-notes/${id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to issue credit note");
       setMsg({ type: "ok", text: "Credit note issued." });
       // The mirror of the debit-note path. A §34(3) note INCREASES what was
@@ -3910,7 +3915,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     setDetailId(null);
     try {
       const token = await getAuthToken();
-      const result = await apiCall(`/api/purchase-credit-notes/${pcn.id}`, "DELETE", undefined, token);
+      const result = await apiCall(`/api/purchase-credit-notes/${pcn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
       if (!result.success) throw new Error(result.error ?? "Failed to delete credit note");
       setMsg({ type: "ok", text: `${pcn.credit_note_no || "Credit note"} deleted` });
       load();
@@ -3933,7 +3938,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     const results = await Promise.all(
       rows.map(async (d) => {
         try {
-          const result = await apiCall(`/api/purchase-credit-notes/${d.id}`, "DELETE", undefined, token);
+          const result = await apiCall(`/api/purchase-credit-notes/${d.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
           return result.success;
         } catch {
           return false;
@@ -3964,7 +3969,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
     type IssueResult = { ok: true } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (d): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/purchase-credit-notes/${d.id}/issue`, "POST", undefined, token);
+        const result = await apiCall(`/api/purchase-credit-notes/${d.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to issue credit note" };
       } catch (e) {
@@ -4105,7 +4110,7 @@ function PurchaseCreditNotes({ clientId, financialYear, onFinancialYearChange, o
             <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
             <div
               className="fixed z-50 w-44 bg-white rounded-lg border border-ps-border shadow-lg py-1 text-xs"
-              style={{ top: menu.top, left: menu.left }}
+              style={{ top: menu.top, bottom: menu.bottom, left: menu.left }}
             >
               <button onClick={() => { setMenu(null); setDetailId(d.id); }}
                 className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-ps-bg text-ps-body">

@@ -101,7 +101,7 @@ function LedgerDialog({ account, onClose, onSaved }:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={saving ? undefined : (onClose)}>
       <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-ps-ink">
           {account ? `Edit ${account.account_name}` : "Add a ledger"}
@@ -175,7 +175,7 @@ function LedgerDialog({ account, onClose, onSaved }:
         {error && <Callout tone="problem">{error}</Callout>}
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
+          <button disabled={saving} onClick={onClose} className="flex-1 text-xs border border-ps-border rounded-lg py-2 text-ps-body hover:bg-ps-bg">Cancel</button>
           <button onClick={save} disabled={saving}
                   className="flex-1 text-xs bg-brand text-white rounded-lg py-2 hover:bg-brand-dark disabled:opacity-50">
             {saving ? "Saving…" : account ? "Save changes" : "Add ledger"}

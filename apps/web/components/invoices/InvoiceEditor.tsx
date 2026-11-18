@@ -22,7 +22,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { CustomerLookup } from "@/components/lookups/CustomerLookup";
 import { StateLookup } from "@/components/lookups/StateLookup";
 import { formatMoney } from "@/lib/services/formatting";
-import { estimateBaseMinor } from "@/lib/services/currencyPreview";
+import { baseTotalOfHeads } from "@/lib/services/currencyPreview";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 import { toInvoiceLinePayload } from "@/lib/invoices/lineItemPayload";
 import { joinSentences, stockEffectProblem } from "@/lib/documents/stockEffect";
 import { computeLineGst, discountPaise, gstRateBpsFromPercent,
@@ -166,6 +167,9 @@ export function InvoiceEditor({
   // full edit only to have it rejected on save. Cancelled invoices never reach
   // this component — the edit route redirects them away.
   const isLocked = isEdit && existing?.status !== "draft";
+  // The customers this client invoiced most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentCustomerIds = useRecentPartyIds(api.customers.recent, clientId, !isLocked);
+  const recentCustomers = useMemo(() => recentFirst(recentCustomerIds, customers), [recentCustomerIds, customers]);
 
   const initialLines: EditorLine[] =
     existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
@@ -457,7 +461,6 @@ export function InvoiceEditor({
   }, [isEdit, existing?.id, clientId]);
 
   const isForeign = currency !== "" && currency !== "INR";
-  const rateNum = parseFloat(exchangeRate);
 
   // ── Dirty detection (Batch 2 carry-forward: real "Unsaved changes" indicator) ──
   const initialSnapshot = useRef({
@@ -545,8 +548,13 @@ export function InvoiceEditor({
     [customerId, invoiceNo, invoiceDate, lines, isForeign, exchangeRate,
      supplyStateCode, supplyType, isReverseCharge],
   );
-  const estimatedBasePaise = isForeign && !Number.isNaN(rateNum) && rateNum > 0 && totals.grand_total_paise > 0
-    ? estimateBaseMinor(totals.grand_total_paise, rateNum)
+  // The INR total the save will store: each head converted at the typed rate and the results added, the save's own rule
+  // (lib/services/currencyPreview, pinned to the server). Nothing for a rate it cannot read or a currency the master has not
+  // described; a foreign invoice is never rupee-rounded, so there is no round-off head.
+  const basePaise = isForeign && totals.grand_total_paise > 0
+    ? baseTotalOfHeads(
+        [totals.taxable_paise, totals.cgst_paise, totals.sgst_paise, totals.igst_paise, totals.cess_paise],
+        exchangeRate, currencies.find((c) => c.code === currency)?.minor_unit)
     : null;
 
   function fmtAmt(minor: number): string {
@@ -1085,8 +1093,8 @@ export function InvoiceEditor({
         <span>Grand Total{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(totals.grand_total_paise)}</span>
       </div>
-      {isForeign && estimatedBasePaise != null && (
-        <Row label="≈ INR total" value={fmt(estimatedBasePaise)} muted />
+      {isForeign && basePaise != null && (
+        <Row label="INR total at this rate" value={fmt(basePaise)} muted />
       )}
       <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
         <Row label="Due date" value={dueDate || "—"} />
@@ -1131,7 +1139,7 @@ export function InvoiceEditor({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Customer *</label>
-              <CustomerLookup customers={customers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
+              <CustomerLookup customers={customers} recent={recentCustomers} value={customerId} onChange={onCustomerChange} ariaLabel="Customer" disabled={isLocked} />
               {isLocked && <p className="mt-1 text-3xs text-ps-hint">Customer can&apos;t be changed once issued — issue a Credit Note to correct (CGST Act §34).</p>}
               {/* Shown only where a limit is RECORDED. `state: "not_set"` is
                   the answer for every customer nobody has set one for, and a
@@ -1322,7 +1330,7 @@ export function InvoiceEditor({
                   <DateInput id="inv-sb-date" value={shippingBillDate}
                     notAfter={todayIstISO()}
                     onChange={setShippingBillDate} onStateChange={dates.watch("shippingBillDate", "Shipping bill date", { afterMax: true })}
-                    anchor={invoiceDate}
+                    anchor={invoiceDate} near={invoiceDate || null}
                     className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
                 <div>

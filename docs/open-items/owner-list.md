@@ -64,6 +64,11 @@ None of these is decided by me. Prices are what the repository's own notes say, 
 | 9 | Optional: send the drafted purpose-code enquiry to Sahamati/ReBIT. It is free and is the primary source for the bank-feed question in section 4. | An outward message in your name. | POST-B-243, POST-B-245 |
 | 10 | One of two things for the spreadsheet reader that imports user files: allow this environment to reach `cdn.sheetjs.com` (so the fixed build of the reader can be fetched and checked), or tell me to move the importer to another library. The old reader carries two known advisories (prototype pollution and a slow-pattern attack) and the fix is only published there. | It is your network setting, or a choice of library for a screen that reads your clients' uploads. | POST-A-174 |
 | 11 | Let this environment download and run **PostgREST** (the open-source program that Supabase itself uses to turn the database into the web API the product talks to), version 12.2.3, from its official GitHub release page. The environment's safety check refused the download on 4-11-2026 as an outside program, and I did not work around it. | Only you can grant it (a permission rule for the session, or a go-ahead). Without it I cannot run the real stack (the product's API against a migrated database) here, so the seeded firm cannot be walked over a real database; the practice-data seeding is checked against the real routers in mock mode and the declared request shapes only. | POST-A-028, PRE-A-004 |
+| 12 | Open the product once in real **Firefox and Safari**, with the browser's console open: print a long report, upload a workbook saved by Excel itself, and look at a few screens. Once I have finished the phone-width layout of POST-A-131, a real phone's check of it (the camera, the size a photograph arrives at) joins this row. | This container has only Chromium and no phone; the weekly other-browsers check on GitHub also spends your Actions allowance, so I do not start it myself. | POST-A-217, POST-A-218, POST-A-387 |
+| 13 | A step on the live database: run the order-status re-derivation script once per firm, a dry run first, then for real. | It writes to the live database; only you, or a session you start for it, may run it. | POST-A-421 |
+| 14 | A capture of the production error `Received pseudo-header in trailer`, or a server that behaves like Supabase's edge, so the newer database library can be adopted. | Only production produces it; I could not reproduce it here and the item's own rule is no reproduction, no bump. | POST-A-172 |
+| 15 | The demo rehearsals themselves (sign-up as a stranger, the core scenarios, the portals), and the walk of the seeded firm over a real database, which needs row 11. Whatever they turn up, I fix. | People and a real stack. | PRE-A-002, PRE-A-004 |
+| 16 | A developer database on a laptop (`supabase start`): allow this environment to pull the container images, or tell me to leave it. The live-stack walkthrough harness needs row 11 as well. | The environment refuses outside programs, so I cannot run what I would write. | POST-A-022, POST-A-028 |
 
 ## 4. Statutory and legal points I will not assume
 
@@ -383,6 +388,22 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
 - **Stays unbuilt meanwhile:** Keying the salary deposit obligation on the month of payment; the closer records no false on-time deposit either way.
 - **Ledger:** POST-A-466
+
+### S40. Fixed deposits: how a bank computes the maturity amount
+
+- **Question:** How do Indian banks compute the maturity amount of a cumulative fixed deposit: compounded quarterly for the whole quarters and simple interest for the remaining days, or another way? And how for a payout deposit?
+- **Needed:** the banks' deposit terms, or the Indian Banks' Association's code.
+- **Who can supply it:** a practising CA or the owner.
+- **Stays unbuilt meanwhile:** moving the fixed-deposit maturity estimate on the loans page to a server answer. It stays a labelled browser estimate, and the deposit receipt is the document of record.
+- **Ledger:** POST-A-266
+
+### S41. Which well-formed PANs, such as AAAAA0000A, must not key a payee's year?
+
+- **Question:** A deduction typed on the TDS screen is added up over the payee's financial year by the PAN typed with it (`usable_pan_key`), so every payee typed under the same PAN counts as one person: two strangers' payments can push each other over a section's yearly threshold, and tax withheld from one is credited to the other. A blank, the two placeholders (PANNOTAVBL, PANAPPLIED) and text not shaped like a PAN are already refused as a key. A PAN in the right shape that names nobody, such as AAAAA0000A or ABCDE1234F typed to get past a required box, is still a key. Which well-formed PANs cannot be a real person's (for example, is the fourth character limited to a fixed set of entity letters such as P, C, H, F, A, T, B, L, J, G, and does the fifth character or the four digits carry any rule that makes a PAN impossible), and is there a published list of dummy or test PANs the department treats as not furnished? This is a different question from S28, which asks whether text NOT shaped like a PAN counts as "not furnished" for section 206AA.
+- **Needed:** The Income-tax Department's published PAN structure (the meaning of the fourth and fifth characters and the entity letters allowed), Rule 114 of the Income-tax Rules 1962 and its 2025 Rules equivalent, and any CBDT or TRACES guidance on dummy or invalid PANs in a TDS statement, read by a practising CA.
+- **Who can supply it:** a practising CA for the reading; Claude once the government sites are reachable (section 1) for the text.
+- **Stays unbuilt meanwhile:** Any rule that refuses a well-formed but impossible or dummy PAN as a key for a payee's year; such a PAN keeps adding up as it does today.
+- **Ledger:** POST-A-078
 
 ## 5. Wait-until-asked items the goal probably needs
 

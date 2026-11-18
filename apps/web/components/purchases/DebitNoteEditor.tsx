@@ -15,7 +15,9 @@
  * Cancel/reversal path, unlike Purchase Bills.
  */
 import { parseLineAmounts } from "@/lib/money/lineInput";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { Trash2, Plus, Loader2, AlertCircle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
@@ -33,7 +35,9 @@ import { cessPayload } from "@/lib/invoices/lineItemPayload";
 import { blockedCreditFromStored, blockedCreditPayload } from "@/lib/purchases/noteBlockedCredit";
 import { NoteLineBlockedCredit } from "@/components/purchases/NoteLineBlockedCredit";
 import { editedText } from "@/lib/forms/editedValue";
-import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { failureSentence, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { todayIstISO } from "@/lib/dates/format";
@@ -160,6 +164,9 @@ export function DebitNoteEditor({
 }) {
   const today = todayISO();
   const isEdit = !!existing;
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !isEdit);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const initialLines: EditorLine[] =
     existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
     : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
@@ -197,6 +204,7 @@ export function DebitNoteEditor({
   // against an existing bill, not scanned from an incoming document).
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [documentUrl, setDocumentUrl] = useState<string | null>(existing?.document_url ?? null);
 
   async function loadOpenBills(vId: string) {
@@ -307,11 +315,8 @@ export function DebitNoteEditor({
       formData.append("file", uploadFile);
       formData.append("client_id", clientId);
       const token = await getAuthToken();
-      const res = await fetchPlain(`${API}/api/debit-notes/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "write");
+      // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
+      const res = await fetchUpload(`${API}/api/debit-notes/upload`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData }, "write", setSent);
       const json = await jsonPlain<UntypedJson>(res, "write");
       if (json.success && json.data?.document_url) {
         setDocumentUrl(json.data.document_url as string);
@@ -324,6 +329,7 @@ export function DebitNoteEditor({
       // a connection that dropped may have dropped after the file was kept: the sentence says that it is not known (POST-A-410)
       setError(failureSentence(e, "Attachment upload failed.", "write"));
     } finally {
+      setSent(null);
       setUploading(false);
     }
   }
@@ -487,14 +493,15 @@ export function DebitNoteEditor({
       <div className="space-y-5">
         <section className="bg-state-attention-surface border border-state-attention-border rounded-lg p-3 space-y-2">
           <p className="text-xs font-medium text-state-attention flex items-center gap-1.5"><Upload size={12} /> Attachment</p>
-          {!isLocked && (
+          {!isLocked && (<>
             <div className="flex items-center gap-2">
               <input aria-label="Attachment to upload" type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} className="text-xs text-ps-label" />
               <Button variant="plain" size="none" onClick={handleUpload} disabled={!uploadFile || uploading} className="text-xs px-3 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-40">
                 {uploading ? "Uploading…" : "Upload"}
               </Button>
             </div>
-          )}
+            <UploadProgress progress={sent} what="the attachment" />
+          </>)}
           {documentUrl && (
             <p className="text-3xs text-state-attention">📎 Attachment on file — supporting evidence for this return.</p>
           )}
@@ -505,7 +512,7 @@ export function DebitNoteEditor({
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
+              <VendorLookup vendors={vendors} recent={recentVendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
               {isEdit && <p className="mt-1 text-3xs text-ps-hint">Vendor can&apos;t be changed once a debit note exists.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>

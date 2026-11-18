@@ -31,7 +31,7 @@ const ENTRY = {
 };
 const COUNTS = { needs_you: 1, proposed: 0, ready: 0, covered: 0, passed: 0, set_aside: 0, to_do: 1, undrafted: 0, trusted_pending: 0, tds_decision_pending: 0 };
 
-async function atTheEntry(env) {
+export async function atTheEntry(env) {
   const { page, stub } = env;
   stub.route({ method: "GET", re: /api\/banking\/entries\/counts/, reply: () => ok(COUNTS) });
   stub.route({ method: "GET", re: /api\/banking\/entries\/e-1/, reply: () => ok({ ...ENTRY, suggestions: [], history: null, suggested_payee: null, transfer_candidate: null }) });

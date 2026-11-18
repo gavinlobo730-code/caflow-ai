@@ -3371,6 +3371,9 @@ export type ReportGSTSummary = {
   ca_review_required: true;
 };
 
+/** Which parties a client used most recently (`domain/party_recent`): ids newest first, read off a bounded window of its documents. */
+export type RecentParties = { ids: string[]; documents_read: number; window: number };
+
 /** A multipart POST. With a progress callback it goes through `XMLHttpRequest` (the only way to see bytes sent); without one it is `fetch`, as before. Never retried either way. */
 function uploadForm(url: string, token: string | undefined, form: FormData, onProgress?: (p: UploadProgress) => void): Promise<Response> {
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -3899,6 +3902,45 @@ export interface Gstr2bBulkAnswer {
   results: Gstr2bBulkResult[];
   totals: Record<Gstr2bBulkStatus, number>;
   needs_attention: number;
+  /** POST-A-057: the drop this request was recorded under (the next request of
+   *  the same drop sends it back), and whether it was recorded. Absent from an
+   *  older backend, which the panel reads as "not recorded". */
+  drop_id?: string | null;
+  recorded?: boolean;
+  not_recorded?: string | null;
+}
+
+/** One row of a drop read back (POST-A-057): the answer's own row, with
+ *  `client_hidden` set when its client is not one the reader can see now
+ *  (the client and what was found are then not shown, and `reason` says so). */
+export interface Gstr2bBulkDropResult extends Gstr2bBulkResult {
+  client_hidden: boolean;
+}
+
+export interface Gstr2bBulkDrop {
+  id: string;
+  created_at: string | null;
+  /** Files the record holds. */
+  file_count: number;
+  /** Files of the drop that reached the server and are NOT in the record, and
+   *  the server's sentence for them (null when there are none). */
+  unrecorded_files: number;
+  unrecorded: string | null;
+  totals: Partial<Record<Gstr2bBulkStatus, number>>;
+  needs_attention: number;
+  results: Gstr2bBulkDropResult[];
+}
+
+/** The caller's own latest drops, newest first (POST-A-057). `recorded` false
+ *  means the record could not be read, never that there were no drops. */
+export interface Gstr2bBulkDrops {
+  drops: Gstr2bBulkDrop[];
+  limited_to: number;
+  more: boolean;
+  recorded: boolean;
+  not_recorded?: string | null;
+  /** What the record cannot hold: files the browser never sent. */
+  browser_only: string;
 }
 
 /**
@@ -4874,17 +4916,13 @@ export const api = {
   incomeTax: {
     /** File the notice's own document (`slot` "notice") or the reply to it ("response") against a tax notice. The server
      *  stores the file, names it and writes the path onto the notice; multipart, so the browser sets the boundary. */
-    attachToNotice: async (noticeId: string, slot: "notice" | "response", file: File) => {
+    attachToNotice: async (noticeId: string, slot: "notice" | "response", file: File, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const form = new FormData();
       form.append("file", file);
       form.append("slot", slot);
-      const res = await fetchPlain(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/income-tax/notices/${noticeId}/attachment`, token, form, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<ApiResp<{ slot: string; storage_path: string }>>(res, "write");
     },
@@ -5026,14 +5064,10 @@ export const api = {
      *  answers 401 without a Bearer header, so document parsing never once
      *  worked against a real deployment; the caller read `.json()` of the 401
      *  body and got {detail: …} with no `success`. */
-    parse: async (formData: FormData) => {
+    parse: async (formData: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/documents/parse`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/documents/parse`, token, formData, onProgress);
       if (!res.ok) throw new Error(await errorMessage(res));
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -5192,6 +5226,10 @@ export const api = {
     // captions the engine could not honour, and spelled five others
     // differently, which is how nine live mappings were being discarded.
     scheduleIiiCaptions: () => request("/api/accounting/schedule-iii/captions"),
+    /** The loans screen's EMI calculator: worked on the server in exact decimal arithmetic (POST-A-266). A guide; nothing stores it. */
+    emi: (principalPaise: number, annualRateBps: number, months: number) =>
+      request<ApiResp<{ emi_paise: number; principal_paise: number; annual_rate_bps: number; months: number; basis: string }>>(
+        `/api/accounting/emi?${new URLSearchParams({ principal_paise: String(principalPaise), annual_rate_bps: String(annualRateBps), months: String(months) })}`),
     // GET /api/accounting/journal (a date-windowed LIST across every entry) is
     // retired (apex-sales-purchases-01) — it read mock data only, in every
     // deployment, and this helper's one caller (six document-view drawers'
@@ -5295,15 +5333,11 @@ export const api = {
     sharedReportUrl: (sharedReportId: string) =>
       request<ApiResp<{ download_url: string; expires_in_seconds: number }>>(
         `/api/accounting/shared-reports/${sharedReportId}/download-url`),
-    shareReport: async (form: FormData) => {
+    shareReport: async (form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}/api/accounting/shared-reports`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}/api/accounting/shared-reports`, token, form, onProgress);
       // A 422 is a sentence written for the CA (an unknown report, an empty or
       // oversized workbook), so surface it rather than the status line.
       if (!res.ok) throw new Error(await errorMessage(res));
@@ -5732,15 +5766,11 @@ export const api = {
       return jsonPlain<UntypedJson>(res, "write");
     },
     /** Tier 3.2 — a multipart POST that returns JSON, same shape as uploadStatement. */
-    postStatementForm: async (path: string, form: FormData) => {
+    postStatementForm: async (path: string, form: FormData, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetchPlain(`${BASE_URL}${path}`, {
-        method: "POST",
-        // No Content-Type — the browser sets the multipart boundary.
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      // No Content-Type — the browser sets the multipart boundary.
+      const res = await uploadForm(`${BASE_URL}${path}`, token, form, onProgress);
       // A 422 here is a real answer (an unmappable file, a contradictory
       // mapping) and its message is written for the CA, so surface the body
       // rather than the status line. It is thrown as an ApiRefusal — still an
@@ -5757,11 +5787,11 @@ export const api = {
       return jsonPlain<UntypedJson>(res, "write");
     },
     /** Read a statement's header row + first rows so the CA can map the columns. */
-    inspectStatement: (form: FormData) =>
-      api.banking.postStatementForm("/api/banking/statements/inspect", form),
+    inspectStatement: (form: FormData, onProgress?: (p: UploadProgress) => void) =>
+      api.banking.postStatementForm("/api/banking/statements/inspect", form, onProgress),
     /** Parse with a mapping and show the result WITHOUT importing. */
-    previewStatement: (form: FormData) =>
-      api.banking.postStatementForm("/api/banking/statements/preview", form),
+    previewStatement: (form: FormData, onProgress?: (p: UploadProgress) => void) =>
+      api.banking.postStatementForm("/api/banking/statements/preview", form, onProgress),
     listColumnMappings: (params?: Record<string, string>) =>
       request(`/api/banking/statements/column-mappings${params ? "?" + new URLSearchParams(params) : ""}`),
     deleteColumnMapping: (id: string) =>
@@ -7635,16 +7665,12 @@ export const api = {
     get: () => request("/api/settings/branding"),
     update: (body: unknown) =>
       request("/api/settings/branding", { method: "PUT", body: JSON.stringify(body) }),
-    uploadLogo: async (file: File) => {
+    uploadLogo: async (file: File, onProgress?: (p: UploadProgress) => void) => {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const form = new FormData();
       form.append("file", file);
-      const res = await fetchPlain(`${BASE_URL}/api/settings/branding/logo`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      }, "write");
+      const res = await uploadForm(`${BASE_URL}/api/settings/branding/logo`, token, form, onProgress);
       if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
       return jsonPlain<UntypedJson>(res, "write");
     },
@@ -7915,6 +7941,9 @@ export const api = {
       if (includeInactive) q.set("include_inactive", "true");
       return request<ApiResp<{ id: string; name: string }[]>>(`/api/customers/?${q}`);
     },
+    /** The customers this client invoiced most recently, newest first: ids only, for the top of the picker (POST-A-155). */
+    recent: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/customers/recent?${new URLSearchParams({ client_id: clientId })}`),
   },
 
   vendors: {
@@ -7923,6 +7952,9 @@ export const api = {
       if (includeInactive) q.set("include_inactive", "true");
       return request<ApiResp<Vendor[]>>(`/api/vendors/?${q}`);
     },
+    /** The suppliers this client billed against most recently, newest first: ids only, for the top of the picker (POST-A-155). */
+    recent: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/vendors/recent?${new URLSearchParams({ client_id: clientId })}`),
     create: (body: VendorWrite & { client_id: string }) =>
       request<ApiResp<Vendor & { duplicate?: boolean }>>("/api/vendors/",
         { method: "POST", body: JSON.stringify(body) }),
@@ -8617,10 +8649,16 @@ export const api = {
      *  says whose it is and which month. At most five files a request — the
      *  caller sends them in turn, because this module aborts a request at 45
      *  seconds and never retries it. */
-    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[]) =>
+    reconcileGstr2bFiles: (files: { name: string; raw_data: Record<string, unknown> }[],
+                           dropId?: string | null) =>
       request<ApiResp<Gstr2bBulkAnswer>>(
         "/api/gst-workspace/gstr2b/bulk",
-        { method: "POST", body: JSON.stringify({ files }) }),
+        { method: "POST", body: JSON.stringify(dropId ? { files, drop_id: dropId } : { files }) }),
+
+    /** POST-A-057 — what the caller's latest bulk drops did to each file, read
+     *  back from the server after the screen that sent them was closed. */
+    gstr2bBulkDrops: () =>
+      request<ApiResp<Gstr2bBulkDrops>>("/api/gst-workspace/gstr2b/bulk/drops"),
 
     /** gst-13 — a DRAFT purchase bill from a GSTR-2B document the books have no
      *  bill for. Never receives, never posts, never claims credit; the server

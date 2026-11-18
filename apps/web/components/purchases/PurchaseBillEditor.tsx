@@ -10,7 +10,7 @@
  * authoritative and recomputes everything on save.
  */
 import { fitForExtraction, reducedSentence } from "@/lib/images/fitUpload";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Trash2, Plus, Loader2, AlertCircle, AlertTriangle, Upload } from "lucide-react";
 import { InvoiceWorkspaceLayout } from "@/components/invoices/InvoiceWorkspaceLayout";
 import { VendorLookup, type VendorLike } from "@/components/lookups/VendorLookup";
@@ -19,7 +19,9 @@ import { HsnLookup } from "@/components/lookups/HsnLookup";
 import { ServiceCataloguePicker } from "@/components/lookups/ServiceCataloguePicker";
 import { purchaseServiceToLine, type ServiceCatalogueItem } from "@/lib/catalogue/service";
 import { UQC_CODES } from "@/lib/constants/uqc";
-import { estimateBaseMinor } from "@/lib/services/currencyPreview";
+import { baseTotalOfHeads } from "@/lib/services/currencyPreview";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
+import { api } from "@/lib/api";
 import { useServerTdsPreview } from "@/lib/purchases/serverTdsPreview";
 import { formatMoney } from "@/lib/services/formatting";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
@@ -31,7 +33,9 @@ import {
   validateBillDraft, withoutDocument, type BillDraftFields,
 } from "@/lib/purchases/billDraft";
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
-import { fetchPlain, jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 import {
@@ -275,6 +279,9 @@ export function PurchaseBillEditor({
 }) {
   const today = todayISO();
   const isEdit = !!existing;
+  // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
+  const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !isEdit);
+  const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
   const initialLines: EditorLine[] =
     existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
     : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
@@ -350,6 +357,7 @@ export function PurchaseBillEditor({
   // desktop, because `capture` means nothing there. The camera input itself is hidden, so the visible button carries the name and the AI disclosure.
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
+  const [sent, setSent] = useState<BytesSent | null>(null);
   const [aiExtracted, setAiExtracted] = useState<Record<string, unknown> | null>(null);
   // The server's arithmetic check on the extraction's own five header figures
   // (PUR-21). Computed in apps/api — domain/extraction_totals.py — because the
@@ -436,7 +444,6 @@ export function PurchaseBillEditor({
   }, [isEdit, existing?.id, clientId]);
 
   const isForeign = currency !== "" && currency !== "INR";
-  const rateNum = parseFloat(exchangeRate);
   function fmtAmt(paise: number): string {
     return isForeign ? formatMoney(paise, currency, currencies.find((c) => c.code === currency)?.minor_unit) : fmt(paise);
   }
@@ -635,7 +642,15 @@ export function PurchaseBillEditor({
   }, [historyKey]);
 
   const validation = validateBillEditor({ vendorId, billDate, lines, isForeign, exchangeRate });
-  const estBaseTotal = isForeign && rateNum > 0 ? estimateBaseMinor(vendorTotalPaise, rateNum) : vendorTotalPaise;
+  // What the save stores as the bill's INR total: each head converted at the typed rate and added, and under reverse charge
+  // the taxable value alone (routers/purchase_bills.py), through the save's own rule (lib/services/currencyPreview).
+  const baseTotal = isForeign
+    ? baseTotalOfHeads(
+        isReverseCharge
+          ? [totals.taxable_paise]
+          : [totals.taxable_paise, totals.cgst_paise, totals.sgst_paise, totals.igst_paise, totals.cess_paise],
+        exchangeRate, currencies.find((c) => c.code === currency)?.minor_unit)
+    : vendorTotalPaise;
 
   // TDS COMES FROM THE SERVER, because only the server can compute it. This was
   // `estimateForeignTds(estBaseTaxable, vendor.tds_rate_bps)` — a bare rate x
@@ -867,11 +882,8 @@ export function PurchaseBillEditor({
       formData.append("client_id", clientId);
       const token = await getAuthToken();
       // A reading is a proposal, not a record of a bill: what a dropped connection costs is the result, so it is told as one that did not come back.
-      const res = await fetchPlain(`${API}/api/document-intelligence-v1/extract-invoice`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      }, "read");
+      // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
+      const res = await fetchUpload(`${API}/api/document-intelligence-v1/extract-invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData }, "read", setSent);
       const json = await jsonPlain<UntypedJson>(res, "read");
       // The uploaded file is retained server-side as ITC/audit evidence
       // regardless of whether AI extraction itself succeeded.
@@ -930,6 +942,7 @@ export function PurchaseBillEditor({
       // is not a message for a person: it says the fixed sentence, as it did. (The request keeps the uploaded file as evidence either way, so a second try keeps a second copy: harmless.)
       setError(e instanceof PlainFailure ? e.message : "AI extraction failed. Please enter the bill details manually.");
     } finally {
+      setSent(null);
       setExtracting(false);
     }
   }
@@ -1111,7 +1124,7 @@ export function PurchaseBillEditor({
         <span>{isReverseCharge ? "Payable to Vendor" : "Grand Total"}{isForeign ? ` (${currency})` : ""}</span>
         <span className="font-mono">{fmtAmt(vendorTotalPaise)}</span>
       </div>
-      {isForeign && rateNum > 0 && <Row label="≈ INR total" value={fmt(estBaseTotal)} muted />}
+      {isForeign && baseTotal !== null && <Row label="INR total at this rate" value={fmt(baseTotal)} muted />}
       {selectedVendor?.tds_applicable && (
         <div className="border-t border-ps-border pt-2 mt-1 space-y-1.5">
           {/* The SECTION and the RATE come back with the figure. Neither is the
@@ -1218,6 +1231,7 @@ export function PurchaseBillEditor({
                 {extracting ? "Extracting…" : "Extract"}
               </Button>
             </div>
+            <UploadProgress progress={sent} what="the invoice" />
             {/* WHO RECEIVES THE FILE, said before the button is pressed (PRE-A-006).
                 Colour is the sibling notes' own on this tinted box. */}
             <AiDisclosure id="ai-disclosure-invoice-extraction" surface="invoice_extraction" className="text-state-attention" />
@@ -1325,7 +1339,7 @@ export function PurchaseBillEditor({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Vendor *</label>
-              <VendorLookup vendors={vendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
+              <VendorLookup vendors={vendors} recent={recentVendors} value={vendorId} onChange={onVendorChange} ariaLabel="Vendor" disabled={isEdit} />
               {isEdit && <p className="mt-1 text-3xs text-ps-hint">Vendor can&apos;t be changed once a bill exists — it&apos;s locked to the TDS section resolved at creation.</p>}
               {fieldErr(validation.errors.vendor)}
             </div>
@@ -1436,7 +1450,7 @@ export function PurchaseBillEditor({
                 </label>
                 <DateInput id="bill-15ca-date" value={form15caFiledOn} notAfter={todayIstISO()}
                   onChange={setForm15caFiledOn} onStateChange={dates.watch("form15caFiledOn", "Form 15CA filed on", { afterMax: true })}
-                  anchor={form15caFiledOn || billDate}
+                  anchor={form15caFiledOn || billDate} near={billDate || null}
                   className="w-full px-3 py-1.5 text-xs border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand" />
               </div>
               <div>

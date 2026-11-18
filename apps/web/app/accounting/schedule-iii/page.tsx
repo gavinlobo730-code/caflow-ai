@@ -351,6 +351,8 @@ export default function ScheduleIIIPage() {
   const loadData = useCallback(() => {
     setLoading(true);
     setError(null);
+    // Another client's or year's statements are not these: a read that fails leaves nothing to export (POST-A-464).
+    setData(null);
     fetchScheduleData(clientId === "all" ? null : clientId, fy.start, fy.end)
       .then(setData)
       .catch((e: Error) => setError(e.message ?? "Failed to load data"))

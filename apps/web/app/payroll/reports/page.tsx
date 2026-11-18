@@ -41,6 +41,8 @@ import { toLocalISO, dueDateUrgency, fromLocalISO, istToday } from "@/lib/dateMa
 import { formatDate, formatMonthYear } from "@/lib/dates/format";
 import { api, type ApiResp, type PayrollDepositDueDates_FY, type PayrollTdsProjection } from "@/lib/api";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
+import { unreadSentence } from "@/lib/export/unread";
+import { toast } from "@/components/ui/use-toast";
 import { formatPaise } from "@/lib/money/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingRegion } from "@/components/ui/skeleton";
@@ -525,6 +527,9 @@ function YtdTab({ employees, runs, fyOptions }: {
   }
 
   function exportCsv(): void {
+    // Twelve months of nil pay is what a failed read of the payslips used to export (POST-A-464): refused in words instead.
+    const refused = unreadSentence("payslips for this employee and year", slipsError);
+    if (refused) { toast({ title: refused, variant: "destructive" }); return; }
     const header = "Month,Gross,PF,ESI,PT,TDS,Total Deductions,Net Pay,YTD Gross,YTD TDS,YTD Net";
     const csvRows = rows.map(r =>
       [
@@ -569,7 +574,7 @@ function YtdTab({ employees, runs, fyOptions }: {
           >
             {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
-          <Button size="sm" variant="outline" onClick={exportCsv} className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={exportCsv} disabled={!selectedEmpId || slipsLoading || !!slipsError} className="flex items-center gap-1.5">
             <Download size={13} />Export CSV
           </Button>
         </div>
@@ -716,6 +721,8 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
     // split and the s.2(88) base mean the stored figure is not 12% of anything
     // on this row. EDLI and the admin charge get their own columns because a
     // client reading a CTC needs to see what the employer actually bears.
+    const refused = unreadSentence("payslips for this month", slipsError);
+    if (refused) { toast({ title: refused, variant: "destructive" }); return; }
     const header = "Employee,PAN,Gross Salary,Employer PF,Employer ESI,EDLI,PF Admin Charges,Total CTC";
     const rows = ctcRows.map(r => {
       const emp = r.slip.employee;
@@ -772,7 +779,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
           >
             {availableMonths.map(m => <option key={m} value={m}>{formatMonthYear(m)}</option>)}
           </select>
-          <Button size="sm" variant="outline" onClick={exportCsv} disabled={ctcRows.length === 0} className="flex items-center gap-1.5">
+          <Button size="sm" variant="outline" onClick={exportCsv} disabled={ctcRows.length === 0 || slipsLoading || !!slipsError} className="flex items-center gap-1.5">
             <Download size={13} />Export CSV
           </Button>
         </div>

@@ -107,6 +107,8 @@ export default function ClientTrendPage() {
     if (!clientId) return;
     setLoading(true);
     setError(null);
+    // The trend of an earlier window is not this one: a read that fails leaves nothing to export (POST-A-464).
+    setTrend(null);
     try {
       const r = await api.accounting.scheduleIiiTrend(clientId, years, toFy);
       if (!r.success) throw new Error(r.error ?? "Could not build the trend");

@@ -455,7 +455,7 @@ export default function ClientLifecyclePage() {
           <div className="bg-white border border-gray-200 rounded-xl shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-sm font-semibold text-brand">Add Renewal</h2>
-              <button onClick={() => setRenewalModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
+              <button disabled={actionInFlight} onClick={() => setRenewalModal(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
             </div>
             <div className="space-y-3">
               <div>
@@ -503,7 +503,7 @@ export default function ClientLifecyclePage() {
               <p role="alert" className="mt-3 text-xs text-state-problem">{renewalRefusal.shown}</p>
             )}
             <div className="flex gap-2 mt-5">
-              <button onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
+              <button disabled={actionInFlight} onClick={() => setRenewalModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
               <button
                 onClick={handleSaveRenewal}
                 disabled={actionInFlight || !renewalForm.service_type || !renewalForm.financial_year}

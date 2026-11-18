@@ -5,8 +5,8 @@
  * bank compounds (usually quarterly for a cumulative deposit, not at all for a payout one). The register used to compute the
  * figure here as annual compounding and store it as though it were the bank's; it now stores either the amount a CA typed from
  * the receipt (`isEstimate` false) or this estimate, flagged (`isEstimate` true), and every screen that shows the figure says
- * which. The estimate stays a browser calculation, labelled as one, in the way `lib/services/currencyPreview` is; moving it to
- * the server is the remaining part of POST-A-266 (which replaced POST-A-134 after its triage).
+ * which. The estimate stays a browser calculation, labelled as one; moving it to the server is what is left of POST-A-266, and it
+ * waits on how a bank compounds a cumulative deposit and treats a broken period, which nothing here records.
  */
 import { paiseFromRupeeInput } from "../money/rupeeInput.ts";
 import { daysBetweenLocalISO } from "../dateMath.ts";

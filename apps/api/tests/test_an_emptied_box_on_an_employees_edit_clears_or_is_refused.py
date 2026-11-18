@@ -86,3 +86,21 @@ def test_the_employee_handler_is_off_the_list_of_handlers_that_cannot_clear():
     from pathlib import Path
     listed = (Path(__file__).resolve().parent / "fixtures" / "patch_handlers_that_cannot_clear.txt").read_text(encoding="utf-8")
     assert "routers/payroll.py::update_employee" not in listed
+
+
+# ── the box says the server's sentence (POST-A-465) ──────────────────────────────────────────────────────────────
+
+def test_the_employee_forms_list_and_sentence_are_the_servers():
+    """Held from the side that owns the rule: `lib/payroll/employeeIdentifiers.ts` names the same identifiers, in the same order and with the same
+    words, and carries `EMPLOYEE_IDENTIFIER_WHY` word for word, so the box says what the route will refuse."""
+    import re
+    from pathlib import Path
+
+    from models.payroll import EMPLOYEE_IDENTIFIER_WHY, EMPLOYEE_IDENTIFIERS
+
+    ts = (Path(__file__).resolve().parents[2] / "web" / "lib" / "payroll" / "employeeIdentifiers.ts").read_text(encoding="utf-8")
+    block = re.search(r"export const EMPLOYEE_IDENTIFIERS = \{(.*?)\} as const;", ts, re.S)
+    assert block, "the browser's list is not where it was"
+    browser = dict(re.findall(r'(\w+): "([^"]+)"', block.group(1)))
+    assert list(browser.items()) == list(EMPLOYEE_IDENTIFIERS.items())
+    assert ('"' + EMPLOYEE_IDENTIFIER_WHY + '"') in ts, "the browser's reason is not the server's"

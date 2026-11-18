@@ -147,7 +147,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-ps-bg/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-ps-bg/60" onClick={saving ? undefined : (onClose)} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
@@ -161,7 +161,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
               {editClient ? "Update client details" : "Register a new client with your firm"}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-ps-muted text-ps-hint">
+          <button disabled={saving} onClick={onClose} className="p-1.5 rounded-lg hover:bg-ps-muted text-ps-hint">
             <X size={16} />
           </button>
         </div>
@@ -333,7 +333,7 @@ export function ClientFormModal({ open, onClose, onSaved, editClient }: Props) {
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
-            <button
+            <button disabled={saving}
               type="button" onClick={onClose}
               className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-ps-body hover:bg-ps-bg"
             >

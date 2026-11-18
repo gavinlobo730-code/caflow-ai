@@ -3,8 +3,8 @@
 /**
  * Loan & Fixed Deposit Tracker
  *
- * Loan interest calculations follow standard reducing balance method.
- * EMI formula: P × r × (1+r)^n / ((1+r)^n - 1) where r = monthly interest rate
+ * The EMI calculator asks the server (GET /api/accounting/emi, domain/loans/emi.py), which works the reducing-balance
+ * formula in exact decimal arithmetic; this screen holds no copy of it.
  * All monetary values stored as integer paise — never floating point.
  *
  * TDS on FD interest per IT Act Section 194A. This screen states NO limit: it
@@ -29,6 +29,8 @@ import {
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getFirmId } from "@/lib/data/getFirmId";
 import { formatPaise } from "@/lib/services/formatting";
+import { api } from "@/lib/api";
+import { usePermissions } from "@/lib/auth/AuthContext";
 import { daysBetweenLocalISO } from "@/lib/dateMath";
 import { chooseMaturity, estimateFDMaturityPaise, isEstimate } from "@/lib/loans/fdMaturity";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
@@ -115,24 +117,6 @@ const LOAN_TYPE_LABELS: Record<LoanType, string> = {
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * EMI formula: P × r × (1+r)^n / ((1+r)^n - 1)
- * where r = monthly interest rate (annual rate / 12 / 100)
- * Returns EMI in paise (integer arithmetic).
- */
-function calculateEMIPaise(
-  principalPaise: number,
-  annualRatePercent: number,
-  tenureMonths: number
-): number {
-  if (tenureMonths <= 0 || annualRatePercent <= 0) return 0;
-  // Use integer-safe arithmetic: work in paise throughout
-  const r = annualRatePercent / 12 / 100;
-  const pow = Math.pow(1 + r, tenureMonths);
-  const emi = (principalPaise * r * pow) / (pow - 1);
-  return Math.round(emi); // integer paise
-}
 
 /**
  * An interest rate as typed → the percent number the API field carries, or
@@ -226,6 +210,11 @@ export default function LoansAndFDPage() {
   const [calcRate, setCalcRate] = useState("");
   const [calcTenure, setCalcTenure] = useState("");
   const [calcResult, setCalcResult] = useState<number | null>(null);
+  const [calcBusy, setCalcBusy] = useState(false);
+  const [calcError, setCalcError] = useState<string | null>(null);
+  // The calculator asks GET /api/accounting/emi, which is rbac("accounting", "read").
+  const { can, resolved: permissionsResolved } = usePermissions();
+  const mayCalculate = can("accounting", "read");
 
   // Load data
   const loadData = useCallback(async () => {
@@ -424,14 +413,26 @@ export default function LoansAndFDPage() {
 
   // ─── EMI Calculator ────────────────────────────────────────────────────────
 
-  function runEMICalc() {
-    // The EMI calculator is read-only, so an unreadable principal simply
-    // computes nothing rather than an EMI on a coerced figure.
+  async function runEMICalc() {
+    // The instalment is the server's (POST-A-266): the browser reads what was typed and shows the answer. An unreadable
+    // figure computes nothing rather than an EMI on a coerced one, and says which box to correct.
+    setCalcResult(null);
     const p = paiseFromRupeeInput(calcPrincipal);
-    const r = ratePercentFromInput(calcRate);
+    const bps = bpsFromPercentInput(calcRate.replace(/[,\s%]/g, ""));
     const n = monthsFromInput(calcTenure);
-    if (p !== null && r !== null && n !== null && p > 0 && r > 0 && n > 0) {
-      setCalcResult(calculateEMIPaise(p, r, n));
+    if (p === null || p <= 0) { setCalcError("Enter the principal in rupees, e.g. 1000000."); return; }
+    if (bps === null || bps <= 0) { setCalcError("Enter the annual interest rate, e.g. 10.5."); return; }
+    if (n === null || n <= 0 || n > 1200) { setCalcError("Enter the tenure in whole months, from 1 to 1200."); return; }
+    setCalcError(null);
+    setCalcBusy(true);
+    try {
+      const res = await api.accounting.emi(p, bps, n);
+      if (!res.success || typeof res.data?.emi_paise !== "number") throw new Error(res.error || "The instalment did not come back.");
+      setCalcResult(res.data.emi_paise);
+    } catch (e) {
+      setCalcError(e instanceof Error ? e.message : "The instalment could not be worked out.");
+    } finally {
+      setCalcBusy(false);
     }
   }
 
@@ -681,12 +682,17 @@ export default function LoansAndFDPage() {
               </div>
             </div>
             <div className="mt-4 flex items-center gap-4">
-              <button
-                onClick={runEMICalc}
-                className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
-              >
-                Calculate EMI
-              </button>
+              {permissionsResolved && !mayCalculate ? (
+                <p className="text-xs text-ps-label">Your role cannot use the calculator: it needs the accounting read permission.</p>
+              ) : (
+                <button
+                  onClick={() => { void runEMICalc(); }}
+                  disabled={!permissionsResolved || calcBusy}
+                  className="px-4 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+                >
+                  {calcBusy ? "Calculating…" : "Calculate EMI"}
+                </button>
+              )}
               {calcResult !== null && (
                 <div className="bg-blue-50 rounded-lg px-4 py-2">
                   <span className="text-xs text-blue-600 font-medium">Monthly EMI: </span>
@@ -694,6 +700,11 @@ export default function LoansAndFDPage() {
                 </div>
               )}
             </div>
+            {calcError && <p role="alert" className="mt-2 text-xs text-state-problem">{calcError}</p>}
+            <p className="mt-2 text-3xs text-ps-hint">
+              A guide, worked out by the server and not saved. A lender rounds its instalment its own way and may charge
+              a broken first period; the instalment in the loan agreement is the one to record on the loan.
+            </p>
           </div>
         </>
       )}
@@ -859,7 +870,7 @@ export default function LoansAndFDPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Add Loan</h3>
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-ps-hint hover:text-ps-label">
+              <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="text-ps-hint hover:text-ps-label">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -916,7 +927,7 @@ export default function LoansAndFDPage() {
               {loanError && <Callout tone="problem">{loanError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+              <button disabled={actionInFlight} onClick={() => { setShowAddLoan(false); resetLoanForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <Button variant="plain" size="none" onClick={handleAddLoan} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {loanSaving ? "Saving…" : "Add Loan"}
               </Button>
@@ -933,7 +944,7 @@ export default function LoansAndFDPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-5 border-b border-ps-border">
               <h3 className="text-base font-semibold text-ps-ink">Add Fixed Deposit</h3>
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-ps-hint hover:text-ps-label">
+              <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="text-ps-hint hover:text-ps-label">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1029,7 +1040,7 @@ export default function LoansAndFDPage() {
               {fdError && <Callout tone="problem">{fdError}</Callout>}
             </div>
             <div className="px-6 py-4 border-t border-ps-border flex gap-3 justify-end">
-              <button onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
+              <button disabled={actionInFlight} onClick={() => { setShowAddFD(false); resetFDForm(); }} className="px-4 py-2 text-sm font-medium text-ps-body bg-ps-muted rounded-lg hover:bg-white/[0.08]">Cancel</button>
               <Button variant="plain" size="none" onClick={handleAddFD} disabled={actionInFlight} className="px-4 py-2 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {fdSaving ? "Saving…" : "Add FD"}
               </Button>
