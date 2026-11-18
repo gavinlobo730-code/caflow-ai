@@ -16,6 +16,7 @@ import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } f
 import { arrayOrEmpty } from "@/lib/api/shape";
 import FilingDemoWizard, { fetchFilingDemoCapabilities } from "@/components/FilingDemoWizard";
 import { obligationNote } from "@/lib/compliance/obligationNote";
+import { reopeningNote } from "@/lib/compliance/obligationNote";
 
 import { formatDate, todayIstISO } from "@/lib/dates/format";
 import { useFilingChoices } from "@/lib/mca/useFilingChoices";
@@ -732,9 +733,7 @@ function FilingsTab({ clientId, category }: { clientId: string; category: "annua
         setStatusError(res?.error ?? "The filing was not taken back.");
         return;
       }
-      const answer = (res.data as { compliance_obligation?: { message?: unknown } } | null)?.compliance_obligation;
-      setReopenNote(typeof answer?.message === "string" && answer.message.trim()
-        ? answer.message : "The filing is back at In progress.");
+      setReopenNote(reopeningNote(res.data) ?? "The filing is back at In progress.");
       load();
     } catch (e) {
       setStatusError(failureSentence(e, "The filing was not taken back.", "write"));
