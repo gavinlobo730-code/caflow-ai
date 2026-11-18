@@ -57,8 +57,8 @@
 #     uploads the report and ends inside its allowance. For a night that is 24 minutes: the part before the drive
 #     took 8 min 8 s on the 5th and 16 min 26 s on the 6th (17 is used), a scenario in flight may take up to 90
 #     seconds more, and the steps after the drive took 4 seconds (1 minute is kept): 17 + 24 + 1.5 + 1 = 43.5 of 45.
-#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 85 minutes of drive (77 when this was
-#     written; 85 on 7 November 2026, by the guard's own constants), a deadline of 100 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
+#     The whole matrix is an on-demand choice (Run workflow > zones: all): about 96 minutes of drive (77 when this was
+#     written; 85 on 7 November 2026 and 96 on 17 November 2026, by the guard's own constants), a deadline of 100 minutes and a cap of 120; it runs only when a person asks for it, and the default of that choice is the
 #     night's. `the-nightly-drive-fits-its-allowance-and-visits-each-zone-in-turn.test.ts` holds the rotation (over
 #     three years, and over the real start instants of those eight nights), the runner's own use of it (through
 #     `--list`), the deadline arithmetic above, and the estimate of a night as a budget that FAILS ONE RUN when the
@@ -157,7 +157,7 @@ jobs:
     name: walk every screen in Chromium
     runs-on: ubuntu-latest
     # The allowance is 45 minutes and stays: about 8 minutes before the drive starts (checkout, install, build and the walk; 16 min 26 s on 6 November), then 17 of drive, which stops itself at its
-    # deadline (`--stop-after` below) so that the steps after it run. Only the whole matrix, which a person must ask for by name, is given more, because it is about 85 minutes of drive and
+    # deadline (`--stop-after` below) so that the steps after it run. Only the whole matrix, which a person must ask for by name, is given more, because it is about 96 minutes of drive and
     # could not fit any cap near the night's.
     timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' && inputs.zones == 'all') && 120 || 45 }}
     # A pull request runs it only for the one label; every other trigger always runs.

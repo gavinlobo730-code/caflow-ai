@@ -7,9 +7,9 @@
 // that uploads the report still `pending` when the job ended, 55 minutes after it began, against an allowance of 45. A job that times out is cancelled, and its later steps never run.
 //
 // THE FIX, AND WHAT IT DOES NOT DO. The allowance is the OWNER'S MONEY and is not raised; the drive was cut to fit it, and it now stops ITSELF before the allowance. A night drives ONE zone of the matrix's
-// three and ONE third of the date group (`--zone rotate`; it was one half until POST-A-399, 7-11-2026, when ten browser scenarios that every night runs took the worst night over its budget), taken in turn by the INDIAN day, so that over any nine consecutive nights every zone sees every date scenario once. The other groups run in full
+// three and ONE quarter of the date group (`--zone rotate`; it was one half until POST-A-399, 7-11-2026, when ten browser scenarios that every night runs took the worst night over its budget, then one third until POST-A-386, POST-A-395 and POST-A-396, 17-11-2026, when their date rows and twenty more every-night scenarios did the same again), taken in turn by the INDIAN day, so that over any twelve consecutive nights every zone sees every date scenario once. The other groups run in full
 // every night. The runner is given a DEADLINE (`--stop-after`): after it, it starts no more scenarios, writes its report with the runs it did not drive named, and exits 1, so the job goes red, uploads the
-// report and ends inside its allowance. A person can still ask for everything (about 85 minutes of drive on 7 November 2026, 77 when this was written; a cap of 120, only on request).
+// report and ends inside its allowance. A person can still ask for everything (about 96 minutes of drive on 17 November 2026, 85 on 7 November, 77 when this was written; a cap of 120, only on request).
 //
 // WHY THE INDIAN DAY. The nightly is scheduled for 02:00 IST (20:30 UTC), but GitHub starts it hours late: the drive step began at 05:43, 05:34, 05:10, 05:23, 08:08, 06:23, 06:37 and 06:48 IST
 // in the eight nights before this was written, which straddles UTC midnight (05:30 IST). Keyed on the UTC day, those eight nights drove America/Los_Angeles on two nights running (31 October
@@ -288,7 +288,7 @@ test("the runner lists, without a build, the runs the rule asks for: the whole d
     const part = list("--zone", "all", "--shard", String(k));
     assert.deepEqual(part.ids, expectedIds(scenarios, "all", k), `--shard ${k} does not list that part`);
   }
-  // a night, at fixed instants: the nine nights from 7 November 2026
+  // a night, at fixed instants: the twelve nights from 7 November 2026
   for (let i = 0; i < CYCLE; i++) {
     const at = new Date(NIGHT + i * DAY).toISOString().replace(".000Z", "Z");
     const part = partOfTheNight(NIGHT + i * DAY);
