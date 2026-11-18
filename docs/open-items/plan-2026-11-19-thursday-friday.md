@@ -5,7 +5,7 @@ Written on 18 November 2026 at the owner's request. It is a plan, not a ledger: 
 ## 1. Where things stand
 
 - **54 items are before the demo** (the list is the three `pre-demo-` files and every line with the header token `before demo`): **8 Claude can do alone**, 2 need the owner's hands, 26 the owner decides first, 18 only the owner or someone outside can do. 586 backlog items and 26 new findings are open in all; nothing is parked.
-- **Be straight about the 612:** about 560 items (612 less the 54) will still be open on Friday, and most are after the demo by design (features, registrations, statutory readings only a pilot firm needs). The deck is therefore made on the platform **as it will stand when the before-demo items are done**, and what is not built is shown as the roadmap, in the product's own words ("coming soon", "planned, and what gates it"), never as a feature.
+- **What is done by Friday, and what the deck shows (the owner's decision of 18 November 2026):** by Friday only the 54 before-demo items are done; about 560 stay open. **The deck is made on the whole platform as it is meant to be when all 612 are done**, and every feature on it carries a status badge, so that what is not built yet is shown as work in progress (WIP) and never as something that works.
 
 ## 2. Thursday from 04:30 IST (the weekly limit resets): the 8 Claude-alone before-demo items, while the owner sleeps
 
@@ -34,15 +34,23 @@ These are POST-A-447, 468, 469, 470, 471, 472, 473 and 474. Most are already bui
 
 ## 4. Thursday and Friday: the deck for the CAs (after the before-demo items are done)
 
+**Scope and status.** The deck covers the whole platform, filing and live bank feeds included. Each feature on a slide is badged one of three, taken from the ledger and the coming-soon register **as they stand on the day the deck is made, not from memory**:
+
+- **LIVE:** built and in production; shown with a real screen of the seeded firm; safe to demonstrate.
+- **PREPARE-ONLY:** the platform prepares and the CA files on the government portal and records it here; any filing walk-through is a simulation and says so.
+- **WIP:** not built yet; shown as a concept slide, never as a screenshot of a screen that does not exist, with what gates it where the register says (real filing and live bank feeds need registrations only the owner can obtain).
+
+The demonstration guide shows only LIVE features and the labelled simulations. Where a competitor slide touches a WIP feature the deck claims nothing better; it says what the competitor does (sourced) and that ours is WIP. Replacing Tally is the direction and is badged WIP: today the platform runs beside Tally and the importer writes customer and vendor masters only.
+
 Make it in Claude Code: start from the slides type (`Artifact` quickstart with intent `slides`; it downloads as a .pptx or a PDF), or the `pptx` skill if that is not offered. **The deck must be true, because being believed is what this product has that a rival does not.**
 
 **Slide plan (about 25 slides)**
 
 1. **Opening (3):** who it is for (small and mid-size CA firms with 15 to 150 SME clients), the problem in their words (five tools and spreadsheets between them), what PracticeSync is (one ledger for the practice, the accounts, GST, TDS, income tax, payroll and banking).
-2. **What it does, by area (8):** practice management (clients, tasks, deadlines, engagements, billing); accounting and the one ledger (Schedule III statements, ageing, year end); GST (GSTR-1, 3B, 9, 2B reconciliation, amendments, e-invoice and e-way bill preparation); TDS and TCS; income tax (computation, capital gains, 3CD, ITR preparation); payroll (PF, ESI, professional tax, bonus, Form 16 workings); banking (statement import, matching rules); the client and employee portals; PracticeSync AI. One screen of the seeded firm per slide, real, not mocked.
+2. **What it does, by area (8):** practice management (clients, tasks, deadlines, engagements, billing); accounting and the one ledger (Schedule III statements, ageing, year end); GST (GSTR-1, 3B, 9, 2B reconciliation, amendments, e-invoice and e-way bill preparation); TDS and TCS; income tax (computation, capital gains, 3CD, ITR preparation); payroll (PF, ESI, professional tax, bonus, Form 16 workings); banking (statement import, matching rules); the client and employee portals; PracticeSync AI. One real screen of the seeded firm per LIVE slide, never a mock-up; a WIP feature gets a concept slide badged WIP.
 3. **Why it is different (3):** one ledger, not five; a screen says what it read, what it did not and what it will not do (an unknown is never shown as a value); prepare-and-review with the CA's confirmation on every filing, nothing auto-submitted.
-4. **Comparison (3):** the owner chooses the competitors (for example Tally, Zoho Books, a GST and ITR filing platform and a practice-management tool). **Every competitor claim carries its source page and the date it was read, nothing from memory; a claim that cannot be sourced is left out.** Compare only on what is true today; do not claim to file (real filing is the last stage and needs registrations) and do not claim to replace Tally (today it runs beside Tally and the importer writes customer and vendor masters only).
-5. **What is real today and what is next (2):** the product's own posture: filing walk-throughs are simulations, the CA files on the portal and records it here; the roadmap in the product's words, from the coming-soon register.
+4. **Comparison (3):** the owner chooses the competitors (for example Tally, Zoho Books, a GST and ITR filing platform and a practice-management tool). **Every competitor claim carries its source page and the date it was read, nothing from memory; a claim that cannot be sourced is left out.** Claim better only where the feature is LIVE. Do not present filing as working (it is PREPARE-ONLY, with simulated walk-throughs, until the registrations exist) and do not say it replaces Tally (that is the direction and is badged WIP).
+5. **Status at a glance (2):** one slide counting what is LIVE, PREPARE-ONLY and WIP, and one slide of the WIP roadmap with what gates each item.
 6. **Close (2):** the pilot offer (run it in parallel, tell us what to change), what we need from the firm.
 
 **Demonstration guide (about 8 slides, for the presenter, not the audience):** what to open in what order on the seeded firm, taken from `docs/operations/demo-script.md`, with the screen, what to say, what to avoid (the known gaps the owner decided to avoid or show), and the honest answer to the filing question.
@@ -60,4 +68,4 @@ Make it in Claude Code: start from the slides type (`Artifact` quickstart with i
 
 ## 6. The message to paste into the next chat
 
-> Read `docs/open-items/plan-2026-11-19-thursday-friday.md`, `docs/open-items/checkpoint-2026-11-18.md` and the counts block in `docs/open-items/README.md`, then continue in normal mode. First confirm that migration 715 applied to production and that main is green. Then, if the overnight session has not already, land the eight Claude-alone before-demo items in the order of section 2 of the plan: review before merge, one theme per pull request, nothing half-finished merged. When I am awake we work through the 46 before-demo items that need me (section 3), and when those are done we make the CA deck (section 4): true, sourced, and honest about what is built today.
+> Read `docs/open-items/plan-2026-11-19-thursday-friday.md`, `docs/open-items/checkpoint-2026-11-18.md` and the counts block in `docs/open-items/README.md`, then continue in normal mode. First confirm that migration 715 applied to production and that main is green. Then, if the overnight session has not already, land the eight Claude-alone before-demo items in the order of section 2 of the plan: review before merge, one theme per pull request, nothing half-finished merged. When I am awake we work through the 46 before-demo items that need me (section 3), and when those are done we make the CA deck (section 4): the whole platform as if all 612 items were done, every feature badged LIVE, PREPARE-ONLY or WIP from the ledger as it stands that day, every comparison sourced.
