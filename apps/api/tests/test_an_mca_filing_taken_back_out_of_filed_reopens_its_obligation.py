@@ -269,4 +269,4 @@ def test_the_client_screen_offers_the_take_back_to_an_mca_approver_only_and_asks
     assert len(offer) == 2 and offer[1].lstrip().startswith("mayApprove"), "offered only to a person who may approve MCA filings"
     body = page.split("async function takeBack", 1)[1].split("\n  }\n", 1)[0]
     assert "await confirmDialog(" in body and body.index("confirmDialog") < body.index("apiFetch(")
-    assert "compliance_obligation" in body, "the server's sentence about the obligation is shown"
+    assert "reopeningNote(res.data)" in body, "the server's sentence about the obligation is shown, through the shared reader"
