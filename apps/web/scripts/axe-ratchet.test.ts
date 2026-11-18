@@ -27,8 +27,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  AXE_PACKAGE, AXE_PACKAGE_VERSION, AXE_TAGS, FAILING_IMPACTS, NAMED_ROUTE_PATHS, NAMED_SCREENS,
-  auditPage, axeMode, compareToBaseline, describeFailure, failingFindings, initialBaseline, loadAxeBuilder,
+  AXE_PACKAGE, AXE_PACKAGE_VERSION, AXE_TAGS, FAILING_IMPACTS, NAMED_ROUTE_KEYS, NAMED_ROUTE_PATHS, NAMED_SCREENS,
+  auditPage, axeMode, axeRouteKey, compareToBaseline, describeFailure, failingFindings, initialBaseline, loadAxeBuilder,
   parseBaseline, resolveNamedRoute, serialiseBaseline, planShrink, settleVerdict, shrinkBaseline, shrinkRefusal, summaryMarkdown,
 } from "./axeAudit.mjs";
 import { screenRoutes } from "./refresh-screen-snapshot.js";
@@ -240,6 +240,19 @@ test("the first baseline never includes a named screen's route", () => {
 // THE BASELINE FILE'S FORMAT
 // ═════════════════════════════════════════════════════════════════════════════
 
+test("a real client's screen is keyed in the {client} shape, a firm screen as itself, and a named screen's key is not the route walk's (POST-A-036)", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  assert.equal(axeRouteKey(`/clients/${id}/fixed-assets`, id), "/clients/{client}/fixed-assets");
+  assert.equal(axeRouteKey(`/clients/${id}`, id), "/clients/{client}");
+  assert.equal(axeRouteKey(`/clients/${id}/sales/invoices/_placeholder/edit`, id), "/clients/{client}/sales/invoices/_placeholder/edit");
+  assert.equal(axeRouteKey("/clients/_placeholder/sales", null), "/clients/_placeholder/sales", "the full walk's keys moved");
+  assert.equal(axeRouteKey("/practice", id), "/practice");
+  assert.ok(NAMED_ROUTE_KEYS.has(axeRouteKey(`/clients/${id}/sales`, id)), "a real client's sales would be scanned twice and baselined");
+  for (const p of NAMED_ROUTE_PATHS) assert.ok(NAMED_ROUTE_KEYS.has(p));
+  const named = JSON.stringify({ tags: AXE_TAGS, impacts: FAILING_IMPACTS, entries: [{ route: "/clients/{client}/sales", rule: "color-contrast", nodes: 1 }] });
+  assert.throws(() => parseBaseline(named), /named screens/, "a baseline line could hide a named client screen");
+});
+
 test("parseBaseline accepts a well-formed file", () => {
   assert.deepEqual(parseBaseline(text(BASE)), BASE);
 });
@@ -268,7 +281,12 @@ test("the committed baseline file is valid, sorted, and names only routes the ap
   const raw = readFileSync(join(WEB, "scripts/axe-baseline.json"), "utf8");
   const entries = parseBaseline(raw);
   assert.equal(raw, serialiseBaseline(entries), "the file must be exactly what --axe-shrink would write: sorted, one format");
-  const real = new Set(screenRoutes(join(WEB, "app")).map((r: string) => r.replace(/:[^/]+/g, "_placeholder")));
+  // A route the full walk scans keys with `_placeholder` in every dynamic segment; one the client-workspace pass scans keys `{client}` for the client (POST-A-036).
+  const shapes = screenRoutes(join(WEB, "app"));
+  const real = new Set([
+    ...shapes.map((r: string) => r.replace(/:[^/]+/g, "_placeholder")),
+    ...shapes.filter((r: string) => r.startsWith("/clients/:id")).map((r: string) => r.replace("/clients/:id", "/clients/{client}").replace(/:[^/]+/g, "_placeholder")),
+  ]);
   const gone = entries.filter((e) => !real.has(e.route)).map((e) => e.route);
   assert.deepEqual([...new Set(gone)], [], "a screen that was deleted must take its baseline lines with it");
   const doc = JSON.parse(raw) as { tags: string[]; impacts: string[] };
@@ -382,10 +400,9 @@ test("the workflow installs the exact version the walk pins, in the walk's own j
     assert.equal(pkg[section]?.["@axe-core/playwright"], undefined, "the product must not depend on the scanner");
     assert.equal(pkg[section]?.["axe-core"], undefined);
   }
-  // The nightly runs the scan. ONE pass is excused, by name, until its baseline exists (POST-A-036): the client-workspace
-  // pass (`--real-client`), whose routes carry a client id the baseline has no lines for, so every finding would read as
-  // new on the first night. Any other walk without the scan is still a failure here.
+  // The nightly runs the scan on every pass, the client-workspace pass included since its screens key as `/clients/{client}/…`
+  // and its first run was clean (POST-A-036).
   const withoutScan = wf.split("\n").filter((l) => !l.trimStart().startsWith("#") && /--no-axe/.test(l));
-  assert.deepEqual(withoutScan.filter((l) => !/--real-client/.test(l)), [], "the nightly runs the scan");
-  assert.ok(withoutScan.length <= 1, "only the client-workspace pass may skip the scan, and only the one pass");
+  assert.deepEqual(withoutScan, [], "the nightly runs the scan on every pass");
+  assert.match(wf, /smoke-walk\.mjs --only \/clients --real-client/, "the client-workspace pass is gone from the nightly");
 });

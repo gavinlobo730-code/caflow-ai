@@ -184,7 +184,7 @@ export function ClientTopBar({ onOpenSearch }: { onOpenSearch: () => void }) {
             </span>
           )}
           {client?.entity_type && (
-            <span className="text-3xs font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 shrink-0 hidden md:inline">
+            <span className="text-3xs font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 shrink-0 hidden md:inline">
               {client.entity_type}
             </span>
           )}
