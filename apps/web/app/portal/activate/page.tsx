@@ -33,8 +33,10 @@ import { api, type ApiResp } from "@/lib/api";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { PasswordRules } from "@/components/auth/PasswordRules";
+import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 
-const MIN_LENGTH = 10;
 const SESSION_WAIT_ATTEMPTS = 10;
 const SESSION_WAIT_INTERVAL_MS = 500;
 
@@ -100,7 +102,9 @@ export default function PortalActivatePage() {
   }, []);
 
   function validate(): string | null {
-    if (pw.length < MIN_LENGTH) return `Use at least ${MIN_LENGTH} characters.`;
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(pw);
+    if (rulesProblem) return rulesProblem;
     if (pw !== pw2) return "Passwords do not match.";
     return null;
   }
@@ -121,13 +125,13 @@ export default function PortalActivatePage() {
           setStage("reauth");
           return;
         }
-        throw new Error(upErr.message);
+        throw new Error(authErrorMessage(upErr));
       }
       setStage("done");
       setPw(""); setPw2("");
       setTimeout(() => router.push("/portal/dashboard"), 1200);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not set your password. Please try again.");
+      setError(authErrorMessage(err, "Could not set your password. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -143,14 +147,14 @@ export default function PortalActivatePage() {
         throw new Error(
           isInvalidNonceError(upErr)
             ? "That code is incorrect or has expired. Request a new invite link and try again."
-            : upErr.message,
+            : authErrorMessage(upErr),
         );
       }
       setStage("done");
       setPw(""); setPw2(""); setReauthOtp("");
       setTimeout(() => router.push("/portal/dashboard"), 1200);
     } catch (err) {
-      setReauthError(err instanceof Error ? err.message : "Verification failed. Please try again.");
+      setReauthError(authErrorMessage(err, "Verification failed. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -192,14 +196,15 @@ export default function PortalActivatePage() {
             </p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-5">
+            <PasswordRules password={pw} id="activate-password-rules" />
             <div className="space-y-1.5">
               <label htmlFor="activate-password" className="block text-sm font-semibold text-ps-ink">Password</label>
               <div className="relative">
                 <input
-                  id="activate-password" name="new-password"
+                  id="activate-password" name="new-password" aria-describedby="activate-password-rules"
                   autoFocus type={showPw ? "text" : "password"} required value={pw}
                   onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
-                  placeholder={`At least ${MIN_LENGTH} characters`}
+                  placeholder="Create a password"
                   className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
                 <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}

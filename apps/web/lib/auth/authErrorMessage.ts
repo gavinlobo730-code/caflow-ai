@@ -69,6 +69,27 @@ function asErrorLike(err: unknown): ErrorLike | null {
 export const PASSWORD_BREACHED =
   "This password has appeared in a known data breach, so it cannot be used. Please choose a different one.";
 
+// The sign-in service's refusal for a password missing a character group. Live,
+// on 18-11-2026, it came with NO error code and said "Password should contain
+// at least one character of each: abcdefghijklmnopqrstuvwxyz,
+// ABCDEFGHIJKLMNOPQRSTUVWXYZ, 0123456789, !@#$%^&*()_+-=[]{};'\:"|<>?,./`~." —
+// a developer's string that the CA saw verbatim, or not at all (POST-A-477).
+// The sentence is worded from the groups the SERVER names, so a changed setting
+// is still told truthfully.
+const CHARACTER_GROUPS_REFUSAL = /at least one character of each/i;
+
+function charactersRefusal(message: string): string | null {
+  if (!CHARACTER_GROUPS_REFUSAL.test(message)) return null;
+  const needs: string[] = [];
+  if (/abcdefghijklmnopqrstuvwxyz/.test(message) || /lowercase/i.test(message)) needs.push("a lowercase letter");
+  if (/ABCDEFGHIJKLMNOPQRSTUVWXYZ/.test(message) || /uppercase/i.test(message)) needs.push("a capital letter");
+  if (/0123456789|digit/i.test(message)) needs.push("a digit");
+  if (/[!@#$%^&*()_+\-=[\]{};':"\\|<>?,./`~]{3,}|symbol/i.test(message)) needs.push("a symbol (for example ! @ # $ %)");
+  if (needs.length === 0) return "Your password must include at least one character from each group the sign-in rules ask for.";
+  const list = needs.length === 1 ? needs[0] : `${needs.slice(0, -1).join(", ")} and ${needs[needs.length - 1]}`;
+  return `Your password needs ${list}.`;
+}
+
 /**
  * weak_password says WHICH rule failed in `reasons` (auth-js
  * AuthWeakPasswordError), and the server's own message states the rule
@@ -79,7 +100,7 @@ export const PASSWORD_BREACHED =
 function weakPasswordMessage(e: ErrorLike): string {
   const reasons = Array.isArray(e.reasons) ? e.reasons.filter((r) => typeof r === "string") : [];
   const serverSays = typeof e.message === "string" ? e.message.trim() : "";
-  if (reasons.includes("characters") && serverSays) return serverSays;
+  if (reasons.includes("characters") && serverSays) return charactersRefusal(serverSays) ?? serverSays;
   const parts: string[] = [];
   if (reasons.includes("length")) {
     const n = /at least (\d+) characters/i.exec(serverSays)?.[1];
@@ -96,6 +117,11 @@ export function knownAuthErrorMessage(err: unknown): string | null {
   if (!e) return null;
   const code = typeof e.code === "string" ? e.code : "";
   if (code === "weak_password") return weakPasswordMessage(e);
+  // The same refusal arrives with no code at all; the message is then the only signal.
+  if (!code && typeof e.message === "string") {
+    const groups = charactersRefusal(e.message);
+    if (groups) return groups;
+  }
   if (code && Object.prototype.hasOwnProperty.call(AUTH_ERROR_SENTENCES, code)) {
     return AUTH_ERROR_SENTENCES[code];
   }

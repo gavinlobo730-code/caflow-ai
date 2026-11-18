@@ -44,9 +44,6 @@ const STILL_RAW = new Set<string>([
   "app/clients/[id]/portal/page.tsx otpErr.message",
   "app/platform/page.tsx cErr.message",
   "app/platform/page.tsx fErr.message",
-  "app/portal/activate/page.tsx upErr.message",
-  "app/portal/employee/activate/page.tsx err.message",
-  "app/settings/security/page.tsx upErr.message",
   "components/payroll/PortalAccessModal.tsx otpErr.message",
 ]);
 

@@ -33,7 +33,8 @@ import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingRegion } from "@/components/ui/skeleton";
-const MIN_PASSWORD_LENGTH = 10;
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { PasswordRules } from "@/components/auth/PasswordRules";
 
 interface Factor {
   id: string;
@@ -219,7 +220,9 @@ function ChangePasswordCard() {
   async function submit() {
     setError(null); setNotice(null);
     if (!current) { setError("Enter your current password."); return; }
-    if (next.length < MIN_PASSWORD_LENGTH) { setError(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`); return; }
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(next);
+    if (rulesProblem) { setError(rulesProblem); return; }
     if (next !== confirm) { setError("New passwords do not match."); return; }
     if (!user?.email) { setError("Could not determine your account email. Please refresh and try again."); return; }
     setBusy(true);
@@ -239,7 +242,7 @@ function ChangePasswordCard() {
           setNeedsReauth(true);
           return;
         }
-        setError(upErr.message);
+        setError(authErrorMessage(upErr));
         return;
       }
       setNotice("Your password has been updated.");
@@ -257,7 +260,7 @@ function ChangePasswordCard() {
     try {
       const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, next, reauthOtp);
       if (upErr) {
-        setError(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : upErr.message);
+        setError(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : authErrorMessage(upErr));
         return;
       }
       setNotice("Your password has been updated.");
@@ -321,12 +324,13 @@ function ChangePasswordCard() {
                 className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
               />
             </div>
+            <PasswordRules password={next} id="security-password-rules" />
             <div className="space-y-1.5">
               <label className="block text-xs font-medium text-ps-label">New password</label>
               <div className="relative max-w-sm">
                 <input
                   type={showPw ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
-                  autoComplete="new-password" aria-label="New password" placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                  autoComplete="new-password" aria-label="New password" aria-describedby="security-password-rules" placeholder="Create a password"
                   className="w-full px-3 py-2 pr-10 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
                 />
                 <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide passwords" : "Show passwords"}

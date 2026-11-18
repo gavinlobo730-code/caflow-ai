@@ -42,11 +42,12 @@ import {
   RESET_LINK_ENDED_MESSAGE,
 } from "@/lib/auth/reauth";
 import { authErrorMessage, knownAuthErrorMessage } from "@/lib/auth/authErrorMessage";
+import { passwordProblem } from "@/lib/auth/passwordRules";
+import { PasswordRules } from "@/components/auth/PasswordRules";
 import { hasRecoveryMarkerInUrl } from "@/lib/auth/recoveryLink";
 import { ArrowRight, Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
 
-const MIN_LENGTH = 10;
 const LINK_WAIT_MS = 4000;
 
 type Stage = "verifying" | "invalid" | "form" | "reauth" | "done";
@@ -109,7 +110,9 @@ export default function ResetPasswordPage() {
   }, [supabase, hadRecoveryMarker]);
 
   function validate(): string | null {
-    if (pw.length < MIN_LENGTH) return `Use at least ${MIN_LENGTH} characters.`;
+    // Every rule the sign-in service enforces, before anything is sent (POST-A-477).
+    const rulesProblem = passwordProblem(pw);
+    if (rulesProblem) return rulesProblem;
     if (pw !== pw2) return "Passwords do not match.";
     return null;
   }
@@ -205,14 +208,15 @@ export default function ResetPasswordPage() {
             <p className="text-sm text-ps-label mt-1">Choose a new password for your account.</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-5">
+            <PasswordRules password={pw} id="reset-password-rules" />
             <div className="space-y-1.5">
               <label htmlFor="reset-new-password" className="block text-sm font-semibold text-ps-ink">New password</label>
               <div className="relative">
                 <input
-                  id="reset-new-password" name="new-password"
+                  id="reset-new-password" name="new-password" aria-describedby="reset-password-rules"
                   autoFocus type={showPw ? "text" : "password"} required value={pw}
                   onChange={(e) => setPw(e.target.value)} autoComplete="new-password"
-                  placeholder={`At least ${MIN_LENGTH} characters`}
+                  placeholder="Create a password"
                   className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 pr-11 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
                 <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"}
