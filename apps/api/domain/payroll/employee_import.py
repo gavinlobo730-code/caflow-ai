@@ -44,6 +44,14 @@ new code, or no code at all, creates one. So re-importing a corrected file is
 safe, which is the only way "fix the spreadsheet and upload it again" can be
 the answer to a refusal.
 
+AN UPDATE WRITES ONLY WHAT THE FILE SAYS (POST-A-472). A row whose code is on
+file is the edit of that employee: a column the file does not carry is not
+written, and a blank cell means what an emptied box means on the edit — a
+designation, department or bank name is cleared, a PAN, UAN, ESI number, bank
+account or IFSC on file refuses the whole file (the router, in the edit's own
+sentence), and anything else keeps what is stored. Until then a file of codes,
+names and basic pay emptied every matched employee's identifiers.
+
 A file that repeats a code WITHIN itself is refused, because the two rows
 disagree about one person and nothing here can know which is meant.
 
@@ -124,6 +132,27 @@ COLUMNS: list[tuple[str, bool]] = [
 
 REQUIRED = [c for c, req in COLUMNS if req]
 
+#: The payload field(s) each column of the file writes. An UPDATE row writes only the columns the file carries (POST-A-472).
+COLUMN_FIELDS: dict[str, tuple[str, ...]] = {
+    "employee_code": ("employee_code",), "name": ("name",), "pan": ("pan",), "date_of_birth": ("date_of_birth",),
+    "gender": ("gender",), "designation": ("designation",), "department": ("department",), "joining_date": ("joining_date",),
+    "basic": ("basic_paise",), "hra_percent": ("hra_percent",), "da_percent": ("da_percent",),
+    "other_allowances": ("other_allowances_paise",), "lta": ("lta_paise",), "medical": ("medical_paise",),
+    "special_allowance": ("special_allowance_paise",), "uan": ("uan",), "esi_number": ("esi_number",),
+    "aadhaar": ("aadhaar_last4",), "pf_applicable": ("pf_applicable",), "esi_applicable": ("esi_applicable",),
+    "pt_applicable": ("pt_applicable",), "pt_state": ("pt_state",), "eps_eligible": ("eps_eligible",),
+    "gratuity_act_covered": ("gratuity_act_covered",), "bank_account_no": ("bank_account_no",),
+    "bank_ifsc": ("bank_ifsc",), "bank_name": ("bank_name",),
+}
+
+#: AN UPDATE ROW IS THE EDIT OF AN EMPLOYEE, SO A BLANK CELL MEANS WHAT AN EMPTIED BOX MEANS THERE (POST-A-472). The edit
+#: (`models.payroll.EmployeeUpdateIn`) clears these three soft particulars when they are emptied ...
+CLEARED_WHEN_BLANK: frozenset[str] = frozenset({"designation", "department", "bank_name"})
+#: ... refuses emptying these identifiers when one is on file (`models.payroll.EMPLOYEE_IDENTIFIERS`; the salary TDS statement, the ECR, the
+#: ESI return and the salary payment read them) ...
+IDENTIFIERS: tuple[str, ...] = ("pan", "uan", "esi_number", "bank_account_no", "bank_ifsc")
+#: ... and reads every other empty box as "not changed". A test holds the first two equal to the model's own sets.
+
 #: HRA where the file says nothing. 40% is the non-metro §10(13A) limb and is
 #: what the browser importer used, so an existing template keeps working.
 DEFAULT_HRA_PERCENT = 40.0
@@ -143,6 +172,9 @@ class ImportResult:
     problems: list[str] = field(default_factory=list)
     to_create: list[dict] = field(default_factory=list)
     to_update: list[tuple[str, dict]] = field(default_factory=list)  # (id, payload)
+    #: (row number, employee id, identifiers the row carries as a blank cell) for an UPDATE row: the caller refuses the whole file where the
+    #: stored employee has one of them on file (POST-A-472), the way the edit refuses it.
+    emptied_identifiers: list[tuple[int, str, list[str]]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -388,15 +420,49 @@ def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
             **flags,
         }
 
-        existing_id = existing_by_code.get(code.lower()) if code else None
-        if existing_id:
-            result.to_update.append((existing_id, payload))
-        else:
-            result.to_create.append(payload)
+        _place(result, n, existing_by_code.get(code.lower()) if code else None, row, payload)
 
     # A file that validated row by row can still be refused as a whole: the
     # duplicate-code check above is a FILE-level fact, not a row-level one.
     return result
+
+
+def _place(result: ImportResult, n: int, existing_id: Optional[str], row: dict, payload: dict) -> None:
+    """A row with a code on file updates that employee with what the file says; any other row creates one with the whole payload."""
+    if not existing_id:
+        result.to_create.append(payload)
+        return
+    update, emptied = _update_payload(row, payload)
+    result.to_update.append((existing_id, update))
+    if emptied:
+        result.emptied_identifiers.append((n, existing_id, emptied))
+
+
+def _update_payload(row: dict, payload: dict) -> tuple[dict, list[str]]:
+    """What an UPDATE row writes over the stored employee, and the identifiers it carries as a blank cell (POST-A-472).
+
+    A row whose code is on file used to write the whole payload, so a column the file did not carry and a blank cell both became NULL (or the
+    create's default: HRA 40%, PF and ESI on, an allowance of nothing). Re-importing a file of codes, names and basic pay therefore emptied
+    every matched employee's PAN, UAN, ESI number and bank details, while the import said "N updated", and the next ECR refused the member.
+
+    Now a column the file does not carry is not written at all, and a blank cell in one it does carry means what an emptied box means on the
+    edit of an employee: a designation, a department or a bank name is cleared, an identifier is returned to the caller to refuse where one is
+    on file, and anything else is left as stored (type 0 to zero an allowance). A cell that holds a value is written exactly as before.
+    """
+    update: dict = {}
+    emptied: list[str] = []
+    for column, fields in COLUMN_FIELDS.items():
+        if column not in row:
+            continue
+        blank = not re.sub(r"\D", "", _text(row, column)) if column == "aadhaar" else not _text(row, column)
+        for name in fields:
+            if not blank:
+                update[name] = payload[name]
+            elif name in CLEARED_WHEN_BLANK:
+                update[name] = None
+            elif name in IDENTIFIERS:
+                emptied.append(name)
+    return update, emptied
 
 
 def template_csv() -> str:
