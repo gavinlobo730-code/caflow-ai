@@ -706,7 +706,7 @@ def _readme(manifest: dict) -> str:
         "",
         "WHAT THIS IS",
         "One client's books as plain CSV files. manifest.json lists every file with its row count and SHA-256.",
-        "Money columns are whole paise (1 rupee = 100 paise). Dates are ISO (YYYY-MM-DD). Text is UTF-8 with a byte-order mark so a spreadsheet reads the rupee sign and Indian-language names.",
+        "Money columns are whole paise (1 rupee = 100 paise), except the payload_json column of the GST return files, which is the return exactly as the portal reads it: rupees to two decimals for GSTR-1, whole rupees for GSTR-3B. Dates are ISO (YYYY-MM-DD). Text is UTF-8 with a byte-order mark so a spreadsheet reads the rupee sign and Indian-language names.",
         "Drafts, reversed and deleted rows are included; read is_posted, deleted_at and status before adding anything up.",
         "A text cell that begins with = + - or @ has a leading apostrophe so a spreadsheet does not run it; remove it if you need the original.",
         "",
