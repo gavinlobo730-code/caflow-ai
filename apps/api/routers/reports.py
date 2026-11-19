@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.authz import assert_client_access, effective_client_ids
 from core.permissions import rbac
-from core.supabase_client import get_supabase
+from core.supabase_client import get_service_supabase, get_supabase
 from core.query_day import query_day
 from models.common import api_response
 from services import report_transactions_service as svc
@@ -59,6 +59,26 @@ def list_report_transactions(
         date_from=date_from, date_to=date_to,
     )
     return api_response(True, {"transactions": rows})
+
+
+@router.get("/party-totals")
+def report_party_totals(
+    client_id: Optional[str] = Query(None, description="Omit for every assigned client"),
+    date_from: Optional[str] = Query(None, description="document date >= (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="document date <= (YYYY-MM-DD)"),
+    current_user: dict = Depends(rbac("accounting", "read")),
+):
+    """The P&L Statement of the Reports page: taxable value of the counted sales invoices and purchase bills by
+    party, with both totals and the net, summed by the server (POST-A-469). The same documents, the same guard and
+    the same client scope as /transactions; the database function is called with the privileged client, after the
+    scope is decided here."""
+    client_ids = _scoped_client_ids(current_user, client_id)       # the caller's access first, then the days
+    date_from = query_day(date_from, "date_from")
+    date_to = query_day(date_to, "date_to")
+    return api_response(True, svc.party_totals(
+        get_service_supabase(), current_user["firm_id"],
+        client_ids=client_ids, date_from=date_from, date_to=date_to,
+    ))
 
 
 @router.get("/gst-summary")

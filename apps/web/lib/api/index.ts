@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
 import { LOCAL_ONLY_REASONS, closedAccountPath, closedAccountReason, isAlreadyOutside, type ClosedAccountReason } from "@/lib/auth/closedAccount";
 import { withReference } from "@/lib/api/requestReference";
-import { doingOf, errorPageSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, fetchPlain, REQUEST_BOUND_MS, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress } from "@/lib/api/uploadWithProgress";
 import { exportQuery, type ExportFormat, type ExportParams, type ExportReport } from "@/lib/export/reportExport";
 import { recordsUrl } from "@/lib/einvoice/invoiceRecords";
@@ -2243,6 +2243,15 @@ export type ReportTransaction = {
   is_interstate: boolean; place_of_supply?: string | null; status: string;
 };
 
+// Answer of GET /api/reports/party-totals: the P&L Statement of /reports, summed by the server (POST-A-469).
+// `party_name` is null when the document names no party the firm holds a name for; a screen says so in words.
+export type ReportPartyLine = { party_id: string | null; party_name: string | null; total_paise: number; documents: number };
+export type ReportPartyTotals = {
+  revenue: ReportPartyLine[]; expenses: ReportPartyLine[];
+  revenue_total_paise: number; expense_total_paise: number; net_paise: number;
+  sales_documents: number; purchase_documents: number;
+};
+
 // ── The Schedule III ageing schedules ────────────────────────────────────────
 // MCA Notification G.S.R. 207(E) of 24 March 2021, Division I. Every amount is
 // integer paise. The two tables have DIFFERENT columns — receivables age in five
@@ -3393,7 +3402,7 @@ function sleep(ms: number): Promise<void> {
 // a Render cold start; the warm-up ping (AuthContext) usually avoids hitting it.
 async function fetchWithTimeout(path: string, options: RequestInit | undefined, token: string | undefined): Promise<Response> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45_000);
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_BOUND_MS);
   try {
     return await fetch(`${BASE_URL}${path}`, {
       ...options,
@@ -5232,6 +5241,12 @@ export const api = {
     createAccount: (data: unknown, clientId?: string) => request(
       `/api/accounting/accounts${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`,
       { method: "POST", body: JSON.stringify(data) }),
+    /** The accounts this client used most recently on a manual journal (`journal`) or a bill line (`bill`), newest first: ids
+     *  only, for the top of the account picker (POST-A-155). */
+    recentJournalAccounts: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/accounting/accounts/recent?${new URLSearchParams({ client_id: clientId, used_on: "journal" })}`),
+    recentBillAccounts: (clientId: string) =>
+      request<ApiResp<RecentParties>>(`/api/accounting/accounts/recent?${new URLSearchParams({ client_id: clientId, used_on: "bill" })}`),
     updateAccount: (id: string, data: unknown) => request(`/api/accounting/accounts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     /** The Day Book: every POSTED entry of one client in a period, one page of it, newest first by default
      *  (POST-A-091). The page is cut in the database and the PDF and Excel files read the same function, so
@@ -8573,6 +8588,14 @@ export const api = {
       const qs = q.toString();
       return request<ApiResp<{ transactions: ReportTransaction[] }>>(
         `/api/reports/transactions${qs ? `?${qs}` : ""}`);
+    },
+    partyTotals: (clientId?: string, dateFrom?: string, dateTo?: string) => {
+      const q = new URLSearchParams();
+      if (clientId) q.set("client_id", clientId);
+      if (dateFrom) q.set("date_from", dateFrom);
+      if (dateTo) q.set("date_to", dateTo);
+      const qs = q.toString();
+      return request<ApiResp<ReportPartyTotals>>(`/api/reports/party-totals${qs ? `?${qs}` : ""}`);
     },
     gstSummary: (clientId: string, month: string) =>
       request<ApiResp<ReportGSTSummary>>(

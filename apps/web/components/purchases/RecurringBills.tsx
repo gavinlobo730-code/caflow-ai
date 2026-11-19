@@ -197,7 +197,7 @@ export function RecurringBills({ clientId }: { clientId: string }) {
       const token = await getAuthToken();
       const res = await apiCall(
         `/api/recurring-purchase-bills/run?client_id=${encodeURIComponent(clientId)}`,
-        "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        "POST", undefined, token);
       if (!res.success) throw new Error(res.error ?? "Run failed");
       const d = res.data as { generated_count: number; skipped_count: number; failed_count: number };
       const parts = [`${d.generated_count} draft${d.generated_count === 1 ? "" : "s"} generated`];

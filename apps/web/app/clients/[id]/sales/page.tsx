@@ -20,6 +20,8 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { PaymentAccountPicker } from "@/components/banking/PaymentAccountPicker";
 import { postingAccountNotice } from "@/lib/accounting/postingAccountNotice";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { readAtText } from "@/lib/cache/readCache";
+import { forgetCustomerLists, readCustomerList } from "@/lib/data/partyLists";
 import { fetchActiveBankAccounts } from "@/lib/banking/activeBankAccounts";
 import { formatPaise, formatDateTime, formatMoney } from "@/lib/services/formatting";
 import { bpsFromPercentInput, paiseFromRupeeInput, parseQuantity } from "@/lib/money/rupeeInput";
@@ -95,7 +97,7 @@ import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { typedDateText } from "@/lib/dates/typedDate";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import { formatDate, todayIstISO } from "@/lib/dates/format";
-import { failureSentence, fetchPlain } from "@/lib/api/failureSentence";
+import { failureSentence, fetchBounded, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 type SalesTab = "sales-cycle" | "invoices" | "recurring" | "customers" | "receipts" | "credit-notes" | "debit-notes" | "statements" | "interest" | "post-dated-cheques";
@@ -570,7 +572,7 @@ function RecurringInvoices({ clientId }: { clientId: string }) {
       const failures: string[] = [];
       await Promise.all(eligible.map(async (t) => {
         try {
-          const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const res = await apiCall(`/api/recurring-invoices/${t.id}/${action}`, "POST", undefined, token);
           if (!res.success) throw new Error(res.error ?? "failed");
           ok++;
         } catch (e) {
@@ -1305,8 +1307,9 @@ function Statements({ clientId }: { clientId: string }) {
     const on = shown();
     if (!on) return;
     const token = await getAuthToken();
-    const res = await fetchPlain(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${on.customer_id}&start_date=${on.start_date}&end_date=${on.end_date}`,
-      { headers: { Authorization: `Bearer ${token}` } }, "read");
+    const res = await fetchBounded(`${API}/api/customer-statements/pdf?client_id=${clientId}&customer_id=${on.customer_id}&start_date=${on.start_date}&end_date=${on.end_date}`,
+      // a statement over a whole period, drawn as a PDF: an export, so the long bound (POST-A-470)
+      { headers: { Authorization: `Bearer ${token}` } }, "read", LONG_REQUEST_BOUND_MS);
     if (!res.ok) { setError("PDF download failed."); return; }
     const blob = await res.blob();
     window.open(URL.createObjectURL(blob), "_blank");
@@ -1440,7 +1443,7 @@ function Statements({ clientId }: { clientId: string }) {
       {customerId && <StatementDeliveryLog clientId={clientId} customerId={customerId} refreshKey={deliveryRefresh} />}
 
       {emailModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={actionInFlight ? undefined : (() => setEmailModal(false))}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(e) => { e.stopPropagation(); if (!emailing) setEmailModal(false); }}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-ps-ink">Email statement to customer</h3>
             <label className="block">
@@ -1450,7 +1453,7 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {emailMsg && <Callout tone="problem">{emailMsg}</Callout>}
             <div className="flex justify-end gap-2">
-              <button disabled={actionInFlight} onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={emailing} onClick={() => setEmailModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={sendEmail} disabled={actionInFlight || !emailTo} className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">{emailing ? "Sending…" : "Send"}</Button>
             </div>
           </div>
@@ -1458,7 +1461,7 @@ function Statements({ clientId }: { clientId: string }) {
       )}
 
       {applyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={actionInFlight ? undefined : (() => setApplyModal(false))}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(e) => { e.stopPropagation(); if (!applying) setApplyModal(false); }}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-ps-ink">Apply credit to an invoice</h3>
             <p className="text-xs text-ps-label">
@@ -1484,7 +1487,7 @@ function Statements({ clientId }: { clientId: string }) {
             </label>
             {applyError && <Callout tone="problem">{applyError}</Callout>}
             <div className="flex justify-end gap-2">
-              <button disabled={actionInFlight} onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
+              <button disabled={applying} onClick={() => setApplyModal(false)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
               <Button variant="plain" size="none" onClick={applyCredit} disabled={actionInFlight || !applyInvoiceId || !applyAmount}
                 className="text-xs px-4 py-1.5 bg-brand text-white rounded-lg hover:bg-brand-dark disabled:opacity-50">
                 {applying ? "Applying…" : "Apply"}
@@ -1809,7 +1812,7 @@ function SalesInvoices({
     await Promise.all(selected.map(async (inv) => {
       try {
         if (inv.status === "draft") {
-          const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const result = await apiCall(`/api/sales-invoices/${inv.id}`, "DELETE", undefined, token);
           if (!result.success) throw new Error(result.error ?? "delete failed");
           deleted++;
         } else if (inv.status === "cancelled") {
@@ -1817,7 +1820,7 @@ function SalesInvoices({
         } else if (!mayVoid) {
           failures.push(`${inv.invoice_no}: voiding an issued invoice needs permission to approve accounting entries`);
         } else {
-          const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+          const result = await apiCall(`/api/sales-invoices/${inv.id}/cancel`, "POST", undefined, token);
           if (!result.success) throw new Error(result.error ?? "void failed");
           voided++;
         }
@@ -1855,7 +1858,7 @@ function SalesInvoices({
         return false;
       }
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/send`, "POST", { to_email: cust.email }, token);
         if (!result.success) throw new Error(result.error ?? "send failed");
         return true;
       } catch (e) {
@@ -1897,7 +1900,7 @@ function SalesInvoices({
       const cust = customers.find((c) => c.id === inv.customer_id);
       if (!cust?.email) return { ok: false, reason: "no email on file" };
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/remind`, "POST", undefined, token);
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to send reminder" };
       } catch (e) {
@@ -1939,7 +1942,7 @@ function SalesInvoices({
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (inv): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-invoices/${inv.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue invoice" };
       } catch (e) {
@@ -2203,8 +2206,8 @@ function SalesInvoices({
         />
       )}
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Summary cards: stacked on a phone, where three abreast left each figure wider than its tile (POST-A-131). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {/* The query is scoped to the selected period (invoice_date between
             range.from and range.to), so these tiles are the PERIOD's figures
             and not the client's whole receivable/turnover. The label used to
@@ -2497,15 +2500,18 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   const canGenerate = gatewayOn && hist?.can_pay_online === true;
 
   async function generate() {
+    // Held while the WRITE is out and let go when it returns; the re-read that follows is not a write (POST-A-395).
     setBusy(true); setMsg(null);
+    let made = false;
     try {
       const token = await getAuthToken();
       const res = await apiCall("/api/payments/links", "POST", { invoice_id: invoice.id }, token, { timeoutMs: HELD_DIALOG_MS });
       if (!res.success) throw new Error(res.error ?? "Could not create link");
       setMsg({ text: "Payment link ready", type: "success" });
-      await load();
+      made = true;
     } catch (e) { setMsg({ text: e instanceof Error ? e.message : "Could not create link", type: "error" }); }
     finally { setBusy(false); }
+    if (made) await load();
   }
 
   async function copy(url: string | null) {
@@ -2527,7 +2533,7 @@ function PaymentLinkModal({ invoice, onClose }: { invoice: SalesInvoice; onClose
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={busy ? undefined : (onClose)}>
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!busy) onClose(); }}>
       <div className="bg-white rounded-xl border border-ps-border p-6 w-full max-w-lg shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-sm font-semibold text-ps-ink">Online Payment · {invoice.invoice_no}</h3>
@@ -2983,6 +2989,8 @@ function Customers({
   // See SalesInvoices.loadFailed (audit M17): a failed fetch must not render as
   // an empty customer list.
   const [loadFailed, setLoadFailed] = useState(false);
+  /** When the list on screen was read, while it is the last answer painted ahead of the real read (POST-A-124); null once the real one lands. */
+  const [paintedFrom, setPaintedFrom] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
@@ -3003,25 +3011,31 @@ function Customers({
   const load = useCallback(async () => {
     setLoading(true);
     const supabase = getSupabaseClient();
+    let painted = false;
     try {
-      // Load all customers; active/inactive scoping is a client-side DataTable filter.
-      const { data, error } = await selectAll(() =>
-        supabase
-          .from("customers")
-          .select(
-            "id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
-          )
-          .eq("client_id", clientId)
-          .order("name")
-          .order("id"),
-      );
-      if (error) throw error;
-      setCustomers((data as Customer[]) ?? []);
+      // Load all customers; active/inactive scoping is a client-side DataTable filter. The last answer is painted at once from the shared
+      // read cache and the real read always follows (POST-A-124); a failed read throws, so it is never stored.
+      const data = await readCustomerList<Customer>(clientId, async () => {
+        const { data, error } = await selectAll(() =>
+          supabase
+            .from("customers")
+            .select(
+              "id, name, gstin, state_code, pan, tan, email, phone, city, state, opening_balance_paise, credit_days, is_active"
+            )
+            .eq("client_id", clientId)
+            .order("name")
+            .order("id"),
+        );
+        if (error) throw error;
+        return (data as Customer[]) ?? [];
+      }, (last, readAt) => { painted = true; setCustomers(last); setPaintedFrom(readAt); setLoading(false); });
+      setCustomers(data);
+      setPaintedFrom(null);
       setLoadFailed(false);
     } catch {
       // Was swallowed: a failed fetch rendered as "no customers", which on this
-      // tab invites the CA to re-create customers that already exist.
-      setCustomers([]);
+      // tab invites the CA to re-create customers that already exist. A list painted from the last read stays up and says it is not current.
+      if (!painted) setCustomers([]);
       setLoadFailed(true);
     } finally {
       setLoading(false);
@@ -3042,12 +3056,20 @@ function Customers({
   async function confirmDeactivate() {
     if (!deactivateTarget) return;
     setDeactivating(true);
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from("customers")
-      .update({ is_active: false })
-      .eq("id", deactivateTarget.id);
-    setDeactivating(false);
+    let error: unknown = null;
+    // Let go of the dialog in a finally, so a write that throws cannot leave it held until the page is reloaded (POST-A-395).
+    try {
+      const { error: refused } = await getSupabaseClient()
+        .from("customers")
+        .update({ is_active: false })
+        .eq("id", deactivateTarget.id);
+      error = refused;
+    } catch (e) {
+      error = e;
+    } finally {
+      setDeactivating(false);
+    }
+    forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (error) {
       // A request that got no answer may have gone through: it is said as that, not as a failure (POST-A-414).
       showToast(failureSentence(error, "Failed to deactivate customer", "write"), "error");
@@ -3064,6 +3086,7 @@ function Customers({
   async function reactivateCustomer(c: Customer) {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from("customers").update({ is_active: true }).eq("id", c.id);
+    forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
     if (error) { showToast(failureSentence(error, "Failed to reactivate customer", "write"), "error"); return; }
     showToast("Customer reactivated", "success");
     load();
@@ -3088,6 +3111,7 @@ function Customers({
     try {
       const token = await getAuthToken();
       const res = await apiCall(`/api/customers/${deleteTarget.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (!res.success) {
         showToast(res.error ?? "Failed to delete customer", "error");
         return;
@@ -3166,6 +3190,7 @@ function Customers({
     let imported = 0;
     if (toCreate.length > 0) {
       const result = await apiCall("/api/customers/bulk", "POST", { customers: toCreate }, token);
+      forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
       if (result.success) {
         const data = result.data as {
           created: unknown[];
@@ -3200,7 +3225,8 @@ function Customers({
     const failures: string[] = [];
     await Promise.all(targets.map(async (c) => {
       try {
-        const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/customers/${c.id}`, "DELETE", undefined, token);
+        forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deactivated++;
       } catch (e) {
@@ -3227,7 +3253,8 @@ function Customers({
     const failures: string[] = [];
     await Promise.all(selected.map(async (c) => {
       try {
-        const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/customers/${c.id}?permanent=true`, "DELETE", undefined, token);
+        forgetCustomerLists();  // a write of this family: the cached list is forgotten whatever the answer (POST-A-124)
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -3515,6 +3542,14 @@ function Customers({
         );
       })()}
 
+      {/* A list painted ahead of the real read says when it was read, and says so again if the real read failed (POST-A-124). */}
+      {paintedFrom !== null && (
+        <p role="status" className="text-xs text-ps-hint">
+          {loadFailed
+            ? `Showing the list as it was read at ${readAtText(paintedFrom)}. It could not be refreshed, so it may not be current.`
+            : `Showing the list as it was read at ${readAtText(paintedFrom)} while the current one loads…`}
+        </p>
+      )}
       {/* Table — shared DataTable (search, sort, filters, pagination, export, prefs) */}
       <DataTable
         data={customers}
@@ -3695,7 +3730,7 @@ function Receipts({
     const token = await getAuthToken();
     let imported = 0;
     for (const rec of records) {
-      const result = await apiCall("/api/receipts/", "POST", rec, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/receipts/", "POST", rec, token);
       if (result.success) imported++;
       else errors.push(`Receipt for "${rec.customer_id}" on ${rec.receipt_date}: ${result.error ?? "failed to create"}`);
     }
@@ -4534,7 +4569,7 @@ function CreditNotes({
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/credit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/credit-notes/", "POST", note, token);
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -4611,7 +4646,7 @@ function CreditNotes({
     const failures: string[] = [];
     await Promise.all(selected.map(async (cn) => {
       try {
-        const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/credit-notes/${cn.id}`, "DELETE", undefined, token);
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -4638,7 +4673,7 @@ function CreditNotes({
     type IssueResult = { ok: true; data: unknown } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (cn): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/credit-notes/${cn.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true, data: result.data };
         return { ok: false, reason: result.error ?? "Failed to issue credit note" };
       } catch (e) {
@@ -4981,7 +5016,7 @@ function SalesDebitNotes({
     const token = await getAuthToken();
     let imported = 0;
     for (const note of notes) {
-      const result = await apiCall("/api/sales-debit-notes/", "POST", note, token, { timeoutMs: HELD_DIALOG_MS });
+      const result = await apiCall("/api/sales-debit-notes/", "POST", note, token);
       if (result.success) imported += 1;
       else errors.push(result.error ?? "Bulk import failed");
     }
@@ -5047,7 +5082,7 @@ function SalesDebitNotes({
     const failures: string[] = [];
     await Promise.all(selected.map(async (dn) => {
       try {
-        const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}`, "DELETE", undefined, token);
         if (!result.success) throw new Error(result.error ?? "failed");
         deleted++;
       } catch (e) {
@@ -5074,7 +5109,7 @@ function SalesDebitNotes({
     type IssueResult = { ok: true } | { ok: false; reason: string };
     const results: IssueResult[] = await mapWithConcurrency(draftRows, 8, async (dn): Promise<IssueResult> => {
       try {
-        const result = await apiCall(`/api/sales-debit-notes/${dn.id}/issue`, "POST", undefined, token, { timeoutMs: HELD_DIALOG_MS });
+        const result = await apiCall(`/api/sales-debit-notes/${dn.id}/issue`, "POST", undefined, token);
         if (result.success) return { ok: true };
         return { ok: false, reason: result.error ?? "Failed to issue debit note" };
       } catch (e) {

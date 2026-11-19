@@ -24,7 +24,7 @@ function routeRbac(routerFile: string, path: string): [string, string] {
 /** What each report reads. A report that reads two routes is offered only when both admit the caller. */
 const READS: Record<ReportId, Array<[string, string]>> = {
   gst_summary: [["reports.py", "/gst-summary"], ["reports.py", "/transactions"]],
-  pl_statement: [["reports.py", "/transactions"]],
+  pl_statement: [["reports.py", "/party-totals"]],
   compliance_status: [["compliance_ops.py", "/obligations"]],
   outstanding_invoices: [["reports.py", "/transactions"]],
 };
@@ -40,14 +40,27 @@ test("each report's pair is the one its routes ask", () => {
 test("the page reads what this test says it reads", () => {
   const page = readFileSync(join(WEB, "app", "reports", "page.tsx"), "utf8");
   // The data functions the page calls, and the routes behind them (lib/data/transactions.ts, lib/data/compliance.ts).
-  for (const fn of ["getGSTSummary", "getTransactions", "getComplianceCalendar"]) {
+  for (const fn of ["getGSTSummary", "getTransactions", "getPartyTotals", "getComplianceCalendar"]) {
     assert.ok(page.includes(`${fn}(`), `the Reports page no longer calls ${fn}: re-read what each report reads`);
   }
   const tx = readFileSync(join(WEB, "lib", "data", "transactions.ts"), "utf8");
   assert.match(tx, /api\.reports\.transactions\(/);
   assert.match(tx, /api\.reports\.gstSummary\(/);
+  assert.match(tx, /api\.reports\.partyTotals\(/);
   const comp = readFileSync(join(WEB, "lib", "data", "compliance.ts"), "utf8");
   assert.match(comp, /api\.complianceOps\.obligations\(/);
+});
+
+test("the P&L Statement draws the server's sums and adds nothing in the browser (POST-A-469)", () => {
+  const page = readFileSync(join(WEB, "app", "reports", "page.tsx"), "utf8");
+  const at = page.indexOf('} else if (reportId === "pl_statement")');
+  assert.ok(at >= 0, "the P&L branch of generate() is gone");
+  const branch = page.slice(at, page.indexOf("} else if", at + 1));
+  assert.match(branch, /getPartyTotals\(/, "the P&L no longer reads the server's sums");
+  for (const [what, rule] of [["a row read", /getTransactions\(/], ["a sum", /\.reduce\(/], ["a grouping", /new Map\b/],
+                               ["an addition of an amount", /_paise\s*\+|\+\s*\w+\.\w*_paise/]] as const) {
+    assert.doesNotMatch(branch, rule, `the P&L branch makes ${what} of its own again`);
+  }
 });
 
 test("the page lists the reports through reportOffered, not the whole list", () => {

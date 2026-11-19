@@ -1,12 +1,13 @@
-// The parties a client used most recently, at the top of its picker (POST-A-155).
+// The parties, and the ledger accounts, a client used most recently, at the top of its picker (POST-A-155).
 //
 // The order is the SERVER's (GET /api/customers/recent, /api/vendors/recent, read off the client's own newest
-// documents); this only lays the ids over the list the editor already holds. An id the list does not hold (an
+// documents; GET /api/accounting/accounts/recent for a journal line's or a bill line's account); this only lays the ids over the list the editor already holds. An id the list does not hold (an
 // inactive party, one the list has not loaded) is left out rather than invented, and nothing is pre-selected.
 import { useEffect, useState } from "react";
 
-export function recentFirst<T extends { id: string }>(ids: readonly string[], list: readonly T[]): T[] {
-  const byId = new Map(list.map((p) => [p.id, p] as const));
+export function recentFirst<T extends { id?: string | null }>(ids: readonly string[], list: readonly T[]): T[] {
+  // A row with no id (an account a screen keys by code) cannot be matched to a recent id, so it is never offered at the top.
+  const byId = new Map(list.filter((p) => p.id).map((p) => [p.id as string, p] as const));
   const out: T[] = [];
   for (const id of ids) {
     const p = byId.get(id);

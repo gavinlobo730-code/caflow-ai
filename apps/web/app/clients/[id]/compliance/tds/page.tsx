@@ -10,7 +10,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { currentFinancialYearLabel } from "@/lib/dateMath";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { errorMessage } from "@/lib/api";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type Doing, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import type { CalendarAnswer } from "@/lib/data/tds";
 import { Callout } from "@/components/ui/callout";
 import { RecordAnywayAsk } from "@/components/tds/RecordAnywayAsk";
@@ -46,7 +46,7 @@ async function apiFetch(path: string, opts?: RequestInit, asked?: Doing) {
   // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
   // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks, such as "Compute from Books").
   const doing = asked ?? doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -1079,6 +1079,8 @@ function Form26ASTab({ clientId }: { clientId: string }) {
     setLoading(true);
     try {
       const resp = await apiFetch("/api/tds-workspace/form26as/upload", {
+        // It carries the whole Form 26AS: the long bound (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ client_id: clientId, financial_year: fy, raw_data }),
       });

@@ -29,7 +29,7 @@ import { formatPaise } from "@/lib/money/format";
 import { downloadCsv, toCsvRows } from "@/lib/export/csv";
 import { objectWithLists } from "@/lib/api/shape";
 import { errorMessage } from "@/lib/api";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type Doing, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type Doing, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import type { CreditLedgerBlock, ProbableMatch2B } from "@/lib/api";
 import { readGstr2bText } from "@/lib/gst/gstr2bFile";
 import {
@@ -67,7 +67,7 @@ async function apiFetch(path: string, opts?: RequestInit, asked?: Doing) {
   // A request that gets no answer, and a page that is not JSON, are said in the product's words (POST-A-406), by what the request was.
   // What the request was: its method, unless the caller says it is an estimator that persists nothing (a POST that only asks, such as "Compute from Books").
   const doing = asked ?? doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -1976,6 +1976,8 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       setRaw(read.raw);
       // The server reads the month and the GSTIN. Nothing is stored by this.
       const resp = await apiFetch("/api/gst-workspace/gstr2b/inspect", {
+        // It carries the whole GSTR-2B file: the long bound (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ client_id: clientId, raw_data: read.raw }),
       }, "read");
@@ -1999,6 +2001,8 @@ function GSTR2BTab({ clientId }: { clientId: string }) {
       // The file and the client — no period. The server takes the month from the
       // file and asks the same question `inspect` just answered.
       const resp = await apiFetch("/api/gst-workspace/gstr2b/upload", {
+        // It carries the whole GSTR-2B file and reconciles it against the books: the long bound (POST-A-470).
+        signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS),
         method: "POST",
         body: JSON.stringify({ client_id: clientId, raw_data: raw }),
       });

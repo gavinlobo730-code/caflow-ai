@@ -54,7 +54,8 @@ import { paiseFromRupeeInput, rupeeInputFromPaise } from "@/lib/money/rupeeInput
 // form an <input> takes back, so it groups nothing (₹100000.00).
 import { formatPaise } from "@/lib/money/format";
 import { todayIstISO } from "@/lib/dates/format";
-import type { JournalEntryDetail, JournalLineIO } from "@/lib/api";
+import { api, type JournalEntryDetail, type JournalLineIO } from "@/lib/api";
+import { recentFirst, useRecentPartyIds } from "@/lib/lookups/recentParties";
 
 export const ENTRY_TYPES = [
   "Journal", "Sales", "Purchase", "Payment", "Receipt", "Contra", "Opening",
@@ -278,6 +279,10 @@ export function JournalEditor({
   const allAccounts = useMemo(
     () => [...accounts, ...created.filter((c) => !accounts.some((a) => a.id === c.id))],
     [accounts, created]);
+  // The accounts this client put on its newest manual journals go to the top of every line's picker (POST-A-155); nothing is
+  // pre-selected. Not read for an entry that cannot be changed: it has no picker to order.
+  const recentAccountIds = useRecentPartyIds(api.accounting.recentJournalAccounts, clientId, !readOnly);
+  const recentAccounts = useMemo(() => recentFirst(recentAccountIds, allAccounts), [recentAccountIds, allAccounts]);
   // Which line asked for it, by KEY and not by position, so removing a line
   // while the dialog is open cannot send the new ledger to the wrong one.
   const [quickAdd, setQuickAdd] = useState<{ name: string; lineKey: string } | null>(null);
@@ -599,6 +604,7 @@ export function JournalEditor({
                     <td className="py-1.5 pr-2">
                       <AccountLookup
                         accounts={allAccounts}
+                        recent={recentAccounts}
                         value={line.account_id}
                         onChange={(id) => pickAccount(idx, id)}
                         id={`je-account-${line.key}`}

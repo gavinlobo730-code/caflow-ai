@@ -33,7 +33,7 @@ import {
   validateBillDraft, withoutDocument, type BillDraftFields,
 } from "@/lib/purchases/billDraft";
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
-import { jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { jsonPlain, PlainFailure, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -282,6 +282,9 @@ export function PurchaseBillEditor({
   // The suppliers this client billed against most recently go to the top of the picker (POST-A-155); nothing is pre-selected.
   const recentVendorIds = useRecentPartyIds(api.vendors.recent, clientId, !isEdit);
   const recentVendors = useMemo(() => recentFirst(recentVendorIds, vendors), [recentVendorIds, vendors]);
+  // ...and the expense accounts on its newest bills to the top of each line's account picker, again choosing nothing.
+  const recentAccountIds = useRecentPartyIds(api.accounting.recentBillAccounts, clientId, true);
+  const recentAccounts = useMemo(() => recentFirst(recentAccountIds, accounts), [recentAccountIds, accounts]);
   const initialLines: EditorLine[] =
     existing && (existing.lines ?? []).length > 0 ? detailLinesToEditorLines(existing.lines)
     : duplicateSeed && (duplicateSeed.lines ?? []).length > 0 ? detailLinesToEditorLines(duplicateSeed.lines)
@@ -883,7 +886,7 @@ export function PurchaseBillEditor({
       const token = await getAuthToken();
       // A reading is a proposal, not a record of a bill: what a dropped connection costs is the result, so it is told as one that did not come back.
       // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
-      const res = await fetchUpload(`${API}/api/document-intelligence-v1/extract-invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData }, "read", setSent);
+      const res = await fetchUpload(`${API}/api/document-intelligence-v1/extract-invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData, timeoutMs: LONG_REQUEST_BOUND_MS }, "read", setSent);
       const json = await jsonPlain<UntypedJson>(res, "read");
       // The uploaded file is retained server-side as ITC/audit evidence
       // regardless of whether AI extraction itself succeeded.
@@ -1665,7 +1668,7 @@ export function PurchaseBillEditor({
                           size="sm" chrome="plain" placeholder="Set HSN/SAC" ariaLabel="HSN or SAC code" />
                       </td>
                       <td className="py-1.5 px-1">
-                        <AccountLookup accounts={accounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
+                        <AccountLookup accounts={accounts} recent={recentAccounts} value={line.expense_account_id} onChange={(id) => setLine(idx, { expense_account_id: id })} size="sm" placeholder="— Account —" ariaLabel="Expense account" />
                         {/* ai-23. A PROPOSAL from this supplier's earlier bills,
                             with its evidence, shown only while the account is
                             blank. The field is NOT filled in: a click is what

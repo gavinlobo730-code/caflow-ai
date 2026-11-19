@@ -262,7 +262,7 @@ function DetailPanel({ task, clients, teamMembers, allTasks, transitions, onClos
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end pointer-events-none">
-      <div className="absolute inset-0 pointer-events-auto" onClick={saving ? undefined : (onClose)} />
+      <div className="absolute inset-0 pointer-events-auto" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }} />
       <div className="relative w-96 h-full bg-white border-l border-ps-border shadow-2xl pointer-events-auto flex flex-col overflow-hidden">
         {/* Panel header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-ps-border">

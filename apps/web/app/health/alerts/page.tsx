@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { Bell, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import { formatDate } from "@/lib/dates/format";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -18,7 +19,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, { ...opts, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(opts?.headers ?? {}) } }, doing);
+  const res = await fetchBounded(`${API}${path}`, { ...opts, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(opts?.headers ?? {}) } }, doing);
   return jsonPlain<UntypedJson>(res, doing);
 }
 // apiFetch stays — the resolve action below is a real write (audit,
@@ -73,7 +74,10 @@ export default function HealthAlertsPage() {
     try {
       const json = await apiFetch(`/api/health/alerts/${alertId}/resolve`, { method: "POST", body: JSON.stringify({}) });
       if (json.success) setAlerts((prev) => prev.filter((a) => a.id !== alertId));
-    } catch { /* non-fatal */ }
+    } catch (e) {
+      // Said, not swallowed: a resolve that did not answer may have landed, and the alert would sit on the list as if nothing had been asked.
+      setError(failureSentence(e, "Couldn't resolve the alert.", "write"));
+    }
     finally { setResolving(null); }
   }
 
@@ -102,13 +106,13 @@ export default function HealthAlertsPage() {
                   <p className="text-sm text-gray-800">{a.message}</p>
                   <p className="text-xs text-gray-500 mt-1">Client: {a.client_id.slice(0,12)}… · {formatDate(a.created_at)}</p>
                 </div>
-                <button
+                <Button variant="plain" size="none" spinner={false}
                   onClick={() => handleResolve(a.id)}
                   disabled={resolving === a.id}
                   className="shrink-0 text-xs text-emerald-700 border border-emerald-300 px-2.5 py-1 rounded hover:bg-emerald-50 disabled:opacity-50"
                 >
                   {resolving === a.id ? "…" : "Resolve"}
-                </button>
+                </Button>
               </CardContent>
             </Card>
           ))}

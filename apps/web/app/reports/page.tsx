@@ -21,7 +21,8 @@ import {
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { getClients } from "@/lib/data/clients";
 import { getTransactions } from "@/lib/data/transactions";
-import { getGSTSummary } from "@/lib/data/transactions";
+import { getGSTSummary, getPartyTotals } from "@/lib/data/transactions";
+import type { ReportPartyLine, ReportPartyTotals } from "@/lib/api";
 import { getComplianceCalendar } from "@/lib/data/compliance";
 import { formatPaise, formatDate } from "@/lib/services/formatting";
 import type { Client } from "@/lib/types";
@@ -75,11 +76,8 @@ interface PLData {
   clientName: string;
   fromDate: string;
   toDate: string;
-  revenue: { account: string; total: number }[];
-  expenses: { account: string; total: number }[];
-  totalRevenue: number;
-  totalExpenses: number;
-  netPL: number;
+  /** The server's answer (GET /api/reports/party-totals), drawn as it comes: the screen adds nothing (POST-A-469). */
+  totals: ReportPartyTotals;
 }
 
 interface ComplianceRow {
@@ -302,8 +300,15 @@ function GSTSummaryReport({ data }: { data: GSTSummaryData }) {
   );
 }
 
+/** A party line's name, or what is true about it when there is none to show. */
+function partyLabel(line: ReportPartyLine, side: "customer" | "supplier"): string {
+  if (line.party_name) return line.party_name;
+  return line.party_id ? `A ${side} with no name on record` : `No ${side} named on the document`;
+}
+
 function PLStatementReport({ data }: { data: PLData }) {
-  const isProfit = data.netPL >= 0;
+  const t = data.totals;
+  const isProfit = t.net_paise >= 0;
 
   return (
     <div className="report-content space-y-6">
@@ -320,22 +325,22 @@ function PLStatementReport({ data }: { data: PLData }) {
         <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
           <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
-              <th className="px-4 py-2 text-left">Account / Party</th>
+              <th className="px-4 py-2 text-left">Party</th>
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ps-border">
-            {data.revenue.length === 0 ? (
+            {t.revenue.length === 0 ? (
               <tr>
                 <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
                   No revenue transactions in this period
                 </td>
               </tr>
             ) : (
-              data.revenue.map((r, i) => (
-                <tr key={i}>
-                  <td className="px-4 py-2.5 text-ps-label">{r.account}</td>
-                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total)}</td>
+              t.revenue.map((r, i) => (
+                <tr key={r.party_id ?? `none-${i}`}>
+                  <td className="px-4 py-2.5 text-ps-label">{partyLabel(r, "customer")}</td>
+                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total_paise)}</td>
                 </tr>
               ))
             )}
@@ -343,7 +348,7 @@ function PLStatementReport({ data }: { data: PLData }) {
           <tfoot>
             <tr className="bg-green-50 font-semibold text-green-900">
               <td className="px-4 py-2.5">Total Revenue</td>
-              <td className="px-4 py-2.5 text-right">{formatPaise(data.totalRevenue)}</td>
+              <td className="px-4 py-2.5 text-right">{formatPaise(t.revenue_total_paise)}</td>
             </tr>
           </tfoot>
         </table>
@@ -355,22 +360,22 @@ function PLStatementReport({ data }: { data: PLData }) {
         <table className="w-full text-sm border border-ps-border rounded-lg overflow-hidden">
           <thead className="bg-ps-bg text-xs text-ps-label uppercase">
             <tr>
-              <th className="px-4 py-2 text-left">Account / Party</th>
+              <th className="px-4 py-2 text-left">Party</th>
               <th className="px-4 py-2 text-right">Amount</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ps-border">
-            {data.expenses.length === 0 ? (
+            {t.expenses.length === 0 ? (
               <tr>
                 <td colSpan={2} className="px-4 py-4 text-center text-ps-hint text-xs">
                   No expense transactions in this period
                 </td>
               </tr>
             ) : (
-              data.expenses.map((r, i) => (
-                <tr key={i}>
-                  <td className="px-4 py-2.5 text-ps-label">{r.account}</td>
-                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total)}</td>
+              t.expenses.map((r, i) => (
+                <tr key={r.party_id ?? `none-${i}`}>
+                  <td className="px-4 py-2.5 text-ps-label">{partyLabel(r, "supplier")}</td>
+                  <td className="px-4 py-2.5 text-right text-ps-ink">{formatPaise(r.total_paise)}</td>
                 </tr>
               ))
             )}
@@ -378,7 +383,7 @@ function PLStatementReport({ data }: { data: PLData }) {
           <tfoot>
             <tr className="bg-state-problem-surface font-semibold text-red-900">
               <td className="px-4 py-2.5">Total Expenses</td>
-              <td className="px-4 py-2.5 text-right">{formatPaise(data.totalExpenses)}</td>
+              <td className="px-4 py-2.5 text-right">{formatPaise(t.expense_total_paise)}</td>
             </tr>
           </tfoot>
         </table>
@@ -393,7 +398,7 @@ function PLStatementReport({ data }: { data: PLData }) {
         }`}
       >
         <span>{isProfit ? "Net Profit" : "Net Loss"}</span>
-        <span>{formatPaise(Math.abs(data.netPL))}</span>
+        <span>{formatPaise(Math.abs(t.net_paise))}</span>
       </div>
     </div>
   );
@@ -586,7 +591,7 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
   const [toDate, setToDate] = useState(todayIstISO());
   // The P&L's window. Its rows used to be read whole and cut in the browser on `transaction_date >= from && <= to`, so text that is not a
   // date (handed up as "") read as no lower bound and as an upper bound nothing passes: an unreadable To drew a P&L of nil revenue and nil
-  // expenses as if that were the figure. The window is now the server's (`date_from`/`date_to` on /api/reports/transactions), and a box
+  // expenses as if that were the figure. The window is now the server's (`date_from`/`date_to` on /api/reports/party-totals, which also does the sums, POST-A-469), and a box
   // that is unreadable or blank is refused in its own sentence before anything is read (POST-A-386).
   const dates = useDateProblems();
 
@@ -641,40 +646,16 @@ function ReportViewer({ reportId, onClose }: ReportViewerProps) {
           setLoading(false);
           return;
         }
-        const filtered = await getTransactions(
+        const totals = await getPartyTotals(
           selectedClientId === "all" ? undefined : selectedClientId, fromDate, toDate,
         );
-        const sales = filtered.filter((t) => t.transaction_type === "sales_invoice");
-        const purchases = filtered.filter((t) => t.transaction_type === "purchase_invoice");
-
-        // Group revenue by party_name (account proxy)
-        const revenueMap = new Map<string, number>();
-        for (const t of sales) {
-          revenueMap.set(t.party_name, (revenueMap.get(t.party_name) ?? 0) + t.taxable_amount_paise);
-        }
-        const expenseMap = new Map<string, number>();
-        for (const t of purchases) {
-          expenseMap.set(t.party_name, (expenseMap.get(t.party_name) ?? 0) + t.taxable_amount_paise);
-        }
-
-        const totalRevenue = sales.reduce((s, t) => s + t.taxable_amount_paise, 0);
-        const totalExpenses = purchases.reduce((s, t) => s + t.taxable_amount_paise, 0);
 
         const clientName =
           selectedClientId === "all"
             ? "All Clients"
             : clients.find((c) => c.id === selectedClientId)?.client_name ?? selectedClientId;
 
-        setData({
-          clientName,
-          fromDate,
-          toDate,
-          revenue: Array.from(revenueMap.entries()).map(([account, total]) => ({ account, total })),
-          expenses: Array.from(expenseMap.entries()).map(([account, total]) => ({ account, total })),
-          totalRevenue,
-          totalExpenses,
-          netPL: totalRevenue - totalExpenses,
-        } as PLData);
+        setData({ clientName, fromDate, toDate, totals } as PLData);
       } else if (reportId === "compliance_status") {
         const [entries, allClients] = await Promise.all([getComplianceCalendar(), getClients()]);
         const clientNameById = new Map(allClients.map((c) => [c.id, c.client_name]));

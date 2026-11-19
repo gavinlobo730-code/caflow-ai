@@ -1,12 +1,13 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { Copy, CheckCircle, XCircle, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -15,7 +16,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -203,22 +204,22 @@ export default function CrossClientMatchesPage() {
 
                   {m.is_confirmed === null && (
                     <div className="flex gap-2 shrink-0">
-                      <button
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={updating === m.id}
                         onClick={() => handleReview(m.id, true)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-medium transition-colors disabled:opacity-50 border border-emerald-200"
                       >
                         <CheckCircle className="w-3.5 h-3.5" />
                         Confirm
-                      </button>
-                      <button
+                      </Button>
+                      <Button variant="plain" size="none" spinner={false}
                         disabled={updating === m.id}
                         onClick={() => handleReview(m.id, false)}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-state-problem-surface text-red-600 hover:bg-red-100 text-xs font-medium transition-colors disabled:opacity-50 border border-state-problem-border"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         Reject
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>

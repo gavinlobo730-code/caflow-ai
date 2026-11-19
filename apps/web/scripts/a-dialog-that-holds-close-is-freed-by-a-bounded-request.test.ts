@@ -12,17 +12,14 @@ import { join } from "node:path";
 
 const WEB = join(import.meta.dirname, "..");
 const page = readFileSync(join(WEB, "app/engagements/page.tsx"), "utf8");
-const api = readFileSync(join(WEB, "lib/api/index.ts"), "utf8");
 
 test("the engagement letters page's requests are bounded at lib/api's 45 seconds", () => {
-  const bound = page.match(/const JSON_ABORT_MS = ([\d_]+);/);
-  assert.ok(bound, "the page names no bound for its requests");
-  assert.equal(Number(bound[1].replace(/_/g, "")), 45_000, "the page's bound is not 45 seconds");
-  assert.match(api, /setTimeout\(\(\) => controller\.abort\(\), 45_000\)/, "lib/api's own bound moved: this page's must follow it");
+  // The bound itself is held over the whole tree by scripts/a-request-a-screen-makes-ends.test.ts (POST-A-470); this page's two calls go through the bounded door with no longer bound.
   const helper = page.slice(page.indexOf("async function apiFetch("), page.indexOf("// Types"));
-  assert.match(helper, /signal: AbortSignal\.timeout\(JSON_ABORT_MS\),\s*\.\.\.opts,/, "the JSON helper sends without a bound (or lets nothing override it)");
+  assert.match(helper, /fetchBounded\(`\$\{API\}\$\{path\}`, \{\s*\.\.\.opts,/, "the JSON helper does not send through the bounded door (or lets nothing override it)");
   const pdf = page.slice(page.indexOf("async function doDownloadPdf("), page.indexOf("async function doDownloadPdf(") + 900);
-  assert.match(pdf, /signal: AbortSignal\.timeout\(JSON_ABORT_MS\)/, "the PDF download, which holds Close too, is not bounded");
+  assert.match(pdf, /fetchBounded\(/, "the PDF download, which holds Close too, is not bounded");
+  assert.doesNotMatch(pdf, /LONG_REQUEST_BOUND_MS/, "a one-letter PDF was given the export's long bound, so Close stays held for minutes");
 });
 
 test("each dialog's Close and Cancel are held while its request is out", () => {
@@ -39,6 +36,7 @@ test("each dialog's Close and Cancel are held while its request is out", () => {
 // ── the rule over every overlay (the review of 18-11-2026: the shared Modal's Escape, backdrop and X, and the trackers' batch prompts) ──
 
 import { readdirSync, statSync } from "node:fs";
+import ts from "typescript";
 import { looseDismissers, overlaysInFlight } from "./dialogHolds.ts";
 
 const loose = (src: string) => looseDismissers("t.tsx", src).map((l) => l.what);
@@ -52,7 +50,7 @@ test("the rule: each way of dismissing an overlay over a write in flight is foun
     `const B = () => <div className="fixed inset-0 z-50" ${backdrop}><div><button ${x} onClick={onClose}><X size={14} /></button><button aria-label="Close" ${x} onClick={onClose}>x</button>`
     + `<Button disabled={busy || !ok} onClick={go}>Send</Button></div></div>;`;
   assert.deepEqual(loose(handBuilt("onClick={onClose}", "")), ["backdrop click", "X", "Close (named)"]);
-  assert.deepEqual(loose(handBuilt("onClick={busy ? undefined : onClose}", "disabled={busy}")), []);
+  assert.deepEqual(loose(handBuilt("onClick={(e) => { e.stopPropagation(); if (!busy) onClose(); }}", "disabled={busy}")), []);
   assert.deepEqual(loose(`const C = () => <Drawer onClose={leave}><button onClick={leave}>Cancel</button><button disabled={submitting}>Save</button></Drawer>;`),
     ["onClose (Escape, backdrop, X)", "Cancel"]);
   // A dialog whose only flag is a READ: leaving while it reads is not trapping a write.
@@ -85,7 +83,7 @@ test("the shared prompt that records a filing holds Escape, the backdrop and its
 
 test("apiCall can be bounded and has no bound of its own, and the supplier form's save is bounded", () => {
   const shared = readFileSync(join(WEB, "lib/invoices/shared.ts"), "utf8");
-  assert.match(shared, /export const HELD_DIALOG_MS = 45_000;/);
+  assert.match(shared, /export const HELD_DIALOG_MS = REQUEST_BOUND_MS;/);
   assert.match(shared, /options: \{ timeoutMs\?: number \} = \{\},/, "apiCall takes no time limit");
   assert.match(shared, /\.\.\.\(options\.timeoutMs \? \{ signal: AbortSignal\.timeout\(options\.timeoutMs\) \} : \{\}\),/, "apiCall's limit is not an abort signal, or it has a default");
   const purchases = readFileSync(join(WEB, "app/clients/[id]/purchases/page.tsx"), "utf8");
@@ -93,4 +91,55 @@ test("apiCall can be bounded and has no bound of its own, and the supplier form'
     assert.ok(purchases.includes(call), `the supplier form's save is not bounded: ${call}`);
   }
   assert.doesNotMatch(purchases, /apiCall\("\/api\/(vendors|purchase-bills)\/bulk"[^)]*HELD_DIALOG_MS/, "a bulk import was bounded at 45 seconds");
+});
+
+// ── the second review (18-11-2026): what the rule could not see ────────────────────────────────────────────────────────────────────
+
+test("the rule sees a × button, a button whose click is onClose, a write flag that starts or ends with the word, and a backdrop that lets a click reach the overlay behind", () => {
+  const over = (inner: string, backdrop = "onClick={(e) => { e.stopPropagation(); if (!savingOverride) onClose(); }}") =>
+    `const E = () => <div className="fixed inset-0 z-50" ${backdrop}><div>${inner}<Button disabled={savingOverride} onClick={go}>Save</Button></div></div>;`;
+  assert.deepEqual(loose(over(`<button onClick={close}><span className="text-lg">×</span></button>`)), ["×"]);
+  assert.deepEqual(loose(over(`<button onClick={close}>&times;</button>`)), ["×"]);
+  assert.deepEqual(loose(over(`<Button onClick={onClose}>Done</Button>`)), ["onClose button"]);
+  assert.deepEqual(loose(over(`<button disabled={savingOverride} onClick={onClose}><span>×</span></button>`)), []);
+  // A backdrop that only declines to close leaves the click to bubble into an overlay behind it (a dialog over a ledger).
+  assert.deepEqual(loose(over("", "onClick={savingOverride ? undefined : onClose}")), ["backdrop click reaches the overlay behind"]);
+  // `busyId === "save"` is a write flag too: the word begins the name.
+  assert.deepEqual(loose(`const F = () => <Modal title="x" onClose={onClose}><button onClick={onClose}>Cancel</button><Button disabled={busyId === "save"}>Save</Button></Modal>;`),
+    ["onClose (Escape, backdrop, X)", "Cancel"]);
+});
+
+test("the rule sees a write flag set before an await that a throw would leave set, through a flag made of others", () => {
+  const src = (body: string) => `function G() {
+    const [deactivating, setDeactivating] = useState(false);
+    const actionInFlight = deactivating || other;
+    async function go() { setDeactivating(true); ${body} }
+    return <div className="fixed inset-0"><button disabled={actionInFlight} onClick={() => setT(null)}>Cancel</button><button disabled={actionInFlight} onClick={go}>Deactivate</button></div>;
+  }`;
+  assert.deepEqual(loose(src(`const r = await call(); setDeactivating(false);`)), ["setDeactivating(true) before an await with no setDeactivating(false) in a finally"]);
+  assert.deepEqual(loose(src(`try { await call(); } finally { setDeactivating(false); }`)), []);
+});
+
+test("a bounded write is never inside a loop: a row of an import or a bulk action that takes long must not throw the whole loop and lose its tally", () => {
+  const LOOPY = /(^|\.)(map|forEach|mapWithConcurrency|all|allSettled|filter|reduce|flatMap)$/;
+  const offenders: string[] = [];
+  for (const rel of ["app/clients/[id]/purchases/page.tsx", "app/clients/[id]/sales/page.tsx", "components/customers/CustomerFormModal.tsx", "components/purchases/LandedCostPanel.tsx", "components/purchases/RecurringBills.tsx"]) {
+    const sf = ts.createSourceFile(rel, readFileSync(join(WEB, rel), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let bounded = 0;
+    const visit = (n: ts.Node) => {
+      if (ts.isCallExpression(n) && n.expression.getText() === "apiCall" && n.arguments[4]?.getText().includes("timeoutMs")) {
+        bounded += 1;
+        for (let p: ts.Node | undefined = n.parent; p; p = p.parent) {
+          const inLoop = ts.isForStatement(p) || ts.isForOfStatement(p) || ts.isForInStatement(p) || ts.isWhileStatement(p) || ts.isDoStatement(p)
+            || ((ts.isArrowFunction(p) || ts.isFunctionExpression(p)) && !!p.parent && ts.isCallExpression(p.parent) && LOOPY.test(p.parent.expression.getText()))
+            || ((ts.isFunctionDeclaration(p) && p.name?.text === "runAllDue") || (ts.isVariableDeclaration(p) && p.name.getText() === "runAllDue"));
+          if (inLoop) { offenders.push(`${rel}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1}`); break; }
+        }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    assert.ok(bounded > 0, `${rel} bounds no write: the scan is not reading it`);
+  }
+  assert.deepEqual(offenders, []);
 });

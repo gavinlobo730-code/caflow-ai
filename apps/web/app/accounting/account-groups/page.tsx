@@ -101,7 +101,7 @@ function LedgerDialog({ account, onClose, onSaved }:
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={saving ? undefined : (onClose)}>
+    <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
       <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-ps-ink">
           {account ? `Edit ${account.account_name}` : "Add a ledger"}

@@ -256,9 +256,13 @@ const browser = await browserType.launch(browserName === "chromium"
   : {});
 if (shots) fs.mkdirSync(SHOT_DIR, { recursive: true });
 
+/** The browser-session rule (POST-A-483, lib/auth/browserSession) signs a stored session out at page start unless THIS browser session
+ *  is the one the person signed in during, and a tab says so with a marker in session storage. A harness that plants a sign-in in
+ *  local storage is a tab that was signed in, so it plants the marker too: without it every page is the sign-in screen. */
 const SESSION_SCRIPT = `(() => { try {
   for (const ref of ["127", "localhost", "placeholder"])
     localStorage.setItem("sb-" + ref + "-auth-token", ${JSON.stringify(JSON.stringify(FAKE_SESSION))});
+  sessionStorage.setItem("practicesync_session_marker", "1");
 } catch {} })();`;
 
 /** A policy violation is an event, and a report-only policy raises it with no console error at all. */

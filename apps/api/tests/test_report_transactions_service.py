@@ -502,3 +502,69 @@ def test_a_firm_with_more_documents_than_one_response_gets_all_of_them():
     assert sum(r["outstanding_paise"] for r in rows) == 2_345 * 118_000
     # 400 parties is more than one `in.()` chunk; every one still has a name.
     assert all(r["party_name"].startswith("Customer ") for r in rows)
+
+
+# ── The P&L Statement's sums by party (POST-A-469) ──────────────────────────
+
+def test_the_pl_sums_by_party_on_the_server_in_paise_and_matches_the_old_browser_arithmetic():
+    """The screen used to add `taxable_amount_paise` by party over the feed's rows; the server's answer gives the same
+    totals over the same rows, with the counted statuses and the deletion rule the feed uses."""
+    sales = [_sale(id="s1"), _sale(id="s2", taxable_amount_paise=25_050, status="paid"),
+             _sale(id="s3", status="draft", taxable_amount_paise=9_999_999),
+             _sale(id="s4", customer_id="cus-other", taxable_amount_paise=7)]
+    bills = [_bill(id="b1"), _bill(id="b2", status="cancelled", taxable_amount_paise=8_888_888)]
+    db = _db(sales=sales, bills=bills)
+    feed = svc.list_transactions(db, FIRM)
+    out = svc.party_totals(db, FIRM)
+    revenue = sum(t["taxable_amount_paise"] for t in feed if t["transaction_type"] == "sales_invoice")
+    expense = sum(t["taxable_amount_paise"] for t in feed if t["transaction_type"] == "purchase_invoice")
+    assert (out["revenue_total_paise"], out["expense_total_paise"], out["net_paise"]) == (
+        revenue, expense, revenue - expense) == (125_057, 50_000, 75_057)
+    assert out["revenue"][0] == {"party_id": "cus1", "party_name": "Acme Traders", "total_paise": 125_050,
+                                 "documents": 2}
+    # A customer the firm has no row for is a line with no name, never a name of somebody else's.
+    assert out["revenue"][1]["party_name"] is None
+    assert out["expenses"] == [{"party_id": "ven1", "party_name": "Bolt Supplies", "total_paise": 50_000,
+                                "documents": 1}]
+
+
+def test_the_pl_scoped_to_no_clients_is_nil_and_reads_nothing():
+    class Watching(FakeDB):
+        def table(self, name):
+            raise AssertionError(f"read {name}")
+
+        def rpc(self, *_a, **_k):
+            raise AssertionError("called the function")
+
+    out = svc.party_totals(Watching(), FIRM, client_ids=[])
+    assert out["revenue"] == [] and out["expenses"] == [] and out["net_paise"] == 0
+
+
+def test_the_pl_takes_the_database_functions_answer_when_it_has_one():
+    seen = {}
+
+    class WithRpc(FakeDB):
+        def rpc(self, name, params):
+            seen.update(name=name, **params)
+
+            class _R:
+                def execute(self_inner):
+                    class _D:
+                        data = {"revenue": [], "expenses": [], "revenue_total_paise": 1}
+                    return _D()
+            return _R()
+
+    out = svc.party_totals(WithRpc(), FIRM, client_ids=["c1"], date_from="2026-04-01", date_to="2026-04-30")
+    assert out["revenue_total_paise"] == 1
+    assert seen == {"name": "report_party_totals", "p_firm": FIRM, "p_client_ids": ["c1"],
+                    "p_from": "2026-04-01", "p_to": "2026-04-30"}
+
+
+def test_the_pl_falls_back_to_the_rule_when_the_function_cannot_be_reached():
+    """The minutes the API runs before migration 745: the answer still comes, from the paged rows."""
+    class Broken(FakeDB):
+        def rpc(self, *_a, **_k):
+            raise RuntimeError("function public.report_party_totals does not exist")
+
+    db = Broken(client_sales_invoices=[_sale()], purchase_bills=[], customers=[], vendors=[])
+    assert svc.party_totals(db, FIRM)["revenue_total_paise"] == 100_000

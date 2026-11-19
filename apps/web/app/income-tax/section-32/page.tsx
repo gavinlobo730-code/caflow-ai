@@ -490,7 +490,7 @@ function AddBlockDialog({ clientId, fy, itrRows, onClose, onSaved }: {
   const input = "w-full mt-1 px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-light";
 
   return (
-    <div className="fixed inset-0 bg-brand-dark/50 z-50 flex items-center justify-center p-4" onClick={saving ? undefined : (onClose)}>
+    <div className="fixed inset-0 bg-brand-dark/50 z-50 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); if (!saving) onClose(); }}>
       <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
         <div>
           <h3 className="text-sm font-semibold text-ps-ink">Add a §32 block — FY {fy}</h3>

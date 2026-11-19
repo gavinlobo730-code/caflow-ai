@@ -1,5 +1,6 @@
 "use client";
 
+import { forgetCustomerLists, forgetVendorLists } from "@/lib/data/partyLists";
 import { ClientLookup } from "@/components/lookups/ClientLookup";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Loader2, AlertTriangle, Database, CheckCircle, XCircle } from "lucide-react";
@@ -282,6 +283,9 @@ export default function MigrationPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't roll the import back.");
     } finally {
+      // The rollback removes the masters the import wrote (POST-A-124). Forgotten whatever the answer was: a request that timed out here may
+      // have finished on the server, and a list kept over it would be painted as read (found by the independent review).
+      forgetCustomerLists(); forgetVendorLists();
       setBusyJob(null);
     }
   }
@@ -516,6 +520,9 @@ export default function MigrationPage() {
     } catch (e) {
       setError(sentenceOf(e, "The import could not be started."));
     } finally {
+      // The import writes customer and supplier masters: the cached lists of both are forgotten (POST-A-124) whatever the answer was, since a
+      // request that timed out here may have finished on the server (found by the independent review).
+      forgetCustomerLists(); forgetVendorLists();
       setWorking(false);
     }
   }

@@ -12,7 +12,7 @@ import { selectAll } from "@/lib/supabase/selectAll";
 import { objectWithLists } from "@/lib/api/shape";
 import { DateInput } from "@/components/ui/date-input";
 import { formatDate } from "@/lib/dates/format";
-import { failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { failureSentence, fetchBounded, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 
 /**
  * The supplier's account, as the client's books have it.
@@ -130,7 +130,7 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
     setStmt(null);
     try {
       const token = await authToken();
-      const res = await fetchPlain(
+      const res = await fetchBounded(
         `${API}/api/vendors/${encodeURIComponent(vendorId)}/statement`
         + `?client_id=${encodeURIComponent(clientId)}`
         + `&start_date=${start}&end_date=${end}`,
@@ -158,12 +158,13 @@ export function VendorStatementsTab({ clientId }: { clientId: string }) {
     setError(null);
     try {
       const token = await authToken();
-      const res = await fetchPlain(
+      const res = await fetchBounded(
         `${API}/api/vendors/${encodeURIComponent(vendorId)}/statement/pdf`
         + `?client_id=${encodeURIComponent(clientId)}`
         + `&start_date=${start}&end_date=${end}`,
         { headers: token ? { Authorization: `Bearer ${token}` } : {} },
         "read",
+        LONG_REQUEST_BOUND_MS, // a statement over a whole period, drawn as a PDF: an export, so the long bound (POST-A-470)
       );
       if (!res.ok) throw new Error("Could not download the statement.");
       const blob = await res.blob();
