@@ -13,7 +13,7 @@ The owner's plan, set on 19 November 2026 at about 17:20 IST: **one question at 
 | Q | The question | Status | What is left |
 |---|---|---|---|
 | 1 | Paid always-on API host | **CLOSED 19-11-2026**: option A, the free host, the owner wakes it before the demo | Nothing for the demo. The paid plan waits until a pilot firm is using the product (money row 1). |
-| 2 | Paid mail: price, where to get it | **OPEN** | The owner confirms "nothing to buy for the demo" and reads which Resend plan the account is on. |
+| 2 | Paid mail: price, where to get it | **OPEN, nearly closed** (read 19-11-2026 from the owner's Resend screenshots) | Resend is on the Free plan: 10 of 3,000 mails this month, 1 of 100 today; the sending subdomain shows Verified; every mail in its 15-day list is Delivered. Nothing to buy for the demo; the paid plan waits until a pilot firm sends client mail (and the card problem is solved first). Waiting only for the owner to say "closed". |
 | 3 | Open the twelve government sites to Claude, read-only | **NOT DISCUSSED IN DETAIL** | Yes or no; if yes, the owner's steps in the environment settings, then what I check first. |
 | 4 | Names and addresses (legal entity, grievance and security contacts, alert recipients) | **CLOSED as deferred 19-11-2026**: not needed to show a CA who knows him | Needed before a pilot or a public release; the owner will be reminded then. |
 | 5 | What the pricing page promises | **OPEN** | What the owner meant by "don't show anything for now" (leave the page as it is, or hide it?). |
