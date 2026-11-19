@@ -195,7 +195,7 @@ export default function ContinueSignupPage() {
             <p className="text-sm text-ps-label">
               This link starts a new practice, <strong>{looked.seen.firm_name}</strong>, for <strong>{looked.seen.full_name}</strong> at{" "}
               <strong>{looked.seen.email}</strong>. Those names were typed on the sign-up form for this address; you can change them in the
-              steps that follow, and nothing is created until you finish them. Press the button to sign in and carry on.
+              steps that follow, and the practice is not created until you finish them. Press the button to sign in and carry on.
               The link works until {looked.seen.valid_until} and until your practice has been created, so you can open it again if you are interrupted.
             </p>
             {pressError && <p role="alert" className="text-sm text-state-problem">{pressError}</p>}

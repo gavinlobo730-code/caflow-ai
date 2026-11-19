@@ -143,7 +143,7 @@ test("the ready page shows the firm's name and the person's name the link was as
   assert.match(ready, /looked\.seen\.firm_name/);
   assert.match(ready, /looked\.seen\.full_name/);
   assert.match(ready, /looked\.seen\.email/);
-  assert.match(ready, /nothing is created until you finish them/, "what pressing starts is said in words");
+  assert.match(ready, /the practice is not created until you finish them/, "what pressing starts is said in words");
 });
 
 test("an address with no secret in it says it is incomplete and does not claim the link expired", () => {

@@ -215,7 +215,7 @@ export const scenarios = [
       assert.match(readyText, /Continue setting up Sharma & Associates/);
       assert.match(readyText, /ravi@sharma-co\.in/);
       assert.match(readyText, /CA Ravi Sharma/, "the person's name the link was asked for is not shown before the press");
-      assert.match(readyText, /nothing is created until you finish them/);
+      assert.match(readyText, /the practice is not created until you finish them/);
       assert.match(readyText, /until 21 November 2026, 2:30 pm IST/);
       assert.equal(stub.writesTo(LINK_SESSION, "POST").length, 0, "a sign-in was opened before anybody pressed anything");
       assert.equal(freshSeen.filter((r) => /\/auth\/v1\/verify/.test(r)).length, 0, "the page signed somebody in by itself");
