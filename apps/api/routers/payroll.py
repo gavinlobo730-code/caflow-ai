@@ -2133,6 +2133,11 @@ def create_employee(
     if payload.get(pf_election.ELECTION) is None:
         for key in pf_election.ALL_KEYS:
             payload.pop(key, None)
+    # The same for fixed-term employment (migration 770): an employee created without it never names its columns, so the insert is the
+    # one it always was, and a deploy that reaches production a few minutes before the migration does cannot break an ordinary create.
+    for key in ("fixed_term_employment", "fixed_term_end_date"):
+        if payload.get(key) is None:
+            payload.pop(key, None)
     row = db.table("payroll_employees").insert(payload).execute()
     emp = (row.data or [{}])[0]
     if payload.get(pf_election.ELECTION) is not None:
@@ -2358,6 +2363,15 @@ def update_employee(
         if plan.problems:
             raise HTTPException(status_code=422, detail=" ".join(plan.problems))
         update.update(plan.changes)
+    # FIXED-TERM EMPLOYMENT (POST-A-526, migration 770). Withdrawing it clears the contract's end date with it, and an end date sent alone
+    # lands only on an employee who IS on a fixed term, in a sentence rather than by the database's CHECK. The row is read only then.
+    if update.get("fixed_term_employment") is False:
+        update["fixed_term_end_date"] = None
+    elif update.get("fixed_term_end_date") and update.get("fixed_term_employment") is not True:
+        held = (db.table("payroll_employees").select("fixed_term_employment")
+                .eq("id", employee_id).eq("firm_id", current_user["firm_id"]).maybe_single().execute().data) or {}
+        if held.get("fixed_term_employment") is not True:
+            raise HTTPException(status_code=422, detail="A contract end date belongs to a fixed-term employee: tick fixed-term employment, or leave the date out.")
     row = db.table("payroll_employees").update(update).eq("id", employee_id).eq("firm_id", current_user["firm_id"]).execute()
     if stored is not None and any(k in update for k in pf_election.ALL_KEYS):
         after = (row.data or [{}])[0]
@@ -8303,6 +8317,7 @@ def statutory_position(
             joining=date.fromisoformat(str(joining)) if joining else None,
             leaving=as_at,
             covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+            **_fixed_term_for_gratuity(emp, as_at),
         )
         for r in grat.reasons:
             # Not eligible yet is the ordinary case, not a problem worth
@@ -8391,6 +8406,10 @@ class SettlementIn(BaseModel):
     client_id: str
     leaving_date: IsoDate                      # ISO
     on_death_or_disablement: bool = False
+    # A fixed-term employee's five years are waived on the EXPIRY of the term (section 53(1), second proviso), so the person recording
+    # the settlement says whether that is why the employment ended; a recorded contract end date that has been reached says it too
+    # (POST-A-526, `_fixed_term_for_gratuity`). Meaningless for an employee not recorded as on fixed-term employment.
+    fixed_term_contract_expired: bool = False
     on_retirement: bool = True             # decides §10(10AA) entirely
     is_government_employee: bool = False
 
@@ -8434,6 +8453,25 @@ def _parse_leaving_date(value: str) -> date:
                             detail="leaving_date must be ISO (YYYY-MM-DD)")
 
 
+def _fixed_term_for_gratuity(emp: dict, on: date, stated_expired: bool = False) -> dict:
+    """The two facts `gratuity.compute` takes about fixed-term employment, read off the employee row (POST-A-526).
+
+    `fixed_term` is the record. `fixed_term_expired` is true only for a recorded fixed-term employee whose term has expired: stated by the
+    person recording the settlement, or the contract's recorded end date reached on `on`. Both callers of the computation read it here so
+    a third cannot forget one.
+    """
+    recorded = bool(emp.get("fixed_term_employment"))
+    end = emp.get("fixed_term_end_date")
+    try:
+        end_date = date.fromisoformat(str(end)[:10]) if end else None
+    except ValueError:
+        end_date = None
+    return {
+        "fixed_term": recorded,
+        "fixed_term_expired": recorded and (bool(stated_expired) or gratuity_domain.fixed_term_has_expired(end_date, on)),
+    }
+
+
 def _compose_settlement(emp: dict, body: "SettlementIn"):
     """(settlement, gratuity result, leaving date) from an employee and the facts.
 
@@ -8452,6 +8490,7 @@ def _compose_settlement(emp: dict, body: "SettlementIn"):
         joining=date.fromisoformat(str(joining)) if joining else None,
         leaving=leaving,
         covered_by_the_act=bool(emp.get("gratuity_act_covered", True)),
+        **_fixed_term_for_gratuity(emp, leaving, body.fixed_term_contract_expired),
         on_death_or_disablement=body.on_death_or_disablement,
         amount_actually_paid_paise=body.gratuity_amount_actually_paid_paise,
         exemption_already_used_paise=body.gratuity_exemption_already_used_paise,

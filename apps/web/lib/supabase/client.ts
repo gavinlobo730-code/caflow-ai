@@ -1,10 +1,15 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { plainRestFetch } from "./plainRestFetch.ts";
+import { rememberRecoveryLink } from "../auth/recoveryLink.ts";
 
 let _client: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient {
   if (_client) return _client;
+
+  // The address is read HERE, before the library is made, because the library reads a recovery link when it starts, stores its session
+  // and clears the hash, and the reset page renders after that (lib/auth/recoveryLink.ts says why that matters, POST-A-510).
+  if (typeof window !== "undefined") rememberRecoveryLink(window.location, Date.now());
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";

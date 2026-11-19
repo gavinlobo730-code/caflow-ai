@@ -751,10 +751,15 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       confirm: "Reverse the journals of the selected passed entries and put the lines back to do?",
       run: async (sel) => {
         let n = 0;
+        // A line that could not be undone is said with the server's reason for the first of them (POST-A-515): "3 undone" alone left the
+        // person to work out which of five had stayed and why.
+        const refused: string[] = [];
         for (const t of sel.filter((x) => x.entry_state === "passed")) {
-          try { await api.banking.undoPost(t.id); n += 1; } catch { /* reported by the count */ }
+          try { await api.banking.undoPost(t.id); n += 1; } catch (e) { refused.push(e instanceof Error ? e.message : String(e)); }
         }
-        toast({ title: `${n} undone` });
+        toast({ title: `${n} undone`,
+                description: refused.length ? `${refused.length} could not be undone: ${refused[0]}` : undefined,
+                variant: n === 0 && refused.length ? "destructive" : undefined });
         await reload();
       },
     },
@@ -764,13 +769,19 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     if (!bookUnder || !bookAccountId) return;
     setBookBusy(true);
     let n = 0;
+    // The lines that were refused are counted AND the server's reason for the first of them is said (POST-A-515): "3 lines booked" alone left
+    // the person to work out which of five had stayed and why.
+    const refused: string[] = [];
     try {
       for (const t of bookUnder) {
         try { await api.banking.setTransactionAccount(t.id, { account_id: bookAccountId, derive_category: true }); n += 1; }
-        catch { /* counted */ }
+        catch (e) { refused.push(e instanceof Error ? e.message : String(e)); }
       }
+      const ready = n ? "They are Ready — pass them when you are. A line that can carry GST will ask what is inside it when you pass it." : "";
+      const stayed = refused.length ? `${refused.length} could not be booked: ${refused[0]}` : "";
       toast({ title: `${n} line${n === 1 ? "" : "s"} booked under ${accountName(bookAccountId)}`,
-              description: n ? "They are Ready — pass them when you are. A line that can carry GST will ask what is inside it when you pass it." : undefined });
+              description: [ready, stayed].filter(Boolean).join(" ") || undefined,
+              variant: n === 0 && refused.length ? "destructive" : undefined });
       // Offer to keep this decision as a rule when the lines share a phrase.
       const pattern = commonNarrationPattern(bookUnder.map((t) => t.description));
       if (n >= 2 && pattern && pattern.length >= MIN_PATTERN_LENGTH) setRulePrompt({ pattern, accountId: bookAccountId });

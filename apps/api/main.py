@@ -21,7 +21,7 @@ configure_logging(logging.INFO)
 # Error reporting. What is sent, and why tracing is off, is decided in
 # core.observability.init_error_reporting — it moved out of this file so a test can start
 # it with a capturing transport and read what would have left the process (ops-10).
-from core.observability import boot_notice, error_reporting_enabled, init_error_reporting
+from core.observability import boot_notice, error_reporting_enabled, init_error_reporting, running_build
 
 _SENTRY_DSN = os.environ.get("SENTRY_DSN")
 init_error_reporting(
@@ -560,6 +560,11 @@ app.include_router(engagement_sign_public.router)
 # length caps stand in for the auth it cannot have. NOT behind _CLIENT_GUARD.
 from routers import demo_request
 app.include_router(demo_request.router)
+# Sign-up links (POST-A-485, 497). Public like the two above: the person has no account yet. The form's request is limited per network
+# address (`signup`) and per mailed address (the row's counters); the page the link opens is limited as the staff invitation's is
+# (`invite`). The secret is read from a POST body, never a path. NOT behind _CLIENT_GUARD.
+from routers import signup as signup_links
+app.include_router(signup_links.router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router, dependencies=_MFA_GUARD)
@@ -797,6 +802,10 @@ def healthcheck():
     # for weeks. "Not yet checked" is not evidence of drift. See _lifespan.
     return api_response(True, {
         "status": "ok",
+        # The commit this process was built from, or `unknown` (POST-A-514): the owner's Where-you-are-signed-in card failed on production
+        # while the website, which redeploys on merge, was already newer, and nothing outside could say which build the API ran. A fact
+        # about this process, read from the environment: this route still touches no network.
+        "build": running_build(),
         "schema": "ok" if _SCHEMA_DRIFT.get("checked") else "checking",
         # What the code calls that the database lacks. REPORTED, not (yet) a 503:
         # read it on production, and flip schema_guard.OBJECT_DRIFT_FAILS_HEALTH

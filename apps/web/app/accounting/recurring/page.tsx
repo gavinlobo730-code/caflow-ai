@@ -121,6 +121,8 @@ export default function RecurringPage() {
   const dates = useDateProblems();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  // A history that could not be READ is said, not drawn as an empty one (POST-A-515): an empty list reads as "nothing has run".
+  const [historyError, setHistoryError] = useState<string | null>(null);
   /** The client of the template whose history is open: its generated entries open on that client's journal entry screen. */
   const historyClientId = templates.find(t => t.id === historyFor)?.client_id ?? "";
   /** The next few dates this template will generate on, from
@@ -337,6 +339,7 @@ export default function RecurringPage() {
 
   async function openHistory(t: RecurringJournalTemplate) {
     setHistoryFor(t.id);
+    setHistoryError(null);
     setRuns([]);
     setUpcoming([]);
     // Disabled while in flight like every other server call on this screen.
@@ -351,12 +354,14 @@ export default function RecurringPage() {
         api.recurringJournals.preview(t.id, 6),
       ]);
       if (res.success) setRuns(res.data ?? []);
+      else setHistoryError(res.error ?? "Couldn't read this template's history.");
       // `arrayOrEmpty` rather than a cast: state replaced from a payload, and
       // `useState<string[]>([])` satisfies TypeScript however absent the key
       // is at runtime.
       if (prev.success) setUpcoming(arrayOrEmpty<string>(prev.data?.occurrences));
-    } catch {
-      /* the panel shows nothing rather than breaking the page */
+    } catch (e) {
+      // The panel does not break the page, and it does not pretend nothing has run either.
+      setHistoryError(e instanceof Error ? e.message : "Couldn't read this template's history.");
     } finally {
       setBusyId(null);
     }
@@ -576,7 +581,11 @@ export default function RecurringPage() {
                 </div>
               )}
             </div>
-            {runs.length === 0 ? (
+            {historyError ? (
+              <div className="px-5 py-4">
+                <Callout tone="problem" title="This template's history could not be read">{historyError}</Callout>
+              </div>
+            ) : runs.length === 0 ? (
               <p className="px-5 py-6 text-sm text-ps-hint">Nothing generated yet.</p>
             ) : (
               <table className="w-full text-sm">

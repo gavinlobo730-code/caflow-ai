@@ -116,6 +116,18 @@ export interface SignupBounceState {
   onSignup: boolean;
 }
 
+/**
+ * Whether a path is the sign-up FORM or something under it that is also "Create your firm" (the bounce applies to those), as opposed to
+ * the page a sign-up LINK opens, `/signup/continue` (POST-A-485). That page is for a person who may already be signed in, as the link's
+ * own address or as somebody else, and it says what to do in each case; bouncing a signed-in member from it to "/" would be silent
+ * (the address already has a practice, and nobody would be told why the link did nothing).
+ */
+export function isSignupFormPath(pathname: string): boolean {
+  const bare = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  if (bare === "/signup/continue") return false;
+  return bare === "/signup" || bare.startsWith("/signup/");
+}
+
 /** Whether AuthGuard should replace the URL with "/" from /signup. */
 export function shouldBounceFromSignup(state: SignupBounceState): boolean {
   const { hasSession, mfaPending, hasFirm, onSignup } = state;

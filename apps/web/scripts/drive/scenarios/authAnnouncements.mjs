@@ -27,7 +27,7 @@ export const scenarios = [
   {
     id: "the-security-page-keeps-what-is-typed-when-the-tab-regains-focus-and-shows-that-a-password-was-saved",
     title:
-      "Settings > Security: type a new password, send the tab to the background and bring it back (the same box stays, with what was typed); then prove the current password, which the sign-in service answers with a NEW session, and save a new one: the page says it was saved although it was unmounted and mounted again while it saved",
+      "Settings > Security: type a new password, send the tab to the background and bring it back (the same box stays, with what was typed); then prove the current password, which the sign-in service answers with a NEW session, and save a new one: the page says it was saved although it was unmounted and mounted again while it saved; then the password-reset page: a recovery link opened with no earlier session reaches the new-password form, and an ordinary signed-in visit with no link does not (POST-A-510)",
     async run(env) {
       const { page, stub } = env;
       await page.goto(`${env.base}/settings/security/`, { waitUntil: "networkidle" });
@@ -57,6 +57,30 @@ export const scenarios = [
       stub.setAuthUserDelay(700);
       await page.getByRole("button", { name: "Update password" }).click();
       await page.getByText("Your password has been updated.").waitFor({ timeout: 10000 });
+
+      // ── POST-A-510, a block of this same run (a scenario of its own would push the nightly drive past its allowance) ──────────────
+      // The password-reset page decides whether to trust a session by whether the address it was opened with carried a recovery marker.
+      // The sign-in library clears that marker from the address while it starts, and the guard holds the page back until it has started,
+      // so a read at the page's first render found nothing and a VALID link could land on "Link invalid or expired".
+      stub.setAuthUserDelay(0);
+      stub.setGrantedToken(null);
+
+      // A link opened by somebody with no earlier session: the form, not the refusal.
+      const recovery = await env.newPage();
+      await recovery.addInitScript(() => {
+        try { for (const ref of ["127", "localhost", "placeholder"]) localStorage.removeItem("sb-" + ref + "-auth-token"); } catch { /* a storage that cannot be reached has nothing to remove */ }
+      });
+      await recovery.goto(
+        `${env.base}/auth/reset-password/#access_token=smoke.recovery.token&refresh_token=smoke.recovery.refresh&expires_in=3600&token_type=bearer&type=recovery`,
+        { waitUntil: "networkidle" });
+      await recovery.getByLabel("New password", { exact: true }).waitFor({ timeout: 8000 });
+      assert.equal(await recovery.getByRole("heading", { name: "Link invalid or expired" }).count(), 0, "a valid recovery link was refused as invalid or expired");
+
+      // An ordinary visit by somebody already signed in, with NO link: still refused, after the page's short wait.
+      const ordinary = await env.newPage();
+      await ordinary.goto(`${env.base}/auth/reset-password/`, { waitUntil: "networkidle" });
+      await ordinary.getByRole("heading", { name: "Link invalid or expired" }).waitFor({ timeout: 8000 });
+      assert.equal(await ordinary.getByLabel("New password", { exact: true }).count(), 0, "an ordinary signed-in visit with no recovery link reached the new-password form");
     },
   },
 ];

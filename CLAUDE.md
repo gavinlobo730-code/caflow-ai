@@ -166,7 +166,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TRUSTED RULE POSTS ONLY WHILE THE PERSON WHO TRUSTED IT COULD STILL POST, AND THE SCREEN'S NUMBER AND THE SWEEP BOTH ASK THE SAME
 - A BANK DEBIT EQUAL TO A RECORDED TDS CHALLAN IS PROPOSED AS ITS PAYMENT, NEVER READY, AND PASSING IT TIES THE CHALLAN
 
-### `docs/design-record/deployment-and-operations.md` (7 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
+### `docs/design-record/deployment-and-operations.md` (8 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
 
 - A CHECK ASKS THE THING ITSELF, AND AN ALERT MUST BE ABLE TO MATCH WHAT IS SENT
 - EVERY REQUEST HAS AN ID, AND ONE JSON LINE, AND THE LINE NEVER NAMES THE PATH THE CALLER TYPED
@@ -175,6 +175,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TWO SITES AND THE API SEND SECURITY HEADERS, THE POLICY'S HOSTS ARE READ FROM THE BUILD AND NEVER WILDCARDED, AND EVERY ROUTE 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
+- THE HEALTH ANSWER NAMES THE BUILD THE API RUNS, SO A DEPLOY THAT LAGS THE WEBSITE IS VISIBLE FROM OUTSIDE
 
 ### `docs/design-record/documents-sales-purchase.md` (23 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 - A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS
@@ -259,7 +260,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (14 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (15 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -275,6 +276,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SCREEN BLOCKS WITH "LOADING…" FOR ITS FIRST READ ONLY
 - A WRITE THE BROWSER MAKES THROUGH THE SUPABASE CLIENT READS ITS ANSWER
 - A PLACEHOLDER A SCREEN DRAWS SAYS WHEN THE SERVER IS SLOW
+- THE RESET PAGE IS TOLD WHICH PAGE LOAD CAME BY A RECOVERY LINK BEFORE THE SIGN-IN LIBRARY CLEANS THE ADDRESS, BECAUSE THE GUARD HOLDS THE PAGE BACK UNTIL AFTER
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
@@ -305,7 +307,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE UPLOAD SCREENS WERE DRIVEN IN A BROWSER ONCE, AND AN EXCEL DATE CELL IS A SERIAL NUMBER
 - A TRIAL-BALANCE IMPORT MATCHES ONLY ITS OWN CLIENT'S ACCOUNTS AND CHECKS ITS NEW NAMES AND CODES AGAINST THE WHOLE FIRM'S CHART, BECAUSE
 
-### `docs/design-record/payroll.md` (13 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
+### `docs/design-record/payroll.md` (14 entries): Payroll: accrual, PF on actual wages, gratuity, bonus, monthly review, declarations
 
 - THE PAYROLL ACCRUAL HAS TWO DEBITS, AND THE EMPLOYER SHARE COMES OFF THE SLIPS
 - THE STATUTORY BONUS IS AN ANNUAL DEBT AND THE PRODUCT COMPUTED IT ONLY FOR LEAVERS
@@ -320,6 +322,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TAX DECLARATION IS FILED IN ONE DATABASE TRANSACTION, BY THE SERVER ALONE, AND THE LOCK THAT PROTECTS IT IS THE ROW'S
 - THE PF WAGE CEILING IS THE NOTIFIED ONE FOR THE WAGE MONTH, AND THE MONTH THE CHANGE FALLS IN IS NAMED
 - THE ECR'S COLUMNS ARE EPFO'S OWN, A RETURN AND ITS CHALLAN HAVE TWO REFERENCES
+- A FIXED-TERM EMPLOYEE'S FIVE YEARS ARE WAIVED ON THE EXPIRY OF THE TERM, GRATUITY IS NAMED UNDER THE CODE, AND WHAT THE CODE LEAVES TO A NOTIFICATION IS SAID
 
 ### `docs/design-record/reporting.md` (12 entries): Reporting: Schedule III captions, report performance, paging, exports
 
@@ -336,7 +339,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 - A MEMBER'S HOURS FOR A PERIOD ARE SUMMED BY THE DATABASE
 
-### `docs/design-record/screens-and-site.md` (33 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (34 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -369,6 +372,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH
 - THE PAGES A PERSON SEES BEFORE THEY ARE INSIDE WEAR ONE WASH, A WORD ON IT IS WHITE AND SITS WHERE WHITE READS, AND THE SIGN-IN
 - A REFUSAL SAYS WHAT TO CORRECT IN A PERSON'S WORDS
+- A BUTTON THAT SAVES TELLS THE PERSON WHEN IT FAILS, AND A SCAN OVER EVERY BUTTON HOLDS THE RULE WITH A LIST OF WHAT WAS READ THAT MAY ONLY SHRINK
 
 ### `docs/design-record/tax-gst.md` (40 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
@@ -467,7 +471,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE
 - A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT
 
-### `docs/design-record/tenancy-and-security.md` (90 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
+### `docs/design-record/tenancy-and-security.md` (93 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
 - EVERY QUERY ON A FIRM TABLE CARRIES ITS FIRM'S SCOPE OR IS NAMED ON A FROZEN LIST, THE TABLE SET IS THE SNAPSHOT'S, AND HOW LITTLE
 - ACCESS IS DECIDED PER PERSON, AND A ROLE IS THE TEMPLATE IT FALLS BACK TO
@@ -559,6 +563,10 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - EVERY TABLE A SIGNED-IN SESSION CAN REACH IS OBSERVED BY THE ROLE-BY-TABLE MATRIX OR NAMED ON A LIST THAT ONLY SHRINKS
 - AN ASSIGNMENT TO THE FIRM'S OWN PRACTICE GRANTS A NON-PARTNER NOTHING, AND THE RULE IS IN THE ASSIGNMENT READ EVERY ROUTE ASKS
 - THE GST WORKING TABLES ARE WRITTEN BY THE API ONLY, SO A REVIEWER NO LONGER WRITES A REVERSAL INTO THE REGISTER THAT FEEDS THE RETURN
+- AN UNSIGNED REQUEST TO THE PUBLIC WEBHOOK WRITES NOTHING DURABLE
+- A SIGN-UP LINK IS HELD BY THE SERVER, OPENS ON ITS OWN PAGE, USES NOTHING UP, AND CARRIES WHAT IT WAS ASKED FOR
+- A PURGED FIRM'S PEOPLE ARE TOLD THEIR FIRM IS CLOSED BY A MARKER THAT OUTLIVES THEIR MEMBER ROW
+
 ### `docs/design-record/workflow-and-team.md` (4 entries): Workflow engine slices and the Team screen's permission notice
 
 - MIGRATION 481 IS THE SCHEMA FOR BOTH WORKFLOW HALVES, AND NOTHING READS IT YET
@@ -1393,8 +1401,6 @@ _Longer design records for this area were moved to `docs/design-record/frontend.
   Settings they do.
 
 - **A LOGIN TOKEN MUST HAVE BEEN ISSUED FOR THIS PRODUCT, AND A SESSION WE CANNOT VERIFY IS REFUSED** (SECURITY-PRIVACY-21). Both `get_current_user` and `get_jwt_user` decoded a Supabase JWT with `verify_aud` off and no issuer or required-claims check, so any validly signed token from the same signing key, including one minted for another audience, was accepted. `core/auth.decode_supabase_jwt` is now the ONE decode and both doors call it: audience `authenticated`, issuer `{SUPABASE_URL}/auth/v1` (or `SUPABASE_JWT_ISSUER` where the project has a custom auth domain) and `exp`, `sub`, `iat` required. **The revocation compare used to swallow an unreadable timestamp and let the request through; it now answers 401 and logs at ERROR**, because a check that fails open is not a check. A naive `iat` is read as UTC (`_instant_epoch`). ⚠️ **The issuer is the one value this code cannot confirm**: a human must decode a live token's `iss` before deploy, and a custom auth domain needs `SUPABASE_JWT_ISSUER`, or every login 401s. That fails CLOSED by design. Deliberately NOT done: the algorithm list is unchanged, and no check was relaxed for dev/test header-auth mode.
-
-- **AN UNSIGNED REQUEST TO THE PUBLIC WEBHOOK WRITES NOTHING DURABLE** (SECURITY-PRIVACY-23). `payment_service.process_webhook` called `audit_log` for every request whose signature failed, and `audit_log.firm_id` is `NOT NULL`, so the row could not even be attributed to a firm: the append-only edit-log table was an unauthenticated write target, and an attacker could fill it. An unsigned request now leaves no `audit_log` row and is counted in `core/rate_window.SlidingWindowLimiter` (100 per address per 60 s, a refused hit is not recorded, at most 4096 keys), answered 429 with `Retry-After`; a capped sample (20 per hour) is logged so an attack is still visible. The body is capped at 256 KB on `Content-Length` and again after reading. A correctly signed webhook is processed exactly as before. Deliberately NOT done: the limiter is per process and in memory, so with several instances the ceiling multiplies; the protection that matters is that an unsigned request costs no row, and a shared store would be a new dependency for abuse damping.
 
 _Longer design records for this area were moved to `docs/design-record/tenancy-and-security.md`; see the Design record index._
 

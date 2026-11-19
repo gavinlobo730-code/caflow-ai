@@ -264,7 +264,7 @@ export default function StatutoryPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-orange-100">
-                  <p className="text-xs font-semibold uppercase text-orange-600 mb-3">Gratuity Liability (Gratuity Act 1972)</p>
+                  <p className="text-xs font-semibold uppercase text-orange-600 mb-3">Gratuity Liability (Code on Social Security, 2020, section 53)</p>
                   <table className="w-full text-sm"><tbody>
                     <tr><td className="py-1 text-ps-label">Eligible employees</td>
                       <td className="text-right font-mono">{rows.filter((r) => r.gratuity_eligible).length}</td></tr>

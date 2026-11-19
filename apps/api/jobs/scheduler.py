@@ -253,8 +253,11 @@ def _close_sweep(firm_ids: list) -> None:
     """The end of a sweep. A per-minute workflow schedule leaves a claim row per occurrence, so old days are
     forgotten here, once per run (best effort, and bounded by the store's own retention); then the sweep says
     it finished. Lifted out of `run_daily_jobs` because that function is under the lint ratchet's size cap and
-    this is the one part of it that owes nothing to a job."""
+    this is the one part of it that owes nothing to a job. The sign-up links that expired over a day ago are removed here too."""
     claims.prune(_claim_store())
+    # No firm owns a sign-up link that nobody used (POST-A-485): the one housekeeping step of the sweep that is for no firm. It never raises.
+    from services import signup_link_service
+    signup_link_service.sweep_expired()
     logger.info(f"Daily scheduler run completed for {len(firm_ids)} firm(s)")
 
 

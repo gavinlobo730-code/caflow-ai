@@ -9,7 +9,7 @@ own base and its own tax treatment, netted against what the employee owes back:
 
     salary to the last working day        §17(1), taxable in full
     leave encashment                      §10(10AA) — exempt only on retirement
-    gratuity                              Gratuity Act §4, exempt under §10(10)
+    gratuity                              Code on Social Security 2020 s.53, exempt under §10(10)
     statutory bonus                       Bonus Act §10/§11, taxable in full
     notice pay recovered                  a deduction, not negative salary
     loans and advances outstanding        a deduction
@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from domain.money_sentence import rupee_text
+from domain.payroll import gratuity as gratuity_domain
 
 
 # Which line of the salary head a component belongs on. 24Q Annexure II — the
@@ -152,9 +153,12 @@ def build(
         s.components.append(SettlementComponent(
             label="Gratuity", gross_paise=gratuity.payable_paise,
             exempt_paise=gratuity.exempt_paise,
-            statute="Payment of Gratuity Act §4; IT Act §10(10)",
+            statute="Code on Social Security, 2020 section 53; IT Act §10(10)",
             tax_head=HEAD_17_3, exempt_section="10(10)"))
         s.gaps.extend(gratuity.gaps)
+        # The ceiling and the base are the repealed Act's, carried over until owner list S50 is answered, and the settlement says so in
+        # words (POST-A-526). Once per settlement, however many gaps the gratuity module raised.
+        s.gaps.append(gratuity_domain.CARRIED_OVER_FROM_THE_REPEALED_ACT)
 
     if leave is not None:
         # §17(1)(va) expressly makes "any payment received by an employee in
