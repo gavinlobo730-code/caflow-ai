@@ -345,6 +345,19 @@ site; its API serves each section of the Act as an item). What matters here:
   (to 31-10-2026), VISHWAS, 2026 and AMNESTY, 2026 (six months from 29-06-2026, extendable by up to six months). Still open:
   the wage month of September 2026 and the portal's file against Form VII (S43, S48, POST-A-516); the ceiling
   notification's own e-Gazette copy was compared on 19-11-2026 (night) and matches its figure and date.
+- **The Social Security (Central) Rules, 2026 (G.S.R. 344(E) of 8-05-2026), read from the Gazette on 19-11-2026 (evening) `[P]`:**
+  made under sections 154, 155, 158 and 159, in force on publication, superseding twelve earlier sets including the ESI (Central)
+  Rules 1950 and the Payment of Gratuity (Central) Rules 1972. **They do not mention the one-half wage rule or any other
+  percentage.** Rule 19: ESI employer 3.25%, employee 0.75% of wages payable, each rounded to the next higher rupee (rule 19(2):
+  no employer share for up to three years for an employee with a disability, reimbursed by the Government; not modelled).
+  Chapter V (rules 31 to 34): gratuity nomination in Form III, application in Form IV within thirty days, the employer's Form V
+  notice within fifteen days and payment by the thirtieth day, and a **fixed-term employee eligible after one year** (rule 33(1)(a)).
+  Rule 53: registers and the wage slip (Form V of the Wages (Central) Rules, 2026) kept five calendar years, and a unified annual
+  return in Form XXIII by 28 or 29 February for the gratuity and maternity chapters. Rule 5: registration on the Shram Suvidha
+  portal, the registration number quoted on all documents. Rule 65: exemption needs 500 contributory members and Rs 50 crore. No
+  provident fund return, UAN or due-date rule is in them (the 2026 Scheme has those). **Gratuity: the Payment of Gratuity Act 1972 is
+  repealed by section 164(1) of the Code and section 53 governs; the cap is "such amount as may be notified" and no notification
+  under section 53 has been read (owner list S50, POST-A-526).**
 
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
@@ -547,7 +560,7 @@ rest of this file, **it changes a number the product computes today**.
 | Date | What |
 |---|---|
 | **21 Nov 2025** | All four Labour Codes in force (PIB). The EPF Act 1952 and ESI Act 1948 stand subsumed into the **Code on Social Security 2020** |
-| **8 May 2026** | Final **Rules under the Code on Social Security** notified (the Social Security (Central) Rules, 2026, G.S.R. 344(E); e-Gazette id CG-DL-E-08052026-272366, located from the e-Gazette index on 19-11-2026; the text is not yet read) |
+| **8 May 2026** | Final **Rules under the Code on Social Security** notified (the Social Security (Central) Rules, 2026, G.S.R. 344(E); e-Gazette id CG-DL-E-08052026-272366; read on 19-11-2026, evening: owner list D12) |
 | **29 May 2026** | Ministry of Labour notification declaring **₹15,000 the wage ceiling for Chapter III (EPF)** under the new Code (S.O. 2702(E)) |
 | **29 June 2026** | The Employees' Provident Funds Scheme, 2026, the Employees' Pension Scheme, 2026 and the Employees' Deposit-Linked Insurance Scheme, 2026 (G.S.R. 525(E), 527(E), 526(E)) replace the three old schemes |
 | **17 September 2026** | Ministry of Labour S.O. 5109(E): **₹25,000** the wage ceiling for Chapter III, from publication, superseding S.O. 2702(E) (read from the e-Gazette's own copy on 19-11-2026, `[P]`: No. 4918, F. No. R-12025/01/2026-SS-II; owner list D1, S43) |
