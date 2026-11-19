@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Payroll Module — IT Act Section 192 (TDS on Salary), ESI Act, EPF Act
+ * Payroll Module — IT Act Section 192 (TDS on Salary), Code on Social Security 2020 (PF, ESI)
  * All monetary values stored and computed in integer paise.
  */
 
@@ -38,7 +38,7 @@ import { LoadingRegion } from "@/components/ui/skeleton";
  * Given today's date, compute the list of statutory return deadlines
  * relevant for the current month/quarter.
  *
- * PF ECR: monthly, due 15th of following month (EPF Act)
+ * PF ECR: monthly, due 15th of following month (Employees' Provident Funds Scheme, 2026 para 28(3))
  * ESI Return: half-yearly (Apr-Sep → Nov 11; Oct-Mar → May 11)
  * PT: monthly challan (Maharashtra example)
  * TDS 24Q: quarterly (IT Act Section 192)
@@ -652,7 +652,9 @@ function StatutoryReturnsTab({ clients }: { clients: Client[] }) {
 
       downloadFile(
         content,
-        d.filename ?? `${what.toUpperCase()}_${run.month}.${what === "ecr" ? "txt" : "csv"}`,
+        // EPFO asks for letters and digits only in an upload's name (POST-A-519), so the ECR's fallback has none of the
+        // separators the ESIC file's has; the server always sends the real name for a filable file.
+        d.filename ?? (what === "ecr" ? `ECR${run.month.replace(/\D/g, "")}.txt` : `ESIC_${run.month}.csv`),
         what === "ecr" ? "text/plain" : "text/csv",
         // Both go to a government portal. Neither gets a BOM.
         { bom: false },
@@ -1004,7 +1006,7 @@ export default function PayrollPage() {
       <div className="max-w-ps-data mx-auto">
         <PageHeader
           title="Payroll"
-          subtitle="IT Act Section 192 &middot; EPF Act &middot; ESI Act"
+          subtitle="IT Act Section 192 &middot; Code on Social Security, 2020"
           actions={
             <div className="flex items-center gap-2 flex-wrap">
               {/* These five match the sidebar's "This month" / "Roster" /

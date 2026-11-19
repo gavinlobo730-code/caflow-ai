@@ -1516,7 +1516,7 @@ type ECRSequence = {
   months_known_from?: string | null;
   note?: string;
   filings?: { id: string; wage_month: string; return_type: string; status: string;
-              trrn?: string | null; submitted_on?: string; approved_on?: string | null }[];
+              return_file_id?: string | null; trrn?: string | null; submitted_on?: string; approved_on?: string | null }[];
 };
 
 function OutputsTab({ clientId }: { clientId: string }) {

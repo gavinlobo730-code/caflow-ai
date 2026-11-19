@@ -2,23 +2,28 @@
 
 WHAT THIS IS, AND THE ONE THING IT DOES NOT KNOW
 
-    EPF Scheme 1952, para 26(6), lets an employee and the employer jointly
-    contribute on wages ABOVE the statutory ceiling (Rs 15,000 today, from
+    Paragraph 9(4) of the Employees' Provident Funds Scheme, 2026 (G.S.R. 525(E), read from the Gazette on 19-11-2026; it replaced para
+    26(6) of the 1952 Scheme on 29-06-2026 and names no officer's allowance) lets an employee and the employer jointly opt in writing
+    to contribute on wages ABOVE the wage ceiling (the notified ceiling, Rs 25,000 from 17-09-2026 and Rs 15,000 before, from
     domain/payroll/statutory.py — never restated here). Many employers do: 12%
     of the whole of basic, not 12% of Rs 15,000. `_compute_pf` always capped,
     and so did the ECR builder, so such an employer had a payroll that
     under-deducted, a ledger that under-accrued and a return that declared the
     wrong EPF wage, with no way to say otherwise.
 
-    [S] — EVERY STATEMENT OF LAW IN THIS MODULE IS SECONDARY-SOURCED. Egress is
-    refused in the environment this was written in, so para 26(6), the EPS
-    wage ceiling, the EDLI ceiling and the base of the administrative charge
-    are written from knowledge and PINNED by tests so a later change is a
-    deliberate act. `VERIFIED` is False and the screen says so. What nobody has
-    read here is whether the joint request is REQUIRED in law in every case,
-    what form it takes, whether EPFO accepts it for a particular member, and
-    whether the Code on Social Security 2020 carries the paragraph forward in
-    the same words.
+    WHAT WAS READ AND WHAT WAS NOT. This module was written when egress was refused, from knowledge, against paragraph 26(6) of the
+    1952 Scheme (replaced on 29-06-2026). On 19-11-2026 the Employees' Provident Funds Scheme, 2026 was read from the Gazette (G.S.R. 525(E)): paragraph 9(4)
+    says "any employee and his employer may jointly opt in writing, to enrol such employee as a member or allow him to contribute on
+    such wages exceeding wage ceiling limit and thereupon such employee shall be entitled to the benefits and be subject to the
+    conditions of the Fund", the employer paying the administrative charges and complying with all statutory provisions, and it
+    names no officer's allowance (the 1952 text required one). The pension scheme caps the employer's EPS wages at the notified
+    ceiling (the Employees' Pension Scheme, 2026 para 4(1), first proviso to 4(2)) and the Employees' Deposit-Linked Insurance
+    Scheme, 2026 makes the contribution "subject to the wage ceiling" (its para 5(1)), which is what keeps EPS and EDLI at the
+    ceiling for an elected member. Still [S],
+    and PINNED by tests so a later change is a deliberate act: the base of the administrative charge (the 2026 Scheme leaves the
+    percentage to the Central Government, paras 28(2) and 29(1)), whether EPFO's portal asks for any document or allowance for the
+    election (in no document read), and the all-or-nothing shape this product gives it. `VERIFIED` stays False and the screen says
+    what it does not check.
 
     So the product records THE EMPLOYER'S ASSERTION and does nothing cleverer:
     a boolean, an optional date from which it applies, and an optional
@@ -58,9 +63,9 @@ WHAT CHANGES FOR AN ELECTED MEMBER, AND WHAT DELIBERATELY DOES NOT
       * the ECR's EPF wage column.
 
     Does NOT move:
-      * EPS wages and the EPS contribution — the pension scheme keeps its own
-        ceiling, so the diversion stays at 8.33% of Rs 15,000 (Rs 1,250);
-      * EDLI wages and the EDLI contribution — EDLI Scheme 1976's ceiling;
+      * EPS wages and the EPS contribution — the pension scheme caps the employer's share at the notified wage ceiling whatever the
+        election, so the diversion is 8.33% of the ceiling (Rs 1,250 at Rs 15,000, Rs 2,083 at Rs 25,000);
+      * EDLI wages and the EDLI contribution — the insurance scheme's ceiling, which is the notified wage ceiling too;
       * the wage BASE itself. The uncapped figure is the SAME base the capped
         path takes — Basic + DA before 21-11-2025, the Code on Social Security
         s.2(88) aggregate after it (domain/payroll/wage_base.py) — so the
@@ -71,10 +76,9 @@ WHAT CHANGES FOR AN ELECTED MEMBER, AND WHAT DELIBERATELY DOES NOT
 
 NOT MODELLED, AND NAMED RATHER THAN GUESSED  (see NOT_MODELLED)
 
-    The higher-pension option under EPS para 11(3) and the Supreme Court's 2022
-    judgment is a different thing — a joint option exercised with EPFO, with its
-    own validation and its own contribution — and is REFUSED here. EPS wages
-    stay at the ceiling for every member.
+    The higher-pension option under para 11(3) of the 1995 Pension Scheme (replaced on 29-06-2026; its 2026 counterpart has not
+    been read for this) and the Supreme Court's 2022 judgment is a different thing — a joint option exercised with EPFO, with its
+    own validation and its own contribution — and is REFUSED here. EPS wages stay at the ceiling for every member.
 
 # CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT. Nothing here transmits anything.
 """
@@ -86,11 +90,11 @@ from typing import Optional
 
 from domain.payroll import wage_base
 
-#: A claim about PROVENANCE, not confidence. False: nothing below was read from
-#: the Scheme, the Code or a notification; see the module docstring.
+#: A claim about PROVENANCE, not confidence. False: the paragraph that allows the election was read on 19-11-2026, but the base of
+#: the administrative charge and what the portal asks for are not read; see the module docstring.
 VERIFIED = False
 
-PARA = "EPF Scheme 1952, para 26(6)"
+PARA = "Employees' Provident Funds Scheme, 2026, para 9(4)"
 
 # The three columns, named once. models/payroll.py, the router and the ECR guard
 # all read these, so a rename is one edit and a typo is an import error.
@@ -115,25 +119,28 @@ EARLIEST_EFFECTIVE_FROM = date(1952, 1, 1)
 #: character.
 SCREEN_NOTICE = (
     "This records a statement by the employer that the employee and the "
-    "employer have jointly asked to contribute on wages above the statutory "
-    "ceiling (EPF Scheme 1952, para 26(6)). This product does not check that "
-    "the request exists, whether it is required here, or whether EPFO will "
-    "accept it: that is for the employer to establish. The reading of the "
-    "paragraph is unverified. Pension (EPS) wages, EDLI wages and the EDLI "
-    "limit stay at the ceiling, and the higher-pension option under the "
-    "Pension Scheme is not modelled."
+    "employer have jointly opted in writing to contribute on wages above the "
+    "wage ceiling (paragraph 9(4) of the Employees' Provident Funds Scheme, "
+    "2026). This product does not check that the option exists, whether it is "
+    "required here, or whether EPFO will accept it: that is for the employer "
+    "to establish. Pension (EPS) wages, EDLI wages and the EDLI limit stay at "
+    "the ceiling, and the higher-pension option under the Pension Scheme is "
+    "not modelled."
 )
 
 #: What the product does not do about this, each a refusal with its reason.
 NOT_MODELLED: tuple[str, ...] = (
-    "The higher-pension option under the Employees' Pension Scheme 1995 "
-    "(para 11(3), as the Supreme Court read it in 2022) is a different joint "
-    "option exercised with EPFO, with its own validation. EPS wages stay at "
-    "the ceiling for every member, elected or not.",
+    "The higher-pension option under the Employees' Pension Scheme (para 11(3) "
+    "of the 1995 scheme, replaced on 29-06-2026, as the Supreme Court read it "
+    "in 2022; the 2026 scheme's counterpart has not been read) is a different "
+    "joint option exercised with EPFO, with its own validation. EPS wages stay "
+    "at the ceiling for every member, elected or not.",
     "Contribution on an amount the employer picks between the ceiling and "
     "actual wages. The election here is all or nothing: the whole PF wage.",
-    "Whether the Code on Social Security 2020 carries para 26(6) forward in "
-    "the same words. It was not read.",
+    "Whether the portal asks for an officer's allowance or any document for "
+    "the election. Paragraph 9(4) of the 2026 scheme names none (the 1952 "
+    "text required an allowance), but what the portal requires is in no "
+    "document read.",
     "The joint request as a document. Only the employer's assertion, an "
     "optional date and an optional reference are held; nothing is uploaded, "
     "checked or sent to EPFO.",
@@ -147,7 +154,8 @@ ECR_WARNING = (
     "because the employer recorded an election to contribute on them. Their EPS "
     "wages and EDLI wages stay at the ceiling. Whether EPFO accepts "
     "contribution above the ceiling for them is not checked here: the employer "
-    "must hold the joint request (EPF Scheme para 26(6), unverified reading)."
+    "must hold the joint option in writing (paragraph 9(4) of the Employees' "
+    "Provident Funds Scheme, 2026)."
 )
 
 
@@ -239,7 +247,8 @@ def clean_effective_from(raw) -> Optional[str]:
     if value is None or value < EARLIEST_EFFECTIVE_FROM:
         raise ValueError(
             "The date the election takes effect is not a plausible date for "
-            "an election under the EPF Scheme (1952). Check the year.")
+            "an election under the Employees' Provident Funds Scheme. Check "
+            "the year.")
     return value.isoformat()
 
 

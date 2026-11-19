@@ -18,9 +18,12 @@ from domain.payroll import handoff as h
 
 MONTH = "2026-09"
 
+# Twelve members on Rs 15,000 each, EPFO's own sample member (User Manual v3.0, page 8: 1,800 / 1,250 / 550): column 7 is 12 x 1,800,
+# column 8 is 12 x 1,250, and column 9 (the employer's PF share) is column 7 less column 8, which the hand-off derives when the totals
+# do not carry it.
 ECR_TOTALS = {"members": 12, "gross_wages": 6_00_000, "epf_wages": 1_80_000,
-              "eps_wages": 1_80_000, "epf_contribution": 13_140,
-              "eps_contribution": 14_994}
+              "eps_wages": 1_80_000, "epf_contribution": 21_600,
+              "eps_contribution": 15_000}
 ESIC_TOTALS = {"members": 5, "wages_rupees": 75_000, "days": 130}
 
 
@@ -29,7 +32,7 @@ def _epf(**over):
         wage_month=MONTH, due_date="2026-10-15",
         establishment_code="MHBAN0012345000", identity_gaps=[],
         file_totals=ECR_TOTALS, edli_paise=90_000, admin_paise=50_000,
-        problems=[], filable=True, filename="ECR_202609.txt",
+        problems=[], filable=True, filename="ECR202609.txt",
         blocking_months=[], sequence_note=None, required_returns=["regular"],
         return_type_reason=None, interest_note=None, recorded=None)
     args.update(over)
@@ -157,6 +160,30 @@ def test_the_ecr_wage_figures_are_reported_in_rupees_not_paise():
     by_label = {f.label: f for f in _epf().confirm}
     assert by_label["Total EPF wages"].rupees == 1_80_000
     assert by_label["Total EPF wages"].amount_paise is None
+
+
+def test_the_three_contribution_columns_are_shown_under_epfos_own_names():
+    """POST-A-517. EPFO's file has the employee's share in column 7, the pension share in column 8 and the employer's PF share in
+    column 9; a CA comparing this screen to the portal's return statement finds the same three names and the same three figures."""
+    by_label = {f.label: f for f in _epf().confirm}
+    assert by_label["Employee PF contribution (file column 7)"].rupees == 21_600
+    assert by_label["Employer EPS contribution (file column 8, A/c 10)"].rupees == 15_000
+    assert by_label["Employer PF contribution (file column 9)"].rupees == 6_600
+
+
+def test_account_1_is_the_employee_column_plus_the_employer_column_and_not_column_7_alone():
+    """The portal raises account 1 on the employee share plus the employer share (EPFO User Manual v3.0, pages 12 and 22: 23,400 +
+    7,150 = 30,550 for thirteen members). Here 21,600 + 6,600 = 28,200; column 7 alone (21,600) is the figure that read as the
+    whole of account 1 when column 7 carried both halves."""
+    by_label = {f.label: f for f in _epf().confirm}
+    assert by_label["EPF, A/c 1 (columns 7 and 9 together)"].rupees == 28_200
+
+
+def test_a_total_that_already_carries_the_employer_column_is_used_as_it_is():
+    totals = dict(ECR_TOTALS, employer_epf_contribution=6_600, account_1_contribution=28_200)
+    by_label = {f.label: f for f in _epf(file_totals=totals).confirm}
+    assert by_label["Employer PF contribution (file column 9)"].rupees == 6_600
+    assert by_label["EPF, A/c 1 (columns 7 and 9 together)"].rupees == 28_200
 
 
 def test_a_headcount_is_a_count_and_not_money():

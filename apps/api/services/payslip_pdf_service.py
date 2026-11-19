@@ -4,7 +4,7 @@ Payslip PDF generation.
 A salary slip / payslip is the statutory wage statement issued to an employee.
 Components shown follow the payroll computation in routers/payroll.py:
   - Earnings: Basic, HRA, DA, LTA, Medical, Special Allowance (IT Act §17 'salary')
-  - Deductions: Provident Fund (EPF Act), ESI (ESI Act §2(9)),
+  - Deductions: Provident Fund and ESI (Code on Social Security, 2020),
     Professional Tax (IT Act §16(iii)), TDS on salary (IT Act §192)
 
 All monetary values arrive as integer paise and are formatted for display only.
@@ -47,8 +47,8 @@ _MONTH_NAMES = [
 # Pure and separate from the PDF so it can be tested as arithmetic rather than
 # by reading a rendered document.
 DEDUCTION_DEFS: tuple[tuple[str, str], ...] = (
-    ("Provident Fund (Employee)", "pf_employee_paise"),  # EPF Act
-    ("ESI (Employee)", "esi_employee_paise"),            # ESI Act §2(9)
+    ("Provident Fund (Employee)", "pf_employee_paise"),  # Code on Social Security, 2020
+    ("ESI (Employee)", "esi_employee_paise"),            # Code on Social Security, 2020
     ("Professional Tax", "pt_paise"),                    # IT Act §16(iii)
     ("TDS on Salary", "tds_paise"),                      # IT Act §192
     # Migration 300/301.
@@ -97,16 +97,16 @@ def deduction_lines(slip: dict) -> tuple[list[list[str]], int]:
 # shown as two sub-lines that sum to the 12%, and the total below adds
 # pf_employer_paise once.
 _EMPLOYER_SPLIT: tuple[tuple[str, str], ...] = (
-    # EPF Act s.6 / Code on Social Security 2020 s.16 — employer's 12%, less
-    # the pension diversion.
+    # Employees' Provident Funds Scheme, 2026 para 18 with Code on Social Security 2020 s.16 — employer's 12%, less the pension
+    # diversion.
     ("Provident Fund — EPF (Employer)", "pf_employer_epf_paise"),
-    # EPS 1995 para 3 — 8.33% of the wage, capped at ₹1,250, diverted OUT of
-    # the 12% above and not additional to it.
+    # Employees' Pension Scheme, 2026 para 4(1) — 8.33% of the wage up to the notified wage ceiling (₹1,250 at ₹15,000, ₹2,083 at
+    # ₹25,000), diverted OUT of the 12% above and not additional to it.
     ("Pension Fund — EPS (Employer)", "pf_employer_eps_paise"),
 )
 _EMPLOYER_OTHER: tuple[tuple[str, str], ...] = (
-    ("ESI (Employer)", "esi_employer_paise"),          # ESI Act §39, 3.25%
-    ("EDLI", "edli_paise"),                            # EDLI 1976, 0.5%
+    ("ESI (Employer)", "esi_employer_paise"),          # 3.25% (Social Security (Central) Rules, 2026, rule 19)
+    ("EDLI", "edli_paise"),                            # 0.5%, the insurance rate "as notified" (Insurance Scheme, 2026)
     ("PF Administrative Charges", "pf_admin_paise"),   # 0.5%
 )
 

@@ -112,8 +112,10 @@ def specimen_itr_ack(seed: str) -> str:
 
 
 def specimen_epfo_trrn(seed: str) -> str:
-    """EPFO ECR Temporary Return Reference Number: 10 digits."""
-    return _digits(seed, 10)
+    """EPFO challan reference, the TRRN: 15 digits in the shape of the manual's own example (250113000000438; EPFO User Manual for
+    the Re-engineered ECR v3.0, read 19-11-2026). It was 10 digits until POST-A-518. The TRRN is issued when the challan is finalised,
+    after the return is approved; the return's own reference is the Return File ID, which is 12 digits in the manual's example."""
+    return _digits(seed, 15)
 
 
 def specimen_esic_challan(seed: str) -> str:

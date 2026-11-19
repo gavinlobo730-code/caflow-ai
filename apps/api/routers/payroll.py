@@ -2,7 +2,8 @@
 Payroll router — Employee master, salary structures, payroll runs, statutory, reports.
 
 IT Act §192: TDS on salary (monthly deduction, annual projected basis).
-EPF Act §6: Employer PF = 12% of (Basic + DA), capped at a ₹15,000 wage ceiling → ₹1,800 max employer contribution.
+Employees' Provident Funds Scheme, 2026 para 18 (which replaced EPF Act §6 and the 1952 Scheme on 29-06-2026): employer PF = 12% of the PF wage, capped
+at the NOTIFIED wage ceiling (Rs 25,000 from 17-09-2026, Rs 15,000 before; domain/payroll/statutory) → Rs 3,000 at most from October 2026.
 ESI Act: Employee ESI = 0.75% of gross; Employer ESI = 3.25% of gross (applicable when gross ≤ ₹21,000/month).
 PT: State-specific professional tax slab, keyed on the employee's pt_state; an
     unset/unrecognised state withholds nothing (no silent single-state default).
@@ -13,7 +14,7 @@ from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
 
-from pydantic import BaseModel, EmailStr, ValidationError, field_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator
 
 import logging
 
@@ -37,7 +38,7 @@ from services.internal_client_service import assert_not_internal_for_payroll
 import calendar
 
 from domain.payroll import wage_base
-from domain.payroll.ecr import build_ecr
+from domain.payroll.ecr import build_ecr, ecr_file_name
 from domain.payroll import ecr_sequence
 from domain.tds import vocabulary as tds_vocabulary
 from domain.dpdp import retention as dpdp_retention
@@ -66,7 +67,7 @@ from domain.payroll.form24q import (
     build_24q_from_payroll, months_in_quarter, QUARTER_MONTHS)
 from domain.tds.tds_computer import TDSDeducteeRecord
 from domain.payroll.statutory import esi_contribution_period
-from domain.payroll.statutory import rates_for as payroll_rates_for
+from domain.payroll.statutory import rates_for as payroll_rates_for, pf_rates_for_month, wage_ceiling_gap
 from domain.payroll.statutory import admin_charge_for_establishment as payroll_admin_charge
 from domain.payroll import declarations as decl_domain
 from domain.payroll import gratuity as gratuity_domain
@@ -547,8 +548,10 @@ def _to_nearest_rupee(paise: int) -> int:
     EPFO requires each member's contributions to be rounded to the rupee, and
     the difference is not cosmetic: 8.33% of the ₹15,000 ceiling is ₹1,249.50,
     which is why every published EPF table says ₹1,250 EPS and ₹550 EPF rather
-    than ₹1,249.50 and ₹550.50. Carrying the paise through would put a figure
-    on the ECR that the portal does not accept and that no CA would recognise.
+    than ₹1,249.50 and ₹550.50, and 8.33% of the ₹25,000 ceiling (from
+    17-09-2026) is ₹2,082.50, which is ₹2,083 and not ₹2,082. Carrying the paise
+    through would put a figure on the ECR that the portal does not accept and
+    that no CA would recognise.
 
     Integer arithmetic throughout — CLAUDE.md's rule, and the reason this is not
     round(paise / 100) * 100.
@@ -1337,45 +1340,46 @@ def _with_opening_positions(db, firm_id: str, client_id: str, month: str, fy: st
 
 def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
                 eps_eligible: bool = True,
-                on_actual_wages: bool = False) -> dict:
+                on_actual_wages: bool = False,
+                month: Optional[int] = None) -> dict:
     """
-    PF per EPF & MP Act 1952 §6, SPLIT as the Employees' Pension Scheme requires.
+    PF per the Employees' Provident Funds Scheme, 2026 para 18 (G.S.R. 525(E), in force from 29-06-2026, replacing §6 of the 1952 Act and
+    the 1952 Scheme), SPLIT as the Employees' Pension Scheme, 2026 requires.
 
-    §6 sets the employee's contribution at 12% of "basic wages, dearness
-    allowance and retaining allowance (if any)", and the employer matches it.
-    The ₹15,000 ceiling applies to that same Basic+DA base, not Basic alone —
-    task #229 fixed a caller that passed basic_paise only and silently
-    under-computed both halves for anyone with a nonzero da_percent. No
-    retaining allowance is modelled here (it is not on the employee master), so
-    pf_wages_paise is Basic + DA.
+    Para 18 sets the employee's contribution at 12% of the "wages payable", and the employer matches it. The wage ceiling applies to
+    that same PF wage, not to Basic alone — task #229 fixed a caller that passed basic_paise only and silently under-computed both
+    halves for anyone with a nonzero da_percent. THE CEILING IS THE NOTIFIED ONE, FOR THE WAGE MONTH (POST-A-516): Rs 15,000 up to
+    August 2026 and Rs 25,000 from October 2026, resolved by domain/payroll/statutory.pf_rates_for_month from `month`; the month the
+    change falls inside (September 2026) keeps the ceiling at its start and is named in the run's gaps. No retaining allowance is
+    modelled here (it is not on the employee master), so pf_wages_paise is the wage base wage_base.py works out.
 
     WHAT CHANGED, AND WHY IT MATTERS BEYOND THE LEDGER
 
     This used to return a flat {"employee": 12%, "employer": 12%}. The
-    employee's 12% is indeed all EPF, but the EMPLOYER's 12% is not: EPS 1995 ¶3
-    diverts 8.33% of PF wages — capped at 8.33% of ₹15,000, i.e. ₹1,250 — to the
-    pension fund, and only the remainder stays in EPF. At or below the ceiling
-    that is 8.33% pension + 3.67% provident fund; above it the pension amount
-    stops rising and the EPF half absorbs the rest.
+    employee's 12% is indeed all EPF, but the EMPLOYER's 12% is not: the Employees' Pension Scheme, 2026 para 4(1) takes 8.33% of the
+    wages, up to the notified wage ceiling, out of it for the pension fund (Rs 1,250 at Rs 15,000, Rs 2,083 at Rs 25,000), and only
+    the remainder stays in EPF. At or below the ceiling that is 8.33% pension + 3.67% provident fund; above it the pension amount stops
+    rising and the EPF half absorbs the rest. (The Central Government's own 1.16%, limited to Rs 15,000 by G.S.R. 890(E), is not the
+    employer's and is posted by nobody here.)
 
     Lumping the two together is not merely an imprecise trial balance. The
     EPFO's ECR return carries EPF wages, EPS wages, the EPF contribution, the
     EPS contribution and the difference between them as separate columns per
     member, so a single employer figure cannot produce a valid return at all.
 
-    EDLI (0.5%, EDLI 1976) and administrative charges (0.5%) are returned too.
+    EDLI (0.5%, the insurance rate being "as notified": owner list S49) and administrative charges (0.5%) are returned too.
     Both are employer costs OUTSIDE the 12% and are deducted from nobody. The
     admin charge carries a minimum of ₹500 per ESTABLISHMENT per month, which no
     single payslip can settle — the per-employee 0.5% is computed here and the
     floor is applied when the run is totalled. EDLI admin has been nil since
     01-04-2017.
 
-    Rates and ceilings come from domain/payroll/statutory.py, versioned by FY.
+    Rates come from domain/payroll/statutory.py, versioned by FY, and the three ceilings by wage month.
 
     `on_actual_wages` (payroll-22) is the employer's recorded ELECTION to
-    contribute on the whole PF wage rather than on the ceiling — EPF Scheme 1952
-    para 26(6), a joint request of employee and employer, `[S]`: the reading is
-    unverified and nothing here checks the request exists. It is decided by
+    contribute on the whole PF wage rather than on the ceiling — paragraph 9(4) of the Employees' Provident Funds Scheme, 2026 (which
+    replaced para 26(6) of the 1952 Scheme), a joint option in writing of employee and employer: nothing here checks that the option
+    exists. It is decided by
     domain/payroll/pf_wage_election.applies and never inferred from the wage.
     ONLY THE EPF BASE MOVES with it: the employee's 12%, the employer's 12% (so
     the EPF half, which absorbs everything above the pension diversion) and the
@@ -1384,7 +1388,11 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
     they are separate figures in the statute — and the rounding is the same
     line it always was. With the flag False nothing below differs from before.
     """
-    r = payroll_rates_for(fy).pf
+    # The ceilings for the WAGE MONTH, not the year: the wage ceiling moves by notification (Rs 25,000 from 17-09-2026) and all three
+    # 2026 schemes follow it, so EPF wages, the employer's EPS wages and EDLI wages are capped at one figure that changes inside a
+    # financial year (POST-A-516, domain/payroll/statutory.pf_rates_for_month). `month` is the calendar month number inside `fy`;
+    # without it the year's own figures are used, as before.
+    r = pf_rates_for_month(fy, month)
     # The wage the EPF contributions and the administrative charge are computed
     # on. Everything that follows reads this and not `capped`, so the election
     # cannot reach EPS or EDLI by a stray use of the uncapped figure.
@@ -1396,7 +1404,7 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
 
     # Employer's share splits. EPS is computed on its OWN ceiling, which is why
     # it is not simply 8.33% of `capped` — the two ceilings are separate figures
-    # in the statute even though both are ₹15,000 today.
+    # in the statute even though both follow the one notified ceiling today.
     employer_total = _to_nearest_rupee(capped * r.employer_rate_bps // 10000)
     eps_wages = min(pf_wages_paise, r.eps_ceiling_paise)
     employer_eps = _to_nearest_rupee(eps_wages * r.eps_rate_bps // 10000)
@@ -1404,11 +1412,11 @@ def _compute_pf(pf_wages_paise: int, fy: Optional[str] = None,
     # notification moved the ceilings apart, the subtraction below must not go
     # negative and quietly credit EPF with a negative contribution.
     employer_eps = min(employer_eps, employer_total)
-    # EPS 1995 para 6, as amended by GSR 609(E) w.e.f. 01-09-2014: someone who
-    # joined EPF on or after that date with pay above the ceiling at JOINING is
-    # not a pension-scheme member at all, and the whole employer share stays in
-    # EPF. Carried on the employee master rather than derived — see migration
-    # 295 for why pay-today cannot answer a question about pay-at-joining.
+    # Employees' Pension Scheme, 2026 para 7(1) (which replaced para 6 of the 1995 Scheme as amended by GSR 609(E) w.e.f.
+    # 01-09-2014; sub-para (iii) was added by G.S.R. 847(E)): someone who joined EPF on or after 01-09-2014 with pay above the
+    # ceiling at JOINING, and still above it on 17-09-2026, is not a pension-scheme member, and the whole employer share stays in
+    # EPF. Carried on the employee master rather than derived — see migration 295 for why pay-today cannot answer a question
+    # about pay-at-joining.
     if not eps_eligible:
         employer_eps = 0
     employer_epf = employer_total - employer_eps
@@ -1450,7 +1458,7 @@ def _pf_for_slip(emp: dict, pf_wages_paise: int, fy: Optional[str],
     elected = pf_election.applies(emp, fy_label=fy, month=month)
     return _compute_pf(pf_wages_paise, fy,
                        eps_eligible=emp.get("eps_eligible", True),
-                       on_actual_wages=elected), elected
+                       on_actual_wages=elected, month=month), elected
 
 
 def _compute_esi(gross_paise: int, fy: Optional[str] = None,
@@ -2138,8 +2146,8 @@ def _log_pf_election_change(current_user: dict, employee_id, old: Optional[dict]
                             new: dict) -> None:
     """Write the employer's PF election to the edit log, old values beside new.
 
-    The election is the EMPLOYER'S ASSERTION that a joint request exists (EPF
-    Scheme para 26(6), `[S]`), and it decides money in somebody's pay and the
+    The election is the EMPLOYER'S ASSERTION that a joint option exists (paragraph 9(4) of the Employees' Provident Funds Scheme,
+    2026), and it decides money in somebody's pay and the
     EPF wage on a statutory return. WHO recorded it and WHEN is the fact an
     inspector asks for, and the withdrawal clears the date and reference from
     the row (the database holds them only beside an election that is true), so
@@ -2730,6 +2738,8 @@ def _compute_and_store_slips(db, firm_id: str, client_id: str, month: str,
     # The income-tax rates §192 is withheld at, when the registry has not
     # confirmed them for this year. Once per run: it is a fact about the year.
     statutory_gaps.extend(_withholding_rate_gap(fy))
+    # A wage month a notified change of the wage ceiling falls inside (September 2026): named, never settled by a guess.
+    statutory_gaps.extend(_wage_ceiling_gap(month))
     # Employees for whom NOBODY entered attendance this month. Reported with
     # the run, never silently defaulted — see _attendance_gap.
     attendance_gaps: list[str] = []
@@ -3457,6 +3467,21 @@ def _withholding_rate_gap(fy: str) -> list[str]:
             f"nobody has confirmed. {gap}"]
 
 
+def _wage_ceiling_gap(month: str) -> list[str]:
+    """The wage month a ceiling change falls INSIDE (September 2026), named in the run's gaps (POST-A-516).
+
+    The sentence is the registry's (`statutory.wage_ceiling_gap`): no text read says which ceiling applies to a month in which a
+    notification took effect, so the run says so instead of settling it, and finalising needs the typed reason the gap list demands.
+    A month the change does not fall inside adds nothing.
+    """
+    try:
+        m = int(month[5:7])
+    except (ValueError, TypeError, IndexError):
+        return []
+    note = wage_ceiling_gap(_fy_for_month(month), m)
+    return [f"Provident fund, pension and insurance wages for {month}: {note}"] if note else []
+
+
 # ── The defensible release ───────────────────────────────────────────────────
 # Migration 328. create_run returns two lists of things it could not establish —
 # statutory_gaps and attendance_gaps — and both were advice. Nothing stopped a
@@ -3506,6 +3531,7 @@ def _release_gaps(db, firm_id: str, run: dict) -> list[str]:
     # The FY of the payroll period, not today's — the same date the run was
     # computed against, so the gap a CA saw on the draft is the gap asked again.
     gaps.extend(_withholding_rate_gap(current_fy(on)))
+    gaps.extend(_wage_ceiling_gap(month))
     gaps.extend(identity_domain.pt_registration_gaps(
         {(e.get("pt_state") or "").strip().upper() for e in emps
          if e.get("pt_applicable") and (e.get("pt_state") or "").strip()},
@@ -6246,7 +6272,9 @@ def _build_run_ecr(db, current_user: dict, run_id: str, inputs=None):
     run, month, days_in_month, slips, by_id = (
         inputs or _finalised_run_inputs(db, current_user, run_id, what="ECR"))
 
-    pf_rates = payroll_rates_for(_fy_for_month(month)).pf
+    # The ceiling of the wage month the run is FOR (a run for August keeps Rs 15,000, one for October takes Rs 25,000), the same figure
+    # the slips were computed on, so the file's wage columns and its contributions agree (POST-A-516).
+    pf_rates = pf_rates_for_month(_fy_for_month(month), int(month[5:7]))
     return run, month, build_ecr(slips=slips, employees_by_id=by_id,
                                  days_in_month=days_in_month,
                                  wage_ceiling_paise=pf_rates.wage_ceiling_paise,
@@ -6327,7 +6355,7 @@ def run_ecr(
     return api_response(True, {
         "run_id": run_id,
         "month": month,
-        "filename": f"ECR_{month.replace('-', '')}.txt",
+        "filename": ecr_file_name(month),
         "lines": ecr.to_text(),
         "members": [m.to_line() for m in ecr.members],
         "problems": ecr.problems,
@@ -6375,6 +6403,9 @@ class ECRFiledIn(BaseModel):
     status: str = ecr_sequence.SUBMITTED
     submitted_on: Optional[str] = None
     approved_on: Optional[str] = None
+    #: The RETURN's reference, the Return File ID the portal gives when the file passes its checks (POST-A-518, migration 769).
+    return_file_id: Optional[str] = Field(default=None, max_length=64)
+    #: The CHALLAN's reference, issued when the dues are prepared for payment after the return is approved.
     trrn: Optional[str] = None
 
     @field_validator("submitted_on", "approved_on")
@@ -6418,7 +6449,7 @@ def record_ecr_filed(
             db, firm_id=current_user["firm_id"], client_id=run.get("client_id"),
             wage_month=month, return_type=body.return_type, status=body.status,
             submitted_on=body.submitted_on, approved_on=body.approved_on,
-            trrn=body.trrn, run_id=run_id,
+            trrn=body.trrn, return_file_id=body.return_file_id, run_id=run_id,
             members=ecr_filings.members_from_ecr(ecr),
             recorded_by=current_user.get("id"))
     except ecr_filings.ECRFilingError as exc:
@@ -6727,8 +6758,8 @@ def client_ecr_sequence(
     known = ecr_filings.finalised_months(db, firm_id=firm_id, client_id=client_id)
     prior = ecr_filings.read_filings(db, firm_id=firm_id, client_id=client_id)
     rows = (db.table("epfo_ecr_filings")
-            .select("id, wage_month, return_type, status, trrn, submitted_on, "
-                    "approved_on, run_id")
+            .select("id, wage_month, return_type, status, return_file_id, trrn, "
+                    "submitted_on, approved_on, run_id")
             .eq("firm_id", firm_id).eq("client_id", client_id)
             .is_("deleted_at", "null").execute().data) or []
     # apex-payroll-yearend-11: asked ONLY to tell `outstanding_note` apart a
@@ -7019,8 +7050,13 @@ def run_handoff(
         filings=prior)
     decision = ecr_sequence.decide_returns(
         month, members=ecr_filings.members_from_ecr(ecr), filings=prior)
-    epf_recorded = next((dict(f) for f in prior
-                         if str(f.get("wage_month")) == month), None)
+    # THE MONTH'S SETTLED RETURN, as a row, and only when the month needs nothing further. `prior` is a list of RecordedFiling
+    # dataclasses, which have no `.get`: this line called it, so the hand-off raised AttributeError for every client the moment
+    # any return was recorded for it, and the panel could never show one (found under POST-A-518). A Regular that is submitted
+    # but not approved, or a month that still needs a Supplementary or a Revised, keeps the record form on the screen.
+    epf_recorded = (ecr_filings.settled_filing_for_month(
+        db, firm_id=firm_id, client_id=client_id, wage_month=month)
+        if decision.nothing_to_file else None)
 
     # What has already been recorded for this month, so the screen shows a
     # settled obligation as settled rather than asking for it again.
@@ -7066,7 +7102,7 @@ def run_handoff(
             admin_paise=int(run.get("total_pf_admin_paise") or 0),
             problems=list(ecr.problems),
             filable=bool(ecr.is_filable),
-            filename=f"ECR_{month.replace('-', '')}.txt",
+            filename=ecr_file_name(month),
             blocking_months=list(sequence.blocking),
             sequence_note=sequence.note,
             required_returns=list(decision.required_returns),
@@ -7479,7 +7515,7 @@ def statutory_summary(
     # are two more amounts remitted on the SAME challan, which migration 329
     # added and this summary never learned about:
     #
-    #   EDLI          0.5% of PF wages, EDLI 1976
+    #   EDLI          0.5% of PF wages (the insurance rate is "as notified": owner list S49)
     #   admin charge  0.5%, floored at Rs 500 per ESTABLISHMENT per month
     #
     # So a CA reconciling this screen against the challan they are about to pay

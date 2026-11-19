@@ -1,6 +1,7 @@
 """
 Pydantic request models for payroll endpoints.
-EPF Act §6: PF = 12% of (Basic + DA). ESI Act §2(9): employee 0.75%, employer 3.25%.
+Employees' Provident Funds Scheme, 2026 para 18: PF = 12% of the PF wage (Basic + DA before 21-11-2025, the Code on Social Security's
+s.2(88) base after). ESI: employee 0.75%, employer 3.25%.
 IT Act §192: TDS on salary (new regime slabs + 4% cess).
 All monetary amounts in integer paise.
 """
@@ -71,16 +72,16 @@ class EmployeeIn(BaseModel):
     bank_account_no: Optional[str] = None
     bank_ifsc: Optional[str] = None
     bank_name: Optional[str] = None
-    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
-    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
-    #: or after that date with pay AT JOINING above the wage ceiling. Not
-    #: derivable — the master holds pay today, and the test is pay then.
+    #: Membership of the Employees' Pension Scheme, 2026. FALSE only where para 7(1) of the scheme excludes the member: they joined
+    #: EPF on or after 01-09-2014 with pay AT JOINING above the wage ceiling and were still above it on 17-09-2026 (sub-para (iii),
+    #: added by G.S.R. 847(E), brings in a member at or below the ceiling that day). Not derivable — the master holds pay today,
+    #: and the test is pay then.
     #:
     #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
     #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
     #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
     #: model, in no CSV column and on no form, so every employee was EPS-
-    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: eligible forever. For a member the scheme excludes, that diverts 8.33%
     #: of the employer's contribution to EPS ON THE ECR, which is a statutory
     #: return, and nothing in the product could correct it.
     eps_eligible: bool = True
@@ -96,9 +97,8 @@ class EmployeeIn(BaseModel):
     #: leaver.
     gratuity_act_covered: bool = True
     #: THE EMPLOYER'S ELECTION TO CONTRIBUTE PF ON ACTUAL WAGES ABOVE THE
-    #: CEILING (payroll-22, migration 477) — EPF Scheme 1952 para 26(6), a joint
-    #: request of employee and employer, `[S]`: the reading is unverified and the
-    #: product never checks that the request exists. NULL (the default, and every
+    #: CEILING (payroll-22, migration 477) — paragraph 9(4) of the Employees' Provident Funds Scheme, 2026, a joint option in
+    #: writing of employee and employer: the product never checks that the option exists. NULL (the default, and every
     #: employee that exists today) is "never recorded" and computes on the
     #: ceiling, exactly as before; TRUE elects; FALSE withdraws. Per employee and
     #: never inferred from wages. The date is when the election takes effect (a
@@ -293,16 +293,16 @@ class EmployeeUpdateIn(BaseModel):
     uan: Optional[str] = None
     esi_number: Optional[str] = None
     status: Optional[str] = None
-    #: EPS 1995 membership. FALSE only where para 6 of the scheme, as amended
-    #: by GSR 609(E) w.e.f. 01-09-2014, excludes the member: they joined EPF on
-    #: or after that date with pay AT JOINING above the wage ceiling. Not
-    #: derivable — the master holds pay today, and the test is pay then.
+    #: Membership of the Employees' Pension Scheme, 2026. FALSE only where para 7(1) of the scheme excludes the member: they joined
+    #: EPF on or after 01-09-2014 with pay AT JOINING above the wage ceiling and were still above it on 17-09-2026 (sub-para (iii),
+    #: added by G.S.R. 847(E), brings in a member at or below the ceiling that day). Not derivable — the master holds pay today,
+    #: and the test is pay then.
     #:
     #: SETTABLE FROM NOWHERE UNTIL NOW (PAY-12 residual). Migration 295 added
     #: the column with `DEFAULT true` and `routers/payroll.py` reads it as
     #: `emp.get("eps_eligible", True)` at four sites — but it was on neither
     #: model, in no CSV column and on no form, so every employee was EPS-
-    #: eligible forever. For a member GSR 609(E) excludes, that diverts 8.33%
+    #: eligible forever. For a member the scheme excludes, that diverts 8.33%
     #: of the employer's contribution to EPS ON THE ECR, which is a statutory
     #: return, and nothing in the product could correct it.
     eps_eligible: Optional[bool] = None
@@ -847,9 +847,9 @@ class OneTimeEarningIn(BaseModel):
     different Act asking a different question, and the answers genuinely differ
     between two payments a payslip would print almost identically:
 
-      pf_wages   EPF Act s.2(b) excludes bonus and commission from basic wages;
-                 arrears of basic and DA are not excluded.
-      esi_wages  ESI Act s.2(22) includes additional remuneration paid at
+      pf_wages   EPF Act s.2(b) (repealed from 21-11-2025; the Code's s.2(88) defines wages once, POST-A-524) excludes bonus and
+                 commission from basic wages; arrears of basic and DA are not excluded.
+      esi_wages  ESI Act s.2(22) (likewise repealed) includes additional remuneration paid at
                  intervals not exceeding two months — an INTERVAL test, so the
                  same word means different things at two clients.
       taxable    IT Act s.17(1)(iv). False only for a genuine reimbursement.

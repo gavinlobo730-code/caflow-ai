@@ -71,6 +71,13 @@ WEB = API.parent / "web"
 CEILING = 15_000_00
 
 
+def _ceiling_for(fy: str, month: int) -> int:
+    """THIS FILE'S OWN ORACLE for the wage ceiling of a wage month, written apart from the registry (POST-A-516): Rs 15,000 up to
+    and including September 2026 (a month the change falls inside keeps the ceiling at its start) and Rs 25,000 from October 2026."""
+    year = int(fy[:4]) + (0 if month >= 4 else 1)
+    return 25_000_00 if (year, month) >= (2026, 10) else 15_000_00
+
+
 def _rupee(paise: int) -> int:
     return ((paise + 50) // 100) * 100
 
@@ -114,7 +121,11 @@ def _emp(**over) -> dict:
     return base
 
 
-def _slip(emp: dict, fy: str = "2026-27", month: int = 12) -> dict:
+# The default month is AUGUST 2026, a wage month BEFORE the wage ceiling moved (Rs 15,000 until 16-09-2026, Rs 25,000 from 17-09-2026:
+# POST-A-516, domain/payroll/statutory.PF_WAGE_CEILINGS), because every figure these tests pin is the Rs 15,000 regime's. December used
+# to be the default and was a month with no particular meaning; the Rs 25,000 regime has its own tests (test_pf_follows_the_notified_
+# wage_ceiling_by_wage_month.py).
+def _slip(emp: dict, fy: str = "2026-27", month: int = 8) -> dict:
     return pr._compute_slip(emp, fy=fy, pt_month=month)
 
 
@@ -174,11 +185,12 @@ def test_the_verify_line_on_the_ecr():
     assert (m.epf_wages, m.eps_wages, m.edli_wages) == (40_000, 15_000, 15_000)
     assert m.eps_contribution == 1_250
     assert m.on_actual_wages is True
-    # The contribution columns follow the file's existing convention (employee
-    # plus the employer's EPF half) — unchanged by the election.
+    # The contribution columns follow EPFO's own layout (POST-A-517): column 7 is the employee's 12% of the whole wage (4,800),
+    # column 8 the pension share, which the election does not move (1,250), and column 9 the employer's PF share, column 7 less
+    # column 8 (3,550). The election changes the figure in column 7, never what the columns mean.
     assert f.to_text() == ecr_domain.DELIMITER.join([
         "100200300400", "ASHA KUMAR", "40000", "40000", "15000", "15000",
-        "8350", "1250", "7100", "0", "0"])
+        "4800", "1250", "3550", "0", "0"])
 
 
 def test_eps_wages_and_edli_wages_stay_at_the_ceiling_for_every_wage():
@@ -350,7 +362,8 @@ def test_a_month_ending_before_the_date_stays_capped(from_date, fy, month, appli
     assert election.applies(emp, fy_label=fy, month=month) is applies
     slip = _slip(emp, fy, month)
     assert slip["pf_on_actual_wages"] is applies
-    assert slip["pf_employee_paise"] == (4_800_00 if applies else 1_800_00)
+    capped = _rupee(min(40_000_00, _ceiling_for(fy, month)) * 1200 // 10000)
+    assert slip["pf_employee_paise"] == (4_800_00 if applies else capped)
 
 
 def test_a_month_that_cannot_be_placed_is_not_guessed_into_an_election():
@@ -421,7 +434,7 @@ def _seed_employee(db, emp_id, name, basic, **kw):
     return db.seed("payroll_employees", row)
 
 
-def _run(db, month="2026-12"):
+def _run(db, month="2026-08"):   # a wage month before the ceiling moved: see _slip
     out = pr.create_run(pr.PayrollRunIn(client_id="CLI", month=month), CALLER)
     assert out["success"] is True
     return out["data"]["id"]
@@ -678,7 +691,8 @@ def test_a_month_with_an_election_says_how_many_and_what_stays_at_the_ceiling():
     assert "A/c 21" in epf.note and "stay at the ceiling" in epf.note
     warning = [w for w in ob.warnings if "actual wages" in w]
     assert len(warning) == 1
-    assert "2 member(s)" in warning[0] and "unverified" in warning[0]
+    assert "2 member(s)" in warning[0] and "paragraph 9(4)" in warning[0]
+    assert "1952" not in warning[0] and "26(6)" not in warning[0], "POST-A-525: the replaced scheme's paragraph is not the authority"
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -892,7 +906,7 @@ def test_the_import_refuses_a_row_that_switches_pf_off_for_an_elected_employee(d
 # THE PROJECTION AGREES WITH THE RUN
 # ═════════════════════════════════════════════════════════════════════════════
 
-def _position(db, month="2026-12"):
+def _position(db, month="2026-08"):
     resp = pr.statutory_position(client_id="CLI", month=month, current_user=CALLER)
     assert resp["success"] is True
     return {r["employee_id"]: r for r in resp["data"]["rows"]}
@@ -965,11 +979,12 @@ def test_the_screens_notice_is_the_servers_wording_character_for_character():
 
 def test_the_notice_says_the_three_things_the_employer_must_be_told():
     n = election.SCREEN_NOTICE
-    assert "this product does not check that the request exists" in n.lower()
+    assert "this product does not check that the option exists" in n.lower()
     assert "that is for the employer to establish" in n
-    assert "unverified" in n
     assert "not modelled" in n
-    assert "EPF Scheme 1952, para 26(6)" in n
+    assert "paragraph 9(4) of the Employees' Provident Funds Scheme, 2026" in n
+    # POST-A-525: the 1952 Scheme's paragraph was replaced on 29-06-2026 and is not cited as the authority
+    assert "1952" not in n and "26(6)" not in n
 
 
 def test_the_form_sends_the_election_the_way_the_server_reads_it():
@@ -1004,7 +1019,7 @@ def test_the_not_modelled_list_names_the_higher_pension_option():
 def test_every_statute_figure_here_is_graded_secondary_in_the_module():
     src = (API / "domain" / "payroll" / "pf_wage_election.py").read_text()
     assert "[S]" in src and "VERIFIED = False" in src
-    assert "para 26(6)" in src
+    assert "9(4)" in src, "the paragraph the election rests on, read on 19-11-2026"
 
 
 # ═════════════════════════════════════════════════════════════════════════════

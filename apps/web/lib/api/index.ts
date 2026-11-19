@@ -6800,7 +6800,11 @@ export const api = {
      *  outstanding for ever. */
     recordEcrFiled: (runId: string, body: {
       return_type: string; status: string;
-      submitted_on?: string; approved_on?: string; trrn?: string;
+      submitted_on?: string; approved_on?: string;
+      /** The RETURN's own reference: the Return File ID the portal gives when the file passes its checks. */
+      return_file_id?: string;
+      /** The CHALLAN's reference, issued when the dues are prepared for payment after the return is approved. */
+      trrn?: string;
     }) => request(`/api/payroll/runs/${runId}/ecr/filed`,
                   { method: "POST", body: JSON.stringify(body) }),
 

@@ -653,7 +653,7 @@ export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
   { key: "esi_applicable", label: "ESI Applicable", required: false, hint: "yes / no (default yes for a new employee)" },
   { key: "pt_applicable", label: "PT Applicable", required: false, hint: "yes / no (default no for a new employee)" },
   { key: "pt_state", label: "PT State", required: false, hint: "Two-letter state code, e.g. MH" },
-  { key: "eps_eligible", label: "EPS 1995 Member", required: false, hint: "yes / no (default yes for a new employee) — no only where GSR 609(E) excludes them: first joined EPF on or after 01-09-2014 with pay above the wage ceiling. It decides whether 8.33% is diverted to EPS on the ECR" },
+  { key: "eps_eligible", label: "Pension Scheme Member", required: false, hint: "yes / no (default yes for a new employee) — no only where the Employees' Pension Scheme, 2026 does not reach them: wages above the wage ceiling on the day they joined the provident fund and still above it on 17-09-2026 (G.S.R. 847(E) brings in anyone whose wages that day were at or below it). It decides whether 8.33% is diverted to the pension fund on the ECR" },
   { key: "gratuity_act_covered", label: "Gratuity Act Applies", required: false, hint: "yes / no (default yes for a new employee) — Payment of Gratuity Act 1972 §1(3). It decides which limb of IT Act §10(10) exempts a leaver's gratuity" },
   { key: "bank_account_no", label: "Bank Account No", required: false, hint: "For the salary advice" },
   { key: "bank_ifsc", label: "Bank IFSC", required: false, hint: "e.g. HDFC0001234" },

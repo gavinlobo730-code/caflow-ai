@@ -99,8 +99,8 @@ const FILING_STATUS_COLORS: Record<string, string> = {
 // TDS27Q is here so a firm that HAS non-resident payees can filter to it. The
 // "TDS" group filter above already catches it by prefix, so a firm that has
 // none never sees the option and never sees an empty row for it either.
-// EPF/ESI/TDS_SALARY are the monthly payroll DEPOSITS (EPF Scheme 1952 para
-// 38(1), ESI Regulations reg. 31, IT Act Rule 30(2)). They were computed by
+// EPF/ESI/TDS_SALARY are the monthly payroll DEPOSITS (Employees' Provident Funds Scheme, 2026
+// paras 24(2)(ix) and 28(3), ESI Regulations reg. 31, IT Act Rule 30(2)). They were computed by
 // services/compliance_engine.payroll_deposit_due_dates from the day the payroll
 // module was built and reached no calendar until the generator started emitting
 // them — three authorities owed money every month, on two different dates,
