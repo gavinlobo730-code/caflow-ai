@@ -2,7 +2,7 @@
 //   node --experimental-strip-types --test scripts/a-button-that-saves-tells-the-person-when-it-fails.test.ts
 //
 // WHY THIS EXISTS
-//     On 19-11-2026 the owner pressed Change Password and the screen said nothing at all, and he asked whether other pages do the same. A
+//     On 19-11-2026 the owner pressed Change Password and the screen said nothing at all, and the owner asked whether other pages do the same. A
 //     read-only scan of every function a button, form or dialog is wired to (1,831 of them, 460 waiting on a server call) found places where
 //     a failure ended quietly: the four Remove buttons of the GSTR-8 panel and the four of the GSTR-4 annual panel called the delete with no
 //     catch, so a refused delete (a locked period) left the row and said nothing; "Detect Matches" dropped the 403 an Executive is answered
