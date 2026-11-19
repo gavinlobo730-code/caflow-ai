@@ -14,12 +14,22 @@
 //     its user), so for the same person they keep it;
 //   * SIGNED_IN keeps it only when the token is the very same string: that is the library announcing the session it loaded from
 //     storage again, and an identical token is an identical session without decoding anything;
+//   * MFA_CHALLENGE_VERIFIED keeps it only where the session is ALREADY ADMITTED (`pending === false`) (POST-A-515 (c)). A code
+//     verified raises the level of the session it was verified on and never lowers it, so a session that owed nothing owes nothing
+//     after it, and the page it was already on (Settings > Security enrolling a factor and verifying its first code) is not unmounted
+//     and rebuilt under the person while the level is read again, which lost what was typed and any message a request in flight was
+//     about to set. (The platform page's step-up emits the same event and is NOT cured by this: that page re-checks itself whenever the
+//     session object changes and draws a spinner in place of its body, which is its own ledger line. The password proof on Settings >
+//     Security no longer emits it at all: it runs on a throwaway client since POST-A-512.) Where a challenge IS owed (`pending === true`) the verified code is what ends it, so that
+//     value is NOT kept: it is read afresh and the guard draws nothing until the fresh read says what the session now owes, exactly as
+//     before. A session whose assurance was never read (`null`) keeps nothing, as for every other event.
 //   * everything else does not: a different person, a different token on a SIGNED_IN (a new sign-in, which may be at a lower level
-//     and owes its own challenge), SIGNED_OUT, PASSWORD_RECOVERY, MFA_CHALLENGE_VERIFIED (the level just changed), INITIAL_SESSION,
-//     an event this code does not know, and anything while nothing is yet known.
+//     and owes its own challenge), SIGNED_OUT, PASSWORD_RECOVERY, MFA_CHALLENGE_VERIFIED on a session that owed a challenge,
+//     INITIAL_SESSION, an event this code does not know, and anything while nothing is yet known.
 // Fail closed is kept in both directions: what is NOT recognised as unchanged is set to unresolved, exactly as before, and a kept
-// value is replaced the moment the fresh read answers, so a level that DID change (a factor enrolled, a challenge now owed) takes
-// the page away again on the next render.
+// value is replaced when the fresh read answers (the most recently started read always settles; an older one that answers late is
+// dropped, lib/auth/latestWins), so a level that DID change (a factor enrolled, a challenge now owed) takes the page away again on
+// the next render.
 //
 // Dependency-free so it strips to plain JS for `node --experimental-strip-types`.
 
@@ -47,5 +57,8 @@ export function mayKeepAssurance(args: {
   if (!nextAccessToken) return false;                             // no session in the announcement
   if (ABOUT_THE_SAME_SESSION.has(event)) return true;
   if (event === "SIGNED_IN") return !!known.accessToken && known.accessToken === nextAccessToken;
+  // The verified code's session has a NEW token (the level is in it), so the token is not compared; the person is (above), and the
+  // value kept is only ever the one that already let this person in.
+  if (event === "MFA_CHALLENGE_VERIFIED") return known.pending === false;
   return false;
 }
