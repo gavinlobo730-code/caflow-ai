@@ -27,6 +27,8 @@ export const supabase = {
       getSupabaseClient().auth.onAuthStateChange(...args),
     signInWithPassword: (creds: { email: string; password: string }) =>
       getSupabaseClient().auth.signInWithPassword(creds),
-    signOut: () => getSupabaseClient().auth.signOut(),
+    // `scope: "local"` ends only this device (POST-A-486: the session that asked to sign the others out must survive); left out it is the
+    // library's default, every session of the person.
+    signOut: (...args: Parameters<SupabaseClient["auth"]["signOut"]>) => getSupabaseClient().auth.signOut(...args),
   },
 };

@@ -369,7 +369,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // is over-exposed during the brief window.
     // A browser closed since the person signed in, with "keep me signed in" off, ends the stored session HERE, before it
     // is used (lib/auth/browserSession says what can and cannot be known). Never allowed to stop the app starting.
-    enforceBrowserSession(getSupabaseClient()).catch(() => "kept").then(() => supabase.auth.getSession()).then(({ data: { session } }) => {
+    // When it ends the stored session it also says so to the server (best-effort, bounded), so the session it leaves behind is closed
+    // and a sign-in a few minutes later is not told to the Partners as a second device (POST-A-486).
+    enforceBrowserSession(getSupabaseClient(), undefined, () => import("@/lib/api").then(({ api }) => api.identity.recordLoginEvent("logout"))).catch(() => "kept").then(() => supabase.auth.getSession()).then(({ data: { session } }) => {
       clearTimeout(timeout);
       setSession(session);
       setUser(session?.user ?? null);

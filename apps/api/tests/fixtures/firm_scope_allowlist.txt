@@ -12,7 +12,8 @@
 # `token=`, `signature=`, `symbol=`, `via=`).
 #
 # Sorted by (file, function, table, operation).
-core/auth.py | _get_user_and_firm | users | read | 1 | principal-lookup
+core/auth.py | _get_user_and_firm | call:_read_user_row | read | 1 | principal-lookup
+core/auth.py | _read_user_row | users | read | 2 | principal-lookup
 core/auth.py | get_current_user | call:_get_user_and_firm | read | 1 | principal-lookup
 core/portal_auth.py | get_current_portal_client | call:list_portal_memberships | read | 1 | principal-lookup
 core/portal_auth.py | get_current_portal_employee | payroll_employees | read | 1 | principal-lookup

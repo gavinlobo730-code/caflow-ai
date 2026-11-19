@@ -10,7 +10,7 @@
 // it, 19-11-2026).
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  ALIVE_KEY, ALIVE_LOCK_NAME, CHANNEL_NAME, HEARTBEAT_EVERY_MS, KEEP_KEY, MARKER_KEY, PING_WAIT_MS,
+  ALIVE_KEY, ALIVE_LOCK_NAME, CHANNEL_NAME, HEARTBEAT_EVERY_MS, KEEP_KEY, LOGOUT_RECORD_WAIT_MS, MARKER_KEY, PING_WAIT_MS,
   heartbeatAge, keepFlag, keepIsActive, startDecision, urlCarriesASignIn,
 } from "./browserSession.ts";
 
@@ -120,13 +120,33 @@ async function otherTabHoldsLock(): Promise<boolean> {
   } catch { return false; }
 }
 
+/** Run `record` and wait for it, but never longer than `waitMs`: a cold server must not keep a sign-out waiting. Never throws. */
+async function recordWithin(record: () => Promise<unknown>, waitMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      record().catch(() => undefined),
+      new Promise<void>((resolve) => { timer = setTimeout(resolve, waitMs); }),
+    ]);
+  } catch { /* best-effort */ } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /**
  * Run when a page starts, before the stored session is used. If the browser was closed since the person signed in and
  * they did not ask to stay signed in, the stored session is ended on THIS device only (scope "local": the person's
  * other devices are left alone). Returns what it did. The page's writers are released when the decision is made, whatever
  * it was (and whatever went wrong: a throw leaves the session kept).
  */
-export async function enforceBrowserSession(client: SupabaseClient, facts: StartFacts | null = startFacts): Promise<"kept" | "ended"> {
+export async function enforceBrowserSession(
+  client: SupabaseClient,
+  facts: StartFacts | null = startFacts,
+  /** Tells the server this session is over (the sign-out record), so a browser closed and reopened is not counted as a second
+   *  device beside the session it left behind (POST-A-486). Best-effort and bounded: it never holds the sign-out. */
+  recordEnd?: () => Promise<unknown>,
+  waitMs: number = LOGOUT_RECORD_WAIT_MS,
+): Promise<"kept" | "ended"> {
   startResponder();
   let outcome: "kept" | "ended" = "kept";
   try {
@@ -147,6 +167,7 @@ export async function enforceBrowserSession(client: SupabaseClient, facts: Start
     decided = true;
   }
   if (outcome === "ended") {
+    if (recordEnd) await recordWithin(recordEnd, waitMs);
     await client.auth.signOut({ scope: "local" });
     return "ended";
   }

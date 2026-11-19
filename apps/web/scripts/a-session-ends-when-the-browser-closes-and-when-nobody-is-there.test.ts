@@ -31,7 +31,8 @@ function code(rel: string): string {
 
 test("a starting page asks about the browser session before it uses a stored session", () => {
   const src = code("lib/auth/AuthContext.tsx");
-  assert.match(src, /enforceBrowserSession\(getSupabaseClient\(\)\)\.catch\(\(\) => "kept"\)\.then\(\(\) => supabase\.auth\.getSession\(\)\)/);
+  // it also tells the server the session it ends is over (POST-A-486), through a recorder it is handed, so the session it leaves behind is closed
+  assert.match(src, /enforceBrowserSession\(getSupabaseClient\(\), undefined, \(\) => import\("@\/lib\/api"\)\.then\(\(\{ api \}\) => api\.identity\.recordLoginEvent\("logout"\)\)\)\.catch\(\(\) => "kept"\)\.then\(\(\) => supabase\.auth\.getSession\(\)\)/);
   assert.match(src, /if \(_event === "SIGNED_IN"\) markBrowserSession\(\);/);
 });
 

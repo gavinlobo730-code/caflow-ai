@@ -46,6 +46,10 @@ const WHERE: { title: string; body: string; figures?: string }[] = [
       "Some features also send figures the product has already worked out from your records, such as counts, totals and ratios. Some of those figures are rupee amounts, such as the revenue, expenses and profit the statement analysis sends for two financial years. When you ask the assistant about one client, it is also given figures from that client's records, including rupee amounts. The product attaches no client name to these figures.",
   },
   {
+    title: "Sign-ins are recorded",
+    body: "The product records the address and the browser that people sign in from, and keeps them with the sign-in history that your firm's Partners and Managers can read. The address is the one our own server saw; it is not turned into a place.",
+  },
+  {
     title: "What is replaced on the way",
     body: "In the assistant and the copilot, anything shaped like a PAN or a GSTIN is replaced before it is sent. Names and amounts you type there are sent as written. A bill, a notice or a statement sent to be read is sent as it is, with every GSTIN and name on it.",
   },

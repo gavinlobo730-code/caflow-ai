@@ -35,6 +35,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { LoadingRegion } from "@/components/ui/skeleton";
 import { passwordProblem } from "@/lib/auth/passwordRules";
 import { PasswordRules } from "@/components/auth/PasswordRules";
+import { MyDevicesCard } from "@/components/security/MyDevicesCard";
 
 interface Factor {
   id: string;
@@ -97,6 +98,7 @@ export default function SecuritySettingsPage() {
         <>
           <ChangePasswordCard />
           <MfaCard />
+          <MyDevicesCard />
           <PostureCard />
         </>
       )}

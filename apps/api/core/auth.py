@@ -90,6 +90,42 @@ def _permission_overrides(supabase, user_id, firm_id) -> dict:
     return out
 
 
+#: PostgreSQL's "undefined_column", which PostgREST passes through as the error's code.
+_UNDEFINED_COLUMN = "42703"
+
+
+def _read_user_row(supabase, auth_user_id: str):
+    """The caller's `users` row, asking for the two columns migration 765 added (`other_sessions_revoked_at`,
+    `other_sessions_kept_session_id`).
+
+    The API can go live a few minutes before the migration job has applied a migration (they are separate jobs on the same push), and
+    a select naming a column that does not exist yet is refused for EVERY request, which would lock everybody out of everything.
+    So THAT one answer, and only that one (undefined column), reads the row again without the two columns: until the migration has
+    run nobody can have signed out their other sessions, so there is no mark to miss. Any other failure still raises, and the caller
+    answers 503 as it always has: a check that fails open on an error it cannot name is not a check. Both selects are written out
+    whole, not built from a variable, so the column check (`tests/test_backend_columns_exist_pg.py`) can read them.
+    """
+    try:
+        return (
+            supabase.table("users")
+            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at, other_sessions_revoked_at, other_sessions_kept_session_id")
+            .eq("auth_user_id", auth_user_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as exc:                                  # noqa: BLE001
+        if getattr(exc, "code", None) != _UNDEFINED_COLUMN:
+            raise
+        _logger.warning("users.other_sessions_* columns are not there yet (migration 765 not applied); reading without them")
+        return (
+            supabase.table("users")
+            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
+            .eq("auth_user_id", auth_user_id)
+            .maybe_single()
+            .execute()
+        )
+
+
 def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Optional[dict]]:
     cached = _user_lookup_cache.get(auth_user_id)
     if cached is not None and (time.monotonic() - cached[0]) < _USER_LOOKUP_CACHE_TTL_SECONDS:
@@ -105,13 +141,7 @@ def _get_user_and_firm(supabase, auth_user_id: str) -> tuple[Optional[dict], Opt
         # zero-row case without raising, so an exception here now means the
         # query itself broke — worth logging, not silently treating as a
         # missing account.
-        result = (
-            supabase.table("users")
-            .select("id, firm_id, role, full_name, is_active, sessions_revoked_at")
-            .eq("auth_user_id", auth_user_id)
-            .maybe_single()
-            .execute()
-        )
+        result = _read_user_row(supabase, auth_user_id)
         user_data = result.data
     except Exception as exc:
         # The lookup itself broke — Supabase unreachable, rate-limited, a
@@ -294,6 +324,31 @@ def _instant_epoch(value) -> float:
     return moment.timestamp()
 
 
+def _refuse_a_session_signed_out_from_elsewhere(user_data: dict, payload: dict, auth_user_id: str) -> None:
+    """POST-A-486 — "sign out my other sessions": the person ended every session but one. A token of a session that began before that
+    instant and is not the kept one is refused, the kept session and any later sign-in are not. Fails closed like the revocation in
+    `get_current_user`: a mark nobody can read is not evidence it was withdrawn."""
+    other_at = user_data.get("other_sessions_revoked_at")
+    if not other_at:
+        return
+    try:
+        ended = auth_time.ended_by_other_sessions_sign_out(
+            payload, _instant_epoch(other_at), user_data.get("other_sessions_kept_session_id"))
+    except Exception as exc:                                 # noqa: BLE001
+        _logger.error(
+            "other_sessions_revoked_at for user %s could not be compared with the token; refusing the request",
+            auth_user_id, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session could not be verified. Please sign in again.",
+        ) from exc
+    if ended:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="This session was signed out from another device. Please sign in again.",
+        )
+
+
 def get_current_user(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
@@ -411,6 +466,8 @@ def get_current_user(
                 detail="Session revoked. Please sign in again.",
             )
 
+    _refuse_a_session_signed_out_from_elsewhere(user_data, payload, auth_user_id)
+
     # M1 — default to least-privileged staff role (not silently Executive) when a
     # row somehow has no role; never silently grant elevated access.
     role = user_data.get("role") or "Reviewer"
@@ -433,6 +490,9 @@ def get_current_user(
         # M6 — MFA assurance level from the Supabase JWT (aal1 = password only,
         # aal2 = MFA satisfied). Used by require_mfa() when REQUIRE_MFA is enabled.
         "aal": payload.get("aal", "aal1"),
+        # POST-A-486 — the sign-in service's id for THIS session (None for a token that carries none), so a sign-in can be told
+        # from the person's other devices and "sign out my other sessions" can keep this one.
+        "session_id": auth_time.session_id_of(payload),
         "access_token": token,
         # Per-person access overrides (migration 403). `core.permissions.can_user`
         # reads this key, so it must be present on EVERY principal rbac() can

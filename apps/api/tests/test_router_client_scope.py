@@ -1429,6 +1429,21 @@ EXEMPT: dict[str, str] = {
         "for a member who has not joined (POST-A-445).",
     "/api/identity/login-event":
         "records the CALLER's own sign-in/sign-out event. No client_id.",
+    "/api/identity/session-seen":
+        "a tab says the CALLER's own session is in use (POST-A-486): the session is the verified token's, `login_sessions` has a "
+        "firm_id and a member and NO client_id (migration 765).",
+    "/api/identity/my-devices":
+        "the CALLER's own live sessions, addressed from the verified token: no id of anybody else is taken (POST-A-486). "
+        "`login_sessions` has no client_id.",
+    "/api/identity/sign-out-other-sessions":
+        "the caller acting on their OWN login: ends their other sessions and keeps this one. No id is taken and no client_id exists "
+        "on `users` or `login_sessions` (POST-A-486).",
+    "/api/identity/users/{user_id}/devices":
+        "one STAFF member's live sessions, addressed by their user_id and checked against the caller's firm (`_get_member`): "
+        "`login_sessions` has no client_id (POST-A-486).",
+    "/api/identity/devices":
+        "who in the firm is signed in on which devices now: a staff roster, `login_sessions` has a firm_id and NO client_id "
+        "(POST-A-486).",
     "/api/identity/me":
         "the caller's own display name, addressed from the verified token — "
         "there is no user_id parameter, let alone a client_id. `users` has a "
@@ -1814,7 +1829,7 @@ MIN_ROUTES = {"/api/banking/": 50, "/api/sales-invoices": 18,
               "/api/purchase-credit-notes": 8, "/api/sales-debit-notes": 6,
               "/api/service-catalogue": 6, "/api/time-entries": 10,
               "/api/dsc": 5, "/api/firm-hsn-library": 7, "/api/settings": 14,
-              "/api/identity": 13, "/api/tally-migration": 7, "/api/reports": 2,
+              "/api/identity": 18, "/api/tally-migration": 7, "/api/reports": 2,
               "/api/accounting": 21, "/api/approvals": 7, "/api/xbrl": 7,
               "/api/income-tax": 11, "/api/compliance": 12,
               "/api/ai-insights": 5, "/api/eway-bill": 6, "/api/inventory": 6,

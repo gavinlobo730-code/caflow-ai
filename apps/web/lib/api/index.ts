@@ -1,7 +1,7 @@
 import type { IssuePreflight } from "@/lib/invoices/issueReadiness";
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
-import { closedAccountPath, closedAccountReason, isAlreadyOutside, type ClosedAccountReason } from "@/lib/auth/closedAccount";
+import { LOCAL_ONLY_REASONS, closedAccountPath, closedAccountReason, isAlreadyOutside, type ClosedAccountReason } from "@/lib/auth/closedAccount";
 import { withReference } from "@/lib/api/requestReference";
 import { doingOf, errorPageSentence, fetchPlain, REQUEST_BOUND_MS, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress } from "@/lib/api/uploadWithProgress";
@@ -3557,7 +3557,8 @@ async function endSessionBecause(reason: ClosedAccountReason): Promise<void> {
   if (isAlreadyOutside(window.location.pathname)) return;
   endingSession = true;
   try {
-    await supabase.auth.signOut();
+    // A person who signed out their OTHER sessions keeps the one that asked: this device ends itself and nothing else.
+    await supabase.auth.signOut(LOCAL_ONLY_REASONS.includes(reason) ? { scope: "local" } : undefined);
   } catch {
     /* the session is refused by the server whatever the browser holds; the page below says so */
   }
@@ -8787,6 +8788,19 @@ export const api = {
       request(`/api/identity/login-history${limit ? `?limit=${limit}` : ""}`) as Promise<ApiResp<{ events: LoginEvent[]; has_more?: boolean; limit?: number; max_limit?: number }>>,
     recordLoginEvent: (event: "login" | "logout") =>
       request("/api/identity/login-event", { method: "POST", body: JSON.stringify({ event }) }),
+    /** A tab somebody is using says it is still there (every few minutes, lib/auth/deviceSeen). Best-effort. */
+    sessionSeen: () => request("/api/identity/session-seen", { method: "POST" }),
+    /** The devices the CALLER's login is signed in on now (POST-A-486). Takes no id: the person is the verified token's. */
+    myDevices: () => request<ApiResp<DeviceSummary>>("/api/identity/my-devices"),
+    /** One member's devices (Partner or Manager). */
+    memberDevices: (userId: string) => request<ApiResp<DeviceSummary>>(`/api/identity/users/${userId}/devices`),
+    /** Who in the firm is signed in on which devices now (Partner or Manager). */
+    firmDevices: () =>
+      request<ApiResp<{ members: FirmDeviceMember[]; live_window_minutes: number }>>("/api/identity/devices"),
+    /** End every other session of the caller's login, not this one. The browser then asks the sign-in service to end their
+     *  refresh tokens too (`signOut({ scope: "others" })`): this call is what stops them at the API. */
+    signOutOtherSessions: () =>
+      request<ApiResp<{ ended: number }>>("/api/identity/sign-out-other-sessions", { method: "POST" }),
     // The caller's own display name. Deliberately takes no user id — the row is
     // addressed server-side from the verified token, so this can only ever edit
     // the caller's own profile.
@@ -9315,7 +9329,36 @@ export type InvitedMember = {
 export type LoginEvent = {
   id: string; user_id?: string; email?: string; event: string;
   ip?: string; user_agent?: string; created_at?: string;
+  /** The browser in words ("Chrome on Windows"), made by the server from `user_agent`; null where none was recorded. */
+  browser?: string | null;
 };
+
+/** One device a login is signed in on now (POST-A-486), as the server describes it. The sign-in service's session id is never sent. */
+export type LiveDevice = {
+  id: string;
+  browser: string;
+  address: string | null;
+  started_at: string | null;
+  last_seen_at: string | null;
+  /** True for the caller's own device on `my-devices`; null where the question does not apply (a Partner reading a member's). */
+  is_current: boolean | null;
+};
+
+/** The devices of one login that are signed in now, with the server's sentence ("Signed in on 2 devices"). */
+export type DeviceSummary = {
+  devices: LiveDevice[];
+  count: number;
+  sentence: string;
+  more_than_one: boolean;
+  /** The server last heard from each listed session within this many minutes. */
+  window_minutes: number;
+  /** `my-devices` only: whether this sign-in names its session, which "sign out my other sessions" needs. */
+  can_keep_this_session?: boolean;
+  /** `my-devices` only: whether the caller's own session is on the list. False means the count leaves this device out. */
+  this_device_listed?: boolean;
+};
+
+export type FirmDeviceMember = DeviceSummary & { user_id: string; name: string; is_you: boolean };
 
 /** One staff member's access, as the server resolves it (migration 403).
  *

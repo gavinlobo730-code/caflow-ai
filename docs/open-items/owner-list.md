@@ -97,7 +97,8 @@ Each row: the exact question, the document or section needed, who can supply it,
 - **Who can supply it:** Counsel with a practising CA.
 - **Stays unbuilt meanwhile:** Scrub-in-place erasure; any retention job (nothing is deleted meanwhile, which is how it behaves today); the retention period on soft-deleted documents.
 - **Also asked here (28 October 2026):** must the log of statement emails sent to a customer be KEPT after that customer is permanently deleted, or may it go with the customer? Today it goes with the customer, as it always did; the books it was drawn from (invoices, receipts, notes) already stop the delete. Needed: the same texts as above, read for a mail log.
-- **Ledger:** POST-B-296, POST-B-313, POST-B-017, POST-B-271
+- **Also asked here (19 November 2026):** how long may the address and the browser of each sign-in be kept? Since this date the sign-in record stores both (they identify a person's device, so they are personal data), and the list of devices a login is signed in on keeps a row per session. Nothing is deleted today, as with the rest of the sign-in history. Needed: DPDP Act s.8(7) and the Rules, read for an access log; whether the Companies (Accounts) Rules edit-log rule reaches a sign-in record at all. The address and the browser's own text are also copied into the in-app notice a Partner is sent when a login signs in on a second device (notifications, a different retention category), and the browser's own text can carry a phone's model. Stays unbuilt meanwhile: any purge of sign-in addresses or of those notices, and any period stated on screen or in the privacy summary (which says only that they are kept, and says it does not cover how long).
+- **Ledger:** POST-B-296, POST-B-313, POST-B-017, POST-B-271, POST-A-486
 
 ### S4. Notice, terms and processor agreement
 

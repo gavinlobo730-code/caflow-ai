@@ -63,6 +63,7 @@ PERMISSIONS: dict[str, dict[str, set[str]]] = {
     # borrowed from "team" (Partner-only write) or left on "ai" (read, and the
     # wrong subject entirely), so the guard states what it actually protects.
     "identity": {
+        "read":   _ALL_STAFF,
         "write":  _ALL_STAFF,
     },
     # ── Clients ──────────────────────────────────────────────────────────────
