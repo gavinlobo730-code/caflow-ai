@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FrontDoor, type FrontDoorName } from "@/components/FrontDoor";
 import { isOutsideTheShell } from "@/components/AppShell";
+import { StuckLoadingNotice } from "@/components/ui/stuck-loading-notice";
 
 export default function NotFound() {
   const [redirecting, setRedirecting] = useState(false);
@@ -41,6 +42,8 @@ export default function NotFound() {
         <div className="flex flex-col items-center gap-3">
           <div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-ps-label">Loading workspace…</p>
+          {/* After eight seconds it says so and offers Reload (POST-A-491): this page once sat here with no end. */}
+          <StuckLoadingNotice />
         </div>
       </div>
     );

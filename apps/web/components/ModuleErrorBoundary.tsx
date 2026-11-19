@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ErrorState } from "@/components/ui/states";
 import { FrontDoor, type FrontDoorName } from "@/components/FrontDoor";
 import { reportClientError } from "@/lib/monitoring";
+import { PAGE_CODE_SENTENCE, isPageCodeFailure, mayReloadForPageCode } from "@/lib/async/stuckLoading";
 
 /**
  * What a module segment renders when something below it throws.
@@ -23,12 +24,23 @@ import { reportClientError } from "@/lib/monitoring";
  * instead of passing it. Do not rename it without changing the walk; a test
  * pins the pair.
  *
+ * A PAGE WHOSE OWN FILES FAIL TO LOAD RELOADS ONCE BY ITSELF AND THEN SAYS SO (POST-A-491). A tab opened before the site
+ * was last published asks for page files that no longer exist, and what it throws is not a fault in the page: a fresh
+ * load is the cure. The reload happens once a minute at most (`lib/async/stuckLoading.ts`), so a page that keeps failing
+ * is not reloaded in a loop; the second time the screen says what happened and offers Reload. A render error in the
+ * page's own logic is never treated this way.
+ *
  * THE DIGEST IS SHOWN ON PURPOSE. A static export has no server log a CA can
  * be asked to check, and React replaces a production error message with a
  * hash. Printing it is the only way a user can tell us WHICH failure they hit;
  * the message itself is deliberately not rendered, since it can carry a query
  * shape or an id and this screen may be over a client's shoulder.
  */
+/** This tab's session storage, or null where the browser refuses it (a private window, blocked site data). */
+function browserMemory(): Storage | null {
+  try { return window.sessionStorage; } catch { return null; }
+}
+
 export default function ModuleErrorBoundary({
   error,
   reset,
@@ -45,6 +57,8 @@ export default function ModuleErrorBoundary({
   /** The name the tree's own pages show above the card ("PracticeSync" on the portals'); the staff name otherwise. */
   frontDoorName?: FrontDoorName;
 }) {
+  const pageCode = isPageCodeFailure(error);
+
   useEffect(() => {
     // The browser console is where the smoke walk and a developer both look.
     // console.error is what `pageerror`/`console` handlers in the walk record.
@@ -55,6 +69,15 @@ export default function ModuleErrorBoundary({
     reportClientError(error, moduleName || "page");
   }, [error, moduleName]);
 
+  useEffect(() => {
+    if (pageCode && mayReloadForPageCode(browserMemory(), Date.now())) window.location.reload();
+  }, [pageCode]);
+
+  const message = pageCode
+    ? PAGE_CODE_SENTENCE + (error.digest ? ` Reference: ${error.digest}` : "")
+    : null;
+  const retry = pageCode ? () => window.location.reload() : reset;
+
   if (frontDoor) {
     return (
       <div data-module-error={moduleName || "unknown"}>
@@ -62,10 +85,11 @@ export default function ModuleErrorBoundary({
           <ErrorState
             title="This page could not be displayed"
             message={
-              "Press Try again, or reload the page. If it keeps happening, quote the reference below." +
-              (error.digest ? ` Reference: ${error.digest}` : "")
+              message ??
+              ("Press Try again, or reload the page. If it keeps happening, quote the reference below." +
+                (error.digest ? ` Reference: ${error.digest}` : ""))
             }
-            onRetry={reset}
+            onRetry={retry}
           />
         </FrontDoor>
       </div>
@@ -85,11 +109,12 @@ export default function ModuleErrorBoundary({
               : "This page could not be displayed"
           }
           message={
-            "The rest of the application is still working — use the navigation to " +
-            "carry on. If it keeps happening, quote the reference below." +
-            (error.digest ? ` Reference: ${error.digest}` : "")
+            message ??
+            ("The rest of the application is still working — use the navigation to " +
+              "carry on. If it keeps happening, quote the reference below." +
+              (error.digest ? ` Reference: ${error.digest}` : ""))
           }
-          onRetry={reset}
+          onRetry={retry}
         />
       </div>
     </div>

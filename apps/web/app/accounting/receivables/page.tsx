@@ -36,6 +36,9 @@ import { LoadingRegion } from "@/components/ui/skeleton";
 interface Client {
   id: string;
   client_name: string;
+  // Read so the picker can show and search them (POST-A-487).
+  pan?: string | null;
+  gstin?: string | null;
 }
 
 interface FeeInvoice {
@@ -113,7 +116,7 @@ export default function ReceivablesAgingPage() {
       // clients has no is_active column; its lifecycle field is `status`
       // (CHECK: active | inactive | archived).
       const { data } = await selectAll(() => sb.from("clients")
-        .select("id, client_name").eq("firm_id", fid).eq("status", "active")
+        .select("id, client_name, pan, gstin").eq("firm_id", fid).eq("status", "active")
         .eq("is_internal", false)
         .order("client_name").order("id"));
       setClients((data ?? []) as Client[]);

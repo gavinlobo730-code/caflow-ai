@@ -9,6 +9,9 @@ import type { ClientSummary } from "@/lib/api";
 import { arrayOrEmpty } from "@/lib/api/shape";
 import { Combobox } from "@/components/ui/combobox";
 import { switchClientPath } from "@/lib/workspace/clientPath";
+import { clientIdentityLine, clientSearchFields } from "@/lib/clients/clientLine";
+import { ADD_CLIENT_HREF, ADD_CLIENT_LABEL } from "@/lib/clients/addClient";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 /**
  * Move from one client to the next without going back out to the list.
@@ -31,6 +34,13 @@ import { switchClientPath } from "@/lib/workspace/clientPath";
  * the browser the SELECT policy is firm-scoped with no assignment test, and
  * the switcher would quietly name every client in the firm.
  *
+ * EACH CLIENT SHOWS ITS PAN AND GSTIN UNDER THE NAME, AND THE BOX SEARCHES THEM (POST-A-487), because two clients of one
+ * firm often differ by a word and the entity type alone does not tell them apart (`lib/clients/clientLine.ts`).
+ *
+ * THE LIST CARRIES A WAY TO ADD A CLIENT, for a member who may add one (POST-A-488): a tester looked in this dropdown for
+ * it and found none. It is pinned first so it is never off the end of a long list, and it goes to the Clients page's form
+ * (`lib/clients/addClient.ts`), which is where a new client joins the list.
+ *
  * IT DEGRADES TO THE NAME. The header already fetches the current client for
  * its own heading; that value is the `placeholder` here, so a failed or slow
  * list leaves the client's name on screen with nothing to open, rather than
@@ -48,6 +58,8 @@ export function ClientSwitcher({
   className?: string;
 }) {
   const router = useRouter();
+  const { can } = usePermissions();
+  const canAdd = can("client", "write");
   const [clients, setClients] = useState<ClientSummary[]>([]);
 
   useEffect(() => {
@@ -86,7 +98,12 @@ export function ClientSwitcher({
       value={current}
       getOptionId={(c) => c.id}
       getLabel={(c) => c.client_name}
-      getSecondary={(c) => c.entity_type ?? undefined}
+      getSecondary={clientIdentityLine}
+      getSearchFields={clientSearchFields}
+      searchPlaceholder="Search client, PAN, GSTIN…"
+      onCreate={canAdd ? () => router.push(ADD_CLIENT_HREF) : undefined}
+      emptyCreateLabel={canAdd ? ADD_CLIENT_LABEL : undefined}
+      pinCreateAtTop={canAdd}
       emptyText="No other client"
       onChange={(v) => {
         const picked = Array.isArray(v) ? v[0] : v;
