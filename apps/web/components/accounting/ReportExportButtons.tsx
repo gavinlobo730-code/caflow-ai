@@ -32,7 +32,7 @@ export default function ReportExportButtons({
   download,
   noun = "report",
 }: {
-  /** A live report under `/api/report-exports`. Leave it out and pass `download` for a file the server makes elsewhere. */
+  /** A live report the server exports under its report routes. Leave it out and pass `download` for a file the server makes elsewhere. */
   report?: ExportReport;
   clientId: string;
   params?: ExportParams;

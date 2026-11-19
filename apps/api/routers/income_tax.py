@@ -2832,7 +2832,7 @@ def form_3cd_working_paper(
         out = export_form_3cd(register, format, db=db, firm_id=current_user["firm_id"], client_id=client_id)
     except ExportRefused as e:
         # A refusal is the answer, in words, as on every other report file.
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return Response(
         content=out.content, media_type=out.media_type,
         headers={"Content-Disposition": f'attachment; filename="{out.filename}"'})
