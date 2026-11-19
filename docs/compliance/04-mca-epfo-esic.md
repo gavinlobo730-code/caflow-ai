@@ -358,7 +358,7 @@ site; its API serves each section of the Act as an item). What matters here:
   percentage.** Rule 19: ESI employer 3.25%, employee 0.75% of wages payable, each rounded to the next higher rupee (rule 19(2):
   no employer share for up to three years for an employee with a disability, reimbursed by the Government; not modelled).
   Chapter V (rules 31 to 34): gratuity nomination in Form III, application in Form IV within thirty days, the employer's Form V
-  notice within fifteen days and payment by the thirtieth day, and a **fixed-term employee eligible after one year** (rule 33(1)(a)).
+  notice within fifteen days and payment by the thirtieth day, and a **fixed-term employee whose term expires eligible after one year** (rule 33(1)(a), with the second proviso to section 53(1); the product builds that, and keeps the five-year rule for one who leaves before the term ends because the text read does not say how the Rule's sentence and the Code's proviso fit: owner list S50).
   Rule 53: registers and the wage slip (Form V of the Wages (Central) Rules, 2026) kept five calendar years, and a unified annual
   return in Form XXIII by 28 or 29 February for the gratuity and maternity chapters. Rule 5: registration on the Shram Suvidha
   portal, the registration number quoted on all documents. Rule 65: exemption needs 500 contributory members and Rs 50 crore. No

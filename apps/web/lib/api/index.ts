@@ -1423,6 +1423,9 @@ export type SettlementInput = {
   client_id: string;
   leaving_date: string;
   on_death_or_disablement?: boolean;
+  /** Only for an employee recorded as on fixed-term employment: the five years are waived where the employment ends by the expiry of
+   *  the term (section 53(1), second proviso), and the server asks. Never sent for anybody else (POST-A-526). */
+  fixed_term_contract_expired?: boolean;
   /** Decides §10(10AA) entirely. */
   on_retirement?: boolean;
   is_government_employee?: boolean;
