@@ -102,6 +102,7 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     ("purchase_credit_note_lines", "cess_rate_bps"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
     ("purchase_credit_note_lines", "cess_specific_paise_per_unit"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
     ("purchase_credit_note_lines", "cess_paise"): "migration 615 (POST-A-058): a s.34 note's GST compensation cess, on its header and its lines; 0 = none",
+    ("epfo_ecr_filings", "return_file_id"): "migration 769 (POST-A-518): the Return File ID the portal gives an EPFO return when its file passes the checks; NULL = not recorded",
     ("debit_notes", "ineligible_itc_cgst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
     ("debit_notes", "ineligible_itc_sgst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",
     ("debit_notes", "ineligible_itc_igst_paise"): "migration 685 (POST-A-459): a purchase note line's s.17(5) blocked mark and the header's blocked tax per head; default eligible / 0",

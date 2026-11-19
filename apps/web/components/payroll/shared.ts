@@ -73,8 +73,8 @@ export type Employee = {
   eps_eligible?: boolean;
   gratuity_act_covered?: boolean;
   // The employer's recorded ELECTION to contribute PF on actual wages above the
-  // ceiling (payroll-22, migration 477; EPF Scheme para 26(6), an unverified
-  // reading). null / absent = never recorded, which is the ceiling; true =
+  // ceiling (payroll-22, migration 477; paragraph 9(4) of the Employees' Provident
+  // Funds Scheme, 2026). null / absent = never recorded, which is the ceiling; true =
   // elected; false = recorded and withdrawn. The browser never decides whether
   // it applies to a month — the server does, and stamps the slip.
   pf_on_actual_wages?: boolean | null;

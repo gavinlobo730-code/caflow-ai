@@ -423,9 +423,11 @@ def _payroll_obligations(financial_year: str) -> list[dict]:
     three separate authorities are owed money on three different dates, and
     missing any of them costs interest that dwarfs the fee.
 
-      EPF   15th of the following month — EPF Scheme 1952, para 38(1).
-            Late draws 12% a year under §7Q PLUS damages under §14B of up to
-            100% of the arrear.
+      EPF   15th of the following month — Employees' Provident Funds Scheme,
+            2026, paras 24(2)(ix) and 28(3). A late deposit draws interest and
+            damages (sections 127 and 128 of the Code, per para 20(7)); the
+            12% a year under §7Q and up to 100% under §14B this used to give
+            belong to the repealed 1952 Act and are not held as current.
       ESI   15th of the following month — ESI (General) Regulations 1950,
             reg. 31. It was the 21st until the 2017 amendment, so a date copied
             from older material is a week late.
