@@ -22,7 +22,7 @@
 -- New function only. No table is created, altered or written. Reversible: 745_..._rollback.sql drops it.
 
 
-CREATE FUNCTION public.report_party_totals(
+CREATE OR REPLACE FUNCTION public.report_party_totals(
     p_firm       uuid,
     p_client_ids uuid[] DEFAULT NULL,
     p_from       date DEFAULT NULL,
