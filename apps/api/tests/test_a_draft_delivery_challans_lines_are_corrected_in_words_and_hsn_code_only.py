@@ -16,6 +16,7 @@ WHAT IS HELD
 """
 from __future__ import annotations
 
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -255,6 +256,24 @@ def test_the_pure_rule_names_the_challan_and_judges_a_status_before_a_line():
     assert dc.DRAFT_LINE_FIELDS == ("description", "hsn_sac")
 
 
+_AN_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def _text_without_ids(value) -> str:
+    """What a payload says apart from the identifiers in it. An identifier is 32 random hex digits, so one contains "7214" now and then
+    (it did, in CI on 19-11-2026, in the line id the audit rightly carries), and a test of what a payload does NOT say must not depend on
+    the luck of the draw."""
+    return _AN_ID.sub("<id>", str(value))
+
+
+def test_the_text_check_ignores_an_identifier_that_happens_to_hold_the_code_and_still_sees_the_code():
+    audited = {"lines_corrected": ["f81089d9-d93a-4da5-9dbe-fefcfa827214"], "fields": []}
+    assert "7214" in str(audited), "the draw that failed CI: the code is inside the id"
+    assert "7214" not in _text_without_ids(audited)
+    assert "7214" in _text_without_ids({**audited, "hsn_sac": "7214"}), "a code written to the log is still seen"
+    assert "Steel rod" in _text_without_ids({**audited, "description": "Steel rod"})
+
+
 def test_the_route_audits_the_lines_corrected_by_id_and_not_by_what_they_now_say(db, monkeypatch):
     import routers.sales_cycle as route
     from models.sales_cycle import DeliveryChallanUpdateIn
@@ -274,7 +293,8 @@ def test_the_route_audits_the_lines_corrected_by_id_and_not_by_what_they_now_say
     new_data = events[0][0][5] if len(events[0][0]) > 5 else events[0][1]["new_data"]
     assert new_data["lines_corrected"] == [ln["id"]]
     # by id only: neither the code nor the words it now says are written to the log
-    assert "7214" not in str(new_data) and "Steel rod" not in str(new_data)
+    said = _text_without_ids(new_data)
+    assert "7214" not in said and "Steel rod" not in said
     assert "lines" not in new_data["fields"]
 
 
