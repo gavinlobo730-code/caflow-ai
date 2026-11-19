@@ -266,6 +266,9 @@ jobs:
         with:
           name: smoke-walk-screens
           path: apps/web/.smoke/
+          # `.smoke` is a hidden directory and upload-artifact leaves hidden files out by default, so a directory path here kept nothing and said
+          # nothing (`if-no-files-found: ignore`): the screenshots of a failed walk were never kept (found with POST-A-507, which met the same default).
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14
 
@@ -309,5 +312,8 @@ jobs:
         with:
           name: smoke-walk-client-screens
           path: apps/web/.smoke/client/
+          # `.smoke` is a hidden directory and upload-artifact leaves hidden files out by default, so a directory path here kept nothing and said
+          # nothing (`if-no-files-found: ignore`): the screenshots of a failed walk were never kept (found with POST-A-507, which met the same default).
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14

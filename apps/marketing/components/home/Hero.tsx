@@ -462,14 +462,15 @@ export function Hero() {
               four the page already states further down, which is deliberate: a
               number that appears twice on one page had better agree with
               itself. */}
+          {/* A group of a description list holds only a term and its description (axe's `definition-list`): the label is the term, drawn under
+              the figure by `flex-col-reverse` and said before it by the DOM order, where it used to be a hidden term plus a `<p>`. */}
           <dl className="mt-[clamp(14px,2.6vh,28px)] grid max-w-[32rem] grid-cols-2 gap-x-8 gap-y-5 border-t border-white/10 pt-[clamp(12px,2vh,24px)] sm:grid-cols-4 sm:gap-x-5">
             {HERO_FACTS.map((f) => (
-              <div key={f.label}>
-                <dt className="sr-only">{f.label}</dt>
+              <div key={f.label} className="flex flex-col-reverse">
+                <dt className="mt-1.5 text-[11px] leading-[1.4] text-white/45">{f.label}</dt>
                 <dd className="font-display text-[clamp(22px,2.2vw,29px)] leading-none text-white">
                   {f.value}
                 </dd>
-                <p className="mt-1.5 text-[11px] leading-[1.4] text-white/45">{f.label}</p>
               </div>
             ))}
           </dl>

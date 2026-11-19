@@ -140,5 +140,8 @@ jobs:
         with:
           name: marketing-quality-reports
           path: apps/marketing/.qa/
+          # `.qa` is a hidden directory and upload-artifact leaves hidden files out by default, so the runs of 19-11-2026 said "No files were found
+          # with the provided path" and kept NO report at all, whatever the comment at the top of this file said (POST-A-507).
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 30
