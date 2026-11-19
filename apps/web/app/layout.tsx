@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { AuthGuard } from "@/lib/auth/AuthGuard";
+import { SessionKeeper } from "@/components/auth/SessionKeeper";
 import { AppShell } from "@/components/AppShell";
 import { Toaster } from "@/components/ui/toaster";
 import { ConfirmDialogHost } from "@/components/ui/confirm-dialog";
@@ -48,6 +49,7 @@ export default function RootLayout({
         {/* Outside the providers: a crash while signing in is one somebody has to hear about. */}
         <MonitoringInit />
         <AuthProvider>
+          <SessionKeeper />
           <AuthGuard>
             <AppShell>{children}</AppShell>
           </AuthGuard>

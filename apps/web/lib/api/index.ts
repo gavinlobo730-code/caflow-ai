@@ -1,6 +1,7 @@
 import type { IssuePreflight } from "@/lib/invoices/issueReadiness";
 import { supabase } from "@/lib/supabase/client";
 import { explainMfaRefusal } from "@/lib/auth/mfaRefusal";
+import { closedAccountPath, closedAccountReason, isAlreadyOutside, type ClosedAccountReason } from "@/lib/auth/closedAccount";
 import { withReference } from "@/lib/api/requestReference";
 import { doingOf, errorPageSentence, fetchPlain, jsonPlain, looksLikeMarkup, modelSentence, plainFailure, stillNoAnswerSentence, timedOutSentence, type UntypedJson } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress } from "@/lib/api/uploadWithProgress";
@@ -3534,11 +3535,33 @@ export async function request<T>(path: string, requestOptions?: RequestOptions):
     }
   }
   if (!res.ok) {
-    throw new Error(await errorMessage(res));
+    const message = await errorMessage(res);
+    // The server says the account is closed (a firm suspended or deleted, a person removed or signed out): sign the
+    // person out at once and say so, instead of leaving them on a screen that can load nothing (POST-A-482).
+    const closed = closedAccountReason(res.status, message);
+    if (closed) void endSessionBecause(closed);
+    throw new Error(message);
   }
   // A proxy's page that arrives with a 200 is not JSON, and the browser's own "Unexpected token '<'…" is not a sentence for a person
   // (POST-A-406): `jsonPlain` says that the answer was not the product's, and for a change that it is not known whether it went through.
   return jsonPlain<T>(res, doing);
+}
+
+/** Many calls fail at once when an account is closed; the sign-out and the move happen once. */
+let endingSession = false;
+
+/** Sign the person out and send them to the page that says why (POST-A-482). Never from the page itself or the
+ *  sign-in, and never twice. A hard navigation, so nothing the closed account loaded stays on screen. */
+async function endSessionBecause(reason: ClosedAccountReason): Promise<void> {
+  if (endingSession || typeof window === "undefined") return;
+  if (isAlreadyOutside(window.location.pathname)) return;
+  endingSession = true;
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    /* the session is refused by the server whatever the browser holds; the page below says so */
+  }
+  window.location.assign(closedAccountPath(reason));
 }
 
 /**
