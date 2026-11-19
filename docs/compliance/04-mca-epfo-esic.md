@@ -226,13 +226,19 @@ client:**
    it in 2022 is a different joint option exercised with EPFO and is **not
    modelled**; EPS wages are capped for every member, elected or not.
 
-⚠️ One thing seen on the way and **not changed**: `domain/payroll/ecr.py`
-declares `EPF_CONTRI_REMITTED` as the employee's 12% **plus** the employer's EPF
-half (so ₹2,350 / ₹1,250 / ₹1,100 for a ₹15,000 member) and its tests pin that.
-The sample line EPFO's material is RECALLED as carrying (by the author, from
-memory, `[S]` at best) reads ₹1,800 / ₹1,250 / ₹550 — the employee share, the
-pension share, the difference. This could not be checked here; read an actual
-EPFO sample before the next ECR is uploaded. An elected member's line follows the file's existing convention.
+⚠️ **READ ON 19-11-2026 AND WRONG; the fix is POST-A-517 and is not yet built.**
+`domain/payroll/ecr.py` declares `EPF_CONTRI_REMITTED` as the employee's 12%
+**plus** the employer's EPF half (so ₹2,350 / ₹1,250 / ₹1,100 for a ₹15,000
+member) and its tests pin that. EPFO's own User Manual for the Re-engineered ECR
+(v3.0, page 8, attached by the owner from EPFO's Revamped ECR page) gives the
+sample line `…#~#15000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0` for
+a ₹15,000 wage and names the columns Employee PF Contribution (7), Employer EPS
+Contribution (8) and Employer PF Contribution (9); its sample return statement
+(page 10) adds up the same way and its account 1 (page 22) is the employee share
+plus the employer share. So the file this module builds carries wrong figures in
+columns 7 and 9 until it is fixed, and an elected member's line, which follows
+the same convention, is wrong in the same way. Do not upload an ECR built by
+this product before then.
 
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 

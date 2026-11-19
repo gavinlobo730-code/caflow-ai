@@ -44,8 +44,8 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [pre-demo-C-yours.md](pre-demo-C-yours.md) | 3 | before the demo: only the owner can do |
 | [post-demo-A-mine.md](post-demo-A-mine.md) | 80 | after the demo: Claude can do alone |
 | [post-demo-B-ours.md](post-demo-B-ours.md) | 277 | after the demo: owner decides first, then Claude builds |
-| [post-demo-C-yours.md](post-demo-C-yours.md) | 212 | after the demo: only the owner or outsiders can do |
-| [new-findings.md](new-findings.md) | 49 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
+| [post-demo-C-yours.md](post-demo-C-yours.md) | 211 | after the demo: only the owner or outsiders can do |
+| [new-findings.md](new-findings.md) | 55 | everything found from 6 November 2026 on, kept apart from the backlog above; worked after the backlog's Claude-alone items (the rule is at its head); NOT counted in the backlog's total |
 | [post-demo-parked.md](post-demo-parked.md) | 0 | retired on 18 November 2026: every item that was parked is now an ordinary item in its own letter file |
 | [decisions-and-strategy.md](decisions-and-strategy.md) | — | the 15 owner decisions with the items each gates, what was parked until after the demo (now ordinary items), the 30 Sep strategy and staged roadmap |
 | [checked-closed.md](checked-closed.md) | — | what the sweep tested and found already done, answered or moot, with evidence, so nobody reopens it |
@@ -53,13 +53,13 @@ Line format: `ID · theme · priority · effort [· UNSURE] [· live session] [�
 | [progress.md](progress.md) | — | the day by day numbers: the backlog open and closed, the new findings found and fixed (IST days) |
 | [coming-soon.md](coming-soon.md) | — | the register of every statement a person is shown that something is planned, coming or not switched on: where, its exact words, what gates it, who acts and the ledger id |
 
-**THE BACKLOG: 584 open items** (44 before the demo, 540 after); 12 after-demo items are `high` priority; 27 are UNSURE. Nothing is parked.
+**THE BACKLOG: 583 open items** (43 before the demo, 540 after); 11 after-demo items are `high` priority; 26 are UNSURE. Nothing is parked.
 
-**Who must act (backlog).** 82 items are Claude's by their letter. Of those, **43 need no help and can be built now**; 24 wait on the owner for a document, a statutory reading or a decision of theirs (written in [owner-list.md](owner-list.md)), 11 need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) and 4 are held by the owner's own rule. 287 need the owner to decide first and 215 only the owner or someone outside this container can do. In all **541 of the 584 need the owner.**
+**Who must act (backlog).** 82 items are Claude's by their letter. Of those, **43 need no help and can be built now**; 24 wait on the owner for a document, a statutory reading or a decision of theirs (written in [owner-list.md](owner-list.md)), 11 need the owner's hands (a real browser or phone, a step on the live database, a working session with the owner, or something this container is refused) and 4 are held by the owner's own rule. 287 need the owner to decide first and 214 only the owner or someone outside this container can do. In all **540 of the 583 need the owner.**
 
-**NEW FINDINGS: 49 open** (22 before the demo, 27 after; 11 `high` priority; 3 UNSURE), counted apart from the backlog. 38 are Claude's by their letter (**21 need no help and can be built now**, 10 wait on a document or reading, 7 need the owner's hands, 0 are held), 7 need the owner to decide first and 4 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
+**NEW FINDINGS: 55 open** (25 before the demo, 30 after; 13 `high` priority; 5 UNSURE), counted apart from the backlog. 44 are Claude's by their letter (**25 need no help and can be built now**, 12 wait on a document or reading, 7 need the owner's hands, 0 are held), 7 need the owner to decide first and 4 only the owner or someone outside this container can do. The day by day numbers are in [progress.md](progress.md).
 
-**BEFORE THE DEMO (the list to start from).** 66 open items are before the demo (44 of the backlog, 22 of the new findings; the 15 triaged on 2 October 2026 carry a `PRE-` id and every item moved before the demo since carries the header token `before demo`, because ids are never renumbered). Of these, **11 Claude can do alone**, 2 are Claude's but wait on the owner for a document or reading, 6 need the owner's hands, 0 are held, 27 need the owner to decide first and 20 only the owner or someone outside this container can do. To list them: every line of the three `pre-demo-` files, and `grep -n "· before demo" docs/open-items/post-demo-*.md docs/open-items/new-findings.md`.
+**BEFORE THE DEMO (the list to start from).** 68 open items are before the demo (43 of the backlog, 25 of the new findings; the 15 triaged on 2 October 2026 carry a `PRE-` id and every item moved before the demo since carries the header token `before demo`, because ids are never renumbered). Of these, **14 Claude can do alone**, 2 are Claude's but wait on the owner for a document or reading, 6 need the owner's hands, 0 are held, 27 need the owner to decide first and 19 only the owner or someone outside this container can do. To list them: every line of the three `pre-demo-` files, and `grep -n "· before demo" docs/open-items/post-demo-*.md docs/open-items/new-findings.md`.
 
 <!-- counts:end -->
 
@@ -93,7 +93,6 @@ Pre-demo items by suggested order. The first is the date; Render and Supabase da
 - **POST-B-259** (owner-decides) — Publish a real Privacy Notice and Terms of Service; footer links dead-end
 - **POST-B-295** (owner-decides) — Decide the Tally import rules (decision 8) before building ledger import
 - **POST-C-072** (owner-only) — Verify FY 2026-27 statutory figures and promote LATEST_VERIFIED_FY
-- **POST-C-120** (owner-only) — Check ECR EPF-contribution-remitted convention against a real EPFO sample
 - **POST-C-121** (owner-only) — Confirm Labour Code PF 50% wage-base reading and ceiling notifications
 - **POST-C-193** (owner-only) — Engage counsel for data incidents and DPDP opinions
 
