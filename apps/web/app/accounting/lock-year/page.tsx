@@ -8,7 +8,7 @@ import { RoleGuard } from "@/components/RoleGuard";
 import { financialYearChoicesAround } from "@/lib/dates/periods";
 import { Callout } from "@/components/ui/callout";
 import { PageHeader } from "@/components/ui/page-header";
-import { doingOf, errorPageSentence, fetchPlain, looksLikeMarkup, notOursSentence } from "@/lib/api/failureSentence";
+import { doingOf, errorPageSentence, fetchBounded, looksLikeMarkup, notOursSentence } from "@/lib/api/failureSentence";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -23,7 +23,7 @@ async function callApi(
   const sb = getSupabaseClient();
   const { data: { session } } = await sb.auth.getSession();
   const token = session?.access_token;
-  const res = await fetchPlain(`${API_BASE}${path}`, {
+  const res = await fetchBounded(`${API_BASE}${path}`, {
     method,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,

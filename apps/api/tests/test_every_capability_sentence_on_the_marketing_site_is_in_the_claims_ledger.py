@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 
 from tests import _marketing_claims as ledger
-from tests._marketing_copy import MARKETING, copy_sentences
+from tests._marketing_copy import HOLE, MARKETING, copy_sentences, sentences_in_source
 from tests._marketing_vocabulary import EXEMPT_PREFIXES, is_exempt, topics_of
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -158,6 +158,37 @@ def test_an_unmapped_sentence_is_named_and_removing_it_passes(site):
     assert unmapped(with_it, ledger_sentences()) == [sentence]
     del copy[sentence]
     assert unmapped(detected(copy), ledger_sentences()) == []
+
+
+@pytest.mark.parametrize("source", [
+    '<p>SSO on every plan, for {count} practices</p>',
+    'const line = "SSO on every plan, for " + count + " practices";',
+    'const line = "SSO on every plan, for " + plan.firms.length + " practices and " + more;',
+])
+def test_a_claim_broken_by_a_value_is_read_whole_and_fails_the_ledger(source):
+    """POST-A-119: JSX text broken by `{value}` and a `+` join of literals and values were read only as the
+    fragments around the value, so a capability sentence written that way reached no guard. It is read joined
+    now, with HOLE where the value goes, and the ledger names it like any other."""
+    sentences = sentences_in_source(source, 2)
+    joined = next((s for s in sentences if HOLE in s), None)
+    assert joined and joined.startswith("SSO on every plan, for") and "practices" in joined, (
+        f"the joined sentence was not read: {sorted(sentences)}")
+    copy = copy_sentences(2)
+    copy[joined] = {"app/(site)/pricing/page.tsx"}
+    found = detected(copy)
+    assert joined in found, "the vocabulary does not recognise the joined sentence as a claim"
+    assert unmapped(found, ledger_sentences()) == [joined]
+
+
+@pytest.mark.parametrize("source", [
+    "const ok = (a: number) => a > b ? <Badge /> : null;",
+    "<p>{label} records and nothing else</p>",
+    'const cls = "px-3 " + (active ? "bg-brand" : "");',
+])
+def test_code_between_tags_and_a_value_at_a_sentence_end_add_nothing(source):
+    """The joined reading takes nothing from code (an arrow or a comparison between a `>` and a `<`) and leaves a
+    hole at either end off, so a sentence that merely follows a value reads as it always did."""
+    assert not any(HOLE in s for s in sentences_in_source(source, 2)), sorted(sentences_in_source(source, 2))
 
 
 @pytest.mark.parametrize("sentence", [

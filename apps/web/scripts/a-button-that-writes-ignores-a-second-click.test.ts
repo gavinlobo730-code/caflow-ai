@@ -366,14 +366,7 @@ const BASELINE: Record<string, number> = {
   "app/workflows/page.tsx": 1,
   // ── client health, relationships, intelligence ──
   "app/clients/[id]/ai-insights/page.tsx": 1,
-  "app/clients/[id]/health/page.tsx": 3,
-  "app/health/[client_id]/HealthDetailClient.tsx": 2,
-  "app/health/alerts/page.tsx": 1,
-  "app/health/page.tsx": 1,
   "app/knowledge/page.tsx": 1,
-  "app/relationships/[entity_id]/EntityDetailClient.tsx": 2,
-  "app/relationships/cross-client/page.tsx": 2,
-  "app/relationships/page.tsx": 1,
   // ── communication and engagement ──
   "app/client-portal/page.tsx": 4,
   "app/clients/[id]/portal/page.tsx": 1,

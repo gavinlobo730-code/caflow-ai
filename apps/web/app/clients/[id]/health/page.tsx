@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Plus, X, Activity, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
-import { doingOf, failureSentence, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, failureSentence, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import { EmptyState } from "@/components/ui/states";
 import { EmptyStateAction, EmptyStateActions } from "@/components/ui/empty-state-action";
 import {
@@ -28,7 +29,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -363,14 +364,14 @@ export default function ClientHealthPage() {
       <PageHeader
         title="Client Health"
         actions={
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleRecalculate}
             disabled={actionInFlight}
             className="flex items-center gap-1.5 text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded hover:bg-gray-50 disabled:opacity-50"
           >
             <RefreshCw size={12} className={recalculating ? "animate-spin" : ""} />
             Recalculate
-          </button>
+          </Button>
         }
       />
 
@@ -578,13 +579,13 @@ export default function ClientHealthPage() {
                       <td className="px-3 py-3 text-gray-700 text-xs max-w-xs truncate">{o.reason}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(o.expires_at)}</td>
                       <td className="px-3 py-3 text-right">
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={() => handleRemoveOverride(o.id)}
                           disabled={removingOverride === o.id}
                           className="text-xs text-state-problem hover:underline disabled:opacity-50"
                         >
                           {removingOverride === o.id ? "Removing…" : "Remove"}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                     );
@@ -653,13 +654,13 @@ export default function ClientHealthPage() {
             )}
             <div className="flex gap-2 mt-5">
               <button disabled={actionInFlight} onClick={() => setOverrideModal(false)} className="flex-1 text-sm text-gray-600 border border-gray-200 py-2 rounded-md hover:bg-gray-50">Cancel</button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleAddOverride}
                 disabled={actionInFlight || !overrideForm.reason.trim() || !overrideForm.override_score}
                 className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingOverride ? "Saving…" : "Add Override"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

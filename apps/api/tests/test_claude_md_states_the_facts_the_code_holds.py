@@ -136,9 +136,16 @@ def test_the_rate_limit_figures_the_page_states_are_the_buckets_the_code_enforce
 
 def _browser_abort_seconds() -> float:
     assert WEB_API_CLIENT.is_file(), "apps/web/lib/api/index.ts is where the browser client's abort is read from"
-    hit = re.search(r"controller\.abort\(\)\s*,\s*([0-9_]+)\s*\)", WEB_API_CLIENT.read_text(encoding="utf-8"))
+    hit = re.search(r"controller\.abort\(\)\s*,\s*([0-9_]+|[A-Z_]+)\s*\)", WEB_API_CLIENT.read_text(encoding="utf-8"))
     assert hit, "the browser client no longer aborts through `controller.abort()` on a timer; update this reading"
-    return int(hit.group(1).replace("_", "")) / 1000
+    figure = hit.group(1)
+    if not figure[0].isdigit():
+        # The figure is a named constant (POST-A-470: `REQUEST_BOUND_MS`, which every screen's own request uses too), read where it is declared.
+        source = WEB_API_CLIENT.parent / "failureSentence.ts"
+        declared = re.search(rf"export const {figure} = ([0-9_]+);", source.read_text(encoding="utf-8"))
+        assert declared, f"the browser client aborts at {figure}, which apps/web/lib/api/failureSentence.ts no longer declares as a number"
+        figure = declared.group(1)
+    return int(figure.replace("_", "")) / 1000
 
 
 def test_the_gateway_finishes_a_call_before_the_browser_gives_up_on_it():

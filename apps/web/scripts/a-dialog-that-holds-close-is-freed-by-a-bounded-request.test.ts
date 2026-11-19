@@ -12,17 +12,14 @@ import { join } from "node:path";
 
 const WEB = join(import.meta.dirname, "..");
 const page = readFileSync(join(WEB, "app/engagements/page.tsx"), "utf8");
-const api = readFileSync(join(WEB, "lib/api/index.ts"), "utf8");
 
 test("the engagement letters page's requests are bounded at lib/api's 45 seconds", () => {
-  const bound = page.match(/const JSON_ABORT_MS = ([\d_]+);/);
-  assert.ok(bound, "the page names no bound for its requests");
-  assert.equal(Number(bound[1].replace(/_/g, "")), 45_000, "the page's bound is not 45 seconds");
-  assert.match(api, /setTimeout\(\(\) => controller\.abort\(\), 45_000\)/, "lib/api's own bound moved: this page's must follow it");
+  // The bound itself is held over the whole tree by scripts/a-request-a-screen-makes-ends.test.ts (POST-A-470); this page's two calls go through the bounded door with no longer bound.
   const helper = page.slice(page.indexOf("async function apiFetch("), page.indexOf("// Types"));
-  assert.match(helper, /signal: AbortSignal\.timeout\(JSON_ABORT_MS\),\s*\.\.\.opts,/, "the JSON helper sends without a bound (or lets nothing override it)");
+  assert.match(helper, /fetchBounded\(`\$\{API\}\$\{path\}`, \{\s*\.\.\.opts,/, "the JSON helper does not send through the bounded door (or lets nothing override it)");
   const pdf = page.slice(page.indexOf("async function doDownloadPdf("), page.indexOf("async function doDownloadPdf(") + 900);
-  assert.match(pdf, /signal: AbortSignal\.timeout\(JSON_ABORT_MS\)/, "the PDF download, which holds Close too, is not bounded");
+  assert.match(pdf, /fetchBounded\(/, "the PDF download, which holds Close too, is not bounded");
+  assert.doesNotMatch(pdf, /LONG_REQUEST_BOUND_MS/, "a one-letter PDF was given the export's long bound, so Close stays held for minutes");
 });
 
 test("each dialog's Close and Cancel are held while its request is out", () => {
@@ -86,7 +83,7 @@ test("the shared prompt that records a filing holds Escape, the backdrop and its
 
 test("apiCall can be bounded and has no bound of its own, and the supplier form's save is bounded", () => {
   const shared = readFileSync(join(WEB, "lib/invoices/shared.ts"), "utf8");
-  assert.match(shared, /export const HELD_DIALOG_MS = 45_000;/);
+  assert.match(shared, /export const HELD_DIALOG_MS = REQUEST_BOUND_MS;/);
   assert.match(shared, /options: \{ timeoutMs\?: number \} = \{\},/, "apiCall takes no time limit");
   assert.match(shared, /\.\.\.\(options\.timeoutMs \? \{ signal: AbortSignal\.timeout\(options\.timeoutMs\) \} : \{\}\),/, "apiCall's limit is not an abort signal, or it has a default");
   const purchases = readFileSync(join(WEB, "app/clients/[id]/purchases/page.tsx"), "utf8");

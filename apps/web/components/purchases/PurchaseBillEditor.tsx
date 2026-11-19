@@ -33,7 +33,7 @@ import {
   validateBillDraft, withoutDocument, type BillDraftFields,
 } from "@/lib/purchases/billDraft";
 import { apiCall, apiGet, getAuthToken, fmt, gstRateOptions, gstRateToPercent, type CurrencyOption } from "@/lib/invoices/shared";
-import { jsonPlain, PlainFailure, type UntypedJson } from "@/lib/api/failureSentence";
+import { jsonPlain, PlainFailure, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 import { fetchUpload, type UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -886,7 +886,7 @@ export function PurchaseBillEditor({
       const token = await getAuthToken();
       // A reading is a proposal, not a record of a bill: what a dropped connection costs is the result, so it is told as one that did not come back.
       // Sent through the one upload door, so the screen can say how much of the file has left (POST-A-158).
-      const res = await fetchUpload(`${API}/api/document-intelligence-v1/extract-invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData }, "read", setSent);
+      const res = await fetchUpload(`${API}/api/document-intelligence-v1/extract-invoice`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData, timeoutMs: LONG_REQUEST_BOUND_MS }, "read", setSent);
       const json = await jsonPlain<UntypedJson>(res, "read");
       // The uploaded file is retained server-side as ITC/audit evidence
       // regardless of whether AI extraction itself succeeded.

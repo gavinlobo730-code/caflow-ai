@@ -79,6 +79,19 @@ export const NAMED_ROUTE_PATHS = new Set(
   NAMED_SCREENS.filter((s) => !s.route.includes("{client}")).map((s) => s.route),
 );
 
+/**
+ * The key a walked route is judged and baselined under (POST-A-036). The `--real-client` pass puts the stub client's
+ * id in the address so the client workspace renders; its findings are keyed with `{client}` in that place, the form
+ * the named screens use, so the baseline names a SCREEN and not the stub's id. Every other route keys as itself.
+ */
+export function axeRouteKey(route, clientId) {
+  return clientId ? route.split(`/clients/${clientId}`).join("/clients/{client}") : route;
+}
+
+/** Every route a named screen covers, in the key form `axeRouteKey` gives: a walked route with one of these keys is
+ *  left to the named scan, which is stricter, so the route walk does not scan it twice. */
+export const NAMED_ROUTE_KEYS = new Set(NAMED_SCREENS.map((s) => s.route));
+
 /** The route a named screen is asked for, with the client placeholder filled in. */
 export function resolveNamedRoute(screen, clientId) {
   return screen.route.replace("{client}", clientId);
@@ -131,7 +144,7 @@ export function parseBaseline(text) {
     if (!e || typeof e.route !== "string" || !e.route.startsWith("/")) throw new Error(`${where}: route must be a path`);
     if (typeof e.rule !== "string" || !e.rule) throw new Error(`${where}: rule must be an axe rule id`);
     if (!Number.isInteger(e.nodes) || e.nodes < 1) throw new Error(`${where}: nodes must be a whole number of at least 1 (delete the line instead of writing 0)`);
-    if (NAMED_ROUTE_PATHS.has(e.route)) {
+    if (NAMED_ROUTE_KEYS.has(e.route)) {
       throw new Error(`${where}: ${e.route} is one of the six named screens, which fail outright and have no allowlist`);
     }
     const key = `${e.route} ${e.rule}`;

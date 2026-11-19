@@ -448,7 +448,7 @@ export default function InventoryPage() {
               <TrendingDown size={12} className="inline mr-1" />NRV review
             </Button>
           )}
-          <button onClick={load} className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
+          <button onClick={load} aria-label="Reload" title="Reload" className="p-1.5 mb-0.5 rounded border border-ps-border hover:bg-ps-bg text-ps-label">
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
         </div>

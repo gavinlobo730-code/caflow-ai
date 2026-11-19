@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useMemo } from "react";
 import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -15,7 +16,7 @@ import {
 } from "@/lib/health/vocabulary";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson, LONG_REQUEST_BOUND_MS } from "@/lib/api/failureSentence";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -23,7 +24,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -177,7 +178,9 @@ export default function HealthPage() {
     setRecalculating(true);
     try {
       const json: ApiResponse<{ updated: number; failed?: number }> = await apiFetch(
-        "/api/health/recalculate-all", { method: "POST" }
+        "/api/health/recalculate-all",
+        // Every client of the firm is scored in one request: the long bound (POST-A-470).
+        { method: "POST", signal: AbortSignal.timeout(LONG_REQUEST_BOUND_MS) }
       );
       if (!json.success) throw new Error(json.error ?? "Recalculation failed");
       await loadHealthData();
@@ -308,14 +311,14 @@ export default function HealthPage() {
         title="Client Health Monitor"
         subtitle={<>{clients.length} clients tracked</>}
         actions={
-          <button
+          <Button variant="plain" size="none" spinner={false}
             onClick={handleRecalculateAll}
             disabled={recalculating}
             className="flex items-center gap-1.5 text-sm text-emerald-700 border border-emerald-300 px-3 py-1.5 rounded-md hover:bg-emerald-50 disabled:opacity-50"
           >
             <RefreshCw size={13} className={recalculating ? "animate-spin" : ""} />
             {recalculating ? "Recalculating…" : "Recalculate All"}
-          </button>
+          </Button>
         }
       />
 

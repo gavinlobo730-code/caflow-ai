@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useState, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -14,7 +15,7 @@ import { arrayOrEmpty } from "@/lib/api/shape";
 import { selectAll } from "@/lib/supabase/selectAll";
 import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems } from "@/lib/dates/useDateProblems";
-import { doingOf, fetchPlain, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
+import { doingOf, fetchBounded, jsonPlain, type UntypedJson } from "@/lib/api/failureSentence";
 import {
   HEALTH_DIMENSIONS, HEALTH_DIMENSION_KEYS, gradeBadgeClass, gradeOf, scoreBarClass, scoreTextClass,
   weightLabel as weightBpToLabel, type HealthDimensionKey, type HealthGrade,
@@ -26,7 +27,7 @@ async function apiFetch(path: string, opts?: RequestInit) {
   const { data: { session } } = await getSupabaseClient().auth.getSession();
   const token = session?.access_token ?? "";
   const doing = doingOf(opts?.method);
-  const res = await fetchPlain(`${API}${path}`, {
+  const res = await fetchBounded(`${API}${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
@@ -772,13 +773,13 @@ export default function ClientHealthDetailPage() {
                       <td className="px-3 py-3 text-gray-500 text-xs">{formatDate(override.expires_at)}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{override.created_by}</td>
                       <td className="px-3 py-3 text-right">
-                        <button
+                        <Button variant="plain" size="none" spinner={false}
                           onClick={() => handleRemoveOverride(override.id)}
                           disabled={removingOverride === override.id}
                           className="text-xs text-state-problem hover:underline disabled:opacity-50"
                         >
                           {removingOverride === override.id ? "Removing…" : "Remove"}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                     );
@@ -863,7 +864,7 @@ export default function ClientHealthDetailPage() {
               >
                 Cancel
               </button>
-              <button
+              <Button variant="plain" size="none" spinner={false}
                 onClick={handleAddOverride}
                 disabled={
                   savingOverride ||
@@ -874,7 +875,7 @@ export default function ClientHealthDetailPage() {
                 className="flex-1 text-sm bg-brand text-white py-2 rounded-md hover:bg-brand-dark disabled:opacity-50"
               >
                 {savingOverride ? "Saving…" : "Add Override"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
