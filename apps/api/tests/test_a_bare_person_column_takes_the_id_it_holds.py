@@ -180,7 +180,6 @@ UNREAD: set[tuple[str, str, str, str]] = set()      # every write the scan can s
 #: A builder may carry the value under another key (a database function's parameter, `p_actor_id`): then it is named as the third element.
 #: A builder is read for dict literals AND for `<name>["<key>"] = value` assignments.
 BUILT_ELSEWHERE: dict[tuple[str, str], list[tuple[str, ...]]] = {
-    ("login_events", "user_id"): [("repositories/login_events_repository.py", "record")],
     ("time_entries", "user_id"): [("routers/time_tracking.py", "start_timer"), ("routers/time_tracking.py", "create_manual_entry")],
     ("year_end_notes", "created_by"): [("routers/year_end_notes.py", "generate_notes")],
     # POST-A-377: the columns decided from the code whose rows are built away from the write
