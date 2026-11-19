@@ -1,0 +1,13 @@
+{
+  "comment": "The functions a button runs that scripts/silentHandlers.ts flags and that were READ and are quiet on purpose (POST-A-515). It may only shrink: a place that is fixed or gone is deleted here in the same commit, and a place that is added is refused by scripts/a-button-that-saves-tells-the-person-when-it-fails.test.ts. Each entry is keyed rule|file|function and carries the reason it is quiet.",
+  "reviewed": {
+    "H2|app/copilot/page.tsx|sendMessage": {
+      "count": 1,
+      "why": "The catch around creating a conversation is deliberately quiet because the very next lines say it, once, in the same words as an unreadable answer: `if (!created?.id) { setChatError(\"Couldn't start a conversation. Please try again.\"); return; }`."
+    },
+    "H2|app/engagements/page.tsx|doCopyLink": {
+      "count": 1,
+      "why": "The catch around asking the server for the signing link falls back to an address built from the letter's own token; if neither exists the next lines throw, and the outer catch says it (setActionErr)."
+    }
+  }
+}

@@ -101,6 +101,8 @@ export default function ClientRelatedPartiesPage() {
   const [roleForm, setRoleForm] = useState({ entity_id: "", role_type: "Director", ownership_percent: "" });
   const [savingRole, setSavingRole] = useState(false);
   const [detectLoading, setDetectLoading] = useState(false);
+  // What the last Detect Matches found, apart from a failure (a press that finds nothing new used to change nothing on the screen).
+  const [detectNote, setDetectNote] = useState<string | null>(null);
   // The row being removed, or null. Per-ROW rather than one boolean: a shared
   // flag would disable every trash icon while one is in flight, which reads as
   // the screen having frozen.
@@ -157,11 +159,21 @@ export default function ClientRelatedPartiesPage() {
   async function handleDetectMatches() {
     if (actionInFlight) return;
     setDetectLoading(true);
+    setError(null);
+    setDetectNote(null);
     try {
-      await api.relatedParties.detectMatches();
+      const res = await api.relatedParties.detectMatches();
+      // The scan is a Partner's: an Executive's press is answered 403 in words, and that sentence used to be dropped, so the button
+      // seemed to do nothing, and a press that found nothing new changed nothing on the screen either (POST-A-515).
+      if (!res?.success) { setError(res?.error ?? "Matches could not be looked for just now."); return; }
+      const found = Number((res.data as { new_matches_detected?: number } | null | undefined)?.new_matches_detected ?? 0);
       await loadAll();
-    } catch { /* non-fatal — the list simply does not change */ }
-    finally { setDetectLoading(false); }
+      setDetectNote(found > 0
+        ? `${found} new cross-client match${found === 1 ? "" : "es"} found.`
+        : "No new cross-client matches found.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Matches could not be looked for just now.");
+    } finally { setDetectLoading(false); }
   }
 
   async function handleAddRole() {
@@ -249,6 +261,7 @@ export default function ClientRelatedPartiesPage() {
       />
 
       {error && <Callout tone="problem">{error}</Callout>}
+      {detectNote && <Callout tone="note">{detectNote}</Callout>}
 
       {/* ── The disclosure ─────────────────────────────────────────────── */}
       <Card>

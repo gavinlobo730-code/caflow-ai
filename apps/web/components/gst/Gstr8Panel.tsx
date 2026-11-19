@@ -38,6 +38,7 @@ import { Callout, GapList, type GapLike } from "@/components/ui/callout";
 import { formatPaise } from "@/lib/money/format";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { objectOrNull, objectWithLists } from "@/lib/api/shape";
+import { failureSentence } from "@/lib/api/failureSentence";
 import { INDIAN_STATES } from "@/lib/constants/indianStates";
 import { Button } from "@/components/ui/button";
 import { istToday } from "@/lib/dateMath";
@@ -100,6 +101,7 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
   const [unregistered, setUnregistered] = useState<Gstr8UnregisteredSupply[]>([]);
   const [loadingRows, setLoadingRows] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const [supplyForm, setSupplyForm] = useState(emptySupplyForm());
   const [savingSupply, setSavingSupply] = useState(false);
@@ -159,6 +161,24 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
+  // A REFUSED OR FAILED DELETE IS SAID, NEVER IGNORED (POST-A-515). The Remove buttons called the delete with no catch and no look at the
+  // answer, so a locked period or a dropped connection left the row where it was and said nothing. The API client throws on a failed
+  // request and answers `success: false` for a refusal it chose to word, and both are told here, in the words the server gave.
+  const removeRow = useCallback(async (remove: () => Promise<{ success: boolean; error?: string | null }>) => {
+    setStatement(null);
+    setRemoveError(null);
+    try {
+      const res = await remove();
+      if (!res.success) {
+        setRemoveError(res.error ?? "Couldn't remove that row.");
+        return;
+      }
+      await loadRows();
+    } catch (e) {
+      setRemoveError(failureSentence(e, "Couldn't remove that row.", "write"));
+    }
+  }, [loadRows]);
+
   const addSupply = useCallback(async () => {
     const supplierGstin = supplyForm.supplier_gstin.trim().toUpperCase();
     if (!supplierGstin) {
@@ -197,11 +217,9 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
     }
   }, [clientId, gstin, period, supplyForm, loadRows]);
 
-  const removeSupply = useCallback(async (id: string) => {
-    setStatement(null);
-    await api.ecommerceOperator.deleteSupply(id, clientId);
-    await loadRows();
-  }, [clientId, loadRows]);
+  const removeSupply = useCallback(
+    (id: string) => removeRow(() => api.ecommerceOperator.deleteSupply(id, clientId)),
+    [clientId, removeRow]);
 
   const addUnregistered = useCallback(async () => {
     const eid = enrolmentId.trim();
@@ -236,11 +254,9 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
     }
   }, [clientId, gstin, period, enrolmentId, unregGross, unregReturns, loadRows]);
 
-  const removeUnregistered = useCallback(async (id: string) => {
-    setStatement(null);
-    await api.ecommerceOperator.deleteUnregisteredSupply(id, clientId);
-    await loadRows();
-  }, [clientId, loadRows]);
+  const removeUnregistered = useCallback(
+    (id: string) => removeRow(() => api.ecommerceOperator.deleteUnregisteredSupply(id, clientId)),
+    [clientId, removeRow]);
 
   // A blank revised GSTIN or place of supply means "unchanged": the request carries the original, so what is sent is explicit.
   const addAmendment = useCallback(async () => {
@@ -288,11 +304,9 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
     }
   }, [clientId, gstin, period, amendForm, loadRows]);
 
-  const removeAmendment = useCallback(async (id: string) => {
-    setStatement(null);
-    await api.ecommerceOperator.deleteAmendment(id, clientId);
-    await loadRows();
-  }, [clientId, loadRows]);
+  const removeAmendment = useCallback(
+    (id: string) => removeRow(() => api.ecommerceOperator.deleteAmendment(id, clientId)),
+    [clientId, removeRow]);
 
   const addUnregisteredAmendment = useCallback(async () => {
     const originalId = unregAmendForm.original_enrolment_id.trim();
@@ -332,11 +346,9 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
     }
   }, [clientId, gstin, period, unregAmendForm, loadRows]);
 
-  const removeUnregisteredAmendment = useCallback(async (id: string) => {
-    setStatement(null);
-    await api.ecommerceOperator.deleteUnregisteredAmendment(id, clientId);
-    await loadRows();
-  }, [clientId, loadRows]);
+  const removeUnregisteredAmendment = useCallback(
+    (id: string) => removeRow(() => api.ecommerceOperator.deleteUnregisteredAmendment(id, clientId)),
+    [clientId, removeRow]);
 
   const compute = useCallback(async () => {
     if (!validPeriod) return;
@@ -378,6 +390,7 @@ export function Gstr8Panel({ clientId, gstin }: { clientId: string; gstin: strin
       </label>
 
       {rowsError && <Callout tone="problem" title="Couldn't load recorded supplies">{rowsError}</Callout>}
+      {removeError && <Callout tone="problem" title="That row was not removed">{removeError}</Callout>}
 
       {/* ── Table 3 — registered sellers ────────────────────────────────── */}
       <div className="space-y-2">
