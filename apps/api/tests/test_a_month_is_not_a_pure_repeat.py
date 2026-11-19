@@ -408,7 +408,9 @@ def test_the_ecr_includes_arrears_in_epf_wages(db_free=None):
     slips = [{"employee_id": "e-1", "basic_paise": 1_000_000, "da_paise": 0,
               "gross_paise": 1_200_000, "one_time_pf_wages_paise": 200_000,
               "pf_employee_paise": 144_000, "pf_employer_paise": 144_000,
-              "pf_employer_eps_paise": 99_960, "pf_employer_epf_paise": 44_040,
+              # whole rupees, as `_compute_pf` rounds them: 8.33% of 12,000 is 999.60, which the slip stores as 1,000, and the file's
+              # column 9 (the employee's 1,440 less this 1,000) is the employer's PF half the ledger holds, 440 (POST-A-517)
+              "pf_employer_eps_paise": 100_000, "pf_employer_epf_paise": 44_000,
               "lop_days": 0}]
     out = build_ecr(slips=slips,
                     employees_by_id={"e-1": {"id": "e-1", "name": "Asha",

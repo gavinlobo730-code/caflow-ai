@@ -12,11 +12,17 @@ THE ONE ROW WORTH KNOWING BY HEART
 
 An employee on ₹15,000 PF wages and ₹25,000 gross, present all month:
 
-    …#~#25000#~#15000#~#15000#~#15000#~#2350#~#1250#~#1100#~#0#~#0
+    …#~#25000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0
 
-EPF remitted is 2350 because it is the EMPLOYEE's ₹1,800 PLUS the employer's
-₹550 EPF half — not the employee's alone, which is the mistake this format
-invites. EPS is ₹1,250 and the difference is ₹1,100.
+Column 7 is the EMPLOYEE's ₹1,800 alone, column 8 the employer's pension share
+₹1,250, and column 9 the employer's PF share ₹550, which is column 7 less
+column 8. That is EPFO's own sample (User Manual for the Re-engineered ECR,
+v3.0, page 8: `...#~#15000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0`)
+and its return statement (page 10: EE 1,800, EPS 1,250, ER 550). Until
+19-11-2026 this file pinned 2,350 / 1,250 / 1,100, the employee's share and the
+employer's PF half added together in column 7 (POST-A-517); the portal takes
+account 1 as the employee column plus the employer column, so that line would
+have come to 3,450 for a member whose account-1 share is 2,350.
 
 WHAT THIS MODULE DOES NOT DO, AND WHY THAT IS THE POINT
 
@@ -74,21 +80,44 @@ def test_the_reference_line_is_exactly_right():
     assert f.problems == []
     assert f.to_text() == DELIMITER.join([
         "100200300400", "ASHA KUMAR", "25000", "15000", "15000", "15000",
-        "2350", "1250", "1100", "0", "0",
+        "1800", "1250", "550", "0", "0",
     ])
 
 
-def test_epf_remitted_is_employee_plus_employer_epf_not_employee_alone():
-    """The mistake this format invites. 1800 + 550, not 1800."""
-    f = _build()
-    assert f.to_text().split(DELIMITER)[6] == "2350"
+def test_epfos_own_sample_line_is_reproduced_exactly():
+    """The sample line printed on page 8 of EPFO's User Manual for the Re-engineered ECR (v3.0), figure for figure."""
+    f = _build([_slip(gross_paise=15_000_00)],
+               [_emp(name="Nitesh", uan="100257274743")])
+    assert f.problems == []
+    assert f.to_text() == "100257274743#~#NITESH#~#15000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0"
+
+
+def test_column_7_is_the_employees_contribution_alone_and_column_9_is_column_7_less_column_8():
+    """EPFO's layout: 7 Employee PF Contribution, 8 Employer EPS Contribution, 9 Employer PF Contribution. Putting the
+    employee's share and the employer's PF half together in column 7 (2,350 for this member) was the mistake."""
+    parts = _build().to_text().split(DELIMITER)
+    assert parts[6] == "1800"
+    assert parts[7] == "1250"
+    assert parts[8] == "550"
+    assert int(parts[8]) == int(parts[6]) - int(parts[7])
 
 
 def test_the_difference_field_is_epf_minus_eps():
     m = ECRMember(uan="1", name="X", gross_wages=25000, epf_wages=15000,
-                  eps_wages=15000, edli_wages=15000, epf_contribution=2350,
+                  eps_wages=15000, edli_wages=15000, epf_contribution=1800,
                   eps_contribution=1250, ncp_days=0)
-    assert m.epf_eps_difference == 1100
+    assert m.epf_eps_difference == 550
+    assert m.employer_epf_contribution == 550
+
+
+def test_a_slip_whose_employer_epf_half_is_not_column_7_less_column_8_is_refused_by_name():
+    """The file derives the employer's PF share from the employee's, so a slip whose two halves differ cannot be declared
+    without the file and the ledger saying different things. Here the employer's total is 1,700 against the employee's 1,800."""
+    f = _build([_slip(pf_employer_paise=1_700_00, pf_employer_eps_paise=1_250_00,
+                      pf_employer_epf_paise=450_00)])
+    assert f.members == []
+    assert any("Asha Kumar" in p and "employer PF share of 550" in p and "hold 450" in p for p in f.problems), f.problems
+    assert not f.is_filable
 
 
 def test_wages_are_capped_at_the_ceiling_but_gross_is_not():
@@ -112,7 +141,8 @@ def test_a_member_outside_the_pension_scheme_files_zero_eps_wages():
     parts = f.to_text().split(DELIMITER)
     assert parts[4] == "0", "EPS wages must be nil when there is no EPS contribution"
     assert parts[7] == "0"
-    assert parts[6] == "3600"        # employee 1800 + employer EPF 1800
+    assert parts[6] == "1800"        # the employee's share alone
+    assert parts[8] == "1800"        # the whole employer share is EPF: column 7 less a nil pension share
 
 
 # ── what it refuses ──────────────────────────────────────────────────────────
@@ -187,8 +217,10 @@ def test_totals_are_reported_for_the_challan():
                [_emp(), _emp(id="e2", name="Second")])
     t = f.totals()
     assert t["members"] == 2
-    assert t["eps_contribution"] == 2500        # 1250 x 2
-    assert t["epf_contribution"] == 4700        # 2350 x 2
+    assert t["eps_contribution"] == 2500        # column 8: 1250 x 2
+    assert t["epf_contribution"] == 3600        # column 7: 1800 x 2
+    assert t["employer_epf_contribution"] == 1100   # column 9: 550 x 2
+    assert t["account_1_contribution"] == 4700  # columns 7 and 9, what the portal raises as account 1: 2350 x 2
 
 
 def test_a_name_carrying_the_delimiter_cannot_shift_the_columns():

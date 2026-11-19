@@ -178,7 +178,9 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
           status: paid ? "approved" : "submitted",
           submitted_on: on,
           approved_on: paid ? on : undefined,
-          trrn: reference.trim() || undefined,
+          // The RETURN's reference is the Return File ID the portal gives when the file passes its checks. The TRRN is the
+          // challan's, issued after the return is approved, and this form records the return and not the payment (POST-A-518).
+          return_file_id: reference.trim() || undefined,
         })) as ApiResp<unknown>;
         if (!res?.success) throw new Error(res?.error ?? "That did not save.");
       } else {
@@ -245,10 +247,10 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
         )}
         <div>
           <label className="block text-3xs text-ps-label mb-0.5">
-            {isEpf ? "TRRN" : "Challan number"}
+            {isEpf ? "Return File ID" : "Challan number"}
           </label>
-          <input aria-label={isEpf ? "TRRN" : "Challan number"} value={reference} onChange={(e) => setReference(e.target.value)}
-            placeholder={isEpf ? "as shown on the receipt" : "from the challan"}
+          <input aria-label={isEpf ? "Return File ID" : "Challan number"} value={reference} onChange={(e) => setReference(e.target.value)}
+            placeholder={isEpf ? "as shown under In-Process Returns" : "from the challan"}
             className="w-full border border-ps-border rounded-lg px-2 py-1.5 text-xs
                        outline-none focus:border-brand" />
         </div>
@@ -283,7 +285,7 @@ function RecordBack({ obligation, clientId, runId, onDone, onError }: {
       )}
       <label className="flex items-center gap-2 text-2xs text-ps-label">
         <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
-        {isEpf ? "The portal shows this as approved — which is what clears the month"
+        {isEpf ? "You have approved the return statement on the portal — which is what clears the month"
                : "The money has gone — this is paid, not just filed"}
       </label>
       {isEpf && !paid && (
@@ -445,7 +447,7 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
     } finally { setBusy(false); }
   }
 
-  const recorded = o.recorded as (Remittance & { trrn?: string; status?: string }) | null;
+  const recorded = o.recorded as (Remittance & { trrn?: string; return_file_id?: string; return_type?: string; status?: string }) | null;
 
   return (
     <div className="bg-white rounded-xl border border-ps-border p-4 space-y-3">
@@ -576,6 +578,8 @@ function ObligationCard({ o, clientId, runId, onChanged }: {
             <Check size={12} className="mt-0.5 shrink-0" />
             <span>
               Recorded as filed
+              {recorded.return_type ? ` — ${recorded.return_type} return` : ""}
+              {recorded.return_file_id ? ` — Return File ID ${recorded.return_file_id}` : ""}
               {recorded.trrn ? ` — TRRN ${recorded.trrn}` : ""}
               {recorded.challan_number ? ` — challan ${recorded.challan_number}` : ""}
               {typeof recorded.amount_paise === "number" && recorded.amount_paise > 0

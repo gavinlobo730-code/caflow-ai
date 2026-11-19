@@ -3,7 +3,7 @@
 /**
  * Payroll Reports — PracticeSync AI
  *
- * IT Act Section 192 (TDS on Salary), EPF Act, ESI Act
+ * IT Act Section 192 (TDS on Salary), Code on Social Security 2020 (PF, ESI)
  * All monetary values stored and computed in integer paise.
  * IT Act Section 234B/234C: interest on under-payment of advance tax / TDS.
  *
@@ -158,7 +158,7 @@ function buildStatutoryCalendar(
   rows.push({
     id: `esi-${start}-h1`,
     label: `ESI Return — Apr–Sep ${start}`,
-    description: "Half-yearly ESI return — ESIC Portal (ESI Act; employees ≤ ₹21,000/month)",
+    description: "Half-yearly ESI return — ESIC Portal (employees ≤ ₹21,000/month)",
     dueDate: formatDate(toLocalISO(esiDue1)),
     dueDateObj: esiDue1,
     portal: "ESIC Portal",
@@ -169,7 +169,7 @@ function buildStatutoryCalendar(
   rows.push({
     id: `esi-${start}-h2`,
     label: `ESI Return — Oct ${start}–Mar ${start + 1}`,
-    description: "Half-yearly ESI return — ESIC Portal (ESI Act; employees ≤ ₹21,000/month)",
+    description: "Half-yearly ESI return — ESIC Portal (employees ≤ ₹21,000/month)",
     dueDate: formatDate(toLocalISO(esiDue2)),
     dueDateObj: esiDue2,
     portal: "ESIC Portal",
@@ -756,7 +756,7 @@ function CtcTab({ runs, employees }: { runs: PayrollRun[]; employees: Employee[]
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div>
           <CardTitle className="text-base">Cost to Company (CTC)</CardTitle>
-          <p className="text-xs text-ps-label mt-0.5">Gross + Employer PF + ESI + EDLI + admin charges, as computed on each payslip — EPF Act, ESI Act, Code on Social Security s.2(88)</p>
+          <p className="text-xs text-ps-label mt-0.5">Gross + Employer PF + ESI + EDLI + admin charges, as computed on each payslip — Code on Social Security, 2020 (s.2(88) for wages)</p>
           {/* THE ADMIN CHARGE IS FLOORED PER ESTABLISHMENT, NOT PER MEMBER.
               EPFO charges 0.5% of PF wages with a ₹500 monthly minimum for the
               whole establishment, and the floor is applied to the RUN
@@ -1515,7 +1515,7 @@ export default function PayrollReportsPage() {
           back={{ href: "/payroll", label: "Payroll" }}
           icon={<BarChart2 size={22} className="text-blue-600" />}
           title="Payroll Reports"
-          subtitle="IT Act Section 192 &middot; EPF Act &middot; ESI Act &middot; 234B/234C planning"
+          subtitle="IT Act Section 192 &middot; Code on Social Security, 2020 &middot; 234B/234C planning"
           className="mb-6"
         />
 
