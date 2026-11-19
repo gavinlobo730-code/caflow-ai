@@ -547,7 +547,7 @@ rest of this file, **it changes a number the product computes today**.
 | Date | What |
 |---|---|
 | **21 Nov 2025** | All four Labour Codes in force (PIB). The EPF Act 1952 and ESI Act 1948 stand subsumed into the **Code on Social Security 2020** |
-| **8 May 2026** | Final **Rules under the Code on Social Security** notified |
+| **8 May 2026** | Final **Rules under the Code on Social Security** notified (the Social Security (Central) Rules, 2026, G.S.R. 344(E); e-Gazette id CG-DL-E-08052026-272366, located from the e-Gazette index on 19-11-2026; the text is not yet read) |
 | **29 May 2026** | Ministry of Labour notification declaring **₹15,000 the wage ceiling for Chapter III (EPF)** under the new Code (S.O. 2702(E)) |
 | **29 June 2026** | The Employees' Provident Funds Scheme, 2026, the Employees' Pension Scheme, 2026 and the Employees' Deposit-Linked Insurance Scheme, 2026 (G.S.R. 525(E), 527(E), 526(E)) replace the three old schemes |
 | **17 September 2026** | Ministry of Labour S.O. 5109(E): **₹25,000** the wage ceiling for Chapter III, from publication, superseding S.O. 2702(E) (read from the e-Gazette's own copy on 19-11-2026, `[P]`: No. 4918, F. No. R-12025/01/2026-SS-II; owner list D1, S43) |
