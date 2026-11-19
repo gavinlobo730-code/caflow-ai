@@ -666,17 +666,22 @@ export const EMPLOYEE_IMPORT_COLUMNS: ImportColumn[] = [
 // tests/test_a_spreadsheet_of_payroll_opening_positions_is_read_whole.py). Every
 // decision about a cell is the server's; this list is only what the import
 // dialog maps a file onto and writes as its template.
+//
+// NONE OF THESE IS `required` HERE, though the server requires every column but two: the shared import dialog DROPS a row with a blank
+// required cell before sending anything ("will be skipped"), which made a file with one blank cell record every other row and none for that
+// employee, with the server's row numbers shifted. The server refuses a blank (naming the column and the row) and the whole file with it, so
+// the dialog sends every row and the server decides (found by the independent review).
 export const OPENING_POSITION_IMPORT_COLUMNS: ImportColumn[] = [
-  { key: "employee_code", label: "Employee Code", required: true, hint: "The code on the People tab; an employee with no code is recorded on the form" },
-  { key: "first_month_here", label: "First Month Here", required: true, hint: "YYYY-MM, the first month this product runs the payroll" },
-  { key: "months_paid", label: "Months Already Paid", required: true, hint: "Whole months of this financial year paid before it" },
-  { key: "gross", label: "Gross Paid So Far (₹)", required: true, hint: "Write 0 for nothing: a blank is not entered and refuses the file" },
-  { key: "tds", label: "Tax Withheld (₹)", required: true, hint: "s.192, so far this year; 0 for nothing" },
-  { key: "pf_employee", label: "PF Employee (₹)", required: true, hint: "0 for nothing" },
-  { key: "pf_employer", label: "PF Employer (₹)", required: true, hint: "0 for nothing" },
-  { key: "esi_employee", label: "ESI Employee (₹)", required: true, hint: "0 for nothing" },
-  { key: "esi_employer", label: "ESI Employer (₹)", required: true, hint: "0 for nothing" },
-  { key: "pt", label: "Professional Tax (₹)", required: true, hint: "0 for nothing" },
+  { key: "employee_code", label: "Employee Code", required: false, hint: "The code on the People tab; an employee with no code is recorded on the form" },
+  { key: "first_month_here", label: "First Month Here", required: false, hint: "YYYY-MM, the first month this product runs the payroll" },
+  { key: "months_paid", label: "Months Already Paid", required: false, hint: "Whole months of this financial year paid before it" },
+  { key: "gross", label: "Gross Paid So Far (₹)", required: false, hint: "Write 0 for nothing: a blank is not entered and refuses the file" },
+  { key: "tds", label: "Tax Withheld (₹)", required: false, hint: "s.192, so far this year; 0 for nothing" },
+  { key: "pf_employee", label: "PF Employee (₹)", required: false, hint: "0 for nothing" },
+  { key: "pf_employer", label: "PF Employer (₹)", required: false, hint: "0 for nothing" },
+  { key: "esi_employee", label: "ESI Employee (₹)", required: false, hint: "0 for nothing" },
+  { key: "esi_employer", label: "ESI Employer (₹)", required: false, hint: "0 for nothing" },
+  { key: "pt", label: "Professional Tax (₹)", required: false, hint: "0 for nothing" },
   { key: "esi_contributed_earlier_in_period", label: "ESI Earlier In Period", required: false, hint: "yes / no, or blank for not known (not read as no)" },
   { key: "source_note", label: "Where The Figures Came From", required: false, hint: "e.g. the old system's payroll register and its date" },
 ];

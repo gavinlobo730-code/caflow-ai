@@ -2203,8 +2203,7 @@ def import_employees(
     existing = (db.table("payroll_employees").select("id, employee_code, " + ", ".join(EMPLOYEE_IDENTIFIERS))
                 .eq("firm_id", current_user["firm_id"])
                 .eq("client_id", data.client_id).execute().data) or []
-    existing_by_code = {str(r["employee_code"]).lower(): r["id"]
-                        for r in existing if r.get("employee_code")}
+    existing_by_code = importer.code_index(existing)
 
     result = importer.validate(data.rows, existing_by_code=existing_by_code)
     # An update row is the edit of an employee, so a blank cell over an identifier on file is refused in the edit's own sentence, keyed to
@@ -5418,8 +5417,8 @@ def import_opening_positions(
     roster_rows = (db.table("payroll_employees").select("id, name, status, joining_date, employee_code")
                    .eq("firm_id", firm_id).eq("client_id", body.client_id).execute().data) or []
     roster = {str(e["id"]): e for e in roster_rows}
-    result = reader.read(body.rows, employee_by_code={str(e["employee_code"]).strip().lower(): str(e["id"])
-                                                      for e in roster_rows if e.get("employee_code")})
+    from domain.payroll.employee_import import code_index
+    result = reader.read(body.rows, employee_by_code=code_index(roster_rows))
     problems = list(result.problems)
     numbered = []
     for n, row in result.rows:

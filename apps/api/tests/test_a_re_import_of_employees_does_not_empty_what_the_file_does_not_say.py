@@ -109,3 +109,20 @@ def test_the_importer_s_blank_rules_are_the_edit_s():
     assert importer.CLEARED_WHEN_BLANK == EmployeeUpdateIn.CLEARABLE
     assert set(importer.IDENTIFIERS) == set(EMPLOYEE_IDENTIFIERS)
     assert {column for column, _req in importer.COLUMNS} == set(importer.COLUMN_FIELDS)
+
+
+def test_a_code_two_employees_hold_apart_from_capitals_refuses_the_file_and_writes_to_neither(db):
+    # The database's unique key is case-sensitive, so "EMP001" and "emp001" can both be on a client; a file row cannot say which is meant
+    # (found by the independent review: it used to write to whichever came last).
+    db.seed("payroll_employees", {"id": "EMP-3", "firm_id": FIRM, "client_id": "CLI", "status": "active", "name": "Asha Two",
+                                  "employee_code": "emp001", "basic_paise": 100})
+    with pytest.raises(Exception) as e:
+        _import([{"employee_code": "EMP001", "name": "Asha Rao", "basic": "99999"}])
+    assert "matches more than one employee" in str(getattr(e.value, "detail", e.value))
+    assert _stored(db, "EMP-1")["basic_paise"] == 3_000_000 and _stored(db, "EMP-3")["basic_paise"] == 100
+
+
+def test_an_amount_beyond_what_the_column_holds_is_refused_with_the_file(db):
+    with pytest.raises(Exception) as e:
+        _import([{"employee_code": "EMP002", "name": "Ravi Kumar", "basic": "9" * 25}])
+    assert "too large to record" in str(getattr(e.value, "detail", e.value))

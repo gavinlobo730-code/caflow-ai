@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from domain.payroll.employee_import import _paise, _text
+from domain.payroll.employee_import import _ambiguous, _paise, _text
 
 #: (column, the field of `OpeningPositionIn` it fills). Every column but the ESI answer and the note is required.
 COLUMNS: list[tuple[str, str, bool]] = [
@@ -63,8 +63,9 @@ def _month(raw: str) -> Optional[str]:
     return f"{m.group(1)}-{m.group(2)}"
 
 
-def read(rows: list[dict], *, employee_by_code: dict[str, str]) -> OpeningImport:
-    """Read the whole file. `employee_by_code` maps an employee code on this client's roster (lower case) to the employee's id."""
+def read(rows: list[dict], *, employee_by_code: dict[str, Optional[str]]) -> OpeningImport:
+    """Read the whole file. `employee_by_code` maps an employee code on this client's roster (lower case) to the employee's id, or to None where
+    two employees' codes differ only by capital letters (`employee_import.code_index`): such a code is refused, never matched to one of them."""
     out = OpeningImport()
     if not rows:
         out.problems.append("The file has no rows.")
@@ -80,6 +81,8 @@ def read(rows: list[dict], *, employee_by_code: dict[str, str]) -> OpeningImport
             problems.append("employee_code is required")
         elif code.lower() not in employee_by_code:
             problems.append(f'no employee with the code "{code}" is on this client\'s roster')
+        elif employee_by_code[code.lower()] is None:
+            problems.append(_ambiguous(code, n).split(": ", 1)[1])
         else:
             body["employee_id"] = employee_by_code[code.lower()]
 
@@ -96,7 +99,8 @@ def read(rows: list[dict], *, employee_by_code: dict[str, str]) -> OpeningImport
             body["months_paid"] = int(months)
 
         for column, name in _AMOUNTS:
-            if not _text(row, column):
+            # A cell holding only a currency sign or a separator is as blank as an empty one: `_paise` strips those and would read the rest as 0.
+            if not _text(row, column).replace(",", "").replace("₹", "").strip():
                 problems.append(f"{column} is required (write 0 for nothing): a blank is not entered, not nil")
                 continue
             value, err = _paise(row, column)

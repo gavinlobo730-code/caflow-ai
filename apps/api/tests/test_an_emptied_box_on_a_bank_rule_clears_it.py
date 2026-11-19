@@ -94,3 +94,31 @@ def test_the_mock_mode_branch_clears_too(monkeypatch):
     monkeypatch.setattr(banking_router, "_db", lambda: None)
     out = banking_router.update_rule("r1", MatchingRuleUpdateIn(suggested_narration=None, txn_type=None), current_user=PARTNER)
     assert out["data"] == {"id": "r1", "suggested_narration": None}
+
+
+# ── what the independent review found: a condition CHANGED, not cleared, can leave a rule with nothing to fire on ──────────
+
+def test_emptying_the_list_of_patterns_on_a_rule_whose_only_condition_it_is_is_refused(rules_db):  # noqa: F811
+    db, router = rules_db
+    _stored(db).update(description_pattern=None, description_patterns=["BANK CHARGES"], txn_type="any",
+                       amount_min_paise=None, amount_max_paise=None)
+    with pytest.raises(HTTPException) as e:
+        router.update_rule("r1", MatchingRuleUpdateIn(description_patterns=[]), current_user=PARTNER)
+    assert e.value.status_code == 422 and "at least one condition" in e.value.detail
+    assert _stored(db)["description_patterns"] == ["BANK CHARGES"]
+
+
+def test_setting_the_type_back_to_any_on_a_rule_whose_only_condition_is_debit_is_refused(rules_db):  # noqa: F811
+    db, router = rules_db
+    _stored(db).update(description_pattern=None, description_patterns=None, txn_type="debit",
+                       amount_min_paise=None, amount_max_paise=None)
+    with pytest.raises(HTTPException) as e:
+        router.update_rule("r1", MatchingRuleUpdateIn(txn_type="any"), current_user=PARTNER)
+    assert e.value.status_code == 422 and "at least one condition" in e.value.detail
+    assert _stored(db)["txn_type"] == "debit"
+
+
+def test_changing_a_condition_to_another_condition_is_still_allowed(rules_db):  # noqa: F811
+    db, router = rules_db
+    router.update_rule("r1", MatchingRuleUpdateIn(description_pattern="NEFT"), current_user=PARTNER)
+    assert _stored(db)["description_pattern"] == "NEFT"

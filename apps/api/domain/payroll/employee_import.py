@@ -205,6 +205,32 @@ def _bool(row: dict, key: str, default: bool) -> tuple[Optional[bool], Optional[
     return None, f'{key} must be yes or no, got "{_text(row, key)}"'
 
 
+#: The largest amount the `*_paise` columns hold (a signed 64-bit integer). A cell beyond it is refused with the others, never sent to fail in the
+#: middle of a write that has already stored the rows before it.
+MAX_PAISE = 9_223_372_036_854_775_807
+
+
+def code_index(employees: list[dict]) -> dict[str, Optional[str]]:
+    """A client's roster as `lower-cased employee_code -> employee id`, with None where two employees' codes differ only by capital letters.
+
+    The database's unique key on (client, employee_code) is case-sensitive, so "EMP001" and "emp001" can both exist, and a spreadsheet matches
+    codes without regard to case. A file row naming such a code cannot say which employee is meant, so the importers refuse it (None) instead of
+    writing to whichever came last (found by the independent review of POST-A-082's import)."""
+    out: dict[str, Optional[str]] = {}
+    for e in employees:
+        raw = e.get("employee_code")
+        if not raw:
+            continue
+        key = str(raw).strip().lower()
+        out[key] = None if key in out else str(e["id"])
+    return out
+
+
+def _ambiguous(code: str, n: int) -> str:
+    return (f'Row {n}: employee_code "{code}" matches more than one employee on this client (codes that differ only by capital letters), '
+            f"so the file cannot say which is meant; correct the roster first")
+
+
 def _paise(row: dict, key: str) -> tuple[Optional[int], Optional[str]]:
     """A rupee amount from a spreadsheet cell, as integer paise.
 
@@ -228,6 +254,8 @@ def _paise(row: dict, key: str) -> tuple[Optional[int], Optional[str]]:
     else:
         rupees, paise = raw, "00"
     value = int(rupees or "0") * 100 + int(paise)
+    if value > MAX_PAISE:
+        return None, f'{key} is too large to record, got "{_text(row, key)}"'
     return (-value if neg else value), None
 
 
@@ -313,6 +341,8 @@ def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
                     f"nothing here can know which is meant")
             else:
                 seen_codes[code.lower()] = n
+            if existing_by_code.get(code.lower(), "") is None:       # None: two employees on file hold this code apart from capitals
+                problems.append(_ambiguous(code, n))
 
         basic, err = _paise(row, "basic")
         if err:

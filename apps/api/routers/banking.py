@@ -2954,9 +2954,12 @@ def _refuse_a_cleared_rule_that_no_longer_holds(rule: dict, fields: dict) -> Non
 
     Taking a box away can leave a rule the create door would never have accepted: no condition at all (it would fire on every line, and a
     trusted one would post them), nothing proposed, or a GST rate with no ledger. (A TRUSTED rule keeping its ledger is asked in
-    `update_rule` itself, the one edit-side reader of the trusted flag.) Asked only when the edit clears something, so a rule stored before a check existed stays editable otherwise.
+    `update_rule` itself, the one edit-side reader of the trusted flag.) Asked when the edit clears something or changes a condition, so a rule stored before a check existed stays editable otherwise.
     """
-    if not any(v is None for k, v in fields.items() if k in MatchingRuleUpdateIn.CLEARABLE):
+    # Asked when the edit clears something OR changes a condition (an emptied list of patterns, a type set back to "any"): either can leave
+    # the rule with nothing to fire on (found by the independent review of POST-A-399's slice 4).
+    touches_a_condition = any(k in fields for k in ("description_pattern", "description_patterns", "amount_min_paise", "amount_max_paise", "txn_type"))
+    if not (touches_a_condition or any(v is None for k, v in fields.items() if k in MatchingRuleUpdateIn.CLEARABLE)):
         return
     from types import SimpleNamespace
     from models.banking import _validate_rule_shape

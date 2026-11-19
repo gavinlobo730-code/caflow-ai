@@ -156,4 +156,30 @@ def test_the_browser_s_column_list_mirrors_the_server_s():
     block = text[text.index("export const OPENING_POSITION_IMPORT_COLUMNS"):]
     block = block[:block.index("];")]
     browser = re.findall(r'\{\s*key:\s*"([^"]+)",[^}]*required:\s*(true|false)', block)
-    assert [(k, r == "true") for k, r in browser] == [(c, req) for c, _f, req in reader.COLUMNS]
+    assert [k for k, _r in browser] == [c for c, _f, _req in reader.COLUMNS]
+    # The dialog drops a row with a blank REQUIRED cell before the server sees it, which defeats "refused whole": the server is the one
+    # that refuses a blank, so no column is required in the browser's list.
+    assert all(r == "false" for _k, r in browser)
+
+
+# ── what the independent review found in this reader ─────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("cell", ["₹", ",", " , ", "₹ ,", "   "])
+def test_a_cell_holding_only_a_currency_sign_or_a_separator_is_blank_and_refused_never_read_as_nil(cell):
+    result = reader.read([_row(gross=cell)], employee_by_code={"emp001": "e-a"})
+    assert not result.ok and any("gross is required" in p for p in result.problems), result.problems
+
+
+def test_an_amount_beyond_what_the_column_holds_is_refused_in_its_row_not_left_to_fail_mid_write():
+    result = reader.read([_row(gross="9" * 25)], employee_by_code={"emp001": "e-a"})
+    assert not result.ok and any("gross is too large to record" in p for p in result.problems), result.problems
+
+
+def test_a_code_two_employees_hold_apart_from_capitals_is_refused_and_never_matched_to_one_of_them():
+    from domain.payroll.employee_import import code_index
+    index = code_index([{"id": "e-1", "employee_code": "EMP001"}, {"id": "e-2", "employee_code": "emp001 "},
+                        {"id": "e-3", "employee_code": "EMP002"}, {"id": "e-4", "employee_code": None}])
+    assert index == {"emp001": None, "emp002": "e-3"}
+    result = reader.read([_row(employee_code="Emp001")], employee_by_code=index)
+    assert not result.ok and any("matches more than one employee" in p for p in result.problems), result.problems
+    assert reader.read([_row(employee_code="EMP002")], employee_by_code=index).ok
