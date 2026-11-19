@@ -40,6 +40,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { useDateProblems, useDateRefusal } from "@/lib/dates/useDateProblems";
 import { removedDateProblem } from "@/lib/dates/removedDate";
 import { editedText } from "@/lib/forms/editedValue";
+import { PasswordField } from "@/components/auth/PasswordField";
 
 export function BankAccounts({ clientId, onChanged }: { clientId: string; onChanged?: () => void }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
@@ -1058,12 +1059,12 @@ export function BankImportModal({ clientId, accounts, onClose, onImported, onMan
                   <label htmlFor="stmt-pdf-password" className="block text-xs font-medium text-ps-label mb-1">
                     PDF password *
                   </label>
-                  <input id="stmt-pdf-password" type="password" value={pdfPassword}
+                  <PasswordField id="stmt-pdf-password" label="PDF password" value={pdfPassword}
                          autoComplete="new-password" spellCheck={false} autoFocus
-                         aria-invalid={passwordAsk === "incorrect"}
-                         onChange={(e) => setPdfPassword(e.target.value)}
-                         onKeyDown={(e) => { if (e.key === "Enter" && pdfPassword && !busy) void handleImport(); }}
-                         className={inputCls} />
+                         ariaInvalid={passwordAsk === "incorrect"}
+                         onChange={setPdfPassword}
+                         onKeyDown={(e) => (e.key === "Enter" && pdfPassword && !busy ? handleImport() : undefined)}
+                         inputClassName={inputCls} eyeSize={14} />
                   <p className="text-3xs text-ps-hint mt-1">
                     {passwordAsk === "incorrect"
                       ? "That one did not open it — check the bank's email and type it again."

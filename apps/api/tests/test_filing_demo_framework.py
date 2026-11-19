@@ -254,7 +254,7 @@ def test_every_specimen_matches_its_authoritys_format():
     assert common.specimen_tds_prn("seed-1").isdigit()
     assert len(common.specimen_tds_prn("seed-1")) == 15
     assert len(common.specimen_itr_ack("seed-1")) == 15
-    assert len(common.specimen_epfo_trrn("seed-1")) == 10
+    assert len(common.specimen_epfo_trrn("seed-1")) == 15
     assert len(common.specimen_esic_challan("seed-1")) == 19
     srn = common.specimen_mca_srn("seed-1")
     assert srn[0].isalpha() and srn[1:].isdigit() and len(srn) == 9

@@ -135,9 +135,8 @@ export default function StatutoryPage() {
     // government upload must still never receive one.
     const content = [
       `# Statutory Summary — ${MONTHS[selMonth - 1]} ${selYear}`,
-      `# PF: Employees' Provident Funds and Misc. Provisions Act 1952`,
-      `# ESIC: Employees' State Insurance Act 1948`,
-      `# Gratuity: Payment of Gratuity Act 1972 Section 4`,
+      `# PF and ESIC: Code on Social Security, 2020`,
+      `# Gratuity: Code on Social Security, 2020 section 53`,
       `# CA REVIEW REQUIRED — DO NOT AUTO-SUBMIT`,
       header,
       toCsvRows(dataRows),
@@ -151,7 +150,7 @@ export default function StatutoryPage() {
         <PageHeader
           back={{ href: "/payroll", label: "Payroll" }}
           title="Statutory Deductions"
-          subtitle="PF (EPF Act 1952) &middot; ESIC (ESI Act 1948) &middot; Gratuity (Gratuity Act 1972 Sec 4)"
+          subtitle="PF &middot; ESIC &middot; Gratuity &middot; Code on Social Security, 2020"
           className="mb-6"
         />
 
@@ -233,7 +232,7 @@ export default function StatutoryPage() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white rounded-lg p-4 border border-blue-500/20">
-                  <p className="text-xs font-semibold uppercase text-blue-600 mb-3">PF Challan (EPF Act 1952)</p>
+                  <p className="text-xs font-semibold uppercase text-blue-600 mb-3">PF Challan</p>
                   <table className="w-full text-sm"><tbody>
                     <tr><td className="py-1 text-ps-label">Employee PF</td><td className="text-right font-mono">{formatPaise(totalEmpPF)}</td></tr>
                     <tr><td className="py-1 text-ps-label">Employer EPF</td><td className="text-right font-mono">{formatPaise(t.pf_employer_epf_paise ?? 0)}</td></tr>
@@ -252,7 +251,7 @@ export default function StatutoryPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-green-100">
-                  <p className="text-xs font-semibold uppercase text-green-600 mb-3">ESIC Challan (ESI Act 1948)</p>
+                  <p className="text-xs font-semibold uppercase text-green-600 mb-3">ESIC Challan</p>
                   <table className="w-full text-sm"><tbody>
                     <tr><td className="py-1 text-ps-label">Employee ESIC (0.75%)</td><td className="text-right font-mono">{formatPaise(totalEmpESIC)}</td></tr>
                     <tr><td className="py-1 text-ps-label">Employer ESIC (3.25%)</td><td className="text-right font-mono">{formatPaise(totalEmprESIC)}</td></tr>
@@ -329,7 +328,7 @@ export default function StatutoryPage() {
                             )}
                             {r.pf_applicable && !r.eps_eligible && (
                               <span className="text-3xs px-1.5 py-0.5 rounded bg-ps-muted text-ps-label"
-                                    title="Excluded from EPS by GSR 609(E) — the whole employer 12% goes to EPF">
+                                    title="Not a member of the Employees' Pension Scheme — the whole employer 12% goes to EPF">
                                 No EPS
                               </span>
                             )}

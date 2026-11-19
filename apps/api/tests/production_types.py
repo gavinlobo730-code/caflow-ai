@@ -74,8 +74,9 @@ ADDED_AFTER_THE_SNAPSHOT: dict[tuple[str, str], str] = {
     # migration 770 was the one that forced it: the list had reached the cap its own guard sets). Thirty-nine entries for migrations
     # 568-695 were here until then. The fixture now matches production row for row (md5 4bea0b9b98513994a4b8f1f818a1545c over 5,376
     # columns in 348 tables, both sides ordered by C collation), so an entry belongs here only for a migration this branch has not
-    # merged yet: migration 770 below, and 769's `epfo_ecr_filings.return_file_id` once the provident fund pull request lands. Migrations 766,
-    # 767 and 768 add no column.
+    # merged yet: migrations 769 and 770 below (769 is the provident fund's Return File ID, merged on 19 November 2026 after the fixture was
+    # taken, so production has it and the fixture does not). Migrations 766, 767 and 768 add no column.
+    ("epfo_ecr_filings", "return_file_id"): "migration 769 (POST-A-518): the Return File ID the portal gives an EPFO return when its file passes the checks; NULL = not recorded",
     ("payroll_employees", "fixed_term_employment"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
     ("payroll_employees", "fixed_term_end_date"): "migration 770 (POST-A-526): an employee recorded as on fixed-term employment, and the contract's end date; NULL = not recorded",
 }

@@ -1114,8 +1114,8 @@ export default function AttendancePage() {
                 <p className="text-xs text-ps-label mt-1">
                   Incentive, bonus, ex-gratia, arrears. These are <strong>not</strong> prorated by
                   loss of pay — a decided amount is not a monthly rate. Each row states whether it
-                  is PF wages (EPF Act s.2(b)), ESI wages (ESI Act s.2(22)) and salary
-                  (IT Act s.17(1)); the answers differ between payments with the same name.
+                  is PF wages, ESI wages and salary (IT Act s.17(1)); the answers differ between
+                  payments with the same name.
                 </p>
               </CardHeader>
               <CardContent>

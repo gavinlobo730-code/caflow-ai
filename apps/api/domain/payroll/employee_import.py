@@ -119,7 +119,7 @@ COLUMNS: list[tuple[str, bool]] = [
     # read at six sites and written by nothing, so the exception could not be
     # recorded from anywhere in the product.
     #
-    # An employer with a member GSR 609(E) excludes therefore diverted 8.33%
+    # An employer with a member the Employees' Pension Scheme excludes therefore diverted 8.33%
     # to EPS on the ECR — a statutory return — and an employee outside the
     # gratuity coverage had their §10(10) exemption computed on clause (ii)'s
     # formula instead of clause (iii)'s, which is money paid.

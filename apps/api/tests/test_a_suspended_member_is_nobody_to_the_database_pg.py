@@ -41,6 +41,12 @@ assertion exists to catch)
     supabase_storage_admin` and every storage test fails with "permission
     denied for function my_permission".
 
+MIGRATION 767 (POST-A-494), added to this file because it is the same function: a signed-out session's RENEWED token has an
+`iat` after the revocation, and the API has refused it since POST-A-482 because the token's `amr` stamps say the session began
+before; the database's function compared `iat` alone, so the same browser read again every table a signed-in session can reach
+directly. The tests marked 767 hold the function equal to core/auth_time over a table of tokens, and the rows (not the claim)
+to be dark. NEGATIVE CONTROL: revert 767 to 468's body and the renewed-token tests and the parity table fail while the rest pass.
+
 Runs only when HARNESS_PG is set + psql on PATH; skips in the mock-mode CI job.
 """
 from __future__ import annotations
@@ -88,15 +94,21 @@ def _psql(dsn: str, sql: str, tuples: bool = False) -> subprocess.CompletedProce
     return subprocess.run(args, capture_output=True, text=True)
 
 
-def _claims(auth_user_id: str, iat=None, role: str = "authenticated") -> str:
+def _claims(auth_user_id: str, iat=None, role: str = "authenticated", amr=None) -> str:
+    """`amr` is a list of (method, timestamp) pairs, or the raw JSON text of the claim for a malformed one."""
     parts = [f'"sub": "{auth_user_id}"', f'"role": "{role}"']
     if iat is not None:
         parts.append(f'"iat": {iat}' if isinstance(iat, (int, float)) else f'"iat": "{iat}"')
+    if amr is not None:
+        if isinstance(amr, str):
+            parts.append(f'"amr": {amr}')
+        else:
+            parts.append('"amr": [' + ", ".join(f'{{"method": "{m}", "timestamp": {t}}}' for m, t in amr) + "]")
     return "{" + ", ".join(parts) + "}"
 
 
-def _as(auth_user_id: str, iat=None, pg_role: str = "authenticated") -> str:
-    return (f"SET request.jwt.claims = '{_claims(auth_user_id, iat)}'; "
+def _as(auth_user_id: str, iat=None, pg_role: str = "authenticated", amr=None) -> str:
+    return (f"SET request.jwt.claims = '{_claims(auth_user_id, iat, amr=amr)}'; "
             f"SET ROLE {pg_role}; ")
 
 
@@ -164,8 +176,8 @@ def _ok(dsn: str, sql: str) -> str:
     return r.stdout.strip()
 
 
-def _helpers(dsn: str, auth: str, iat=None) -> tuple[str, str, str]:
-    row = _ok(dsn, _as(auth, iat) +
+def _helpers(dsn: str, auth: str, iat=None, amr=None) -> tuple[str, str, str]:
+    row = _ok(dsn, _as(auth, iat, amr=amr) +
               "SELECT coalesce(public.get_my_firm_id()::text,'-'), "
               "coalesce(public.get_my_role(),'-'), "
               "coalesce(public.get_my_user_id()::text,'-');")
@@ -249,8 +261,8 @@ def test_a_stranger_is_still_nobody(db):
 
 
 # ── the rows, not the helper's answer ────────────────────────────────────────
-def _count(dsn: str, auth: str, table: str, iat=None, where: str = "TRUE") -> int:
-    return int(_ok(dsn, _as(auth, iat) +
+def _count(dsn: str, auth: str, table: str, iat=None, where: str = "TRUE", amr=None) -> int:
+    return int(_ok(dsn, _as(auth, iat, amr=amr) +
                    f"SELECT count(*) FROM public.{table} WHERE {where};"))
 
 
@@ -272,6 +284,95 @@ def test_a_signed_out_session_reads_no_rows_until_a_new_token_is_issued(db):
     _revoke(db, USER_EXEC)
     assert _count(db, AUTH_EXEC, "clients", iat=REVOKED_AT - 60) == 0
     assert _count(db, AUTH_EXEC, "clients", iat=REVOKED_AT + 60) == 1
+
+
+# ── migration 767 (POST-A-494): a renewed token of a signed-out session ──────────────────────────────────────────────
+BEFORE = REVOKED_AT - 3_600          # the session began an hour before the revocation
+AFTER = REVOKED_AT + 3_600           # a token renewed, or a sign-in made, an hour after it
+
+
+def test_767_a_renewed_token_of_a_signed_out_session_is_nobody(db):
+    """The browser renews its token hourly: `iat` is after the revocation, but the `amr` stamps are the session's, from before."""
+    _revoke(db, USER_EXEC)
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr=[("password", BEFORE)]) == NOBODY
+
+
+def test_767_the_rows_are_dark_to_the_renewed_token_not_only_the_claim(db):
+    _revoke(db, USER_EXEC)
+    assert _count(db, AUTH_EXEC, "clients", iat=AFTER, amr=[("password", BEFORE)]) == 0
+    assert _count(db, AUTH_EXEC, "clients", iat=AFTER, amr=[("password", AFTER)]) == 1
+
+
+def test_767_a_new_sign_in_after_the_revocation_is_live(db):
+    _revoke(db, USER_EXEC)
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr=[("password", AFTER), ("totp", AFTER + 30)]) == (FIRM, "Executive", USER_EXEC)
+
+
+def test_767_a_code_entered_after_the_revocation_does_not_make_the_old_session_new(db):
+    """The OLDEST stamp decides: the old session still holds a password stamp from before, and an authenticator code entered
+    against it later adds a stamp after the revocation, which must not be read as a fresh sign-in."""
+    _revoke(db, USER_EXEC)
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr=[("password", BEFORE), ("totp", AFTER)]) == NOBODY
+
+
+def test_767_a_stamp_at_the_revocation_instant_is_live_as_core_auth_time_reads_it(db):
+    _revoke(db, USER_EXEC)
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr=[("password", REVOKED_AT)]) == (FIRM, "Executive", USER_EXEC)
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr=[("password", REVOKED_AT - 1)]) == NOBODY
+
+
+def test_767_with_no_revocation_the_amr_is_never_consulted(db):
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr=[("password", 1)]) == (FIRM, "Executive", USER_EXEC)
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr='"not a list"') == (FIRM, "Executive", USER_EXEC)
+
+
+def test_767_an_inactive_member_is_dead_whatever_the_stamps_say(db):
+    _suspend(db, USER_EXEC)
+    assert _helpers(db, AUTH_EXEC, iat=AFTER, amr=[("password", AFTER)]) == NOBODY
+
+
+# Every token the API's own rule judges, judged by the database too, from one table. `live` is what
+# core.auth_time.issued_before_revocation says (not issued_before_revocation), recomputed in the test below.
+TOKENS = [
+    ("no amr, iat after", AFTER, None),
+    ("no amr, iat before", BEFORE, None),
+    ("renewed: iat after, session began before", AFTER, [("password", BEFORE)]),
+    ("new sign-in", AFTER, [("password", AFTER)]),
+    ("code after on an old session", AFTER, [("password", BEFORE), ("totp", AFTER)]),
+    ("two methods, both before", AFTER, [("password", BEFORE), ("totp", BEFORE + 60)]),
+    ("two methods, both after", AFTER, [("password", AFTER), ("totp", AFTER + 60)]),
+    ("stamp at the instant", AFTER, [("password", REVOKED_AT)]),
+    ("stamp one second before the instant", AFTER, [("password", REVOKED_AT - 1)]),
+    ("old token, iat before, stamps after", BEFORE, [("password", AFTER)]),
+    ("empty list", AFTER, []),
+    ("a list that is not one", AFTER, '"password"'),
+    ("an object, not a list", AFTER, '{"method": "password", "timestamp": 1}'),
+    ("entries that are not objects", AFTER, '["password", 7, null]'),
+    ("a timestamp that is a string", AFTER, '[{"method": "password", "timestamp": "1"}]'),
+    ("a timestamp that is a boolean", AFTER, '[{"method": "password", "timestamp": true}]'),
+    ("a malformed stamp beside a good old one", AFTER, '[{"method": "otp"}, {"method": "password", "timestamp": %d}]' % BEFORE),
+    ("a malformed stamp beside a good new one", AFTER, '[{"method": "otp"}, {"method": "password", "timestamp": %d}]' % AFTER),
+    ("a fractional stamp", AFTER, '[{"method": "password", "timestamp": %d.5}]' % BEFORE),
+]
+
+
+def _payload(iat, amr) -> dict:
+    import json
+    out: dict = {"iat": iat}
+    if amr is not None:
+        out["amr"] = json.loads(amr) if isinstance(amr, str) else [{"method": m, "timestamp": t} for m, t in amr]
+    return out
+
+
+@pytest.mark.parametrize("why,iat,amr", TOKENS, ids=[t[0] for t in TOKENS])
+def test_767_the_database_judges_every_token_as_core_auth_time_does(db, why, iat, amr):
+    from core import auth_time
+    _revoke(db, USER_EXEC)
+    refused_by_the_api = auth_time.issued_before_revocation(_payload(iat, amr), float(REVOKED_AT))
+    live_to_the_database = _helpers(db, AUTH_EXEC, iat=iat, amr=amr) != NOBODY
+    assert live_to_the_database is (not refused_by_the_api), (
+        f"{why}: the API {'refuses' if refused_by_the_api else 'admits'} the token, "
+        f"the database {'admits' if live_to_the_database else 'refuses'} it")
 
 
 def test_a_suspended_member_cannot_write_either(db):

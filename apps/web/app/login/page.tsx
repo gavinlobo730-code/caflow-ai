@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth/authErrorMessage";
 import AuthenticatorResetRequest from "@/components/auth/AuthenticatorResetRequest";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { Shield, Zap, TrendingUp, ArrowRight } from "lucide-react";
 import { LogoIcon } from "@/components/LogoIcon";
 import { FrontDoorWordmark } from "@/components/FrontDoor";
@@ -265,11 +266,11 @@ export default function LoginPage() {
                     Forgot password?
                   </Link>
                 </div>
-                <input
-                  id="login-password" name="password" autoComplete="current-password"
-                  type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+                <PasswordField
+                  id="login-password" name="password" label="password" autoComplete="current-password"
+                  required value={password} onChange={setPassword}
                   placeholder="••••••••"
-                  className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+                  inputClassName="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
 

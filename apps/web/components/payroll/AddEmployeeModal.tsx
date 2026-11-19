@@ -391,12 +391,15 @@ export function AddEmployeeModal({
               checked={form.eps_eligible}
               onChange={e => setForm(f => ({ ...f, eps_eligible: e.target.checked }))} />
             <label htmlFor="eps" className="text-sm text-ps-body">
-              EPS 1995 member
+              Member of the Employees&apos; Pension Scheme, 2026
               <span className="block text-2xs text-ps-hint">
-                Untick only where para 6 of the scheme (GSR 609(E), from
-                01-09-2014) excludes them — first joined EPF on or after that
-                date with pay above the wage ceiling. When ticked, 8.33% of the
-                employer&apos;s contribution is diverted to EPS on the ECR.
+                Untick only where the scheme does not reach them: wages above
+                the wage ceiling on the day they joined the provident fund
+                (from 01-09-2014), and still above it on 17-09-2026. A member
+                whose wages on 17-09-2026 were at or below the ceiling is
+                brought in by G.S.R. 847(E): tick them. When ticked, 8.33% of
+                the wages up to the wage ceiling is diverted from the
+                employer&apos;s contribution to the pension fund on the ECR.
               </span>
             </label>
           </div>
@@ -405,8 +408,8 @@ export function AddEmployeeModal({
               is the SERVER'S own wording (domain/payroll/pf_wage_election
               SCREEN_NOTICE), pinned here character for character by
               tests/test_pf_on_actual_wages_is_an_election_the_employer_records.py:
-              the screen says the legal reading is unverified and that the
-              employer, not this product, has to establish the joint request. */}
+              the screen says the employer, not this product, has to establish
+              the joint option. */}
           {form.pf_applicable && (
             <div className="col-span-2 rounded-lg border p-3">
               <div className="flex items-start gap-2">
@@ -417,13 +420,13 @@ export function AddEmployeeModal({
                   Contribute PF on actual wages above the ceiling (employer election)
                   <span className="block text-2xs text-ps-hint">
                     This records a statement by the employer that the employee and the
-                    employer have jointly asked to contribute on wages above the statutory
-                    ceiling (EPF Scheme 1952, para 26(6)). This product does not check that
-                    the request exists, whether it is required here, or whether EPFO will
-                    accept it: that is for the employer to establish. The reading of the
-                    paragraph is unverified. Pension (EPS) wages, EDLI wages and the EDLI
-                    limit stay at the ceiling, and the higher-pension option under the
-                    Pension Scheme is not modelled.
+                    employer have jointly opted in writing to contribute on wages above the
+                    wage ceiling (paragraph 9(4) of the Employees&apos; Provident Funds Scheme,
+                    2026). This product does not check that the option exists, whether it is
+                    required here, or whether EPFO will accept it: that is for the employer
+                    to establish. Pension (EPS) wages, EDLI wages and the EDLI limit stay at
+                    the ceiling, and the higher-pension option under the Pension Scheme is
+                    not modelled.
                   </span>
                 </label>
               </div>
