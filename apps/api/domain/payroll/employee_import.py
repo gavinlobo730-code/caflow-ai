@@ -307,6 +307,23 @@ def _date(row: dict, key: str) -> tuple[Optional[str], Optional[str]]:
     return None, f'{key} must be a date as YYYY-MM-DD or DD/MM/YYYY, got "{raw}"'
 
 
+def _code_problems(code: str, n: int, seen_codes: dict, existing_by_code: dict) -> list[str]:
+    """What is wrong with the employee code on row `n`: the same code on an earlier row, or a code two employees on file hold apart from
+    capital letters (None in `existing_by_code`, see `code_index`). Records the code as seen."""
+    if not code:
+        return []
+    key = code.lower()
+    out: list[str] = []
+    if key in seen_codes:
+        out.append(f"Row {n}: employee_code \"{code}\" is also on row {seen_codes[key]} — two rows for one person, and "
+                   f"nothing here can know which is meant")
+    else:
+        seen_codes[key] = n
+    if existing_by_code.get(key, "") is None:
+        out.append(_ambiguous(code, n))
+    return out
+
+
 def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
     """Read the whole file and decide once.
 
@@ -333,16 +350,7 @@ def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
             problems.append(f"Row {n}: name is required")
 
         code = _text(row, "employee_code")
-        if code:
-            if code.lower() in seen_codes:
-                problems.append(
-                    f"Row {n}: employee_code \"{code}\" is also on row "
-                    f"{seen_codes[code.lower()]} — two rows for one person, and "
-                    f"nothing here can know which is meant")
-            else:
-                seen_codes[code.lower()] = n
-            if existing_by_code.get(code.lower(), "") is None:       # None: two employees on file hold this code apart from capitals
-                problems.append(_ambiguous(code, n))
+        problems.extend(_code_problems(code, n, seen_codes, existing_by_code))
 
         basic, err = _paise(row, "basic")
         if err:
