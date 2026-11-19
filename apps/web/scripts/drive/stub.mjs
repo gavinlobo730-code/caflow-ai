@@ -82,6 +82,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
   let routes = [];
   /** table -> ms a PostgREST READ of it is held before it is answered (a slow server, for the cache's first-paint check). Cleared by `reset()`. */
   let readDelays = {};
+  let authUserDelayMs = 0;
   /** Every write, in arrival order. */
   let writes = [];
   /** How long a write is held before it is answered. Long enough that a second click lands first. */
@@ -125,7 +126,12 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     const siteHeaders = headersFor(headerRules, pathname);
 
     if (pathname.startsWith("/__supabase/auth/v1/")) {
-      if (pathname.endsWith("/user")) return sendJson(res, authUser ?? FAKE_USER);
+      // The sign-in service answers the account lookup after `authUserDelayMs`: what the assurance check waits for in production.
+      if (pathname.endsWith("/user")) {
+        return authUserDelayMs
+          ? void setTimeout(() => { if (!res.destroyed) sendJson(res, authUser ?? FAKE_USER); }, authUserDelayMs)
+          : sendJson(res, authUser ?? FAKE_USER);
+      }
       if (pathname.endsWith("/logout")) return sendJson(res, {});
       return sendJson(res, { ...FAKE_SESSION, user: authUser ?? FAKE_SESSION.user });
     }
@@ -217,6 +223,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
       tables = Object.fromEntries(Object.entries(baseline).map(([k, v]) => [k, structuredClone(v)]));
       routes = [];
       readDelays = {};
+      authUserDelayMs = 0;
       insertAnswers = {};
       writes = [];
       writeDelayMs = 700;
@@ -232,6 +239,7 @@ export function createStub({ root, port, headerRules, resolveBuilt }) {
     answerInserts(name, makeRow) { insertAnswers[name] = makeRow; },
     /** Sign in as this auth user from now on (call BEFORE the first navigation of a scenario). */
     setAuthUser(user) { authUser = user; },
+    setAuthUserDelay(ms) { authUserDelayMs = ms; },
     /** Register an API route ahead of the defaults. */
     route(spec) { routes.unshift({ method: undefined, delay: undefined, status: undefined, ...spec }); },
     setWriteDelay(ms) { writeDelayMs = ms; },
