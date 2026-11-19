@@ -262,7 +262,7 @@ export function ProductServiceManagerPanel({
     // Fire-and-forget usage bump, same as ServiceCataloguePicker's direct
     // search-result pick — keeps recent/frequent ranking accurate regardless
     // of whether the CA picked via the fast dropdown or this panel.
-    api.serviceCatalogue.recordUsed(item.id).catch(() => {});
+    api.serviceCatalogue.recordUsed(item.id).catch(() => { /* a usage count nobody waits for; the pick itself has already been made */ });
     // A product created from an invoice or bill line is handed to that line and the panel closes, which would take the panel's own toast
     // with it: when the server has a sentence about the opening stock that was not recorded, the panel stays open so it can be read.
     if (!opts?.stayOpen) onClose();

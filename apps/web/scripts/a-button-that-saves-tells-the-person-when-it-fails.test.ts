@@ -19,10 +19,10 @@
 // THE LIST (scripts/silent-handlers-baseline.json) holds the places the scan flags that were READ and are quiet on purpose, each with its
 //     reason. It only shrinks: a place that is fixed or gone must be deleted from it, and a place that is added is refused.
 //
-// WHAT THE RULE DOES NOT SEE, said here so it is not mistaken for more: a failed READ that leaves a screen blank (95 catches around a
-//     server call that do not tell, most of them prefills, were counted and not read one by one), a callback a component is handed and calls
-//     (read where the component stands), a handler reached through something other than a name in the same file, and what a function
-//     called `say` or `write` does when it is declared somewhere else.
+// WHAT THE RULE DOES NOT SEE, said here so it is not mistaken for more: a failed READ that leaves a screen blank (read on 20-11-2026 and held
+//     by scripts/a-quiet-catch-around-a-server-call-says-why.test.ts, which is the rule over every catch around a server call), a callback
+//     a component is handed and calls (read where the component stands), a handler reached through something other than a name in the same
+//     file, and what a function called `say` or `write` does when it is declared somewhere else.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

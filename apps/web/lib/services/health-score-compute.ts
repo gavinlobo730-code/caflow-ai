@@ -91,6 +91,7 @@ export async function getLatestHealthScore(clientId: string): Promise<ClientHeal
     const res = (await api.health.client(clientId)) as ApiResp<RawClientHealth | null>;
     return res.data ? toClientHealth(res.data) : null;
   } catch {
+    // null is "no score read", which every caller draws as "not yet scored" and never as healthy.
     return null;
   }
 }
@@ -104,6 +105,7 @@ export async function getOrCalculateClientHealth(clientId: string): Promise<Clie
     const res = (await api.health.calculate(clientId)) as ApiResp<RawClientHealth>;
     return toClientHealth(res.data);
   } catch {
+    // null is "no score read", which every caller draws as "not yet scored" and never as healthy.
     return null;
   }
 }

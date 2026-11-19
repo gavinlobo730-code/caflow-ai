@@ -748,7 +748,7 @@ export default function OnboardingPage() {
       if (!updateRes.success) throw new Error(updateRes.error ?? "Failed to save the firm profile.");
       // Idempotent CoA seed — covers the edge case where firm exists but CoA was
       // never seeded (e.g. partial onboarding). Non-blocking; failure is not fatal.
-      api.account.seedCoa().catch(() => {});
+      api.account.seedCoa().catch(() => { /* idempotent top-up for a firm whose chart was never seeded; non-blocking by design, as the note above says */ });
       // Provision the internal practice client now that a PAN may be set (non-fatal).
       if (firmForm.pan.trim()) {
         try {

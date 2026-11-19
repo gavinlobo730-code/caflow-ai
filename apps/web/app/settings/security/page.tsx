@@ -427,7 +427,7 @@ function MfaCard() {
     try {
       // Remove any leftover unverified factors so enroll() doesn't conflict.
       for (const f of factors.filter((f) => f.status === "unverified")) {
-        await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
+        await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => { /* a leftover that stays is what the enrol call below would refuse, and it says why */ });
       }
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
