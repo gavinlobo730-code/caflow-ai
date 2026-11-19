@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { ArrowRight } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
+import { PasswordField } from "@/components/auth/PasswordField";
 
 export default function PortalLoginPage() {
   const router = useRouter();
@@ -71,11 +72,11 @@ export default function PortalLoginPage() {
               Forgot password?
             </Link>
           </div>
-          <input
-            id="portal-login-password" name="password" autoComplete="current-password"
-            type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
+          <PasswordField
+            id="portal-login-password" name="password" label="password" autoComplete="current-password"
+            required value={password} onChange={setPassword}
             placeholder="••••••••"
-            className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
+            inputClassName="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
           />
         </div>
 

@@ -108,6 +108,12 @@ function openingTags(src: string, tag: string): string[] {
   return out;
 }
 
+/** Every text box a screen draws: its own `<input>`s and the shared `<PasswordField>`, which renders one `<input>` carrying exactly the
+ *  `id`, `name` and `autoComplete` it is given (scripts/every-password-box-can-show-what-was-typed holds that). */
+function boxTags(src: string): string[] {
+  return [...openingTags(src, "input"), ...openingTags(src, "PasswordField")];
+}
+
 const hasAttr = (tag: string, name: string) =>
   new RegExp(`(?:^|\\s)${name}\\s*=`).test(tag);
 /** The attribute's literal value, `{expr}` text, or null when absent. */
@@ -119,7 +125,7 @@ function attr(tag: string, name: string): string | null {
 
 export function problemsWith(src: string): string[] {
   const problems: string[] = [];
-  const inputs = openingTags(src, "input").filter(
+  const inputs = boxTags(src).filter(
     (t) => !/type\s*=\s*"(?:hidden|checkbox|radio|file|submit|button)"/.test(t));
   const labels = openingTags(src, "label");
 
@@ -128,7 +134,7 @@ export function problemsWith(src: string): string[] {
   }
   // A label may name ANY input, a checkbox included (the sign-in page's "Keep me signed in"); only the boxes that take
   // typed text owe an autocomplete token and a name, which is what `inputs` above is.
-  const ids = new Set(openingTags(src, "input").map((t) => attr(t, "id")).filter((v): v is string => v !== null));
+  const ids = new Set(boxTags(src).map((t) => attr(t, "id")).filter((v): v is string => v !== null));
   for (const l of labels) {
     const target = attr(l, "htmlFor");
     if (target !== null && !ids.has(target)) {
@@ -202,7 +208,7 @@ test("the checker passes a correctly named field, and a computed pair", () => {
 for (const rel of FRONT_DOOR) {
   test(`${rel}: every label is tied to a box and every box is named`, () => {
     const src = read(rel);
-    assert.ok(openingTags(src, "input").length >= FRONT_DOOR_MIN_INPUTS[rel],
+    assert.ok(boxTags(src).length >= FRONT_DOOR_MIN_INPUTS[rel],
       `${rel}: fewer than ${FRONT_DOOR_MIN_INPUTS[rel]} inputs read — the scan is broken`);
     assert.deepEqual(problemsWith(src), [],
       `${rel} has fields a screen reader, a password manager or a phone's code autofill cannot identify`);
@@ -212,7 +218,7 @@ for (const rel of FRONT_DOOR) {
 test("sign-in: email is the account name, password is current-password, the code is one-time-code", () => {
   const src = read("app/login/page.tsx");
   const byId = (id: string) =>
-    openingTags(src, "input").find((t) => attr(t, "id") === id) ?? "";
+    boxTags(src).find((t) => attr(t, "id") === id) ?? "";
   assert.match(attr(byId("login-email"), "autoComplete") ?? "", /^(username|email)$/);
   assert.equal(attr(byId("login-password"), "autoComplete"), "current-password");
   const code = byId("login-mfa-code");
