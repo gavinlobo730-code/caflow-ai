@@ -144,6 +144,15 @@ async function scanWithAxe() {
           fs.writeFileSync(path.join(out, "axe", `${slugOf(page)}-${viewport.name}.json`), JSON.stringify(result, null, 2));
           axe.push({ page, viewport: viewport.name, ...axeCountsOf(result) });
           console.log(`axe ${page} (${viewport.name}): ${result.violations.length} rules broken`);
+          // One line per element, in the job's own log, so a finding can be read and fixed without downloading the kept reports (the
+          // runner's artifact host is not reachable from every place the work is done). A contrast finding carries both colours and the ratio.
+          for (const v of result.violations) {
+            for (const n of v.nodes) {
+              const c = (n.any ?? []).map((a) => a.data).find((d) => d && d.contrastRatio !== undefined);
+              const detail = c ? ` [${c.fgColor} on ${c.bgColor}, ${c.contrastRatio}:1, ${c.fontSize}]` : "";
+              console.log(`  ${v.id} ${n.target.join(" ")}${detail}`);
+            }
+          }
         } catch (e) {
           failures.push(`axe on ${page} (${viewport.name}) failed: ${e instanceof Error ? e.message : e}`);
         } finally {
