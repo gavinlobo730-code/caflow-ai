@@ -622,3 +622,33 @@ That rewrites the file from observation (known deviations replaced by their
 intended value) and skips. Then read `git diff` cell by cell: the file only means
 something if each changed cell was judged, not copied. `test_the_expectation_
 obeys_the_five_rules` refuses a file that waives one of the module's five rules.
+
+## Refreshed 19 November 2026 (22:15 IST), after migration 766
+
+`ADDED_AFTER_THE_SNAPSHOT` in `tests/production_types.py` had reached 39 entries for migrations 568-695 and its guard allows 40; migration 769 (the
+provident fund pull request) took it to the cap and migration 770 (gratuity under the Code, which adds two columns) was one past it. That is the
+signal the guard exists to give, so the schema fixture was refreshed to production's mark of 766 rather than the cap raised. All 39 entries went;
+only 770's two remain, and 769's will join them when its pull request lands.
+
+It is a real re-capture in effect, made through the Supabase console because this container has no libpq route to production, and the delta
+route was proved against the whole schema rather than trusted:
+
+    -- per table, in production, both sides ordered by C collation
+    SELECT table_name, md5(string_agg(column_name||'|'||data_type||'|'||is_nullable||'|'||COALESCE(column_default,''),
+                                       E'\n' ORDER BY column_name COLLATE "C")) FROM information_schema.columns
+     WHERE table_schema = 'public' GROUP BY table_name;
+
+The 348 per-table hashes were aligned against the same hash of every table in the old file (a sequence match, so a table added or dropped in
+the middle shifts nothing), which named the tables that moved: 13 created (compliance_effort_estimates, the two e-commerce operator
+amendment tables, the three fixed-asset verification and movement tables, the two GSTR-2B bulk-drop tables, journal_narration_templates,
+login_sessions, nightly_exception_results, payroll_opening_positions and stock_effect_settlements), 2 dropped (compliance_entries and
+compliance_tasks), and 23 altered. For the altered ones the same alignment ran per column, and only the 57 columns that differed were fetched
+(new columns, and nine whose type, nullability or default moved: `brought_forward_losses.original_amount_paise` and `remaining_amount_paise`,
+`eway_bill_records.taxable_value_paise` and three text columns, `itr_filing_versions.json_payload`, `tax_deduction_claims.claimed_amount_paise`
+and `tax_disallowances.amount_paise`). The new tables were fetched whole.
+
+The proof: the whole-schema hash of the rebuilt file, `4bea0b9b98513994a4b8f1f818a1545c`, equals production's over 5,376 columns in 348 tables
+(old file: 5,197 in 337), with both sides ordered by C collation, and every one of the 348 per-table hashes matched production's before it was
+written. The meta file records the mark (766, read from production's `schema_migrations`), the capture time and that hash.
+
+The guards fixture (`production_guards_2026-09-03.json`, mark 381) is a separate capture on its own cycle and was not touched.

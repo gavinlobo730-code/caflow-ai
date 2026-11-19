@@ -73,6 +73,10 @@ export type DrawerEmployee = {
   bank_ifsc?: string | null;
   hra_percent?: number | null;
   da_percent?: number | null;
+  // Fixed-term employment (POST-A-526, migration 770): returned by the API with the rest of the row and read here only to decide whether
+  // the settlement asks if the term has expired.
+  fixed_term_employment?: boolean | null;
+  fixed_term_end_date?: string | null;
 };
 
 type Section = "profile" | "settlement" | "revisions" | "loans" | "perquisites" | "relief";
@@ -443,6 +447,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   const [leavingDate, setLeavingDate] = useState("");
   const [onRetirement, setOnRetirement] = useState(false);
   const [onDeath, setOnDeath] = useState(false);
+  const [fixedTermExpired, setFixedTermExpired] = useState(false);
   const [isGovernment, setIsGovernment] = useState(false);
   const [salaryToLastDay, setSalaryToLastDay] = useState("");
   const [leaveDays, setLeaveDays] = useState("");
@@ -466,7 +471,7 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
   // blank in both, so a preview or a record over one is refused in the date's own sentence (frontend_ux-19).
   const dates = useDateProblems();
   const { dirty, markSaved } = useDirtyFields({
-    leavingDate, onRetirement, onDeath, isGovernment, salaryToLastDay, leaveDays, leaveAmount,
+    leavingDate, onRetirement, onDeath, fixedTermExpired, isGovernment, salaryToLastDay, leaveDays, leaveAmount,
     noticePay, loansOutstanding, otherRecoveries, averageTenMonths, gratuityUsed, leaveUsed,
     newStatus, paymentDate,
   });
@@ -478,6 +483,8 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
       leaving_date: leavingDate,
       on_retirement: onRetirement,
       on_death_or_disablement: onDeath,
+      // Named only for an employee recorded as on fixed-term employment: for anybody else the answer means nothing (POST-A-526).
+      ...(employee.fixed_term_employment === true ? { fixed_term_contract_expired: fixedTermExpired } : {}),
       is_government_employee: isGovernment,
       salary_to_last_day_paise: paiseFromRupeeInput(salaryToLastDay) ?? 0,
       leave_days_encashed: Number(leaveDays || 0),
@@ -567,6 +574,21 @@ function SettlementSection({ employee, clientId, canFinalize, onRecorded, onDirt
             onChange={(e) => setOnDeath(e.target.checked)} />
           On death or disablement
         </label>
+        {employee.fixed_term_employment === true && (
+          <label className="text-2xs text-ps-label flex items-start gap-1.5">
+            <input type="checkbox" className="mt-0.5" checked={fixedTermExpired}
+              onChange={(e) => setFixedTermExpired(e.target.checked)} />
+            <span>
+              The fixed term has expired
+              <span className="block text-3xs text-ps-hint">
+                Section 53(1) waives the five years of service only where the employment ends by the expiry of the fixed
+                term, so gratuity on one year of service needs this (a recorded contract end date that has been reached
+                counts without it). An employee who leaves before the term ends is not shown as eligible on one year:
+                the text read does not settle it.
+              </span>
+            </span>
+          </label>
+        )}
         <label className="text-2xs text-ps-label flex items-center gap-1.5">
           <input type="checkbox" checked={isGovernment}
             onChange={(e) => setIsGovernment(e.target.checked)} />

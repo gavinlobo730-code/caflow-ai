@@ -72,6 +72,9 @@ export type Employee = {
   // shipped will not carry them and `?? true` is the column's own default.
   eps_eligible?: boolean;
   gratuity_act_covered?: boolean;
+  // Fixed-term employment (POST-A-526, migration 770): gratuity on one year under the contract, not five. null / absent = never recorded.
+  fixed_term_employment?: boolean | null;
+  fixed_term_end_date?: string | null;
   // The employer's recorded ELECTION to contribute PF on actual wages above the
   // ceiling (payroll-22, migration 477; paragraph 9(4) of the Employees' Provident
   // Funds Scheme, 2026). null / absent = never recorded, which is the ceiling; true =

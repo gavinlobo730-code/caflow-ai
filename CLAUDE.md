@@ -305,7 +305,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE UPLOAD SCREENS WERE DRIVEN IN A BROWSER ONCE, AND AN EXCEL DATE CELL IS A SERIAL NUMBER
 - A TRIAL-BALANCE IMPORT MATCHES ONLY ITS OWN CLIENT'S ACCOUNTS AND CHECKS ITS NEW NAMES AND CODES AGAINST THE WHOLE FIRM'S CHART, BECAUSE
 
-### `docs/design-record/payroll.md` (13 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
+### `docs/design-record/payroll.md` (14 entries): Payroll: accrual, PF on actual wages, gratuity, bonus, monthly review, declarations
 
 - THE PAYROLL ACCRUAL HAS TWO DEBITS, AND THE EMPLOYER SHARE COMES OFF THE SLIPS
 - THE STATUTORY BONUS IS AN ANNUAL DEBT AND THE PRODUCT COMPUTED IT ONLY FOR LEAVERS
@@ -320,6 +320,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TAX DECLARATION IS FILED IN ONE DATABASE TRANSACTION, BY THE SERVER ALONE, AND THE LOCK THAT PROTECTS IT IS THE ROW'S
 - THE PF WAGE CEILING IS THE NOTIFIED ONE FOR THE WAGE MONTH, AND THE MONTH THE CHANGE FALLS IN IS NAMED
 - THE ECR'S COLUMNS ARE EPFO'S OWN, A RETURN AND ITS CHALLAN HAVE TWO REFERENCES
+- A FIXED-TERM EMPLOYEE'S FIVE YEARS ARE WAIVED ON THE EXPIRY OF THE TERM, GRATUITY IS NAMED UNDER THE CODE, AND WHAT THE CODE LEAVES TO A NOTIFICATION IS SAID
 
 ### `docs/design-record/reporting.md` (12 entries): Reporting: Schedule III captions, report performance, paging, exports
 
