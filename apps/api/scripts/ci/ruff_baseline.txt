@@ -85,8 +85,7 @@ domain/payroll/annexure2.py :: F841 :: build_annexure_ii :: 1
 domain/payroll/attendance.py :: B904 :: _whole_number :: 1
 domain/payroll/declarations.py :: C901 :: validate :: 16
 domain/payroll/ecr.py :: F401 :: <module> :: 1
-domain/payroll/employee_import.py :: C901 :: validate :: 26
-domain/payroll/employee_import.py :: PLR0915 :: validate :: 77
+domain/payroll/employee_import.py :: C901 :: validate :: 23
 domain/payroll/exceptions.py :: F401 :: <module> :: 1
 domain/payroll/firm_rates.py :: B905 :: bands_cover_every_wage :: 1
 domain/payroll/handoff.py :: F541 :: epf_obligation :: 1
@@ -114,7 +113,7 @@ domain/tds/section_195.py :: F401 :: <module> :: 1
 domain/tds/vocabulary.py :: B904 :: act_for_fy :: 1
 domain/tds/vocabulary.py :: B904 :: certificate_form :: 1
 domain/tds/vocabulary.py :: B904 :: statement_form :: 1
-domain/workflow_engine_v2.py :: F401 :: <module> :: 2
+domain/workflow_engine_v2.py :: F401 :: <module> :: 1
 domain/workflow_engine_v2.py :: F401 :: WorkflowEngineV2._eval_rule :: 1
 jobs/scheduler.py :: C901 :: run_daily_jobs :: 30
 jobs/scheduler.py :: F401 :: <module> :: 1

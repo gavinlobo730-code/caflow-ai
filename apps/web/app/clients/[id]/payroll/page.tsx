@@ -16,7 +16,7 @@ import { useClientNav } from "@/lib/workspace/ClientNavContext";
 import { openedAt } from "@/lib/accounting/sourceDocument";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow } from "@/components/CsvImportModal";
-import { EMPLOYEE_IMPORT_COLUMNS } from "@/lib/imports/mappers";
+import { EMPLOYEE_IMPORT_COLUMNS, EMPLOYEE_REIMPORT_NOTE } from "@/lib/imports/mappers";
 import { downloadCsv } from "@/components/ui/data-table";
 import { toCsv } from "@/lib/table/process";
 import { api } from "@/lib/api";
@@ -453,7 +453,7 @@ function EmployeesTab({ clientId }: { clientId: string }) {
         // re-import of twenty people read as importing zero.
         skipped: data?.updated ?? 0,
         skippedDetail: (data?.updated ?? 0) > 0
-          ? [`${data?.updated} existing employee(s) updated from their employee code`]
+          ? [`${data?.updated} existing employee(s) updated from their employee code`, EMPLOYEE_REIMPORT_NOTE]
           : undefined,
       };
     } catch (err) {

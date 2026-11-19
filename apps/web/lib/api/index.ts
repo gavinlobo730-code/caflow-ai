@@ -6194,6 +6194,13 @@ export const api = {
     saveOpeningPositions: (body: { client_id: string; rows: OpeningPositionInput[] }) =>
       request<ApiResp<{ saved: number; does_not_carry: string }>>(
         "/api/payroll/opening-positions", { method: "PUT", body: JSON.stringify(body) }),
+    /** A spreadsheet of opening positions, its cells as text, read and refused whole by the server (POST-A-082, part 2). */
+    importOpeningPositions: (clientId: string, rows: Record<string, string>[], dryRun = false) =>
+      request<ApiResp<{ ok: boolean; problems: string[]; recorded?: number; would_record?: number; does_not_carry?: string }>>(
+        "/api/payroll/opening-positions/import", {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId, rows, dry_run: dryRun }),
+        }),
     deleteOpeningPosition: (clientId: string, employeeId: string, financialYear: string) =>
       request<ApiResp<{ deleted: number }>>(
         `/api/payroll/opening-positions/${encodeURIComponent(employeeId)}?${new URLSearchParams({ client_id: clientId, financial_year: financialYear })}`,

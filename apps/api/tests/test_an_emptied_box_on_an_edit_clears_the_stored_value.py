@@ -35,7 +35,7 @@ import routers.purchase_bills as pb
 import routers.purchase_credit_notes as pcn
 import routers.sales_debit_notes as sdn
 import routers.sales_invoices as si
-from models.banking import BankAccountUpdateIn
+from models.banking import BankAccountUpdateIn, MatchingRuleUpdateIn
 from models.payroll import EMPLOYEE_IDENTIFIERS, EmployeeUpdateIn
 from models.clearable import clearable_fields, patch_dict
 from models.parties import CUSTOMER_IDENTIFIERS, PARTY_IDENTIFIERS, CustomerUpdateIn, VendorUpdateIn
@@ -398,6 +398,13 @@ MASTER_MODELS = [
     (BankAccountUpdateIn, "bank_accounts"),
     (EmployeeUpdateIn, "payroll_employees"),   # POST-A-399, third slice
 ]
+
+#: A firm's own SETTING (POST-A-399, the bank matching rule): every name it may clear is a condition or a proposal whose NULL is its own answer
+#: ("no bound", "no ledger proposed", "no GST split"); the router judges the merged rule by the create door's shape after any clear, held by
+#: tests/test_an_emptied_box_on_a_bank_rule_clears_it.py.
+SETTING_MODELS = [
+    (MatchingRuleUpdateIn, "bank_matching_rules"),
+]
 MASTER_FIGURES_WHOSE_NULL_IS_AN_ANSWER = {
     "credit_limit_paise",  # "no limit recorded", against 0 which is cash only (migrations 378 and 414)
     "credit_days",         # on a vendor: "no payment terms confirmed", against 0 which is due on receipt (migration 202); NOT NULL on a customer
@@ -420,7 +427,7 @@ def _columns(table):
     return cols
 
 
-@pytest.mark.parametrize("model,table", CLEARABLE_MODELS + MASTER_MODELS, ids=[t for _, t in CLEARABLE_MODELS + MASTER_MODELS])
+@pytest.mark.parametrize("model,table", CLEARABLE_MODELS + MASTER_MODELS + SETTING_MODELS, ids=[t for _, t in CLEARABLE_MODELS + MASTER_MODELS + SETTING_MODELS])
 def test_every_clearable_name_is_an_optional_field_of_its_model_and_a_nullable_column(model, table):
     clearable = getattr(model, "CLEARABLE", frozenset())
     assert clearable, f"{model.__name__} names nothing it may clear"
@@ -447,7 +454,7 @@ def test_no_clearable_set_is_named_that_this_file_does_not_know_the_table_of():
                     target = stmt.target if isinstance(stmt, ast.AnnAssign) else (stmt.targets[0] if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 else None)
                     if isinstance(target, ast.Name) and target.id == "CLEARABLE":
                         named.add(node.name)
-    known = {m.__name__ for m, _ in CLEARABLE_MODELS + MASTER_MODELS}
+    known = {m.__name__ for m, _ in CLEARABLE_MODELS + MASTER_MODELS + SETTING_MODELS}
     assert named, "the scan found no CLEARABLE set at all"
     assert named == known, f"models with a CLEARABLE set this file does not know the table of: {sorted(named - known)}; known models that no longer have one: {sorted(known - named)}"
 

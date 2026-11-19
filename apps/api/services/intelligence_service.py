@@ -22,6 +22,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 from core.ist_clock import ist_now, ist_today
+from core.observability import capture_soft_failure
 from domain.accounting import recurring_suggestions
 from domain.money_sentence import rupee_whole_text
 from domain.practice.compliance_overdue import is_overdue, is_settled
@@ -96,8 +97,9 @@ def compute_compliance_risk(
                     filed = date.fromisoformat(str(r["filed_date"])[:10])
                     if filed > due:
                         late_history += 1
-                except ValueError:
-                    pass
+                except ValueError as unreadable:
+                    # A filed date that does not read is not counted as late (absent evidence is not evidence), and is reported (POST-A-021).
+                    capture_soft_failure(unreadable, operation="intelligence.filed_date_unreadable", record_id=r.get("id"))
 
         score = min(50, len(overdue) * 25) + min(30, len(due_soon) * 10)
         if late_history > 0:

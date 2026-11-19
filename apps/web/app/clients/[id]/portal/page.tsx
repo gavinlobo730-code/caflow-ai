@@ -12,6 +12,7 @@ import { Callout } from "@/components/ui/callout";
 import { portalStatusBadge } from "@/lib/portal/badge";
 import { portalInviteEmailFailureMessage } from "@/lib/portal/inviteError";
 import { formatDate } from "@/lib/dates/format";
+import { usePermissions } from "@/lib/auth/AuthContext";
 
 export default function PortalPage() {
   // A timeline event records WHEN SOMETHING HAPPENED, so its financial year is
@@ -21,6 +22,10 @@ export default function PortalPage() {
   // year's feed. Nothing on this page is filtered by year, so there is no
   // picker to move here — only a wrong value to stop reading.
   const { clientId } = useClientNav();
+  // The invite is offered only to someone its route admits (POST-A-447): a Reviewer reads the portal and may not invite
+  // to it. Offered while permissions load, because the server is the one that refuses.
+  const { can, resolved: permissionsResolved } = usePermissions();
+  const mayInvite = !permissionsResolved || can("portal", "write");
   const [client, setClient] = useState<Client | null>(null);
   const [contacts, setContacts] = useState<PortalContact[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -196,6 +201,7 @@ export default function PortalPage() {
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass}`}>
               {badge.label}
             </span>
+            {mayInvite && (
             <button
               onClick={handleOpenInvite}
               disabled={loading}
@@ -203,6 +209,7 @@ export default function PortalPage() {
             >
               {enabled ? "Invite Another Contact" : "Invite to Portal"}
             </button>
+            )}
           </div>
         </div>
 

@@ -90,7 +90,9 @@ export const CLIENT_SECTIONS: ClientSectionConfig[] = [
   // inventory stock summary and items → rbac("accounting", "read").
   { id: "inventory",    label: "Inventory",     href: (id) => `/clients/${id}/inventory/`, requires: ["accounting", "read"] },
   { id: "compliance",   label: "Compliance",    href: (id) => `/clients/${id}/compliance/` },
-  { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/` },
+  // payroll.py list_runs, the dashboard's first read → rbac("payroll", "read"); an Executive or a Reviewer was offered
+  // the section and shown only the refusal (POST-A-447).
+  { id: "payroll",      label: "Payroll",       href: (id) => `/clients/${id}/payroll/`, requires: ["payroll", "read"] },
   // fixed_assets.py list → rbac("accounting", "read").
   { id: "fixed-assets", label: "Fixed Assets",  href: (id) => `/clients/${id}/fixed-assets/`, requires: ["accounting", "read"] },
   // year-end engagements list → rbac("year_end", "read").

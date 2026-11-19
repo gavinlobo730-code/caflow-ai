@@ -44,6 +44,14 @@ new code, or no code at all, creates one. So re-importing a corrected file is
 safe, which is the only way "fix the spreadsheet and upload it again" can be
 the answer to a refusal.
 
+AN UPDATE WRITES ONLY WHAT THE FILE SAYS (POST-A-472). A row whose code is on
+file is the edit of that employee: a column the file does not carry is not
+written, and a blank cell means what an emptied box means on the edit — a
+designation, department or bank name is cleared, a PAN, UAN, ESI number, bank
+account or IFSC on file refuses the whole file (the router, in the edit's own
+sentence), and anything else keeps what is stored. Until then a file of codes,
+names and basic pay emptied every matched employee's identifiers.
+
 A file that repeats a code WITHIN itself is refused, because the two rows
 disagree about one person and nothing here can know which is meant.
 
@@ -124,6 +132,27 @@ COLUMNS: list[tuple[str, bool]] = [
 
 REQUIRED = [c for c, req in COLUMNS if req]
 
+#: The payload field(s) each column of the file writes. An UPDATE row writes only the columns the file carries (POST-A-472).
+COLUMN_FIELDS: dict[str, tuple[str, ...]] = {
+    "employee_code": ("employee_code",), "name": ("name",), "pan": ("pan",), "date_of_birth": ("date_of_birth",),
+    "gender": ("gender",), "designation": ("designation",), "department": ("department",), "joining_date": ("joining_date",),
+    "basic": ("basic_paise",), "hra_percent": ("hra_percent",), "da_percent": ("da_percent",),
+    "other_allowances": ("other_allowances_paise",), "lta": ("lta_paise",), "medical": ("medical_paise",),
+    "special_allowance": ("special_allowance_paise",), "uan": ("uan",), "esi_number": ("esi_number",),
+    "aadhaar": ("aadhaar_last4",), "pf_applicable": ("pf_applicable",), "esi_applicable": ("esi_applicable",),
+    "pt_applicable": ("pt_applicable",), "pt_state": ("pt_state",), "eps_eligible": ("eps_eligible",),
+    "gratuity_act_covered": ("gratuity_act_covered",), "bank_account_no": ("bank_account_no",),
+    "bank_ifsc": ("bank_ifsc",), "bank_name": ("bank_name",),
+}
+
+#: AN UPDATE ROW IS THE EDIT OF AN EMPLOYEE, SO A BLANK CELL MEANS WHAT AN EMPTIED BOX MEANS THERE (POST-A-472). The edit
+#: (`models.payroll.EmployeeUpdateIn`) clears these three soft particulars when they are emptied ...
+CLEARED_WHEN_BLANK: frozenset[str] = frozenset({"designation", "department", "bank_name"})
+#: ... refuses emptying these identifiers when one is on file (`models.payroll.EMPLOYEE_IDENTIFIERS`; the salary TDS statement, the ECR, the
+#: ESI return and the salary payment read them) ...
+IDENTIFIERS: tuple[str, ...] = ("pan", "uan", "esi_number", "bank_account_no", "bank_ifsc")
+#: ... and reads every other empty box as "not changed". A test holds the first two equal to the model's own sets.
+
 #: HRA where the file says nothing. 40% is the non-metro §10(13A) limb and is
 #: what the browser importer used, so an existing template keeps working.
 DEFAULT_HRA_PERCENT = 40.0
@@ -143,6 +172,9 @@ class ImportResult:
     problems: list[str] = field(default_factory=list)
     to_create: list[dict] = field(default_factory=list)
     to_update: list[tuple[str, dict]] = field(default_factory=list)  # (id, payload)
+    #: (row number, employee id, identifiers the row carries as a blank cell) for an UPDATE row: the caller refuses the whole file where the
+    #: stored employee has one of them on file (POST-A-472), the way the edit refuses it.
+    emptied_identifiers: list[tuple[int, str, list[str]]] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -173,6 +205,32 @@ def _bool(row: dict, key: str, default: bool) -> tuple[Optional[bool], Optional[
     return None, f'{key} must be yes or no, got "{_text(row, key)}"'
 
 
+#: The largest amount the `*_paise` columns hold (a signed 64-bit integer). A cell beyond it is refused with the others, never sent to fail in the
+#: middle of a write that has already stored the rows before it.
+MAX_PAISE = 9_223_372_036_854_775_807
+
+
+def code_index(employees: list[dict]) -> dict[str, Optional[str]]:
+    """A client's roster as `lower-cased employee_code -> employee id`, with None where two employees' codes differ only by capital letters.
+
+    The database's unique key on (client, employee_code) is case-sensitive, so "EMP001" and "emp001" can both exist, and a spreadsheet matches
+    codes without regard to case. A file row naming such a code cannot say which employee is meant, so the importers refuse it (None) instead of
+    writing to whichever came last (found by the independent review of POST-A-082's import)."""
+    out: dict[str, Optional[str]] = {}
+    for e in employees:
+        raw = e.get("employee_code")
+        if not raw:
+            continue
+        key = str(raw).strip().lower()
+        out[key] = None if key in out else str(e["id"])
+    return out
+
+
+def _ambiguous(code: str, n: int) -> str:
+    return (f'Row {n}: employee_code "{code}" matches more than one employee on this client (codes that differ only by capital letters), '
+            f"so the file cannot say which is meant; correct the roster first")
+
+
 def _paise(row: dict, key: str) -> tuple[Optional[int], Optional[str]]:
     """A rupee amount from a spreadsheet cell, as integer paise.
 
@@ -196,6 +254,8 @@ def _paise(row: dict, key: str) -> tuple[Optional[int], Optional[str]]:
     else:
         rupees, paise = raw, "00"
     value = int(rupees or "0") * 100 + int(paise)
+    if value > MAX_PAISE:
+        return None, f'{key} is too large to record, got "{_text(row, key)}"'
     return (-value if neg else value), None
 
 
@@ -247,6 +307,23 @@ def _date(row: dict, key: str) -> tuple[Optional[str], Optional[str]]:
     return None, f'{key} must be a date as YYYY-MM-DD or DD/MM/YYYY, got "{raw}"'
 
 
+def _code_problems(code: str, n: int, seen_codes: dict, existing_by_code: dict) -> list[str]:
+    """What is wrong with the employee code on row `n`: the same code on an earlier row, or a code two employees on file hold apart from
+    capital letters (None in `existing_by_code`, see `code_index`). Records the code as seen."""
+    if not code:
+        return []
+    key = code.lower()
+    out: list[str] = []
+    if key in seen_codes:
+        out.append(f"Row {n}: employee_code \"{code}\" is also on row {seen_codes[key]} — two rows for one person, and "
+                   f"nothing here can know which is meant")
+    else:
+        seen_codes[key] = n
+    if existing_by_code.get(key, "") is None:
+        out.append(_ambiguous(code, n))
+    return out
+
+
 def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
     """Read the whole file and decide once.
 
@@ -273,14 +350,7 @@ def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
             problems.append(f"Row {n}: name is required")
 
         code = _text(row, "employee_code")
-        if code:
-            if code.lower() in seen_codes:
-                problems.append(
-                    f"Row {n}: employee_code \"{code}\" is also on row "
-                    f"{seen_codes[code.lower()]} — two rows for one person, and "
-                    f"nothing here can know which is meant")
-            else:
-                seen_codes[code.lower()] = n
+        problems.extend(_code_problems(code, n, seen_codes, existing_by_code))
 
         basic, err = _paise(row, "basic")
         if err:
@@ -388,15 +458,49 @@ def validate(rows: list[dict], *, existing_by_code: dict) -> ImportResult:
             **flags,
         }
 
-        existing_id = existing_by_code.get(code.lower()) if code else None
-        if existing_id:
-            result.to_update.append((existing_id, payload))
-        else:
-            result.to_create.append(payload)
+        _place(result, n, existing_by_code.get(code.lower()) if code else None, row, payload)
 
     # A file that validated row by row can still be refused as a whole: the
     # duplicate-code check above is a FILE-level fact, not a row-level one.
     return result
+
+
+def _place(result: ImportResult, n: int, existing_id: Optional[str], row: dict, payload: dict) -> None:
+    """A row with a code on file updates that employee with what the file says; any other row creates one with the whole payload."""
+    if not existing_id:
+        result.to_create.append(payload)
+        return
+    update, emptied = _update_payload(row, payload)
+    result.to_update.append((existing_id, update))
+    if emptied:
+        result.emptied_identifiers.append((n, existing_id, emptied))
+
+
+def _update_payload(row: dict, payload: dict) -> tuple[dict, list[str]]:
+    """What an UPDATE row writes over the stored employee, and the identifiers it carries as a blank cell (POST-A-472).
+
+    A row whose code is on file used to write the whole payload, so a column the file did not carry and a blank cell both became NULL (or the
+    create's default: HRA 40%, PF and ESI on, an allowance of nothing). Re-importing a file of codes, names and basic pay therefore emptied
+    every matched employee's PAN, UAN, ESI number and bank details, while the import said "N updated", and the next ECR refused the member.
+
+    Now a column the file does not carry is not written at all, and a blank cell in one it does carry means what an emptied box means on the
+    edit of an employee: a designation, a department or a bank name is cleared, an identifier is returned to the caller to refuse where one is
+    on file, and anything else is left as stored (type 0 to zero an allowance). A cell that holds a value is written exactly as before.
+    """
+    update: dict = {}
+    emptied: list[str] = []
+    for column, fields in COLUMN_FIELDS.items():
+        if column not in row:
+            continue
+        blank = not re.sub(r"\D", "", _text(row, column)) if column == "aadhaar" else not _text(row, column)
+        for name in fields:
+            if not blank:
+                update[name] = payload[name]
+            elif name in CLEARED_WHEN_BLANK:
+                update[name] = None
+            elif name in IDENTIFIERS:
+                emptied.append(name)
+    return update, emptied
 
 
 def template_csv() -> str:

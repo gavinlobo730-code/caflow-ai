@@ -13,7 +13,7 @@ from datetime import datetime, timezone, date, timedelta
 from decimal import Decimal as _Decimal, ROUND_HALF_UP as _ROUND_HALF_UP
 import math
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, ValidationError, field_validator
 
 import logging
 
@@ -23,7 +23,7 @@ from models.payroll import (EMPLOYEE_IDENTIFIER_WHY, EMPLOYEE_IDENTIFIERS, Emplo
                            RunStatusIn, PayrollDisburseIn, DeclarationIn, DeclarationVerifyIn,
                            StatutoryIdentityIn, PTRegistrationIn,
                            AttendanceIn, LeaveBalanceIn, PayrollSettingsIn, PTSlabSetIn,
-                           OneTimeEarningsIn, PayrollEnablementIn, OpeningPositionsIn,
+                           OneTimeEarningsIn, PayrollEnablementIn, OpeningPositionIn, OpeningPositionsIn, OpeningPositionsImportIn,
                            ReleaseIn, ApplyStructureIn, EmployeeImportIn)
 from core.authz import assert_client_access, filter_by_client
 from core.db_paging import fetch_all
@@ -2199,13 +2199,21 @@ def import_employees(
     # ONE query for every code already on file, not one per row — the whole
     # reason this endpoint exists is that the per-row shape crossed a region
     # boundary fifty times.
-    existing = (db.table("payroll_employees").select("id, employee_code")
+    # The identifiers come in the same read, so a row that would empty one on file is refused without a second query (POST-A-472).
+    existing = (db.table("payroll_employees").select("id, employee_code, " + ", ".join(EMPLOYEE_IDENTIFIERS))
                 .eq("firm_id", current_user["firm_id"])
                 .eq("client_id", data.client_id).execute().data) or []
-    existing_by_code = {str(r["employee_code"]).lower(): r["id"]
-                        for r in existing if r.get("employee_code")}
+    existing_by_code = importer.code_index(existing)
 
     result = importer.validate(data.rows, existing_by_code=existing_by_code)
+    # An update row is the edit of an employee, so a blank cell over an identifier on file is refused in the edit's own sentence, keyed to
+    # the spreadsheet row, and the whole file with it (POST-A-472). A column the file does not carry is not written at all (the importer).
+    stored_by_id = {r["id"]: r for r in existing}
+    for n, employee_id, emptied in result.emptied_identifiers:
+        removed = removed_identifier_problem(EmployeeUpdateIn.model_construct(**{k: None for k in emptied}),
+                                             stored_by_id.get(employee_id) or {}, EMPLOYEE_IDENTIFIERS, why=EMPLOYEE_IDENTIFIER_WHY)
+        if removed:
+            result.problems.append(f"Row {n}: {removed}")
     if not result.ok:
         # 422, not 400: the request is well-formed and the CONTENT is what is
         # refused. Every problem comes back at once, keyed to the row number the
@@ -5292,12 +5300,30 @@ def put_opening_positions(
         return api_response(True, {"client_id": body.client_id, "saved": len(body.rows)})
     assert_payroll_enabled(db, firm_id, body.client_id)
     roster = _roster_all(db, firm_id, body.client_id)
+    # An employee id the request names is refused unless it is on this client's roster (read by firm and client above).
+    strangers = [f"Row {i}: that employee is not on this client's roster." for i, r in enumerate(body.rows, start=1)
+                 if str(r.employee_id) not in roster]
+    if strangers:
+        raise HTTPException(status_code=422, detail=" ".join(strangers))
+    problems, prepared = _opening_problems(roster, list(enumerate(body.rows, start=1)), by_row=False)
+    if problems:
+        raise HTTPException(status_code=422, detail=" ".join(problems))
+    clashes = _opening_clashes_with_released_runs(db, firm_id, body.client_id, roster, prepared)
+    if clashes:
+        raise HTTPException(status_code=409, detail=clashes[0])
+    _write_opening_positions(db, current_user, body.client_id, prepared)
+    return api_response(True, {"client_id": body.client_id, "saved": len(prepared), "does_not_carry": _OPENING_DOES_NOT_CARRY})
 
+
+def _opening_problems(roster: dict, numbered: list, *, by_row: bool) -> tuple[list[str], list[dict]]:
+    """Every problem with these positions, and the rows to write. `numbered` is [(row number, OpeningPositionIn)]. The form names an
+    employee by name; the file (`by_row`) by its spreadsheet row and the name, so the CA can find the line."""
     problems: list[str] = []
     prepared: list[dict] = []
     seen: set = set()
-    for i, r in enumerate(body.rows, start=1):
-        who = (roster.get(str(r.employee_id)) or {}).get("name") or f"row {i}"
+    for i, r in numbered:
+        name = (roster.get(str(r.employee_id)) or {}).get("name")
+        who = (f"Row {i} ({name})" if name else f"Row {i}") if by_row else (name or f"row {i}")
         if str(r.employee_id) not in roster:
             problems.append(f"Row {i}: that employee is not on this client's roster.")
             continue
@@ -5313,12 +5339,14 @@ def put_opening_positions(
         for msg in opening_domain.validate(data, fy=fy, joining_date=roster[str(r.employee_id)].get("joining_date")):
             problems.append(f"{who}: {msg}")
         prepared.append({**data, "financial_year": fy, "first_month_here": f"{r.first_month_here}-01"})
-    if problems:
-        raise HTTPException(status_code=422, detail=" ".join(problems))
+    return problems, prepared
 
-    # A month this product has already RELEASED for the employee, before the first month, would be counted twice.
-    for fy in {p["financial_year"] for p in prepared}:
-        runs = (db.table("payroll_runs").select("id, month").eq("firm_id", firm_id).eq("client_id", body.client_id)
+
+def _opening_clashes_with_released_runs(db, firm_id: str, client_id: str, roster: dict, prepared: list[dict]) -> list[str]:
+    """A month this product has already RELEASED for the employee, before the first month, would be counted twice."""
+    out: list[str] = []
+    for fy in sorted({p["financial_year"] for p in prepared}):
+        runs = (db.table("payroll_runs").select("id, month").eq("firm_id", firm_id).eq("client_id", client_id)
                 .in_("status", list(_PAYROLL_RELEASED)).execute().data) or []
         by_run = {r["id"]: r["month"] for r in runs if r.get("month") and _fy_for_month(r["month"]) == fy}
         if not by_run:
@@ -5330,17 +5358,21 @@ def put_opening_positions(
             clash = sorted(by_run[sl["run_id"]] for sl in slips
                            if str(sl["employee_id"]) == str(p["employee_id"]) and by_run[sl["run_id"]] < p["first_month_here"][:7])
             if clash:
-                raise HTTPException(status_code=409, detail=(
+                out.append(
                     f"{roster[str(p['employee_id'])].get('name')} already has a released payslip for {', '.join(clash)}, before "
                     f"the first month {p['first_month_here'][:7]}: those months would be counted twice. Make the first month the "
-                    f"earliest month this product ran, or leave this employee's position out."))
+                    f"earliest month this product ran, or leave this employee's position out.")
+    return out
 
+
+def _write_opening_positions(db, current_user: dict, client_id: str, prepared: list[dict]) -> None:
+    firm_id = current_user["firm_id"]
     stamped = datetime.now(timezone.utc).isoformat()
     for p in prepared:
-        before = (db.table("payroll_opening_positions").select("id, first_month_here, months_paid, gross_paise, tds_paise").eq("firm_id", firm_id).eq("client_id", body.client_id)
+        before = (db.table("payroll_opening_positions").select("id, first_month_here, months_paid, gross_paise, tds_paise").eq("firm_id", firm_id).eq("client_id", client_id)
                   .eq("employee_id", p["employee_id"]).eq("financial_year", p["financial_year"]).limit(1).execute().data) or []
         db.table("payroll_opening_positions").upsert(
-            {"firm_id": firm_id, "client_id": body.client_id, "employee_id": p["employee_id"],
+            {"firm_id": firm_id, "client_id": client_id, "employee_id": p["employee_id"],
                            "financial_year": p["financial_year"], "first_month_here": p["first_month_here"],
                            "months_paid": p["months_paid"], "gross_paise": p["gross_paise"], "tds_paise": p["tds_paise"],
                            "pf_employee_paise": p["pf_employee_paise"], "pf_employer_paise": p["pf_employer_paise"],
@@ -5353,12 +5385,58 @@ def put_opening_positions(
         log_event(firm_id, "payroll_opening_position", str(p["employee_id"]), "update" if before else "create",
                   actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
                   old_data=before[0] if before else None, new_data=p,
-                  metadata={"client_id": body.client_id, "financial_year": p["financial_year"]})
+                  metadata={"client_id": client_id, "financial_year": p["financial_year"]})
     timeline_service.log(
-        body.client_id, "work", "Payroll Opening Positions Recorded",
+        client_id, "work", "Payroll Opening Positions Recorded",
         f"{len(prepared)} payroll opening position(s) recorded", "info", firm_id=firm_id,
-        entity_type="client", entity_id=body.client_id, actor_id=current_user.get("auth_user_id"))
-    return api_response(True, {"client_id": body.client_id, "saved": len(prepared), "does_not_carry": _OPENING_DOES_NOT_CARRY})
+        entity_type="client", entity_id=client_id, actor_id=current_user.get("auth_user_id"))
+
+
+@router.post("/opening-positions/import")
+def import_opening_positions(
+    body: OpeningPositionsImportIn,
+    current_user: dict = Depends(rbac("payroll", "write")),
+):
+    """A spreadsheet of opening positions, read and decided here as a whole and refused as a whole (POST-A-082, part 2).
+
+    The browser sends the file's cells as text; `domain/payroll/opening_position_import.read` turns them into the rows the form's own
+    PUT takes, naming each employee by its code, and then the file is asked exactly what the form is asked (the months against the
+    joining date, tax against gross, the ESI answer against its period, a released month before the first month). One problem
+    anywhere and nothing is written; every problem comes back at once, keyed to the spreadsheet row. A dry run says what would be
+    recorded and writes nothing. Posts nothing, makes no payslip and remits nothing, like the form.
+    """
+    assert_client_access(current_user, body.client_id)
+    from domain.payroll import opening_position_import as reader
+
+    db = _db()
+    firm_id = current_user["firm_id"]
+    if not db:
+        result = reader.read(body.rows, employee_by_code={})
+        return api_response(True, {"ok": result.ok, "problems": result.problems, "would_record": len(result.rows)})
+    assert_payroll_enabled(db, firm_id, body.client_id)
+    roster_rows = (db.table("payroll_employees").select("id, name, status, joining_date, employee_code")
+                   .eq("firm_id", firm_id).eq("client_id", body.client_id).execute().data) or []
+    roster = {str(e["id"]): e for e in roster_rows}
+    from domain.payroll.employee_import import code_index
+    result = reader.read(body.rows, employee_by_code=code_index(roster_rows))
+    problems = list(result.problems)
+    numbered = []
+    for n, row in result.rows:
+        try:
+            numbered.append((n, OpeningPositionIn(**row)))
+        except ValidationError as exc:
+            problems.append(f"Row {n}: " + "; ".join(str(e.get("msg")) for e in exc.errors()))
+    more, prepared = _opening_problems(roster, numbered, by_row=True)
+    problems.extend(more)
+    if not problems:
+        problems.extend(_opening_clashes_with_released_runs(db, firm_id, body.client_id, roster, prepared))
+    if problems:
+        raise HTTPException(status_code=422, detail={
+            "message": f"{len(problems)} problem(s); nothing was recorded.", "problems": problems})
+    if body.dry_run:
+        return api_response(True, {"ok": True, "problems": [], "would_record": len(prepared), "dry_run": True})
+    _write_opening_positions(db, current_user, body.client_id, prepared)
+    return api_response(True, {"ok": True, "problems": [], "recorded": len(prepared), "does_not_carry": _OPENING_DOES_NOT_CARRY})
 
 
 @router.delete("/opening-positions/{employee_id}")
