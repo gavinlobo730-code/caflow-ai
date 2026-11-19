@@ -106,6 +106,7 @@ async function resolvePermissions(): Promise<PermissionMap | null> {
     if (!res?.success) return null;
     return parsePermissionMap(res.data?.permissions);
   } catch {
+    // null is "not read": can() then says no everywhere, so action controls are hidden, never offered, as the note above says.
     return null;
   }
 }
@@ -120,6 +121,7 @@ async function resolveMfaPolicy(): Promise<MfaPolicy | null> {
     if (!res?.success) return null;
     return parseMfaPolicy(res.data);
   } catch {
+    // null is "not read": an unknown policy must not tell an enrolled Partner their account is unsecured, as the note above says.
     return null;
   }
 }
@@ -512,7 +514,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginToRecord.current = false;
     import("@/lib/api")
       .then(({ api }) => api.identity.recordLoginEvent("login"))
-      .catch(() => {});
+      .catch(() => { /* best-effort: the sign-in has happened and nobody waits for the record */ });
   }, [session, mfaPending]);
 
   const signIn = useCallback(async (email: string, password: string, keepSignedIn?: boolean) => {
@@ -530,7 +532,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Record logout while the token is still valid, then sign out.
     try {
       const { api } = await import("@/lib/api");
-      await api.identity.recordLoginEvent("logout").catch(() => {});
+      await api.identity.recordLoginEvent("logout").catch(() => { /* best-effort: signing out must not wait for the record */ });
     } catch { /* best-effort */ }
     // Half-typed vouchers kept in this tab for a reload (frontend_ux-23) belong
     // to the person signing out; the next person at this tab is offered none.
@@ -551,7 +553,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { api } = await import("@/lib/api");
       await Promise.race([
-        api.identity.recordLoginEvent("logout").catch(() => {}),
+        api.identity.recordLoginEvent("logout").catch(() => { /* best-effort: signing out must not wait for the record */ }),
         new Promise<void>((resolve) => setTimeout(resolve, LOGOUT_RECORD_WAIT_MS)),
       ]);
     } catch { /* best-effort */ }

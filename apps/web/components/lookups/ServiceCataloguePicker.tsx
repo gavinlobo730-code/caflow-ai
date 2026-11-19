@@ -119,7 +119,7 @@ export const ServiceCataloguePicker = React.forwardRef<ComboboxHandle, {
           if (!item) return;
           onPick(item);
           // Fire-and-forget usage bump so recent/frequent ranking improves.
-          api.serviceCatalogue.recordUsed(item.id).catch(() => {});
+          api.serviceCatalogue.recordUsed(item.id).catch(() => { /* a usage count nobody waits for; the pick itself has already been made */ });
         }}
         fetchOptions={fetchOptions}
         recent={recent}

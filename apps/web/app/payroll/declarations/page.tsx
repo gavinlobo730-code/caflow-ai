@@ -28,6 +28,7 @@ import { getFirmId } from "@/lib/data/getFirmId";
 import { api, type DeclarationRow, type DeclarationItemRow } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { selectAll } from "@/lib/supabase/selectAll";
+import { CLIENT_LIST_UNREAD } from "@/lib/clients/clientListUnread";
 import { istToday } from "@/lib/dateMath";
 import { LoadingRegion } from "@/components/ui/skeleton";
 
@@ -78,6 +79,8 @@ const SECTION_LABELS: Record<string, string> = {
 export default function DeclarationsPage() {
   const financialYears = useMemo(() => recentFinancialYears(), []);
   const [clients, setClients] = useState<Client[]>([]);
+  // A client list that could not be read is not a firm with no clients (POST-A-515 (d)): the picker says so.
+  const [clientsFailed, setClientsFailed] = useState(false);
   const [employees, setEmployees] = useState<Record<string, string>>({});
   const [clientId, setClientId] = useState("");
   const [fy, setFy] = useState(financialYears[0]);
@@ -95,11 +98,14 @@ export default function DeclarationsPage() {
         const sb = getSupabaseClient();
         const fid = await getFirmId();
         if (!fid) return;
-        const { data } = await selectAll(() => sb.from("clients")
+        const { data, error } = await selectAll(() => sb.from("clients")
           .select("id, client_name").eq("firm_id", fid).eq("is_internal", false).order("client_name").order("id"));
+        // The pager hands a failure back as `error` and does not throw: a read that stopped partway is not the firm's clients.
+        if (error) throw error;
         setClients(data ?? []);
       } catch (e) {
         console.error("load clients:", e);
+        setClientsFailed(true);
       }
     })();
   }, []);
@@ -143,6 +149,7 @@ export default function DeclarationsPage() {
           <div className="min-w-[260px]">
             <label className="block text-xs text-ps-label mb-1">Client</label>
             <ClientLookup ariaLabel="Client" clients={clients} value={clientId} onChange={setClientId} />
+            {clientsFailed && <p role="alert" className="mt-1 max-w-[260px] text-2xs text-state-problem">{CLIENT_LIST_UNREAD}</p>}
           </div>
           <div>
             <label className="block text-xs text-ps-label mb-1">Financial year</label>

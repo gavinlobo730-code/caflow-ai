@@ -62,6 +62,7 @@ export default function PortalPage() {
       if (error) return null;
       return data as PortalContact[];
     } catch {
+      // null is "could not be read", and the caller below says so; an empty list is a client with no contacts.
       return null;
     }
   }

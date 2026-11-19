@@ -489,6 +489,8 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
   // template rather than to an empty row, because every box unticked reads as
   // "this person can reach nothing" and that is a statement.
   const [effective, setEffective] = useState<Record<string, Record<string, string[]>>>({});
+  // The members whose own answer did not come: their row is their role's template, which may not be what they actually have.
+  const [unreadMembers, setUnreadMembers] = useState<string[]>([]);
   const [accessFor, setAccessFor] = useState<string | null>(null);
 
   useEffect(() => {
@@ -516,8 +518,11 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
   // One request per active member. A firm has a handful of staff, so this is
   // proportional to the ANSWER rather than to anything that grows — the rule
   // this codebase applies to reports, applied to a screen. A member whose
-  // request fails is simply absent from the map and renders against their role
-  // template, which is what they had before anybody overrode anything.
+  // request fails is absent from the map and renders against their role
+  // template. That is NOT "what they had before anybody overrode anything":
+  // overrides are real now, so the template can show access the person does
+  // not have (or hide access they do), and the grid says whose row it is
+  // (POST-A-515 (d); `unreadMembers` below).
   const loadEffective = useCallback(async () => {
     const ids = activeMembers.map(m => m.id);
     if (ids.length === 0) return;
@@ -525,8 +530,9 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
       try {
         const r = await api.identity.memberPermissions(id);
         return r.success && r.data ? ([id, r.data.effective] as const) : null;
-      } catch { return null; }
+      } catch { return null; /* null is "not read": the member is listed as unread below, never drawn as read */ }
     }));
+    setUnreadMembers(ids.filter((_, i) => answers[i] === null));
     setEffective(Object.fromEntries(answers.filter(Boolean) as [string, Record<string, string[]>][]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMembers.map(m => m.id).join(",")]);
@@ -585,6 +591,13 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
             that person alone. An <span className="text-orange-600 font-medium">amber</span> cell
             differs from what their role gives them.
           </p>
+          {unreadMembers.length > 0 && (
+            <p role="status" className="mt-2 text-xs text-state-attention bg-state-attention-surface border border-state-attention-border rounded px-3 py-2">
+              Access that could not be read, so the row shows only what the member&apos;s role gives, which may differ from
+              what has been allowed or blocked for that person: {unreadMembers.map(id => members.find(m => m.id === id)?.full_name).filter(Boolean).join(", ")}.
+              Reload this page to read it again.
+            </p>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -727,7 +740,10 @@ function PermissionsMatrix({ members, firmId }: PermissionsMatrixProps) {
           // was asked for and what took effect are not always the same, and a
           // screen that showed the request would be showing a change that did
           // not happen.
-          onSaved={(grid) => setEffective(e => ({ ...e, [grid.user_id]: grid.effective }))}
+          onSaved={(grid) => {
+            setEffective(e => ({ ...e, [grid.user_id]: grid.effective }));
+            setUnreadMembers(u => u.filter(id => id !== grid.user_id));
+          }}
         />
       )}
     </div>

@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { AiDisclosure } from "@/components/ai/AiDisclosure";
 import { objectOrNull } from "@/lib/api/shape";
+import { failureSentence } from "@/lib/api/failureSentence";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -165,7 +166,7 @@ export default function CopilotPage() {
     try {
       const res = (await api.copilotV2.suggestions(contextType)) as { data: { suggestions: string[] } };
       setSuggestions(res.data?.suggestions || []);
-    } catch {}
+    } catch { /* the starter suggestions simply do not appear; the conversation does not depend on them */ }
   }, [contextType]);
 
   useEffect(() => {
@@ -253,10 +254,17 @@ export default function CopilotPage() {
   };
 
   const rateMessage = async (messageId: string, rating: number) => {
+    // The mark is shown at once and taken back if the server did not keep it: a thumb that stays lit for a rating nobody stored
+    // tells the person it was recorded (POST-A-515 (d); the catch here used to be empty).
+    const before = messages.find((m: Message) => m.id === messageId)?.feedback_rating;
     setMessages((prev: Message[]) => prev.map((m: Message) => m.id === messageId ? { ...m, feedback_rating: rating } : m));
     try {
       await api.copilotV2.rateMessage(messageId, { rating });
-    } catch {}
+      setChatError(null);
+    } catch (e) {
+      setMessages((prev: Message[]) => prev.map((m: Message) => m.id === messageId ? { ...m, feedback_rating: before } : m));
+      setChatError(`Your rating was not saved: ${failureSentence(e, "the request failed.", "write")}`);
+    }
   };
 
   return (
