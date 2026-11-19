@@ -80,6 +80,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+#: What a bulk pass says about a line it did not post because the person has not stated its GST (POST-A-489).
+GST_ANSWER_NEEDED = ("This line can carry GST and no answer has been given. State the rate, or say it carries none, "
+                     "when you pass it.")
+
+
+#: The most held lines one pass names back to the screen.
+HELD_LIST_MAX = 1000
+
+
+def can_carry_gst(txn: dict) -> bool:
+    """Whether a coded line can carry a GST rate, by the one rule the queue's own flag and the posting engine's refusal both
+    ask (`posting_map.gst_split_allowed`): a document settlement, a split and a control-account category cannot. Read off the
+    stored row (`has_splits` is the column the queue computes `is_split` from)."""
+    return pmap.gst_split_allowed(
+        txn.get("category"),
+        settles_document=pmap.settles_document(
+            txn.get("category"), txn.get("matched_entity_type"), txn.get("matched_entity_id")),
+        is_split=bool(txn.get("has_splits")))
+
+
 def _outcome(txn_id: str, status: str, reason: str, **extra) -> dict:
     return {"transaction_id": txn_id, "status": status, "reason": reason, **extra}
 
@@ -672,11 +692,43 @@ class BankEntryService:
 
     # ── passing ──────────────────────────────────────────────────────────────
 
+    def _gst_for_a_persons_pass(self, db, firm_id: str, txn: dict, txn_id: str, gst_rate_bps: Optional[int], is_interstate: bool,
+                                batch_gst: Optional[dict]) -> tuple[Optional[dict], Optional[int], bool]:
+        """(an outcome that HOLDS the line | None, the rate to post with, whether it is inter-state): the GST treatment a person's bulk pass
+        gives a line they coded that can carry GST (POST-A-489; see `pass_entry`).
+
+        Held on the row, so it is not read again by a later chunk and the screen can ask about it later: the line stays coded and READY, with
+        `GST_ANSWER_NEEDED` as its standing error (passing it from its own screen clears it on posting, and changing its coding clears it
+        through the same trigger as any standing error)."""
+        gst_rate, interstate = gst_rate_bps, bool(is_interstate)
+        if batch_gst is None or gst_rate_bps is not None or not E.coded_by_a_human(txn) or not can_carry_gst(txn):
+            return None, gst_rate, interstate
+        if batch_gst.get("rate") is None:
+            (privileged_for(db).table("bank_transactions").update({"draft_error": GST_ANSWER_NEEDED, "updated_at": _now()})
+             .eq("id", txn_id).eq("firm_id", firm_id).execute())
+            return _outcome(txn_id, "skipped", GST_ANSWER_NEEDED, needs_gst_answer=True), gst_rate, interstate
+        return None, int(batch_gst["rate"]), bool(batch_gst.get("interstate"))
+
+    @staticmethod
+    def _clear_gst_hold(db, firm_id: str, txn: dict, post_id: str) -> None:
+        """A line that was held for want of a GST answer and has now posted no longer carries the hold."""
+        if txn.get("draft_error") == GST_ANSWER_NEEDED:
+            (privileged_for(db).table("bank_transactions").update({"draft_error": None, "updated_at": _now()})
+             .eq("id", post_id).eq("firm_id", firm_id).execute())
+
     def pass_entry(self, db, firm_id: str, txn_id: str, *, actor_id: Optional[str],
                    actor_auth_id: Optional[str] = None, by_rule: Optional[dict] = None,
-                   gst_rate_bps: Optional[int] = None, is_interstate: bool = False) -> dict:
+                   gst_rate_bps: Optional[int] = None, is_interstate: bool = False,
+                   batch_gst: Optional[dict] = None) -> dict:
         """Apply the draft, then post — through the services that already own
         each step, so nothing here is a second way to code a line.
+
+        `batch_gst` is set by a PERSON's bulk pass (`pass_ready` without `only_trusted`) and is the one answer they gave for
+        the lines in it: `{"rate": int | None, "interstate": bool}` (POST-A-489). A line the person coded themselves that can
+        carry GST takes the answer; with no answer (`rate` None) it is SKIPPED, never posted, because posting it with none books
+        the whole debit to the expense and loses the input credit (CGST Act s.16) silently — the single screen shows the
+        control, a bulk pass showed nothing. 0 is an answer ("this carries none"). A line a draft codes keeps the draft's own
+        treatment, and a trusted rule's pass never sets this.
 
         A line the CA coded themselves posts what they chose; the draft is
         not consulted. Otherwise the draft is applied: a rule's or history's
@@ -709,7 +761,9 @@ class BankEntryService:
         post_id = txn_id
         # The GST treatment for a line the CA coded themselves comes from the
         # detail, the way it did from the old drawer; a draft carries its own.
-        gst_rate, interstate = gst_rate_bps, bool(is_interstate)
+        held, gst_rate, interstate = self._gst_for_a_persons_pass(db, firm_id, txn, txn_id, gst_rate_bps, is_interstate, batch_gst)
+        if held:
+            return held
         # What the row said before the draft touched it. A draft is applied
         # through the same services a human uses, so a pass that then fails
         # would leave the machine's coding on the row looking like the CA's
@@ -756,6 +810,7 @@ class BankEntryService:
              .eq("id", txn_id).eq("firm_id", firm_id).execute())
             return _outcome(txn_id, "failed", detail)
 
+        self._clear_gst_hold(db, firm_id, txn, post_id)
         tie_note = None
         if applied and txn.get("draft_source") == E.SOURCE_CHALLAN:
             tie_note = self._tie_challan(db, firm_id, txn, result.get("posted_journal_id"),
@@ -779,7 +834,7 @@ class BankEntryService:
         extra = {"challan_tie": tie_note} if tie_note else {}
         return _outcome(txn_id, "passed", f"Passed as a {E.kind_for(txn)}." + (f" {tie_note}" if tie_note else ""),
                         posted_journal_id=result.get("posted_journal_id"),
-                        posted_transaction_id=post_id, **extra)
+                        posted_transaction_id=post_id, gst_rate_bps=gst_rate, **extra)
 
     def _unapply(self, db, firm_id, txn, before: dict) -> None:
         """Undo what _apply_draft wrote, best effort. A transfer was paired
@@ -969,8 +1024,16 @@ class BankEntryService:
     def pass_ready(self, db, firm_id: str, client_id: str, *, limit: int = PASS_CHUNK,
                    only_trusted: bool = False, actor_id: Optional[str] = None,
                    actor_auth_id: Optional[str] = None, bank_account_id: Optional[str] = None,
-                   txn_ids: Optional[list[str]] = None) -> dict:
+                   txn_ids: Optional[list[str]] = None, batch_gst: Optional[dict] = None) -> dict:
         """One chunk of "Pass N ready".
+
+        A PERSON's pass (no `only_trusted`) hands over `batch_gst`, their one GST answer for the lines of one kind in it
+        (see `pass_entry`). A line it cannot pass for want of an answer is HELD, not posted: the row carries
+        `GST_ANSWER_NEEDED` as its standing error (so no later chunk reads it again, no list of ids is sent back and forth, and
+        the rest are not starved), it stays coded, and it is named in `gst_unanswered` on the LAST chunk (`remaining` 0) as
+        `{id, category, money_in}` so the screen can ask once per kind of line. A pass that CARRIES an answer also takes the
+        held lines among its `transaction_ids` and clears the hold when one posts. `with_gst` counts the lines passed with a
+        non-zero rate.
 
         Only READY lines with no standing error are picked — a line whose last
         pass failed waits for a human or a redraft rather than failing again
@@ -986,10 +1049,12 @@ class BankEntryService:
         if only_trusted and not trusted:
             return {"passed": 0, "failed": 0, "skipped": 0, "remaining": 0, "results": [],
                     **({"rules_not_posting": refused} if refused else {})}
+        person = batch_gst is not None and not only_trusted
+        answered = person and batch_gst.get("rate") is not None
 
-        def make(count: bool = False):
-            q = (self._base(db, firm_id, client_id, bank_account_id, count=count)
-                 .eq("entry_state", E.READY).is_("draft_error", "null"))
+        def make(count: bool = False, held: bool = False):
+            q = self._base(db, firm_id, client_id, bank_account_id, count=count).eq("entry_state", E.READY)
+            q = q.eq("draft_error", GST_ANSWER_NEEDED) if held else q.is_("draft_error", "null")
             if txn_ids:
                 q = q.in_("id", list(txn_ids))
             if only_trusted:
@@ -997,6 +1062,9 @@ class BankEntryService:
             return q
 
         rows = make().order("transaction_date").order("id").limit(limit).execute().data or []
+        if answered and txn_ids and len(rows) < limit:
+            # The answer is the thing the held lines were waiting for.
+            rows += make(held=True).order("transaction_date").order("id").limit(limit - len(rows)).execute().data or []
         results = []
         for t in rows:
             rule = trusted.get(t.get("draft_rule_id")) if only_trusted else None
@@ -1005,11 +1073,20 @@ class BankEntryService:
             # internal one). `_trusted_rules` already carries it, read from the same `users` row that proved they still answer for the rule.
             results.append(self.pass_entry(db, firm_id, t["id"], actor_id=actor,
                                            actor_auth_id=rule.get("trusted_by_auth_id") if rule else actor_auth_id,
-                                           by_rule=rule))
-        remaining = self._count(make)
+                                           by_rule=rule, batch_gst=batch_gst if person else None))
+        remaining = self._count(make) + (self._count(lambda count=False: make(count=count, held=True))
+                                         if answered and txn_ids else 0)
         summary = {s: sum(1 for r in results if r["status"] == s)
                    for s in ("passed", "failed", "skipped")}
+        with_gst = sum(1 for r in results if r["status"] == "passed" and (r.get("gst_rate_bps") or 0) > 0)
+        unanswered: list = []
+        if person and not answered and remaining == 0:
+            # The last chunk names every line now held in this pass's scope, those held by an earlier pass included.
+            held_rows = make(held=True).order("transaction_date").order("id").limit(HELD_LIST_MAX).execute().data or []
+            unanswered = [{"id": r["id"], "category": r.get("category"),
+                           "money_in": int(r.get("credit_paise") or 0) > 0} for r in held_rows]
         return {**summary, "remaining": remaining, "results": results,
+                **({"gst_unanswered": unanswered} if unanswered else {}), "with_gst": with_gst,
                 **({"rules_not_posting": refused} if refused else {})}
 
 

@@ -101,6 +101,37 @@ def ledger_shape_for(account_type: Optional[str]) -> tuple[str, str]:
     return _LEDGER_SHAPES.get((account_type or "").strip(), _ASSET_LEDGER)
 
 
+def new_ledger_name(bank_name: Optional[str], account_no: Optional[str]) -> str:
+    """The name a bank account's own new ledger is given: "<bank> — <last four digits>", or the bank's name alone with no digits.
+
+    ONE function, read by the route that creates the ledger and by the one that tells the form what it will be called, so the
+    sentence the person reads and the ledger they get cannot disagree (POST-A-492). A name already taken in the firm is
+    disambiguated by the creator with " (2)" and so on; the form says so."""
+    bank = (bank_name or "").strip()
+    last4 = str(account_no or "")[-4:]
+    return f"{bank} — {last4}" if last4 else bank
+
+
+def ledger_problem_for_a_bank(account_type: Optional[str], account_subtype: Optional[str]) -> Optional[str]:
+    """Why a ledger of this type and subtype cannot be a bank account's own ledger, in words, or None (POST-A-492).
+
+    A bank, an overdraft and a card sit on an ASSET or a LIABILITY ledger; an income or expense ledger is not a place money is
+    held. And a CASH ledger ("Cash in Hand", "Petty Cash") belongs to the cash book, which reads every ledger of the Cash
+    subtype (`domain/reporting/cash_book`): linked to a bank account it would put the bank's balance into the cash book and
+    the cash into the bank's reconciliation. The form's picker used to offer them all.
+    """
+    typ = (account_type or "").strip().lower()
+    if typ not in ("asset", "liability"):
+        return "A bank account can only be linked to an asset or a liability ledger."
+    # The cash book's own test, so a ledger the cash book reads is never one a bank account sits on ("Cash in Hand", "Petty
+    # Cash", a hand-built "Cash — Branch"): two rules for "is this cash" would let one through (found by the independent review).
+    from domain.reporting.cash_book import is_cash_account
+    if is_cash_account(account_type, account_subtype):
+        return ("That is a cash ledger. A bank account needs a bank ledger of its own: leave the choice on creating a "
+                "new ledger, or pick an existing bank ledger.")
+    return None
+
+
 def to_ledger_sign(account_type: Optional[str], amount_paise: Optional[int]) -> int:
     """A balance READ OFF a statement, in the sign everything inside uses.
 
