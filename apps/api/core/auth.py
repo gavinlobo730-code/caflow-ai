@@ -7,7 +7,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Mapping, Optional
 from fastapi import Header, HTTPException, status, Depends
 import jwt
 
@@ -349,6 +349,81 @@ def _refuse_a_session_signed_out_from_elsewhere(user_data: dict, payload: dict, 
         )
 
 
+def _refuse_an_ended_session(user_data: dict, firm_row: Optional[dict], payload: Mapping[str, Any], auth_user_id: str) -> None:
+    """The four refusals a member's token meets before any route runs, as ONE function (POST-A-498): a disabled account, a firm that was deleted
+    or suspended, a revocation of every session (a suspension, a force sign-out), and a session signed out from elsewhere. `get_current_user` asks
+    it for every route behind it, and `refuse_a_member_whose_session_has_ended` asks it for the one route that answers from a member's row without
+    that dependency, so what a route behind the dependency refuses and what the invitation's repeat-accept refuses are the same set, in the same
+    words, from one place. The order is the order they were always made in."""
+    # M1 — Active-user enforcement: a disabled account must not continue to
+    # operate through a still-valid (unexpired) JWT. is_active defaults True so
+    # rows predating the column are unaffected; only an explicit False blocks.
+    if user_data.get("is_active") is False:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled. Contact your firm administrator.",
+        )
+
+    # Platform Admin enforcement: a suspended or soft-deleted firm blocks ALL of
+    # its users. Enforced centrally here so every firm endpoint is gated at once.
+    if firm_row:
+        if firm_row.get("deleted_at"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
+        if firm_row.get("is_active") is False:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm suspended")
+
+    # M6 — Session revocation / forced logout: reject any token issued before the
+    # account's sessions_revoked_at instant (set by suspend / force-logout / global
+    # logout). Compares the JWT 'iat' (issued-at) against the stored timestamp.
+    #
+    # FAILS CLOSED (SECURITY-PRIVACY-21). This used to `except Exception: pass`
+    # around the comparison, on the reasoning that "an unparseable timestamp must
+    # never hard-fail auth" — so a sessions_revoked_at nobody could read let a
+    # token through that the account's own owner had revoked, and silently: the
+    # one request that should have been refused answered 200. A revocation is a
+    # security decision somebody made; a value the code cannot read is not
+    # evidence it was withdrawn. The comparison is also no longer skipped for a
+    # token with no `iat` (now a required claim, but `iat: 0` is falsy and a test
+    # double can omit it): if a revocation exists and the token cannot show when
+    # it was issued, it cannot show it was issued after.
+    revoked_at = user_data.get("sessions_revoked_at")
+    if revoked_at:
+        try:
+            revoked_epoch = _instant_epoch(revoked_at)
+            # By `iat` AND by when the session began (core/auth_time.py): a renewed token has a
+            # new `iat` and would otherwise walk straight back past a revocation.
+            issued_before_revocation = _token_predates_revocation(payload, revoked_epoch)
+        except Exception:                                    # noqa: BLE001
+            _logger.error(
+                "sessions_revoked_at for user %s could not be compared with the "
+                "token's iat; refusing the request", auth_user_id, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Your session could not be verified. Please sign in again.",
+            )
+        if issued_before_revocation:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked. Please sign in again.",
+            )
+
+    _refuse_a_session_signed_out_from_elsewhere(user_data, payload, auth_user_id)
+
+
+def refuse_a_member_whose_session_has_ended(auth_user_id: str, claims: Mapping[str, Any]) -> None:
+    """For a route that answers from a member's own row WITHOUT `get_current_user` (the invitation's repeat-accept, which authenticates with the
+    token alone because the caller may have no row yet): read the member and their firm as `get_current_user` reads them and refuse as it does
+    (POST-A-498). Nothing happens for a sign-in that has no member row, so a stranger's answer is unchanged. `claims` are the token's session
+    claims (`get_jwt_user` returns them as `session_claims`); absent claims are read as a token showing nothing, which fails closed wherever a
+    revocation exists. In the development fallback (no SUPABASE_URL) there is no member table to ask, which is what `get_current_user` does too."""
+    if not os.environ.get("SUPABASE_URL"):
+        return
+    user_data, firm_row = _get_user_and_firm(get_service_supabase(), auth_user_id)
+    if not user_data:
+        return
+    _refuse_an_ended_session(user_data, firm_row, claims or {}, auth_user_id)
+
+
 def get_current_user(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
@@ -414,59 +489,9 @@ def get_current_user(
             detail="User not found in firm. Contact your firm administrator.",
         )
 
-    # M1 — Active-user enforcement: a disabled account must not continue to
-    # operate through a still-valid (unexpired) JWT. is_active defaults True so
-    # rows predating the column are unaffected; only an explicit False blocks.
-    if user_data.get("is_active") is False:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account disabled. Contact your firm administrator.",
-        )
-
-    # Platform Admin enforcement: a suspended or soft-deleted firm blocks ALL of
-    # its users. Enforced centrally here so every firm endpoint is gated at once.
-    if firm_row:
-        if firm_row.get("deleted_at"):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
-        if firm_row.get("is_active") is False:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm suspended")
-
-    # M6 — Session revocation / forced logout: reject any token issued before the
-    # account's sessions_revoked_at instant (set by suspend / force-logout / global
-    # logout). Compares the JWT 'iat' (issued-at) against the stored timestamp.
-    #
-    # FAILS CLOSED (SECURITY-PRIVACY-21). This used to `except Exception: pass`
-    # around the comparison, on the reasoning that "an unparseable timestamp must
-    # never hard-fail auth" — so a sessions_revoked_at nobody could read let a
-    # token through that the account's own owner had revoked, and silently: the
-    # one request that should have been refused answered 200. A revocation is a
-    # security decision somebody made; a value the code cannot read is not
-    # evidence it was withdrawn. The comparison is also no longer skipped for a
-    # token with no `iat` (now a required claim, but `iat: 0` is falsy and a test
-    # double can omit it): if a revocation exists and the token cannot show when
-    # it was issued, it cannot show it was issued after.
-    revoked_at = user_data.get("sessions_revoked_at")
-    if revoked_at:
-        try:
-            revoked_epoch = _instant_epoch(revoked_at)
-            # By `iat` AND by when the session began (core/auth_time.py): a renewed token has a
-            # new `iat` and would otherwise walk straight back past a revocation.
-            issued_before_revocation = _token_predates_revocation(payload, revoked_epoch)
-        except Exception:                                    # noqa: BLE001
-            _logger.error(
-                "sessions_revoked_at for user %s could not be compared with the "
-                "token's iat; refusing the request", auth_user_id, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Your session could not be verified. Please sign in again.",
-            )
-        if issued_before_revocation:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Session revoked. Please sign in again.",
-            )
-
-    _refuse_a_session_signed_out_from_elsewhere(user_data, payload, auth_user_id)
+    # The four refusals every route behind this dependency makes (a disabled account, a closed or suspended firm, a revocation of every session,
+    # a session signed out from elsewhere), in one function that the invitation's repeat-accept asks as well (POST-A-498).
+    _refuse_an_ended_session(user_data, firm_row, payload, auth_user_id)
 
     # M1 — default to least-privileged staff role (not silently Executive) when a
     # row somehow has no role; never silently grant elevated access.
@@ -538,6 +563,9 @@ def get_jwt_user(authorization: Optional[str] = Header(default=None)) -> dict:
         # When an authenticator code was last entered in this session (POST-A-484): the platform admin's destructive
         # actions ask for one entered in the last five minutes.
         "last_authenticator_code_at": auth_time.last_authenticator_code_epoch(payload),
+        # The claims the session rules read and nothing else of the token (POST-A-498): the one route that answers from a member's row
+        # with this dependency asks `refuse_a_member_whose_session_has_ended` with them.
+        "session_claims": {k: payload[k] for k in ("iat", "amr", "session_id") if k in payload},
     }
 
 

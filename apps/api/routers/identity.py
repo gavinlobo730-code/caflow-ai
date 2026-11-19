@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from middleware.public_rate_limit import public_limit
 from models.common import api_response
-from core.auth import get_current_user, get_jwt_user
+from core.auth import get_current_user, get_jwt_user, refuse_a_member_whose_session_has_ended
 from core.client_ip import client_ip
 from core.list_window import probe, split
 from core.permissions import rbac, Role, canonical_role, get_accessible_resources
@@ -222,6 +222,11 @@ def _already_joined(jwt_user: dict) -> Optional[dict]:
         return None
     if (row.get("email") or "").strip().lower() != (jwt_user.get("email") or "").strip().lower():
         return None
+    # The caller IS this member. They are told so only while they could use any other route: a member whose sessions were all signed out
+    # (a suspension, a force sign-out), whose session was signed out from another device, whose account was disabled or whose firm is
+    # suspended or deleted is refused here in the words every other route uses, and not handed their firm, role and name (POST-A-498).
+    # The second-factor level is not asked: this answer is the caller's own membership, the same that /me gives at the first level.
+    refuse_a_member_whose_session_has_ended(jwt_user.get("auth_user_id") or "", jwt_user.get("session_claims") or {})
     return {"firm_id": row.get("firm_id"), "role": row.get("role"), "full_name": row.get("full_name"),
             "already_joined": True}
 
