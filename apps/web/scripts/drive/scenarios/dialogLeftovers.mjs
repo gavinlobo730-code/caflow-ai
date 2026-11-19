@@ -249,8 +249,8 @@ export const scenarios = [
     },
   },
   {
-    id: "the-add-account-drawers-x-and-backdrop-are-held-while-its-save-is-out",
-    title: "Accounting > Chart of accounts > Add Account > save: while it is out, the drawer's × (named Close) is held and a click on the backdrop does not close it",
+    id: "the-add-account-drawers-x-and-backdrop-are-held-while-its-save-is-out-and-the-exemption-dialog-is-not-while-it-reads",
+    title: "Accounting > Chart of accounts > Add Account > save: while it is out, the drawer's × (named Close) is held and a click on the backdrop does not close it; Capital gains > a record > Exemption: while the working is only being READ, the dialog's Close is offered (a read never traps the person)",
     async run(env) {
       const { page, stub } = env;
       stub.route({ method: "POST", re: /api\/accounting\/accounts(\?|$)/, delay: 3000, reply: () => ok({ id: "acc-new" }) });
@@ -264,12 +264,8 @@ export const scenarios = [
       await page.mouse.click(5, 5);
       assert.equal(await page.getByRole("heading", { name: "Add Account" }).count(), 1, "a click on the backdrop closed the drawer over its save");
       await stub.quiet({ timeoutMs: 15_000 });
-    },
-  },
-  {
-    id: "the-exemption-dialog-can-be-left-while-it-is-only-reading",
-    title: "Capital gains > a record > Exemption: while the working is only being READ, the dialog's Close is offered (a read never traps the person)",
-    async run(env) {
+      // ...and a dialog that is only READING is not held: a different screen, in the same run.
+      {
       const { page, stub } = env;
       const record = { id: "cg-1", client_id: CLIENT_ID, asset_description: "Flat 402", asset_type: "property", purchase_date: "2019-04-01", sale_date: "2026-05-10",
         purchase_cost_paise: 50_00_000_00, improvement_cost_paise: 0, sale_value_paise: 90_00_000_00, indexed_cost_paise: null, gain_type: "LTCG",
@@ -289,6 +285,7 @@ export const scenarios = [
       assert.equal(await close.isDisabled(), false, "the exemption dialog's only way out is held while it is merely reading");
       await close.click();
       await until(async () => (await page.getByRole("button", { name: "Record claim" }).count()) === 0, "the dialog to close while it was reading");
+      }
     },
   },
   {

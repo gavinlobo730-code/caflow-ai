@@ -1,7 +1,7 @@
 /**
  * Group: the flows a CA does away from the desk, at the width of a phone (POST-A-131).
  *
- * Each scenario sets a 390 x 844 window (whatever `--width` the run was given) and drives one flow the way a person does:
+ * The scenario sets a 390 x 844 window (whatever `--width` the run was given) and drives the four flows the way a person does, one after the other in one run (a run costs a browser context, and the whole matrix's drive has no time to spare):
  *   1. Deadlines: the list is read, and Mark Filed on an open obligation opens its prompt with its confirm button on the screen;
  *   2. Approvals: a pending request's Approve is on the screen and asks before it acts;
  *   3. a client's invoices: the list is read, a draft invoice opens, and Issue is on the screen;
@@ -84,8 +84,8 @@ const PENDING = {
 
 export const scenarios = [
   {
-    id: "deadlines-and-an-approval-are-reachable-at-390-px",
-    title: "Deadlines and Approvals at 390 px: no page scrolls sideways, Mark Filed and its prompt's confirm, and a request's Approve and Reject, are on the screen",
+    id: "deadlines-an-approval-invoices-and-outstanding-are-reachable-at-390-px",
+    title: "Deadlines, Approvals, a client's invoices and its Outstanding figure at 390 px: no page scrolls sideways, Mark Filed and its prompt's confirm, a request's Approve and Reject, a draft's Issue and the Outstanding figure are on the screen",
     async run(env) {
       const { page, stub } = env;
       await page.setViewportSize(PHONE);
@@ -119,12 +119,8 @@ export const scenarios = [
       await onScreen(approve, "Approve");
       await onScreen(page.getByRole("button", { name: "Reject", exact: true }).first(), "Reject");
       }
-    },
-  },
-  {
-    id: "a-clients-invoices-and-outstanding-are-reachable-at-390-px",
-    title: "a client's invoices at 390 px: a draft opens and its Issue is on the screen, and the Sales tab's Outstanding figure is too, with no sideways scroll",
-    async run(env) {
+      // ...then a client's invoices, in the same window.
+      {
       const { page } = env;
       await page.setViewportSize(PHONE);
       const drawer = await openInvoiceDrawer(env, "draft");
@@ -142,6 +138,7 @@ export const scenarios = [
       await tile.waitFor();
       await noSidewaysScroll(page, "the Sales tab");
       await onScreen(tile, "the Outstanding figure's label");
+      }
       }
     },
   },

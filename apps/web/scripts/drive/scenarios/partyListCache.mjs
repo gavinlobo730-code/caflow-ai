@@ -31,8 +31,8 @@ const PERMS = () => ok({ role: "Partner", permissions: { client: ["read", "write
 
 export const scenarios = [
   {
-    id: "coming-back-to-customers-or-vendors-paints-at-once-and-says-when-it-was-read",
-    title: "Sales > Customers and Purchases > Vendors: with the server held 3 s, coming back to the tab paints the list at once under a line saying when it was read",
+    id: "coming-back-to-customers-or-vendors-paints-at-once-says-when-it-was-read-and-a-deactivation-forgets-it",
+    title: "Sales > Customers and Purchases > Vendors: with the server held 3 s, coming back to the tab paints the list at once under a line saying when it was read; and after a customer's deactivation it is NOT painted from the answer read before the write",
     async run(env) {
       const { page, stub } = env;
       stub.setTable("customers", [CUSTOMER]);
@@ -51,13 +51,10 @@ export const scenarios = [
       assert.ok(Date.now() - t1 < 2500, `the list took ${Date.now() - t1} ms to come back, against a 3 s server`);
       await until(async () => (await page.getByText(NOTICE).count()) === 0, "the line to go once the real read landed", 8000);
       }
-    },
-  },
-  {
-    id: "deactivating-a-customer-forgets-the-cached-list",
-    title: "Sales > Customers: after a deactivation, coming back to the tab is NOT painted from the answer read before the write",
-    async run(env) {
-      const { page, stub } = env;
+      // ...and a deactivation forgets the cached list: a fresh page load (the cache is the page's memory), the holds above let go.
+      {
+      stub.setReadDelay("customers", 0);
+      stub.setReadDelay("vendors", 0);
       stub.route({ method: "GET", re: /api\/identity\/permissions/, reply: PERMS });
       stub.setTable("customers", [CUSTOMER]);
       await page.goto(env.at("/sales/"), { waitUntil: "networkidle" });
@@ -73,6 +70,7 @@ export const scenarios = [
       await page.getByRole("button", { name: "Customers", exact: true }).first().click();
       await new Promise((r) => setTimeout(r, 700));
       assert.equal(await page.getByText(NOTICE).count(), 0, "the list was painted from before the deactivation");
+      }
     },
   },
 ];
