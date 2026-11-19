@@ -347,14 +347,13 @@ def _counted_note_rows(db, firm_id: str, client_ids: Optional[list[str]],
     purchase credit note increases it, which is how the ledger posts them. Each is read by its own date, for the clients
     asked for, issued (or applied) and not deleted: the rule public.report_party_totals applies in SQL.
     """
-    def page(read):
-        return lambda: read(db, firm_id, client_ids, date_from, date_to)
-
+    # Each read is a function that builds a FRESH query, which `fetch_all` calls once per page.
+    where = (db, firm_id, client_ids, date_from, date_to)
     return {
-        "sales_credit_notes": fetch_all(page(_credit_notes_page), key="id", label="reports.party_totals.credit_notes"),
-        "sales_debit_notes": fetch_all(page(_sales_debit_notes_page), key="id", label="reports.party_totals.sales_debit_notes"),
-        "purchase_debit_notes": fetch_all(page(_purchase_debit_notes_page), key="id", label="reports.party_totals.debit_notes"),
-        "purchase_credit_notes": fetch_all(page(_purchase_credit_notes_page), key="id",
+        "sales_credit_notes": fetch_all(lambda: _credit_notes_page(*where), key="id", label="reports.party_totals.credit_notes"),
+        "sales_debit_notes": fetch_all(lambda: _sales_debit_notes_page(*where), key="id", label="reports.party_totals.sales_debit_notes"),
+        "purchase_debit_notes": fetch_all(lambda: _purchase_debit_notes_page(*where), key="id", label="reports.party_totals.debit_notes"),
+        "purchase_credit_notes": fetch_all(lambda: _purchase_credit_notes_page(*where), key="id",
                                            label="reports.party_totals.purchase_credit_notes"),
     }
 
