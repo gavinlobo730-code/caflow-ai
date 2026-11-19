@@ -26,9 +26,9 @@
 //     visible happen, throw, hand back a value, or record the failure for its caller, OR carry a comment inside it saying why it is quiet.
 //     The comment is the review: it states what the screen then shows and why that is true. A bare `catch {}` or `.catch(() => {})` is a finding.
 //
-// WHAT IT DOES NOT SEE (and the ledger line POST-A-527 holds): a read whose failure never throws because the client hands it back in the
-//     answer, the shared pager's `{ error }` most of all (sixteen browser list reads destructure `data` alone), a catch whose call is behind a
-//     name declared elsewhere, and what a screen does with the stand-in value a handler hands back.
+// WHAT IT DOES NOT SEE: a read whose failure never throws because the client hands it back in the answer, the shared pager's `{ error }`
+//     most of all (sixteen browser list reads took `data` alone; scripts/a-pager-read-reads-its-error.test.ts holds that rule now), a catch
+//     whose call is behind a name declared elsewhere, and what a screen does with the stand-in value a handler hands back.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

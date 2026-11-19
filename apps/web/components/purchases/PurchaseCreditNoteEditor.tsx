@@ -170,6 +170,8 @@ export function PurchaseCreditNoteEditor({
   const [notes, setNotes] = useState(existing?.notes ?? duplicateSeed?.notes ?? "");
   const [billId, setBillId] = useState(existing?.purchase_bill_id ?? "");
   const [openBills, setOpenBills] = useState<OpenBillOption[]>([]);
+  // A read of the vendor's bills that did not come is not a vendor with none (POST-A-527): the picker says so.
+  const [openBillsUnread, setOpenBillsUnread] = useState(false);
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false);
   const [isReverseCharge, setIsReverseCharge] = useState(existing?.is_reverse_charge ?? duplicateSeed?.is_reverse_charge ?? false);
   const isLocked = isEdit && existing?.status !== "draft";
@@ -192,9 +194,9 @@ export function PurchaseCreditNoteEditor({
   const [documentUrl, setDocumentUrl] = useState<string | null>(existing?.document_url ?? null);
 
   async function loadOpenBills(vId: string) {
-    if (!vId) { setOpenBills([]); return; }
+    if (!vId) { setOpenBills([]); setOpenBillsUnread(false); return; }
     const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
+    const { data, error } = await selectAll(() => supabase
       .from("purchase_bills")
       .select("id, our_reference, bill_no, net_payable_paise, paid_paise, debited_paise, credit_note_paise")
       .eq("client_id", clientId)
@@ -202,7 +204,9 @@ export function PurchaseCreditNoteEditor({
       .in("status", ["received", "partially_paid", "paid"])
       .order("bill_date", { ascending: false })
       .order("id"));
-    setOpenBills(data ?? []);
+    // The pager hands a failure back as `error` and does not throw.
+    setOpenBillsUnread(!!error);
+    setOpenBills(error ? [] : data ?? []);
   }
 
   useEffect(() => {
@@ -503,6 +507,11 @@ export function PurchaseCreditNoteEditor({
                 placeholder="— Standalone / Select bill —"
                 ariaLabel="Against bill"
               />
+              {openBillsUnread && (
+                <p role="alert" className="mt-1 text-3xs text-state-problem">
+                  The vendor's bills could not be read, so none can be chosen here. That is not a vendor with none: pick the vendor again to read them before you issue a standalone note.
+                </p>
+              )}
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>

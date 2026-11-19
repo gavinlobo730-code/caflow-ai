@@ -176,6 +176,8 @@ export function SalesCreditNoteEditor({
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [invoiceId, setInvoiceId] = useState(existing?.sales_invoice_id ?? "");
   const [openInvoices, setOpenInvoices] = useState<OpenInvoiceOption[]>([]);
+  // A read of the customer's invoices that did not come is not a customer with none (POST-A-527): the picker says so.
+  const [openInvoicesUnread, setOpenInvoicesUnread] = useState(false);
   const [isInterstate, setIsInterstate] = useState(existing?.is_interstate ?? duplicateSeed?.is_interstate ?? false);
   // Once issued, everything except notes is frozen — a correction goes
   // through a fresh note (CGST Act §34), not an edit (routers/
@@ -195,9 +197,9 @@ export function SalesCreditNoteEditor({
   const dates = useDateProblems();
 
   async function loadOpenInvoices(custId: string) {
-    if (!custId) { setOpenInvoices([]); return; }
+    if (!custId) { setOpenInvoices([]); setOpenInvoicesUnread(false); return; }
     const supabase = getSupabaseClient();
-    const { data } = await selectAll(() => supabase
+    const { data, error } = await selectAll(() => supabase
       .from("client_sales_invoices")
       .select("id, invoice_no, total_paise, paid_paise, credited_paise, debit_note_paise")
       .eq("client_id", clientId)
@@ -205,7 +207,9 @@ export function SalesCreditNoteEditor({
       .in("status", ["issued", "partially_paid", "paid"])
       .order("invoice_date", { ascending: false })
       .order("id"));
-    setOpenInvoices(data ?? []);
+    // The pager hands a failure back as `error` and does not throw.
+    setOpenInvoicesUnread(!!error);
+    setOpenInvoices(error ? [] : data ?? []);
   }
 
   useEffect(() => {
@@ -464,6 +468,11 @@ export function SalesCreditNoteEditor({
                 placeholder="— Standalone / Select invoice —"
                 ariaLabel="Against invoice"
               />
+              {openInvoicesUnread && (
+                <p role="alert" className="mt-1 text-3xs text-state-problem">
+                  The customer's invoices could not be read, so none can be chosen here. That is not a customer with none: pick the customer again to read them before you issue a standalone note.
+                </p>
+              )}
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-medium text-ps-label mb-1">Reason</label>
