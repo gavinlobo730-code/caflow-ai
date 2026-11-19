@@ -352,6 +352,11 @@ function PLStatementReport({ data }: { data: PLData }) {
             </tr>
           </tfoot>
         </table>
+        {typeof t.revenue_notes_paise === "number" && t.revenue_notes_paise !== 0 && (
+          <p className="mt-2 text-xs text-ps-label" data-notes-note="revenue">
+            Net of the credit and debit notes issued to customers in this period: {formatPaise(t.revenue_notes_paise)}.
+          </p>
+        )}
       </section>
 
       {/* Expenses */}
@@ -387,6 +392,11 @@ function PLStatementReport({ data }: { data: PLData }) {
             </tr>
           </tfoot>
         </table>
+        {typeof t.expense_notes_paise === "number" && t.expense_notes_paise !== 0 && (
+          <p className="mt-2 text-xs text-ps-label" data-notes-note="expenses">
+            Net of the debit and credit notes received from suppliers in this period: {formatPaise(t.expense_notes_paise)}.
+          </p>
+        )}
       </section>
 
       {/* Net P&L */}
@@ -400,6 +410,9 @@ function PLStatementReport({ data }: { data: PLData }) {
         <span>{isProfit ? "Net Profit" : "Net Loss"}</span>
         <span>{formatPaise(Math.abs(t.net_paise))}</span>
       </div>
+      {t.note_documents === 0 && (
+        <p className="text-xs text-ps-label" data-notes-note="none">No credit or debit notes were issued in this period.</p>
+      )}
     </div>
   );
 }
