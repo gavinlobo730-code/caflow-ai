@@ -419,14 +419,14 @@ def _refuse_an_ended_session(user_data: dict, firm_row: Optional[dict], payload:
             # By `iat` AND by when the session began (core/auth_time.py): a renewed token has a
             # new `iat` and would otherwise walk straight back past a revocation.
             issued_before_revocation = _token_predates_revocation(payload, revoked_epoch)
-        except Exception:                                    # noqa: BLE001
+        except Exception as exc:                             # noqa: BLE001
             _logger.error(
                 "sessions_revoked_at for user %s could not be compared with the "
                 "token's iat; refusing the request", auth_user_id, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Your session could not be verified. Please sign in again.",
-            )
+            ) from exc
         if issued_before_revocation:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
