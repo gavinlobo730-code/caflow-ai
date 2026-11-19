@@ -8739,7 +8739,7 @@ export const api = {
     // F21 fix: the only way a users row's auth_user_id can be set. The token comes
     // from the invitation's own link, never from anything else in the URL.
     acceptInvite: (token: string) =>
-      request<ApiResp<{ firm_id: string; role: string; full_name?: string }>>(
+      request<ApiResp<{ firm_id: string; role: string; full_name?: string; already_joined?: boolean }>>(
         "/api/identity/accept-invite", { method: "POST", body: JSON.stringify({ token }) }),
     /** A sign-in for the invitation's own address, opened from its link with no session (POST-A-445). Redeemed with
      *  `supabase.auth.verifyOtp({ token_hash, type })`; nothing is used up until acceptInvite. */

@@ -228,3 +228,13 @@ test("the groups are told apart by their own alphabet, and the words are read in
   assert.equal(authErrorMessage(authApiError("Password should contain at least one character of each: Lowercase, Uppercase, Digit, Symbol", 422)),
     "Your password needs a lowercase letter, a capital letter, a digit and a symbol (for example ! @ # $ %).");
 });
+
+test("the throttle on a repeat link request says how long to wait, not that the hour's emails are used up (POST-A-479)", () => {
+  // As the live sign-in log recorded it on 18-11-2026: 429, code over_email_send_rate_limit.
+  const raw = authApiError("For security purposes, you can only request this after 7 seconds.", 429, "over_email_send_rate_limit");
+  const shown = authErrorMessage(raw);
+  assert.equal(shown, "Please wait 7 seconds before asking again.");
+  assert.doesNotMatch(shown, /last hour/i);
+  // the hourly limit keeps its own sentence
+  assert.match(authErrorMessage(authApiError("email rate limit exceeded", 429, "over_email_send_rate_limit")), /last hour/i);
+});
