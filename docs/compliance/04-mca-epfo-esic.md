@@ -226,13 +226,138 @@ client:**
    it in 2022 is a different joint option exercised with EPFO and is **not
    modelled**; EPS wages are capped for every member, elected or not.
 
-⚠️ One thing seen on the way and **not changed**: `domain/payroll/ecr.py`
-declares `EPF_CONTRI_REMITTED` as the employee's 12% **plus** the employer's EPF
-half (so ₹2,350 / ₹1,250 / ₹1,100 for a ₹15,000 member) and its tests pin that.
-The sample line EPFO's material is RECALLED as carrying (by the author, from
-memory, `[S]` at best) reads ₹1,800 / ₹1,250 / ₹550 — the employee share, the
-pension share, the difference. This could not be checked here; read an actual
-EPFO sample before the next ECR is uploaded. An elected member's line follows the file's existing convention.
+**Update of 19-11-2026** (EPFO's FAQs on the Revamped ECR, questions 17 and 18, and
+EPFO's "Present rates of contribution" sheet, both read): EPFO states that
+contribution on wages above the ceiling needs a **joint request** of employee and
+employer under para 26(6) (the FAQ: "on the joint request in writing", with the
+employer submitting a declaration that it will pay administrative charges on the
+higher contribution), and that **the employer then pays the administrative charge
+on the higher wages**. So point 3 is answered and the product's assumption stands;
+point 1 is partly answered (a joint request in writing is required; its form and
+EPFO's acceptance for a given member are not stated); points 2 and 4 are still
+open. For a voluntary contribution of the employee's share alone (VPF) the FAQ
+says the administrative charge stays on wages up to the ceiling.
+`pf_wage_election.VERIFIED` stays False: the Scheme's own text is not read.
+
+**Update of 19-11-2026, night** (the Employees' Provident Funds Scheme, 2026, read from the Gazette): the 1952 Scheme and its para 26(6) were replaced on 29-06-2026. **Para 9(4) of the 2026 Scheme** says "any employee and his employer may jointly opt in writing, to enrol such employee as a member or allow him to contribute on such wages exceeding wage ceiling limit and thereupon such employee shall be entitled to the benefits and be subject to the conditions of the Fund", the employer paying the administrative charges and complying with all statutory provisions. So point 2 is answered (the paragraph is carried forward), the joint option in writing is the Scheme's own words, and **no officer's allowance is mentioned** (the 1952 text had one); whether the portal still asks for one is in no document read. Para 19 now also puts voluntary contributions by the employee on wages above the ceiling in the Scheme text, with administrative charges on those wages. `pf_wage_election.VERIFIED` is turned when the build re-points its comments (POST-A-520, POST-A-525).
+
+⚠️ **READ ON 19-11-2026 AND WRONG; the fix is POST-A-517 and is not yet built.**
+`domain/payroll/ecr.py` declares `EPF_CONTRI_REMITTED` as the employee's 12%
+**plus** the employer's EPF half (so ₹2,350 / ₹1,250 / ₹1,100 for a ₹15,000
+member) and its tests pin that. EPFO's own User Manual for the Re-engineered ECR
+(v3.0, page 8, attached by the owner from EPFO's Revamped ECR page) gives the
+sample line `…#~#15000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0` for
+a ₹15,000 wage and names the columns Employee PF Contribution (7), Employer EPS
+Contribution (8) and Employer PF Contribution (9); its sample return statement
+(page 10) adds up the same way and its account 1 (page 22) is the employee share
+plus the employer share; EPFO's rates sheet says the employer share is the difference of the employee share and the
+pension contribution, and the ECR 2.0 Introduction (December 2016) names the columns EE Share Remitted, EPS
+Contribution Remitted and ER Share Remitted. So the file this module builds carries wrong figures in
+columns 7 and 9 until it is fixed, and an elected member's line, which follows
+the same convention, is wrong in the same way. Do not upload an ECR built by
+this product before then.
+The Employees' Provident Funds Scheme, 2026 (read 19-11-2026, night) prescribes the return as **Form VII**, "Electronic Challan-Cum-Return" (para 24(2)(ix)), with fourteen columns whose contribution columns come in the same order (8 "Employee PF contribution", 9 "Employer EPS contribution", 10 "Employer PF contribution"), so the fix stands on the Gazette's form too; the form adds three principal-employer columns and drops the refund of advance, and whether the portal's file has changed is not read (owner list S48).
+
+### The Code on Social Security, 2020: what was read from its own text on 19-11-2026 `[P]`
+
+Read section by section from India Code (indiacode.gov.in, the Government's own
+site; its API serves each section of the Act as an item). What matters here:
+
+- **s.2(88) wages** and its one-half proviso are as `domain/payroll/wage_base.py`
+  has them (see POST-C-121 for what is still open: a notified percentage other
+  than one-half, and one-time payments).
+- **s.2(89) "wage ceiling"** is the amount notified "for the purposes of becoming a
+  member under Chapter III and Chapter IV". **s.16** states the contribution on
+  "the wages for the time being payable" and has no cap in its text; where the
+  contribution cap sits is for the Scheme (owner list S43).
+- **s.2(82) "superannuation"** is the attainment of the age fixed in the contract or conditions of service, and its proviso says
+  "for the purposes of Chapter III, the age of superannuation shall be fifty-eight years" (read 19-11-2026, night; an earlier
+  pass of this note missed it). The 2026 pension scheme ends membership on attaining the age of superannuation.
+- **s.16(1)(a):** the employer's contribution is **ten per cent.** of wages, the
+  employee's equal (the employee may pay more, the employer not being bound to),
+  and **twelve per cent. applies to establishments or classes the Central
+  Government notifies**. So ten per cent. is the statutory base and the 2018
+  list of ten-per-cent classes is the classes not so notified (S46).
+  **s.16(1)(b):** the pension share is not more than eight and one-third per cent.
+  of wages or as notified; **s.16(1)(c):** insurance not more than one per cent.
+  or as notified, plus up to one-fourth of it for administration.
+- **First Schedule:** Chapter III applies to every establishment of twenty or more
+  employees; s.1(5) lets a smaller one be covered by agreement, and s.1(8) keeps
+  an establishment covered if its headcount later falls below the threshold.
+- **s.143** lets the appropriate Government exempt an establishment or class from
+  the provident fund, pension and insurance schemes (three years at first, on the
+  schemes' conditions; the employer files returns electronically and pays
+  inspection charges as the Central Government directs, s.143(6)).
+- **s.164: the EPF Act 1952 is repealed.** Notifications and schemes made under it
+  are deemed made under the Code and stay in force until repealed (s.164(2)(a)),
+  but **the Employees' Provident Funds Scheme 1952, the Employees' Deposit Linked
+  Insurance Scheme 1976 and the Employees' Pension Scheme 1995 remain in force for
+  one year from the date of commencement only (s.164(2)(b))**: counted from
+  21-11-2025, to **20-11-2026**. s.15 lets the Central Government frame the
+  schemes, and s.163 lets it make orders to remove difficulties until two years
+  after commencement. **What replaces the three schemes was found and read on
+  19-11-2026 (night): the three 2026 schemes below, in force from 29-06-2026, which ended the old ones on that day
+  and not at the one-year limit** (S47). Every statement in this note and in the product that cites a paragraph of
+  the old schemes cites a replaced scheme (POST-A-525).
+- **SUPERSEDED on 29-06-2026 (history only): the Employees' Provident Funds Scheme, 1952 as EPFO publishes it** (80 pages printed from epfo.gov.in on 19-11-2026; it
+  names no Code and shows no 2026 amendment) `[P]`: **para 26** limits the contribution to "the amounts payable on a monthly pay
+  of [fifteen thousand rupees]" and, in sub-paragraph (6), lets "an officer not below the rank of an Assistant Provident Fund
+  Commissioner", on the joint request in writing of the employee and the employer, enroll an employee or allow contribution
+  above that figure, on the employer's written undertaking to pay the administrative charges. **para 29** fixes the
+  contribution at ten per cent. of "basic wages, dearness allowance (including the cash value of any food concession) and
+  retaining allowance (if any)" (twelve per cent. for establishments the Central Government specifies), equal for employee and
+  employer, each rounded to the nearest rupee with 50 paise or more counted up. **para 30 and 38:** the employer pays both shares
+  and the administrative charge (a percentage of pay fixed by the Central Government) "within fifteen days of the close of
+  every month", and sends a monthly abstract within twenty-five days, a Nil return if nothing was recovered. **para 32A:**
+  damages of 5, 10, 15 and 25 per cent. a year of the arrears by period of default (under two months, two to four, four to six,
+  six or more). The Scheme's base is "pay" (basic wages, dearness allowance, retaining allowance, food concession), not the
+  Code's wider definition, which the product applies from 21-11-2025 (S47, POST-C-121).
+- **SUPERSEDED on 29-06-2026 (history only): the Employees' Pension Scheme, 1995 and the Employees' Deposit-Linked Insurance Scheme, 1976 as EPFO publishes them**
+  (printed 19-11-2026; the pension copy's latest note is of 14-06-2024 and names the Code once, in an inserted 2023 note on the
+  higher-pension option; the insurance copy names no year after 2017) `[P]`: the **pension ceiling is in the Pension Scheme**
+  (para 3: the contribution is "limited to the amount payable on his pay of fifteen thousand rupees only"; para 6(a): the
+  Scheme applies to a provident fund member "whose pay on such date is less than or equal to fifteen thousand rupees") and the
+  **insurance ceiling in the Insurance Scheme** (para 7 proviso: limited to "a monthly pay of fifteen thousand rupees"), so all
+  three schemes keep Rs 15,000 in their own text. The pension share is 8.33% of pay; membership of the Pension Fund ends "from
+  the date of attaining 58 years of age" (para 6, Explanation; 6A), with deferment to 60 at the member's option (para 12(7B)).
+  Both schemes require payment within fifteen days of the close of the month and round each contribution to the nearest rupee,
+  50 paise counted up; damages on late contributions to either fund are one per cent. of the arrear per month or part (EPS para
+  5, EDLI para 8-A). The insurance rate (0.5%) is not in the Scheme text: it is fixed under section 6C of the repealed Act and,
+  in the Code, by section 16(1)(c) "as notified".
+
+- **The three 2026 schemes under the Code, read from the Gazette on 19-11-2026 (night) `[P]`:** the Employees' Provident Funds
+  Scheme, 2026 (G.S.R. 525(E), Gazette No. 473), the Employees' Deposit-Linked Insurance Scheme, 2026 (G.S.R. 526(E), No. 474)
+  and the Employees' Pension Scheme, 2026 (G.S.R. 527(E), No. 475), all of 29-06-2026, made under section 15(1)(a), (c) and (b)
+  "in supersession of" the 1952, 1976 and 1995 schemes (the pension one also of the 1971 Family Pension Scheme) and in force on
+  publication, with the amendments G.S.R. 847(E) of 25-09-2026 and G.S.R. 890(E) of 15-10-2026 and the corrigenda G.S.R. 802(E)
+  and 800(E) of 10-09-2026 (Hindi text only). **The ceiling is the notified wage ceiling in all three, and no Scheme states a
+  figure:** provident fund para 18(3), pension para 4(1) and the first proviso to 4(2), insurance para 5(1) ("wages as defined in
+  clause (88) of section 2 of the Code, subject to the wage ceiling specified in clause (89)"). **The one Rs 15,000 left is the
+  Central Government's own 1.16% pension contribution (G.S.R. 890(E)),** not the employer's share. Rate 12% (10% for notified
+  classes), on "wages actually drawn or payable during the month", each contribution to the nearest rupee, 50 paise up (para 18);
+  the joint option in para 9(4) with no officer's allowance; voluntary contributions in para 19; the payment and the return
+  (Form VII, fourteen columns, para 24(2)(ix)) each within fifteen days of the close of the month (paras 20(1), 24(2)(ix),
+  28(3)); a late-return fee of Rs 500 a day capped at the month's administrative charge (para 29(2)); damages of 0.25%, 0.50%
+  and 1% of the arrears a month by length of default (para 23); membership of the pension scheme for a person whose wages on
+  the day of joining are at or below the notified ceiling and, from 17-09-2026, for a provident fund member with wages at or
+  below it on that day (pension para 7(1)(i) to (iii)); the administrative-charge percentage and the insurance rate are fixed
+  by notification and stated in no Scheme (S49). Time-limited reliefs in the Annexure: the Employees' Enrolment Campaign, 2026
+  (to 31-10-2026), VISHWAS, 2026 and AMNESTY, 2026 (six months from 29-06-2026, extendable by up to six months). Still open:
+  the wage month of September 2026 and the portal's file against Form VII (S43, S48, POST-A-516); the ceiling
+  notification's own e-Gazette copy was compared on 19-11-2026 (night) and matches its figure and date.
+- **The Social Security (Central) Rules, 2026 (G.S.R. 344(E) of 8-05-2026), read from the Gazette on 19-11-2026 (evening) `[P]`:**
+  made under sections 154, 155, 158 and 159, in force on publication, superseding twelve earlier sets including the ESI (Central)
+  Rules 1950 and the Payment of Gratuity (Central) Rules 1972. **They do not mention the one-half wage rule or any other
+  percentage.** Rule 19: ESI employer 3.25%, employee 0.75% of wages payable, each rounded to the next higher rupee (rule 19(2):
+  no employer share for up to three years for an employee with a disability, reimbursed by the Government; not modelled).
+  Chapter V (rules 31 to 34): gratuity nomination in Form III, application in Form IV within thirty days, the employer's Form V
+  notice within fifteen days and payment by the thirtieth day, and a **fixed-term employee eligible after one year** (rule 33(1)(a)).
+  Rule 53: registers and the wage slip (Form V of the Wages (Central) Rules, 2026) kept five calendar years, and a unified annual
+  return in Form XXIII by 28 or 29 February for the gratuity and maternity chapters. Rule 5: registration on the Shram Suvidha
+  portal, the registration number quoted on all documents. Rule 65: exemption needs 500 contributory members and Rs 50 crore. No
+  provident fund return, UAN or due-date rule is in them (the 2026 Scheme has those). **Gratuity: the Payment of Gratuity Act 1972 is
+  repealed by section 164(1) of the Code and section 53 governs; the cap is "such amount as may be notified" and no notification
+  under section 53 has been read (owner list S50, POST-A-526).**
 
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
@@ -325,13 +450,20 @@ What did change:
 | A/c 21 | **EDLI** — employer | 0.50%, capped at ₹15,000 → max ₹75 |
 | A/c 22 | EDLI admin | **Nil since 1 April 2017** |
 
-Minimum for A/c 2: **₹500/month** functional, **₹75/month** non-functional. `[S]`
+Minimum for A/c 2: **₹500/month**, and **₹75/month** where the establishment has no contributory member that month. **`[P]` as of 2018: read on 19-11-2026 in EPFO's own "Present rates of contribution" sheet** (listed on its Employer Documents page as Contribution Rate 12-06-2018).
 
-> **Every one of these matches `domain/payroll/statutory.py` exactly.** `[S]`
+> **Every one of these matches `domain/payroll/statutory.py` exactly, and EPFO's
+> own rates sheet of 2018 states each of them** (0.5% administrative charge from
+> 1 June 2018 with a ₹500 minimum, EDLI 0.5% at ₹75 a head, EDLI administrative
+> charge nil from 1 April 2017, EPS 8.33%). `[P]`
 >
-> ⚠️ One shared open item: the **₹500 minimum was set in the 0.65% era**, and
-> **neither the research nor the code has a primary source confirming it survived
-> the June 2018 cut.** Both assert ₹500. That is agreement, not verification.
+> **The old open item is closed (19-11-2026):** whether the ₹500 minimum survived
+> the June 2018 cut from 0.65%. The sheet's table gives ₹500 for "01.06.2018
+> onwards" at 0.50%, and the 2025 manual's example (account 2 of ₹975 on wages of
+> ₹1,95,000) agrees with 0.5%. The sheet is of 2018, so it says nothing of the Code
+> on Social Security. **One thing it adds is not in the code:** a month with no
+> contributory member carries a ₹75 minimum, where the code says such a month owes
+> nothing (POST-A-523).
 
 **No 2025 admin-charge notification was found.** What actually moved in 2025:
 
@@ -428,8 +560,10 @@ rest of this file, **it changes a number the product computes today**.
 | Date | What |
 |---|---|
 | **21 Nov 2025** | All four Labour Codes in force (PIB). The EPF Act 1952 and ESI Act 1948 stand subsumed into the **Code on Social Security 2020** |
-| **8 May 2026** | Final **Rules under the Code on Social Security** notified |
-| **29 May 2026** | Ministry of Labour notification declaring **₹15,000 the wage ceiling for Chapter III (EPF)** under the new Code |
+| **8 May 2026** | Final **Rules under the Code on Social Security** notified (the Social Security (Central) Rules, 2026, G.S.R. 344(E); e-Gazette id CG-DL-E-08052026-272366; read on 19-11-2026, evening: owner list D12) |
+| **29 May 2026** | Ministry of Labour notification declaring **₹15,000 the wage ceiling for Chapter III (EPF)** under the new Code (S.O. 2702(E)) |
+| **29 June 2026** | The Employees' Provident Funds Scheme, 2026, the Employees' Pension Scheme, 2026 and the Employees' Deposit-Linked Insurance Scheme, 2026 (G.S.R. 525(E), 527(E), 526(E)) replace the three old schemes |
+| **17 September 2026** | Ministry of Labour S.O. 5109(E): **₹25,000** the wage ceiling for Chapter III, from publication, superseding S.O. 2702(E) (read from the e-Gazette's own copy on 19-11-2026, `[P]`: No. 4918, F. No. R-12025/01/2026-SS-II; owner list D1, S43) |
 
 So the framework is not "commenced but awaiting rules" any more. The rules are
 notified and the ceiling has been formally re-notified under the new Code.
@@ -450,8 +584,9 @@ contributions.** `[S]`
 > ceiling on wages**. It does not force basic to be 50% of CTC; it adds back
 > whatever excess there is.
 
-**Both ceilings are unchanged** — EPF **₹15,000**, ESI **₹21,000** (unchanged
-since January 2017). That is what bounds the damage.
+**(Out of date from 17-09-2026.)** The EPF ceiling was **₹15,000** until 16-09-2026 and is notified at **₹25,000** from
+17-09-2026 (S.O. 5109(E); owner list S43, POST-A-516); the ESI ceiling is **₹21,000** (unchanged since January 2017).
+That is what bounded the damage when this section was written.
 
 ### ✅ FIXED — what the code does now
 

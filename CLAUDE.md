@@ -106,7 +106,9 @@ asked for again. Where one of them differs from a default, this section wins.
   a task would need more than five agents, tell the owner the rough cost first and wait. Say
   plainly when credits look low. Emergency mode: docs/operations/emergency-mode.md.
 - **Telling the owner.** Plain English, with no file paths or function names: the owner has
-  chartered-accountant domain knowledge and does not read code. All times in IST. Report
+  chartered-accountant domain knowledge and does not read code. All times in IST. **A step in a dashboard
+  is given as a click path (the menu, then the tab, then the switch), never as a link: he works in
+  several accounts in one browser and a link opens in the wrong one (19-11-2026).** Report
   faithfully what was verified, what was not and what is waiting on whom. The owner's list
   (money, tasks only the owner can do, statutory and legal needs) is kept in one place and
   refreshed, not scattered across replies.
