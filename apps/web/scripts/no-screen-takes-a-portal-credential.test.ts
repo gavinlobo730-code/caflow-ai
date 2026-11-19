@@ -46,6 +46,9 @@ const OWN_CREDENTIALS: Record<string, string> = {
     + "code Supabase sends. Our own second factor, not a government portal's",
   "app/auth/reset-password/page.tsx":
     "sets a new PracticeSync password after a reset link",
+  "app/join/page.tsx":
+    "a staff member joining by invitation sets their own PracticeSync password here, after the invitation signed them in "
+    + "(its link works once, so without a password they could not sign in again)",
   "app/portal/activate/page.tsx":
     "a client activating their portal login sets their own password here",
   "app/portal/employee/activate/page.tsx":

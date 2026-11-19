@@ -195,6 +195,27 @@ def invite_session(body: InviteSessionBody):
     return api_response(True, staff_invite_service.sign_in_for(invite, body.token))
 
 
+def _already_joined(jwt_user: dict) -> Optional[dict]:
+    """The caller's own membership when the caller IS an active member whose address is the one the sign-in carries,
+    else None (POST-A-481).
+
+    A repeat of accept-invite (a second click, a reload, the link opened in another tab or on a phone after the
+    first one joined) found the token spent and answered the one refusal every spent token shares, so a person who
+    had just joined was told their invitation "could not be used". It reveals nothing about the token: the answer is
+    the caller's OWN membership, read from their own verified sign-in, and a caller with no membership still gets the
+    404."""
+    linked = user_repo.find_linked_member(jwt_user.get("auth_user_id") or "")
+    if not linked or not linked.get("id") or not linked.get("firm_id"):
+        return None
+    row = user_repo.find_by_id(str(linked["id"]), firm_id=str(linked["firm_id"]))
+    if not row or member_state(row) != "active":
+        return None
+    if (row.get("email") or "").strip().lower() != (jwt_user.get("email") or "").strip().lower():
+        return None
+    return {"firm_id": row.get("firm_id"), "role": row.get("role"), "full_name": row.get("full_name"),
+            "already_joined": True}
+
+
 @invite_router.post("/accept-invite", dependencies=[Depends(public_limit("invite"))])
 def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)):
     """Complete a staff invite (F21 fix). JWT-only auth — the caller has no
@@ -209,7 +230,14 @@ def accept_invite(body: AcceptInviteBody, jwt_user: dict = Depends(get_jwt_user)
     # The invitation must be live: found, switched on (a Partner who deactivated a pending invitee has withdrawn
     # it, and accepting must not reactivate them; that is POST /users/{id}/reactivate, a Partner's act), and not
     # past its expiry. One rule, `member_state`, which the Team screen and the sign-in below also read.
-    invite = _live_invitation(body.token)
+    try:
+        invite = _live_invitation(body.token)
+    except HTTPException as refused:
+        # A repeat by the person who already joined is answered with their membership, not a refusal (POST-A-481).
+        joined = _already_joined(jwt_user) if refused.status_code == 404 else None
+        if joined is not None:
+            return api_response(True, joined)
+        raise
     if (invite.get("email") or "").strip().lower() != (jwt_user.get("email") or "").strip().lower():
         # Defense in depth: the token alone (a 256-bit random secret only ever
         # transmitted to the invited email) is already unforgeable, but a mismatch

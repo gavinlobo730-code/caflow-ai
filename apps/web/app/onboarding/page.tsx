@@ -21,6 +21,8 @@ import { passwordProblem } from "@/lib/auth/passwordRules";
 import { passwordStepButtonEnabled, passwordStepMode } from "@/lib/auth/passwordStep";
 import { onboardingProgress, progressFor, restoredStep } from "@/lib/auth/onboardingProgress";
 import { PasswordRules } from "@/components/auth/PasswordRules";
+import { clearSignupStash, newFirmSignupStarted, readSignupStash as readStash } from "@/lib/auth/signupStash";
+import { signedInAsSentence, signupLanding } from "@/lib/auth/signupLanding";
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal from "@/components/LazyCsvImportModal";
 import type { ImportRow, ImportResult } from "@/components/CsvImportModal";
@@ -32,11 +34,11 @@ import { Button } from "@/components/ui/button";
 import { hasChanges, useUnsavedChanges } from "@/lib/invoices/dirtyState";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
-interface SignupStash { firmName?: string; fullName?: string }
-function readSignupStash(): SignupStash {
-  if (typeof window === "undefined") return {};
-  try { return JSON.parse(localStorage.getItem("practicesync_signup") || "{}"); } catch { return {}; }
+// The sign-up page's hand-over across the emailed link: lib/auth/signupStash (it now keeps the address too).
+function browserStorage(): Storage | null {
+  try { return typeof window === "undefined" ? null : window.localStorage; } catch { return null; }
 }
+function readSignupStash() { return readStash(browserStorage()); }
 
 // ─── Indian states list ────────────────────────────────────────────────────
 const INDIAN_STATES = [
@@ -290,7 +292,7 @@ function ProgressBar({ step }: { step: number }) {
 
 // ─── Main page ─────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
-  const { user, session, loading: authLoading, refreshUserContext, resolveEnrolmentRequired } = useAuth();
+  const { user, session, loading: authLoading, refreshUserContext, resolveEnrolmentRequired, hasFirm, fullName: memberName, userRole, signOut } = useAuth();
   const router = useRouter();
   const supabase = getSupabaseClient();
 
@@ -298,6 +300,44 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<number>(() => restoredStep({
     progress: onboardingProgress.get(), userId: user?.id, ownerName: readSignupStash().fullName ?? "",
   }));
+  // THE ADDRESS ALREADY HAS A PRACTICE (POST-A-480). A new-firm sign-up was started in this browser (the stash is
+  // there) and the person the link signed in is already a member of a practice: say so, never open that practice
+  // as if it were the new one. `createdHere` is true once THIS wizard made the firm, when having one is expected.
+  const [signupStarted] = useState(() => newFirmSignupStarted(readSignupStash()));
+  const [createdHere, setCreatedHere] = useState(false);
+  const [existingFirmName, setExistingFirmName] = useState<string | null>(null);
+  const landing = signupLanding({ hasSession: !!session, hasFirm, signupStarted, createdHere });
+
+  // A LINK THAT LANDS ALREADY USED (POST-A-479). The emailed link works once, so a second click, a reload after the
+  // first, or a mail scanner that opened it first leaves a person signed out on this page. With the address the
+  // sign-up page kept, they can have a new one sent here instead of starting again.
+  const stashedEmail = readSignupStash().email ?? null;
+  const [linkSending, setLinkSending] = useState(false);
+  const [linkWait, setLinkWait] = useState(0);
+  const [linkNote, setLinkNote] = useState<{ tone: "ok" | "problem"; text: string } | null>(null);
+  useEffect(() => {
+    if (linkWait <= 0) return;
+    const timer = setTimeout(() => setLinkWait((n) => n - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [linkWait]);
+  async function emailNewLink() {
+    if (!stashedEmail || linkSending || linkWait > 0) return;
+    setLinkSending(true);
+    setLinkNote(null);
+    try {
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email: stashedEmail,
+        options: { emailRedirectTo: window.location.origin + "/onboarding" },
+      });
+      if (otpErr) throw otpErr;
+      setLinkNote({ tone: "ok", text: `A new link is on its way to ${stashedEmail}. It works once: open it in this browser.` });
+      setLinkWait(30);
+    } catch (e) {
+      setLinkNote({ tone: "problem", text: authErrorMessage(e, "Could not send a new link. Please try again.") });
+    } finally {
+      setLinkSending(false);
+    }
+  }
   const [ownerName, setOwnerName] = useState(() => readSignupStash().fullName?.trim() ?? "");
   const [firmId, setFirmId] = useState<string | null>(null);
   const [firmForm, setFirmForm] = useState<FirmForm>(EMPTY_FIRM);
@@ -396,7 +436,8 @@ export default function OnboardingPage() {
       });
       const newId = resp?.data?.firm?.id ?? null;
       if (!newId) throw new Error(resp?.error ?? "Firm creation did not return a firm ID.");
-      if (typeof window !== "undefined") localStorage.removeItem("practicesync_signup");
+      clearSignupStash(browserStorage());
+      setCreatedHere(true);
       // Remembered: a remount after this goes on to step 3, never back to a blank step 2 whose save would overwrite
       // the profile just entered.
       advancedHere.current = true;
@@ -440,12 +481,15 @@ export default function OnboardingPage() {
         .eq("id", firmId)
         .maybeSingle();
       if (firmData?.name) {
-        router.replace("/");
+        // A member who only visited this page goes to their dashboard as before; one who STARTED a new-firm sign-up
+        // with this address is told (the notice below) and never taken there silently (POST-A-480).
+        if (landing === "existing-practice") setExistingFirmName(firmData.name);
+        else if (landing === "go-home") router.replace("/");
       }
     }
     checkAlreadyOnboarded();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firmId]);
+  }, [firmId, landing]);
 
   // ─── Navigation ───────────────────────────────────────────────────────
   function goNext() { setStep((s) => Math.min(s + 1, STEPS.length)); }
@@ -738,11 +782,26 @@ export default function OnboardingPage() {
             <LogoIcon size="sm" />
             <span className="text-sm font-semibold text-ps-body">PracticeSync AI</span>
           </div>
-          <h1 className="text-xl font-bold text-ps-ink mb-2">This sign-up link has expired</h1>
+          <h1 className="text-xl font-bold text-ps-ink mb-2">This sign-up link was already used, or has expired</h1>
           <p className="text-sm text-ps-label mb-6">
-            You are not signed in, so this setup page cannot continue. Request a new
-            sign-up link, or sign in if you already have a password.
+            An emailed link works once. You are not signed in here, so this setup page cannot continue.
+            {stashedEmail ? " We can email a new link to the address you signed up with, or you can sign in if you already have a password." : " Request a new sign-up link, or sign in if you already have a password."}
           </p>
+          {stashedEmail && (
+            <div className="mb-3 space-y-2">
+              <Button
+                variant="plain" size="none" onClick={() => void emailNewLink()} disabled={linkSending || linkWait > 0}
+                className="w-full bg-brand text-white text-sm font-medium py-2 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
+              >
+                {linkSending ? "Sending…" : linkWait > 0 ? `Email me a new link (wait ${linkWait}s)` : "Email me a new link"}
+              </Button>
+              {linkNote && (
+                <p role={linkNote.tone === "problem" ? "alert" : "status"} className={`text-xs ${linkNote.tone === "problem" ? "text-state-problem" : "text-green-700"}`}>
+                  {linkNote.text}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             <Link
               href="/signup"
@@ -756,6 +815,43 @@ export default function OnboardingPage() {
             >
               Sign in
             </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── This address already has a practice (POST-A-480) ─────────────────
+  if (landing === "existing-practice") {
+    return (
+      <div className="min-h-screen bg-ps-bg flex items-center justify-center p-4">
+        <div data-existing-practice="" className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-ps-border p-8 text-center">
+          <div className="flex items-center gap-2 justify-center mb-4">
+            <LogoIcon size="sm" />
+            <span className="text-sm font-semibold text-ps-body">PracticeSync AI</span>
+          </div>
+          {/* An h2, not a third h1: a screen's own h1 is on a frozen list (scripts/a-screen-names-itself-through-one-component). */}
+          <h2 className="text-xl font-bold text-ps-ink mb-2">This address already has a practice</h2>
+          <p className="text-sm text-ps-body mb-2">{signedInAsSentence(memberName, userRole, existingFirmName)}</p>
+          <p className="text-sm text-ps-label mb-6">
+            One sign-in belongs to one practice, so it cannot start a new firm. To set up a different firm, sign out
+            and use another email address.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="plain" size="none"
+              onClick={() => { clearSignupStash(browserStorage()); router.replace("/"); }}
+              className="flex items-center justify-center gap-2 px-5 py-2 bg-brand text-white text-sm font-medium rounded-lg hover:bg-brand-dark transition-colors"
+            >
+              {existingFirmName ? `Continue to ${existingFirmName}` : "Continue to my practice"}
+            </Button>
+            <Button
+              variant="plain" size="none"
+              onClick={async () => { clearSignupStash(browserStorage()); await signOut(); router.replace("/signup"); }}
+              className="flex items-center justify-center gap-2 px-5 py-2 border border-ps-border text-ps-body text-sm font-medium rounded-lg hover:bg-ps-bg transition-colors"
+            >
+              Sign out and use another address
+            </Button>
           </div>
         </div>
       </div>
