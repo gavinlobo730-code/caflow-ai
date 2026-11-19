@@ -481,9 +481,12 @@ def test_the_rule_is_asked_by_all_three_helpers(db):
 
 
 def test_the_liveness_rule_is_not_callable_by_a_request(db):
+    # Migration 773 (POST-A-509) gave the question its two other marks and moved the token side into a function of its own: both are
+    # the helpers' to ask, and neither is a request's.
     for role in ("anon", "authenticated"):
-        assert _ok(db, f"SELECT has_function_privilege('{role}', "
-                       f"'public.staff_session_is_live(boolean, timestamptz)', 'EXECUTE');") == "f"
+        for fn in ("public.staff_session_is_live(boolean, timestamptz, timestamptz, text)",
+                   "public.token_session_began_at_or_after(timestamptz)"):
+            assert _ok(db, f"SELECT has_function_privilege('{role}', '{fn}', 'EXECUTE');") == "f", f"{role} may call {fn}"
 
 
 # ── Storage ──────────────────────────────────────────────────────────────────
