@@ -3,13 +3,17 @@
 /**
  * Security settings — password change + Multi-Factor Authentication (TOTP).
  *
- * Change Password requires the CURRENT password before accepting a new one
- * (via a throwaway signInWithPassword check) — a live session alone isn't
- * proof of identity here; without this, anyone who gets to an unlocked,
- * already-signed-in browser could silently lock the real owner out by just
- * setting a new password. This is on top of, not instead of, Supabase's own
- * session auth — a stolen/left-open SESSION and knowledge of the CURRENT
- * PASSWORD are different things, and this form demands both.
+ * Change Password requires the CURRENT password before accepting a new one.
+ * The check is made on a THROWAWAY client that keeps nothing (lib/auth/
+ * verifyCurrentPassword, lib/supabase/client.makeEphemeralAuthClient), so it
+ * never replaces this browser's session, and the password is sent again in the
+ * update itself (`current_password`) for the project's "Require current
+ * password when updating" switch, which refuses a change without it (POST-A-512).
+ * A live session alone isn't proof of identity here; without this, anyone who
+ * gets to an unlocked, already-signed-in browser could silently lock the real
+ * owner out by just setting a new password. This is on top of, not instead of,
+ * Supabase's own session auth — a stolen/left-open SESSION and knowledge of the
+ * CURRENT PASSWORD are different things, and this form demands both.
  *
  * MFA section: lets any signed-in user enrol an authenticator app (Google
  * Authenticator, Authy, 1Password, …) as a TOTP second factor, scan a QR
@@ -19,8 +23,8 @@
  * verified factor lets the user elevate to aal2 at login (see app/login).
  */
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, KeyRound, Eye, EyeOff } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, KeyRound } from "lucide-react";
+import { getSupabaseClient, makeEphemeralAuthClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { setPasswordWithReauthNonce, isInvalidNonceError } from "@/lib/auth/reauth";
 import { Callout } from "@/components/ui/callout";
@@ -34,7 +38,9 @@ import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingRegion } from "@/components/ui/skeleton";
 import { passwordProblem } from "@/lib/auth/passwordRules";
-import { rememberPasswordNotice, takePasswordNotice } from "@/lib/auth/passwordNotice";
+import { rememberPasswordNotice, takePasswordNotice, rememberPasswordRefusal, takePasswordRefusal } from "@/lib/auth/passwordNotice";
+import { verifyCurrentPassword } from "@/lib/auth/verifyCurrentPassword";
+import { PasswordField } from "@/components/auth/PasswordField";
 import { PasswordRules } from "@/components/auth/PasswordRules";
 import { MyDevicesCard } from "@/components/security/MyDevicesCard";
 
@@ -206,11 +212,10 @@ function ChangePasswordCard() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // A sentence left by an earlier mount of this card: proving the current password replaces the session, the guard unmounts the
-  // page for the announcement, and the answer arrives at a page that has gone (POST-A-493, lib/auth/passwordNotice).
+  // A sentence left by an earlier mount of this card, for the success AND for a refusal: if the page is rebuilt while a change is in
+  // flight, the answer arrives at a page that has gone, and it is shown by the page that replaced it (POST-A-493, POST-A-512).
+  const [error, setError] = useState<string | null>(() => takePasswordRefusal());
   const [notice, setNotice] = useState<string | null>(() => takePasswordNotice());
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -232,6 +237,12 @@ function ChangePasswordCard() {
     reset();
   }
 
+  /** The change was refused: say why, here or on the page that replaced this one. A refusal is never silent (POST-A-512). */
+  function refused(sentence: string) {
+    if (!mounted.current) { rememberPasswordRefusal(sentence); return; }
+    setError(sentence);
+  }
+
   async function submit() {
     setError(null); setNotice(null);
     if (!current) { setError("Enter your current password."); return; }
@@ -242,27 +253,28 @@ function ChangePasswordCard() {
     if (!user?.email) { setError("Could not determine your account email. Please refresh and try again."); return; }
     setBusy(true);
     try {
-      // Prove identity with the CURRENT password before changing it — a live
-      // session is not sufficient on its own (see the card's doc comment).
-      // signInWithPassword re-validates credentials without disturbing the
-      // caller's existing session state beyond a token refresh.
-      const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: user.email, password: current });
-      if (verifyErr) { setError("Current password is incorrect."); return; }
+      // Prove identity with the CURRENT password before changing it — a live session is not sufficient on its own (see the card's doc
+      // comment). The proof is made on a throwaway client that keeps nothing, so it neither replaces this browser's session (which
+      // rebuilt this page and dropped a person with an authenticator back to the first level) nor depends on the project's switch.
+      const proof = await verifyCurrentPassword(user.email, current, makeEphemeralAuthClient);
+      if (!proof.ok) { refused(proof.message); return; }
 
-      const { error: upErr } = await supabase.auth.updateUser({ password: next });
+      // The current password goes in the update itself: with the project's "Require current password when updating" switch on, a
+      // change without it is refused with `current_password_required` (seen live on 19-11-2026, POST-A-512).
+      const { error: upErr } = await supabase.auth.updateUser({ password: next, current_password: current });
       if (upErr) {
         if (upErr.message.toLowerCase().includes("reauthentication")) {
           const { error: raErr } = await supabase.auth.reauthenticate();
-          if (raErr) { setError("Could not send a verification code. Please try again."); return; }
+          if (raErr) { refused("Could not send a verification code. Please try again."); return; }
           setNeedsReauth(true);
           return;
         }
-        setError(authErrorMessage(upErr));
+        refused(authErrorMessage(upErr));
         return;
       }
       passwordSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update your password. Please try again.");
+      refused(authErrorMessage(e, "Could not update your password. Please try again."));
     } finally {
       setBusy(false);
     }
@@ -272,18 +284,20 @@ function ChangePasswordCard() {
     setError(null);
     setBusy(true);
     try {
-      const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, next, reauthOtp);
+      const { error: upErr } = await setPasswordWithReauthNonce(supabase.auth, next, reauthOtp, current);
       if (upErr) {
-        setError(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : authErrorMessage(upErr));
+        refused(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : authErrorMessage(upErr));
         return;
       }
       passwordSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Verification failed. Please try again.");
+      refused(authErrorMessage(e, "Verification failed. Please try again."));
     } finally {
       setBusy(false);
     }
   }
+
+  const inputCls = "w-full px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand";
 
   return (
     <div className="bg-white rounded-xl border border-ps-border overflow-hidden">
@@ -294,10 +308,10 @@ function ChangePasswordCard() {
 
       <div className="px-5 py-4 space-y-4">
         {error && (
-          <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
+          <p role="alert" className="text-xs text-state-problem flex items-start gap-1.5"><AlertCircle size={13} className="mt-0.5 shrink-0" /> {error}</p>
         )}
         {notice && (
-          <p className="text-xs text-green-700 flex items-start gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> {notice}</p>
+          <p role="status" className="text-xs text-state-ready flex items-start gap-1.5"><CheckCircle2 size={13} className="mt-0.5 shrink-0" /> {notice}</p>
         )}
 
         {needsReauth ? (
@@ -329,36 +343,30 @@ function ChangePasswordCard() {
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Each box has its OWN eye and hides only itself (POST-A-513): one setting used to drive all three while only the
+                new-password box carried the eye, so the current password showed in clear with nothing beside it to hide it. */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-ps-label">Current password</label>
-              <input aria-label="Current password"
-                type={showPw ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
-                autoComplete="current-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-              />
+              <label htmlFor="security-current-password" className="block text-xs font-medium text-ps-label">Current password</label>
+              <div className="max-w-sm">
+                <PasswordField id="security-current-password" label="current password" autoComplete="current-password"
+                  value={current} onChange={setCurrent} inputClassName={inputCls} />
+              </div>
             </div>
             <PasswordRules password={next} id="security-password-rules" />
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-ps-label">New password</label>
-              <div className="relative max-w-sm">
-                <input
-                  type={showPw ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
-                  autoComplete="new-password" aria-label="New password" aria-describedby="security-password-rules" placeholder="Create a password"
-                  className="w-full px-3 py-2 pr-10 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-                />
-                <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide passwords" : "Show passwords"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ps-hint hover:text-ps-label">
-                  {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
+              <label htmlFor="security-new-password" className="block text-xs font-medium text-ps-label">New password</label>
+              <div className="max-w-sm">
+                <PasswordField id="security-new-password" label="new password" autoComplete="new-password"
+                  value={next} onChange={setNext} inputClassName={inputCls} placeholder="Create a password"
+                  ariaDescribedBy="security-password-rules" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-ps-label">Confirm new password</label>
-              <input aria-label="Confirm new password"
-                type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)}
-                autoComplete="new-password"
-                className="w-full max-w-sm px-3 py-2 text-sm border border-ps-border rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-              />
+              <label htmlFor="security-confirm-password" className="block text-xs font-medium text-ps-label">Confirm new password</label>
+              <div className="max-w-sm">
+                <PasswordField id="security-confirm-password" label="confirmation of the new password" autoComplete="new-password"
+                  value={confirm} onChange={setConfirm} inputClassName={inputCls} />
+              </div>
             </div>
             <button
               onClick={submit}
@@ -374,7 +382,6 @@ function ChangePasswordCard() {
   );
 }
 
-/** ── Two-Factor Authentication (TOTP) ────────────────────────────────────── */
 function MfaCard() {
   const supabase = getSupabaseClient();
   const { refreshUserContext, resolveEnrolmentRequired } = useAuth();

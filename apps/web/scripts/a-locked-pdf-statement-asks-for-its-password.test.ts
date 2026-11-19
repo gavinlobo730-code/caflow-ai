@@ -76,9 +76,12 @@ test("the password is not in a URL, a storage call or a log", () => {
 });
 
 test("the box is a password input the browser is told not to save", () => {
-  const input = panel.slice(panel.indexOf('id="stmt-pdf-password"'));
+  const at = panel.indexOf('id="stmt-pdf-password"');
+  const input = panel.slice(at);
   const tag = input.slice(0, input.indexOf("/>"));
-  assert.match(tag, /type="password"/);
+  // Drawn by the shared PasswordField (POST-A-513): an <input type="password"> until the person asks to see what they typed, so no
+  // literal type is left on this screen to flip.
+  assert.match(panel.slice(Math.max(0, at - 20), at), /<PasswordField\s*$/);
   assert.match(tag, /autoComplete="new-password"/);
   assert.match(tag, /spellCheck=\{false\}/);
   assert.match(panel, /htmlFor="stmt-pdf-password"/, "the field needs a programmatic label");

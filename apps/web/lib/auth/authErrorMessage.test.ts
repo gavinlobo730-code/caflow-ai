@@ -11,6 +11,7 @@ import {
   authErrorMessage,
   knownAuthErrorMessage,
   AUTH_ERROR_SENTENCES,
+  SERVICE_ONLY_ERROR_SENTENCES,
   PASSWORD_BREACHED,
   inviteEmailNotSentMessage,
 } from "./authErrorMessage.ts";
@@ -237,4 +238,35 @@ test("the throttle on a repeat link request says how long to wait, not that the 
   assert.doesNotMatch(shown, /last hour/i);
   // the hourly limit keeps its own sentence
   assert.match(authErrorMessage(authApiError("email rate limit exceeded", 429, "over_email_send_rate_limit")), /last hour/i);
+});
+
+// ---- POST-A-512: the project's "Require current password when updating" switch ------------------------------------------------
+
+test("the service's refusal for a missing current password is a sentence, as seen live on 19-11-2026 (HTTP 400)", () => {
+  const raw = authApiError("Current password required when setting new password.", 400, "current_password_required");
+  assert.equal(authErrorMessage(raw), "Your current password is needed to change it. Enter it and try again.");
+});
+
+test("the expected wrong-current-password code is worded too, and an UNKNOWN refusal keeps the service's own words", () => {
+  const mismatch = authApiError("Current password is incorrect.", 400, "current_password_mismatch");
+  assert.equal(authErrorMessage(mismatch), "Current password is incorrect.");
+  const unknown = authApiError("Some refusal nobody has seen yet.", 400, "some_new_code");
+  assert.equal(authErrorMessage(unknown), "Some refusal nobody has seen yet.", "hiding a real reason behind a guess is worse than showing it");
+});
+
+test("the service-only codes are still ABSENT from the library's union, so the day it lists one it moves into the main map", async () => {
+  const { readFileSync, realpathSync } = await import("node:fs");
+  const { join, dirname } = await import("node:path");
+  const { createRequire } = await import("node:module");
+  const require = createRequire(join(process.cwd(), "package.json"));
+  const supabaseJs = dirname(require.resolve("@supabase/supabase-js/package.json"));
+  const requireFromSupabase = createRequire(join(realpathSync(supabaseJs), "package.json"));
+  const authJs = dirname(requireFromSupabase.resolve("@supabase/auth-js/package.json"));
+  const union = readFileSync(join(authJs, "dist/module/lib/error-codes.d.ts"), "utf8");
+  const known = new Set([...union.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+  assert.ok(known.size > 50, "the ErrorCode union was not read");
+  for (const code of Object.keys(SERVICE_ONLY_ERROR_SENTENCES)) {
+    assert.ok(!known.has(code), `${code} is now an auth-js ErrorCode: move it into AUTH_ERROR_SENTENCES`);
+    assert.ok(!Object.prototype.hasOwnProperty.call(AUTH_ERROR_SENTENCES, code), `${code} must be in one map only`);
+  }
 });

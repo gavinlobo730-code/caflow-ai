@@ -18,6 +18,26 @@ export function getSupabaseClient(): SupabaseClient {
   return _client;
 }
 
+/**
+ * A client that holds NOTHING, for proving a password and being thrown away (POST-A-512).
+ *
+ * Settings > Security used to prove the current password with `signInWithPassword` on the browser's own client, which REPLACES the
+ * browser's session: the sign-in service announced a new token, the guard rebuilt the page, a person with an authenticator was
+ * dropped to the first assurance level and asked for the code again, and the answer to the change arrived at a page that had gone.
+ * This client keeps no session in storage, refreshes nothing, reads no address, and has its own storage key so the library does not
+ * mistake it for a second copy of the browser's client; what it signs in is signed out again, and the browser's session is the one
+ * thing it never touches. It is made HERE because this module is the only place the browser makes a Supabase client (it is given
+ * `plainRestFetch` too).
+ */
+export function makeEphemeralAuthClient(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  return createClient(url || "https://placeholder.supabase.co", key || "placeholder", {
+    global: { fetch: plainRestFetch },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "ps-password-check" },
+  });
+}
+
 // Convenience singleton — used by AuthContext and api client
 export const supabase = {
   auth: {
