@@ -497,7 +497,9 @@ export function AddEmployeeModal({
               <label htmlFor="fixed-term-end" className="block text-xs font-medium text-ps-body mb-1">Contract ends on (optional)</label>
               <DateInput id="fixed-term-end" className="w-full border rounded-lg px-3 py-2 text-sm"
                 value={form.fixed_term_end_date}
-                onChange={v => setForm(f => ({ ...f, fixed_term_end_date: v }))} />
+                onChange={v => setForm(f => ({ ...f, fixed_term_end_date: v }))}
+                anchor={form.joining_date || null} notBefore={form.joining_date || null}
+                onStateChange={dates.watch("fixedTermEnd", "Contract end date")} />
             </div>
           )}
 

@@ -313,7 +313,7 @@ const DRIVEN: Record<string, string[]> = {
   "app/practice/profitability/page.tsx": ["#profitability-from", "#profitability-to"],
   "app/clients/[id]/inventory/page.tsx": ["#stock-adjust-date", "#writedown-date", "#stock-as-at", "[Stock ledger from]", "[Stock ledger to]"],
   // The fourth slice (4-11-2026).
-  "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from"],
+  "components/payroll/AddEmployeeModal.tsx": ["#employee-joining-date", "#date-of-birth", "#pf-actual-from", "#fixed-term-end"],
   // Two files the first slices drove by rows but never listed here, so a date box added to either would have gone unseen (found by an independent read of the eighth slice).
   "app/tds/page.tsx": ["#tds-payment-date", "#tds-challan-date"],
   "components/invoices/CompliancePanel.tsx": ["[Acknowledgement date]", "[EWB date]", "[Valid upto]"],

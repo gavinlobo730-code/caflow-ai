@@ -2219,10 +2219,17 @@ const EDITORS = [
     save: (p) => p.getByRole("button", { name: "Save Write-down", exact: true }), write: /api\/inventory\/items\/sc1\/writedown$/,
   },
   {
-    id: "employee-form", title: "employee form (payroll Inputs)", open: onAShortScreen(openEmployeeForm), saveInView: true,
+    id: "employee-form", title: "employee form (payroll Inputs)", saveInView: true,
+    // The box for a fixed-term contract's end (POST-A-526) is shown only for an employee ticked as fixed-term, so the row ticks it: a row of its
+    // own would add a run to every night's drive, which has no room for one (scripts/the-nightly-drive-fits-its-allowance-...).
+    open: onAShortScreen(async (env) => {
+      await openEmployeeForm(env);
+      await env.page.locator("#fixed-term").check();
+    }),
     fields: [
       { box: (p) => p.locator("#employee-joining-date"), label: "Joining date", key: "joining_date", full: "15/07/2025", iso: "2025-07-15" },
       { box: (p) => p.locator("#date-of-birth"), label: "Date of Birth", key: "date_of_birth", full: "20/03/1990", iso: "1990-03-20" },
+      { box: (p) => p.locator("#fixed-term-end"), label: "Contract end date", key: "fixed_term_end_date", full: "15/07/2027", iso: "2027-07-15" },
     ],
     save: (p) => modalOf(p).getByRole("button", { name: "Add Employee", exact: true }), write: /api\/payroll\/employees$/,
   },
