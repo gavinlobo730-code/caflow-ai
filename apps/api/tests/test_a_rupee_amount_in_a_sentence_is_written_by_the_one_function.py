@@ -57,6 +57,7 @@ for _file, _exprs, _why in (
     ("domain/payroll/bonus.py", ("rate_bps / 100", "rate / 100"), _BPS),
     ("domain/payroll/ecr.py", ("rate_bps // 100", "rate_bps % 100"), _BPS),
     ("domain/payroll/perquisites.py", ("bps / 100", "sbi_rate_bps_on_first_day / 100"), _BPS),
+    ("domain/reporting/form_3cd_document.py", ("magnitude // 100", "magnitude % 100"), _BPS),
     ("domain/sales/late_interest.py", ("bps // 100", "bps % 100"), _BPS),
     ("routers/assistant.py", ("r.individual_rate_bps / 100", "r.company_rate_bps / 100"), _BPS),
     ("services/vendor_tds.py", ("cert.rate_bps / 100",), _BPS),
