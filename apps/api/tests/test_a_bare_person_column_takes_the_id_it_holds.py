@@ -86,6 +86,8 @@ DECIDED_FROM_CODE: dict[tuple[str, str], tuple[str, str]] = {
     ("bank_transaction_splits", "created_by"): ("auth", "the split route passes the sign-in id to the split function (migration 256)"),
     ("billing_schedules", "created_by"): ("auth", "the billing route writes the caller's sign-in id"),
     ("client_portal_users", "invited_by"): ("auth", "the portal invitation writes the inviting member's sign-in id"),
+    ("closed_account_markers", "auth_user_id"): ("auth", "the purge writes each member's own sign-in id (`users.auth_user_id`) and core/auth "
+                                                         "compares it with the caller's verified sign-in id (migration 772)"),
     ("clients", "archived_by"): ("auth", "the archive route writes the caller's sign-in id"),
     ("clients", "deleted_by"): ("auth", "the delete route writes the caller's sign-in id"),
     ("client_timeline_events", "actor_id"): ("auth", "every timeline writer but one passed the sign-in id; that one is changed here"),
@@ -855,7 +857,7 @@ def test_the_map_names_the_twenty_columns_that_were_read():
 
 
 def test_every_column_decided_from_the_code_says_what_decided_it_and_no_column_is_in_two_lists():
-    assert len(DECIDED_FROM_CODE) == 62, len(DECIDED_FROM_CODE)
+    assert len(DECIDED_FROM_CODE) == 63, len(DECIDED_FROM_CODE)
     for key, (kind, why) in DECIDED_FROM_CODE.items():
         assert kind in ("auth", "users") and len(why) > 20, key
     lists = [set(READ_FROM_ROWS), set(DECIDED_FROM_CODE), set(OTHER_PRINCIPALS), NO_PERSON_WRITTEN_YET]

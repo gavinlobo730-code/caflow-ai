@@ -11,12 +11,15 @@ and a PERMANENT delete (`DELETE /firms/{id}/permanent`, irreversible, behind a t
 firm name and a fresh authenticator code). No billing, impersonation, or cross-firm
 data editing. (This docstring said "no hard delete" for as long as the purge existed.)
 
-CLOSING A FIRM SIGNS ITS PEOPLE OUT (POST-A-482). Suspend, soft delete and purge change
+CLOSING A FIRM SIGNS ITS PEOPLE OUT (POST-A-482, POST-A-499). Suspend and soft delete change
 `firms.is_active` / `deleted_at`, which the API reads (`core/auth`: "Firm suspended",
 "Firm unavailable") a few seconds later, and ALSO stamp `users.sessions_revoked_at` for
 every member of the firm, so a token the person already holds is refused 401 even after
 the firm is reopened (`core/auth_time` says why `iat` alone would not hold). Unsuspending
-does not undo it: people sign in again.
+does not undo it: people sign in again. A PERMANENT delete stamps nothing, because it deletes
+the members' `users` rows, which is where that stamp lives: it writes a row in
+`closed_account_markers` (migration 772) for each member BEFORE the purge, and `core/auth`
+answers a session older than the marker from that row.
 """
 import logging
 from datetime import datetime, timezone
@@ -48,6 +51,48 @@ def _end_sessions(db, firm_id: str) -> int:
     except Exception:                                    # noqa: BLE001
         logging.getLogger("caflow.platform").warning("could not close the session rows of firm %s", firm_id, exc_info=True)
     return len(res.data or [])
+
+
+def _mark_closed_accounts(db, firm_id: str) -> list[str]:
+    """Write a marker for every member of the firm BEFORE it is purged, and return whose (POST-A-499).
+
+    The purge deletes the members' `users` rows, which is where `sessions_revoked_at` lives, and leaves the sign-in accounts: a person
+    who held a session then reached "User not found in firm" and the new-practice wizard, signed out of nothing and told nothing. The
+    marker survives the row: `core/auth.get_current_user` reads it on that path and answers a session that began before it 403 "Firm
+    unavailable", which the browser turns into a sign-out and a sentence. A platform administrator is left out, because their access to
+    the platform page survives the purge of their own firm by design (`purge_firm`'s docstring). Raises when the markers cannot be
+    written: a purge that leaves its people sent to the wizard has not done what the screen says, so the firm is left whole instead."""
+    members = db.table("users").select("auth_user_id").eq("firm_id", firm_id).execute().data or []
+    people = {str(m["auth_user_id"]): m for m in members if m.get("auth_user_id")}          # one per sign-in account
+    if not people:
+        return []
+    admins = db.table("platform_admins").select("auth_user_id").in_("auth_user_id", sorted(people)).execute().data or []
+    admin_ids = {str(a["auth_user_id"]) for a in admins}
+    to_mark = [m for i, m in people.items() if i not in admin_ids]
+    if not to_mark:
+        return []
+    now = datetime.now(timezone.utc).isoformat()
+    # The payload is written out at the call, naming the SIGN-IN id each member row carries: the backend's schema guard reads a payload
+    # only when it is a literal at the call, and the person-column guard reads which kind of id the column is given from this value.
+    db.table("closed_account_markers").upsert(
+        [{"auth_user_id": m["auth_user_id"], "closed_at": now, "closed_how": "firm_purged"} for m in to_mark],
+        on_conflict="auth_user_id").execute()
+    return [str(m["auth_user_id"]) for m in to_mark]
+
+
+def _unmark_closed_accounts(db, auth_user_ids: list[str]) -> None:
+    """Take back the markers of a purge that did not happen, best effort (POST-A-499).
+
+    A marker says "this account's firm was permanently deleted at this instant", and a purge that failed after the markers were
+    written has made that false. It is read only for an account with no member row, so a leftover would mislabel a person removed from
+    their firm later as someone whose firm was deleted; this removes it, and logs rather than raises when it cannot, because the
+    failure that matters is the purge's, which is re-raised by the caller."""
+    if not auth_user_ids:
+        return
+    try:
+        db.table("closed_account_markers").delete().in_("auth_user_id", auth_user_ids).execute()
+    except Exception:                                    # noqa: BLE001 — logged; the purge's own failure is what the caller raises
+        _logger.exception("could not take back the closed-account markers of a purge that failed (%d accounts)", len(auth_user_ids))
 
 
 def _count(db, table: str, **eq) -> int:
@@ -195,15 +240,26 @@ def purge_firm(firm_id: str, admin: dict = Depends(require_platform_admin_mfa)):
     intact (so the platform admin's own access survives purging their firm).
     Gated by aal2 (require_platform_admin_mfa).
 
-    A PURGE DOES NOT SIGN ANYBODY OUT, and says so rather than claiming it. The sessions of a closed firm end by a stamp on
-    the member's `users` row, and this deletes those rows; the sign-in accounts stay, so a person who held a session now
-    reaches "User not found in firm" and the sign-up wizard. That is the state before this change too, and it is recorded
-    as POST-A-499 (found by the independent review of POST-A-482's fix); suspend and soft delete do end the sessions."""
+    A PURGE ENDS ITS PEOPLE'S SESSIONS BY A MARKER, NOT A STAMP (POST-A-499). The sessions of a closed firm end by a stamp on the
+    member's `users` row, and this deletes those rows, so before the purge each member gets a row in `closed_account_markers`
+    (migration 772), which survives it. A session that began before the purge is then answered 403 "Firm unavailable" and the
+    browser signs the person out and says the firm is closed; a sign-in made after it is not refused, so the person may start a new
+    practice with the same login. Platform administrators are not marked. If the markers cannot be written the purge does not run."""
     db = get_service_supabase()
     firm = db.table("firms").select("id, name").eq("id", firm_id).maybe_single().execute().data
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found")
-    removed = db.rpc("platform_purge_firm", {"p_firm_id": firm_id}).execute().data
+    try:
+        marked = _mark_closed_accounts(db, firm_id)
+    except Exception as exc:                             # noqa: BLE001 — logged here; the firm is left whole and the person told
+        _logger.exception("could not mark the members of firm %s as closed; the purge was not run", firm_id)
+        raise HTTPException(status_code=503, detail=(
+            "The firm's people could not be marked as closed just now, so nothing was deleted. Please try again in a moment.")) from exc
+    try:
+        removed = db.rpc("platform_purge_firm", {"p_firm_id": firm_id}).execute().data
+    except Exception:
+        _unmark_closed_accounts(db, marked)              # the firm is still whole, so nobody of it is "closed"
+        raise
     # Durable platform-level audit — written AFTER the purge so it is not swept
     # away with the firm's own (firm-scoped) audit_logs.
     db.table("platform_audit").insert({
@@ -212,6 +268,6 @@ def purge_firm(firm_id: str, admin: dict = Depends(require_platform_admin_mfa)):
         "firm_name": firm.get("name"),
         "actor_auth_user_id": admin.get("auth_user_id"),
         "actor_email": admin.get("email"),
-        "metadata": {**(removed or {})},
+        "metadata": {**(removed or {}), "people_marked_closed": len(marked)},
     }).execute()
-    return api_response(True, {"firm_id": firm_id, "status": "purged", "removed": removed})
+    return api_response(True, {"firm_id": firm_id, "status": "purged", "removed": removed, "people_marked_closed": len(marked)})

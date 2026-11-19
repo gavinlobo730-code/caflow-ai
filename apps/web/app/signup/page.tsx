@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { authErrorMessage } from "@/lib/auth/authErrorMessage";
-import { writeSignupStash } from "@/lib/auth/signupStash";
+import { requestSignupLink } from "@/lib/auth/requestSignupLink";
+import { Button } from "@/components/ui/button";
 import { ArrowRight, Mail } from "lucide-react";
 import { FrontDoor } from "@/components/FrontDoor";
 
@@ -14,9 +13,10 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [validUntil, setValidUntil] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // "Send it again" waits this long after each send, so a second press cannot meet the sign-in service's own
-  // throttle (it answers a repeat within seconds with a 429).
+  // "Send it again" waits as long as the SERVER says after each send (its own cooldown for an address), so a second press
+  // cannot meet the server's refusal; the refusal itself, if it comes, says how long is left.
   const [waitLeft, setWaitLeft] = useState(0);
   useEffect(() => {
     if (waitLeft <= 0) return;
@@ -29,25 +29,16 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
     try {
-      // The address is kept beside the names so a link that lands already used can offer "Email me a new link"
-      // without asking for everything again (POST-A-479).
-      writeSignupStash(typeof window === "undefined" ? null : window.localStorage, {
-        firmName: firmName.trim(), fullName: fullName.trim(), email: email.trim(),
-      });
-      const supabase = getSupabaseClient();
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: {
-          emailRedirectTo:
-            (typeof window !== "undefined" ? window.location.origin : "") + "/onboarding",
-        },
-      });
-      if (otpErr) throw new Error(authErrorMessage(otpErr));
+      // The SERVER keeps the link and mails it (POST-A-485): what it was asked for (the firm's name and the person's) travels with it,
+      // so it means the same in whichever browser it is opened (POST-A-497). The address and names are also kept in this browser
+      // (inside requestSignupLink) so a link that can no longer be used can offer "Email me a new link" without asking again.
+      const asked = await requestSignupLink({ email, firmName, fullName });
       setSent(true);
-      setWaitLeft(30);
+      setValidUntil(asked.validUntil);
+      setWaitLeft(asked.waitSeconds);
       return true;
     } catch (err) {
-      setError(authErrorMessage(err));
+      setError(err instanceof Error && err.message ? err.message : "The link could not be sent just now. Please try again.");
       return false;
     } finally {
       setLoading(false);
@@ -69,22 +60,22 @@ export default function SignupPage() {
           <div>
             <h2 className="text-lg font-bold text-ps-ink">Check your inbox</h2>
             <p className="text-sm text-ps-label mt-2 leading-relaxed">
-              We sent a magic link to <span className="text-ps-ink font-medium">{email}</span>. Click it to finish setting up your firm.
+              We sent a link to <span className="text-ps-ink font-medium">{email}</span>. Open it to finish setting up your firm.
             </p>
             <p className="text-xs text-ps-hint mt-3">
-              The link works once. If you have already opened it, you are signed in on that page: carry on there.
-              Didn&apos;t receive it? Check your spam folder, or send it again.
+              The link works{validUntil ? ` until ${validUntil}` : " for 24 hours"} and until your practice has been created, and you can open it again
+              if you are interrupted. Didn&apos;t receive it? Check your spam folder, or send it again.
             </p>
           </div>
           {error && <p role="alert" className="text-sm text-state-problem">{error}</p>}
-          <button
-            type="button"
-            onClick={() => void sendLink()}
+          <Button
+            variant="plain" size="none"
+            onClick={() => sendLink()}
             disabled={loading || waitLeft > 0}
             className="text-sm font-medium text-brand hover:text-brand-dark disabled:opacity-50 disabled:cursor-not-allowed underline underline-offset-4"
           >
             {loading ? "Sending…" : waitLeft > 0 ? `Send it again (wait ${waitLeft}s)` : "Send it again"}
-          </button>
+          </Button>
         </div>
       ) : (
         <>

@@ -12,9 +12,13 @@
 
 export type ClosedAccountReason = "firm-suspended" | "firm-unavailable" | "person-disabled" | "signed-out" | "signed-out-elsewhere";
 
-/** The reason that must end THIS device only: the person asked for their other sessions to end, and the one that asked stays
- *  (POST-A-486). A global sign-out here would end that one too. */
-export const LOCAL_ONLY_REASONS: readonly ClosedAccountReason[] = ["signed-out-elsewhere"];
+/** The reasons that must end THIS device only, because a global sign-out would end a session that has done nothing wrong.
+ *  "signed-out-elsewhere": the person asked for their other sessions to end, and the one that asked stays (POST-A-486).
+ *  "firm-unavailable": the answer to a session that began BEFORE the firm was permanently deleted (POST-A-499: the server reads the
+ *  marker the purge left). A person whose firm was deleted may have signed in again since, from a new sign-up link, on another
+ *  device; that session was deliberately not refused, and a stale tab elsewhere must not revoke it. Every other device of an
+ *  account that really is closed is refused the same way on its own next request and ends itself. */
+export const LOCAL_ONLY_REASONS: readonly ClosedAccountReason[] = ["signed-out-elsewhere", "firm-unavailable"];
 
 /** The page also says why a person was signed out by the browser itself (POST-A-483): too long without a touch. */
 export type SignedOutReason = ClosedAccountReason | "idle";
