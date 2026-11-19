@@ -640,7 +640,11 @@ def _months_employed_in_fy(joining_date, fy: Optional[str]) -> int:
     try:
         joined = date.fromisoformat(str(joining_date)[:10])
         fy_start_year = int(str(fy)[:4])
-    except (ValueError, TypeError):
+    except (ValueError, TypeError) as unreadable:
+        # A joining date or year that cannot be read keeps the twelve-month projection (the direction §192(1) leaves the employer safe in), and
+        # says so: the employee keeps their money only when the date is readable (POST-A-505).
+        from core.observability import capture_soft_failure
+        capture_soft_failure(unreadable, operation="payroll.months_employed_unreadable", joining_date=str(joining_date)[:40], fy=str(fy)[:12])
         return 12
     fy_start = date(fy_start_year, 4, 1)
     if joined <= fy_start:

@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import Optional
 
 from core.db_paging import fetch_all
+from core.observability import capture_soft_failure
 from core.ist_clock import fy_bounds
 from domain.payroll import bonus_register
 from core.db_provider import privileged_for
@@ -59,7 +60,9 @@ def _fy_months(accounting_year: str) -> list:
 def _percent_of(base_paise: int, percent) -> int:
     try:
         return int(base_paise) * int(float(percent or 0) * 100) // 10000
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as unreadable:
+        # A stored percentage or base that cannot be read makes a bonus of nothing, so it is reported (POST-A-505).
+        capture_soft_failure(unreadable, operation="bonus_register.percent_of_unreadable", base=str(base_paise)[:40], percent=str(percent)[:40])
         return 0
 
 
