@@ -8,6 +8,7 @@ import { usePermissions } from "@/lib/auth/AuthContext";
 import { PageLoader } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { ListWindowNotice } from "@/components/lists/ListWindowNotice";
 import { readWindow } from "@/lib/lists/readWindow";
 import { windowDescription } from "@/lib/lists/window";
@@ -61,6 +62,12 @@ export default function LoginHistoryPage() {
 
   async function forceLogoutAll() {
     if (!canForceLogout) return;
+    // It ends EVERY session in the firm, the one pressing it included: a signed-in browser used to renew its token and walk back
+    // in, which is fixed (POST-A-482), so this now signs the person pressing it out too. Said before, not found out after.
+    if (!(await confirmDialog({
+      message: "Sign out everyone in the firm, including you? Every member, you among them, must sign in again.",
+      confirmLabel: "Sign out everyone", danger: true,
+    }))) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       const r = await api.identity.forceLogoutAll() as { data?: { users_affected?: number } };

@@ -27,6 +27,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["accounting","year-end"],
   ["ai-assistant"],
   ["approvals"],
+  ["auth","account-closed"],
   ["auth","reset-password"],
   ["billing"],
   ["calendar"],

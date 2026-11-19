@@ -302,6 +302,7 @@ export const UNLISTED: Record<string, string> = {
   "/join": "signed-out — reached from an invitation link",
   "/sign": "signed-out — a client signs an engagement letter from an emailed link",
   "/auth/reset-password": "signed-out",
+  "/auth/account-closed": "signed-out — reached when the server says the account is closed (POST-A-482)",
   "/portal": "the CLIENT's portal, not staff navigation",
   "/portal/login": "signed-out, client portal",
   "/portal/activate": "reached from an invitation link",

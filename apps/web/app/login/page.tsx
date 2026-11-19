@@ -32,6 +32,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError]       = useState<string | null>(null);
   const [loading, setLoading]   = useState(false);
+  // "Keep me signed in on this computer" (POST-A-483): OFF unless ticked, so a closed browser ends the session.
+  const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [mfaFactorId, setMfaFactorId] = useState("");
   const [mfaCode, setMfaCode]   = useState("");
   // `mfaFactorId` arrives a round trip after `mfaStep` flips true — long
@@ -69,7 +71,7 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const { error } = await signIn(email, password);
+      const { error } = await signIn(email, password, keepSignedIn);
       if (error) { setError(error); return; }
       // Do NOT navigate here. AuthContext recomputes MFA assurance: if a challenge
       // is owed, mfaPending flips true and the challenge form renders below; if not,
@@ -270,6 +272,18 @@ export default function LoginPage() {
                   className="w-full bg-white border border-ps-border rounded-lg px-4 py-3 text-sm text-ps-ink placeholder:text-ps-hint outline-none focus:border-brand focus:ring-4 focus:ring-brand/[0.08] transition-all"
                 />
               </div>
+
+              <label htmlFor="login-keep-signed-in" className="flex items-start gap-2.5 text-sm text-ps-body cursor-pointer">
+                <input
+                  id="login-keep-signed-in" type="checkbox" name="keep_signed_in" checked={keepSignedIn}
+                  onChange={(e) => setKeepSignedIn(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-ps-border"
+                />
+                <span>
+                  Keep me signed in on this computer
+                  <span className="block text-xs text-ps-hint">Up to 14 days. Leave it off on a shared or office computer: you are then signed out when you close the browser.</span>
+                </span>
+              </label>
 
               {error && (
                 <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-state-problem-surface border border-state-problem-border">

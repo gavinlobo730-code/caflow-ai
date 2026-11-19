@@ -41,6 +41,7 @@ const PAGES: Record<string, "layout" | "style"> = {
   "app/signup/page.tsx": "layout",
   "app/login/forgot-password/page.tsx": "layout",
   "app/auth/reset-password/page.tsx": "layout",
+  "app/auth/account-closed/page.tsx": "layout",
   "app/portal/login/page.tsx": "layout",
   "app/portal/activate/page.tsx": "layout",
   "app/portal/employee/activate/page.tsx": "layout",
