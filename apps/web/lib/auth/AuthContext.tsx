@@ -185,6 +185,7 @@ interface AuthContextValue {
 import { resolveAssurance, resolveVerifiedFactor, toMfaPending } from "./mfaAssurance";
 import { enrolmentRequired, parseMfaPolicy, type MfaPolicy } from "./mfaEnrolment";
 import { keepLastGood, latestWins } from "./latestWins";
+import { mayKeepAssurance, type KnownAssurance } from "./assuranceCarry";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -241,6 +242,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // changed and this is a genuine refresh rather than a duplicate.
   const contextInFlightFor = useRef<string | null | undefined>(undefined);
   const [mfaPending, setMfaPending] = useState<boolean | null>(null);
+  // What the assurance in state was read for. An announcement of the sign-in service that cannot have changed which session this
+  // is (the hourly token refresh, a password saved, the library announcing the stored session again when a tab regains focus) keeps
+  // it while a fresh read is made, so the guard does not draw nothing and unmount the page under the person (POST-A-493;
+  // lib/auth/assuranceCarry says exactly which announcements, and why everything else is read afresh).
+  const assuranceKnown = useRef<KnownAssurance>({ userId: null, accessToken: null, pending: null });
+
+  /** Read the assurance for `forSession` and settle it, remembering what it was read for. A failed read is "a challenge is owed". */
+  function readAssurance(forSession: Session | null) {
+    const userId = forSession?.user?.id ?? null;
+    const accessToken = forSession?.access_token ?? null;
+    const settle = (pending: boolean | null) => {
+      assuranceKnown.current = { userId, accessToken, pending };
+      setMfaPending(pending);
+    };
+    resolveMfaPending(forSession).then(settle).catch(() => settle(true));
+  }
   const [hasFirm, setHasFirm] = useState<boolean | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<PermissionMap | null>(null);
@@ -378,8 +395,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       applyContext(session?.user ?? null);
       // Resolve MFA assurance for the restored session (null = computing).
+      assuranceKnown.current = { userId: session?.user?.id ?? null, accessToken: session?.access_token ?? null, pending: null };
       setMfaPending(null);
-      resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
+      readAssurance(session);
       if (!isPortalPrincipalPath()) refreshFactorState(session);
     }).catch(() => {
       clearTimeout(timeout);
@@ -401,9 +419,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         applyContext(session?.user ?? null);
         // Recompute MFA assurance on every auth transition (login, refresh, verify).
         // Set null first so the guard never treats an unresolved aal1 session as
-        // "fully authenticated" and skips the challenge.
-        setMfaPending(null);
-        resolveMfaPending(session).then(setMfaPending).catch(() => setMfaPending(true));
+        // "fully authenticated" and skips the challenge, EXCEPT for an announcement that cannot have changed which session this
+        // is: that keeps the value already read while the fresh read is made, so the page is not unmounted (POST-A-493). A kept
+        // value is replaced by the fresh read when it answers, so a level that did change takes the page away on the next render.
+        const nextUserId = session?.user?.id ?? null;
+        const nextAccessToken = session?.access_token ?? null;
+        if (mayKeepAssurance({ event: _event, known: assuranceKnown.current, nextUserId, nextAccessToken })) {
+          assuranceKnown.current = { ...assuranceKnown.current, accessToken: nextAccessToken };
+        } else {
+          assuranceKnown.current = { userId: nextUserId, accessToken: nextAccessToken, pending: null };
+          setMfaPending(null);
+        }
+        readAssurance(session);
         // A factor verified on the security page arrives here as
         // MFA_CHALLENGE_VERIFIED, which is what takes the banner down.
         if (!isPortalPrincipalPath()) refreshFactorState(session);

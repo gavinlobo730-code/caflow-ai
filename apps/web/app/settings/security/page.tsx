@@ -18,7 +18,7 @@
  * locked out. Uses Supabase Auth MFA: enroll → challenge → verify. The
  * verified factor lets the user elevate to aal2 at login (see app/login).
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ShieldCheck, Smartphone, Trash2, CheckCircle2, Loader2, AlertCircle, KeyRound, Eye, EyeOff } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -34,6 +34,7 @@ import { todayIstISO } from "@/lib/dates/format";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingRegion } from "@/components/ui/skeleton";
 import { passwordProblem } from "@/lib/auth/passwordRules";
+import { rememberPasswordNotice, takePasswordNotice } from "@/lib/auth/passwordNotice";
 import { PasswordRules } from "@/components/auth/PasswordRules";
 import { MyDevicesCard } from "@/components/security/MyDevicesCard";
 
@@ -208,7 +209,11 @@ function ChangePasswordCard() {
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // A sentence left by an earlier mount of this card: proving the current password replaces the session, the guard unmounts the
+  // page for the announcement, and the answer arrives at a page that has gone (POST-A-493, lib/auth/passwordNotice).
+  const [notice, setNotice] = useState<string | null>(() => takePasswordNotice());
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   // Reauthentication-nonce fallback — same "Secure password change" gap
   // onboarding's password step and /auth/reset-password already handle.
   const [needsReauth, setNeedsReauth] = useState(false);
@@ -217,6 +222,14 @@ function ChangePasswordCard() {
   function reset() {
     setCurrent(""); setNext(""); setConfirm("");
     setNeedsReauth(false); setReauthOtp("");
+  }
+
+  /** The password was saved: say so here, or, if this page was unmounted while it was being saved, on the one that replaced it. */
+  function passwordSaved() {
+    const sentence = "Your password has been updated.";
+    if (!mounted.current) { rememberPasswordNotice(sentence); return; }
+    setNotice(sentence);
+    reset();
   }
 
   async function submit() {
@@ -247,8 +260,7 @@ function ChangePasswordCard() {
         setError(authErrorMessage(upErr));
         return;
       }
-      setNotice("Your password has been updated.");
-      reset();
+      passwordSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update your password. Please try again.");
     } finally {
@@ -265,8 +277,7 @@ function ChangePasswordCard() {
         setError(isInvalidNonceError(upErr) ? "That code is incorrect or has expired. Try changing your password again." : authErrorMessage(upErr));
         return;
       }
-      setNotice("Your password has been updated.");
-      reset();
+      passwordSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Verification failed. Please try again.");
     } finally {
