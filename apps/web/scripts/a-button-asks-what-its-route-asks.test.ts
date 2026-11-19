@@ -47,6 +47,19 @@ const ROWS: Row[] = [
     router: "purchase_payments.py", method: "post", path: "/{payment_id}/reverse" },
   { what: "bill Cancel (row menu)", file: [...C, "purchases", "page.tsx"], anchor: `return cancelBill(b); }}`, gate: "mayCancelBill",
     router: "purchase_bills.py", method: "post", path: "/{bill_id}/cancel" },
+  // POST-A-447, the portal half: the staff Client Portal screen and the client workspace's Portal tab.
+  { what: "client portal New Request", file: ["app", "client-portal", "page.tsx"], anchor: `onClick={() => setShowNewRequestModal(true)}`,
+    gate: "mayWritePortal", router: "portal.py", method: "post", path: "/document-requests" },
+  { what: "client portal Delete request", file: ["app", "client-portal", "page.tsx"], anchor: `onClick={() => handleDeleteRequest(req.id)}`,
+    gate: "mayWritePortal", router: "portal.py", method: "delete", path: "/document-requests/{request_id}" },
+  { what: "client portal Send Message", file: ["app", "client-portal", "page.tsx"], anchor: `onClick={handleSendMessage}`,
+    gate: "mayWritePortal", router: "portal.py", method: "post", path: "/messages" },
+  { what: "client portal Upload shared document", file: ["app", "client-portal", "page.tsx"], anchor: `onClick={() => sharedUploadRef.current?.click()}`,
+    gate: "mayStoreFile", router: "client_documents.py", method: "post", path: "/upload" },
+  { what: "client portal Delete shared document", file: ["app", "client-portal", "page.tsx"], anchor: `onClick={() => handleDeleteSharedDoc(doc)}`,
+    gate: "mayDeleteFile", router: "client_documents.py", method: "delete", path: "/{doc_id}" },
+  { what: "client workspace Invite to Portal", file: [...C, "portal", "page.tsx"], anchor: `onClick={handleOpenInvite}`,
+    gate: "mayInvite", router: "portal_access.py", method: "post", path: "/clients/{client_id}/contacts" },
   { what: "bank reconciliation Reopen", file: ["components", "banking", "ReconcileTab.tsx"], anchor: `onClick={() => setReopening(true)}`, gate: "mayReopen",
     router: "banking.py", method: "post", path: "/reconciliations/{recon_id}/reopen" },
 ];
@@ -114,4 +127,18 @@ test("the helpers fail on a button with no gate and on a gate asking the wrong p
   assert.equal(gatedBy(elsewhere, `onClick={() => cancel(r)}`, "mayVoid"), false, "a gate on a neighbour's condition counts");
   assert.equal(gatedBy(elsewhere, `onClick={() => a(r)}`, "mayVoid"), true);
   assert.equal(gatePair(`<Can resource="year_end" action="approve">`, `<Can resource="year_end" action="approve"`), "year_end:approve");
+});
+
+test("the Client Portal screen marks a thread read only for someone the route admits, and removes a shared report only at the reports' write tier", () => {
+  const src = read(WEB, "app", "client-portal", "page.tsx");
+  // Marking read happens without a click when the thread opens, so the gate is the effect's own early return.
+  assert.equal(gatePair(src, "mayWritePortal"), routePair(read(API, "routers", "portal.py"), "post", "/messages/read"));
+  const effect = src.slice(src.indexOf("api.portal.markThreadRead") - 900, src.indexOf("api.portal.markThreadRead"));
+  assert.match(effect, /if \(!mayWritePortal \|\|/, "the thread is marked read for someone who may not write to the portal");
+  // A shared report is deleted over PostgREST, where the policy of migration 261 is report:write (Manager and above).
+  const policy = read(API, "migrations", "261_role_aware_write_policies_part2.sql");
+  assert.match(policy, /\['shared_reports',\s+'Manager',\s+'Manager'\]/);
+  assert.match(policy, /report:write = Manager\+/);
+  assert.equal(gatePair(src, "mayRemoveReport"), "report:write");
+  assert.ok(gatedBy(src, `title="Remove this shared report"`, "mayRemoveReport"));
 });

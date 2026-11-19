@@ -673,39 +673,18 @@ def _resolve_credit_terms(
 
 
 def _apply_credit_days_due_date(data: dict, base_invoice_date: Optional[str]) -> None:
-    """On a draft edit: when credit_days is set without an explicit due_date,
-    recompute due_date from the (new or stored) invoice_date in place, so an edited
-    credit period reflects in the stored due date. No-op otherwise."""
-    if data.get("credit_days") is None or data.get("due_date"):
-        return
-    if not base_invoice_date:
-        return
-    try:
-        data["due_date"] = (
-            date.fromisoformat(str(base_invoice_date)[:10])
-            + timedelta(days=max(0, int(data["credit_days"])))
-        ).isoformat()
-    except (ValueError, TypeError):
-        pass
+    """On a draft edit: when credit_days is set without an explicit due_date, recompute due_date from the (new or stored)
+    invoice_date in place. The rule is `services.credit_terms`'s, which purchase bills already use (POST-A-021: this was a second
+    copy whose unreadable date was swallowed with no word)."""
+    from services.credit_terms import apply_credit_days_due_date
+    apply_credit_days_due_date(data, base_invoice_date)
 
 
 def _apply_due_date_credit_days(data: dict, base_invoice_date: Optional[str]) -> None:
-    """Mirror of _apply_credit_days_due_date: when due_date is set directly without
-    an explicit credit_days (e.g. the post-issue Edit Details modal), recompute and
-    re-store credit_days as the actual day-gap, so the derived "Terms" label
-    (lib/sales/paymentTerms.ts) never goes stale relative to the real due date.
-    No-op otherwise."""
-    if not data.get("due_date") or data.get("credit_days") is not None:
-        return
-    if not base_invoice_date:
-        return
-    try:
-        data["credit_days"] = (
-            date.fromisoformat(str(data["due_date"])[:10])
-            - date.fromisoformat(str(base_invoice_date)[:10])
-        ).days
-    except (ValueError, TypeError):
-        pass
+    """Mirror of _apply_credit_days_due_date: when due_date is set without credit_days, re-store credit_days as the day-gap, so the
+    derived "Terms" label never goes stale. `services.credit_terms`'s rule, as above."""
+    from services.credit_terms import apply_due_date_credit_days
+    apply_due_date_credit_days(data, base_invoice_date)
 
 
 @router.post("/")

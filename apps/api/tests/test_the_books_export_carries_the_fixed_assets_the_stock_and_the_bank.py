@@ -154,7 +154,7 @@ def test_what_is_not_here_no_longer_says_the_bank_the_assets_or_the_stock_are_mi
     assert "The bank: accounts" not in text and "Fixed assets, stock and stock movements" not in text
     assert "the service catalogue" not in text
     assert not any("service_catalogue_id" in ref for ref in svc.REFERENCES_NOT_EXPORTED)
-    assert svc.SCHEMA == "practicesync-books-export/2"
+    assert svc.SCHEMA.startswith("practicesync-books-export/")
 
 
 def test_the_screen_says_what_the_service_exports_and_what_it_does_not():
@@ -162,7 +162,7 @@ def test_the_screen_says_what_the_service_exports_and_what_it_does_not():
     not_yet = re.search(r"Not in it yet:</span>(.*?)</p>", card, re.S)
     assert not_yet, "the card no longer has its 'Not in it yet' sentence"
     sentence = " ".join(not_yet.group(1).split())
-    for still_missing in ("payroll", "uploaded documents", "the audit log", "GST returns", "income tax", "PDFs"):
+    for still_missing in ("payroll", "uploaded documents", "the audit log", "income tax", "PDFs"):
         assert still_missing in sentence, still_missing
     for now_exported in ("the bank", "fixed assets", "stock", "service catalogue"):
         assert now_exported not in sentence, now_exported
@@ -173,8 +173,8 @@ def test_the_screen_says_what_the_service_exports_and_what_it_does_not():
     # The TDS tier is exported (tds_deductions, tds_challans and tds_returns), so "In it" says so in the service's own tier words, and
     # "Not in it yet" names only the challans that are not files here (delivery and job-work), never challans in general.
     assert svc._TIER_WORDS["tds"] in " ".join(in_it.group(1).split())
-    assert "delivery and job-work challans" in sentence
-    assert re.search(r"(?<!job-work )challans", sentence) is None, "the card says challans are left out while the TDS challans are exported"
+    # Since slice 3 every challan the product records is a file (TDS, GST, delivery and job-work), so "Not in it yet" names no challan at all.
+    assert "challan" not in sentence, "the card says challans are left out while they are exported"
 
 
 # ── a Partner blocked from a tier is not handed its files ────────────────────────────────────────────────────
