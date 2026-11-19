@@ -43,7 +43,7 @@ def _taxable_leg_side(function_name: str, account_var: str) -> str:
     for node in ast.walk(fn):
         if not isinstance(node, ast.Dict):
             continue
-        d = {k.value: v for k, v in zip(node.keys, node.values) if isinstance(k, ast.Constant)}
+        d = {k.value: v for k, v in zip(node.keys, node.values, strict=True) if isinstance(k, ast.Constant)}
         acct = d.get("account_id")
         if not (isinstance(acct, ast.Name) and acct.id == account_var):
             continue

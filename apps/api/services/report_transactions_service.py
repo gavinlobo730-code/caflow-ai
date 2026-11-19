@@ -289,6 +289,56 @@ def party_totals(db, firm_id: str, *, client_ids: Optional[list[str]] = None,
     return party_totals_rule.party_totals(sales, bills, customer_names=customers, vendor_names=vendors, **notes)
 
 
+# The four note reads, one function each with the table, columns and filters as literals: a table or column named by a variable is
+# invisible to tests/test_backend_columns_exist_pg.py, which checks every literal name against the real schema.
+def _credit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("credit_notes").select("id, client_id, customer_id, credit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("credit_note_date", date_from)
+    if date_to:
+        q = q.lte("credit_note_date", date_to)
+    return q
+
+
+def _sales_debit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("sales_debit_notes").select("id, client_id, customer_id, debit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("debit_note_date", date_from)
+    if date_to:
+        q = q.lte("debit_note_date", date_to)
+    return q
+
+
+def _purchase_debit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("debit_notes").select("id, client_id, vendor_id, debit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("debit_note_date", date_from)
+    if date_to:
+        q = q.lte("debit_note_date", date_to)
+    return q
+
+
+def _purchase_credit_notes_page(db, firm_id, client_ids, date_from, date_to):
+    q = (db.table("purchase_credit_notes").select("id, client_id, vendor_id, credit_note_date, taxable_amount_paise, status")
+         .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", sorted(_NOTE_COUNTED)))
+    if client_ids is not None:
+        q = q.in_("client_id", client_ids)
+    if date_from:
+        q = q.gte("credit_note_date", date_from)
+    if date_to:
+        q = q.lte("credit_note_date", date_to)
+    return q
+
+
 def _counted_note_rows(db, firm_id: str, client_ids: Optional[list[str]],
                        date_from: Optional[str], date_to: Optional[str]) -> dict[str, list[dict]]:
     """The four kinds of CGST section 34 note the P&L Statement nets, in the window, paged (POST-A-502).
@@ -296,61 +346,16 @@ def _counted_note_rows(db, firm_id: str, client_ids: Optional[list[str]],
     A sales credit note reduces revenue and a sales debit note increases it; a purchase debit note reduces expense and a
     purchase credit note increases it, which is how the ledger posts them. Each is read by its own date, for the clients
     asked for, issued (or applied) and not deleted: the rule public.report_party_totals applies in SQL.
-
-    Four reads written out rather than one helper over a table and a column, on purpose: a table or column named by a variable
-    is invisible to tests/test_backend_columns_exist_pg.py, which checks every literal name against the real schema.
     """
-    statuses = sorted(_NOTE_COUNTED)
-
-    def credit_notes_page():
-        q = (db.table("credit_notes").select("id, client_id, customer_id, credit_note_date, taxable_amount_paise, status")
-             .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", statuses))
-        if client_ids is not None:
-            q = q.in_("client_id", client_ids)
-        if date_from:
-            q = q.gte("credit_note_date", date_from)
-        if date_to:
-            q = q.lte("credit_note_date", date_to)
-        return q
-
-    def sales_debit_notes_page():
-        q = (db.table("sales_debit_notes").select("id, client_id, customer_id, debit_note_date, taxable_amount_paise, status")
-             .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", statuses))
-        if client_ids is not None:
-            q = q.in_("client_id", client_ids)
-        if date_from:
-            q = q.gte("debit_note_date", date_from)
-        if date_to:
-            q = q.lte("debit_note_date", date_to)
-        return q
-
-    def purchase_debit_notes_page():
-        q = (db.table("debit_notes").select("id, client_id, vendor_id, debit_note_date, taxable_amount_paise, status")
-             .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", statuses))
-        if client_ids is not None:
-            q = q.in_("client_id", client_ids)
-        if date_from:
-            q = q.gte("debit_note_date", date_from)
-        if date_to:
-            q = q.lte("debit_note_date", date_to)
-        return q
-
-    def purchase_credit_notes_page():
-        q = (db.table("purchase_credit_notes").select("id, client_id, vendor_id, credit_note_date, taxable_amount_paise, status")
-             .eq("firm_id", firm_id).is_("deleted_at", "null").in_("status", statuses))
-        if client_ids is not None:
-            q = q.in_("client_id", client_ids)
-        if date_from:
-            q = q.gte("credit_note_date", date_from)
-        if date_to:
-            q = q.lte("credit_note_date", date_to)
-        return q
+    def page(read):
+        return lambda: read(db, firm_id, client_ids, date_from, date_to)
 
     return {
-        "sales_credit_notes": fetch_all(credit_notes_page, key="id", label="reports.party_totals.credit_notes"),
-        "sales_debit_notes": fetch_all(sales_debit_notes_page, key="id", label="reports.party_totals.sales_debit_notes"),
-        "purchase_debit_notes": fetch_all(purchase_debit_notes_page, key="id", label="reports.party_totals.debit_notes"),
-        "purchase_credit_notes": fetch_all(purchase_credit_notes_page, key="id", label="reports.party_totals.purchase_credit_notes"),
+        "sales_credit_notes": fetch_all(page(_credit_notes_page), key="id", label="reports.party_totals.credit_notes"),
+        "sales_debit_notes": fetch_all(page(_sales_debit_notes_page), key="id", label="reports.party_totals.sales_debit_notes"),
+        "purchase_debit_notes": fetch_all(page(_purchase_debit_notes_page), key="id", label="reports.party_totals.debit_notes"),
+        "purchase_credit_notes": fetch_all(page(_purchase_credit_notes_page), key="id",
+                                           label="reports.party_totals.purchase_credit_notes"),
     }
 
 
