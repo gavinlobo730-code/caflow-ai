@@ -166,7 +166,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A TRUSTED RULE POSTS ONLY WHILE THE PERSON WHO TRUSTED IT COULD STILL POST, AND THE SCREEN'S NUMBER AND THE SWEEP BOTH ASK THE SAME
 - A BANK DEBIT EQUAL TO A RECORDED TDS CHALLAN IS PROPOSED AS ITS PAYMENT, NEVER READY, AND PASSING IT TIES THE CHALLAN
 
-### `docs/design-record/deployment-and-operations.md` (7 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
+### `docs/design-record/deployment-and-operations.md` (8 entries): Deployment, monitoring, request ids, service levels, runbooks and security headers
 
 - A CHECK ASKS THE THING ITSELF, AND AN ALERT MUST BE ABLE TO MATCH WHAT IS SENT
 - EVERY REQUEST HAS AN ID, AND ONE JSON LINE, AND THE LINE NEVER NAMES THE PATH THE CALLER TYPED
@@ -175,6 +175,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE TWO SITES AND THE API SEND SECURITY HEADERS, THE POLICY'S HOSTS ARE READ FROM THE BUILD AND NEVER WILDCARDED, AND EVERY ROUTE 
 - A BACKEND EVENT NAMES THE BUILD IT CAME FROM, AN UNLABELLED AI ROW NAMES NO RETIRED MODEL, AND A ROUTE NOTHING CALLED IS GONE
 - A BROAD HANDLER ON A MONEY OR LEDGER PATH REPORTS WHAT IT SWALLOWS, AND A ROLLBACK THAT DID NOT RUN IS A POSTING FAILURE
+- THE HEALTH ANSWER NAMES THE BUILD THE API RUNS, SO A DEPLOY THAT LAGS THE WEBSITE IS VISIBLE FROM OUTSIDE
 
 ### `docs/design-record/documents-sales-purchase.md` (23 entries): Sales and purchase documents and cycles, templates, supplier master, ledger drill-through
 - A RECEIPT RECORDED THROUGH THE DATABASE FUNCTION KEEPS THE ID ITS LEDGER ENTRY NAMES, THE BANK ACCOUNT IT WAS
@@ -259,7 +260,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - AN ASSET'S PLACE AND KEEPER HAVE A DATED HISTORY, WRITTEN WITH THE ASSET IN ONE STEP, AND A TYPO IS AN EDIT, NOT A MOVEMENT
 - A PHYSICAL COUNT OF A CLIENT'S ASSETS IS A DATED WORKING PAPER WITH A FINDING PER ASSET HELD THAT DAY, AND A CLOSED COUNT NEVER CHANGES
 
-### `docs/design-record/frontend.md` (14 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
+### `docs/design-record/frontend.md` (15 entries): Frontend rules: payload shapes, the browser's second data path, money input, loading and recurring screens
 
 - A PAYLOAD IS NOT A LIST UNTIL SOMETHING HAS CHECKED, AND THE STATE TYPE HIDES IT
 - A THIRD path existed and it was not a database at all: `localStorage`
@@ -275,6 +276,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SCREEN BLOCKS WITH "LOADING…" FOR ITS FIRST READ ONLY
 - A WRITE THE BROWSER MAKES THROUGH THE SUPABASE CLIENT READS ITS ANSWER
 - A PLACEHOLDER A SCREEN DRAWS SAYS WHEN THE SERVER IS SLOW
+- THE RESET PAGE IS TOLD WHICH PAGE LOAD CAME BY A RECOVERY LINK BEFORE THE SIGN-IN LIBRARY CLEANS THE ADDRESS, BECAUSE THE GUARD HOLDS THE PAGE BACK UNTIL AFTER
 
 ### `docs/design-record/identifiers.md` (5 entries): Identifiers: GSTIN, UAN, IFSC, party identifiers in imports, the firm's own GSTIN, FY and AY labels, ITR forms
 
@@ -336,7 +338,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A SEARCH ON A STATEMENT CHOOSES THE ROWS DRAWN, AND EVERY TOTAL STAYS THE WHOLE LEDGER'S
 - A MEMBER'S HOURS FOR A PERIOD ARE SUMMED BY THE DATABASE
 
-### `docs/design-record/screens-and-site.md` (33 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
+### `docs/design-record/screens-and-site.md` (34 entries): Screens that state what they read, double-click and keyboard rules, the public site's claims, dates and empty states
 
 - AN ABSENT VALUE IS UNKNOWN, AND A GENUINE ZERO IS A READING
 - A RETURN FOR ONE OF SEVERAL REGISTRATIONS SAYS ITS DOCUMENTS ARE NOT SPLIT
@@ -369,6 +371,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE PRACTICE'S PROFITABILITY IS FEE REVENUE BEFORE GST LESS EACH MEMBER'S COST RATE TIMES THEIR HOURS, AND AN UNKNOWN IS A DASH
 - THE PAGES A PERSON SEES BEFORE THEY ARE INSIDE WEAR ONE WASH, A WORD ON IT IS WHITE AND SITS WHERE WHITE READS, AND THE SIGN-IN
 - A REFUSAL SAYS WHAT TO CORRECT IN A PERSON'S WORDS
+- A BUTTON THAT SAVES TELLS THE PERSON WHEN IT FAILS, AND A SCAN OVER EVERY BUTTON HOLDS THE RULE WITH A LIST OF WHAT WAS READ THAT MAY ONLY SHRINK
 
 ### `docs/design-record/tax-gst.md` (40 entries): GST: returns, e-invoice and e-way, ITC and the 2B reconciliation, late fees, HSN and UQC, registrations
 
