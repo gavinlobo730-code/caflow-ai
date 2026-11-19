@@ -2250,6 +2250,10 @@ export type ReportPartyTotals = {
   revenue: ReportPartyLine[]; expenses: ReportPartyLine[];
   revenue_total_paise: number; expense_total_paise: number; net_paise: number;
   sales_documents: number; purchase_documents: number;
+  // How much of each side is CGST section 34 notes, signed (a credit note takes from revenue, a debit note adds), and how
+  // many notes were counted (POST-A-502, migration 766). ABSENT in an answer from before that migration, which is
+  // "not read" and is never drawn as nil: the screen says nothing about notes then.
+  revenue_notes_paise?: number; expense_notes_paise?: number; note_documents?: number;
 };
 
 // ── The Schedule III ageing schedules ────────────────────────────────────────
