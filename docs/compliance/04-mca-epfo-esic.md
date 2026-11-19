@@ -305,6 +305,18 @@ site; its API serves each section of the Act as an item). What matters here:
   damages of 5, 10, 15 and 25 per cent. a year of the arrears by period of default (under two months, two to four, four to six,
   six or more). The Scheme's base is "pay" (basic wages, dearness allowance, retaining allowance, food concession), not the
   Code's wider definition, which the product applies from 21-11-2025 (S47, POST-C-121).
+- **The Employees' Pension Scheme, 1995 and the Employees' Deposit-Linked Insurance Scheme, 1976 as EPFO publishes them**
+  (printed 19-11-2026; the pension copy's latest note is of 14-06-2024 and names the Code once, in an inserted 2023 note on the
+  higher-pension option; the insurance copy names no year after 2017) `[P]`: the **pension ceiling is in the Pension Scheme**
+  (para 3: the contribution is "limited to the amount payable on his pay of fifteen thousand rupees only"; para 6(a): the
+  Scheme applies to a provident fund member "whose pay on such date is less than or equal to fifteen thousand rupees") and the
+  **insurance ceiling in the Insurance Scheme** (para 7 proviso: limited to "a monthly pay of fifteen thousand rupees"), so all
+  three schemes keep Rs 15,000 in their own text. The pension share is 8.33% of pay; membership of the Pension Fund ends "from
+  the date of attaining 58 years of age" (para 6, Explanation; 6A), with deferment to 60 at the member's option (para 12(7B)).
+  Both schemes require payment within fifteen days of the close of the month and round each contribution to the nearest rupee,
+  50 paise counted up; damages on late contributions to either fund are one per cent. of the arrear per month or part (EPS para
+  5, EDLI para 8-A). The insurance rate (0.5%) is not in the Scheme text: it is fixed under section 6C of the repealed Act and,
+  in the Code, by section 16(1)(c) "as notified".
 
 ### ⭐ The revamped ECR — VERIFIED, effective wage month September 2025
 
