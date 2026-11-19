@@ -44,7 +44,7 @@ import type { BulkAction, Column } from "@/lib/table/types";
 import { AccountLookup } from "@/components/lookups/AccountLookup";
 import { commonNarrationPattern, MIN_PATTERN_LENGTH } from "@/lib/banking/narrationPattern";
 import { useToast } from "@/components/ui/use-toast";
-import { type Account, type BankAccount, fmt } from "@/components/banking/shared";
+import { type Account, type BankAccount, fmt, GST_RATE_OPTIONS } from "@/components/banking/shared";
 import { EntryDetailModal } from "@/components/banking/EntryDetailModal";
 import { Modal } from "@/components/ui/modal";
 import { BankAccounts, BankImportModal } from "@/components/banking/AccountsPanel";
@@ -155,6 +155,13 @@ const REDRAFT_CHUNK = 100;
 
 type Progress = { label: string; done: number; total: number | null } | null;
 
+/** A line a bulk pass held for want of a GST answer, as the server names it. */
+interface HeldLine { id: string; category: string | null; money_in: boolean }
+const heldKey = (l: HeldLine) => `${l.category ?? "Other"}|${l.money_in ? "in" : "out"}`;
+const heldLabel = (l: HeldLine) => `${l.category ?? "Other"}, money ${l.money_in ? "in" : "out"}`;
+/** The ids per request of a pass that names them: a request's address has a length. */
+const IDS_PER_REQUEST = 100;
+
 export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: {
   clientId: string;
   accounts: Account[];
@@ -201,6 +208,13 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
   const [bookBusy, setBookBusy] = useState(false);
   const [rulePrompt, setRulePrompt] = useState<{ pattern: string; accountId: string } | null>(null);
   const [ruleSaving, setRuleSaving] = useState(false);
+  // POST-A-489. Lines a bulk pass HELD because the person has not said what GST is inside them (the server keeps each on its row
+  // as a standing error and names them on the pass's last chunk). The answer is asked ONCE PER KIND of line (a category and a
+  // direction), never one for all: an expense, a loan instalment and a salary line are not alike, and one rate for all would put
+  // input credit on the two that are not supplies. "No GST" (0) is an answer; no choice is preselected; a kind left unanswered
+  // stays held.
+  const [gstAsk, setGstAsk] = useState<HeldLine[] | null>(null);
+  const [gstChoices, setGstChoices] = useState<Record<string, { rate: string; interstate: boolean }>>({});
   // One action at a time: every button that starts work waits for whichever
   // is already running. Guarding each on its own flag alone let two fire at
   // once, and the second could act on what the first was still changing.
@@ -418,19 +432,62 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     await settle();
   }, [loadBankAccounts, settle]);
 
-  async function passLoop(opts: { only_trusted?: boolean; transaction_ids?: string[]; label: string; total: number | null }) {
-    let passed = 0, failed = 0, skipped = 0;
+  async function passLoop(opts: { only_trusted?: boolean; transaction_ids?: string[]; label: string; total: number | null;
+                                  gst?: { rate: number; interstate: boolean } }) {
+    let passed = 0, failed = 0, skipped = 0, withGst = 0;
+    let unanswered: HeldLine[] = [];          // named by the pass's LAST chunk: every line held in its scope
     setProgress({ label: opts.label, done: 0, total: opts.total });
     for (let i = 0; i < 400; i++) {
       const r = (await api.banking.entries.passReady({
         client_id: clientId, limit: PASS_CHUNK, only_trusted: opts.only_trusted,
         transaction_ids: opts.transaction_ids, ...acct,
-      })) as { data: { passed: number; failed: number; skipped: number; remaining: number } };
-      passed += r.data.passed; failed += r.data.failed; skipped += r.data.skipped;
+        gst_rate_bps: opts.gst?.rate, is_interstate: opts.gst?.interstate,
+      })) as { data: { passed: number; failed: number; skipped: number; remaining: number; with_gst?: number; gst_unanswered?: HeldLine[] } };
+      passed += r.data.passed; failed += r.data.failed; skipped += r.data.skipped; withGst += r.data.with_gst ?? 0;
+      if (r.data.gst_unanswered) unanswered = r.data.gst_unanswered;
       setProgress({ label: opts.label, done: passed + failed + skipped, total: opts.total });
       if (r.data.remaining === 0 || (r.data.passed + r.data.failed + r.data.skipped) === 0) break;
     }
-    return { passed, failed, skipped };
+    return { passed, failed, skipped, withGst, unanswered };
+  }
+
+  /** What a bulk pass says it did, and the question it still owes: lines that can carry GST and have no answer. */
+  function reportPass(n: { passed: number; failed: number; withGst: number; unanswered: HeldLine[] }, base: string) {
+    const parts = [
+      n.withGst ? `${n.withGst} with GST` : "",
+      n.failed ? `${n.failed} refused — each says why on its line.` : "",
+      n.unanswered.length ? `${n.unanswered.length} can carry GST and wait for your answer.` : "",
+    ].filter(Boolean);
+    toast({ title: `${n.passed} passed`, description: parts.length ? parts.join(" ") : (base || undefined), variant: n.failed ? "destructive" : undefined });
+    if (n.unanswered.length) { setGstChoices({}); setGstAsk(n.unanswered); }
+  }
+
+  /** Pass the kinds the person has answered, each with its own answer; the kinds left alone stay held and stay in the dialog. */
+  async function passWithGstAnswers() {
+    if (!gstAsk || busyRef.current) return;
+    const answered = [...new Set(gstAsk.map(heldKey))].filter((k) => (gstChoices[k]?.rate ?? "") !== "");
+    if (!answered.length) return;
+    busyRef.current = true;
+    let passed = 0, failed = 0, withGst = 0;
+    try {
+      for (const k of answered) {
+        const ids = gstAsk.filter((l) => heldKey(l) === k).map((l) => l.id);
+        const rate = Number(gstChoices[k].rate);
+        for (let at = 0; at < ids.length; at += IDS_PER_REQUEST) {
+          const batch = ids.slice(at, at + IDS_PER_REQUEST);
+          const n = await passLoop({ transaction_ids: batch, label: "Passing with the GST you stated", total: batch.length,
+                                     gst: { rate, interstate: rate > 0 && gstChoices[k].interstate } });
+          passed += n.passed; failed += n.failed; withGst += n.withGst;
+        }
+      }
+      const left = gstAsk.filter((l) => !answered.includes(heldKey(l)));
+      setGstAsk(left.length ? left : null);
+      reportPass({ passed, failed, withGst, unanswered: left }, "Passed with the GST you stated.");
+    } catch (e) {
+      toast({ title: "Pass stopped", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setProgress(null); busyRef.current = false; await reload();
+    }
   }
 
   async function passAllReady() {
@@ -438,11 +495,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
     busyRef.current = true;
     try {
       const n = await passLoop({ label: "Passing ready entries", total: counts.ready });
-      toast({
-        title: `${n.passed} passed`,
-        description: n.failed ? `${n.failed} refused — each says why on its line, under Needs me.` : "All ready entries are in the books.",
-        variant: n.failed ? "destructive" : undefined,
-      });
+      reportPass(n, "All ready entries are in the books.");
     } catch (e) {
       toast({ title: "Pass stopped", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
@@ -454,6 +507,9 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
    *  the click is the CA accepting it. A refusal is a toast, and the row
    *  carries it. */
   async function passOne(t: Entry) {
+    // A line the CA coded that can carry GST is passed from its own screen, where the GST control is (POST-A-489): a pass from
+    // the row states nothing, and the whole debit would be booked to the expense with the input credit lost.
+    if (t.gst_allowed) { setDetailId(t.id); return; }
     try {
       await api.banking.entries.pass(t.id);
       toast({ title: `Passed as a ${KIND_LABEL[t.kind]}` });
@@ -634,16 +690,20 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       run: async (sel) => {
         const ready = sel.filter((t) => t.entry_state === "ready").map((t) => t.id);
         const proposed = sel.filter((t) => t.entry_state === "proposed" && t.draft_source !== "document");
-        let passed = 0, failed = 0;
+        let passed = 0, failed = 0, withGst = 0;
+        let unanswered: HeldLine[] = [];
         if (busyRef.current) return;
         busyRef.current = true;
         try {
-          if (ready.length) { const n = await passLoop({ transaction_ids: ready, label: "Passing selected", total: ready.length }); passed += n.passed; failed += n.failed; }
+          if (ready.length) {
+            const n = await passLoop({ transaction_ids: ready, label: "Passing selected", total: ready.length });
+            passed += n.passed; failed += n.failed; withGst += n.withGst; unanswered = n.unanswered;
+          }
           for (const t of proposed) {
             try { await api.banking.entries.pass(t.id); passed += 1; } catch { failed += 1; }
           }
         } finally { setProgress(null); busyRef.current = false; }
-        toast({ title: `${passed} passed`, description: failed ? `${failed} refused — see each line.` : undefined, variant: failed ? "destructive" : undefined });
+        reportPass({ passed, failed, withGst, unanswered }, "");
         await reload();
       },
     },
@@ -710,7 +770,7 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
         catch { /* counted */ }
       }
       toast({ title: `${n} line${n === 1 ? "" : "s"} booked under ${accountName(bookAccountId)}`,
-              description: n ? "They are Ready — pass them when you are." : undefined });
+              description: n ? "They are Ready — pass them when you are. A line that can carry GST will ask what is inside it when you pass it." : undefined });
       // Offer to keep this decision as a rule when the lines share a phrase.
       const pattern = commonNarrationPattern(bookUnder.map((t) => t.description));
       if (n >= 2 && pattern && pattern.length >= MIN_PATTERN_LENGTH) setRulePrompt({ pattern, accountId: bookAccountId });
@@ -909,13 +969,64 @@ export function EntriesTab({ clientId, accounts, focusBankAccountId, openDoc }: 
       {bookUnder && (
         <Modal title={`Book ${bookUnder.length} line${bookUnder.length === 1 ? "" : "s"} under…`} maxWidthClass="max-w-md" onClose={() => { if (!bookBusy) setBookUnder(null); }}>
           <AccountLookup accounts={orderedAccounts} value={bookAccountId} onChange={setBookAccountId} ariaLabel="Ledger" placeholder="Choose a ledger…" />
-          <p className="text-3xs text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it.</p>
+          <p className="text-3xs text-ps-hint">The lines become Ready with this ledger; nothing is passed until you pass it. Where a line can carry GST, passing asks what GST is inside it, once for the lines you pass together.</p>
           <div className="flex justify-end gap-2">
             <button onClick={() => setBookUnder(null)} disabled={bookBusy} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Cancel</button>
             <Button variant="plain" size="none" onClick={applyBookUnder} disabled={actionInFlight || !bookAccountId} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">{bookBusy ? "Booking…" : "Book under"}</Button>
           </div>
         </Modal>
       )}
+
+      {gstAsk && (() => {
+        const groups = [...new Map(gstAsk.map((l) => [heldKey(l), l])).values()];
+        const count = (k: string) => gstAsk.filter((l) => heldKey(l) === k).length;
+        const anyAnswered = groups.some((g) => (gstChoices[heldKey(g)]?.rate ?? "") !== "");
+        return (
+          <Modal title={`GST on ${gstAsk.length} line${gstAsk.length === 1 ? "" : "s"}`} maxWidthClass="max-w-lg"
+                 onClose={() => { if (!busyRef.current) setGstAsk(null); }}>
+            <p className="text-xs text-ps-body">
+              These lines were coded by you and can carry GST, and nothing says what is inside the amount. Passing without an answer
+              would book the whole amount to the ledger and lose the credit on a payment (CGST Act s.16), or leave the tax on a receipt
+              undeclared (s.9). Say what is inside each kind below; &ldquo;no GST&rdquo; is an answer. A kind you leave alone stays held.
+            </p>
+            <div className="space-y-3">
+              {groups.map((g) => {
+                const k = heldKey(g);
+                const choice = gstChoices[k] ?? { rate: "", interstate: false };
+                return (
+                  <div key={k} className="border border-ps-border rounded-lg px-3 py-2 space-y-1.5">
+                    <p className="text-xs font-medium text-ps-ink">{heldLabel(g)} <span className="text-ps-hint font-normal">· {count(k)} line{count(k) === 1 ? "" : "s"}</span></p>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <select aria-label={`GST inside the ${heldLabel(g)} lines`} value={choice.rate}
+                        onChange={(e) => setGstChoices((c) => ({ ...c, [k]: { ...choice, rate: e.target.value } }))}
+                        className="px-2 py-1.5 text-xs border border-ps-border rounded-lg bg-white">
+                        <option value="">Choose…</option>
+                        {GST_RATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                      {choice.rate !== "" && choice.rate !== "0" && (
+                        <label className="flex items-center gap-1.5 text-xs text-ps-label">
+                          <input type="checkbox" checked={choice.interstate}
+                            onChange={(e) => setGstChoices((c) => ({ ...c, [k]: { ...choice, interstate: e.target.checked } }))}
+                            className="h-3.5 w-3.5 rounded border-ps-disabled" />
+                          IGST (inter-state)
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-3xs text-ps-hint">To give one line its own rate, leave its kind and open the line.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setGstAsk(null)} className="text-xs px-3 py-1.5 border border-ps-border rounded-lg text-ps-label hover:bg-ps-bg">Not now — I&apos;ll open each</button>
+              <Button variant="plain" size="none" onClick={passWithGstAnswers} disabled={!anyAnswered || progress !== null}
+                className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-brand hover:bg-brand-dark disabled:opacity-40">
+                {progress ? "Passing…" : "Pass the kinds I have answered"}
+              </Button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {showImport && (
         <BankImportModal

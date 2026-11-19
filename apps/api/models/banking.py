@@ -819,6 +819,16 @@ class EntriesPassReadyIn(BaseModel):
     only_trusted: bool = False
     bank_account_id: Optional[str] = None
     transaction_ids: Optional[list[str]] = None
+    # POST-A-489. A person's pass states ONE GST answer for the lines in it that they coded and that can carry GST: a rate
+    # from the list, or 0 for "carries none". Absent, those lines are not posted and come back in `gst_unanswered`. Ignored
+    # by a trusted-rule sweep, whose lines carry the rule's own treatment.
+    gst_rate_bps: Optional[int] = None
+    is_interstate: bool = False
+
+    @field_validator("gst_rate_bps")
+    @classmethod
+    def known_gst_rate(cls, v: Optional[int]) -> Optional[int]:
+        return _validate_gst_rate_bps(v)
 
 
 class PassEntryIn(BaseModel):

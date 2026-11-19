@@ -159,3 +159,24 @@ def test_creating_or_editing_a_rule_marks_open_lines_stale_but_trusting_does_not
                      json={"suggested_account_id": RENT})
     assert r.status_code == 200, r.text
     assert _row(db, "t1")["drafted_at"] is None
+
+
+# ── POST-A-489: the bulk pass door carries the person's one GST answer ────────────────────────────────────────────────
+
+def test_the_bulk_pass_route_holds_a_coded_line_that_can_carry_gst_until_the_answer_is_sent(db, poster):
+    _line(db, "t1", "NEFT CHARGES", account_id=CHARGES, category="Expense")
+    unanswered = client.post("/api/banking/entries/pass-ready", headers=_h("executive"), json={"client_id": CLIENT})
+    d = unanswered.json()["data"]
+    assert unanswered.status_code == 200 and d["passed"] == 0 and [u["id"] for u in d["gst_unanswered"]] == ["t1"]
+    assert poster.calls == []
+    answered = client.post("/api/banking/entries/pass-ready", headers=_h("executive"),
+                           json={"client_id": CLIENT, "transaction_ids": ["t1"], "gst_rate_bps": 1800, "is_interstate": False})
+    d = answered.json()["data"]
+    assert answered.status_code == 200 and d["passed"] == 1 and d["with_gst"] == 1
+    assert poster.calls[0]["gst_rate_bps"] == 1800
+
+
+def test_a_rate_that_is_not_one_of_the_five_is_refused_at_the_door(db, poster):
+    r = client.post("/api/banking/entries/pass-ready", headers=_h("executive"),
+                    json={"client_id": CLIENT, "gst_rate_bps": 1700})
+    assert r.status_code == 422

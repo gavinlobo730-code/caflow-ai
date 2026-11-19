@@ -14,8 +14,6 @@ import { UploadProgress } from "@/components/ui/upload-progress";
 import type { UploadProgress as BytesSent } from "@/lib/api/uploadWithProgress";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Plus, RefreshCw, Upload, CheckCircle, X, FileText, Pencil, Landmark } from "lucide-react";
-import { getSupabaseClient } from "@/lib/supabase/client";
-import { selectAll } from "@/lib/supabase/selectAll";
 import { paiseFromRupeeInput } from "@/lib/money/rupeeInput";
 import { formatPaise } from "@/lib/services/formatting";
 import { api, ApiRefusal, type BankAccountTypeInfo } from "@/lib/api";
@@ -432,6 +430,7 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
   const [coaId, setCoaId] = useState(account?.coa_account_id ?? "");
   const [isActive, setIsActive] = useState(account?.is_active ?? true);
   const [coaAccounts, setCoaAccounts] = useState<CoaAccountLite[]>([]);
+  const [newLedgerName, setNewLedgerName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // BANK-21. The vocabulary is the engine's — the type decides whether this
@@ -454,26 +453,26 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
     (accountTypes.find(t => t.value === accountType)?.balance_label ?? "Balance")
       === "Amount owed" ? "Opening Amount Owed" : "Opening Balance";
 
+  // POST-A-492. The ledgers this account may be linked to, and the name a new one would be given, come from the SERVER, which
+  // owns what a bank can sit on (an asset or a liability ledger of this client's or the firm's, never another bank's, never a
+  // cash ledger). This form used to read the whole chart straight from the database and offer every asset and liability
+  // ledger, "Cash in Hand" among them, and said nothing of the ledger it makes when none is chosen. Asked again, a moment
+  // after the person stops typing, when the bank or the number changes the name.
   useEffect(() => {
-    (async () => {
-      // ASSET **OR** LIABILITY, because an overdraft is not an asset (BANK-02).
-      // bank_accounts.account_type has allowed 'Cash Credit' and 'Overdraft'
-      // since migration 054 and this form offers both — but the picker filtered
-      // `account_type = "Asset"`, so a CA who created an OD account could not
-      // point it at a liability ledger even by hand. Migration 342 creates the
-      // right one automatically and re-classifies the existing ones; this is
-      // what lets the manual picker agree with it.
-      const supabase = getSupabaseClient();
-      const { data } = await selectAll(() => supabase
-        .from("chart_of_accounts")
-        .select("id, account_code, account_name, account_type, account_subtype")
-        .or(`client_id.eq.${clientId},client_id.is.null`)
-        .eq("is_active", true)
-        .in("account_type", ["Asset", "Liability"])
-        .order("account_code").order("id"));
-      setCoaAccounts((data as CoaAccountLite[]) ?? []);
-    })();
-  }, [clientId]);
+    let live = true;
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await api.banking.ledgerChoices({
+          client_id: clientId, bank_name: bankName.trim(), account_no: editing ? (account?.account_no ?? "") : accountNo.trim(),
+          ...(account ? { account_id: account.id } : {}),
+        });
+        if (!live || !res.success) return;
+        setCoaAccounts(res.data?.ledgers ?? []);
+        setNewLedgerName(res.data?.new_ledger_name ?? null);
+      } catch { /* the form still works: a name or a list that did not arrive is simply not shown */ }
+    }, 350);
+    return () => { live = false; window.clearTimeout(t); };
+  }, [clientId, account, editing, bankName, accountNo]);
 
   async function save() {
     if (!bankName.trim()) { setError("Bank name is required."); return; }
@@ -599,10 +598,14 @@ export function BankAccountModal({ clientId, account, onClose, onSaved }: {
           <div>
             <label className={labelCls}>Ledger Account (GL link)</label>
             <select aria-label="Ledger Account (GL link)" value={coaId} onChange={(e) => setCoaId(e.target.value)} className={inputCls}>
-              <option value="">— Not linked —</option>
+              <option value="">{editing ? "— Not linked —" : `Create a new ledger for this account${newLedgerName ? ` — “${newLedgerName}”` : ""}`}</option>
               {coaAccounts.map((c) => <option key={c.id} value={c.id}>{c.account_code} · {c.account_name}</option>)}
             </select>
-            <p className="text-3xs text-ps-hint mt-1">Links this bank account to a chart-of-accounts asset account so postings and the opening balance hit the right GL account.</p>
+            <p className="text-3xs text-ps-hint mt-1">
+              {editing
+                ? "The ledger this account posts to. Postings and the opening balance hit it; a cash ledger cannot be used, and each bank account needs its own."
+                : "Leave this on creating a new ledger and one is made for this account, named as shown (a number is added if that name is already taken). Choose an existing ledger only if this account already has one of its own; a cash ledger cannot be used."}
+            </p>
           </div>
         </div>
         {error && <p role="alert" className="text-xs text-state-problem bg-state-problem-surface rounded px-3 py-2">{error}</p>}
