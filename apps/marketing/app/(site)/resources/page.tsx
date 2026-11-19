@@ -192,12 +192,19 @@ export default function ResourcesPage() {
         />
 
         <Reveal variant="scale" delay={120}>
-          <div className="mt-12 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03]">
+          {/* The table is wider than a phone, so the box that scrolls it takes focus (axe's `scrollable-region-focusable`, found by the marketing
+              quality pass, POST-A-507) and is named, as the product showcase's is. */}
+          <div
+            className="mt-12 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-light"
+            tabIndex={0}
+            role="region"
+            aria-label="Key statutory due dates"
+          >
             <table className="w-full min-w-[720px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-white/10">
                   {["Return / obligation", "Frequency", "Statutory due date"].map((h) => (
-                    <th key={h} className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-white/45">
+                    <th key={h} className="px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-white/60">
                       {h}
                     </th>
                   ))}

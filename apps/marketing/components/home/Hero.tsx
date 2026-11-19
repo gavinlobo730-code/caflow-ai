@@ -425,7 +425,7 @@ export function Hero() {
             <Magnetic max={10}>
               <a
                 href="/demo"
-                className="btn-shine inline-flex items-center gap-2 rounded-lg bg-[#5876c7] px-7 py-[15px] text-[14px] font-semibold leading-none text-white transition-colors hover:bg-[#4d68af]"
+                className="btn-shine inline-flex items-center gap-2 rounded-lg bg-[#5272c2] px-7 py-[15px] text-[14px] font-semibold leading-none text-white transition-colors hover:bg-[#4d68af]"
               >
                 Book a demo
                 <ArrowRight size={16} />

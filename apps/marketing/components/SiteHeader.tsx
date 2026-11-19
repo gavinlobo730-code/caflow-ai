@@ -169,7 +169,7 @@ export function SiteHeader() {
                 taller than the one in the hero it is meant to match. */}
             <Link
               href="/demo"
-              className="inline-flex items-center rounded-md bg-[#5876c7] px-[18px] py-2.5 text-[13px] font-semibold leading-none text-white transition-colors hover:bg-[#4d68af]"
+              className="inline-flex items-center rounded-md bg-[#5272c2] px-[18px] py-2.5 text-[13px] font-semibold leading-none text-white transition-colors hover:bg-[#4d68af]"
             >
               Book a demo
             </Link>
@@ -213,7 +213,7 @@ export function SiteHeader() {
               <Link
                 href="/demo"
                 onClick={() => setOpen(false)}
-                className="rounded-lg bg-[#5876c7] px-4 py-2.5 text-center text-[15px] font-semibold text-white"
+                className="rounded-lg bg-[#5272c2] px-4 py-2.5 text-center text-[15px] font-semibold text-white"
               >
                 Book a demo
               </Link>

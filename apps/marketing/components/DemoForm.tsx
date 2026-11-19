@@ -313,7 +313,7 @@ export function DemoForm({ contactEmail }: { contactEmail: string }) {
       <button
         type="submit"
         disabled={status === "sending"}
-        className="btn-shine mt-7 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5876c7] px-7 py-[15px] text-[15px] font-semibold text-white transition-colors hover:bg-[#4d68af] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="btn-shine mt-7 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#5272c2] px-7 py-[15px] text-[15px] font-semibold text-white transition-colors hover:bg-[#4d68af] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {status === "sending" ? "Sending…" : "Request a demo"}
         {status === "sending" ? null : <ArrowRight size={16} />}

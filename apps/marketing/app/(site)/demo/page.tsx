@@ -72,7 +72,7 @@ export default function DemoPage() {
               {WHAT_HAPPENS.map((s, i) => (
                 <Reveal key={s.step} variant="left" delay={i * 110}>
                   <div className="flex gap-5 border-t border-white/10 pt-6">
-                    <span className="font-display text-[26px] italic leading-none text-white/25">
+                    <span className="font-display text-[26px] italic leading-none text-white/45">
                       {s.step}
                     </span>
                     <span>

@@ -58,7 +58,7 @@ export function BeforeAfter() {
         {/* ── Before ──────────────────────────────────────────────────── */}
         <Reveal variant="left">
           <div className="h-full rounded-2xl border border-slate-900/10 bg-white/60 p-7 md:p-8">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-500">
               The old way
             </p>
             <h3 className="mt-3 font-display text-[26px] leading-tight text-brand-dark">
