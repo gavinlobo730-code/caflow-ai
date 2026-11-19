@@ -92,7 +92,7 @@ export function FirmHsnLibraryQuickAddModal({
   return (
     <Modal
       title="Add to your Firm HSN/SAC Library"
-      note="This adds the code to your firm's own library so it — and every future line that reuses it — comes from one place you control. Caflow does not check or suggest whether this is the correct classification."
+      note="This adds the code to your firm's own library so it — and every future line that reuses it — comes from one place you control. PracticeSync does not check or suggest whether this is the correct classification."
       onClose={onClose}
       maxWidthClass="max-w-md"
     >

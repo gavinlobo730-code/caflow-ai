@@ -260,7 +260,7 @@ export default function FirmHsnLibraryPage() {
           }
           subtitle={
             <>
-              The HSN/SAC codes your firm bills against. You add and curate every code here — Caflow does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
+              The HSN/SAC codes your firm bills against. You add and curate every code here — PracticeSync does not ship a shared list or suggest a classification; every Product/Service and invoice line picks from this library.
             </>
           }
           actions={

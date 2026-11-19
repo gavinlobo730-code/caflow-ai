@@ -1116,7 +1116,7 @@ export default function OnboardingPage() {
               <h2 className="text-base font-semibold text-ps-ink">Import your HSN/SAC library</h2>
             </div>
             <p className="text-sm text-ps-label mb-5">
-              Caflow does not ship or suggest HSN/SAC classifications — you own and curate the codes your
+              PracticeSync does not ship or suggest HSN/SAC classifications — you own and curate the codes your
               firm bills against. Add a few now, import a list, or skip and add codes as you invoice.
             </p>
 
