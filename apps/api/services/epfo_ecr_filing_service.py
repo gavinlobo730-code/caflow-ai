@@ -91,6 +91,9 @@ def members_from_ecr(ecr) -> tuple[seq.FiledMember, ...]:
     Taken from the file that is about to be uploaded rather than from the
     payslips, so what gets frozen is what was actually filed. The two agree
     today; if they ever stop agreeing, the file is the thing EPFO holds.
+
+    `epf_contribution` is the file's column 7, the employee's share alone (POST-A-517); see domain/payroll/ecr_sequence.FiledMember
+    for what a row frozen before that change holds.
     """
     return tuple(seq.FiledMember(
         uan=m.uan, epf_wages=m.epf_wages,
@@ -112,6 +115,26 @@ def read_filings(db, *, firm_id: str, client_id: str) -> list[seq.RecordedFiling
         return_type=str(r.get("return_type") or ""),
         status=str(r.get("status") or ""),
         members=_members_from_row(r.get("members"))) for r in rows]
+
+
+def settled_filing_for_month(db, *, firm_id: str, client_id: str, wage_month: str) -> Optional[dict]:
+    """The latest live APPROVED return recorded for a wage month, as a plain row, or None.
+
+    What the hand-off panel shows as "recorded as filed". It asks for the APPROVED row only, and the caller asks it only when the
+    month needs nothing further: a Regular that is submitted but not approved still blocks the next month, and the form that records
+    the approval has to stay on the screen until it is. (The hand-off used to build this by calling `.get` on the dataclasses
+    `read_filings` returns, which raised the moment any filing was recorded for the client, so its panel could never show one.)
+    """
+    if not db or not client_id or not seq.is_month(wage_month):
+        return None
+    rows = (privileged_for(db).table("epfo_ecr_filings")
+            .select("id, wage_month, return_type, status, return_file_id, trrn, submitted_on, approved_on")
+            .eq("firm_id", firm_id).eq("client_id", client_id)
+            .eq("wage_month", wage_month).eq("status", seq.APPROVED)
+            .is_("deleted_at", "null")
+            .order("approved_on", desc=True).order("id", desc=True)
+            .limit(1).execute().data) or []
+    return dict(rows[0]) if rows else None
 
 
 def finalised_months(db, *, firm_id: str, client_id: str) -> list[str]:
@@ -158,9 +181,13 @@ def record_filing(
     db, *, firm_id: str, client_id: str, wage_month: str, return_type: str,
     status: str = seq.SUBMITTED, submitted_on: Optional[str] = None,
     approved_on: Optional[str] = None, trrn: Optional[str] = None,
+    return_file_id: Optional[str] = None,
     run_id: Optional[str] = None, members=(), recorded_by: Optional[str] = None,
 ) -> dict:
     """Write down a return the CA filed at the portal.
+
+    `return_file_id` is the RETURN's own reference, the one the portal gives when the file passes its checks; `trrn` is the
+    CHALLAN's, issued when the dues are prepared for payment after the return is approved (migration 769, POST-A-518).
 
     Refuses before it writes rather than letting the CHECK constraints do it, so
     the CA gets a sentence about EPFO instead of a Postgres error — the same
@@ -207,6 +234,8 @@ def record_filing(
         row["approved_on"] = approved_on
     if trrn:
         row["trrn"] = str(trrn).strip()
+    if return_file_id and str(return_file_id).strip():
+        row["return_file_id"] = str(return_file_id).strip()
     if run_id:
         row["run_id"] = run_id
     if recorded_by:

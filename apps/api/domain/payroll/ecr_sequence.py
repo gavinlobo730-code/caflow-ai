@@ -133,6 +133,13 @@ class FiledMember:
     correct — "wages or contribution details". Name, NCP days and the refund of
     advances are not carried: a changed name is not a revision, and storing the
     whole line would put a copy of the return in a second place.
+
+    WHAT `epf_contribution` MEANS (POST-A-517). It is column 7 of the file, EPFO's "Employee PF Contribution": the employee's
+    share alone. Until 19-11-2026 the file's column 7 carried the employee's share PLUS the employer's EPF half, so a row frozen
+    before that date holds the larger figure for the same member. No such row is a real filing (the product has never filed), and
+    the comparison errs the safe way: a stored figure that differs from today's reads as "this member's contribution changed",
+    which recommends a Revised return, never silence. The employer's PF share is not stored; it is column 7 less the pension
+    share, which is how the file derives it.
     """
     uan: str
     epf_wages: int

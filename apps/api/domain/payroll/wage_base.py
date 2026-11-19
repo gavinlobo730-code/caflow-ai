@@ -25,8 +25,8 @@ WHAT THIS IS FOR
 
 WHY THE CEILING MEANS THIS IS NARROWER THAN IT SOUNDS
 
-    The Rs 15,000 EPF ceiling is unchanged. For anyone whose basic + DA already
-    reaches it, `min(wages, 15000)` makes the add-back irrelevant and the old
+    The wage ceiling was Rs 15,000 until 16-09-2026 and is Rs 25,000 from 17-09-2026 (S.O. 5109(E); statutory.PF_WAGE_CEILINGS). For
+    anyone whose basic + DA already reaches the ceiling, `min(wages, ceiling)` makes the add-back irrelevant and the old
     figure was already right. The exposure is employees BELOW the ceiling on a
     low-basic / high-allowance structure — which is the ordinary Indian salary
     structure at exactly those salary levels.

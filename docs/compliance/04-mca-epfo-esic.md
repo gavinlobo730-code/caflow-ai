@@ -189,8 +189,11 @@ Plain **text**, **11 fields**, delimiter **`#~#`**: `UAN`, `MEMBER_NAME`,
 `EPS_CONTRI_REMITTED`, `EPF_EPS_DIFF_REMITTED`, `NCP_DAYS`,
 `REFUND_OF_ADVANCES`. `[P — EPFO's own PDF]`
 
-Validations include EPS wages ≤ ₹15,000, EDLI wages ≤ ₹15,000, EPF wages ≥ EPS
-wages per member, NCP days ≤ days in month.
+Validations include EPS wages ≤ the wage ceiling, EDLI wages ≤ the wage ceiling,
+EPF wages ≥ EPS wages per member, NCP days ≤ days in month. (The ceiling was ₹15,000
+until 16-09-2026 and is ₹25,000 from 17-09-2026, S.O. 5109(E), `[P]`; whether the
+portal's own validation has moved to the new figure is not confirmed anywhere read:
+owner list S43, S48.)
 
 ⚠️ One source mentioned a `||` delimiter. **Believed wrong** — `#~#` is what the
 ECR 2.0 sources overwhelmingly say.
@@ -241,10 +244,10 @@ says the administrative charge stays on wages up to the ceiling.
 
 **Update of 19-11-2026, night** (the Employees' Provident Funds Scheme, 2026, read from the Gazette): the 1952 Scheme and its para 26(6) were replaced on 29-06-2026. **Para 9(4) of the 2026 Scheme** says "any employee and his employer may jointly opt in writing, to enrol such employee as a member or allow him to contribute on such wages exceeding wage ceiling limit and thereupon such employee shall be entitled to the benefits and be subject to the conditions of the Fund", the employer paying the administrative charges and complying with all statutory provisions. So point 2 is answered (the paragraph is carried forward), the joint option in writing is the Scheme's own words, and **no officer's allowance is mentioned** (the 1952 text had one); whether the portal still asks for one is in no document read. Para 19 now also puts voluntary contributions by the employee on wages above the ceiling in the Scheme text, with administrative charges on those wages. `pf_wage_election.VERIFIED` is turned when the build re-points its comments (POST-A-520, POST-A-525).
 
-⚠️ **READ ON 19-11-2026 AND WRONG; the fix is POST-A-517 and is not yet built.**
-`domain/payroll/ecr.py` declares `EPF_CONTRI_REMITTED` as the employee's 12%
+✅ **READ ON 19-11-2026 AND WRONG; FIXED THE SAME NIGHT (POST-A-517).**
+`domain/payroll/ecr.py` declared `EPF_CONTRI_REMITTED` as the employee's 12%
 **plus** the employer's EPF half (so ₹2,350 / ₹1,250 / ₹1,100 for a ₹15,000
-member) and its tests pin that. EPFO's own User Manual for the Re-engineered ECR
+member) and its tests pinned that. EPFO's own User Manual for the Re-engineered ECR
 (v3.0, page 8, attached by the owner from EPFO's Revamped ECR page) gives the
 sample line `…#~#15000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0` for
 a ₹15,000 wage and names the columns Employee PF Contribution (7), Employer EPS
@@ -252,10 +255,14 @@ Contribution (8) and Employer PF Contribution (9); its sample return statement
 (page 10) adds up the same way and its account 1 (page 22) is the employee share
 plus the employer share; EPFO's rates sheet says the employer share is the difference of the employee share and the
 pension contribution, and the ECR 2.0 Introduction (December 2016) names the columns EE Share Remitted, EPS
-Contribution Remitted and ER Share Remitted. So the file this module builds carries wrong figures in
-columns 7 and 9 until it is fixed, and an elected member's line, which follows
-the same convention, is wrong in the same way. Do not upload an ECR built by
-this product before then.
+Contribution Remitted and ER Share Remitted. So the file this module built carried wrong figures in
+columns 7 and 9, and an elected member's line, which followed the same
+convention, was wrong in the same way. **Now:** column 7 is the employee's contribution alone (1,800 for a ₹15,000 wage), column 8 the pension share
+(1,250) and column 9 is column 7 less column 8 (550), as EPFO's sample has them; the file is refused, by member, when the
+employer's PF share it would declare is not the one the payslip and the ledger hold; the hand-off shows the three columns under
+EPFO's names and account 1 as columns 7 and 9 together; an elected member follows the same rule (4,800 / 1,250 / 3,550 for a
+₹40,000 wage). Whether the portal tolerates a one-rupee rounding difference on a line is not settled by the manual. An ECR
+downloaded before this fix carries the old columns and is not to be uploaded.
 The Employees' Provident Funds Scheme, 2026 (read 19-11-2026, night) prescribes the return as **Form VII**, "Electronic Challan-Cum-Return" (para 24(2)(ix)), with fourteen columns whose contribution columns come in the same order (8 "Employee PF contribution", 9 "Employer EPS contribution", 10 "Employer PF contribution"), so the fix stands on the Gazette's form too; the form adds three principal-employer columns and drops the refund of advance, and whether the portal's file has changed is not read (owner list S48).
 
 ### The Code on Social Security, 2020: what was read from its own text on 19-11-2026 `[P]`
@@ -440,14 +447,31 @@ What did change:
 > API, so a human takes the file to the portal and then tells the product what
 > they did.
 
+### The return and the payment are two acts with two references, and the walk-through follows the manual's order (POST-A-518, 519)
+
+EPFO's User Manual for the Re-engineered ECR (v3.0, pages 3 to 15, 21 and 22, read 19-11-2026) walks the monthly return in this order: Payments, Return
+Filing, the wage month, View/Upload; the file, the return type (Regular, Supplementary or Revised), the contribution rate (12% or 10%) and a
+remark; the portal checks the file and gives an error file or a **Return File ID** (12 digits in the manual's example) and a return statement; the
+employer approves or rejects the statement (once approved, the wages and contribution details cannot be modified); the Due Deposit Balance Summary
+offers full payment, part payment by a contribution file, administrative and inspection charges, and the interest and damages the portal
+computes; Prepare Challan and Finalize, and only then the **TRRN** (15 digits in the manual's example); Pay, through a bank, and the receipt from
+View/Pay Challan. The 2026 Scheme puts the return (Form VII) and the payment in two steps as well (paras 24(2)(ix) and 28(3)). The product's
+walk-through and hand-off follow this order; its record of a filing holds the return (type, dates, approval and the Return File ID, migration 769)
+and not the payment, which stays unbuilt (owner list: the EPF deposit record). The walk-through no longer says there is no DSC and no OTP in the
+monthly flow, because the manual's home page carries a notice that the OTP-based second step on the employer login "has been temporarily relaxed"
+and another that "the existing digital signature process has been changed" and does not say whether either touches the return; and it no longer
+says a month with no contributory members needs a NIL return, because the FAQs (question 21) have the administrative and inspection charges
+for a month with no active members paid through Direct Challan Entry, which the portal enables only then. EPFO's upload notice (page 7) asks for
+letters and digits only in a file's name and a small-case extension, so the download is named like `ECR202609.txt`.
+
 ### Rates — and what actually moved in 2025
 
 | Account | What | Rate |
 |---|---|---|
 | A/c 1 | EPF — employee 12% + employer 3.67% | |
-| A/c 10 | EPS — employer | 8.33%, capped at ₹15,000 → max ₹1,250 |
+| A/c 10 | EPS — employer | 8.33%, on wages up to the notified ceiling → max ₹1,250 at ₹15,000, ₹2,083 at ₹25,000 (from 17-09-2026) |
 | A/c 2 | EPF **admin charges** | **0.50%**, w.e.f. 1 June 2018 (was 0.65%, before that 0.85%) |
-| A/c 21 | **EDLI** — employer | 0.50%, capped at ₹15,000 → max ₹75 |
+| A/c 21 | **EDLI** — employer | 0.50% (the insurance rate is "as notified": owner list S49), on wages up to the notified ceiling → max ₹75 at ₹15,000, ₹125 at ₹25,000 |
 | A/c 22 | EDLI admin | **Nil since 1 April 2017** |
 
 Minimum for A/c 2: **₹500/month**, and **₹75/month** where the establishment has no contributory member that month. **`[P]` as of 2018: read on 19-11-2026 in EPFO's own "Present rates of contribution" sheet** (listed on its Employer Documents page as Contribution Rate 12-06-2018).

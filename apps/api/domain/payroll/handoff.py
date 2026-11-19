@@ -235,6 +235,14 @@ def month_label(wage_month: str) -> str:
     return f"{names[m - 1]} {y}"
 
 
+def _employer_pf_column(file_totals: dict) -> int:
+    """File column 9 in whole rupees: the totals' own figure where they carry one, else column 7 less column 8 (EPFO's rule)."""
+    carried = file_totals.get("employer_epf_contribution")
+    if carried is not None:
+        return int(carried)
+    return int(file_totals.get("epf_contribution") or 0) - int(file_totals.get("eps_contribution") or 0)
+
+
 def epf_obligation(
     *,
     wage_month: str,
@@ -290,11 +298,22 @@ def epf_obligation(
                      if on_actual else
                      "what the portal computes A/c 1 and A/c 21 from")),
         Figure("Total EPS wages", rupees=int(file_totals.get("eps_wages") or 0),
-               note="capped at the ₹15,000 ceiling per member"),
-        Figure("EPF contribution (A/c 1)",
-               rupees=int(file_totals.get("epf_contribution") or 0)),
-        Figure("EPS contribution (A/c 10)",
+               note="capped at the notified wage ceiling per member (₹25,000 from "
+                    "17-09-2026, ₹15,000 before)"),
+        # THE THREE CONTRIBUTION COLUMNS UNDER EPFO'S OWN NAMES, then the account they make up (POST-A-517). Column 9 is column 7
+        # less column 8 by EPFO's own rule, so it is derived here when a caller's totals do not carry it; account 1 is the employee
+        # column plus the employer column, which is what the portal raises on the challan (User Manual v3.0, pages 12 and 22).
+        Figure("Employee PF contribution (file column 7)",
+               rupees=int(file_totals.get("epf_contribution") or 0),
+               note="the employee's share alone, as in EPFO's own sample"),
+        Figure("Employer EPS contribution (file column 8, A/c 10)",
                rupees=int(file_totals.get("eps_contribution") or 0)),
+        Figure("Employer PF contribution (file column 9)",
+               rupees=_employer_pf_column(file_totals),
+               note="column 7 less column 8, which is how EPFO derives it"),
+        Figure("EPF, A/c 1 (columns 7 and 9 together)",
+               rupees=int(file_totals.get("epf_contribution") or 0) + _employer_pf_column(file_totals),
+               note="what the portal raises on the challan as account 1"),
         Figure("EDLI (A/c 21)", amount_paise=int(edli_paise or 0),
                note="not in the file — the portal raises it on the challan. "
                     "This is our figure; they should agree."),
@@ -331,6 +350,15 @@ def epf_obligation(
             + (f" — {return_type_reason}" if return_type_reason else "."))
     if on_actual:
         warnings.append(pf_election.ECR_WARNING.format(n=on_actual))
+    # THE RETURN AND THE PAYMENT ARE TWO ACTS WITH TWO REFERENCES (POST-A-518). On EPFO's revamped system the return gets a Return
+    # File ID when the file passes, the employer approves the return statement, and only then does the portal prepare the challan,
+    # which gets its TRRN when it is finalised and is paid through a bank. The Employees' Provident Funds Scheme, 2026 puts them
+    # in two steps as well (paras 24(2)(ix) and 28(3)). The panel records the RETURN; the payment's TRRN, bank and receipt are not
+    # recorded here, and the sentence says so rather than leaving a CA to think a recorded return means the dues are paid.
+    warnings.append(
+        "Paying is a second act. After the return is approved the portal prepares the challan, issues its TRRN when you "
+        "finalise it, and takes the payment through your bank. PracticeSync records the return here and not the payment: "
+        "keep the TRRN and the receipt from View/Pay Challan.")
     if identity_gaps:
         warnings.extend(identity_gaps)
     if interest_note:
@@ -346,7 +374,7 @@ def epf_obligation(
         wage_month=wage_month,
         period_label=month_label(wage_month),
         due_date=due_date,
-        statute="EPF Scheme 1952, para 38(1)",
+        statute="Employees' Provident Funds Scheme, 2026, paras 24(2)(ix) and 28(3)",
         identity=identity,
         confirm=confirm,
         artefact=Artefact(
@@ -359,7 +387,9 @@ def epf_obligation(
                 "no ECR to build.")),
         blocking=blocking,
         warnings=warnings,
-        record_back="the TRRN the portal gives back, and the date you filed",
+        record_back=("the return: the Return File ID the portal gave when the file passed its checks, the return "
+                     "type, and the date you submitted it — and tick approved once you have approved the return "
+                     "statement on the portal, which is what clears the month"),
         record_options=list(required_returns) or ["regular"],
         recorded=recorded,
     )

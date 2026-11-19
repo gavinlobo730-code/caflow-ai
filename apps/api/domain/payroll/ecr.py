@@ -51,9 +51,24 @@ ECR 2.0: a plain text file, one line per member, eleven fields separated by
     EPF_CONTRI_REMITTED, EPS_CONTRI_REMITTED, EPF_EPS_DIFF_REMITTED,
     NCP_DAYS, REFUND_OF_ADVANCES
 
+THE THREE CONTRIBUTION COLUMNS, AS EPFO'S OWN SAMPLE HAS THEM (POST-A-517)
+
+    column 7  EPF_CONTRI_REMITTED   the EMPLOYEE's contribution alone ("Employee PF Contribution")
+    column 8  EPS_CONTRI_REMITTED   the employer's pension share ("Employer EPS Contribution")
+    column 9  EPF_EPS_DIFF_REMITTED the employer's PF share ("Employer PF Contribution"), which is column 7 LESS column 8
+
+EPFO's User Manual for the Re-engineered ECR (v3.0, page 8) gives the sample line for a member on Rs 15,000 as
+`...#~#15000#~#15000#~#15000#~#15000#~#1800#~#1250#~#550#~#0#~#0`, and its return statement (page 10) shows the same member as
+EE 1,800, EPS 1,250, ER 550. The account-1 total the portal raises is the employee column PLUS the employer column (1,800 + 550),
+not column 7 alone and not (as this module put it until 19-11-2026) the two already added in column 7, which made every line carry
+2,350 where EPFO's sample carries 1,800. The Employees' Provident Funds Scheme, 2026 prescribes the return as Form VII
+(para 24(2)(ix)), whose contribution columns come in the same order. Whether the portal's file has changed since the manual is
+owner list S48; the layout above is what the manual and the FAQs (questions 2 and 16) say.
+
 Every amount is in WHOLE RUPEES. The portal takes no paise, which is the reason
 _compute_pf rounds each contribution to the rupee — 8.33% of the ₹15,000 ceiling
-is ₹1,249.50 and the return must say ₹1,250.
+is ₹1,249.50 and the return must say ₹1,250 (and 8.33% of the ₹25,000 ceiling, in
+force from 17-09-2026, is ₹2,082.50 and the return must say ₹2,083).
 
 WHY IT IS BUILT FROM STORED FIGURES AND COMPUTES NOTHING
 
@@ -66,7 +81,10 @@ too, and that is the correct place to fix it.
 
 The one thing it does compute is EPF_EPS_DIFF_REMITTED, which is definitionally
 EPF_CONTRI_REMITTED minus EPS_CONTRI_REMITTED and is on the file only because
-EPFO asks for it explicitly.
+EPFO asks for it explicitly. It is checked, member by member, against the
+employer's EPF half the payslip and the ledger hold, so the file and the books
+cannot part company: EPFO derives the employer's share from the employee's, so a
+slip whose two halves differ cannot be represented and is refused by name.
 
 WHAT IT REFUSES
 
@@ -79,6 +97,8 @@ the round trip. These are checked here instead, and named per member:
   * NCP days negative or beyond the days in the month
   * a member with NCP equal to the whole month showing any contribution
   * the EPS/EPF split not summing to the employer contribution
+  * the employee's contribution less the EPS not equal to the employer's EPF
+    half the ledger was credited (column 9 would not be the books' figure)
   * a member declared on ACTUAL wages (below) whose election is recorded for an
     employee PF does not apply to, whose payslip holds no PF wage, or whose
     employee contribution is not the contribution rate of the EPF wage declared
@@ -86,8 +106,8 @@ the round trip. These are checked here instead, and named per member:
 PF ON ACTUAL WAGES (payroll-22, migration 477)
 
 A member whose payslip RECORDS that PF was contributed on actual wages above the
-ceiling — the employer's election, domain/payroll/pf_wage_election.py, EPF
-Scheme para 26(6), `[S]`: an unverified reading — is declared with the EPF WAGE
+ceiling — the employer's election, domain/payroll/pf_wage_election.py, paragraph
+9(4) of the Employees' Provident Funds Scheme, 2026 — is declared with the EPF WAGE
 column uncapped. EPS wages and EDLI wages stay at the ceiling for every member:
 the pension and EDLI schemes keep their own. The flag is read off the SLIP, not
 the employee row, which can change after a month is finalised; a member with no
@@ -109,6 +129,18 @@ DELIMITER = "#~#"
 # at file build and models/payroll.py now enforces it at the create door,
 # so two places must not each carry their own idea of the shape.
 from domain.payroll.identity import UAN_RE                  # noqa: F401
+
+
+def ecr_file_name(wage_month: str) -> str:
+    """The name the ECR is downloaded under: letters and digits only, and a lower-case `.txt` (POST-A-519).
+
+    EPFO's notice on the upload page (User Manual for the Re-engineered ECR, v3.0, page 7) reads "Please only use alphabets and
+    numbers in file names. Remove special characters and spaces from file names", and says the extension must be in small case. The
+    product named the file `ECR_202609.txt`; whether the portal really refuses the underscore is not known from the manual, but its
+    words are reason enough to take it out, at no cost. `wage_month` is "YYYY-MM" and only its digits are kept.
+    """
+    digits = "".join(ch for ch in str(wage_month) if ch.isdigit())
+    return f"ECR{digits}.txt"
 
 
 def sanitise_name(raw: str) -> str:
@@ -143,6 +175,10 @@ class ECRMember:
     epf_wages: int
     eps_wages: int
     edli_wages: int
+    #: Column 7, EPFO's "Employee PF Contribution": the EMPLOYEE's share alone, in whole rupees (POST-A-517). The employer's PF
+    #: share is column 9, `epf_eps_difference`. Rows frozen in `epfo_ecr_filings.members` before 19-11-2026 hold the old meaning
+    #: (the employee's share PLUS the employer's EPF half); none is a real filing, and the comparison that reads them is the
+    #: safe direction (see domain/payroll/ecr_sequence.FiledMember).
     epf_contribution: int
     eps_contribution: int
     ncp_days: int
@@ -155,8 +191,15 @@ class ECRMember:
 
     @property
     def epf_eps_difference(self) -> int:
-        """EPFO asks for this explicitly; it is not an independent figure."""
+        """Column 9, the employer's PF share: column 7 less column 8. EPFO asks for it explicitly; it is not an independent figure
+        (the 'Present rates of contribution' sheet: the employer's EPF share is "the difference of the EE Share ... and Pension
+        Contribution")."""
         return self.epf_contribution - self.eps_contribution
+
+    @property
+    def employer_epf_contribution(self) -> int:
+        """The same figure under the name the books use for it."""
+        return self.epf_eps_difference
 
     def to_line(self) -> str:
         return DELIMITER.join(str(v) for v in (
@@ -189,8 +232,15 @@ class ECRFile:
             # actual wages, no longer the EPF wage — so the handoff cannot say
             # "the portal computes A/c 21 from EPF wages" without this.
             "edli_wages": sum(m.edli_wages for m in self.members),
+            # Column 7: the employees' share alone.
             "epf_contribution": sum(m.epf_contribution for m in self.members),
+            # Column 8: the employers' pension share (account 10).
             "eps_contribution": sum(m.eps_contribution for m in self.members),
+            # Column 9: the employers' PF share, columns 7 less 8.
+            "employer_epf_contribution": sum(m.employer_epf_contribution for m in self.members),
+            # Account 1 is the employee column PLUS the employer column (EPFO's User Manual v3.0, pages 12 and 22), which the
+            # portal raises on the challan; refund of advances is not modelled and is always nil.
+            "account_1_contribution": sum(m.epf_contribution + m.employer_epf_contribution for m in self.members),
             "members_on_actual_wages": sum(1 for m in self.members if m.on_actual_wages),
         }
 
@@ -375,9 +425,10 @@ def build_ecr(
             # contribution and the portal rejects the line.
             eps_wages=at_ceiling if eps > 0 else 0,
             edli_wages=at_ceiling,
-            # The EMPLOYEE's 12% plus the employer's EPF half. This is what EPFO
-            # means by "EPF contribution remitted" — not the employee's alone.
-            epf_contribution=_rupees(employee_pf + epf_employer),
+            # Column 7 is the EMPLOYEE's contribution alone, as EPFO's own sample has it (1,800 for a Rs 15,000 member), and
+            # column 9 is that less column 8 (POST-A-517). Until 19-11-2026 this added the employer's EPF half here, which put
+            # 2,350 where EPFO's sample has 1,800 and made the portal's account-1 total come to 3,450 for the same member.
+            epf_contribution=_rupees(employee_pf),
             eps_contribution=_rupees(eps),
             ncp_days=ncp,
             on_actual_wages=on_actual_wages,
@@ -387,6 +438,18 @@ def build_ecr(
             label, member, employee_pf, employee_rate_bps)
         if mismatch:
             out.problems.append(mismatch)
+            continue
+
+        # COLUMN 9 IS THE BOOKS' FIGURE, OR THE FILE IS REFUSED. EPFO derives the employer's PF share from the employee's
+        # (column 7 less the pension share), so the file can carry only a slip whose employer EPF half is exactly that. The
+        # ledger was credited with `epf_employer` (the payroll accrual); a difference means the file would declare one
+        # employer share to EPFO and the books another, which is the disagreement this module exists to prevent.
+        if member.epf_eps_difference != _rupees(epf_employer):
+            out.problems.append(
+                f"{label}: the file would declare an employer PF share of {member.epf_eps_difference} (the employee's "
+                f"{member.epf_contribution} less the pension share {member.eps_contribution}), but the payslip and the ledger "
+                f"hold {_rupees(epf_employer)}. EPFO's file derives the employer's share from the employee's, so the two cannot "
+                f"differ; recompute the month.")
             continue
 
         if member.eps_wages > ceiling_rupees:

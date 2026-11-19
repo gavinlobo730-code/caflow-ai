@@ -305,7 +305,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - THE UPLOAD SCREENS WERE DRIVEN IN A BROWSER ONCE, AND AN EXCEL DATE CELL IS A SERIAL NUMBER
 - A TRIAL-BALANCE IMPORT MATCHES ONLY ITS OWN CLIENT'S ACCOUNTS AND CHECKS ITS NEW NAMES AND CODES AGAINST THE WHOLE FIRM'S CHART, BECAUSE
 
-### `docs/design-record/payroll.md` (11 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
+### `docs/design-record/payroll.md` (13 entries): Payroll: accrual, PF on actual wages, bonus, monthly review, declarations
 
 - THE PAYROLL ACCRUAL HAS TWO DEBITS, AND THE EMPLOYER SHARE COMES OFF THE SLIPS
 - THE STATUTORY BONUS IS AN ANNUAL DEBT AND THE PRODUCT COMPUTED IT ONLY FOR LEAVERS
@@ -318,6 +318,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A RELEASED PAYROLL RUN RECORDS THE LOAN WRITE-DOWN IT STILL OWES, A REVERSAL IS CLAIMED, AND A DELETE OR RECOMPUTE ACTS ONLY ON A RUN
 - A MONTHLY FIGURE ON A SCREEN IS THE SERVER'S, SERVED ON THE ROW, AND A COLUMN IS NAMED FOR WHAT IT ADDS UP
 - A TAX DECLARATION IS FILED IN ONE DATABASE TRANSACTION, BY THE SERVER ALONE, AND THE LOCK THAT PROTECTS IT IS THE ROW'S
+- THE PF WAGE CEILING IS THE NOTIFIED ONE FOR THE WAGE MONTH, AND THE MONTH THE CHANGE FALLS IN IS NAMED
+- THE ECR'S COLUMNS ARE EPFO'S OWN, A RETURN AND ITS CHALLAN HAVE TWO REFERENCES
 
 ### `docs/design-record/reporting.md` (12 entries): Reporting: Schedule III captions, report performance, paging, exports
 
@@ -433,7 +435,7 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - ITR-6'S GROSS BLOCK IS FILLED ONLY WHERE EACH LEDGER LINE TIES
 - A BROUGHT-FORWARD LOSS IS OFFERED FROM ITS RECORD, USED PER FILING AND PER YEAR, AND AN UPDATED RETURN WRITES NOTHING
 
-### `docs/design-record/tax-tds.md` (27 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
+### `docs/design-record/tax-tds.md` (29 entries): TDS and TCS: sections and thresholds, the 2026 vocabulary fork, interest, 26AS
 
 - From 01-04-2026 the whole TDS vocabulary changed, and `domain/tds/vocabulary.py` is the single place that knows it
 - A CONFIRMED SUBSET OF THE S. 393 PAYMENT-CODE TABLE IS NOW HELD
@@ -462,6 +464,8 @@ listed for it below; each headline is the rule in one line. Entries that stayed 
 - A REGISTER ROW ITS DOCUMENT NO LONGER CARRIES IS NAMED ON THE LIST AND REMOVED BY THE DOCUMENT'S OWN SYNC
 - ONLY A MEMBER WHO MAY APPROVE TDS IS NAMED AS HAVING RECORDED A NO-PE DECLARATION, AND THE SUPPLIER FORM SAYS WHO
 - A DEDUCTION TYPED ON THE TDS SCREEN MAY NAME THE SUPPLIER IT WAS PAID TO, AND IS THEN COUNTED IN THAT SUPPLIER'S YEAR WITH ITS BILLS AND ADVANCES
+- s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE
+- A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT
 
 ### `docs/design-record/tenancy-and-security.md` (90 entries): Tenancy, per-person access, principals, RLS tests, uploads, PIN, sessions and storage
 
@@ -1102,10 +1106,6 @@ _Longer design records for this area were moved to `docs/design-record/ledger-an
 
 `services/compliance_engine.py` is the single source for every due date above. If prose
 and that module disagree, the module wins and the prose gets fixed.
-
-- **s.194A HAS TWO RAISED LIMITS AND THEY HANG ON THE PAYER AS WELL AS THE PAYEE** (TDS-INCOME-TAX-30, migration 454). One Rs 10,000 limit was held, with the Finance Act 2025 limits for a bank deposit (Rs 50,000) and a senior citizen's deposit (Rs 1,00,000) marked "not modelled". The finding's own reading (bank / senior / other as payee classes) would have UNDER-deducted on the commonest s.194A payment: the senior limit exists only INSIDE the bank-deposit limb, so a company paying a pensioner interest on a loan withholds at Rs 10,000 whoever is paid. `vendors.interest_threshold_class` is therefore a three-answer class (ordinary, bank_deposit, bank_deposit_senior), nullable with no backfill, and `ordinary` is a word for taking a class back because PATCH drops a null. `resolve_tds(threshold_class=)` refuses a class on a section with one limit and ignores it before FY 2025-26. NULL reads as Rs 10,000 (the lower, which cannot under-deduct), so no existing supplier's withholding changes. Deliberately NOT done: interest paid TO a bank (s.194A(3)(iii)) is named, not modelled; `THRESHOLD_CLASSES_194A_VERIFIED` is False.
-
-- **A 2025-ACT DEDUCTEE ROW CARRIES ITS s.393 PAYMENT CODE, OR NAMES WHY NOT** (TDS-INCOME-TAX-31). `payment_code_for` existed and nothing put it on a statement line. `domain/tds/deductee_payment_code.py` puts it on each deductee row of the 24Q/26Q/27Q builders (keys always present, null for a 1961-Act period). s.194C's code is read off the PAN's fourth character (P/H -> 1023; C,F,A,T,B,L,J,G -> 1024), never off the stored rate; s.192 -> 1002 with a stated non-government assumption; 194A, 194J(b) and the bare 194I/194J are named gaps, each with its own reason, and the keying sheet names rows with no code. Deliberately NOT done: the table is still a confirmed subset, and no RPU/FVU file is produced (TDS-16).
 
 _Longer design records for this area were moved to `docs/design-record/tax-tds.md`, `docs/design-record/tax-income-tax.md`, `docs/design-record/payroll.md`, `docs/design-record/fixed-assets-and-inventory.md`, `docs/design-record/documents-sales-purchase.md`, `docs/design-record/tax-gst.md`, `docs/design-record/filing-and-compliance.md`; see the Design record index._
 

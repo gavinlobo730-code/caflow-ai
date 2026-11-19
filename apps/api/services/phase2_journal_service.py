@@ -1208,7 +1208,7 @@ class Phase2JournalService:
         produces.
 
         WHAT THE SECOND DEBIT HOLDS, AND ONE THING IT ARGUABLY SHOULD NOT.
-        Employer PF (12%), EDLI (0.5%, EDLI 1976) and employer ESI (3.25%) are
+        Employer PF (12%), EDLI (0.5%) and employer ESI (3.25%) are
         contributions. The EPF ADMINISTRATIVE CHARGE is strictly a fee to the
         EPFO rather than a contribution to a fund — it is grouped here because
         it is remitted on the same monthly challan, is universally presented
@@ -1251,7 +1251,7 @@ class Phase2JournalService:
         # paying cash — so it is a credit leg like any other deduction, and the
         # debit still equals the sum of the credits.
         loans = int(run.get("total_loan_recovery_paise") or 0)
-        # Migration 329. EDLI (0.5%, EDLI 1976) and the EPF administrative
+        # Migration 329. EDLI (0.5%) and the EPF administrative
         # charge (0.5%, floored at ₹500 per ESTABLISHMENT) are EMPLOYER costs
         # outside the 12%, deducted from nobody and remitted on the same monthly
         # challan as the rest. They were computed, stored on every slip and
@@ -1281,9 +1281,9 @@ class Phase2JournalService:
                             "PF payable — employee + employer 12%"
                             + (", EDLI 0.5%" if edli else "")
                             + (", admin charge" if pf_admin else "")
-                            + " — EPF Act, EDLI 1976"))
+                            + " — Code on Social Security, 2020"))
         if esi > 0:
-            credits.append((account_ids["esi"], esi, "ESI payable (employee + employer) — ESI Act"))
+            credits.append((account_ids["esi"], esi, "ESI payable (employee + employer) — Code on Social Security, 2020"))
         if pt > 0:
             credits.append((account_ids["pt"], pt, "Professional Tax payable — IT Act §16(iii)"))
         if tds > 0:
@@ -1334,7 +1334,7 @@ class Phase2JournalService:
                 "debit_paise": contribution,
                 "credit_paise": 0,
                 "narration": (f"Employer PF, EDLI, administrative charge and ESI "
-                              f"for {month} — EPF Act, EDLI 1976, ESI Act"),
+                              f"for {month} — Code on Social Security, 2020"),
             })
         for account_id, amount, narration in credits:
             lines.append({"account_id": account_id, "debit_paise": 0, "credit_paise": amount,
@@ -1368,8 +1368,8 @@ class Phase2JournalService:
         """
         Create payroll accrual journal on finalization.
         IT Act §192: TDS on salary — credited to TDS Payable (24Q).
-        EPF Act: PF Payable (employer + employee combined).
-        ESI Act: ESI Payable. PT: state-wise Professional Tax Payable.
+        Code on Social Security, 2020 (which replaced the EPF Act and the ESI Act on 21-11-2025): PF Payable (employer +
+        employee combined); ESI Payable. PT: state-wise Professional Tax Payable.
 
         Dr  Salaries Expense        (gross wages — IT Act s.17(1))
         Dr  Contribution to PF and Other Funds  (employer PF + EDLI + admin + ESI)
