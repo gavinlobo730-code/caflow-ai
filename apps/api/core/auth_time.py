@@ -83,6 +83,23 @@ def issued_before_revocation(payload: Mapping[str, Any], revoked_epoch: float) -
     return began is not None and began < revoked_epoch
 
 
+def session_id_of(payload: Mapping[str, Any]) -> Optional[str]:
+    """The sign-in service's session id carried by the token (its `session_id` claim), or None when it carries none."""
+    sid = payload.get("session_id")
+    return sid if isinstance(sid, str) and sid.strip() else None
+
+
+def ended_by_other_sessions_sign_out(payload: Mapping[str, Any], revoked_epoch: float, kept_session_id: Optional[str]) -> bool:
+    """True when the token must be refused because the person signed out their OTHER sessions at `revoked_epoch` (POST-A-486):
+    it belongs to a session that is not the one that asked to stay, and that session began before the sign-out. The kept
+    session, and any sign-in after the instant, are not touched; `sessions_revoked_at` (suspend, force sign-out) is the mark
+    that ends them all. A token with no session id cannot be the kept one."""
+    sid = session_id_of(payload)
+    if kept_session_id and sid is not None and sid == kept_session_id:
+        return False
+    return issued_before_revocation(payload, revoked_epoch)
+
+
 def authenticator_code_is_fresh(code_epoch: Optional[float], now_epoch: float) -> bool:
     """Whether an authenticator code entered at `code_epoch` is recent enough (within the window, never far ahead)."""
     if code_epoch is None:

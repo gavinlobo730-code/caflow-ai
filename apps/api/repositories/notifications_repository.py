@@ -24,14 +24,19 @@ class NotificationsRepository(BaseRepository[dict]):
         archived: bool = False,
         notification_type: Optional[str] = None,
         limit: int = 50,
+        *,
+        db=None,
     ) -> list[dict]:
+        """`db` is for a caller that reads ANOTHER person's notifications (the second-device notice asks whether a Partner already has
+        one unread, from the member's own request): migration 084's recipient scope shows a non-Partner only their own, so the member's
+        own client would read none and the question would always be answered no. Left out, behaviour is what it was."""
         if _USE_MOCK:
             results = list(MOCK_NOTIFICATIONS)
             if unread_only:
                 results = [n for n in results if not n["is_read"]]
             return sorted(results, key=lambda n: n["created_at"], reverse=True)[:limit]
 
-        query = _get_db().table("notifications").select("*")
+        query = (db or _get_db()).table("notifications").select("*")
         if firm_id:
             query = query.eq("firm_id", firm_id)
         if user_id:

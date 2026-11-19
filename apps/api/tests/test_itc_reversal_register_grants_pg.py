@@ -167,6 +167,10 @@ NOT_FOR_THE_API = {
     # through the privileged client naming the firm, and `authenticated`, `anon` and PUBLIC hold no privilege.
     "gstr2b_bulk_drops",
     "gstr2b_bulk_drop_files",
+    # Migration 765 (POST-A-486): which sessions a login is signed in on. `services/login_devices_service` reads and writes it through
+    # the privileged client naming the firm and the member, and `authenticated`, `anon` and PUBLIC hold no privilege (a person's
+    # session id and address are not for the browser's own role to read).
+    "login_sessions",
 }
 # Scaffolding left behind by data migrations. Prefixed, not enumerated, because
 # the next one will have a different number.

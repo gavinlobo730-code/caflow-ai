@@ -10,7 +10,11 @@
 //
 // Dependency-free so it strips to plain JS for `node --experimental-strip-types`.
 
-export type ClosedAccountReason = "firm-suspended" | "firm-unavailable" | "person-disabled" | "signed-out";
+export type ClosedAccountReason = "firm-suspended" | "firm-unavailable" | "person-disabled" | "signed-out" | "signed-out-elsewhere";
+
+/** The reason that must end THIS device only: the person asked for their other sessions to end, and the one that asked stays
+ *  (POST-A-486). A global sign-out here would end that one too. */
+export const LOCAL_ONLY_REASONS: readonly ClosedAccountReason[] = ["signed-out-elsewhere"];
 
 /** The page also says why a person was signed out by the browser itself (POST-A-483): too long without a touch. */
 export type SignedOutReason = ClosedAccountReason | "idle";
@@ -25,6 +29,7 @@ export function closedAccountReason(status: number, message: string | null | und
     if (/^Account disabled\b/.test(m)) return "person-disabled";
   }
   if (status === 401 && /^Session revoked\b/.test(m)) return "signed-out";
+  if (status === 401 && /^This session was signed out from another device\b/.test(m)) return "signed-out-elsewhere";
   return null;
 }
 
@@ -56,6 +61,11 @@ export function closedAccountWords(reason: string | null | undefined): ClosedAcc
       return {
         heading: "You have been signed out",
         body: "An administrator ended your session. Sign in again to continue.",
+      };
+    case "signed-out-elsewhere":
+      return {
+        heading: "You were signed out from another device",
+        body: "Whoever uses this login, probably you, chose to sign out the other sessions. Your other sessions are not affected. Sign in again to continue here.",
       };
     case "idle":
       return {

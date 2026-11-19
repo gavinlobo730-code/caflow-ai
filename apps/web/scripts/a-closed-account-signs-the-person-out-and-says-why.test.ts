@@ -34,7 +34,8 @@ test("the request helper signs a closed account out on the refusal, through one 
   assert.ok(fn, "endSessionBecause was not found");
   assert.match(fn[1], /if \(endingSession \|\| typeof window === "undefined"\) return;/);
   assert.match(fn[1], /if \(isAlreadyOutside\(window\.location\.pathname\)\) return;/);
-  assert.match(fn[1], /supabase\.auth\.signOut\(\)/);
+  // a person who signed out their OTHER sessions keeps the one that asked, so that reason ends this device only (POST-A-486)
+  assert.match(fn[1], /supabase\.auth\.signOut\(LOCAL_ONLY_REASONS\.includes\(reason\) \? \{ scope: "local" \} : undefined\)/);
   assert.match(fn[1], /window\.location\.assign\(closedAccountPath\(reason\)\)/);
 });
 

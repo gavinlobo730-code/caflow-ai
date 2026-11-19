@@ -12,19 +12,21 @@ users.sessions_revoked_at so existing JWTs are rejected immediately.
 from datetime import datetime, timezone
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from middleware.public_rate_limit import public_limit
 from models.common import api_response
 from core.auth import get_current_user, get_jwt_user
+from core.client_ip import client_ip
 from core.list_window import probe, split
 from core.permissions import rbac, Role, canonical_role, get_accessible_resources
 from domain.firm.invite_token import is_stored_form, opens_a_sign_in
+from domain.identity import devices
 from domain.firm.member_state import member_state
 from repositories.user_repository import user_repo
 from repositories.login_events_repository import login_events_repo
-from services import staff_invite_service
+from services import login_devices_service, staff_invite_service
 from services.audit_service import log_event
 
 router = APIRouter(prefix="/api/identity", tags=["identity"])
@@ -69,6 +71,14 @@ def _get_member(user_id: str, firm_id: str) -> dict:
     return member
 
 
+#: Keys of a member row that name a session of the sign-in service: never sent to a screen (devices.present says the same of the lists).
+_SESSION_KEYS = ("other_sessions_kept_session_id", "other_sessions_revoked_at")
+
+
+def _without_session_keys(row):
+    return {k: v for k, v in row.items() if k not in _SESSION_KEYS} if isinstance(row, dict) else row
+
+
 @router.get("/users")
 def list_users(current_user: dict = Depends(rbac("team", "read"))):
     # The list carries every member of the firm (the repository reads as the service role). No row carries an
@@ -76,7 +86,7 @@ def list_users(current_user: dict = Depends(rbac("team", "read"))):
     # strip below is the second lock. Each row carries `member_state` (PRE-A-020), so the Team screen shows
     # Invited or Invite expired for someone who has not accepted, never Active.
     now = datetime.now(timezone.utc)
-    users = [{**{k: v for k, v in u.items() if k != "invite_token"}, "member_state": member_state(u, now)}
+    users = [{**{k: v for k, v in u.items() if k != "invite_token" and k not in _SESSION_KEYS}, "member_state": member_state(u, now)}
              for u in user_repo.find_all(firm_id=current_user["firm_id"])]
     return api_response(True, {"users": users})
 
@@ -84,7 +94,7 @@ def list_users(current_user: dict = Depends(rbac("team", "read"))):
 def _invite_answer(row: dict, mail: "staff_invite_service.MailResult", now: datetime) -> dict:
     """A member row as the Team screen is sent it after an invitation: its state, what became of the mail, and
     never the token (POST-A-445). The token reaches the invitee's mailbox and nobody else."""
-    return {**{k: v for k, v in row.items() if k != "invite_token"},
+    return {**{k: v for k, v in row.items() if k != "invite_token" and k not in _SESSION_KEYS},
             "member_state": member_state(row, now), "invite_mail": mail.as_dict()}
 
 
@@ -272,7 +282,7 @@ def change_role(user_id: str, body: RoleBody, current_user: dict = Depends(rbac(
     log_event(current_user["firm_id"], "user_role", user_id, "update",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               old_data={"role": old}, new_data={"role": body.role})
-    return api_response(True, updated)
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/users/{user_id}/suspend")
@@ -288,7 +298,8 @@ def suspend_user(user_id: str, current_user: dict = Depends(rbac("team", "write"
     log_event(current_user["firm_id"], "user", user_id, "suspend",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "suspended")
-    return api_response(True, updated)
+    login_devices_service.end_all(current_user["firm_id"], user_id, "suspended")
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/users/{user_id}/reactivate")
@@ -297,7 +308,7 @@ def reactivate_user(user_id: str, current_user: dict = Depends(rbac("team", "wri
     updated = user_repo.update(user_id, {"is_active": True}, firm_id=current_user["firm_id"])
     log_event(current_user["firm_id"], "user", user_id, "reactivate",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
-    return api_response(True, updated)
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/users/{user_id}/force-logout")
@@ -307,7 +318,8 @@ def force_logout(user_id: str, current_user: dict = Depends(rbac("team", "write"
     log_event(current_user["firm_id"], "user", user_id, "force_logout",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"))
     login_events_repo.record(current_user["firm_id"], user_id, member.get("email"), "forced_logout")
-    return api_response(True, updated)
+    login_devices_service.end_all(current_user["firm_id"], user_id, "forced")
+    return api_response(True, _without_session_keys(updated))
 
 
 @router.post("/force-logout-all")
@@ -318,6 +330,7 @@ def force_logout_all(current_user: dict = Depends(rbac("team", "write"))):
     count = 0
     for m in user_repo.find_all(firm_id=firm_id):
         user_repo.update(m["id"], {"sessions_revoked_at": now}, firm_id=firm_id)
+        login_devices_service.end_all(firm_id, m["id"], "forced")
         count += 1
     log_event(firm_id, "firm", firm_id, "force_logout_all",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
@@ -325,10 +338,17 @@ def force_logout_all(current_user: dict = Depends(rbac("team", "write"))):
     return api_response(True, {"users_affected": count})
 
 
+def _with_browser(event: dict) -> dict:
+    """A history row with the browser in words (`Chrome on Windows`) beside the raw text the browser sent, so a screen shows the first
+    and does not parse the second. The sign-in service's session id is dropped: it names a session and a screen has no use for it."""
+    shown = {k: v for k, v in event.items() if k != "session_id"}
+    return {**shown, "browser": devices.browser_label(event.get("user_agent")) if event.get("user_agent") else None}
+
+
 @router.get("/users/{user_id}/login-history")
 def user_login_history(user_id: str, current_user: dict = Depends(rbac("team", "read"))):
     _get_member(user_id, current_user["firm_id"])
-    return api_response(True, {"events": login_events_repo.list_for_user(current_user["firm_id"], user_id)})
+    return api_response(True, {"events": [_with_browser(e) for e in login_events_repo.list_for_user(current_user["firm_id"], user_id)]})
 
 
 #: The most login events one read of the firm's history may ask for. Served to the screen as `max_limit`.
@@ -343,6 +363,7 @@ def firm_login_history(
     """The firm's latest `limit` login events and whether older ones exist (core/list_window). The screen used to decide
     it had been cut short by comparing the row count to the number it expected the server to default to (POST-A-262)."""
     events, has_more = split(login_events_repo.list_for_firm(current_user["firm_id"], limit=probe(limit)), limit)
+    events = [_with_browser(e) for e in events]
     return api_response(True, {
         "events": events, "returned": len(events), "has_more": has_more,
         "limit": limit, "max_limit": LOGIN_HISTORY_MAX,
@@ -545,7 +566,7 @@ def update_my_profile(body: MyProfileBody,
     log_event(current_user.get("firm_id"), "user", str(current_user["id"]), "profile_update",
               actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
               new_data={"full_name": name})
-    return api_response(True, updated)
+    return api_response(True, _without_session_keys(updated))
 
 
 class LoginEventBody(BaseModel):
@@ -556,11 +577,94 @@ class LoginEventBody(BaseModel):
 # signed in, not anything AI), and a read-level action guarding a WRITE:
 # it persists a row via login_events_repo.record below.
 @router.post("/login-event")
-def record_login_event(body: LoginEventBody,
+def record_login_event(body: LoginEventBody, request: Request,
                        current_user: dict = Depends(rbac("identity", "write"))):
-    """Recorded by the frontend on sign-in / sign-out for the current user."""
+    """Recorded by the frontend on sign-in / sign-out for the current user.
+
+    It records the caller's address (the one our own proxy wrote, core/client_ip.py, never the first entry of a forwarded chain the
+    caller typed), the browser and the sign-in service's session id (POST-A-486), so two devices on one login can be told apart.
+    A sign-in also opens the session (and tells the Partners when it is a second device); a sign-out closes it."""
     if body.event not in ("login", "logout"):
         raise HTTPException(400, "event must be 'login' or 'logout'")
+    ip = client_ip(request)
+    agent = devices.clean_user_agent(request.headers.get("user-agent"))
     ev = login_events_repo.record(current_user.get("firm_id"), current_user.get("id"),
-                                  current_user.get("email"), body.event)
+                                  current_user.get("email"), body.event, ip=ip, user_agent=agent,
+                                  session_id=current_user.get("session_id"))
+    if body.event == "login":
+        login_devices_service.register(current_user, ip, agent)
+    else:
+        login_devices_service.end_here(current_user)
     return api_response(True, ev)
+
+
+@router.post("/session-seen")
+def session_seen(request: Request, current_user: dict = Depends(rbac("identity", "write"))):
+    """A signed-in tab somebody is using says it is still there (every few minutes, apps/web/lib/auth/deviceSeen.ts). It opens the
+    session if the server has not heard of it, which is how a sign-in by a door that records no login event (an invitation, a reset
+    link, a refreshed page after this feature shipped) is still counted, and tells the Partners when it is a second device."""
+    result = login_devices_service.register(current_user, client_ip(request), request.headers.get("user-agent"))
+    return api_response(True, {"registered": result["registered"]})
+
+
+def _devices_unreadable(exc: Exception) -> HTTPException:
+    return HTTPException(503, "The devices signed in on this login could not be read just now. Please try again in a moment.")
+
+
+@router.get("/my-devices")
+def my_devices(current_user: dict = Depends(rbac("identity", "read"))):
+    """The devices the CALLER's login is signed in on now, with which one is this. No id of anybody else is accepted: the person is
+    addressed from the verified token. A read: it writes nothing (the page asks `session-seen` first, so a session that predates this
+    feature, or whose sign-in record failed, is on the list it reads).
+
+    `this_device_listed` says whether the caller's own session is on the list, and the screen says when it is not (a token that names
+    no session cannot be listed, and the person is told, instead of being shown a count that leaves their own device out)."""
+    session_id = current_user.get("session_id")
+    try:
+        summary = login_devices_service.devices_of(current_user["firm_id"], current_user["id"],
+                                                   current_session_id=session_id or "")
+    except Exception as exc:                                    # noqa: BLE001
+        raise _devices_unreadable(exc) from exc
+    return api_response(True, {**summary, "can_keep_this_session": bool(session_id),
+                               "this_device_listed": any(d["is_current"] is True for d in summary["devices"])})
+
+
+@router.post("/sign-out-other-sessions")
+def sign_out_other_sessions(current_user: dict = Depends(rbac("identity", "write"))):
+    """End every other session of the caller's login, and not this one (POST-A-486). A person acting on themselves: no id is taken.
+    The API refuses the other sessions' tokens from now (a mark on the person's row); the browser then asks the sign-in service to end
+    their refresh tokens too."""
+    try:
+        result = login_devices_service.sign_out_other_sessions(current_user)
+    except login_devices_service.MarkNotWritten as exc:
+        raise HTTPException(503, "Your other sessions could not be signed out just now, and nothing was changed. "
+                                 "Please try again in a moment.") from exc
+    except login_devices_service.NoSessionId as exc:
+        raise HTTPException(409, "This sign-in does not say which session it is, so the others cannot be told apart from it. "
+                                 "Sign out and sign in again, then try this once more.") from exc
+    log_event(current_user["firm_id"], "user", str(current_user["id"]), "sign_out_other_sessions",
+              actor_id=current_user.get("auth_user_id"), actor_email=current_user.get("email"),
+              metadata={"known_sessions_ended": result["ended"]})
+    return api_response(True, result)
+
+
+@router.get("/users/{user_id}/devices")
+def member_devices(user_id: str, current_user: dict = Depends(rbac("team", "read"))):
+    """The devices one member's login is signed in on now (a Partner's or Manager's view; the same read as the member's login history)."""
+    _get_member(user_id, current_user["firm_id"])
+    try:
+        return api_response(True, login_devices_service.devices_of(current_user["firm_id"], user_id))
+    except Exception as exc:                                    # noqa: BLE001
+        raise _devices_unreadable(exc) from exc
+
+
+@router.get("/devices")
+def firm_devices(current_user: dict = Depends(rbac("team", "read"))):
+    """Who in the firm is signed in on which devices now: only members who are signed in anywhere, most devices first."""
+    try:
+        members = login_devices_service.devices_of_firm(current_user["firm_id"], user_repo.find_all(firm_id=current_user["firm_id"]))
+    except Exception as exc:                                    # noqa: BLE001
+        raise _devices_unreadable(exc) from exc
+    for member in members:
+        member["is_you"] = member["user_id"] == current_user.get("id")
+    return api_response(True, {"members": members, "live_window_minutes": int(devices.LIVE_WINDOW.total_seconds() // 60)})

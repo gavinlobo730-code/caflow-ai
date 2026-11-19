@@ -446,8 +446,10 @@ _CATEGORIES: tuple[Category, ...] = (
         key="access_logs",
         label="access and audit logs",
         holds=("who read or changed what, and when — the actor's identity by "
-               "construction"),
-        tables=("audit_log", "login_events", "activity_logs"),
+               "construction; for a sign-in, also the address and the browser it "
+               "came from (login_events, and login_sessions, which keeps a "
+               "session's row after it ends)"),
+        tables=("audit_log", "login_events", "login_sessions", "activity_logs"),
         rules=("dpdp_access_logs",),
     ),
     Category(
