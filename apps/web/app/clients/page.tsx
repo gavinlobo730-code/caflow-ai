@@ -30,6 +30,7 @@ import { api } from "@/lib/api";
 import { gstinProblem } from "@/lib/gst/gstin";
 import { panProblem } from "@/lib/identifiers/pan";
 import { PageHeader } from "@/components/ui/page-header";
+import { wantsToAddClient } from "@/lib/clients/addClient";
 
 import { Button } from "@/components/ui/button";
 import { LoadingRegion } from "@/components/ui/skeleton";
@@ -203,8 +204,11 @@ export default function ClientsPage() {
   // Read from the backend's permission map rather than a role list copied here:
   // archive/delete are rbac("client","write") and rbac("client","delete"), and a
   // second copy of who holds those is a copy that can drift out of step.
-  const { can } = usePermissions();
+  const { can, resolved: permissionsResolved } = usePermissions();
   const canArchive = can("client", "write");
+  // Adding (and importing) a client is the same permission: `rbac("client","write")` on the route and the same pair in the
+  // database's policy. The button used to be drawn for every role and ended, for one without it, in a refusal (POST-A-488).
+  const canAdd = can("client", "write");
   const canDelete  = can("client", "delete");
   const hasActions = canArchive || canDelete;
 
@@ -305,6 +309,17 @@ export default function ClientsPage() {
     setEditClient(null);
     setModalOpen(true);
   }
+
+  // The client dropdown and the sidebar's Clients panel link here with `?add=1` (POST-A-488). The request is taken out of the
+  // address at once so that a reload does not open the form again, and it is waited for until the permission map has
+  // answered: asking sooner would read "not allowed" for a Partner.
+  useEffect(() => {
+    if (!permissionsResolved) return;
+    if (!wantsToAddClient(window.location.search)) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (canAdd) { setEditClient(null); setModalOpen(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionsResolved, canAdd]);
 
   async function handleArchive() {
     if (!archiveTarget) return;
@@ -542,13 +557,15 @@ export default function ClientsPage() {
               <KanbanSquare size={15} />
               Pipeline
             </Link>
-            <button
-              onClick={() => setImportOpen(true)}
-              className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
-            >
-              <Upload size={15} />
-              Import CSV
-            </button>
+            {canAdd && (
+              <button
+                onClick={() => setImportOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-ps-border px-4 py-2 text-sm font-medium text-ps-label hover:bg-ps-bg transition-colors"
+              >
+                <Upload size={15} />
+                Import CSV
+              </button>
+            )}
             <button
               onClick={() => downloadCsv("clients.csv", toCsv(filtered, CLIENT_EXPORT_COLUMNS))}
               disabled={filtered.length === 0}
@@ -557,13 +574,15 @@ export default function ClientsPage() {
               <Download size={15} />
               Export
             </button>
-            <button
-              onClick={openCreate}
-              className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
-            >
-              <Plus size={15} />
-              Add Client
-            </button>
+            {canAdd && (
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark transition-colors"
+              >
+                <Plus size={15} />
+                Add Client
+              </button>
+            )}
           </div>
         }
       />
@@ -644,7 +663,7 @@ export default function ClientsPage() {
           <p className="text-sm text-ps-label mb-4">
             {filter === "archived" ? "Archived clients will appear here" : "Add your first client to get started"}
           </p>
-          {filter === "active" && (
+          {filter === "active" && canAdd && (
             <button
               onClick={openCreate}
               className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"

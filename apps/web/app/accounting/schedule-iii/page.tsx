@@ -49,6 +49,9 @@ function fyOptions() {
 interface Client {
   id: string;
   name: string;
+  // Read so the picker can show and search them (POST-A-487).
+  pan?: string | null;
+  gstin?: string | null;
 }
 
 interface LineItem {
@@ -337,12 +340,12 @@ export default function ScheduleIIIPage() {
         // own key inside the paged query.
         const { data: cls } = await selectAll(() => sb
           .from("clients")
-          .select("id, client_name")
+          .select("id, client_name, pan, gstin")
           .eq("firm_id", fid)
           .eq("is_internal", false)
           .order("id"));
-        setClients(((cls ?? []) as { id: string; client_name: string }[])
-          .map((c) => ({ id: c.id, name: c.client_name }))
+        setClients(((cls ?? []) as { id: string; client_name: string; pan: string | null; gstin: string | null }[])
+          .map((c) => ({ id: c.id, name: c.client_name, pan: c.pan, gstin: c.gstin }))
           .sort((a, b) => a.name.localeCompare(b.name)));
       })
       .catch(() => {});

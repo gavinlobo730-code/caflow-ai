@@ -468,6 +468,8 @@ export interface ClientSummary {
   id: string;
   client_name: string;
   entity_type?: string | null;
+  /** The list route serves the whole client row, so the PAN is there for a picker to show (POST-A-487). */
+  pan?: string | null;
   gstin?: string | null;
 }
 

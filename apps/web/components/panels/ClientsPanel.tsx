@@ -9,8 +9,11 @@ import {
   FolderOpen,
   Search,
   ListChecks,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/lib/auth/AuthContext";
+import { ADD_CLIENT_HREF, ADD_CLIENT_LABEL } from "@/lib/clients/addClient";
 
 const CLIENTS_ITEMS = [
   { href: "/clients", label: "All Clients", icon: Users },
@@ -36,6 +39,10 @@ interface ClientsPanelProps {
 
 export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
   const pathname = usePathname();
+  // Offered to those the server lets add a client (a Manager or a Partner), by the permission map and not a role list here
+  // (POST-A-488): a tester who looked here for a way to add a company found none.
+  const { can } = usePermissions();
+  const canAdd = can("client", "write");
 
   return (
     <div className="flex flex-col h-full">
@@ -56,6 +63,18 @@ export function ClientsPanel({ onOpenSearch }: ClientsPanelProps) {
           <kbd className="text-3xs text-ps-disabled font-mono">⌘K</kbd>
         </button>
       </div>
+
+      {canAdd && (
+        <div className="px-2 pt-2 shrink-0">
+          <Link
+            href={ADD_CLIENT_HREF}
+            className="flex items-center justify-center gap-2 w-full px-2.5 py-1.5 rounded-[7px] bg-brand text-xs font-medium text-white hover:bg-brand-dark transition-colors"
+          >
+            <Plus size={13} className="shrink-0" />
+            <span>{ADD_CLIENT_LABEL}</span>
+          </Link>
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 px-2">
