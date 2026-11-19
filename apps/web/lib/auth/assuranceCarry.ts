@@ -18,9 +18,10 @@
 //     verified raises the level of the session it was verified on and never lowers it, so a session that owed nothing owes nothing
 //     after it, and the page it was already on (Settings > Security enrolling a factor and verifying its first code) is not unmounted
 //     and rebuilt under the person while the level is read again, which lost what was typed and any message a request in flight was
-//     about to set. (The platform page's step-up emits the same event and is NOT cured by this: that page re-checks itself whenever the
-//     session object changes and draws a spinner in place of its body, which is its own ledger line. The password proof on Settings >
-//     Security no longer emits it at all: it runs on a throwaway client since POST-A-512.) Where a challenge IS owed (`pending === true`) the verified code is what ends it, so that
+//     about to set. (The platform page's step-up emits the same event, and that page had its own gate that re-checked whenever the
+//     session object changed and drew a spinner in place of its body; its open gate now stays open while it is read again, POST-A-528,
+//     app/platform/page.tsx. The password proof on Settings > Security no longer emits the event at all: it runs on a throwaway client
+//     since POST-A-512.) Where a challenge IS owed (`pending === true`) the verified code is what ends it, so that
 //     value is NOT kept: it is read afresh and the guard draws nothing until the fresh read says what the session now owes, exactly as
 //     before. A session whose assurance was never read (`null`) keeps nothing, as for every other event.
 //   * everything else does not: a different person, a different token on a SIGNED_IN (a new sign-in, which may be at a lower level
