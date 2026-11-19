@@ -12,11 +12,15 @@
 //     staff invitation signed the person in and never asked for a password, and a repeat of its accept was refused as
 //     a spent token although they had just joined.
 //
+// POST-A-485 changed the first and the third: the link is now kept by the SERVER and works until it expires or the practice is created
+// (scripts/a-sign-up-link-is-the-servers-and-opens-on-its-own-page.test.ts holds that half), so the page that has no sign-in says so
+// without claiming that a link "works once".
+//
 // THE RULES (the decisions are unit-tested beside them in lib/auth)
-//     1. the sign-up page keeps the address in the stash and says the link signs in to an existing account;
+//     1. the sign-up page keeps the address in the stash (through the one helper) and says the link signs in to an existing account;
 //     2. the onboarding page decides through signupLanding(), renders the notice, and its "already onboarded"
 //        redirect to "/" is taken ONLY for a member who did not start a sign-up;
-//     3. a link that lands used offers "Email me a new link", from the stashed address, with a wait;
+//     3. a person with no sign-in on the wizard's page is offered "Email me a new link", from the stashed address and names, with a wait;
 //     4. the join page asks for a password with the rules, and offers the dashboard only once one is set (or, for a
 //        repeat, a way to say one already exists).
 import { test } from "node:test";
@@ -32,8 +36,10 @@ function code(rel: string): string {
 
 test("the sign-up page keeps the address beside the names and says the link signs in to an existing account", () => {
   const src = code("app/signup/page.tsx");
-  assert.match(src, /writeSignupStash\(/);
-  assert.match(src, /email: email\.trim\(\)/);
+  // The stash is written by the one helper every ask goes through, before the request.
+  assert.match(src, /requestSignupLink\(\{\s*email, firmName, fullName\s*\}\)/);
+  const helper = code("lib/auth/requestSignupLink.ts");
+  assert.match(helper, /writeSignupStash\(storage\(\), \{ firmName, fullName, email \}\)/);
   assert.match(src, /If this address already has an account, the link signs you in to it/);
   assert.match(src, /Send it again/);
 });
@@ -57,13 +63,15 @@ test("the silent redirect to the dashboard is taken only for a member who did no
   assert.match(body[1], /else if \(landing === "go-home"\) router\.replace\("\/"\)/);
 });
 
-test("a link that lands used offers a new one from the stashed address, with a wait, and says it works once", () => {
+test("a person with no sign-in offers a new link from the stashed address and names, with the server's wait, and does not say it works once", () => {
   const src = code("app/onboarding/page.tsx");
-  assert.match(src, /This sign-up link was already used, or has expired/);
-  assert.match(src, /stashedEmail && \(/);
+  assert.match(src, /You are not signed in/);
+  assert.match(src, /canEmailNewLink && \(/);
   assert.match(src, /Email me a new link/);
-  assert.match(src, /setLinkWait\(30\)/);
-  assert.match(src, /signInWithOtp\(\{\s*email: stashedEmail/);
+  assert.match(src, /setLinkWait\(sent\.waitSeconds\)/);
+  assert.match(src, /requestSignupLink\(\{ email: stash\.email \?\? "", firmName: stash\.firmName \?\? "", fullName: stash\.fullName \?\? "" \}\)/);
+  assert.doesNotMatch(src, /signInWithOtp/);
+  assert.doesNotMatch(src, /An emailed link works once/);
 });
 
 test("the join page asks for a password with the rules, and the dashboard waits for one", () => {

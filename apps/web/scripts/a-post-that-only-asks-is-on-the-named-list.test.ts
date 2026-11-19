@@ -32,6 +32,7 @@ const ASKS_ONLY: Record<string, string> = {
   "/api/payroll/runs/{}/esic/mapped-ips": "routers/payroll.py esic_mapped_ip_check: compares the pasted list with the run's return and stores nothing",
   "/api/payroll/employees/{}/settlement": "routers/payroll.py preview_settlement: composes the settlement; the record door is /settlement/record",
   "/api/billing/preview-run": "routers/billing.py preview_run: billing_service.preview_due lists what would be generated",
+  "/api/signup/link/look": "routers/signup.py look: services/signup_link_service.look reads the link's row by the hash of its secret and returns what it was asked for; it signs nobody in, mails nothing and writes nothing",
 };
 
 function read(rel: string): string {

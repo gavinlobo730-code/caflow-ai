@@ -164,6 +164,7 @@ export const KNOWN_ROUTE_SHAPES: string[][] = [
   ["settings","treaty-rates"],
   ["sign"],
   ["signup"],
+  ["signup","continue"],
   ["tasks"],
   ["tasks","templates"],
   ["tds"],

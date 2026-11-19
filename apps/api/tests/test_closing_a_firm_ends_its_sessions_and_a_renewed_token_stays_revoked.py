@@ -172,7 +172,7 @@ def test_soft_deleting_a_firm_signs_out_its_members(monkeypatch):
 
 def test_purging_a_firm_stamps_nothing_and_claims_nothing(monkeypatch):
     # The independent review's finding: the purge deletes the member rows a stamp would live on, and the sign-in accounts stay,
-    # so no stamp can end a purged member's session. The route no longer pretends to (POST-A-499 records the gap).
+    # so no stamp can end a purged member's session. The route does not pretend to: POST-A-499's closed-account markers (migration 772) carry it.
     c, db = _client(monkeypatch)
     r = c.delete("/api/platform/firms/FIRM-1/permanent")
     assert r.status_code == 200 and "sessions_ended" not in r.json()["data"]

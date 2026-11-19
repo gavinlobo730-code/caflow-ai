@@ -349,6 +349,32 @@ def _refuse_a_session_signed_out_from_elsewhere(user_data: dict, payload: dict, 
         )
 
 
+def _refuse_a_closed_firms_person(supabase, auth_user_id: str, payload: dict) -> None:
+    """A signed-in account with no member row, from a firm that was permanently deleted (POST-A-499).
+
+    The purge deletes the member rows and leaves the sign-in accounts, so a session that was open at the time reached "User not found in
+    firm" and the browser opened the new-practice wizard. `closed_account_markers` (migration 772) remembers who they were and when it
+    happened; a session that BEGAN before then is answered 403 "Firm unavailable", the words the browser already reads as "the firm is
+    closed" (it signs the person out and says so). A session that began after it is a new sign-in by a person who may start a practice,
+    and is left to the ordinary refusal. A marker that cannot be read leaves the ordinary refusal too: that is what this path did before,
+    and a read that fails must not turn a person mid-sign-up into someone who is signed out."""
+    try:
+        row = (supabase.table("closed_account_markers").select("closed_at")
+               .eq("auth_user_id", auth_user_id).maybe_single().execute()).data
+    except Exception:                                    # noqa: BLE001 — the ordinary refusal follows
+        _logger.warning("closed-account marker lookup failed for auth_user_id=%s", auth_user_id, exc_info=True)
+        return
+    if not row or not row.get("closed_at"):
+        return
+    try:
+        began_before = auth_time.issued_before_revocation(payload, _instant_epoch(row["closed_at"]))
+    except Exception:                                    # noqa: BLE001 — an unreadable instant is judged as the ordinary refusal
+        _logger.warning("closed_at for auth_user_id=%s could not be compared with the token", auth_user_id, exc_info=True)
+        return
+    if began_before:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Firm unavailable")
+
+
 def get_current_user(
     authorization: Optional[str] = Header(default=None),
     x_user_role: Optional[str] = Header(default=None),
@@ -409,6 +435,7 @@ def get_current_user(
     user_data, firm_row = _get_user_and_firm(supabase, auth_user_id)
 
     if not user_data:
+        _refuse_a_closed_firms_person(supabase, auth_user_id, payload)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User not found in firm. Contact your firm administrator.",

@@ -8777,6 +8777,24 @@ export const api = {
     posture: () =>
       request<ApiResp<SecurityPosture>>("/api/security/posture"),
   },
+  /** The sign-up link, kept and mailed by the SERVER (POST-A-485, 497). Public: the person has no account yet, so none of these carries a session. */
+  signup: {
+    /** Ask for a link that starts a new practice. The server mails it to `email`; it throws the server's own sentence when it refuses
+     *  (a wait, a blank name, a mail that did not go). It answers the same whether or not the address has an account. */
+    requestLink: (body: { email: string; firm_name: string; full_name: string }) =>
+      request<ApiResp<{ sent: boolean; valid_until: string; wait_seconds: number }>>(
+        "/api/signup/link", { method: "POST", body: JSON.stringify(body) }),
+    /** What a link is for, signing nobody in: the address, the firm name and the person's name it was asked for with, and when it ends.
+     *  A POST that only ASKS (see the named list in scripts/a-post-that-only-asks-is-on-the-named-list.test.ts). */
+    look: (token: string) =>
+      request<ApiResp<{ email: string; firm_name: string; full_name: string; valid_until: string }>>(
+        "/api/signup/link/look", { method: "POST", body: JSON.stringify({ token }), asked: "read" }),
+    /** A sign-in for the link's own address, opened at the press, with the names the link was asked for. Redeemed with
+     *  `supabase.auth.verifyOtp({ token_hash, type })`. Nothing is used up: pressing again signs in again. */
+    session: (token: string) =>
+      request<ApiResp<{ token_hash: string; verification_type: string; email: string; firm_name: string; full_name: string }>>(
+        "/api/signup/link/session", { method: "POST", body: JSON.stringify({ token }) }),
+  },
   identity: {
     listUsers: () => request<ApiResp<{
       users: Array<{

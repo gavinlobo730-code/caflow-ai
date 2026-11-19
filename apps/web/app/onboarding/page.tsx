@@ -22,6 +22,8 @@ import { passwordStepButtonEnabled, passwordStepMode } from "@/lib/auth/password
 import { onboardingProgress, progressFor, restoredStep } from "@/lib/auth/onboardingProgress";
 import { PasswordRules } from "@/components/auth/PasswordRules";
 import { clearSignupStash, newFirmSignupStarted, readSignupStash as readStash } from "@/lib/auth/signupStash";
+import { canAskAgain } from "@/lib/auth/signupContinue";
+import { requestSignupLink } from "@/lib/auth/requestSignupLink";
 import { signedInAsSentence, signupLanding } from "@/lib/auth/signupLanding";
 import { api, type ApiResp } from "@/lib/api";
 import CsvImportModal from "@/components/LazyCsvImportModal";
@@ -308,10 +310,12 @@ export default function OnboardingPage() {
   const [existingFirmName, setExistingFirmName] = useState<string | null>(null);
   const landing = signupLanding({ hasSession: !!session, hasFirm, signupStarted, createdHere });
 
-  // A LINK THAT LANDS ALREADY USED (POST-A-479). The emailed link works once, so a second click, a reload after the
-  // first, or a mail scanner that opened it first leaves a person signed out on this page. With the address the
-  // sign-up page kept, they can have a new one sent here instead of starting again.
+  // NOBODY IS SIGNED IN HERE (POST-A-479, 485). A sign-up link lands on /signup/continue and works until it expires or the practice is
+  // created, so a person reaches this page without a session by opening the address of an older emailed link that has been used
+  // (those worked once), by a bookmark, or after signing out. With the address and names the sign-up page kept, they can have a new
+  // link sent by the server instead of starting again.
   const stashedEmail = readSignupStash().email ?? null;
+  const canEmailNewLink = canAskAgain(readSignupStash());
   const [linkSending, setLinkSending] = useState(false);
   const [linkWait, setLinkWait] = useState(0);
   const [linkNote, setLinkNote] = useState<{ tone: "ok" | "problem"; text: string } | null>(null);
@@ -321,19 +325,17 @@ export default function OnboardingPage() {
     return () => clearTimeout(timer);
   }, [linkWait]);
   async function emailNewLink() {
-    if (!stashedEmail || linkSending || linkWait > 0) return;
+    const stash = readSignupStash();
+    if (!canAskAgain(stash) || linkSending || linkWait > 0) return;
     setLinkSending(true);
     setLinkNote(null);
     try {
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email: stashedEmail,
-        options: { emailRedirectTo: window.location.origin + "/onboarding" },
-      });
-      if (otpErr) throw otpErr;
-      setLinkNote({ tone: "ok", text: `A new link is on its way to ${stashedEmail}. It works once: open it in this browser.` });
-      setLinkWait(30);
+      // The SERVER keeps and mails the link (POST-A-485), and says in its own sentence when it will not or could not.
+      const sent = await requestSignupLink({ email: stash.email ?? "", firmName: stash.firmName ?? "", fullName: stash.fullName ?? "" });
+      setLinkNote({ tone: "ok", text: `A new link is on its way to ${stash.email}. It works until ${sent.validUntil}, and you can open it more than once.` });
+      setLinkWait(sent.waitSeconds);
     } catch (e) {
-      setLinkNote({ tone: "problem", text: authErrorMessage(e, "Could not send a new link. Please try again.") });
+      setLinkNote({ tone: "problem", text: e instanceof Error && e.message ? e.message : "Could not send a new link. Please try again." });
     } finally {
       setLinkSending(false);
     }
@@ -782,15 +784,15 @@ export default function OnboardingPage() {
             <LogoIcon size="sm" />
             <span className="text-sm font-semibold text-ps-body">PracticeSync AI</span>
           </div>
-          <h1 className="text-xl font-bold text-ps-ink mb-2">This sign-up link was already used, or has expired</h1>
+          <h1 className="text-xl font-bold text-ps-ink mb-2">You are not signed in</h1>
           <p className="text-sm text-ps-label mb-6">
-            An emailed link works once. You are not signed in here, so this setup page cannot continue.
-            {stashedEmail ? " We can email a new link to the address you signed up with, or you can sign in if you already have a password." : " Request a new sign-up link, or sign in if you already have a password."}
+            This setup page cannot continue until you are. If you have a sign-up email, open its link again: it can be opened more than once until it expires.
+            {canEmailNewLink ? ` Or we can email a new link to ${stashedEmail}, the address you signed up with, and you can sign in if you already have a password.` : " Or request a new sign-up link, and sign in if you already have a password."}
           </p>
-          {stashedEmail && (
+          {canEmailNewLink && (
             <div className="mb-3 space-y-2">
               <Button
-                variant="plain" size="none" onClick={() => void emailNewLink()} disabled={linkSending || linkWait > 0}
+                variant="plain" size="none" onClick={() => emailNewLink()} disabled={linkSending || linkWait > 0}
                 className="w-full bg-brand text-white text-sm font-medium py-2 rounded-lg hover:bg-brand-dark transition-colors disabled:opacity-50"
               >
                 {linkSending ? "Sending…" : linkWait > 0 ? `Email me a new link (wait ${linkWait}s)` : "Email me a new link"}

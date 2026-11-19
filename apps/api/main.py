@@ -560,6 +560,11 @@ app.include_router(engagement_sign_public.router)
 # length caps stand in for the auth it cannot have. NOT behind _CLIENT_GUARD.
 from routers import demo_request
 app.include_router(demo_request.router)
+# Sign-up links (POST-A-485, 497). Public like the two above: the person has no account yet. The form's request is limited per network
+# address (`signup`) and per mailed address (the row's counters); the page the link opens is limited as the staff invitation's is
+# (`invite`). The secret is read from a POST body, never a path. NOT behind _CLIENT_GUARD.
+from routers import signup as signup_links
+app.include_router(signup_links.router)
 # Amendment v1.1 — Practice (firm-as-internal-client), Partner-only
 from routers.practice import router as practice_router
 app.include_router(practice_router, dependencies=_MFA_GUARD)
