@@ -568,6 +568,29 @@ def send_firm_invite(to: str, *, practice_name: Optional[str], inviter_name: Opt
     return _send(to, subject, html, sender_name=practice_name, reply_to=reply_to)
 
 
+def send_signup_link(to: str, *, firm_name: str, link: str, valid_until: str) -> bool:
+    """The link that starts a new practice (POST-A-485).
+
+    It used to be the sign-in library's own mail, which said nothing about what it was for. This one says what was asked and that it is safe
+    to ignore. The SUBJECT IS FIXED: the firm's name is text a stranger typed into a public form, to any address, and a subject is the one place
+    a reader trusts without reading, so none of it goes there. It appears once, in the body, between quotation marks and escaped, naming the
+    practice that was asked for; the person's name does not appear at all. The sender is the product itself (there is no practice yet), and
+    nobody is asked to reply. `valid_until` is the expiry already worded for a person, in India's time, so the mail states the instant the
+    server stored.
+    """
+    subject = "Finish setting up your PracticeSync AI account"
+    html = (f"<p>Hello,</p>"
+            f"<p>Somebody asked to set up a practice called &ldquo;{_esc(firm_name)}&rdquo; on PracticeSync AI with this email address. "
+            f"If that was you, use the button below to carry on.</p>"
+            f'<p><a href="{_esc(link)}" style="background:#4f46e5;color:white;padding:10px 20px;'
+            f'text-decoration:none;border-radius:6px;">Continue setting up</a></p>'
+            f"<p>The link signs you in. You can open it again if you are interrupted, and it works until "
+            f"{_esc(valid_until)} or until your practice has been created, whichever is first. "
+            f"Opening it more than once does not create a second practice.</p>"
+            f"<p>If you did not ask for this, ignore this email: no sign-in is created unless the link is opened.</p>")
+    return _send(to, subject, html)
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 — Invoice delivery to customers
 # ---------------------------------------------------------------------------

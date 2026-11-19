@@ -39,6 +39,7 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 const PAGES: Record<string, "layout" | "style"> = {
   "app/login/page.tsx": "style",
   "app/signup/page.tsx": "layout",
+  "app/signup/continue/page.tsx": "layout",
   "app/login/forgot-password/page.tsx": "layout",
   "app/auth/reset-password/page.tsx": "layout",
   "app/auth/account-closed/page.tsx": "layout",

@@ -108,7 +108,7 @@ def test_hit_still_answers_a_bool_exactly_as_before():
 # ═══ the dependency ═══════════════════════════════════════════════════════════
 
 def test_the_buckets_are_the_documented_figures():
-    assert BUCKETS == {"esign": (120, 60), "invite": (120, 60), "form": (120, 60), "signup": (60, 3600)}
+    assert BUCKETS == {"esign": (120, 60), "invite": (120, 60), "form": (120, 60), "signup": (60, 3600), "signup_link": (60, 3600)}
 
 
 def test_an_unknown_bucket_is_a_programming_error_not_a_free_pass():

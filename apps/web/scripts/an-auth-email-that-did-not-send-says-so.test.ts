@@ -50,8 +50,19 @@ function calls() {
 
 test("the sweep finds the calls it is about", () => {
   const found = calls();
-  assert.ok(found.length >= 3, `only ${found.length} signInWithOtp calls found — bad roots?`);
-  assert.ok(found.some((c) => c.file === path.join("app", "signup", "page.tsx")));
+  // POST-A-485: the SERVER mails the sign-up link, so the sign-up form and the wizard no longer call it (the second test below holds that).
+  // What is left are the two screens that mail a client's portal sign-in from the browser.
+  assert.ok(found.length >= 2, `only ${found.length} signInWithOtp calls found — bad roots?`);
+  assert.ok(found.some((c) => c.file === path.join("app", "clients", "[id]", "portal", "page.tsx")));
+  assert.ok(found.some((c) => c.file === path.join("components", "payroll", "PortalAccessModal.tsx")));
+});
+
+test("the sign-up form and the wizard mail nothing of their own: the server keeps and mails the sign-up link", () => {
+  for (const rel of [path.join("app", "signup", "page.tsx"), path.join("app", "onboarding", "page.tsx"),
+    path.join("app", "signup", "continue", "page.tsx")]) {
+    const src = stripComments(fs.readFileSync(path.join(WEB, rel), "utf8"));
+    assert.doesNotMatch(src, CALL, `${rel} sends an auth email itself; a second, browser-sent one would be a rival to the server's`);
+  }
 });
 
 test("every signInWithOtp call reads the error it resolves with", () => {

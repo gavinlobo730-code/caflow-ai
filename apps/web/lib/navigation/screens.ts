@@ -299,6 +299,7 @@ export const UNLISTED: Record<string, string> = {
   "/login": "signed-out — a palette is for somebody already inside the product",
   "/login/forgot-password": "signed-out",
   "/signup": "signed-out",
+  "/signup/continue": "signed-out — reached from a sign-up link (POST-A-485)",
   "/join": "signed-out — reached from an invitation link",
   "/sign": "signed-out — a client signs an engagement letter from an emailed link",
   "/auth/reset-password": "signed-out",

@@ -135,6 +135,10 @@ def create_firm(
     except Exception as e:  # pragma: no cover - defensive
         _logger.error("Internal-client provisioning failed for firm %s: %s", firm_id, e)
 
+    # The sign-up link this practice was made from has done its job (POST-A-485): the mail can no longer sign anybody in. Never raises.
+    from services import signup_link_service
+    signup_link_service.forget(jwt_user.get("email"))
+
     return api_response(True, {"firm": firm, "message": "Firm created successfully"})
 
 
